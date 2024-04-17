@@ -1,5 +1,5 @@
 # PACS IAM API
-PACS identity and user access management API using Firebase.
+PACS identity and user access management API using Firebase with multi-tenancy support.
 
 ## Local Development
 
