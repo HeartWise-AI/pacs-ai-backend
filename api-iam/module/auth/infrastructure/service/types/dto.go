@@ -13,11 +13,10 @@ const (
 )
 
 type AddTenantUser struct {
-	TenantID   string
-	HospitalID string
-	Role       string
-	Email      string
-	Name       string
+	TenantID string
+	Role     string
+	Email    string
+	Name     string
 }
 
 type GetTenantUser struct {
@@ -27,9 +26,8 @@ type GetTenantUser struct {
 	IsEmailVerified   bool
 	IsAccountDisabled bool
 	// claims
-	TenantID   string
-	HospitalID string
-	Role       string
+	TenantID string
+	Role     string
 }
 
 type UpdateTenantUserPassword struct {

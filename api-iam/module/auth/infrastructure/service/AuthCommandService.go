@@ -49,9 +49,8 @@ func (service *AuthCommandService) AddTenantUser(ctx context.Context, data types
 
 	// set claims
 	claims := map[string]interface{}{
-		types.TenantClaim:   data.TenantID,   // cannot be updated
-		types.HospitalClaim: data.HospitalID, // can be updated
-		types.RoleClaim:     data.Role,       // can be updated
+		types.TenantClaim: data.TenantID, // cannot be updated
+		types.RoleClaim:   data.Role,     // can be updated
 	}
 	err = tenantAuth.SetCustomUserClaims(ctx, user.UID, claims)
 	if err != nil {
