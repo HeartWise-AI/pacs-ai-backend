@@ -43,7 +43,6 @@ func (service *AuthCommandService) GetTenantUserByID(ctx context.Context, tenant
 		IsEmailVerified:   user.EmailVerified,
 		IsAccountDisabled: user.Disabled,
 		TenantID:          user.CustomClaims[types.TenantClaim].(string),
-		HospitalID:        user.CustomClaims[types.HospitalClaim].(string),
 		Role:              user.CustomClaims[types.RoleClaim].(string),
 	}, nil
 }
@@ -83,7 +82,6 @@ func (service *AuthCommandService) GetTenantUsers(ctx context.Context, tenantID 
 			IsEmailVerified:   user.EmailVerified,
 			IsAccountDisabled: user.Disabled,
 			TenantID:          user.CustomClaims[types.TenantClaim].(string),
-			HospitalID:        user.CustomClaims[types.HospitalClaim].(string),
 			Role:              user.CustomClaims[types.RoleClaim].(string),
 		})
 	}
