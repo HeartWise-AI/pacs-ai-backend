@@ -21,7 +21,6 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 
-	"api-pacs/interfaces"
 	"api-pacs/interfaces/http/rest/middlewares/cors"
 	"api-pacs/interfaces/http/rest/viewmodels"
 )
@@ -42,8 +41,8 @@ var (
 // InitRouter initializes main routes
 func (router *router) InitRouter() *chi.Mux {
 	// DI assignment
-	recordCommandController := interfaces.ServiceContainer().RegisterRecordRESTCommandController()
-	recordQueryController := interfaces.ServiceContainer().RegisterRecordRESTQueryController()
+	//recordCommandController := interfaces.ServiceContainer().RegisterRecordRESTCommandController()
+	//recordQueryController := interfaces.ServiceContainer().RegisterRecordRESTQueryController()
 
 	// create router
 	r := chi.NewRouter()
@@ -75,11 +74,11 @@ func (router *router) InitRouter() *chi.Mux {
 	r.Group(func(r chi.Router) {
 		r.Route("/api", func(r chi.Router) {
 			r.Route("/v1", func(r chi.Router) {
-				// routes for record
-				r.Route("/record", func(r chi.Router) {
-					r.Post("/", recordCommandController.CreateRecord)
-					r.Get("/{id}", recordQueryController.GetRecordByID)
-				})
+				// // routes for record
+				// r.Route("/record", func(r chi.Router) {
+				// 	r.Post("/", recordCommandController.CreateRecord)
+				// 	r.Get("/{id}", recordQueryController.GetRecordByID)
+				// })
 			})
 		})
 	})

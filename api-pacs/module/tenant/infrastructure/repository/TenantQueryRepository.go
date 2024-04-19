@@ -2,7 +2,7 @@ package repository
 
 import "api-pacs/infrastructures/providers/sdk/firebaseadmin"
 
-// UserQueryRepository handles the user query repository logic
-type UserQueryRepository struct {
+// TenantQueryRepository handles the tenant query repository logic
+type TenantQueryRepository struct {
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
 }

@@ -8,12 +8,15 @@ import (
 	"github.com/segmentio/ksuid"
 
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
+	"api-pacs/module/user/domain/repository"
+	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
 	"api-pacs/module/user/infrastructure/service/types"
 )
 
 // UserCommandService handles the User command service logic
 type UserCommandService struct {
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
+	repository.UserCommandRepositoryInterface
 }
 
 // AddTenantUser add a new tenant user with random generated password
@@ -26,13 +29,6 @@ func (service *UserCommandService) AddTenantUser(ctx context.Context, data types
 
 	// get tenant auth
 	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(data.TenantID)
-	if err != nil {
-		log.Println(err)
-		return "", err
-	}
-
-	// get firestore client
-	firestoreClient, err := service.FirebaseAdminSDK.App.Firestore(ctx)
 	if err != nil {
 		log.Println(err)
 		return "", err
@@ -54,21 +50,20 @@ func (service *UserCommandService) AddTenantUser(ctx context.Context, data types
 		return "", err
 	}
 
-	// set claims
-	claims := map[string]interface{}{
-		types.TenantClaim: data.TenantID, // cannot be updated
-		types.RoleClaim:   data.Role,     // can be updated
-	}
-	err = tenantAuth.SetCustomUserClaims(ctx, user.UID, claims)
+	id, err := service.UserCommandRepositoryInterface.InsertUser(ctx, repositoryTypes.CreateUser{
+		TenantID:  user.TenantID,
+		Role:      data.Role,
+		Name:      data.Name,
+		Email:     user.Email,
+		Password:  generatedPassword,
+		LicenseNo: data.LicenseNo,
+		Specialty: data.Specialty,
+	})
 	if err != nil {
-		log.Println(err)
 		return "", err
 	}
 
-	// save to firestore
-	firestoreClient.d
-
-	return generatedPassword, nil
+	return id, nil
 }
 
 // DeleteTenantUser delete tenant user by id

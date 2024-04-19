@@ -1,13 +1,13 @@
 package application
 
 import (
+	"api-pacs/module/user/infrastructure/service/types"
 	"context"
-
-	"api-pacs/module/record/domain/entity"
-	"api-pacs/module/record/infrastructure/service/types"
 )
 
-// RecordCommandServiceInterface holds the implementable methods for the record command service
-type RecordCommandServiceInterface interface {
-	CreateRecord(ctx context.Context, data types.CreateRecord) (entity.Record, error)
+// UserCommandServiceInterface holds the implementable methods for the user command service
+type UserCommandServiceInterface interface {
+	AddTenantUser(ctx context.Context, data types.AddTenantUser) (string, error)
+	DeleteTenantUser(ctx context.Context, tenantID, uid string) error
+	UpdateTenantUserPassword(ctx context.Context, data types.UpdateTenantUserPassword) error
 }
