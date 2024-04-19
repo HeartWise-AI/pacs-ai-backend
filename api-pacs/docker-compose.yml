@@ -1,0 +1,31 @@
+version: "3.3"
+
+services:
+  api-pacs:
+    build: .
+    container_name: api-pacs
+    mem_limit: "3g"
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+    networks:
+      - proxy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api-pacs.entrypoints=http"
+      - "traefik.http.routers.api-pacs.rule=Host(`${API_URL_REST}`)"
+      - "traefik.http.routers.api-pacs-secure.entrypoints=https"
+      - "traefik.http.routers.api-pacs-secure.rule=Host(`${API_URL_REST}`)"
+      - "traefik.http.routers.api-pacs-secure.tls=true"
+      - "traefik.http.routers.api-pacs-secure.tls.certresolver=http"
+      - "traefik.http.routers.api-pacs-secure.service=${API_NAME}"
+      - "traefik.http.services.api-pacs.loadbalancer.server.port=${API_URL_REST_PORT}"
+      - "traefik.docker.network=proxy"
+networks:
+  proxy:
+    external: true
