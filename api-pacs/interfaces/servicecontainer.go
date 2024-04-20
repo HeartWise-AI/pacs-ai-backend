@@ -16,13 +16,21 @@ import (
 	"sync"
 
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
+	tenantRepository "api-pacs/module/tenant/infrastructure/repository"
+	tenantService "api-pacs/module/tenant/infrastructure/service"
+	tenantREST "api-pacs/module/tenant/interfaces/http/rest"
+	userRepository "api-pacs/module/user/infrastructure/repository"
+	userService "api-pacs/module/user/infrastructure/service"
+	userREST "api-pacs/module/user/interfaces/http/rest"
 )
 
 // ServiceContainerInterface contains the dependency injected instances
 type ServiceContainerInterface interface {
 	// REST
-	RegisterAuthRESTCommandController() authREST.AuthCommandController
-	RegisterAuthRESTQueryController() authREST.AuthQueryController
+	RegisterTenantRESTCommandController() tenantREST.TenantCommandController
+	RegisterTenantRESTQueryController() tenantREST.TenantQueryController
+	RegisterUserRESTCommandController() userREST.UserCommandController
+	RegisterUserRESTQueryController() userREST.UserQueryController
 }
 
 type kernel struct{}
@@ -35,53 +43,96 @@ var (
 )
 
 // ================================= REST ===================================
-// RegisterAuthRESTCommandController performs dependency injection to the RegisterAuthRESTCommandController
-func (k *kernel) RegisterAuthRESTCommandController() authREST.AuthCommandController {
-	service := k.authCommandServiceContainer()
+// RegisterTenantRESTCommandController performs dependency injection to the RegisterTenantRESTCommandController
+func (k *kernel) RegisterTenantRESTCommandController() tenantREST.TenantCommandController {
+	service := k.tenantCommandServiceContainer()
 
-	controller := authREST.AuthCommandController{
-		AuthCommandServiceInterface: service,
+	controller := tenantREST.TenantCommandController{
+		TenantCommandServiceInterface: service,
 	}
 
 	return controller
 }
 
-// RegisterAuthRESTQueryController performs dependency injection to the RegisterAuthRESTQueryController
-func (k *kernel) RegisterAuthRESTQueryController() authREST.AuthQueryController {
-	service := k.authQueryServiceContainer()
+// RegisterTenantRESTQueryController performs dependency injection to the RegisterTenantRESTQueryController
+func (k *kernel) RegisterTenantRESTQueryController() tenantREST.TenantQueryController {
+	service := k.tenantQueryServiceContainer()
 
-	controller := authREST.AuthQueryController{
-		AuthQueryServiceInterface: service,
+	controller := tenantREST.TenantQueryController{
+		TenantQueryServiceInterface: service,
 	}
 
 	return controller
 }
 
-//==========================================================================
+// RegisterUserRESTCommandController performs dependency injection to the RegisterUserRESTCommandController
+func (k *kernel) RegisterUserRESTCommandController() userREST.UserCommandController {
+	service := k.userCommandServiceContainer()
 
-func (k *kernel) authCommandServiceContainer() *authService.AuthCommandService {
-	repository := &authRepository.AuthCommandRepository{
-		MySQLDBHandlerInterface: mysqlDBHandler,
+	controller := userREST.UserCommandController{
+		UserCommandServiceInterface: service,
 	}
 
-	service := &authService.AuthCommandService{
-		AuthCommandRepositoryInterface: &authRepository.AuthCommandRepositoryCircuitBreaker{
-			AuthCommandRepositoryInterface: repository,
+	return controller
+}
+
+// RegisterUserRESTQueryController performs dependency injection to the RegisterUserRESTQueryController
+func (k *kernel) RegisterUserRESTQueryController() userREST.UserQueryController {
+	service := k.userQueryServiceContainer()
+
+	controller := userREST.UserQueryController{
+		UserQueryServiceInterface: service,
+	}
+
+	return controller
+}
+
+// ==========================================================================
+func (k *kernel) tenantCommandServiceContainer() *tenantService.TenantCommandService {
+	repository := &tenantRepository.TenantCommandRepository{}
+
+	service := &tenantService.TenantCommandService{
+		TenantCommandRepositoryInterface: &tenantRepository.TenantCommandRepositoryCircuitBreaker{
+			TenantCommandRepositoryInterface: repository,
 		},
 	}
 
 	return service
 }
 
-func (k *kernel) authQueryServiceContainer() *authService.AuthQueryService {
-	repository := &authRepository.AuthQueryRepository{
-		MySQLDBHandlerInterface: mysqlDBHandler,
+func (k *kernel) tenantQueryServiceContainer() *tenantService.TenantQueryService {
+	repository := &tenantRepository.TenantQueryRepository{}
+
+	service := &tenantService.TenantQueryService{
+		TenantQueryRepositoryInterface: &tenantRepository.TenantQueryRepositoryCircuitBreaker{
+			TenantQueryRepositoryInterface: repository,
+		},
 	}
 
-	service := &authService.AuthQueryService{
-		AuthQueryRepositoryInterface: &authRepository.AuthQueryRepositoryCircuitBreaker{
-			AuthQueryRepositoryInterface: repository,
+	return service
+}
+
+func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
+	repository := &userRepository.UserCommandRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
+	service := &userService.UserCommandService{
+		UserCommandRepositoryInterface: &userRepository.UserCommandRepositoryCircuitBreaker{
+			UserCommandRepositoryInterface: repository,
 		},
+	}
+
+	return service
+}
+
+func (k *kernel) userQueryServiceContainer() *userService.UserQueryService {
+	// repository := &userRepository.UserQueryRepository{
+	// 	FirebaseAdminSDK: firebaseAdminSDK,
+	// }
+
+	service := &userService.UserQueryService{
+		FirebaseAdminSDK: firebaseAdminSDK,
 	}
 
 	return service
