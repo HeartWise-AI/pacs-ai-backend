@@ -7,20 +7,39 @@ import (
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
-		"CreateRecordRequest.ID":   "ID field is required.",
-		"CreateRecordRequest.Data": "Data field is required.",
+		// TODO: CreateTenantUserRequest
+		// TODO: DeleteTenantUserRequest
 	}
 )
 
-// CreateRecordRequest request struct for create record
-type CreateRecordRequest struct {
-	ID   string `json:"id" validate:"required"`
-	Data string `json:"data" validate:"required"`
+type CreateTenantUserRequest struct {
+	TenantID  string `json:"tenantId" validate:"required"`
+	Role      string `json:"role" validate:"required"`
+	Name      string `json:"name" validate:"required"`
+	Email     string `json:"email" validate:"required"`
+	LicenseNo string `json:"licenseNo" validate:"required"`
+	Specialty string `json:"specialty" validate:"required"`
 }
 
-// RecordResponse response struct
-type RecordResponse struct {
-	ID        string `json:"id"`
-	Data      string `json:"data"`
-	CreatedAt int64  `json:"createdAt"`
+type DeleteTenantUserRequest struct {
+	TenantID string `json:"tenantId" validate:"required"`
+	UserID   string `json:"userId" validate:"required"`
+}
+
+type CreateTenantUserResponse struct {
+	Password string `json:"password" validate:"required"`
+}
+
+type GetTenantUserResponse struct {
+	ID                string `json:"id"`
+	TenantID          string `json:"tenantId"`
+	Role              string `json:"role"`
+	Name              string `json:"name"`
+	Email             string `json:"email"`
+	LicenseNo         string `json:"licenseNo"`
+	Specialty         string `json:"specialty"`
+	IsEmailVerified   bool   `json:"isEmailVerified"`
+	IsAccountDisabled bool   `json:"isAccountDisabled"`
+	CreatedAt         uint   `json:"createdAt"`
+	UpdatedAt         uint   `json:"updatedAt"`
 }

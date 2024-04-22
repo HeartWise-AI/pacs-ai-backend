@@ -21,6 +21,7 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 
+	"api-pacs/interfaces"
 	"api-pacs/interfaces/http/rest/middlewares/cors"
 	"api-pacs/interfaces/http/rest/viewmodels"
 )
@@ -41,8 +42,9 @@ var (
 // InitRouter initializes main routes
 func (router *router) InitRouter() *chi.Mux {
 	// DI assignment
-	//recordCommandController := interfaces.ServiceContainer().RegisterRecordRESTCommandController()
-	//recordQueryController := interfaces.ServiceContainer().RegisterRecordRESTQueryController()
+	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
+	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
+	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
 
 	// create router
 	r := chi.NewRouter()
@@ -66,19 +68,38 @@ func (router *router) InitRouter() *chi.Mux {
 	})
 
 	// docs routes
-	workDir, _ := os.Getwd()
-	docsDir := http.Dir(filepath.Join(workDir, "docs"))
-	FileServer(r, "/docs", docsDir)
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.BasicAuth(os.Getenv("API_NAME"), map[string]string{
+			"sudo": os.Getenv("OPENAPI_DOCS_PASSWORD"),
+		}))
+
+		workDir, _ := os.Getwd()
+		docsDir := http.Dir(filepath.Join(workDir, "docs"))
+		FileServer(r, "/docs", docsDir)
+	})
 
 	// API routes
 	r.Group(func(r chi.Router) {
-		r.Route("/api", func(r chi.Router) {
-			r.Route("/v1", func(r chi.Router) {
-				// // routes for record
-				// r.Route("/record", func(r chi.Router) {
-				// 	r.Post("/", recordCommandController.CreateRecord)
-				// 	r.Get("/{id}", recordQueryController.GetRecordByID)
-				// })
+		r.Route("/v1", func(r chi.Router) {
+
+			// user module
+			r.Route("/user", func(r chi.Router) {
+				// TODO: endpoints for command and query
+				// r.Get("/{id}", recordQueryController.GetRecordByID)
+
+				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.FirebaseSuperUserGuard)
+
+					r.Post("/owner/add", userCommandController.CreateTenantOwner)
+				})
+
+				r.Group(func(r chi.Router) {
+					// TODO: middleware
+
+					r.Post("/add", userCommandController.CreateTenantUser)
+					r.Get("/", userQueryController.GetCurrentTenantUser)
+					r.Delete("/remove", userCommandController.DeleteTenantUser)
+				})
 			})
 		})
 	})

@@ -20,22 +20,22 @@ type UserCommandRepository struct {
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
 }
 
-// DeleteUser delete user for tenant
-func (repository *UserCommandRepository) DeleteUser(ctx context.Context, tenantID, id string) error {
+// DeleteTenantUser delete tenant user for tenant
+func (repository *UserCommandRepository) DeleteTenantUser(ctx context.Context, tenantID, id string) error {
 	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.FirebaseAuthError)
 	}
 
-	// get tenant auth
+	// tenant auth
 	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.FirebaseAuthError)
 	}
 
-	// get firestore client
+	// firestore client
 	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
 	if err != nil {
 		log.Println(err)
@@ -64,22 +64,22 @@ func (repository *UserCommandRepository) DeleteUser(ctx context.Context, tenantI
 	return nil
 }
 
-// InsertUser creates a new user for tenant
-func (repository *UserCommandRepository) InsertUser(ctx context.Context, data repositoryTypes.CreateUser) (string, error) {
+// InsertTenantUser creates a new tenant user for tenant
+func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, data repositoryTypes.CreateTenantUser) (string, error) {
 	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
 	if err != nil {
 		log.Println(err)
 		return "", errors.New(apiError.FirebaseAuthError)
 	}
 
-	// get tenant auth
+	// tenant auth
 	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(data.TenantID)
 	if err != nil {
 		log.Println(err)
 		return "", errors.New(apiError.FirebaseAuthError)
 	}
 
-	// get firestore client
+	// firestore client
 	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
 	if err != nil {
 		log.Println(err)
@@ -97,7 +97,7 @@ func (repository *UserCommandRepository) InsertUser(ctx context.Context, data re
 	authUser, err := tenantAuth.CreateUser(ctx, params)
 	if err != nil {
 		log.Println(err)
-		return "", errors.New(apiError.FirestoreError)
+		return "", errors.New(apiError.FirebaseAuthError)
 	}
 
 	// create user in firestore
@@ -106,8 +106,8 @@ func (repository *UserCommandRepository) InsertUser(ctx context.Context, data re
 		Role:      data.Role,
 		LicenseNo: data.LicenseNo,
 		Specialty: data.Specialty,
-		CreatedAt: uint(time.Now().Unix()),
-		UpdatedAt: uint(time.Now().Unix()),
+		CreatedAt: int(time.Now().Unix()),
+		UpdatedAt: int(time.Now().Unix()),
 	}
 
 	collectionPath := fmt.Sprintf("%s/%s", user.GetModelName(), authUser.UID)
@@ -122,15 +122,15 @@ func (repository *UserCommandRepository) InsertUser(ctx context.Context, data re
 	return authUser.UID, nil
 }
 
-// UpdateUserPassword update user password for tenant
-func (repository *UserCommandRepository) UpdateUserPassword(ctx context.Context, data repositoryTypes.UpdateUserPassword) error {
+// UpdateTenantUserPassword update tenant user password for tenant
+func (repository *UserCommandRepository) UpdateTenantUserPassword(ctx context.Context, data repositoryTypes.UpdateTenantUserPassword) error {
 	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.FirebaseAuthError)
 	}
 
-	// get tenant auth
+	// tenant auth
 	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(data.TenantID)
 	if err != nil {
 		log.Println(err)

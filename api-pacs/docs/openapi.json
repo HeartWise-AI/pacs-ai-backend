@@ -1,118 +1,198 @@
 {
-    "openapi": "3.0.2",
-    "info": {
-       "title": "Gomora API",
-       "description": "A progressive framework-agnostic API template following CLEAN architecture and SOLID principles. DDD inspired :)",
-       "termsOfService": "https://github.com/Nuxify/api-pacs",
-       "contact": {
-          "name": "Nuxify Inc.",
-          "email": "hello@nuxify.tech"
-       },
-       "version": "1.0.0"
+  "openapi": "3.0.2",
+  "info": {
+    "title": "PACS.AI REST API",
+    "description": "PACS REST API documentation.",
+    "termsOfService": "https://github.com/HeartWise-AI",
+    "contact": {
+      "name": "HeartWise AI",
+      "email": "hello@heartwise.ai"
     },
-    "servers": [
-       {
-          "url": "https://api-pacs-api.nuxify.tech",
-          "description": "Production"
-       },
-       {
-          "url": "https://staging-api-pacs-api.nuxify.tech",
-          "description": "Staging"
-       },
-       {
-          "url": "http://localhost:8000",
-          "description": "Local"
-       }
-    ],
-    "tags": [
-       {
-          "name": "record",
-          "description": "Record service"
-       }
-    ],
-    "paths": {
-          "/api/v1/record/": {
-            "post": {
-              "tags": [
-                "record"
-              ],
-              "summary": "Create Record",
-              "description": "Creates a record",
-              "requestBody": {
-                "description": "Creates a record request",
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/CreateRecordRequest"
-                    }
-                  }
-                },
-                "required": true
-              },
-              "responses": {
-                "2xx": {
-                  "description": "Success"
-                },
-                "4xx": {
-                  "description": "Client side errors"
-                },
-                "5xx": {
-                  "description": "Server side errors"
-                }
+    "version": "0.2.0"
+  },
+  "servers": [
+    {
+      "url": "https://pacs-api.heartwise.ai/v1",
+      "description": "Production"
+    },
+    {
+      "url": "https://staging-pacs-api.heartwise.ai/v1",
+      "description": "Staging"
+    },
+    {
+      "url": "http://localhost:8000/v1",
+      "description": "Local"
+    }
+  ],
+  "tags": [
+    {
+      "name": "user",
+      "description": "User service"
+    }
+  ],
+  "paths": {
+    "/user/owner/add": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Create Tenant Owner - SUPERADMIN",
+        "description": "Create tenant owner. Callable by superadmin only.",
+        "security": [
+          {
+            "firebaseSudoKey": []
+          }
+        ],
+        "requestBody": {
+          "description": "Create tenant owner",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTenantUserRequest"
               }
             }
           },
-          "/api/v1/record/{id}": {
-             "get": {
-               "tags": [
-                 "record"
-               ],
-               "summary": "Get Record By ID",
-               "description": "Get record by its id",
-               "parameters": [
-                {
-                  "name": "id",
-                  "in": "path",
-                  "description": "Record id",
-                  "required": true,
-                  "schema": {
-                    "type": "string"
-                  }
-                }
-              ],
-               "responses": {
-                 "2xx": {
-                   "description": "Success"
-                 },
-                 "4xx": {
-                   "description": "Client side errors"
-                 },
-                 "5xx": {
-                   "description": "Server side errors"
-                 }
-               }
-             }
-           }
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
     },
-    "components": {
-       "schemas": {
-          "CreateRecordRequest": {
-             "required": [
-               "id",
-               "data"
-             ],
-             "type": "object",
-             "properties": {
-               "id": {
-                 "type": "string"
-               },
-               "data": {
-                 "type": "string"
-               }
-             }
-           }
- 
-       }
+    "/user/add": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Create Tenant User",
+        "description": "Create tenant user. Callable by admin or owner only.",
+        "security": [],
+        "requestBody": {
+          "description": "Create tenant user",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTenantUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/v1/user": {
+      "get": {
+        "tags": ["user"],
+        "summary": "Get Current Tenant User",
+        "description": "Get current tenant user.",
+        "security": [],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/remove": {
+      "delete": {
+        "tags": ["user"],
+        "summary": "Remove Tenant User",
+        "description": "Remove tenant user. Callable by admin or owner only.",
+        "security": [],
+        "requestBody": {
+          "description": "Delete tenant user",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteTenantUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": { "description": "Success" },
+          "4xx": { "description": "Client side errors" },
+          "5xx": { "description": "Server side errors" }
+        }
+      }
     }
- }
- 
+  },
+  "components": {
+    "schemas": {
+      "CreateTenantUserRequest": {
+        "required": [
+          "tenantId",
+          "role",
+          "name",
+          "email",
+          "licenseNo",
+          "specialty"
+        ],
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["OWNER", "ADMIN", "USER"]
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "licenseNo": {
+            "type": "string"
+          },
+          "specialty": {
+            "type": "string"
+          }
+        }
+      },
+      "DeleteTenantUserRequest": {
+        "required": ["tenantId", "userId"],
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "firebaseSudoKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-FB-SUDO-KEY",
+        "description": "Firebase superadmin key"
+      }
+    }
+  }
+}

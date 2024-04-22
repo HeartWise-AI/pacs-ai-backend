@@ -2,89 +2,34 @@ package service
 
 import (
 	"context"
-	"log"
 
-	"google.golang.org/api/iterator"
-
-	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
+	"api-pacs/module/user/domain/repository"
 	"api-pacs/module/user/infrastructure/service/types"
 )
 
 // UserQueryService handles the User query service logic
 type UserQueryService struct {
-	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
+	repository.UserQueryRepositoryInterface
 }
 
 // GetTenantUserByID get tenant user by id
-func (service *UserQueryService) GetTenantUserByID(ctx context.Context, tenantID, uid string) (types.GetTenantUser, error) {
-	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
+func (service *UserQueryService) GetTenantUserByID(ctx context.Context, tenantID, id string) (types.GetTenantUser, error) {
+	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, tenantID, id)
 	if err != nil {
-		log.Println(err)
-		return types.GetTenantUser{}, err
-	}
-
-	// get tenant auth
-	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
-	if err != nil {
-		log.Println(err)
-		return types.GetTenantUser{}, err
-	}
-
-	user, err := tenantAuth.GetUser(ctx, uid)
-	if err != nil {
-		log.Println(err)
 		return types.GetTenantUser{}, err
 	}
 
 	return types.GetTenantUser{
-		UID:               user.UID,
+		ID:                user.ID,
+		TenantID:          user.TenantID,
+		Role:              user.Role,
+		Name:              user.Name,
 		Email:             user.Email,
-		Name:              user.DisplayName,
-		IsEmailVerified:   user.EmailVerified,
-		IsAccountDisabled: user.Disabled,
-		TenantID:          user.CustomClaims[types.TenantClaim].(string),
-		Role:              user.CustomClaims[types.RoleClaim].(string),
+		LicenseNo:         user.LicenseNo,
+		Specialty:         user.Specialty,
+		IsEmailVerified:   user.IsEmailVerified,
+		IsAccountDisabled: user.IsAccountDisabled,
+		CreatedAt:         uint(user.CreatedAt),
+		UpdatedAt:         uint(user.UpdatedAt),
 	}, nil
-}
-
-// GetTenantUsers get tenant users
-func (service *UserQueryService) GetTenantUsers(ctx context.Context, tenantID string) ([]types.GetTenantUser, error) {
-	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
-	if err != nil {
-		log.Println(err)
-		return []types.GetTenantUser{}, err
-	}
-
-	// get tenant auth
-	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
-	if err != nil {
-		log.Println(err)
-		return []types.GetTenantUser{}, err
-	}
-
-	var users []types.GetTenantUser
-
-	iter := tenantAuth.Users(ctx, "")
-	for {
-		user, err := iter.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			log.Println(err)
-			return []types.GetTenantUser{}, err
-		}
-
-		users = append(users, types.GetTenantUser{
-			UID:               user.UID,
-			Email:             user.Email,
-			Name:              user.DisplayName,
-			IsEmailVerified:   user.EmailVerified,
-			IsAccountDisabled: user.Disabled,
-			TenantID:          user.CustomClaims[types.TenantClaim].(string),
-			Role:              user.CustomClaims[types.RoleClaim].(string),
-		})
-	}
-
-	return users, nil
 }

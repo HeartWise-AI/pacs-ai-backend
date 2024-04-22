@@ -17,12 +17,12 @@ type UserCommandRepositoryCircuitBreaker struct {
 
 var config = hystrix_config.Config{}
 
-// DeleteUser is the decorator for the user repository to delete user
-func (repository *UserCommandRepositoryCircuitBreaker) DeleteUser(ctx context.Context, tenantID, id string) error {
+// DeleteTenantUser is the decorator for the user repository to delete tenant user
+func (repository *UserCommandRepositoryCircuitBreaker) DeleteTenantUser(ctx context.Context, tenantID, id string) error {
 	output := make(chan bool, 1)
-	hystrix.ConfigureCommand("delete_user", config.Settings())
-	errors := hystrix.Go("delete_user", func() error {
-		err := repository.UserCommandRepositoryInterface.DeleteUser(ctx, tenantID, id)
+	hystrix.ConfigureCommand("delete_tenant_user", config.Settings())
+	errors := hystrix.Go("delete_tenant_user", func() error {
+		err := repository.UserCommandRepositoryInterface.DeleteTenantUser(ctx, tenantID, id)
 		if err != nil {
 			return err
 		}
@@ -39,12 +39,12 @@ func (repository *UserCommandRepositoryCircuitBreaker) DeleteUser(ctx context.Co
 	}
 }
 
-// InsertUser is the decorator for the user repository to insert user
-func (repository *UserCommandRepositoryCircuitBreaker) InsertUser(ctx context.Context, data repositoryTypes.CreateUser) (string, error) {
+// InsertTenantUser is the decorator for the user repository to insert tenant user
+func (repository *UserCommandRepositoryCircuitBreaker) InsertTenantUser(ctx context.Context, data repositoryTypes.CreateTenantUser) (string, error) {
 	output := make(chan string, 1)
-	hystrix.ConfigureCommand("insert_b2c_inquiry", config.Settings())
-	errors := hystrix.Go("insert_b2c_inquiry", func() error {
-		id, err := repository.UserCommandRepositoryInterface.InsertUser(ctx, data)
+	hystrix.ConfigureCommand("insert_tenant_user", config.Settings())
+	errors := hystrix.Go("insert_tenant_user", func() error {
+		id, err := repository.UserCommandRepositoryInterface.InsertTenantUser(ctx, data)
 		if err != nil {
 			return err
 		}
@@ -61,12 +61,12 @@ func (repository *UserCommandRepositoryCircuitBreaker) InsertUser(ctx context.Co
 	}
 }
 
-// UpdateUser decorator pattern to update user
-func (repository *UserCommandRepositoryCircuitBreaker) UpdateUserPassword(ctx context.Context, data repositoryTypes.UpdateUserPassword) error {
+// UpdateTenantUserPassword decorator pattern to update tenant user password
+func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUserPassword(ctx context.Context, data repositoryTypes.UpdateTenantUserPassword) error {
 	output := make(chan bool, 1)
-	hystrix.ConfigureCommand("update_user_password", config.Settings())
-	errors := hystrix.Go("update_user_password", func() error {
-		err := repository.UserCommandRepositoryInterface.UpdateUserPassword(ctx, data)
+	hystrix.ConfigureCommand("update_tenant_user_password", config.Settings())
+	errors := hystrix.Go("update_tenant_user_password", func() error {
+		err := repository.UserCommandRepositoryInterface.UpdateTenantUserPassword(ctx, data)
 		if err != nil {
 			return err
 		}

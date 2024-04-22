@@ -4,10 +4,8 @@ import (
 	"context"
 	"log"
 
-	"firebase.google.com/go/v4/auth"
 	"github.com/segmentio/ksuid"
 
-	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	"api-pacs/module/user/domain/repository"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
 	"api-pacs/module/user/infrastructure/service/types"
@@ -15,46 +13,19 @@ import (
 
 // UserCommandService handles the User command service logic
 type UserCommandService struct {
-	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
 	repository.UserCommandRepositoryInterface
 }
 
-// AddTenantUser add a new tenant user with random generated password
-func (service *UserCommandService) AddTenantUser(ctx context.Context, data types.AddTenantUser) (string, error) {
-	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
-	if err != nil {
-		log.Println(err)
-		return "", err
-	}
-
-	// get tenant auth
-	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(data.TenantID)
-	if err != nil {
-		log.Println(err)
-		return "", err
-	}
-
+// CreateTenantUser add a new tenant user with random generated password
+func (service *UserCommandService) CreateTenantUser(ctx context.Context, data types.CreateTenantUser) (string, error) {
 	// generate random password
 	generatedPassword := generateID()
 
-	params := (&auth.UserToCreate{}).
-		Email(data.Email).
-		EmailVerified(false).
-		Password(generatedPassword).
-		DisplayName(data.Name).
-		Disabled(false)
-
-	user, err := tenantAuth.CreateUser(ctx, params)
-	if err != nil {
-		log.Println(err)
-		return "", err
-	}
-
-	id, err := service.UserCommandRepositoryInterface.InsertUser(ctx, repositoryTypes.CreateUser{
-		TenantID:  user.TenantID,
+	_, err := service.UserCommandRepositoryInterface.InsertTenantUser(ctx, repositoryTypes.CreateTenantUser{
+		TenantID:  data.TenantID,
 		Role:      data.Role,
 		Name:      data.Name,
-		Email:     user.Email,
+		Email:     data.Email,
 		Password:  generatedPassword,
 		LicenseNo: data.LicenseNo,
 		Specialty: data.Specialty,
@@ -63,25 +34,12 @@ func (service *UserCommandService) AddTenantUser(ctx context.Context, data types
 		return "", err
 	}
 
-	return id, nil
+	return generatedPassword, nil
 }
 
 // DeleteTenantUser delete tenant user by id
-func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantID, uid string) error {
-	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
-
-	// get tenant auth
-	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
-
-	err = tenantAuth.DeleteUser(ctx, uid)
+func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantID, id string) error {
+	err := service.UserCommandRepositoryInterface.DeleteTenantUser(ctx, tenantID, id)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -90,35 +48,26 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantI
 	return nil
 }
 
-// TODO: UpdateTenantUser
+// TODO: ResetPassword
 
-// UpdateTenantUserPassword update tenant user password
+// TODO: UpdateUser
+
+// UpdateTenantUserPassword update user password
 func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context, data types.UpdateTenantUserPassword) error {
-	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
+	err := service.UserCommandRepositoryInterface.UpdateTenantUserPassword(ctx, repositoryTypes.UpdateTenantUserPassword{
+		TenantID:    data.TenantID,
+		ID:          data.UID,
+		NewPassword: data.NewPassword,
+	})
 	if err != nil {
 		log.Println(err)
-		return err
-	}
-
-	// get tenant auth
-	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(data.TenantID)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
-
-	params := (&auth.UserToUpdate{}).
-		Password(data.NewPassword)
-
-	_, err = tenantAuth.UpdateUser(ctx, data.UID, params)
-	if err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// TODO: VerifyTenantUserEmail
+// TODO: VerifyUserEmail
 
 // generateID generates unique id
 func generateID() string {

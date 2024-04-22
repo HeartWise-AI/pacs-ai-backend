@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
+	iamMiddleware "api-pacs/interfaces/http/rest/middlewares/iam"
 	tenantRepository "api-pacs/module/tenant/infrastructure/repository"
 	tenantService "api-pacs/module/tenant/infrastructure/service"
 	tenantREST "api-pacs/module/tenant/interfaces/http/rest"
@@ -26,7 +27,9 @@ import (
 
 // ServiceContainerInterface contains the dependency injected instances
 type ServiceContainerInterface interface {
-	// REST
+	// REST Middlewares
+	RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware
+	// REST Controllers
 	RegisterTenantRESTCommandController() tenantREST.TenantCommandController
 	RegisterTenantRESTQueryController() tenantREST.TenantQueryController
 	RegisterUserRESTCommandController() userREST.UserCommandController
@@ -43,6 +46,14 @@ var (
 )
 
 // ================================= REST ===================================
+// Middlewares
+// RegisterIAMRESTMiddleware performs dependency injection to the RegisterIAMRESTMiddleware
+func (k *kernel) RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware {
+	middleware := iamMiddleware.IAMMiddleware{}
+	return middleware
+}
+
+// Controllers
 // RegisterTenantRESTCommandController performs dependency injection to the RegisterTenantRESTCommandController
 func (k *kernel) RegisterTenantRESTCommandController() tenantREST.TenantCommandController {
 	service := k.tenantCommandServiceContainer()
@@ -127,12 +138,14 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 }
 
 func (k *kernel) userQueryServiceContainer() *userService.UserQueryService {
-	// repository := &userRepository.UserQueryRepository{
-	// 	FirebaseAdminSDK: firebaseAdminSDK,
-	// }
+	repository := &userRepository.UserQueryRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
 
 	service := &userService.UserQueryService{
-		FirebaseAdminSDK: firebaseAdminSDK,
+		UserQueryRepositoryInterface: &userRepository.UserQueryRepositoryCircuitBreaker{
+			UserQueryRepositoryInterface: repository,
+		},
 	}
 
 	return service

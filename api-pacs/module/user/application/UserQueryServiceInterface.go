@@ -1,6 +1,12 @@
 package application
 
-// UserQueryServiceInterface holds the implementable methods for the record query service
+import (
+	"context"
+
+	"api-pacs/module/user/infrastructure/service/types"
+)
+
+// UserQueryServiceInterface holds the implementable methods for the user query service
 type UserQueryServiceInterface interface {
-	//GetUserByID(ctx context.Context, ID string) (entity.User, error)
+	GetTenantUserByID(ctx context.Context, tenantID, id string) (types.GetTenantUser, error)
 }

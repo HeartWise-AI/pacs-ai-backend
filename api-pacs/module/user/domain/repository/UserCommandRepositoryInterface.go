@@ -7,7 +7,7 @@ import (
 )
 
 type UserCommandRepositoryInterface interface {
-	DeleteUser(ctx context.Context, tenantID, id string) error
-	InsertUser(ctx context.Context, data repositoryTypes.CreateUser) (string, error)
-	UpdateUserPassword(ctx context.Context, data repositoryTypes.UpdateUserPassword) error
+	DeleteTenantUser(ctx context.Context, tenantID, id string) error
+	InsertTenantUser(ctx context.Context, data repositoryTypes.CreateTenantUser) (string, error)
+	UpdateTenantUserPassword(ctx context.Context, data repositoryTypes.UpdateTenantUserPassword) error
 }

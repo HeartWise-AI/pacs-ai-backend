@@ -1,32 +1,26 @@
 package types
 
-type AddTenantUser struct {
+type CreateTenantUser struct {
 	TenantID  string
 	Role      string
-	Email     string
 	Name      string
-	LicenseNo string
-	Specialty string
-}
-
-type CreateUser struct {
-	TenantID  string
-	Role      string
+	Email     string
 	LicenseNo string
 	Specialty string
 }
 
 type GetTenantUser struct {
-	UID               string
-	Email             string
+	ID                string
+	TenantID          string
+	Role              string
 	Name              string
-	LicenseNo         string // from firestore
-	Specialty         string // from firestore
+	Email             string
+	LicenseNo         string
+	Specialty         string
 	IsEmailVerified   bool
 	IsAccountDisabled bool
-	// claims
-	TenantID string
-	Role     string
+	CreatedAt         uint
+	UpdatedAt         uint
 }
 
 type UpdateTenantUserPassword struct {
