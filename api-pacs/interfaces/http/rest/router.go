@@ -84,9 +84,6 @@ func (router *router) InitRouter() *chi.Mux {
 
 			// user module
 			r.Route("/user", func(r chi.Router) {
-				// TODO: endpoints for command and query
-				// r.Get("/{id}", recordQueryController.GetRecordByID)
-
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.FirebaseSuperUserGuard)
 
