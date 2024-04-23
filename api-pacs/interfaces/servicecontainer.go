@@ -185,6 +185,7 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 		UserCommandRepositoryInterface: &userRepository.UserCommandRepositoryCircuitBreaker{
 			UserCommandRepositoryInterface: repository,
 		},
+		FirebaseAdminSDK: firebaseAdminSDK,
 	}
 
 	return service

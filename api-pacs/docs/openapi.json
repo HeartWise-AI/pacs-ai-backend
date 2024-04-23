@@ -132,6 +132,74 @@
         }
       }
     },
+    "/user/update": {
+      "put": {
+        "tags": ["user"],
+        "summary": "Update Tenant User",
+        "description": "Update tenant user. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update tenant user request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTenantUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/password/update": {
+      "put": {
+        "tags": ["user"],
+        "summary": "Update Tenant User Password",
+        "description": "Update tenant user password. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update tenant user password request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTenantUserPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/me": {
       "get": {
         "tags": ["user"],
@@ -238,6 +306,57 @@
             "type": "string"
           },
           "idToken": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateTenantUserRequest": {
+        "required": [
+          "id",
+          "tenantId",
+          "licenseNo",
+          "role",
+          "name",
+          "specialty"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["OWNER", "ADMIN", "USER"]
+          },
+          "name": {
+            "type": "string"
+          },
+          "licenseNo": {
+            "type": "string"
+          },
+          "specialty": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateTenantUserPasswordRequest": {
+        "required": [
+          "id",
+          "tenantId",
+          "newPassword"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "newPassword": {
             "type": "string"
           }
         }

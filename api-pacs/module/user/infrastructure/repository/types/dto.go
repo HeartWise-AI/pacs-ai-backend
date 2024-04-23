@@ -24,6 +24,16 @@ type GetTenantUser struct {
 	UpdatedAt         int
 }
 
+type UpdateTenantUser struct {
+	ID        string
+	TenantID  string
+	LicenseNo string
+	Role      string
+	Name      string
+	Specialty string
+	UpdatedAt int
+}
+
 type UpdateTenantUserPassword struct {
 	TenantID    string
 	ID          string

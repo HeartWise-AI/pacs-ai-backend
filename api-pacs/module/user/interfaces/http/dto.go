@@ -9,6 +9,9 @@ var (
 	ValidationErrors map[string]string   = map[string]string{
 		// TODO: CreateTenantUserRequest
 		// TODO: DeleteTenantUserRequest
+		// TODO: UpdateTenantUserRequest
+		// TODO: UpdateTenantUserPasswordRequest
+
 	}
 )
 
@@ -28,6 +31,21 @@ type DeleteTenantUserRequest struct {
 
 type CreateTenantUserResponse struct {
 	Password string `json:"password" validate:"required"`
+}
+
+type UpdateTenantUserRequest struct {
+	ID        string `json:"id" validate:"required"`
+	TenantID  string `json:"tenantId" validate:"required"`
+	LicenseNo string `json:"licenseNo" validate:"required"`
+	Role      string `json:"role" validate:"required"`
+	Name      string `json:"name" validate:"required"`
+	Specialty string `json:"specialty" validate:"required"`
+}
+
+type UpdateTenantUserPasswordRequest struct {
+	TenantID    string `json:"tenantId" validate:"required"`
+	ID          string `json:"id" validate:"required"`
+	NewPassword string `json:"newPassword" validate:"required"`
 }
 
 type GetTenantUserResponse struct {

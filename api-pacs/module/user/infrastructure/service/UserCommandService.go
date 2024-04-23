@@ -2,18 +2,22 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log"
 
-	"github.com/segmentio/ksuid"
-
+	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
+	apiError "api-pacs/internal/errors"
 	"api-pacs/module/user/domain/repository"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
 	"api-pacs/module/user/infrastructure/service/types"
+
+	"github.com/segmentio/ksuid"
 )
 
 // UserCommandService handles the User command service logic
 type UserCommandService struct {
 	repository.UserCommandRepositoryInterface
+	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
 }
 
 // CreateTenantUser add a new tenant user with random generated password
@@ -48,9 +52,36 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantI
 	return nil
 }
 
-// TODO: ForgotTenantUserPassword
+// ForgotTenantUserPassword sends a code by email to reset password
+func (service *UserCommandService) ForgotTenantUserPassword(ctx context.Context, email string) error {
+	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
 
-// TODO: UpdateTenantUser
+	firebaseAuth.PasswordResetLink(ctx, email)
+
+	return nil
+}
+
+// UpdateTenantUser update tenant user
+func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data types.UpdateTenantUser) error {
+	err := service.UserCommandRepositoryInterface.UpdateTenantUser(ctx, repositoryTypes.UpdateTenantUser{
+		TenantID:  data.TenantID,
+		ID:        data.UID,
+		LicenseNo: data.LicenseNo,
+		Role:      data.Role,
+		Name:      data.Name,
+		Specialty: data.Specialty,
+	})
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	return nil
+}
 
 // UpdateTenantUserPassword update user password
 func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context, data types.UpdateTenantUserPassword) error {
@@ -67,7 +98,18 @@ func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context,
 	return nil
 }
 
-// TODO: VerifyTenantUserEmail
+// VerifyTenantUserEmail verifies tenant user email
+func (service *UserCommandService) VerifyTenantUserEmail(ctx context.Context, email string) error {
+	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	firebaseAuth.EmailVerificationLink(ctx, email)
+
+	return nil
+}
 
 // generateID generates unique id
 func generateID() string {
