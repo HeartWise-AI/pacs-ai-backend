@@ -26,11 +26,44 @@
   ],
   "tags": [
     {
+      "name": "iam",
+      "description": "IAM service"
+    },
+    {
       "name": "user",
       "description": "User service"
     }
   ],
   "paths": {
+    "/iam/login": {
+      "post": {
+        "tags": ["iam"],
+        "summary": "Login Tenant User",
+        "description": "Login tenant user.",
+        "requestBody": {
+          "description": "Login tenant user request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginTenantUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/owner/add": {
       "post": {
         "tags": ["user"],
@@ -42,7 +75,7 @@
           }
         ],
         "requestBody": {
-          "description": "Create tenant owner",
+          "description": "Create tenant owner request",
           "content": {
             "application/json": {
               "schema": {
@@ -70,9 +103,13 @@
         "tags": ["user"],
         "summary": "Create Tenant User",
         "description": "Create tenant user. Callable by admin or owner only.",
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
-          "description": "Create tenant user",
+          "description": "Create tenant user request",
           "content": {
             "application/json": {
               "schema": {
@@ -95,12 +132,16 @@
         }
       }
     },
-    "/v1/user": {
+    "/user/me": {
       "get": {
         "tags": ["user"],
         "summary": "Get Current Tenant User",
         "description": "Get current tenant user.",
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "2xx": {
             "description": "Success"
@@ -119,9 +160,13 @@
         "tags": ["user"],
         "summary": "Remove Tenant User",
         "description": "Remove tenant user. Callable by admin or owner only.",
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
-          "description": "Delete tenant user",
+          "description": "Delete tenant user request",
           "content": {
             "application/json": {
               "schema": {
@@ -184,9 +229,27 @@
             "type": "string"
           }
         }
+      },
+      "LoginTenantUserRequest": {
+        "required": ["tenantId", "idToken"],
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string"
+          },
+          "idToken": {
+            "type": "string"
+          }
+        }
       }
     },
     "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT access token"
+      },
       "firebaseSudoKey": {
         "type": "apiKey",
         "in": "header",

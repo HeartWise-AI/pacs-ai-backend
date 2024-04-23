@@ -1,11 +1,3 @@
-# set default shell
-SHELL = bash -e -o pipefail
-
-# variables
-VERSION                  ?= $(shell cat ./VERSION)
-
-now=$(shell date +"%Y%m%d%H%M%S")
-
 default: run
 
 .PHONY:	install
@@ -31,10 +23,6 @@ test:
 run:	build
 	./bin/api-pacs
 
-.PHONY: up
-up:
-	docker compose down
-	docker compose up -d --build
-
-proto-record:
-	protoc --go_out=plugins=grpc:. --go_opt=paths=source_relative module/record/interfaces/http/grpc/pb/record.proto
+.PHONY: up-local
+up-local:
+	docker-compose up --build

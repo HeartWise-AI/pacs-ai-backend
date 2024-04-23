@@ -21,6 +21,10 @@ func (repository *IAMQueryRepository) GetTokenSession(key string) (entity.TokenS
 
 	data, err := repository.RedisDBHandlerInterface.Get(key)
 	if err != nil {
+		if err.Error() == "empty" {
+			return entity.TokenSession{}, errors.New(apiError.MissingRecord)
+		}
+
 		log.Println(err)
 		return entity.TokenSession{}, errors.New(apiError.DatabaseError)
 	}

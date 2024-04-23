@@ -11,12 +11,18 @@ package interfaces
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"sync"
 
+	"api-pacs/infrastructures/database/redis"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	iamMiddleware "api-pacs/interfaces/http/rest/middlewares/iam"
+	iamRepository "api-pacs/module/iam/infrastructure/repository"
+	iamService "api-pacs/module/iam/infrastructure/service"
+	iamREST "api-pacs/module/iam/interfaces/http/rest"
 	tenantRepository "api-pacs/module/tenant/infrastructure/repository"
 	tenantService "api-pacs/module/tenant/infrastructure/service"
 	tenantREST "api-pacs/module/tenant/interfaces/http/rest"
@@ -30,6 +36,7 @@ type ServiceContainerInterface interface {
 	// REST Middlewares
 	RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware
 	// REST Controllers
+	RegisterIAMRESTCommandController() iamREST.IAMCommandController
 	RegisterTenantRESTCommandController() tenantREST.TenantCommandController
 	RegisterTenantRESTQueryController() tenantREST.TenantQueryController
 	RegisterUserRESTCommandController() userREST.UserCommandController
@@ -39,21 +46,36 @@ type ServiceContainerInterface interface {
 type kernel struct{}
 
 var (
-	m                sync.Mutex
-	k                *kernel
-	containerOnce    sync.Once
-	firebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
+	m                 sync.Mutex
+	k                 *kernel
+	containerOnce     sync.Once
+	redisIAMDBHandler *redis.RedisDBHandler
+	firebaseAdminSDK  *firebaseadmin.FirebaseAdminSDK
 )
 
 // ================================= REST ===================================
 // Middlewares
 // RegisterIAMRESTMiddleware performs dependency injection to the RegisterIAMRESTMiddleware
 func (k *kernel) RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware {
-	middleware := iamMiddleware.IAMMiddleware{}
+	middleware := iamMiddleware.IAMMiddleware{
+		IAMQueryServiceInterface: k.iamQueryServiceContainer(),
+	}
+
 	return middleware
 }
 
 // Controllers
+// RegisterIAMRESTCommandController performs dependency injection to the RegisterIAMRESTCommandController
+func (k *kernel) RegisterIAMRESTCommandController() iamREST.IAMCommandController {
+	service := k.iamCommandServiceContainer()
+
+	controller := iamREST.IAMCommandController{
+		IAMCommandServiceInterface: service,
+	}
+
+	return controller
+}
+
 // RegisterTenantRESTCommandController performs dependency injection to the RegisterTenantRESTCommandController
 func (k *kernel) RegisterTenantRESTCommandController() tenantREST.TenantCommandController {
 	service := k.tenantCommandServiceContainer()
@@ -99,6 +121,37 @@ func (k *kernel) RegisterUserRESTQueryController() userREST.UserQueryController 
 }
 
 // ==========================================================================
+
+func (k *kernel) iamCommandServiceContainer() *iamService.IAMCommandService {
+	repository := &iamRepository.IAMCommandRepository{
+		RedisDBHandlerInterface: redisIAMDBHandler,
+	}
+
+	service := &iamService.IAMCommandService{
+		IAMCommandRepositoryInterface: &iamRepository.IAMCommandRepositoryCircuitBreaker{
+			IAMCommandRepositoryInterface: repository,
+		},
+		UserQueryServiceInterface: k.userQueryServiceContainer(),
+		FirebaseAdminSDK:          firebaseAdminSDK,
+	}
+
+	return service
+}
+
+func (k *kernel) iamQueryServiceContainer() *iamService.IAMQueryService {
+	repository := &iamRepository.IAMQueryRepository{
+		RedisDBHandlerInterface: redisIAMDBHandler,
+	}
+
+	service := &iamService.IAMQueryService{
+		IAMQueryRepositoryInterface: &iamRepository.IAMQueryRepositoryCircuitBreaker{
+			IAMQueryRepositoryInterface: repository,
+		},
+	}
+
+	return service
+}
+
 func (k *kernel) tenantCommandServiceContainer() *tenantService.TenantCommandService {
 	repository := &tenantRepository.TenantCommandRepository{}
 
@@ -153,6 +206,15 @@ func (k *kernel) userQueryServiceContainer() *userService.UserQueryService {
 
 func registerHandlers() {
 	var err error
+
+	// create new redis connection
+	redisIAMDBHandler = &redis.RedisDBHandler{}
+
+	redisIAMDB, _ := strconv.Atoi(os.Getenv("REDIS_IAM_DB"))
+	_, err = redisIAMDBHandler.Connect(fmt.Sprintf("%s:%s", os.Getenv("REDIS_HOST"), os.Getenv("REDIS_PORT")), os.Getenv("REDIS_PASSWORD"), redisIAMDB)
+	if err != nil {
+		log.Fatalf("[SERVER] cannot connect to account redis IAM server %v", err)
+	}
 
 	// init firebase admin sdk
 	firebaseAdminSDK, err = firebaseadmin.NewApp(context.Background(), os.Getenv("FIREBASE_CONFIG_FILE_PATH"), os.Getenv("FIREBASE_PROJECT_ID"))

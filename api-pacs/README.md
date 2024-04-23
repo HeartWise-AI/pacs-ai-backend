@@ -31,5 +31,5 @@ For manual build:
 To build, run:
 - make run
 
-To run the container:
-- make up
+To run the container in local environment:
+- make up-local

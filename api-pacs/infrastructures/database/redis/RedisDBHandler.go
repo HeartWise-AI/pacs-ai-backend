@@ -17,9 +17,6 @@ type RedisDBHandler struct {
 
 // Connect to redis instance
 func (r *RedisDBHandler) Connect(address string, password string, dbIndex int) (string, error) {
-	r.rw.Lock()
-	defer r.rw.Unlock()
-
 	opt := &db.Options{
 		Addr:     address,
 		Password: password, // no password set
@@ -67,7 +64,7 @@ func (r *RedisDBHandler) Get(key string) (string, error) {
 
 	val, err := r.Client.Get(key).Result()
 	if err == db.Nil {
-		return "", errors.New("Empty")
+		return "", errors.New("empty")
 	} else if err != nil {
 		return "", err
 	}

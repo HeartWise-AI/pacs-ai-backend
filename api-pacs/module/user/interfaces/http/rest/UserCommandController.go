@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
+	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
@@ -125,7 +126,6 @@ func (controller *UserCommandController) CreateTenantOwner(w http.ResponseWriter
 }
 
 // CreateTenantUser create a tenant user. Only callable by admin or owner.
-// TODO: middleware to check rbac. Pass user id, tenant id, role in ctx
 func (controller *UserCommandController) CreateTenantUser(w http.ResponseWriter, r *http.Request) {
 	var request types.CreateTenantUserRequest
 
@@ -181,7 +181,19 @@ func (controller *UserCommandController) CreateTenantUser(w http.ResponseWriter,
 		return
 	}
 
-	// TODO check user role and role they want to add
+	// check user role and role they want to add
+	userRole := r.Context().Value(iamTypes.RoleCtx)
+	if userRole == entity.AdminRole && request.Role == entity.AdminRole {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusUnauthorized,
+			Success:   false,
+			Message:   "Unauthorized access.",
+			ErrorCode: apiError.UnauthorizedAccess,
+		}
+
+		response.JSON(w)
+		return
+	}
 
 	generatedPassword, err := controller.UserCommandServiceInterface.CreateTenantUser(context.TODO(), serviceTypes.CreateTenantUser{
 		TenantID:  request.TenantID,
@@ -231,7 +243,6 @@ func (controller *UserCommandController) CreateTenantUser(w http.ResponseWriter,
 }
 
 // DeleteTenantUser delete a tenant user. Only callable by admin or owner.
-// TODO: middleware to check rbac. Pass user id, tenant id, role in ctx
 func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter, r *http.Request) {
 	var request types.DeleteTenantUserRequest
 
@@ -273,6 +284,8 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 		response.JSON(w)
 		return
 	}
+
+	// TODO: check user role and target user role to be deleted
 
 	err = controller.UserCommandServiceInterface.DeleteTenantUser(context.TODO(), request.TenantID, request.UserID)
 	if err != nil {

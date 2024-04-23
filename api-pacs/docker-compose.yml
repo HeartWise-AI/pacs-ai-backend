@@ -7,3 +7,15 @@ services:
     restart: unless-stopped
     ports:
      - ${API_URL_REST_PORT}:${API_URL_REST_PORT}
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:latest
+    restart: always
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    ports:
+      - ${REDIS_PORT}:${REDIS_PORT}

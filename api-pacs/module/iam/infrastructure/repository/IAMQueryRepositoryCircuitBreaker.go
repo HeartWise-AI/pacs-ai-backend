@@ -12,12 +12,12 @@ type IAMQueryRepositoryCircuitBreaker struct {
 	repository.IAMQueryRepositoryInterface
 }
 
-// GetTokenSession is a decorator for the get tenant user by id
-func (repository *IAMCommandRepositoryCircuitBreaker) GetTokenSession(key string) (entity.TokenSession, error) {
+// GetTokenSession is a decorator for the get token session
+func (repository *IAMQueryRepositoryCircuitBreaker) GetTokenSession(key string) (entity.TokenSession, error) {
 	output := make(chan entity.TokenSession, 1)
-	hystrix.ConfigureCommand("select_tenant_user_by_id", config.Settings())
-	errors := hystrix.Go("select_tenant_user_by_id", func() error {
-		user, err := repository.IAMCommandRepositoryInterface.GetTokenSession(key)
+	hystrix.ConfigureCommand("get_token_session", config.Settings())
+	errors := hystrix.Go("get_token_session", func() error {
+		user, err := repository.IAMQueryRepositoryInterface.GetTokenSession(key)
 		if err != nil {
 			return err
 		}

@@ -43,6 +43,7 @@ var (
 func (router *router) InitRouter() *chi.Mux {
 	// DI assignment
 	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
+	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
 	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
 	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
 
@@ -82,19 +83,29 @@ func (router *router) InitRouter() *chi.Mux {
 	r.Group(func(r chi.Router) {
 		r.Route("/v1", func(r chi.Router) {
 
+			// iam module
+			r.Route("/iam", func(r chi.Router) {
+				r.Post("/login", iamCommandController.LoginTenantUser)
+			})
+
 			// user module
 			r.Route("/user", func(r chi.Router) {
+				r.Use(iamMiddleware.TokenSessionAuthGuard)
+
+				r.Get("/me", userQueryController.GetCurrentTenantUser)
+
+				// superuser only
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.FirebaseSuperUserGuard)
 
 					r.Post("/owner/add", userCommandController.CreateTenantOwner)
 				})
 
+				// admin or owner only
 				r.Group(func(r chi.Router) {
-					// TODO: middleware
+					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
 					r.Post("/add", userCommandController.CreateTenantUser)
-					r.Get("/", userQueryController.GetCurrentTenantUser)
 					r.Delete("/remove", userCommandController.DeleteTenantUser)
 				})
 			})

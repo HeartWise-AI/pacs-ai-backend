@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	"api-pacs/internal/errors"
 	"api-pacs/module/user/application"
@@ -16,10 +17,11 @@ type UserQueryController struct {
 }
 
 // GetCurrentTenantUser get current tenant user
-// TODO: middleware to check rbac. Pass user id, tenant id, role in ctx
 func (controller *UserQueryController) GetCurrentTenantUser(w http.ResponseWriter, r *http.Request) {
-	// TODO: get ctx with
-	res, err := controller.UserQueryServiceInterface.GetTenantUserByID(context.TODO(), "", "")
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	res, err := controller.UserQueryServiceInterface.GetTenantUserByID(context.TODO(), tenantID, userID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
