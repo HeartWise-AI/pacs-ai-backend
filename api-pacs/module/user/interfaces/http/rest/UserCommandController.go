@@ -10,8 +10,8 @@ import (
 	"api-pacs/interfaces/http/rest/viewmodels"
 	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/module/iam/domain/entity"
 	"api-pacs/module/user/application"
-	"api-pacs/module/user/domain/entity"
 	serviceTypes "api-pacs/module/user/infrastructure/service/types"
 	types "api-pacs/module/user/interfaces/http"
 )

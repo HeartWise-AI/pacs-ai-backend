@@ -47,7 +47,6 @@ func (repository *UserQueryRepository) SelectTenantUserByID(ctx context.Context,
 
 	// get firestore user
 	var user entity.User
-	var firestoreUser repositoryTypes.GetTenantUser
 
 	firestoreRes, err := firestoreClient.Collection(user.GetModelName()).Doc(id).Get(ctx)
 	if err != nil {
@@ -55,7 +54,7 @@ func (repository *UserQueryRepository) SelectTenantUserByID(ctx context.Context,
 		return repositoryTypes.GetTenantUser{}, errors.New(apiError.FirestoreError)
 	}
 
-	err = firestoreRes.DataTo(&firestoreUser)
+	err = firestoreRes.DataTo(&user)
 	if err != nil {
 		log.Println(err)
 		return repositoryTypes.GetTenantUser{}, errors.New(apiError.FirestoreError)
@@ -64,21 +63,21 @@ func (repository *UserQueryRepository) SelectTenantUserByID(ctx context.Context,
 	return repositoryTypes.GetTenantUser{
 		ID:                authUser.UID,
 		TenantID:          authUser.TenantID,
-		Role:              firestoreUser.Role,
+		Role:              user.Role,
 		Name:              authUser.DisplayName,
 		Email:             authUser.Email,
-		LicenseNo:         firestoreUser.LicenseNo,
-		Specialty:         firestoreUser.Specialty,
+		LicenseNo:         user.LicenseNo,
+		Specialty:         user.Specialty,
 		IsEmailVerified:   authUser.EmailVerified,
 		IsAccountDisabled: authUser.Disabled,
-		CreatedAt:         firestoreUser.CreatedAt,
-		UpdatedAt:         firestoreUser.UpdatedAt,
+		CreatedAt:         user.CreatedAt,
+		UpdatedAt:         user.UpdatedAt,
 	}, nil
 }
 
 // TODO: implement get users logic from firebase auth and firestore
-// SelectUsersByTenant get users by tenant id
-// func (repository *UserQueryRepository) SelectUsersByTenant(ctx context.Context, tenantID string) ([]repositoryTypes.GetTenantUser, error) {
+// SelectTenantUsers get users by tenant id
+// func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, tenantID string) ([]repositoryTypes.GetTenantUser, error) {
 // 	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
 // 	if err != nil {
 // 		log.Println(err)
@@ -97,6 +96,30 @@ func (repository *UserQueryRepository) SelectTenantUserByID(ctx context.Context,
 // 	if err != nil {
 // 		log.Println(err)
 // 		return []repositoryTypes.GetTenantUser{}, errors.New(apiError.FirestoreError)
+// 	}
+
+// var users []types.GetTenantUser
+
+// 	iter := tenantAuth.Users(ctx, "")
+// 	for {
+// 		user, err := iter.Next()
+// 		if err == iterator.Done {
+// 			break
+// 		}
+// 		if err != nil {
+// 			log.Println(err)
+// 			return []types.GetTenantUser{}, err
+// 		}
+
+// 		// TODO
+
+// 		users = append(users, types.GetTenantUser{
+// 			UID:               user.UID,
+// 			Email:             user.Email,
+// 			Name:              user.DisplayName,
+// 			IsEmailVerified:   user.EmailVerified,
+// 			IsAccountDisabled: user.Disabled,
+// 		})
 // 	}
 
 // }

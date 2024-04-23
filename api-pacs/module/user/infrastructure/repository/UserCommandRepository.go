@@ -64,6 +64,8 @@ func (repository *UserCommandRepository) DeleteTenantUser(ctx context.Context, t
 	return nil
 }
 
+// TODO: ForgotTenantUserPassword
+
 // InsertTenantUser creates a new tenant user for tenant
 func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, data repositoryTypes.CreateTenantUser) (string, error) {
 	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
@@ -122,6 +124,8 @@ func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, d
 	return authUser.UID, nil
 }
 
+// TODO: UpdateTenantUser
+
 // UpdateTenantUserPassword update tenant user password for tenant
 func (repository *UserCommandRepository) UpdateTenantUserPassword(ctx context.Context, data repositoryTypes.UpdateTenantUserPassword) error {
 	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
@@ -148,3 +152,5 @@ func (repository *UserCommandRepository) UpdateTenantUserPassword(ctx context.Co
 
 	return nil
 }
+
+// TODO: VerifyTenantUserEmail

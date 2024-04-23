@@ -1,12 +1,5 @@
 package entity
 
-const (
-	// roles
-	OwnerRole string = "OWNER"
-	AdminRole string = "ADMIN"
-	UserRole  string = "USER"
-)
-
 // User holds the user entity fields
 type User struct {
 	ID                string `firestore:"id,omitempty"` // firebase auth
@@ -19,7 +12,7 @@ type User struct {
 	Specialty         string `firestore:"specialty"`
 	IsEmailVerified   bool   `firestore:"is_email_verified,omitempty"`   // firebase auth
 	IsAccountDisabled bool   `firestore:"is_account_disabled,omitempty"` // firebase auth
-	CreatedAt         int    `firestore:"created_at"`
+	CreatedAt         int    `firestore:"created_at,omitempty"`
 	UpdatedAt         int    `firestore:"updated_at"`
 }
 

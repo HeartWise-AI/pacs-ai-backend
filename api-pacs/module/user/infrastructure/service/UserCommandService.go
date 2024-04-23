@@ -48,9 +48,9 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantI
 	return nil
 }
 
-// TODO: ResetPassword
+// TODO: ForgotTenantUserPassword
 
-// TODO: UpdateUser
+// TODO: UpdateTenantUser
 
 // UpdateTenantUserPassword update user password
 func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context, data types.UpdateTenantUserPassword) error {
@@ -67,7 +67,7 @@ func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context,
 	return nil
 }
 
-// TODO: VerifyUserEmail
+// TODO: VerifyTenantUserEmail
 
 // generateID generates unique id
 func generateID() string {
