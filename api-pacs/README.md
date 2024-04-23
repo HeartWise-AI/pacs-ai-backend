@@ -1,4 +1,4 @@
-# PACS IAM API
+# PACS API
 
 PACS identity and user access management API using Firebase with multi-tenancy support.
 
