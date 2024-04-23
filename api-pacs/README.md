@@ -33,6 +33,3 @@ To build, run:
 
 To run the container:
 - make up
-
-
-- configs/firebase service account private key
