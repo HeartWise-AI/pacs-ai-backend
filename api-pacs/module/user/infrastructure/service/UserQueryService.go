@@ -33,3 +33,31 @@ func (service *UserQueryService) GetTenantUserByID(ctx context.Context, tenantID
 		UpdatedAt:         uint(user.UpdatedAt),
 	}, nil
 }
+
+// GetTenantUsers get tenant users
+func (service *UserQueryService) GetTenantUsers(ctx context.Context, tenantID string) ([]types.GetTenantUser, error) {
+	res, err := service.UserQueryRepositoryInterface.SelectTenantUsers(ctx, tenantID)
+	if err != nil {
+		return []types.GetTenantUser{}, err
+	}
+
+	var users []types.GetTenantUser
+
+	for _, user := range res {
+		users = append(users, types.GetTenantUser{
+			ID:                user.ID,
+			TenantID:          user.TenantID,
+			Role:              user.Role,
+			Name:              user.Name,
+			Email:             user.Email,
+			LicenseNo:         user.LicenseNo,
+			Specialty:         user.Specialty,
+			IsEmailVerified:   user.IsEmailVerified,
+			IsAccountDisabled: user.IsAccountDisabled,
+			CreatedAt:         user.CreatedAt,
+			UpdatedAt:         user.UpdatedAt,
+		})
+	}
+
+	return users, nil
+}

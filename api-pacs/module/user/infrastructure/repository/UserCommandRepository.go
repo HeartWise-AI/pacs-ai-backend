@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
+	"cloud.google.com/go/firestore"
 	"firebase.google.com/go/v4/auth"
 
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
@@ -64,8 +66,6 @@ func (repository *UserCommandRepository) DeleteTenantUser(ctx context.Context, t
 	return nil
 }
 
-// TODO: ForgotTenantUserPassword
-
 // InsertTenantUser creates a new tenant user for tenant
 func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, data repositoryTypes.CreateTenantUser) (string, error) {
 	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
@@ -98,6 +98,10 @@ func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, d
 
 	authUser, err := tenantAuth.CreateUser(ctx, params)
 	if err != nil {
+		if strings.Contains(err.Error(), "already exist") {
+			return "", errors.New(apiError.DuplicateRecord)
+		}
+
 		log.Println(err)
 		return "", errors.New(apiError.FirebaseAuthError)
 	}
@@ -124,7 +128,58 @@ func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, d
 	return authUser.UID, nil
 }
 
-// TODO: UpdateTenantUser
+// UpdateTenantUser update tenant user for tenant
+func (repository *UserCommandRepository) UpdateTenantUser(ctx context.Context, data repositoryTypes.UpdateTenantUser) error {
+	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	// tenant auth
+	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(data.TenantID)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	params := (&auth.UserToUpdate{}).
+		DisplayName(data.Name)
+
+	_, err = tenantAuth.UpdateUser(ctx, data.ID, params)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	var user entity.User
+
+	// update user in firestore
+	updateTenantUser := []firestore.Update{
+		{Path: "role", Value: data.Role},
+		{Path: "license_no", Value: data.LicenseNo},
+		{Path: "specialty", Value: data.Specialty},
+		{Path: "updated_at", Value: int(time.Now().Unix())},
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", user.GetModelName(), data.ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Update(ctx, updateTenantUser)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
 
 // UpdateTenantUserPassword update tenant user password for tenant
 func (repository *UserCommandRepository) UpdateTenantUserPassword(ctx context.Context, data repositoryTypes.UpdateTenantUserPassword) error {
@@ -152,5 +207,3 @@ func (repository *UserCommandRepository) UpdateTenantUserPassword(ctx context.Co
 
 	return nil
 }
-
-// TODO: VerifyTenantUserEmail

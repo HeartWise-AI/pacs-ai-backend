@@ -20,12 +20,22 @@ type GetTenantUser struct {
 	Specialty         string
 	IsEmailVerified   bool
 	IsAccountDisabled bool
-	CreatedAt         int
-	UpdatedAt         int
+	CreatedAt         uint
+	UpdatedAt         uint
+}
+
+type UpdateTenantUser struct {
+	ID        string
+	TenantID  string
+	Role      string
+	Name      string
+	LicenseNo string
+	Specialty string
+	UpdatedAt uint
 }
 
 type UpdateTenantUserPassword struct {
-	TenantID    string
 	ID          string
+	TenantID    string
 	NewPassword string
 }

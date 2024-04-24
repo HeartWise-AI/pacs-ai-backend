@@ -22,6 +22,32 @@ type IAMCommandService struct {
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
 }
 
+// ForgotTenantUserPassword forgot password
+func (service *IAMCommandService) ForgotTenantUserPassword(ctx context.Context, tenantID, email string) error {
+	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	// tenant auth
+	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	_, err = tenantAuth.PasswordResetLink(ctx, email)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	// TODO: send to email
+
+	return nil
+}
+
 // LoginTenantUser login tenant user by tenant
 func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID, idToken string) (string, error) {
 	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
@@ -63,6 +89,32 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 	}
 
 	return sessionToken, nil
+}
+
+// VerifyTenantUserEmail verifies tenant user email
+func (service *IAMCommandService) VerifyTenantUserEmail(ctx context.Context, tenantID, email string) error {
+	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	// tenant auth
+	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	_, err = tenantAuth.EmailVerificationLink(ctx, email)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	// TODO: send to email
+
+	return err
 }
 
 // generateID generates unique id

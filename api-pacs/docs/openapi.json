@@ -64,6 +64,64 @@
         }
       }
     },
+    "/iam/forgot-password": {
+      "post": {
+        "tags": ["iam"],
+        "summary": "Forgot Tenant User Password",
+        "description": "Forgot tenant user password.",
+        "requestBody": {
+          "description": "Forgot tenant user password request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotTenantUserPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/iam/verify-email": {
+      "post": {
+        "tags": ["iam"],
+        "summary": "Verify Tenant User Email",
+        "description": "Verify tenant user email.",
+        "requestBody": {
+          "description": "Verify tenant user email request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyTenantUserEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/owner/add": {
       "post": {
         "tags": ["user"],
@@ -132,6 +190,29 @@
         }
       }
     },
+    "/user/all": {
+      "get": {
+        "tags": ["user"],
+        "summary": "Get Tenant Users",
+        "description": "Get tenant users.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/me": {
       "get": {
         "tags": ["user"],
@@ -142,6 +223,74 @@
             "bearerAuth": []
           }
         ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/update": {
+      "put": {
+        "tags": ["user"],
+        "summary": "Update Tenant User",
+        "description": "Update tenant user. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update tenant user request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTenantUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/password/update": {
+      "put": {
+        "tags": ["user"],
+        "summary": "Update Tenant User Password",
+        "description": "Update tenant user password.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update tenant user password request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTenantUserPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "2xx": {
             "description": "Success"
@@ -230,6 +379,18 @@
           }
         }
       },
+      "ForgotTenantUserPasswordRequest": {
+        "required": ["tenantId", "email"],
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        }
+      },
       "LoginTenantUserRequest": {
         "required": ["tenantId", "idToken"],
         "type": "object",
@@ -241,6 +402,65 @@
             "type": "string"
           }
         }
+      },
+      "UpdateTenantUserRequest": {
+        "required": [
+          "id",
+          "tenantId",
+          "role",
+          "name",
+          "licenseNo",
+          "specialty"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["OWNER", "ADMIN", "USER"]
+          },
+          "name": {
+            "type": "string"
+          },
+          "licenseNo": {
+            "type": "string"
+          },
+          "specialty": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateTenantUserPasswordRequest": {
+        "required": ["id", "tenantId", "newPassword"],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "newPassword": {
+            "type": "string"
+          }
+        }
+      },
+      "VerifyTenantUserEmailRequest": {
+        "required": ["tenantId", "email"],
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -248,7 +468,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "JWT access token"
+        "description": "Session token"
       },
       "firebaseSudoKey": {
         "type": "apiKey",

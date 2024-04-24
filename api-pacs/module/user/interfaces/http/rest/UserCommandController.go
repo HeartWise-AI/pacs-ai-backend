@@ -308,3 +308,195 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 
 	response.JSON(w)
 }
+
+// UpdateTenantUser update a tenant user. Only callable by admin or owner.
+func (controller *UserCommandController) UpdateTenantUser(w http.ResponseWriter, r *http.Request) {
+	var request types.UpdateTenantUserRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// check if role to be added is owner (only callable via CreateTenantOwner)
+	if request.Role == entity.OwnerRole {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusUnauthorized,
+			Success:   false,
+			Message:   "Unauthorized access.",
+			ErrorCode: apiError.UnauthorizedAccess,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// check user role and role they want to add
+	userRole := r.Context().Value(iamTypes.RoleCtx)
+	if userRole == entity.AdminRole && request.Role == entity.AdminRole {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusUnauthorized,
+			Success:   false,
+			Message:   "Unauthorized access.",
+			ErrorCode: apiError.UnauthorizedAccess,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err = controller.UserCommandServiceInterface.UpdateTenantUser(context.TODO(), serviceTypes.UpdateTenantUser{
+		ID:        request.ID,
+		TenantID:  request.TenantID,
+		Role:      request.Role,
+		Name:      request.Name,
+		LicenseNo: request.LicenseNo,
+		Specialty: request.Specialty,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while updating user."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully updated tenant user.",
+	}
+
+	response.JSON(w)
+}
+
+// UpdateTenantUserPassword update a tenant user password. Only callable by admin or owner.
+func (controller *UserCommandController) UpdateTenantUserPassword(w http.ResponseWriter, r *http.Request) {
+	var request types.UpdateTenantUserPasswordRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err = controller.UserCommandServiceInterface.UpdateTenantUserPassword(context.TODO(), serviceTypes.UpdateTenantUserPassword{
+		ID:          request.ID,
+		TenantID:    request.TenantID,
+		NewPassword: request.NewPassword,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while updating user password."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully updated tenant user password.",
+	}
+
+	response.JSON(w)
+}

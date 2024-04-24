@@ -4,11 +4,11 @@ import (
 	"context"
 	"log"
 
-	"github.com/segmentio/ksuid"
-
 	"api-pacs/module/user/domain/repository"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
 	"api-pacs/module/user/infrastructure/service/types"
+
+	"github.com/segmentio/ksuid"
 )
 
 // UserCommandService handles the User command service logic
@@ -48,16 +48,15 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantI
 	return nil
 }
 
-// TODO: ForgotTenantUserPassword
-
-// TODO: UpdateTenantUser
-
-// UpdateTenantUserPassword update user password
-func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context, data types.UpdateTenantUserPassword) error {
-	err := service.UserCommandRepositoryInterface.UpdateTenantUserPassword(ctx, repositoryTypes.UpdateTenantUserPassword{
-		TenantID:    data.TenantID,
-		ID:          data.UID,
-		NewPassword: data.NewPassword,
+// UpdateTenantUser update tenant user
+func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data types.UpdateTenantUser) error {
+	err := service.UserCommandRepositoryInterface.UpdateTenantUser(ctx, repositoryTypes.UpdateTenantUser{
+		ID:        data.ID,
+		TenantID:  data.TenantID,
+		Role:      data.Role,
+		Name:      data.Name,
+		LicenseNo: data.LicenseNo,
+		Specialty: data.Specialty,
 	})
 	if err != nil {
 		log.Println(err)
@@ -67,7 +66,20 @@ func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context,
 	return nil
 }
 
-// TODO: VerifyTenantUserEmail
+// UpdateTenantUserPassword update user password
+func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context, data types.UpdateTenantUserPassword) error {
+	err := service.UserCommandRepositoryInterface.UpdateTenantUserPassword(ctx, repositoryTypes.UpdateTenantUserPassword{
+		ID:          data.ID,
+		TenantID:    data.TenantID,
+		NewPassword: data.NewPassword,
+	})
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	return nil
+}
 
 // generateID generates unique id
 func generateID() string {

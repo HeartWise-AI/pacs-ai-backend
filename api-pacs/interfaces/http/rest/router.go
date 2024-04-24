@@ -86,14 +86,12 @@ func (router *router) InitRouter() *chi.Mux {
 			// iam module
 			r.Route("/iam", func(r chi.Router) {
 				r.Post("/login", iamCommandController.LoginTenantUser)
+				r.Post("/forgot-password", iamCommandController.ForgotTenantUserPassword)
+				r.Post("/verify-email", iamCommandController.VerifyTenantUserEmail)
 			})
 
 			// user module
 			r.Route("/user", func(r chi.Router) {
-				r.Use(iamMiddleware.TokenSessionAuthGuard)
-
-				r.Get("/me", userQueryController.GetCurrentTenantUser)
-
 				// superuser only
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.FirebaseSuperUserGuard)
@@ -101,12 +99,21 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Post("/owner/add", userCommandController.CreateTenantOwner)
 				})
 
-				// admin or owner only
 				r.Group(func(r chi.Router) {
-					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
-					r.Post("/add", userCommandController.CreateTenantUser)
-					r.Delete("/remove", userCommandController.DeleteTenantUser)
+					r.Get("/me", userQueryController.GetCurrentTenantUser)
+
+					// admin or owner only
+					r.Group(func(r chi.Router) {
+						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+
+						r.Post("/add", userCommandController.CreateTenantUser)
+						r.Get("/all", userQueryController.GetTenantUsers)
+						r.Put("/update", userCommandController.UpdateTenantUser)
+						r.Put("/password/update", userCommandController.UpdateTenantUserPassword)
+						r.Delete("/remove", userCommandController.DeleteTenantUser)
+					})
 				})
 			})
 		})
