@@ -29,7 +29,6 @@ func (repository *IAMCommandRepository) DeleteTokenSession(key string) error {
 }
 
 // SetAuthSession places a new session (or update) to the redis instance
-// The key is formatted in: auth.device_id.<deviceID>
 func (repository *IAMCommandRepository) SetTokenSession(data repositoryTypes.SetTokenSession) error {
 	session := entity.TokenSession{
 		TenantID: data.TenantID,
