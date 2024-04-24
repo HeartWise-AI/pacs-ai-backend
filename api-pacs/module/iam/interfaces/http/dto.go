@@ -7,11 +7,11 @@ import (
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
-		"ForgotTenantUserPasswordRequest.TenantID": "Tenant id is required.",
+		"ForgotTenantUserPasswordRequest.TenantID": "Tenant ID is required.",
 		"ForgotTenantUserPasswordRequest.Email":    "Email is required.",
-		"LoginTenantUserRequest.TenantID":          "Tenant id is required.",
+		"LoginTenantUserRequest.TenantID":          "Tenant ID is required.",
 		"LoginTenantUserRequest.IDToken":           "ID token is required.",
-		"VerifyTenantUserEmailRequest.TenantID":    "Tenant id is required.",
+		"VerifyTenantUserEmailRequest.TenantID":    "Tenant ID is required.",
 		"VerifyTenantUserEmailRequest.Email":       "Email is required.",
 	}
 )
