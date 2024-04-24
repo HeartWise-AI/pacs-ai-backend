@@ -132,6 +132,63 @@
         }
       }
     },
+    "/user/all": {
+      "get": {
+        "tags": ["user"],
+        "summary": "Get Tenant Users",
+        "description": "Get tenant users.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenantID",
+            "in": "query",
+            "description": "tenant id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/me": {
+      "get": {
+        "tags": ["user"],
+        "summary": "Get Current Tenant User",
+        "description": "Get current tenant user.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/update": {
       "put": {
         "tags": ["user"],
@@ -187,29 +244,6 @@
           },
           "required": true
         },
-        "responses": {
-          "2xx": {
-            "description": "Success"
-          },
-          "4xx": {
-            "description": "Client side errors"
-          },
-          "5xx": {
-            "description": "Server side errors"
-          }
-        }
-      }
-    },
-    "/user/me": {
-      "get": {
-        "tags": ["user"],
-        "summary": "Get Current Tenant User",
-        "description": "Get current tenant user.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
         "responses": {
           "2xx": {
             "description": "Success"

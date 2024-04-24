@@ -20,8 +20,8 @@ type GetTenantUser struct {
 	Specialty         string
 	IsEmailVerified   bool
 	IsAccountDisabled bool
-	CreatedAt         int
-	UpdatedAt         int
+	CreatedAt         uint
+	UpdatedAt         uint
 }
 
 type UpdateTenantUser struct {

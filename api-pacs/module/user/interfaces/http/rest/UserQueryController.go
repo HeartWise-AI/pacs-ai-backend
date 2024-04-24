@@ -16,6 +16,63 @@ type UserQueryController struct {
 	application.UserQueryServiceInterface
 }
 
+// GetTenantUsers get tenant users
+func (controller *UserQueryController) GetTenantUsers(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.URL.Query().Get("tenantID")
+
+	res, err := controller.UserQueryServiceInterface.GetTenantUsers(context.TODO(), tenantID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "No records found."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Database error."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var users []types.GetTenantUserResponse
+
+	for _, user := range res {
+		users = append(users, types.GetTenantUserResponse{
+			ID:                user.ID,
+			TenantID:          user.TenantID,
+			Role:              user.Role,
+			Name:              user.Name,
+			Email:             user.Email,
+			LicenseNo:         user.LicenseNo,
+			Specialty:         user.Specialty,
+			IsEmailVerified:   user.IsEmailVerified,
+			IsAccountDisabled: user.IsAccountDisabled,
+			CreatedAt:         user.CreatedAt,
+			UpdatedAt:         user.UpdatedAt,
+		})
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully fetched tenant users.",
+		Data:    users,
+	}
+
+	response.JSON(w)
+}
+
 // GetCurrentTenantUser get current tenant user
 func (controller *UserQueryController) GetCurrentTenantUser(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
