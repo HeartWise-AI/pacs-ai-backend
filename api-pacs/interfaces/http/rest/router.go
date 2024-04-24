@@ -109,6 +109,7 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
 						r.Post("/add", userCommandController.CreateTenantUser)
+						r.Get("/all", userQueryController.GetTenantUsers)
 						r.Put("/update", userCommandController.UpdateTenantUser)
 						r.Put("/password/update", userCommandController.UpdateTenantUserPassword)
 						r.Delete("/remove", userCommandController.DeleteTenantUser)
