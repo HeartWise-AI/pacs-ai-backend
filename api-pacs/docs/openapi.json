@@ -64,6 +64,64 @@
         }
       }
     },
+    "/iam/forgot-password": {
+      "post": {
+        "tags": ["iam"],
+        "summary": "Forgot Tenant User Password",
+        "description": "Forgot tenant user password.",
+        "requestBody": {
+          "description": "Forgot tenant user password request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotTenantUserPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/iam/verify-email": {
+      "post": {
+        "tags": ["iam"],
+        "summary": "Verify Tenant User Email",
+        "description": "Verify tenant user email.",
+        "requestBody": {
+          "description": "Verify tenant user email request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyTenantUserEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/owner/add": {
       "post": {
         "tags": ["user"],
@@ -298,6 +356,18 @@
           }
         }
       },
+      "ForgotTenantUserPasswordRequest": {
+        "required": ["tenantId", "email"],
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        }
+      },
       "LoginTenantUserRequest": {
         "required": ["tenantId", "idToken"],
         "type": "object",
@@ -353,6 +423,18 @@
             "type": "string"
           },
           "newPassword": {
+            "type": "string"
+          }
+        }
+      },
+      "VerifyTenantUserEmailRequest": {
+        "required": ["tenantId", "email"],
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string"
+          },
+          "email": {
             "type": "string"
           }
         }

@@ -2,11 +2,8 @@ package service
 
 import (
 	"context"
-	"errors"
 	"log"
 
-	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
-	apiError "api-pacs/internal/errors"
 	"api-pacs/module/user/domain/repository"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
 	"api-pacs/module/user/infrastructure/service/types"
@@ -17,7 +14,6 @@ import (
 // UserCommandService handles the User command service logic
 type UserCommandService struct {
 	repository.UserCommandRepositoryInterface
-	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
 }
 
 // CreateTenantUser add a new tenant user with random generated password
@@ -52,19 +48,6 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantI
 	return nil
 }
 
-// ForgotTenantUserPassword sends a code by email to reset password
-func (service *UserCommandService) ForgotTenantUserPassword(ctx context.Context, email string) error {
-	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
-	if err != nil {
-		log.Println(err)
-		return errors.New(apiError.FirebaseAuthError)
-	}
-
-	firebaseAuth.PasswordResetLink(ctx, email)
-
-	return nil
-}
-
 // UpdateTenantUser update tenant user
 func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data types.UpdateTenantUser) error {
 	err := service.UserCommandRepositoryInterface.UpdateTenantUser(ctx, repositoryTypes.UpdateTenantUser{
@@ -94,19 +77,6 @@ func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context,
 		log.Println(err)
 		return err
 	}
-
-	return nil
-}
-
-// VerifyTenantUserEmail verifies tenant user email
-func (service *UserCommandService) VerifyTenantUserEmail(ctx context.Context, email string) error {
-	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
-	if err != nil {
-		log.Println(err)
-		return errors.New(apiError.FirebaseAuthError)
-	}
-
-	firebaseAuth.EmailVerificationLink(ctx, email)
 
 	return nil
 }

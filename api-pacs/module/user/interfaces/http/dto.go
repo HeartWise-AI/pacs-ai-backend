@@ -11,7 +11,6 @@ var (
 		// TODO: DeleteTenantUserRequest
 		// TODO: UpdateTenantUserRequest
 		// TODO: UpdateTenantUserPasswordRequest
-
 	}
 )
 

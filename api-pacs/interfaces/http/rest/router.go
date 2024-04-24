@@ -86,6 +86,8 @@ func (router *router) InitRouter() *chi.Mux {
 			// iam module
 			r.Route("/iam", func(r chi.Router) {
 				r.Post("/login", iamCommandController.LoginTenantUser)
+				r.Post("/forgot-password", iamCommandController.ForgotTenantUserPassword)
+				r.Post("/verify-email", iamCommandController.VerifyTenantUserEmail)
 			})
 
 			// user module
