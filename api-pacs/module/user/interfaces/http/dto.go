@@ -10,7 +10,7 @@ var (
 		"CreateTenantUserRequest.TenantID":            "Tenant ID is required.",
 		"CreateTenantUserRequest.Role":                "Role is required.",
 		"CreateTenantUserRequest.Name":                "Name is required.",
-		"CreateTenantUserRequest.Email":               "Email ID is required.",
+		"CreateTenantUserRequest.Email":               "Email is required.",
 		"CreateTenantUserRequest.LicenseNo":           "License number is required.",
 		"CreateTenantUserRequest.Specialty":           "Specialty is required.",
 		"DeleteTenantUserRequest.TenantID":            "Tenant ID is required.",
