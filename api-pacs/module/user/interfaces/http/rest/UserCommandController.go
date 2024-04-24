@@ -382,7 +382,7 @@ func (controller *UserCommandController) UpdateTenantUserPassword(w http.Respons
 	}
 
 	response := viewmodels.HTTPResponseVM{
-		Status:  http.StatusCreated,
+		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully updated tenant user password.",
 	}
@@ -481,7 +481,7 @@ func (controller *UserCommandController) UpdateTenantUser(w http.ResponseWriter,
 	}
 
 	response := viewmodels.HTTPResponseVM{
-		Status:  http.StatusCreated,
+		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully updated tenant user.",
 	}
