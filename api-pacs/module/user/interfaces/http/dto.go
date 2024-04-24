@@ -7,10 +7,23 @@ import (
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
-		// TODO: CreateTenantUserRequest
-		// TODO: DeleteTenantUserRequest
-		// TODO: UpdateTenantUserRequest
-		// TODO: UpdateTenantUserPasswordRequest
+		"CreateTenantUserRequest.TenantID":            "Tenant id is required.",
+		"CreateTenantUserRequest.Role":                "Role is required.",
+		"CreateTenantUserRequest.Name":                "Name is required.",
+		"CreateTenantUserRequest.Email":               "Email id is required.",
+		"CreateTenantUserRequest.LicenseNo":           "License number is required.",
+		"CreateTenantUserRequest.Specialty":           "Specialty is required.",
+		"DeleteTenantUserRequest.TenantID":            "Tenant id is required.",
+		"DeleteTenantUserRequest.UserID":              "User id is required.",
+		"UpdateTenantUserRequest.ID":                  "ID is required.",
+		"UpdateTenantUserRequest.TenantID":            "Tenant id is required.",
+		"UpdateTenantUserRequest.Role":                "Role is required.",
+		"UpdateTenantUserRequest.Name":                "Name is required.",
+		"UpdateTenantUserRequest.LicenseNo":           "License number is required.",
+		"UpdateTenantUserRequest.Specialty":           "Specialty is required.",
+		"UpdateTenantUserPasswordRequest.ID":          "ID is required.",
+		"UpdateTenantUserPasswordRequest.TenantID":    "Tenant id is required.",
+		"UpdateTenantUserPasswordRequest.NewPassword": "New password is required.",
 	}
 )
 
