@@ -68,11 +68,11 @@ func (service *UserCommandService) ForgotTenantUserPassword(ctx context.Context,
 // UpdateTenantUser update tenant user
 func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data types.UpdateTenantUser) error {
 	err := service.UserCommandRepositoryInterface.UpdateTenantUser(ctx, repositoryTypes.UpdateTenantUser{
+		ID:        data.ID,
 		TenantID:  data.TenantID,
-		ID:        data.UID,
-		LicenseNo: data.LicenseNo,
 		Role:      data.Role,
 		Name:      data.Name,
+		LicenseNo: data.LicenseNo,
 		Specialty: data.Specialty,
 	})
 	if err != nil {
@@ -86,8 +86,8 @@ func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data ty
 // UpdateTenantUserPassword update user password
 func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context, data types.UpdateTenantUserPassword) error {
 	err := service.UserCommandRepositoryInterface.UpdateTenantUserPassword(ctx, repositoryTypes.UpdateTenantUserPassword{
+		ID:          data.ID,
 		TenantID:    data.TenantID,
-		ID:          data.UID,
 		NewPassword: data.NewPassword,
 	})
 	if err != nil {

@@ -170,7 +170,7 @@
       "put": {
         "tags": ["user"],
         "summary": "Update Tenant User Password",
-        "description": "Update tenant user password. Callable by admin or owner only.",
+        "description": "Update tenant user password.",
         "security": [
           {
             "bearerAuth": []
@@ -314,9 +314,9 @@
         "required": [
           "id",
           "tenantId",
-          "licenseNo",
           "role",
           "name",
+          "licenseNo",
           "specialty"
         ],
         "type": "object",
@@ -343,11 +343,7 @@
         }
       },
       "UpdateTenantUserPasswordRequest": {
-        "required": [
-          "id",
-          "tenantId",
-          "newPassword"
-        ],
+        "required": ["id", "tenantId", "newPassword"],
         "type": "object",
         "properties": {
           "id": {
@@ -367,7 +363,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "JWT access token"
+        "description": "Session token"
       },
       "firebaseSudoKey": {
         "type": "apiKey",

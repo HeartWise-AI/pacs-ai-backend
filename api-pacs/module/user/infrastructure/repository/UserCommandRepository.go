@@ -163,8 +163,8 @@ func (repository *UserCommandRepository) UpdateTenantUser(ctx context.Context, d
 
 	// update user in firestore
 	updateTenantUser := []firestore.Update{
-		{Path: "license_no", Value: data.LicenseNo},
 		{Path: "role", Value: data.Role},
+		{Path: "license_no", Value: data.LicenseNo},
 		{Path: "specialty", Value: data.Specialty},
 		{Path: "updated_at", Value: int(time.Now().Unix())},
 	}
@@ -207,5 +207,3 @@ func (repository *UserCommandRepository) UpdateTenantUserPassword(ctx context.Co
 
 	return nil
 }
-
-// TODO: VerifyTenantUserEmail

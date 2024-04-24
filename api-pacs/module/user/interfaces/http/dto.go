@@ -29,23 +29,23 @@ type DeleteTenantUserRequest struct {
 	UserID   string `json:"userId" validate:"required"`
 }
 
-type CreateTenantUserResponse struct {
-	Password string `json:"password" validate:"required"`
-}
-
 type UpdateTenantUserRequest struct {
 	ID        string `json:"id" validate:"required"`
 	TenantID  string `json:"tenantId" validate:"required"`
-	LicenseNo string `json:"licenseNo" validate:"required"`
 	Role      string `json:"role" validate:"required"`
 	Name      string `json:"name" validate:"required"`
+	LicenseNo string `json:"licenseNo" validate:"required"`
 	Specialty string `json:"specialty" validate:"required"`
 }
 
 type UpdateTenantUserPasswordRequest struct {
-	TenantID    string `json:"tenantId" validate:"required"`
 	ID          string `json:"id" validate:"required"`
+	TenantID    string `json:"tenantId" validate:"required"`
 	NewPassword string `json:"newPassword" validate:"required"`
+}
+
+type CreateTenantUserResponse struct {
+	Password string `json:"password" validate:"required"`
 }
 
 type GetTenantUserResponse struct {

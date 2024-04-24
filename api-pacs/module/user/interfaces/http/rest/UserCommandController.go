@@ -353,8 +353,8 @@ func (controller *UserCommandController) UpdateTenantUserPassword(w http.Respons
 	}
 
 	err = controller.UserCommandServiceInterface.UpdateTenantUserPassword(context.TODO(), serviceTypes.UpdateTenantUserPassword{
+		ID:          request.ID,
 		TenantID:    request.TenantID,
-		UID:         request.ID,
 		NewPassword: request.NewPassword,
 	})
 	if err != nil {
@@ -446,14 +446,26 @@ func (controller *UserCommandController) UpdateTenantUser(w http.ResponseWriter,
 		return
 	}
 
-	// TODO check user role and role they want to add
+	// check user role and role they want to add
+	userRole := r.Context().Value(iamTypes.RoleCtx)
+	if userRole == entity.AdminRole && request.Role == entity.AdminRole {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusUnauthorized,
+			Success:   false,
+			Message:   "Unauthorized access.",
+			ErrorCode: apiError.UnauthorizedAccess,
+		}
+
+		response.JSON(w)
+		return
+	}
 
 	err = controller.UserCommandServiceInterface.UpdateTenantUser(context.TODO(), serviceTypes.UpdateTenantUser{
+		ID:        request.ID,
 		TenantID:  request.TenantID,
-		UID:       request.ID,
-		LicenseNo: request.LicenseNo,
 		Role:      request.Role,
 		Name:      request.Name,
+		LicenseNo: request.LicenseNo,
 		Specialty: request.Specialty,
 	})
 	if err != nil {
