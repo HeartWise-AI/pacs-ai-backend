@@ -14,28 +14,6 @@ type UserQueryRepositoryCircuitBreaker struct {
 	repository.UserQueryRepositoryInterface
 }
 
-// SelectTenantUsers is a decorator for the select b2c users repository
-func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUsers(ctx context.Context, tenantID string) ([]repositoryTypes.GetTenantUser, error) {
-	output := make(chan []repositoryTypes.GetTenantUser, 1)
-	hystrix.ConfigureCommand("select_tenant_users", config.Settings())
-	errors := hystrix.Go("select_tenant_users", func() error {
-		points, err := repository.UserQueryRepositoryInterface.SelectTenantUsers(ctx, tenantID)
-		if err != nil {
-			return err
-		}
-
-		output <- points
-		return nil
-	}, nil)
-
-	select {
-	case out := <-output:
-		return out, nil
-	case err := <-errors:
-		return []repositoryTypes.GetTenantUser{}, err
-	}
-}
-
 // SelectTenantUserByID is a decorator for the get tenant user by id
 func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUserByID(ctx context.Context, tenantID, id string) (repositoryTypes.GetTenantUser, error) {
 	output := make(chan repositoryTypes.GetTenantUser, 1)
@@ -55,5 +33,27 @@ func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUserByID(ctx co
 		return out, nil
 	case err := <-errors:
 		return repositoryTypes.GetTenantUser{}, err
+	}
+}
+
+// SelectTenantUsers is a decorator for the select tenant users
+func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUsers(ctx context.Context, tenantID string) ([]repositoryTypes.GetTenantUser, error) {
+	output := make(chan []repositoryTypes.GetTenantUser, 1)
+	hystrix.ConfigureCommand("select_tenant_users", config.Settings())
+	errors := hystrix.Go("select_tenant_users", func() error {
+		points, err := repository.UserQueryRepositoryInterface.SelectTenantUsers(ctx, tenantID)
+		if err != nil {
+			return err
+		}
+
+		output <- points
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errors:
+		return []repositoryTypes.GetTenantUser{}, err
 	}
 }

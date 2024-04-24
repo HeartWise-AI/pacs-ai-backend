@@ -78,7 +78,7 @@ func (repository *UserQueryRepository) SelectTenantUserByID(ctx context.Context,
 	}, nil
 }
 
-// SelectTenantUsers get users by tenant id
+// SelectTenantUsers get tenant users
 func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, tenantID string) ([]repositoryTypes.GetTenantUser, error) {
 	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
 	if err != nil {
@@ -100,7 +100,7 @@ func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, te
 		return []repositoryTypes.GetTenantUser{}, errors.New(apiError.FirestoreError)
 	}
 
-	var users []types.GetTenantUser
+	users := []types.GetTenantUser{} // empty
 
 	iter := tenantAuth.Users(ctx, "")
 	for {
@@ -141,6 +141,9 @@ func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, te
 		})
 	}
 
-	return users, nil
+	if len(users) == 0 {
+		return []types.GetTenantUser{}, errors.New(apiError.MissingRecord)
+	}
 
+	return users, nil
 }

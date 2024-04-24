@@ -200,17 +200,6 @@
             "bearerAuth": []
           }
         ],
-        "parameters": [
-          {
-            "name": "tenantID",
-            "in": "query",
-            "description": "tenant id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "2xx": {
             "description": "Success"
