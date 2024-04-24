@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"errors"
+	"log"
 
 	"github.com/segmentio/ksuid"
 
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
+	apiError "api-pacs/internal/errors"
 	"api-pacs/module/iam/domain/entity"
 	"api-pacs/module/iam/domain/repository"
 	repositoryTypes "api-pacs/module/iam/infrastructure/repository/types"
@@ -47,31 +50,29 @@ func (service *IAMCommandService) ForgotTenantUserPassword(ctx context.Context, 
 
 // LoginTenantUser login tenant user by tenant
 func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID, idToken string) (string, error) {
-	uid := "7Fu9yYoxZPSQjMvYdS2be54Crwr1"
+	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
+	if err != nil {
+		log.Println(err)
+		return "", errors.New(apiError.FirebaseAuthError)
+	}
 
-	// firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
-	// if err != nil {
-	// 	log.Println(err)
-	// 	return "", errors.New(apiError.FirebaseAuthError)
-	// }
+	// tenant auth
+	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
+	if err != nil {
+		log.Println(err)
+		return "", errors.New(apiError.FirebaseAuthError)
+	}
 
-	// // tenant auth
-	// tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
-	// if err != nil {
-	// 	log.Println(err)
-	// 	return "", errors.New(apiError.FirebaseAuthError)
-	// }
-
-	// authToken, err := tenantAuth.VerifyIDToken(ctx, idToken)
-	// if err != nil {
-	// 	log.Println(err)
-	// 	return "", errors.New(apiError.UnauthorizedAccess)
-	// }
+	authToken, err := tenantAuth.VerifyIDToken(ctx, idToken)
+	if err != nil {
+		log.Println(err)
+		return "", errors.New(apiError.UnauthorizedAccess)
+	}
 
 	// persist to token session cache
 	sessionToken := generateID()
 
-	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, uid)
+	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, authToken.UID)
 	if err != nil {
 		return "", err
 	}
