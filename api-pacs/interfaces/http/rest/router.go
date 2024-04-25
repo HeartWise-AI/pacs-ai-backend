@@ -44,6 +44,7 @@ func (router *router) InitRouter() *chi.Mux {
 	// DI assignment
 	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
+	tenantQueryController := interfaces.ServiceContainer().RegisterTenantRESTQueryController()
 	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
 	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
 
@@ -88,6 +89,18 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Post("/login", iamCommandController.LoginTenantUser)
 				r.Post("/forgot-password", iamCommandController.ForgotTenantUserPassword)
 				r.Post("/verify-email", iamCommandController.VerifyTenantUserEmail)
+			})
+
+			// tenant module
+			r.Route("/tenant", func(r chi.Router) {
+				r.Use(iamMiddleware.TokenSessionAuthGuard)
+
+				// admin or owner only
+				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+
+					r.Get("/all", tenantQueryController.GetTenants)
+				})
 			})
 
 			// user module

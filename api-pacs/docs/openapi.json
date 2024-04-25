@@ -30,6 +30,10 @@
       "description": "IAM service"
     },
     {
+      "name": "tenant",
+      "description": "Tenant service"
+    },
+    {
       "name": "user",
       "description": "User service"
     }
@@ -109,6 +113,29 @@
           },
           "required": true
         },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/tenant/all": {
+      "get": {
+        "tags": ["tenant"],
+        "summary": "Get Tenants",
+        "description": "Get tenants.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "2xx": {
             "description": "Success"

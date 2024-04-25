@@ -1,7 +1,14 @@
 package rest
 
 import (
+	"context"
+	"net/http"
+
+	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
+	"api-pacs/interfaces/http/rest/viewmodels"
+	"api-pacs/internal/errors"
 	"api-pacs/module/tenant/application"
+	types "api-pacs/module/tenant/interfaces/http"
 )
 
 // TenantQueryController request controller for record query
@@ -9,60 +16,53 @@ type TenantQueryController struct {
 	application.TenantQueryServiceInterface
 }
 
-// // GetRecordByID retrieves the tenant id from the rest request
-// func (controller *TenantQueryController) GetRecordByID(w http.ResponseWriter, r *http.Request) {
-// 	recordID := chi.URLParam(r, "id")
+// GetTenants get tenants
+func (controller *TenantQueryController) GetTenants(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
-// 	if len(recordID) == 0 {
-// 		response := viewmodels.HTTPResponseVM{
-// 			Status:    http.StatusBadRequest,
-// 			Success:   false,
-// 			Message:   "Invalid record ID",
-// 			ErrorCode: errors.InvalidRequestPayload,
-// 		}
+	res, err := controller.TenantQueryServiceInterface.GetTenants(context.TODO(), tenantID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
 
-// 		response.JSON(w)
-// 		return
-// 	}
+		switch err.Error() {
+		case errors.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "No records found."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Database error."
+		}
 
-// 	res, err := controller.RecordQueryServiceInterface.GetRecordByID(context.TODO(), recordID)
-// 	if err != nil {
-// 		var httpCode int
-// 		var errorMsg string
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
 
-// 		switch err.Error() {
-// 		case errors.DatabaseError:
-// 			httpCode = http.StatusInternalServerError
-// 			errorMsg = "Error while fetching record."
-// 		case errors.MissingRecord:
-// 			httpCode = http.StatusNotFound
-// 			errorMsg = "No record found."
-// 		default:
-// 			httpCode = http.StatusInternalServerError
-// 			errorMsg = "Please contact technical support."
-// 		}
+		response.JSON(w)
+		return
+	}
 
-// 		response := viewmodels.HTTPResponseVM{
-// 			Status:    httpCode,
-// 			Success:   false,
-// 			Message:   errorMsg,
-// 			ErrorCode: err.Error(),
-// 		}
+	var tenants []types.GetTenantResponse
 
-// 		response.JSON(w)
-// 		return
-// 	}
+	for _, tenant := range res {
+		tenants = append(tenants, types.GetTenantResponse{
+			ID:        tenant.ID,
+			Name:      tenant.Name,
+			Address:   tenant.Address,
+			CreatedAt: tenant.CreatedAt,
+			UpdatedAt: tenant.UpdatedAt,
+		})
+	}
 
-// 	response := viewmodels.HTTPResponseVM{
-// 		Status:  http.StatusOK,
-// 		Success: true,
-// 		Message: "Record successfully fetched.",
-// 		Data: &types.RecordResponse{
-// 			ID:        res.ID,
-// 			Data:      res.Data,
-// 			CreatedAt: res.CreatedAt.Unix(),
-// 		},
-// 	}
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully fetched tenants.",
+		Data:    tenants,
+	}
 
-// 	response.JSON(w)
-// }
+	response.JSON(w)
+}
