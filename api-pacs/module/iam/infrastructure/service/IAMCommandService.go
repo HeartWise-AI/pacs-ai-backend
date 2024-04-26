@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/segmentio/ksuid"
 
+	awsSDKTypes "api-pacs/infrastructures/providers/sdk/aws/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/iam/domain/entity"
@@ -20,6 +22,7 @@ type IAMCommandService struct {
 	repository.IAMCommandRepositoryInterface
 	userApplication.UserQueryServiceInterface
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
+	awsSDKTypes.AWSSDKInterface
 }
 
 // ForgotTenantUserPassword forgot password
@@ -37,13 +40,27 @@ func (service *IAMCommandService) ForgotTenantUserPassword(ctx context.Context, 
 		return errors.New(apiError.FirebaseAuthError)
 	}
 
-	_, err = tenantAuth.PasswordResetLink(ctx, email)
+	resetLink, err := tenantAuth.PasswordResetLink(ctx, email)
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.FirebaseAuthError)
 	}
 
-	// TODO: send to email
+	// send to email
+	textMessage := fmt.Sprintf("Hello,<br /><br />"+
+		"Follow this link to reset your PACS AI password for your %s account:<br /><br />"+
+		"%s<br /><br />"+
+		"If you didn’t ask to reset your password, you can ignore this email.<br /><br />"+
+		"Thanks,<br />"+
+		"Your PACS AI team", email, resetLink)
+	err = service.AWSSDKInterface.SESSendEmail(ctx, awsSDKTypes.SESSendEmailRequest{
+		Subject:          "[PACS AI]: Reset password",
+		ToAddresses:      []string{email},
+		PlainTextMessage: textMessage,
+	})
+	if err != nil {
+		log.Println("[error] cannot send verification code via aws ses", err)
+	}
 
 	return nil
 }
