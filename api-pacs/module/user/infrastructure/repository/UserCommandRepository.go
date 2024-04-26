@@ -182,6 +182,7 @@ func (repository *UserCommandRepository) UpdateTenantUser(ctx context.Context, d
 }
 
 // UpdateTenantUserPassword update tenant user password for tenant
+// This also verifies the user email
 func (repository *UserCommandRepository) UpdateTenantUserPassword(ctx context.Context, data repositoryTypes.UpdateTenantUserPassword) error {
 	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
 	if err != nil {
@@ -197,7 +198,7 @@ func (repository *UserCommandRepository) UpdateTenantUserPassword(ctx context.Co
 	}
 
 	params := (&auth.UserToUpdate{}).
-		Password(data.NewPassword)
+		Password(data.NewPassword).EmailVerified(true)
 
 	_, err = tenantAuth.UpdateUser(ctx, data.ID, params)
 	if err != nil {

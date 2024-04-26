@@ -165,7 +165,9 @@ func (k *kernel) tenantCommandServiceContainer() *tenantService.TenantCommandSer
 }
 
 func (k *kernel) tenantQueryServiceContainer() *tenantService.TenantQueryService {
-	repository := &tenantRepository.TenantQueryRepository{}
+	repository := &tenantRepository.TenantQueryRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
 
 	service := &tenantService.TenantQueryService{
 		TenantQueryRepositoryInterface: &tenantRepository.TenantQueryRepositoryCircuitBreaker{
