@@ -60,6 +60,7 @@ func (service *IAMCommandService) ForgotTenantUserPassword(ctx context.Context, 
 	})
 	if err != nil {
 		log.Println("[error] cannot send verification code via aws ses", err)
+		return errors.New(apiError.SESError)
 	}
 
 	return nil
