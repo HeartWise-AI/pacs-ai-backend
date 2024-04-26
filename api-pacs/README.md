@@ -10,7 +10,7 @@ Setup the .env file first
 
 Setup firebase admin configs
 
-- You need to paste firebase admin configs and change `FIREBASE_CONFIG_FILE_PATH` in .env to proceed.
+- You need to paste firebase admin configs `pacs-ai-firebase-admin.json` in `configs/firebase` and change `FIREBASE_CONFIG_FILE_PATH` in .env to proceed.
 
 To bootstrap everything, run:
 
