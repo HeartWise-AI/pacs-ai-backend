@@ -5,8 +5,6 @@ services:
     build: .
     container_name: api-pacs
     restart: unless-stopped
-    volumes:
-      - ./configs/firebase/pacs-ai-firebase-admin.json:/app/build/configs/firebase/pacs-ai-firebase-admin.json
     ports:
      - ${API_URL_REST_PORT}:${API_URL_REST_PORT}
     depends_on:
