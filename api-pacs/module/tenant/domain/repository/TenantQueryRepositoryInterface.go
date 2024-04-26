@@ -7,5 +7,5 @@ import (
 )
 
 type TenantQueryRepositoryInterface interface {
-	SelectTenants(ctx context.Context, tenantID string) ([]repositoryTypes.GetTenant, error)
+	SelectTenantByID(ctx context.Context, tenantID string) (repositoryTypes.GetTenant, error)
 }

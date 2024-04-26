@@ -12,24 +12,18 @@ type TenantQueryService struct {
 	repository.TenantQueryRepositoryInterface
 }
 
-// GetTenants get tenants by id
-func (service *TenantQueryService) GetTenants(ctx context.Context, tenantID string) ([]types.GetTenant, error) {
-	res, err := service.TenantQueryRepositoryInterface.SelectTenants(ctx, tenantID)
+// GetTenantByID get tenant by id
+func (service *TenantQueryService) GetTenantByID(ctx context.Context, tenantID string) (types.GetTenant, error) {
+	tenant, err := service.TenantQueryRepositoryInterface.SelectTenantByID(ctx, tenantID)
 	if err != nil {
-		return []types.GetTenant{}, err
+		return types.GetTenant{}, err
 	}
 
-	var tenants []types.GetTenant
-
-	for _, tenant := range res {
-		tenants = append(tenants, types.GetTenant{
-			ID:        tenant.ID,
-			Name:      tenant.Name,
-			Address:   tenant.Address,
-			CreatedAt: tenant.CreatedAt,
-			UpdatedAt: tenant.UpdatedAt,
-		})
-	}
-
-	return tenants, nil
+	return types.GetTenant{
+		ID:        tenant.ID,
+		Name:      tenant.Name,
+		Address:   tenant.Address,
+		CreatedAt: uint(tenant.CreatedAt),
+		UpdatedAt: uint(tenant.UpdatedAt),
+	}, nil
 }

@@ -8,5 +8,5 @@ import (
 
 // TenantQueryServiceInterface holds the implementable methods for the tenant query service
 type TenantQueryServiceInterface interface {
-	GetTenants(ctx context.Context, tenantID string) ([]types.GetTenant, error)
+	GetTenantByID(ctx context.Context, tenantID string) (types.GetTenant, error)
 }

@@ -126,14 +126,43 @@
         }
       }
     },
-    "/tenant/all": {
+    "/tenant": {
       "get": {
         "tags": ["tenant"],
-        "summary": "Get Tenants",
-        "description": "Get tenants.",
+        "summary": "Get Tenant By ID",
+        "description": "Get tenant by id.",
         "security": [
           {
             "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/tenant/public": {
+      "get": {
+        "tags": ["tenant"],
+        "summary": "Get Public Tenant By ID",
+        "description": "Get public tenant by id.",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "description": "Tenant ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {

@@ -7,6 +7,7 @@ import (
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	"api-pacs/internal/errors"
+	apiError "api-pacs/internal/errors"
 	"api-pacs/module/tenant/application"
 	types "api-pacs/module/tenant/interfaces/http"
 )
@@ -16,11 +17,11 @@ type TenantQueryController struct {
 	application.TenantQueryServiceInterface
 }
 
-// GetTenants get tenants
-func (controller *TenantQueryController) GetTenants(w http.ResponseWriter, r *http.Request) {
+// GetTenantByID get current tenant by id
+func (controller *TenantQueryController) GetTenantByID(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
-	res, err := controller.TenantQueryServiceInterface.GetTenants(context.TODO(), tenantID)
+	res, err := controller.TenantQueryServiceInterface.GetTenantByID(context.TODO(), tenantID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -29,6 +30,7 @@ func (controller *TenantQueryController) GetTenants(w http.ResponseWriter, r *ht
 		case errors.MissingRecord:
 			httpCode = http.StatusNotFound
 			errorMsg = "No records found."
+
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Database error."
@@ -45,23 +47,73 @@ func (controller *TenantQueryController) GetTenants(w http.ResponseWriter, r *ht
 		return
 	}
 
-	var tenants []types.GetTenantResponse
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully fetched tenant by id.",
+		Data: &types.GetTenantResponse{
+			ID:        res.ID,
+			Name:      res.Name,
+			Address:   res.Address,
+			CreatedAt: res.CreatedAt,
+			UpdatedAt: res.UpdatedAt,
+		},
+	}
 
-	for _, tenant := range res {
-		tenants = append(tenants, types.GetTenantResponse{
-			ID:        tenant.ID,
-			Name:      tenant.Name,
-			Address:   tenant.Address,
-			CreatedAt: tenant.CreatedAt,
-			UpdatedAt: tenant.UpdatedAt,
-		})
+	response.JSON(w)
+}
+
+// GetPublicTenantByID get public tenant by id
+func (controller *TenantQueryController) GetPublicTenantByID(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.URL.Query().Get("tenantId")
+
+	if len(tenantID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Tenant ID is required.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	res, err := controller.TenantQueryServiceInterface.GetTenantByID(context.TODO(), tenantID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "No records found."
+
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Database error."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
 	}
 
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,
-		Message: "Successfully fetched tenants.",
-		Data:    tenants,
+		Message: "Successfully fetched public tenant.",
+		Data: &types.GetPublicTenantResponse{
+			ID:      res.ID,
+			Name:    res.Name,
+			Address: res.Address,
+		},
 	}
 
 	response.JSON(w)

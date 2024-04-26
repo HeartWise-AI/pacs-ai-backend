@@ -16,3 +16,9 @@ type GetTenantResponse struct {
 	CreatedAt uint   `json:"createdAt"`
 	UpdatedAt uint   `json:"updatedAt"`
 }
+
+type GetPublicTenantResponse struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Address string `json:"address"`
+}

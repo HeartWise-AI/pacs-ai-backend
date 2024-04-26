@@ -93,13 +93,17 @@ func (router *router) InitRouter() *chi.Mux {
 
 			// tenant module
 			r.Route("/tenant", func(r chi.Router) {
-				r.Use(iamMiddleware.TokenSessionAuthGuard)
+				r.Get("/public", tenantQueryController.GetPublicTenantByID)
 
-				// admin or owner only
 				r.Group(func(r chi.Router) {
-					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
-					r.Get("/all", tenantQueryController.GetTenants)
+					// admin or owner only
+					r.Group(func(r chi.Router) {
+						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+
+						r.Get("/", tenantQueryController.GetTenantByID)
+					})
 				})
 			})
 

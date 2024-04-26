@@ -14,17 +14,17 @@ type TenantQueryRepositoryCircuitBreaker struct {
 	repository.TenantQueryRepositoryInterface
 }
 
-// SelectTenants is a decorator for the select tenants
-func (repository *TenantQueryRepositoryCircuitBreaker) SelectTenants(ctx context.Context, tenantID string) ([]repositoryTypes.GetTenant, error) {
-	output := make(chan []repositoryTypes.GetTenant, 1)
-	hystrix.ConfigureCommand("select_tenants", config.Settings())
-	errors := hystrix.Go("select_tenants", func() error {
-		tenants, err := repository.TenantQueryRepositoryInterface.SelectTenants(ctx, tenantID)
+// SelectTenantByID is a decorator for the get tenant by id
+func (repository *TenantQueryRepositoryCircuitBreaker) SelectTenantByID(ctx context.Context, tenantID string) (repositoryTypes.GetTenant, error) {
+	output := make(chan repositoryTypes.GetTenant, 1)
+	hystrix.ConfigureCommand("select_tenant_by_id", config.Settings())
+	errors := hystrix.Go("select_tenant_by_id", func() error {
+		tenant, err := repository.TenantQueryRepositoryInterface.SelectTenantByID(ctx, tenantID)
 		if err != nil {
 			return err
 		}
 
-		output <- tenants
+		output <- tenant
 		return nil
 	}, nil)
 
@@ -32,6 +32,6 @@ func (repository *TenantQueryRepositoryCircuitBreaker) SelectTenants(ctx context
 	case out := <-output:
 		return out, nil
 	case err := <-errors:
-		return []repositoryTypes.GetTenant{}, err
+		return repositoryTypes.GetTenant{}, err
 	}
 }
