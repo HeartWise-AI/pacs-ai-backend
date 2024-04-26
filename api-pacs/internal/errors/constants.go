@@ -33,4 +33,7 @@ const (
 	// Firebase-related errors
 	FirebaseAuthError string = "FIREBASE_AUTH_ERROR"
 	FirestoreError    string = "FIRESTORE_ERROR"
+
+	// AWS-related errors
+	SESError string = "SES_ERROR"
 )

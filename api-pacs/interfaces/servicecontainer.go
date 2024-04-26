@@ -18,6 +18,8 @@ import (
 	"sync"
 
 	"api-pacs/infrastructures/database/redis"
+	"api-pacs/infrastructures/providers/sdk/aws"
+	awsTypes "api-pacs/infrastructures/providers/sdk/aws/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	iamMiddleware "api-pacs/interfaces/http/rest/middlewares/iam"
 	iamRepository "api-pacs/module/iam/infrastructure/repository"
@@ -51,6 +53,7 @@ var (
 	containerOnce     sync.Once
 	redisIAMDBHandler *redis.RedisDBHandler
 	firebaseAdminSDK  *firebaseadmin.FirebaseAdminSDK
+	awsSDK            *aws.AWSSDK
 )
 
 // ================================= REST ===================================
@@ -133,6 +136,7 @@ func (k *kernel) iamCommandServiceContainer() *iamService.IAMCommandService {
 		},
 		UserQueryServiceInterface: k.userQueryServiceContainer(),
 		FirebaseAdminSDK:          firebaseAdminSDK,
+		AWSSDKInterface:           awsSDK,
 	}
 
 	return service
@@ -222,6 +226,16 @@ func registerHandlers() {
 	firebaseAdminSDK, err = firebaseadmin.NewApp(context.Background(), os.Getenv("FIREBASE_CONFIG_FILE_PATH"), os.Getenv("FIREBASE_PROJECT_ID"))
 	if err != nil {
 		log.Fatalf("[SERVER] cannot initialize firebase admin app: %v", err)
+	}
+
+	// init aws session
+	awsSDK, err = aws.NewSession(awsTypes.Config{
+		Region:    os.Getenv("AWS_REGION"),
+		AccessID:  os.Getenv("AWS_ACCESS_ID"),
+		SecretKey: os.Getenv("AWS_SECRET_KEY"),
+	})
+	if err != nil {
+		log.Fatalf("[SERVER] cannot create aws session: %v", err)
 	}
 }
 
