@@ -191,6 +191,7 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 		UserCommandRepositoryInterface: &userRepository.UserCommandRepositoryCircuitBreaker{
 			UserCommandRepositoryInterface: repository,
 		},
+		AWSSDKInterface: awsSDK,
 	}
 
 	return service
