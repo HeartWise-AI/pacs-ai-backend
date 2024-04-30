@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sync"
 
 	"github.com/segmentio/ksuid"
-	"golang.org/x/sync/errgroup"
 
 	awsSDKTypes "api-pacs/infrastructures/providers/sdk/aws/types"
 	"api-pacs/module/user/domain/repository"
@@ -39,21 +37,18 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 		return "", err
 	}
 
-	var rw = sync.RWMutex{}
-	eg, _ := errgroup.WithContext(ctx)
-
-	eg.Go(func() error {
-		rw.Lock()
-		defer rw.Unlock()
+	go func() {
+		//  redirect link
+		redirectLink := fmt.Sprintf("http://localhost:8000/%s/login", data.TenantID)
 
 		// send to email
 		emailMessage := fmt.Sprintf("Hi %s, <br /><br />"+
 			"Here is your new PACS AI account credentials:<br /><br />"+
 			"Email: %s <br />"+
 			"Password: %s <br /><br />"+
-			"You can use this and login to PACS AI via https://localhost:8000/%s/login. You will be then prompted to change password. <br /><br />"+
+			"You can use this and login to PACS AI via <a href=\"%s\">%s</a>. You will be then prompted to change password. <br /><br />"+
 			"Thanks, <br /><br />"+
-			"Your PACS AI team", data.Name, data.Email, generatedPassword, data.TenantID)
+			"Your PACS AI team", data.Name, data.Email, generatedPassword, redirectLink, redirectLink)
 		err = service.AWSSDKInterface.SESSendEmail(ctx, awsSDKTypes.SESSendEmailRequest{
 			Subject:          "[PACS AI]: New account credentials",
 			ToAddresses:      []string{data.Email},
@@ -61,11 +56,8 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 		})
 		if err != nil {
 			log.Println("[error] cannot send verification code via aws ses", err)
-			return err
 		}
-
-		return nil
-	})
+	}()
 
 	return generatedPassword, nil
 }
