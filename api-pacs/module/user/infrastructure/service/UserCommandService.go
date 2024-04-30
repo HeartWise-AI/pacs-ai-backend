@@ -40,7 +40,7 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 
 	go func() {
 		//  redirect link
-		redirectLink := fmt.Sprintf("%s:%s/%s/login", os.Getenv("API_URL_REST_"), os.Getenv("API_URL_REST_PORT"), data.TenantID)
+		redirectLink := fmt.Sprintf("%s/%s/login", os.Getenv("API_URL"), data.TenantID)
 
 		// send to email
 		emailMessage := fmt.Sprintf("Hi %s, <br /><br />"+
