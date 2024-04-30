@@ -120,6 +120,7 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
 					r.Get("/me", userQueryController.GetCurrentTenantUser)
+					r.Put("/password/update", userCommandController.UpdateTenantUserPassword)
 
 					// admin or owner only
 					r.Group(func(r chi.Router) {
@@ -128,7 +129,6 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Post("/add", userCommandController.CreateTenantUser)
 						r.Get("/all", userQueryController.GetTenantUsers)
 						r.Put("/update", userCommandController.UpdateTenantUser)
-						r.Put("/password/update", userCommandController.UpdateTenantUserPassword)
 						r.Delete("/remove", userCommandController.DeleteTenantUser)
 					})
 				})

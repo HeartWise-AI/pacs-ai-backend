@@ -21,8 +21,6 @@ var (
 		"UpdateTenantUserRequest.Name":                "Name is required.",
 		"UpdateTenantUserRequest.LicenseNo":           "License number is required.",
 		"UpdateTenantUserRequest.Specialty":           "Specialty is required.",
-		"UpdateTenantUserPasswordRequest.ID":          "ID is required.",
-		"UpdateTenantUserPasswordRequest.TenantID":    "Tenant ID is required.",
 		"UpdateTenantUserPasswordRequest.NewPassword": "New password is required.",
 	}
 )
@@ -51,8 +49,6 @@ type UpdateTenantUserRequest struct {
 }
 
 type UpdateTenantUserPasswordRequest struct {
-	ID          string `json:"id" validate:"required"`
-	TenantID    string `json:"tenantId" validate:"required"`
 	NewPassword string `json:"newPassword" validate:"required"`
 }
 

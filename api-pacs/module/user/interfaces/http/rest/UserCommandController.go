@@ -422,6 +422,9 @@ func (controller *UserCommandController) UpdateTenantUser(w http.ResponseWriter,
 
 // UpdateTenantUserPassword update a tenant user password. Only callable by admin or owner.
 func (controller *UserCommandController) UpdateTenantUserPassword(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
 	var request types.UpdateTenantUserPasswordRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -464,8 +467,8 @@ func (controller *UserCommandController) UpdateTenantUserPassword(w http.Respons
 	}
 
 	err = controller.UserCommandServiceInterface.UpdateTenantUserPassword(context.TODO(), serviceTypes.UpdateTenantUserPassword{
-		ID:          request.ID,
-		TenantID:    request.TenantID,
+		ID:          userID,
+		TenantID:    tenantID,
 		NewPassword: request.NewPassword,
 	})
 	if err != nil {
