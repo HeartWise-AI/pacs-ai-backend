@@ -56,7 +56,7 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 			PlainTextMessage: emailMessage,
 		})
 		if err != nil {
-			log.Println("[error] cannot send verification code via aws ses", err)
+			log.Println("[error] cannot send account credentials via aws ses", err)
 			return
 		}
 	}()
