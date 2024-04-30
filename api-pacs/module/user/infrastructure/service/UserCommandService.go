@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/segmentio/ksuid"
 
@@ -39,7 +40,7 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 
 	go func() {
 		//  redirect link
-		redirectLink := fmt.Sprintf("http://localhost:8000/%s/login", data.TenantID)
+		redirectLink := fmt.Sprintf("%s:%s/%s/login", os.Getenv("API_URL_REST_"), os.Getenv("API_URL_REST_PORT"), data.TenantID)
 
 		// send to email
 		emailMessage := fmt.Sprintf("Hi %s, <br /><br />"+
@@ -56,6 +57,7 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 		})
 		if err != nil {
 			log.Println("[error] cannot send verification code via aws ses", err)
+			return
 		}
 	}()
 
