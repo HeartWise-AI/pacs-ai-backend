@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 
 	"api-pacs/module/user/domain/repository"
 	"api-pacs/module/user/infrastructure/service/types"
@@ -10,6 +13,23 @@ import (
 // UserQueryService handles the User query service logic
 type UserQueryService struct {
 	repository.UserQueryRepositoryInterface
+}
+
+// GetDoctorSpecialties get doctor specialties
+func (service *UserQueryService) GetDoctorSpecialties(ctx context.Context) ([]map[string]interface{}, error) {
+	rootPath, _ := os.Getwd()
+	jsonData, err := os.ReadFile(filepath.Join(rootPath, "internal/specialties/specialties.json"))
+	if err != nil {
+		return []map[string]interface{}{}, err
+	}
+
+	var specialties []map[string]interface{}
+	err = json.Unmarshal(jsonData, &specialties)
+	if err != nil {
+		return []map[string]interface{}{}, err
+	}
+
+	return specialties, nil
 }
 
 // GetTenantUserByID get tenant user by id
