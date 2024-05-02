@@ -24,7 +24,7 @@ type UserCommandController struct {
 
 // CreateTenantOwner create a tenant owner. Only callable by superuser.
 func (controller *UserCommandController) CreateTenantOwner(w http.ResponseWriter, r *http.Request) {
-	var request types.CreateTenantUserRequest
+	var request types.CreateTenantOwnerRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		response := viewmodels.HTTPResponseVM{
@@ -127,6 +127,8 @@ func (controller *UserCommandController) CreateTenantOwner(w http.ResponseWriter
 
 // CreateTenantUser create a tenant user. Only callable by admin or owner.
 func (controller *UserCommandController) CreateTenantUser(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
 	var request types.CreateTenantUserRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -196,7 +198,7 @@ func (controller *UserCommandController) CreateTenantUser(w http.ResponseWriter,
 	}
 
 	generatedPassword, err := controller.UserCommandServiceInterface.CreateTenantUser(context.TODO(), serviceTypes.CreateTenantUser{
-		TenantID:  request.TenantID,
+		TenantID:  tenantID,
 		Role:      request.Role,
 		Name:      request.Name,
 		Email:     request.Email,
@@ -244,6 +246,8 @@ func (controller *UserCommandController) CreateTenantUser(w http.ResponseWriter,
 
 // DeleteTenantUser delete a tenant user. Only callable by admin or owner.
 func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
 	var request types.DeleteTenantUserRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -287,7 +291,7 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 
 	// TODO: check user role and target user role to be deleted
 
-	err = controller.UserCommandServiceInterface.DeleteTenantUser(context.TODO(), request.TenantID, request.UserID)
+	err = controller.UserCommandServiceInterface.DeleteTenantUser(context.TODO(), tenantID, request.UserID)
 	if err != nil {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusInternalServerError,
@@ -311,6 +315,8 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 
 // UpdateTenantUser update a tenant user. Only callable by admin or owner.
 func (controller *UserCommandController) UpdateTenantUser(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
 	var request types.UpdateTenantUserRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -381,7 +387,7 @@ func (controller *UserCommandController) UpdateTenantUser(w http.ResponseWriter,
 
 	err = controller.UserCommandServiceInterface.UpdateTenantUser(context.TODO(), serviceTypes.UpdateTenantUser{
 		ID:        request.ID,
-		TenantID:  request.TenantID,
+		TenantID:  tenantID,
 		Role:      request.Role,
 		Name:      request.Name,
 		LicenseNo: request.LicenseNo,
