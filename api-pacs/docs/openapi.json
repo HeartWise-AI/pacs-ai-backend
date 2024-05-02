@@ -269,6 +269,29 @@
         }
       }
     },
+    "/user/specialties/all": {
+      "get": {
+        "tags": ["user"],
+        "summary": "Get Doctor Specialties",
+        "description": "Get doctor specialties.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/me": {
       "get": {
         "tags": ["user"],

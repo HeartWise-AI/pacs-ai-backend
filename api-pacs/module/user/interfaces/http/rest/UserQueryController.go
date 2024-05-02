@@ -69,6 +69,45 @@ func (controller *UserQueryController) GetCurrentTenantUser(w http.ResponseWrite
 	response.JSON(w)
 }
 
+// GetDoctorSpecialties get doctor specialties
+func (controller *UserQueryController) GetDoctorSpecialties(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	res, err := controller.UserQueryServiceInterface.GetDoctorSpecialties(context.TODO(), tenantID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "No records found."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Database error."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully fetched doctor specialties.",
+		Data:    res,
+	}
+
+	response.JSON(w)
+}
+
 // GetTenantUsers get tenant users
 func (controller *UserQueryController) GetTenantUsers(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)

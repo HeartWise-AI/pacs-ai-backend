@@ -1,0 +1,138 @@
+[
+  {
+    "id": "ALLERGY_AND_IMMUNOLOGY",
+    "name": "Allergy and Immunology"
+  },
+  {
+    "id": "ANESTHESIOLOGY",
+    "name": "Anesthesiology"
+  },
+  {
+    "id": "CARDIAC_SURGERY",
+    "name": "Cardiac Surgery"
+  },
+  {
+    "id": "CARDIOLOGY",
+    "name": "Cardiology"
+  },
+  {
+    "id": "CRITICAL_CARE",
+    "name": "Critical Care"
+  },
+  {
+    "id": "DERMATOLOGY",
+    "name": "Dermatology"
+  },
+  {
+    "id": "EMERGENCY_MEDICINE",
+    "name": "Emergency Medicine"
+  },
+  {
+    "id": "ENDOCRINOLOGY_AND_METABOLISM",
+    "name": "Endocrinology and Metabolism"
+  },
+  {
+    "id": "GASTROENTEROLOGY",
+    "name": "Gastroenterology"
+  },
+  {
+    "id": "GENERAL_SURGERY",
+    "name": "General Surgery"
+  },
+  {
+    "id": "GERIATRIC_MEDICINE",
+    "name": "Geriatric Medicine"
+  },
+  {
+    "id": "HEMATOLOGY",
+    "name": "Hematology"
+  },
+  {
+    "id": "INTERNAL_MEDICINE",
+    "name": "Internal Medicine"
+  },
+  {
+    "id": "MEDICAL_BIOCHEMISTRY",
+    "name": "Medical Biochemistry"
+  },
+  {
+    "id": "MEDICAL_GENETICS",
+    "name": "Medical Genetics"
+  },
+  {
+    "id": "MEDICAL_MICROBIOLOGY",
+    "name": "Medical Microbiology"
+  },
+  {
+    "id": "NEPHROLOGY",
+    "name": "Nephrology"
+  },
+  {
+    "id": "NEUROSURGERY",
+    "name": "Neurosurgery"
+  },
+  {
+    "id": "NUCLEAR_MEDICINE",
+    "name": "Nuclear Medicine"
+  },
+  {
+    "id": "OBSTETRICS_AND_GYNECOLOGY",
+    "name": "Obstetrics and Gynecology"
+  },
+  {
+    "id": "OPHTHALMOLOGY",
+    "name": "Ophthalmology"
+  },
+  {
+    "id": "ORTHOPEDIC_SURGERY",
+    "name": "Orthopedic Surgery"
+  },
+  {
+    "id": "OTOLARYNGOLOGY_HEAD_AND_NECK_SURGERY",
+    "name": "Otolaryngology Head and Neck Surgery"
+  },
+  {
+    "id": "PEDIATRICS",
+    "name": "Pediatrics"
+  },
+  {
+    "id": "PHYSICAL_MEDICINE_AND_REHABILITATION",
+    "name": "Physical Medicine and Rehabilitation"
+  },
+  {
+    "id": "PLASTIC_SURGERY",
+    "name": "Plastic Surgery"
+  },
+  {
+    "id": "PSYCHIATRY",
+    "name": "Psychiatry"
+  },
+  {
+    "id": "PUBLIC_HEALTH_AND_PREVENTIVE_MEDICINE",
+    "name": "Public Health and Preventive Medicine"
+  },
+  {
+    "id": "RADIATION_ONCOLOGY",
+    "name": "Radiation Oncology"
+  },
+  {
+    "id": "RADIOLOGY",
+    "name": "Radiology"
+  },
+  {
+    "id": "RESPIROLOGY",
+    "name": "Respirology"
+  },
+  {
+    "id": "RHEUMATOLOGY",
+    "name": "Rheumatology"
+  },
+  {
+    "id": "UROLOGY",
+    "name": "Urology"
+  },
+  {
+    "id": "VASCULAR_SURGERY",
+    "name": "Vascular Surgery"
+  }
+]
