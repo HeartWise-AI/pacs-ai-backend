@@ -193,7 +193,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateTenantUserRequest"
+                "$ref": "#/components/schemas/CreateTenantOwnerRequest"
               }
             }
           },
@@ -391,7 +391,7 @@
   },
   "components": {
     "schemas": {
-      "CreateTenantUserRequest": {
+      "CreateTenantOwnerRequest": {
         "required": [
           "tenantId",
           "role",
@@ -423,13 +423,38 @@
           }
         }
       },
-      "DeleteTenantUserRequest": {
-        "required": ["tenantId", "userId"],
+      "CreateTenantUserRequest": {
+        "required": [
+          "role",
+          "name",
+          "email",
+          "licenseNo",
+          "specialty"
+        ],
         "type": "object",
         "properties": {
-          "tenantId": {
+          "role": {
+            "type": "string",
+            "enum": ["OWNER", "ADMIN", "USER"]
+          },
+          "name": {
             "type": "string"
           },
+          "email": {
+            "type": "string"
+          },
+          "licenseNo": {
+            "type": "string"
+          },
+          "specialty": {
+            "type": "string"
+          }
+        }
+      },
+      "DeleteTenantUserRequest": {
+        "required": ["userId"],
+        "type": "object",
+        "properties": {
           "userId": {
             "type": "string"
           }
@@ -462,7 +487,6 @@
       "UpdateTenantUserRequest": {
         "required": [
           "id",
-          "tenantId",
           "role",
           "name",
           "licenseNo",
@@ -471,9 +495,6 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
-          },
-          "tenantId": {
             "type": "string"
           },
           "role": {
@@ -492,13 +513,10 @@
         }
       },
       "UpdateTenantUserPasswordRequest": {
-        "required": ["id", "tenantId", "newPassword"],
+        "required": ["id", "newPassword"],
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
-          },
-          "tenantId": {
             "type": "string"
           },
           "newPassword": {

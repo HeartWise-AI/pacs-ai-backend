@@ -7,16 +7,14 @@ import (
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
-		"CreateTenantUserRequest.TenantID":            "Tenant ID is required.",
+		"CreateTenantOwnerRequest.TenantID":           "Tenant ID is required.",
 		"CreateTenantUserRequest.Role":                "Role is required.",
 		"CreateTenantUserRequest.Name":                "Name is required.",
 		"CreateTenantUserRequest.Email":               "Email is required.",
 		"CreateTenantUserRequest.LicenseNo":           "License number is required.",
 		"CreateTenantUserRequest.Specialty":           "Specialty is required.",
-		"DeleteTenantUserRequest.TenantID":            "Tenant ID is required.",
 		"DeleteTenantUserRequest.UserID":              "User ID is required.",
 		"UpdateTenantUserRequest.ID":                  "ID is required.",
-		"UpdateTenantUserRequest.TenantID":            "Tenant ID is required.",
 		"UpdateTenantUserRequest.Role":                "Role is required.",
 		"UpdateTenantUserRequest.Name":                "Name is required.",
 		"UpdateTenantUserRequest.LicenseNo":           "License number is required.",
@@ -25,7 +23,7 @@ var (
 	}
 )
 
-type CreateTenantUserRequest struct {
+type CreateTenantOwnerRequest struct {
 	TenantID  string `json:"tenantId" validate:"required"`
 	Role      string `json:"role" validate:"required"`
 	Name      string `json:"name" validate:"required"`
@@ -34,14 +32,20 @@ type CreateTenantUserRequest struct {
 	Specialty string `json:"specialty" validate:"required"`
 }
 
+type CreateTenantUserRequest struct {
+	Role      string `json:"role" validate:"required"`
+	Name      string `json:"name" validate:"required"`
+	Email     string `json:"email" validate:"required"`
+	LicenseNo string `json:"licenseNo" validate:"required"`
+	Specialty string `json:"specialty" validate:"required"`
+}
+
 type DeleteTenantUserRequest struct {
-	TenantID string `json:"tenantId" validate:"required"`
-	UserID   string `json:"userId" validate:"required"`
+	UserID string `json:"userId" validate:"required"`
 }
 
 type UpdateTenantUserRequest struct {
 	ID        string `json:"id" validate:"required"`
-	TenantID  string `json:"tenantId" validate:"required"`
 	Role      string `json:"role" validate:"required"`
 	Name      string `json:"name" validate:"required"`
 	LicenseNo string `json:"licenseNo" validate:"required"`
