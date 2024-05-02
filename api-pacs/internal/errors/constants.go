@@ -31,8 +31,9 @@ const (
 	UnauthorizedAccess string = "UNAUTHORIZED_ACCESS"
 
 	// Firebase-related errors
-	FirebaseAuthError string = "FIREBASE_AUTH_ERROR"
-	FirestoreError    string = "FIRESTORE_ERROR"
+	FirebaseAuthError            string = "FIREBASE_AUTH_ERROR"
+	FirebaseAuthEmailNotVerified string = "FIREBASE_AUTH_EMAIL_NOT_VERIFIED"
+	FirestoreError               string = "FIRESTORE_ERROR"
 
 	// AWS-related errors
 	SESError string = "SES_ERROR"
