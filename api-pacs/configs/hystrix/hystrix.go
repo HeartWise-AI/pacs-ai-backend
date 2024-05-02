@@ -11,7 +11,7 @@ type Config struct{}
 func (c Config) Settings() hystrix.CommandConfig {
 	return hystrix.CommandConfig{
 		MaxConcurrentRequests:  200,
-		Timeout:                8000,
+		Timeout:                45000,
 		RequestVolumeThreshold: 1000,
 	}
 }
