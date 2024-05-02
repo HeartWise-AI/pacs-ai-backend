@@ -23,13 +23,13 @@ func (service *UserQueryService) GetDoctorSpecialties(ctx context.Context, tenan
 		return []map[string]interface{}{}, err
 	}
 
-	var res []map[string]interface{}
-	err = json.Unmarshal(jsonData, &res)
+	var specialties []map[string]interface{}
+	err = json.Unmarshal(jsonData, &specialties)
 	if err != nil {
 		return []map[string]interface{}{}, err
 	}
 
-	return res, nil
+	return specialties, nil
 }
 
 // GetTenantUserByID get tenant user by id
