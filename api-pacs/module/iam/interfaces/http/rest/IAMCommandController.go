@@ -71,7 +71,7 @@ func (controller *IAMCommandController) ForgotTenantUserPassword(w http.Response
 		case errors.UnauthorizedAccess:
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Unauthorized access."
-		case errors.FirebaseAuthEmailNotVerifiedError:
+		case errors.FirebaseAuthEmailNotVerified:
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Email is not verified."
 		default:
