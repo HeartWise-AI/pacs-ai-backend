@@ -16,7 +16,7 @@ type UserQueryService struct {
 }
 
 // GetDoctorSpecialties get doctor specialties
-func (service *UserQueryService) GetDoctorSpecialties(ctx context.Context, tenantID string) ([]map[string]interface{}, error) {
+func (service *UserQueryService) GetDoctorSpecialties(ctx context.Context) ([]map[string]interface{}, error) {
 	rootPath, _ := os.Getwd()
 	jsonData, err := os.ReadFile(filepath.Join(rootPath, "internal/specialties/specialties.json"))
 	if err != nil {

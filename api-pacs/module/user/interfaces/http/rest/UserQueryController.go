@@ -71,9 +71,7 @@ func (controller *UserQueryController) GetCurrentTenantUser(w http.ResponseWrite
 
 // GetDoctorSpecialties get doctor specialties
 func (controller *UserQueryController) GetDoctorSpecialties(w http.ResponseWriter, r *http.Request) {
-	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
-
-	res, err := controller.UserQueryServiceInterface.GetDoctorSpecialties(context.TODO(), tenantID)
+	res, err := controller.UserQueryServiceInterface.GetDoctorSpecialties(context.TODO())
 	if err != nil {
 		var httpCode int
 		var errorMsg string

@@ -269,7 +269,7 @@
         }
       }
     },
-    "/user/specialties/all": {
+    "/user/specialties": {
       "get": {
         "tags": ["user"],
         "summary": "Get Doctor Specialties",
@@ -447,13 +447,7 @@
         }
       },
       "CreateTenantUserRequest": {
-        "required": [
-          "role",
-          "name",
-          "email",
-          "licenseNo",
-          "specialty"
-        ],
+        "required": ["role", "name", "email", "licenseNo", "specialty"],
         "type": "object",
         "properties": {
           "role": {
@@ -508,13 +502,7 @@
         }
       },
       "UpdateTenantUserRequest": {
-        "required": [
-          "id",
-          "role",
-          "name",
-          "licenseNo",
-          "specialty"
-        ],
+        "required": ["id", "role", "name", "licenseNo", "specialty"],
         "type": "object",
         "properties": {
           "id": {
