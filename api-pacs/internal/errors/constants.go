@@ -36,4 +36,7 @@ const (
 
 	// AWS-related errors
 	SESError string = "SES_ERROR"
+
+	// Email not verified error
+	EmailNotVerified string = "EMAIL_NOT_VERIFIED"
 )

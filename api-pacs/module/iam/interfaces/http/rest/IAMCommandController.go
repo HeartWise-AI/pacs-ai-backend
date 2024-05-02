@@ -64,10 +64,25 @@ func (controller *IAMCommandController) ForgotTenantUserPassword(w http.Response
 
 	err = controller.IAMCommandServiceInterface.ForgotTenantUserPassword(context.TODO(), request.TenantID, request.Email)
 	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.UnauthorizedAccess:
+			httpCode = http.StatusUnauthorized
+			errorMsg = "Unauthorized access."
+		case errors.EmailNotVerified:
+			httpCode = http.StatusUnauthorized
+			errorMsg = "Email not verified."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
 		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusInternalServerError,
+			Status:    httpCode,
 			Success:   false,
-			Message:   "Please contact technical support.",
+			Message:   errorMsg,
 			ErrorCode: err.Error(),
 		}
 

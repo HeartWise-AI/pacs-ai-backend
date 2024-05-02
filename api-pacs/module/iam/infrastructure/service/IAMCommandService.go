@@ -40,6 +40,18 @@ func (service *IAMCommandService) ForgotTenantUserPassword(ctx context.Context, 
 		return errors.New(apiError.FirebaseAuthError)
 	}
 
+	userEmail, err := tenantAuth.GetUserByEmail(ctx, email)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	// check if email is verified
+	if !userEmail.EmailVerified {
+		log.Println("[error] email not verified.")
+		return errors.New(apiError.EmailNotVerified)
+	}
+
 	resetLink, err := tenantAuth.PasswordResetLink(ctx, email)
 	if err != nil {
 		log.Println(err)
