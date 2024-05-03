@@ -103,28 +103,29 @@ func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, te
 	}
 
 	users := []types.GetTenantUser{} // empty
+	var rw = sync.RWMutex{}
+	eg, egCtx := errgroup.WithContext(ctx)
 
 	iter := tenantAuth.Users(ctx, "")
-
-	var rw = sync.RWMutex{}
-	eg, _ := errgroup.WithContext(ctx)
 
 	for {
 		authUser, err := iter.Next()
 		if err == iterator.Done {
 			break
 		}
+
 		if err != nil {
 			log.Println(err)
 			return []types.GetTenantUser{}, err
 		}
 
+		rw.Lock()
+
 		eg.Go(func() error {
-			rw.Lock()
 			defer rw.Unlock()
 
 			var user entity.User
-			doc, err := firestoreClient.Collection(user.GetModelName()).Doc(authUser.UID).Get(ctx)
+			doc, err := firestoreClient.Collection(user.GetModelName()).Doc(authUser.UID).Get(egCtx)
 			if err != nil {
 				log.Println(err)
 				return err
