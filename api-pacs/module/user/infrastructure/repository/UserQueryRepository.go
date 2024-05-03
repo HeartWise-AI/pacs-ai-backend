@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"sync"
 
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	apiError "api-pacs/internal/errors"
@@ -11,6 +12,7 @@ import (
 	"api-pacs/module/user/infrastructure/repository/types"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
 
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/api/iterator"
 )
 
@@ -103,6 +105,10 @@ func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, te
 	users := []types.GetTenantUser{} // empty
 
 	iter := tenantAuth.Users(ctx, "")
+
+	var rw = sync.RWMutex{}
+	eg, _ := errgroup.WithContext(ctx)
+
 	for {
 		authUser, err := iter.Next()
 		if err == iterator.Done {
@@ -113,32 +119,43 @@ func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, te
 			return []types.GetTenantUser{}, err
 		}
 
-		var user entity.User
-		doc, err := firestoreClient.Collection(user.GetModelName()).Doc(authUser.UID).Get(ctx)
-		if err != nil {
-			log.Println(err)
-			return []types.GetTenantUser{}, err
-		}
+		eg.Go(func() error {
+			rw.Lock()
+			defer rw.Unlock()
 
-		err = doc.DataTo(&user)
-		if err != nil {
-			log.Println(err)
-			return []types.GetTenantUser{}, err
-		}
+			var user entity.User
+			doc, err := firestoreClient.Collection(user.GetModelName()).Doc(authUser.UID).Get(ctx)
+			if err != nil {
+				log.Println(err)
+				return err
+			}
 
-		users = append(users, types.GetTenantUser{
-			ID:                authUser.UID,
-			TenantID:          user.TenantID,
-			Role:              user.Role,
-			Name:              authUser.DisplayName,
-			Email:             authUser.Email,
-			LicenseNo:         user.LicenseNo,
-			Specialty:         user.Specialty,
-			IsEmailVerified:   authUser.EmailVerified,
-			IsAccountDisabled: authUser.Disabled,
-			CreatedAt:         uint(user.CreatedAt),
-			UpdatedAt:         uint(user.UpdatedAt),
+			err = doc.DataTo(&user)
+			if err != nil {
+				log.Println(err)
+				return err
+			}
+
+			users = append(users, types.GetTenantUser{
+				ID:                authUser.UID,
+				TenantID:          user.TenantID,
+				Role:              user.Role,
+				Name:              authUser.DisplayName,
+				Email:             authUser.Email,
+				LicenseNo:         user.LicenseNo,
+				Specialty:         user.Specialty,
+				IsEmailVerified:   authUser.EmailVerified,
+				IsAccountDisabled: authUser.Disabled,
+				CreatedAt:         uint(user.CreatedAt),
+				UpdatedAt:         uint(user.UpdatedAt),
+			})
+
+			return nil
 		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return []types.GetTenantUser{}, err
 	}
 
 	if len(users) == 0 {
