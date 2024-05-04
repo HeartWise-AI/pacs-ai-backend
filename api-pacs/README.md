@@ -16,7 +16,7 @@ To bootstrap everything, run:
 
 - `make` <---- build and run the Go executable locally
 
-- `make up-local` <---- spins a container via Docker
+- `make up-local` <---- spins a container via Docker Compose
 
 The command above will install, build, and run the binary
 
