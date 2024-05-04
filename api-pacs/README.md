@@ -44,3 +44,5 @@ For manual build:
 To run the container in local environment:
 
 - make up-local
+
+Maintainers: Karl from Nuxify, Andrea from Nuxify
