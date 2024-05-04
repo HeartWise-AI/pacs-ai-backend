@@ -14,7 +14,7 @@ Setup firebase admin configs
 
 To bootstrap everything, run:
 
-- make
+- `make up-local`
 
 The command above will install, build, and run the binary
 
