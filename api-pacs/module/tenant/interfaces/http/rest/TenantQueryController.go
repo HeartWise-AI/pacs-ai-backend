@@ -52,11 +52,12 @@ func (controller *TenantQueryController) GetTenantByID(w http.ResponseWriter, r 
 		Success: true,
 		Message: "Successfully fetched tenant by id.",
 		Data: &types.GetTenantResponse{
-			ID:        res.ID,
-			Name:      res.Name,
-			Address:   res.Address,
-			CreatedAt: res.CreatedAt,
-			UpdatedAt: res.UpdatedAt,
+			ID:              res.ID,
+			Name:            res.Name,
+			Address:         res.Address,
+			AvailableModels: res.AvailableModels,
+			CreatedAt:       res.CreatedAt,
+			UpdatedAt:       res.UpdatedAt,
 		},
 	}
 
