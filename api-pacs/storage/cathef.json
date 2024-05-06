@@ -1,0 +1,95 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "CathEF",
+      "Description": "CathEF is a video-based deep neural network (DNN) designed to predict left ventricular ejection fraction (LVEF) from left coronary angiograms.",
+      "Developed_by": "Dr. Avram, Dr. Tison and Dr. Olgin",
+      "Development_period": "2020-01-01 to 2023-04-17",
+      "Licensed_to": "Montreal Heart Institute",
+      "License_date": "2023-03-01",
+      "Approval_date": "2023-04-17",
+      "Last_update": "2023-04-17",
+      "Version": "1.0"
+    },
+    "Mechanism": {
+      "Outcome": "Prediction of LVEF from left coronary angiograms",
+      "Output": "Continuous LVEF percentage value",
+      "Target_population": "Adult patients aged ≥18 years who received a coronary angiogram and transthoracic echocardiogram (TTE)",
+      "Time_of_prediction": "N/A",
+      "Input_data_source": "Left coronary angiogram videos",
+      "Input_data_type": "Video data",
+      "Training_data_location_and_time-period": "University of California, San Francisco (UCSF), Dec 12, 2012, to Dec 31, 2019",
+      "Model_type": "X3D architecture"
+    },
+    "Validation_and_performance": {
+      "UCSF_test_dataset": {
+        "AUC_ROC_LVEF_40": 0.911,
+        "AUC_ROC_LVEF_50": 0.879,
+        "Specificity_LVEF_40": 81.3,
+        "Sensitivity_LVEF_40": 83.9,
+        "ICC_continuous_LVEF": 0.77,
+        "Pearson_correlation_continuous_LVEF": 0.71,
+        "MAE_continuous_LVEF": 8.5
+      },
+      "UOHI_external_validation": {
+        "AUC_ROC_LVEF_40": 0.906,
+        "AUC_ROC_LVEF_50": "N/A",
+        "Specificity_LVEF_40": 88.6,
+        "Sensitivity_LVEF_40": 77.9,
+        "ICC_continuous_LVEF": 0.62,
+        "Pearson_correlation_continuous_LVEF": 0.72,
+        "MAE_continuous_LVEF": 7
+      }
+    },
+    "Cohort": {
+      "UCSF_study_cohort": {
+        "Number_of_patients": 3404,
+        "Number_of_angiograms": 3960,
+        "Mean_age": "64.3±13.3",
+        "Female_percentage": 35,
+        "LVEF_under_40_percentage": 17.7,
+        "LVEF_over_40_percentage": 82.2
+      },
+      "UOHI_external_validation_cohort": {
+        "Number_of_patients": 744,
+        "Number_of_angiograms": 776,
+        "Mean_age": "68.6±13.3",
+        "Female_percentage": 33,
+        "LVEF_under_40_percentage": 16.8,
+        "LVEF_over_40_percentage": 76.3
+      }
+    },
+    "Uses_and_directions": {
+      "Benefits": "Estimation of LVEF from standard LCA angiogram videos without additional",
+      "Target_population_and_use_case": "Adult patients aged ≥18 years who received a coronary angiogram of the left coronmary angiography.",
+      "General_use": "CathEF is an automated estimation of LVEF from standard coronary angiogram videos. It can be used to provide real-time, dynamic assessment of cardiac function during coronary angiography without additional equipment or procedures. It is especially useful for patients with acute coronary syndrome or those at increased risk of contrast-induced nephropathy.",
+      "Appropriate_decision_and_support": "N/A",
+      "Before_using_this_model": "Make sure you have at least three views available to input into the model (RAO Caudal, AP Cranial and LAO Cranial are the best)",
+      "Safety_and_efficacy_evaluation": "N/A"
+    },
+    "Warnings_and_limitations": {
+      "Risks": "CathEF's performance may be less accurate at extreme LVEF values.",
+      "Inappropriate_settings": "The model has not been tested on patients with atrial fibrillation, congenital heart disease, or prior cardiac surgery.",
+      "Clinical_rationale": "CathEF has not been validated for use with right coronary angiograms.",
+      "Inappropriate_decision_support": "CathEF performance may be affected by administration of contrast during angiography, which can temporarily depress LVEF.",
+      "Generalizability": "The model's generalizability to other healthcare institutions and populations requires further validation.",
+      "Discontinue_use_if": "N/A"
+    },
+    "Other_results": {
+      "GradCAM": "GradCAM consistently highlighted epicardial LCA vessel segments and septal perforators predominantly during systole as the strongest predictors of low-LVEF."
+    },
+    "Other_information": {
+      "Outcome_definition": "LVEF",
+      "Related_model": "CathAI",
+      "Github": "N/A",
+      "Scientific_publication": "N/A",
+      "Clinical_trial": "LVEF Prediction During ACS Using AI Algorithm Applied on Coronary Angiogram Videos (CathEF) - NCT05317286",
+      "Clinical_trial_URL": "https://www.clinicaltrials.gov/ct2/show/NCT05317286",
+      "Clinical_impact_evaluation": "N/A",
+      "Contact_info": "robert.avram.md@gmail.com"
+    },
+    "Changelogs": {
+      "1.0.0": "2023-03-01: Initial release"
+    }
+  }
+}
