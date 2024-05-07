@@ -1,0 +1,12 @@
+version: "3.8"
+
+services:
+  nginx:
+    build: .
+    restart: unless-stopped
+    ports:
+      - 80:80
+    depends_on:
+      - orthanc-container
+      - orthanc-plugin
+      - api-pacs
