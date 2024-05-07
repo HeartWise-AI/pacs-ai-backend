@@ -22,7 +22,3 @@ test:
 .PHONY:	run
 run:	build
 	./bin/api-pacs
-
-.PHONY: up-local
-up-local:
-	docker-compose up --build
