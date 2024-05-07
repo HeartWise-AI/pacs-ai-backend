@@ -38,6 +38,6 @@ You can also opt to launch selected services. Below are the supported commands:
 
 - Orthanc container is accessible via http://localhost/orthanc/ui/app/
 
-- Orthanc API is accessible via http://localhost/orthanc (base url)
+- Orthanc OpenAPI Docs is accessible via http://localhost/docs/orthanc
 
 Maintainers: Karl from Nuxify, Andrea from Nuxify
