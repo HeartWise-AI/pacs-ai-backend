@@ -14,9 +14,7 @@ Setup firebase admin configs
 
 To bootstrap everything, run:
 
-- `make` <---- build and run the Go executable locally
-
-- `make up-local` <---- spins a container via Docker Compose
+- `make`
 
 The command above will install, build, and run the binary
 
@@ -38,11 +36,3 @@ For manual build:
 
 - make build
 - NOTE: the output for this is in bin/
-
-## Docker Build
-
-To run the container in local environment:
-
-- make up-local
-
-Maintainers: Karl from Nuxify, Andrea from Nuxify
