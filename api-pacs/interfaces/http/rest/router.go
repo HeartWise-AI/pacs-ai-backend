@@ -78,6 +78,10 @@ func (router *router) InitRouter() *chi.Mux {
 		workDir, _ := os.Getwd()
 		docsDir := http.Dir(filepath.Join(workDir, "docs"))
 		FileServer(r, "/docs", docsDir)
+
+		// orthanc openapi
+		orthancDocsDir := http.Dir(filepath.Join(workDir, "docs", "orthanc"))
+		FileServer(r, "/docs/orthanc", orthancDocsDir)
 	})
 
 	// API routes
