@@ -1,0 +1,7 @@
+version: "3.8"
+
+include:
+  - orthanc/docker-compose.yml
+  - redis/docker-compose.yml
+  - api-pacs/docker-compose.yml
+  - nginx/docker-compose.yml

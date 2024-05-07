@@ -1,0 +1,41 @@
+version: "3.8"
+
+services:
+  orthanc:
+    image: orthancteam/orthanc
+    restart: unless-stopped
+    ports:
+      - 8053:8042
+    volumes:
+      - orthanc-storage:/var/lib/orthanc/db/
+    environment:
+      ORTHANC__NAME: "PACS Orthanc"
+      DICOM_WEB_PLUGIN_ENABLED: "true"
+      ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
+      ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__ENABLE_OPEN_IN_OHIF_VIEWER_3: "true"
+      ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__OHIF_VIEWER_3_PUBLIC_ROOT: "http://localhost/orthanc/ohif/"
+      STONE_WEB_VIEWER_PLUGIN_ENABLED: "true"
+      OHIF_PLUGIN_ENABLED: "true"
+      ORTHANC__OHIF: |
+        {
+          "RouterBasename": "/orthanc/ohif/",
+          "DataSource" : "dicom-web"
+        }
+      ORTHANC__AUTHENTICATION_ENABLED: "false"
+      ORTHANC__POSTGRESQL: |
+        {
+          "Host": "orthanc-index"
+        }
+      VERBOSE_STARTUP: "true"
+
+  orthanc-index:
+    image: postgres:15
+    restart: unless-stopped
+    ports: ["5432:5432"]
+    volumes: ["orthanc-index:/var/lib/postgresql/data"]
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+
+volumes:
+  orthanc-storage:
+  orthanc-index:
