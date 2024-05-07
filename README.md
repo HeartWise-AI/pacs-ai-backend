@@ -32,4 +32,12 @@ You can also opt to launch selected services. Below are the supported commands:
 
 - `make up-redis` to run only the redis container
 
+## Demo
+
+- api-pacs (Go API) is accessible via http://localhost/docs
+
+- Orthanc container is accessible via http://localhost/orthanc/ui/app/
+
+- Orthanc API is accessible via http://localhost/orthanc (base url)
+
 Maintainers: Karl from Nuxify, Andrea from Nuxify
