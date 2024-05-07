@@ -5,11 +5,11 @@ up:
 	docker compose up -d --build
 
 .PHONY: down
-up:
+down:
 	docker compose down
 
 .PHONY: up-local
-up:
+up-local:
 	docker compose up --build
 
 .PHONY: up-api-pacs
