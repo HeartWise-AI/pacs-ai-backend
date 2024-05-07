@@ -1,5 +1,5 @@
 version: "3.8"
 
 include:
-  - redis/docker-compose.yaml
-  - api-pacs/docker-compose.yaml
+  - redis/docker-compose.yml
+  - api-pacs/docker-compose.yml
