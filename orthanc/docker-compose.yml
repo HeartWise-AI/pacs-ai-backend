@@ -36,6 +36,17 @@ services:
     environment:
       POSTGRES_HOST_AUTH_METHOD: "trust"
 
+  orthanc-openapi:
+    image: cupcakearmy/static
+    container_name: orthanc-openapi
+    restart: unless-stopped
+    volumes:
+      - ./openapi:/srv:ro
+    ports:
+      - 8060:80
+    depends_on:
+      - orthanc
+
 volumes:
   orthanc-storage:
   orthanc-index:
