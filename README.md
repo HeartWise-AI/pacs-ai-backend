@@ -5,7 +5,7 @@ Repository for PACS AI backend and configurations setup.
 ## Local Development
 
 > Important! <br><br>
-> docker compose version should be `v2.24.7` <br>
+> docker compose version should be `>= v2.24.7` <br>
 > Before starting, run `docker compose version` and check the version.
 
 1. Setup `api-pacs/.env`
