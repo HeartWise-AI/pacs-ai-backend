@@ -4,9 +4,8 @@ services:
   redis:
     image: redis:latest
     restart: always
-    environment:
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    command: ["redis-server", "/etc/redis/redis.conf"]
+    volumes:
+      - ./redis.conf:/etc/redis/redis.conf
     ports:
-      - ${REDIS_PORT}:${REDIS_PORT}
+      - 6379:6379
