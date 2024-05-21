@@ -20,8 +20,13 @@ import (
 	"api-pacs/infrastructures/database/redis"
 	"api-pacs/infrastructures/providers/sdk/aws"
 	awsTypes "api-pacs/infrastructures/providers/sdk/aws/types"
+	"api-pacs/infrastructures/providers/sdk/elasticsearch"
+	elasticsearchTypes "api-pacs/infrastructures/providers/sdk/elasticsearch/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	iamMiddleware "api-pacs/interfaces/http/rest/middlewares/iam"
+	elasticsearchRepository "api-pacs/module/elasticsearch/infrastructure/repository"
+	elasticsearchService "api-pacs/module/elasticsearch/infrastructure/service"
+	elasticsearchREST "api-pacs/module/elasticsearch/interfaces/http/rest"
 	iamRepository "api-pacs/module/iam/infrastructure/repository"
 	iamService "api-pacs/module/iam/infrastructure/service"
 	iamREST "api-pacs/module/iam/interfaces/http/rest"
@@ -38,6 +43,8 @@ type ServiceContainerInterface interface {
 	// REST Middlewares
 	RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware
 	// REST Controllers
+	RegisterElasticsearchRESTCommandController() elasticsearchREST.ElasticsearchCommandController
+	RegisterElasticsearchRESTQueryController() elasticsearchREST.ElasticsearchQueryController
 	RegisterIAMRESTCommandController() iamREST.IAMCommandController
 	RegisterTenantRESTCommandController() tenantREST.TenantCommandController
 	RegisterTenantRESTQueryController() tenantREST.TenantQueryController
@@ -54,6 +61,7 @@ var (
 	redisIAMDBHandler *redis.RedisDBHandler
 	firebaseAdminSDK  *firebaseadmin.FirebaseAdminSDK
 	awsSDK            *aws.AWSSDK
+	elasticsearchSDK  *elasticsearch.ElasticsearchSDK
 )
 
 // ================================= REST ===================================
@@ -68,6 +76,29 @@ func (k *kernel) RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware {
 }
 
 // Controllers
+
+// RegisterElasticsearchRESTCommandController performs dependency injection to the RegisterElasticsearchRESTCommandController
+func (k *kernel) RegisterElasticsearchRESTCommandController() elasticsearchREST.ElasticsearchCommandController {
+	service := k.elasticsearchCommandServiceContainer()
+
+	controller := elasticsearchREST.ElasticsearchCommandController{
+		ElasticsearchCommandServiceInterface: service,
+	}
+
+	return controller
+}
+
+// RegisterElasticsearchRESTQueryController performs dependency injection to the RegisterElasticsearchRESTQueryController
+func (k *kernel) RegisterElasticsearchRESTQueryController() elasticsearchREST.ElasticsearchQueryController {
+	service := k.elasticsearchQueryServiceContainer()
+
+	controller := elasticsearchREST.ElasticsearchQueryController{
+		ElasticsearchQueryServiceInterface: service,
+	}
+
+	return controller
+}
+
 // RegisterIAMRESTCommandController performs dependency injection to the RegisterIAMRESTCommandController
 func (k *kernel) RegisterIAMRESTCommandController() iamREST.IAMCommandController {
 	service := k.iamCommandServiceContainer()
@@ -124,6 +155,30 @@ func (k *kernel) RegisterUserRESTQueryController() userREST.UserQueryController 
 }
 
 // ==========================================================================
+
+func (k *kernel) elasticsearchCommandServiceContainer() *elasticsearchService.ElasticsearchCommandService {
+	repository := &elasticsearchRepository.ElasticsearchCommandRepository{}
+
+	service := &elasticsearchService.ElasticsearchCommandService{
+		ElasticsearchCommandRepositoryInterface: &elasticsearchRepository.ElasticsearchCommandRepositoryCircuitBreaker{
+			ElasticsearchCommandRepositoryInterface: repository,
+		},
+	}
+
+	return service
+}
+
+func (k *kernel) elasticsearchQueryServiceContainer() *elasticsearchService.ElasticsearchQueryService {
+	repository := &elasticsearchRepository.ElasticsearchQueryRepository{}
+
+	service := &elasticsearchService.ElasticsearchQueryService{
+		ElasticsearchQueryRepositoryInterface: &elasticsearchRepository.ElasticsearchQueryRepositoryCircuitBreaker{
+			ElasticsearchQueryRepositoryInterface: repository,
+		},
+	}
+
+	return service
+}
 
 func (k *kernel) iamCommandServiceContainer() *iamService.IAMCommandService {
 	repository := &iamRepository.IAMCommandRepository{
@@ -221,6 +276,13 @@ func registerHandlers() {
 	_, err = redisIAMDBHandler.Connect(fmt.Sprintf("%s:%s", os.Getenv("REDIS_HOST"), os.Getenv("REDIS_PORT")), os.Getenv("REDIS_PASSWORD"), redisIAMDB)
 	if err != nil {
 		log.Fatalf("[SERVER] cannot connect to account redis IAM server %v", err)
+	}
+
+	// init elasticsearch sdk
+	elasticsearchSDK, err = elasticsearch.NewTypedClient(elasticsearchTypes.Config{
+		ElasticsearchURL: os.Getenv("ELASTICSEARCH_URL")})
+	if err != nil {
+		log.Fatalf("[SERVER] cannot create elasticsearch client: %v", err)
 	}
 
 	// init firebase admin sdk

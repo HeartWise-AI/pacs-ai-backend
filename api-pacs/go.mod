@@ -7,6 +7,7 @@ require (
 	firebase.google.com/go/v4 v4.14.0
 	github.com/afex/hystrix-go v0.0.0-20180502004556-fa1af6a1f4f5
 	github.com/aws/aws-sdk-go v1.51.29
+	github.com/elastic/go-elasticsearch/v8 v8.13.1
 	github.com/go-chi/chi v1.5.4
 	github.com/go-chi/cors v1.2.1
 	github.com/go-playground/validator/v10 v10.16.0
@@ -16,6 +17,8 @@ require (
 	golang.org/x/sync v0.6.0
 	google.golang.org/api v0.170.0
 )
+
+require github.com/elastic/elastic-transport-go/v8 v8.5.0 // indirect
 
 require (
 	cloud.google.com/go v0.112.1 // indirect
