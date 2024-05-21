@@ -32,3 +32,8 @@ up-orthanc:
 up-redis:
 	cd redis
 	docker compose up --build
+
+.PHONY: up-elasticsearch
+up-redis:
+	cd elasticsearch
+	docker compose up --build

@@ -9,3 +9,4 @@ services:
       - ${API_URL_REST_PORT}:${API_URL_REST_PORT}
     depends_on:
       - redis
+      - elasticsearch

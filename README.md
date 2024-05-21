@@ -30,6 +30,8 @@ You can also opt to launch selected services. Below are the supported commands:
 
 - `make up-redis` to run only the redis container
 
+- `make up-elasticsearch` to run only the elasticsearch containers
+
 ## Demo
 
 - api-pacs (Go API) is accessible via http://localhost/docs
