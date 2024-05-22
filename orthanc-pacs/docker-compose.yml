@@ -25,8 +25,7 @@ services:
       ORTHANC__AUTHENTICATION_ENABLED: "false"
       ORTHANC__POSTGRESQL: |
         {
-          "Host": "orthanc-index-hospital-1",
-          "Port": 5433
+          "Host": "orthanc-index-hospital-1"
         }
       VERBOSE_STARTUP: "true"
     depends_on:
@@ -56,8 +55,7 @@ services:
       ORTHANC__AUTHENTICATION_ENABLED: "false"
       ORTHANC__POSTGRESQL: |
         {
-          "Host": "orthanc-index-hospital-2",
-          "Port": 5434
+          "Host": "orthanc-index-hospital-2"
         }
       VERBOSE_STARTUP: "true"
     depends_on:
@@ -80,7 +78,7 @@ services:
     volumes: ["orthanc-index:/var/lib/postgresql/data"]
     environment:
       POSTGRES_HOST_AUTH_METHOD: "trust"
-      
+
 volumes:
   orthanc-storage-hospital-1:
   orthanc-index-hospital-1:
