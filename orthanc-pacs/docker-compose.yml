@@ -11,6 +11,11 @@ services:
       - orthanc-storage-hospital-1:/var/lib/orthanc/db/
     environment:
       ORTHANC__NAME: "Hospital 1 Orthanc"
+      ORTHANC__DICOM_AET: "HOSPITAL_1"
+      ORTHANC__DICOM_MODALITIES: |
+        {
+          "pacs-ai": ["PACS_AI", "orthanc", 4242]
+        }
       DICOM_WEB_PLUGIN_ENABLED: "true"
       ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
       ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__ENABLE_OPEN_IN_OHIF_VIEWER_3: "true"
@@ -41,6 +46,11 @@ services:
       - orthanc-storage-hospital-2:/var/lib/orthanc/db/
     environment:
       ORTHANC__NAME: "Hospital 2 Orthanc"
+      ORTHANC__DICOM_AET: "HOSPITAL_2"
+      ORTHANC__DICOM_MODALITIES: |
+        {
+          "pacs-ai": ["PACS_AI", "orthanc", 4242]
+        }
       DICOM_WEB_PLUGIN_ENABLED: "true"
       ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
       ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__ENABLE_OPEN_IN_OHIF_VIEWER_3: "true"

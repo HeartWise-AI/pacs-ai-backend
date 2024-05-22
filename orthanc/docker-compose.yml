@@ -11,6 +11,12 @@ services:
       - orthanc-storage:/var/lib/orthanc/db/
     environment:
       ORTHANC__NAME: "PACS Orthanc"
+      ORTHANC__DICOM_AET: "PACS_AI"
+      ORTHANC__DICOM_MODALITIES: |
+        {
+          "hospital-1": ["HOSPITAL_1", "orthanc-hospital-1", 4242],
+          "hospital-2": ["HOSPITAL_2", "orthanc-hospital-2", 4242]
+        }
       DICOM_WEB_PLUGIN_ENABLED: "true"
       ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
       ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__ENABLE_OPEN_IN_OHIF_VIEWER_3: "true"
