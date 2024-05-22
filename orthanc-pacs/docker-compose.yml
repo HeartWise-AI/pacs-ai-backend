@@ -12,14 +12,14 @@ services:
     environment:
       ORTHANC__NAME: "Hospital 1 Orthanc"
       DICOM_WEB_PLUGIN_ENABLED: "true"
-      ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc-hospital-1/dicom-web/"
+      ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
       ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__ENABLE_OPEN_IN_OHIF_VIEWER_3: "true"
-      ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__OHIF_VIEWER_3_PUBLIC_ROOT: "http://localhost/orthanc-hospital-1/ohif/"
+      ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__OHIF_VIEWER_3_PUBLIC_ROOT: "http://localhost/orthanc/ohif/"
       STONE_WEB_VIEWER_PLUGIN_ENABLED: "true"
       OHIF_PLUGIN_ENABLED: "true"
       ORTHANC__OHIF: |
         {
-          "RouterBasename": "/orthanc-hospital-1/ohif/",
+          "RouterBasename": "/orthanc/ohif/",
           "DataSource" : "dicom-web"
         }
       ORTHANC__AUTHENTICATION_ENABLED: "false"
@@ -42,14 +42,14 @@ services:
     environment:
       ORTHANC__NAME: "Hospital 2 Orthanc"
       DICOM_WEB_PLUGIN_ENABLED: "true"
-      ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc-hospital-2/dicom-web/"
+      ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
       ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__ENABLE_OPEN_IN_OHIF_VIEWER_3: "true"
-      ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__OHIF_VIEWER_3_PUBLIC_ROOT: "http://localhost/orthanc-hospital-2/ohif/"
+      ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__OHIF_VIEWER_3_PUBLIC_ROOT: "http://localhost/orthanc/ohif/"
       STONE_WEB_VIEWER_PLUGIN_ENABLED: "true"
       OHIF_PLUGIN_ENABLED: "true"
       ORTHANC__OHIF: |
         {
-          "RouterBasename": "/orthanc-hospital-2/ohif/",
+          "RouterBasename": "/orthanc/ohif/",
           "DataSource" : "dicom-web"
         }
       ORTHANC__AUTHENTICATION_ENABLED: "false"
@@ -78,7 +78,7 @@ services:
     volumes: ["orthanc-index:/var/lib/postgresql/data"]
     environment:
       POSTGRES_HOST_AUTH_METHOD: "trust"
-
+      
 volumes:
   orthanc-storage-hospital-1:
   orthanc-index-hospital-1:
