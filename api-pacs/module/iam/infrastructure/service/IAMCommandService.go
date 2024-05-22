@@ -118,6 +118,8 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 		return "", err
 	}
 
+	// TODO: log to ecs
+
 	return sessionToken, nil
 }
 

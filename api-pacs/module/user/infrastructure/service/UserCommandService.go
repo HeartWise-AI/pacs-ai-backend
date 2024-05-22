@@ -38,6 +38,8 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 		return "", err
 	}
 
+	// TODO: log to ecs
+
 	go func() {
 		//  redirect link
 		redirectLink := fmt.Sprintf("%s/%s/login", os.Getenv("APP_URL"), data.TenantID)
@@ -72,6 +74,8 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantI
 		return err
 	}
 
+	// TODO: log to ecs
+
 	return nil
 }
 
@@ -89,6 +93,8 @@ func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data ty
 		log.Println(err)
 		return err
 	}
+
+	// TODO: log to ecs
 
 	return nil
 }

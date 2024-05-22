@@ -17,11 +17,11 @@ import (
 	"strconv"
 	"sync"
 
+	"api-pacs/infrastructures/database/elasticsearch"
+	elasticsearchTypes "api-pacs/infrastructures/database/elasticsearch/types"
 	"api-pacs/infrastructures/database/redis"
 	"api-pacs/infrastructures/providers/sdk/aws"
 	awsTypes "api-pacs/infrastructures/providers/sdk/aws/types"
-	"api-pacs/infrastructures/providers/sdk/elasticsearch"
-	elasticsearchTypes "api-pacs/infrastructures/providers/sdk/elasticsearch/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	iamMiddleware "api-pacs/interfaces/http/rest/middlewares/iam"
 	elasticsearchRepository "api-pacs/module/elasticsearch/infrastructure/repository"
@@ -55,13 +55,13 @@ type ServiceContainerInterface interface {
 type kernel struct{}
 
 var (
-	m                 sync.Mutex
-	k                 *kernel
-	containerOnce     sync.Once
-	redisIAMDBHandler *redis.RedisDBHandler
-	firebaseAdminSDK  *firebaseadmin.FirebaseAdminSDK
-	awsSDK            *aws.AWSSDK
-	elasticsearchSDK  *elasticsearch.ElasticsearchSDK
+	m                      sync.Mutex
+	k                      *kernel
+	containerOnce          sync.Once
+	elasticsearchDBHandler *elasticsearch.ElasticsearchDBHandler
+	redisIAMDBHandler      *redis.RedisDBHandler
+	firebaseAdminSDK       *firebaseadmin.FirebaseAdminSDK
+	awsSDK                 *aws.AWSSDK
 )
 
 // ================================= REST ===================================
@@ -278,11 +278,11 @@ func registerHandlers() {
 		log.Fatalf("[SERVER] cannot connect to account redis IAM server %v", err)
 	}
 
-	// init elasticsearch sdk
-	elasticsearchSDK, err = elasticsearch.NewTypedClient(elasticsearchTypes.Config{
+	// create new elasticsearch connection
+	elasticsearchDBHandler, err = elasticsearch.NewTypedClient(elasticsearchTypes.Config{
 		ElasticsearchURL: os.Getenv("ELASTICSEARCH_URL")})
 	if err != nil {
-		log.Fatalf("[SERVER] cannot create elasticsearch client: %v", err)
+		log.Fatalf("[SERVER] cannot create elasticsearch server: %v", err)
 	}
 
 	// init firebase admin sdk
