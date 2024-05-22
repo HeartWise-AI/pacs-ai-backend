@@ -2,9 +2,12 @@ package elasticsearch
 
 import (
 	"context"
+	"log"
 
 	elasticsearch "github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/index"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
+	searchTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
 
 	"api-pacs/infrastructures/database/elasticsearch/types"
 )
@@ -38,18 +41,19 @@ func (c *ElasticsearchDBHandler) IndexDocument(ctx context.Context, index string
 	return res, nil
 }
 
-// // SearchDocument search a document
-// func (c *ElasticsearchDBHandler) SearchDocument(ctx context.Context, index string, document interface{}) (*index.Response, error) {
-// 	res, err := c.TypedClient.Search().Index(index).Request(&search.Request{
-// 		Query: &types.Query{
-// 			Match: map[string]types.MatchQuery{
-// 				"name": {Query: "Foo"},
-// 			},
-// 		},
-// 	}).Do(ctx)
-// 	if err != nil {
-// 		return nil, err
-// 	}
+// SearchDocument search a document
+func (c *ElasticsearchDBHandler) SearchDocument(ctx context.Context, index string) (*search.Response, error) {
+	res, err := c.TypedClient.Search().Index(index).Request(&search.Request{
+		Query: &searchTypes.Query{
+			Match: map[string]searchTypes.MatchQuery{
+				"name": {Query: "Andrea"},
+			},
+		},
+	}).Do(ctx)
+	if err != nil {
+		return nil, err
+	}
+	log.Print(res)
 
-// 	return res, nil
-// }
+	return res, nil
+}
