@@ -25,7 +25,7 @@ services:
       ORTHANC__POSTGRESQL: |
         {
           "Host": "orthanc-index-hospital-1",
-          "Port": "5433"
+          "Port": 5433
         }
       VERBOSE_STARTUP: "true"
 
@@ -53,7 +53,7 @@ services:
       ORTHANC__POSTGRESQL: |
         {
           "Host": "orthanc-index-hospital-2",
-          "Port": "5434"
+          "Port": 5434
         }
       VERBOSE_STARTUP: "true"
 
