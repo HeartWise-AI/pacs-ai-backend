@@ -1,0 +1,80 @@
+version: "3.8"
+
+services:
+  orthanc-hospital-1:
+    image: orthancteam/orthanc
+    restart: unless-stopped
+    ports:
+      - 8063:8042
+    volumes:
+      - orthanc-storage-hospital-1:/var/lib/orthanc/db/
+    environment:
+      ORTHANC__NAME: "Hospital 1 Orthanc"
+      DICOM_WEB_PLUGIN_ENABLED: "true"
+      ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
+      ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__ENABLE_OPEN_IN_OHIF_VIEWER_3: "true"
+      ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__OHIF_VIEWER_3_PUBLIC_ROOT: "http://localhost/orthanc/ohif/"
+      STONE_WEB_VIEWER_PLUGIN_ENABLED: "true"
+      OHIF_PLUGIN_ENABLED: "true"
+      ORTHANC__OHIF: |
+        {
+          "RouterBasename": "/orthanc/ohif/",
+          "DataSource" : "dicom-web"
+        }
+      ORTHANC__AUTHENTICATION_ENABLED: "false"
+      ORTHANC__POSTGRESQL: |
+        {
+          "Host": "orthanc-index-hospital-1",
+          "Port": "5433"
+        }
+      VERBOSE_STARTUP: "true"
+
+  orthanc-hospital-2:
+    image: orthancteam/orthanc
+    restart: unless-stopped
+    ports:
+      - 8073:8042
+    volumes:
+      - orthanc-storage-hospital-2:/var/lib/orthanc/db/
+    environment:
+      ORTHANC__NAME: "Hospital 2 Orthanc"
+      DICOM_WEB_PLUGIN_ENABLED: "true"
+      ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
+      ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__ENABLE_OPEN_IN_OHIF_VIEWER_3: "true"
+      ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__OHIF_VIEWER_3_PUBLIC_ROOT: "http://localhost/orthanc/ohif/"
+      STONE_WEB_VIEWER_PLUGIN_ENABLED: "true"
+      OHIF_PLUGIN_ENABLED: "true"
+      ORTHANC__OHIF: |
+        {
+          "RouterBasename": "/orthanc/ohif/",
+          "DataSource" : "dicom-web"
+        }
+      ORTHANC__AUTHENTICATION_ENABLED: "false"
+      ORTHANC__POSTGRESQL: |
+        {
+          "Host": "orthanc-index-hospital-2",
+          "Port": "5434"
+        }
+      VERBOSE_STARTUP: "true"
+
+  orthanc-index-hospital-1:
+    image: postgres:15
+    restart: unless-stopped
+    ports: ["5433:5432"]
+    volumes: ["orthanc-index:/var/lib/postgresql/data"]
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+
+  orthanc-index-hospital-2:
+    image: postgres:15
+    restart: unless-stopped
+    ports: ["5434:5432"]
+    volumes: ["orthanc-index:/var/lib/postgresql/data"]
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+      
+volumes:
+  orthanc-storage-hospital-1:
+  orthanc-index-hospital-1:
+  orthanc-storage-hospital-2:
+  orthanc-index-hospital-2:

@@ -23,6 +23,11 @@ up-orthanc:
 	cd orthanc
 	docker compose up --build
 
+.PHONY: up-orthanc-pacs
+up-orthanc:
+	cd orthanc-pacs
+	docker compose up --build
+
 .PHONY: up-orthanc
 up-orthanc:
 	cd orthanc
