@@ -3,6 +3,7 @@ version: "3.8"
 services:
   orthanc-hospital-1:
     image: orthancteam/orthanc
+    container_name: orthanc-hospital-1
     restart: unless-stopped
     ports:
       - 8063:8042
@@ -28,9 +29,12 @@ services:
           "Port": 5433
         }
       VERBOSE_STARTUP: "true"
+    depends_on:
+      - orthanc-index-hospital-1
 
   orthanc-hospital-2:
     image: orthancteam/orthanc
+    container_name: orthanc-hospital-2
     restart: unless-stopped
     ports:
       - 8073:8042
@@ -56,9 +60,12 @@ services:
           "Port": 5434
         }
       VERBOSE_STARTUP: "true"
+    depends_on:
+      - orthanc-index-hospital-2
 
   orthanc-index-hospital-1:
     image: postgres:15
+    container_name: orthanc-index-hospital-1
     restart: unless-stopped
     ports: ["5433:5432"]
     volumes: ["orthanc-index:/var/lib/postgresql/data"]
@@ -67,6 +74,7 @@ services:
 
   orthanc-index-hospital-2:
     image: postgres:15
+    container_name: orthanc-index-hospital-2
     restart: unless-stopped
     ports: ["5434:5432"]
     volumes: ["orthanc-index:/var/lib/postgresql/data"]

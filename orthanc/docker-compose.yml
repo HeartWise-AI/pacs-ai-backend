@@ -3,6 +3,7 @@ version: "3.8"
 services:
   orthanc:
     image: orthancteam/orthanc
+    container_name: orthanc
     restart: unless-stopped
     ports:
       - 8053:8042
@@ -27,15 +28,18 @@ services:
           "Host": "orthanc-index"
         }
       VERBOSE_STARTUP: "true"
+    depends_on:
+      - orthanc-index
 
   orthanc-index:
     image: postgres:15
+    container_name: orthanc-index
     restart: unless-stopped
     ports: ["5432:5432"]
     volumes: ["orthanc-index:/var/lib/postgresql/data"]
     environment:
       POSTGRES_HOST_AUTH_METHOD: "trust"
-      
+
 volumes:
   orthanc-storage:
   orthanc-index:
