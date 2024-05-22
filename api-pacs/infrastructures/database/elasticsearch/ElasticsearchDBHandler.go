@@ -38,4 +38,18 @@ func (c *ElasticsearchDBHandler) IndexDocument(ctx context.Context, index string
 	return res, nil
 }
 
-// TODO: SearchDocument
+// // SearchDocument search a document
+// func (c *ElasticsearchDBHandler) SearchDocument(ctx context.Context, index string, document interface{}) (*index.Response, error) {
+// 	res, err := c.TypedClient.Search().Index(index).Request(&search.Request{
+// 		Query: &types.Query{
+// 			Match: map[string]types.MatchQuery{
+// 				"name": {Query: "Foo"},
+// 			},
+// 		},
+// 	}).Do(ctx)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	return res, nil
+// }

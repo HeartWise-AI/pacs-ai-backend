@@ -157,7 +157,9 @@ func (k *kernel) RegisterUserRESTQueryController() userREST.UserQueryController 
 // ==========================================================================
 
 func (k *kernel) elasticsearchCommandServiceContainer() *elasticsearchService.ElasticsearchCommandService {
-	repository := &elasticsearchRepository.ElasticsearchCommandRepository{}
+	repository := &elasticsearchRepository.ElasticsearchCommandRepository{
+		ElasticsearchDBHandlerInterface: elasticsearchDBHandler,
+	}
 
 	service := &elasticsearchService.ElasticsearchCommandService{
 		ElasticsearchCommandRepositoryInterface: &elasticsearchRepository.ElasticsearchCommandRepositoryCircuitBreaker{
@@ -169,7 +171,9 @@ func (k *kernel) elasticsearchCommandServiceContainer() *elasticsearchService.El
 }
 
 func (k *kernel) elasticsearchQueryServiceContainer() *elasticsearchService.ElasticsearchQueryService {
-	repository := &elasticsearchRepository.ElasticsearchQueryRepository{}
+	repository := &elasticsearchRepository.ElasticsearchQueryRepository{
+		ElasticsearchDBHandlerInterface: elasticsearchDBHandler,
+	}
 
 	service := &elasticsearchService.ElasticsearchQueryService{
 		ElasticsearchQueryRepositoryInterface: &elasticsearchRepository.ElasticsearchQueryRepositoryCircuitBreaker{
@@ -189,9 +193,10 @@ func (k *kernel) iamCommandServiceContainer() *iamService.IAMCommandService {
 		IAMCommandRepositoryInterface: &iamRepository.IAMCommandRepositoryCircuitBreaker{
 			IAMCommandRepositoryInterface: repository,
 		},
-		UserQueryServiceInterface: k.userQueryServiceContainer(),
-		FirebaseAdminSDK:          firebaseAdminSDK,
-		AWSSDKInterface:           awsSDK,
+		UserQueryServiceInterface:            k.userQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		FirebaseAdminSDK:                     firebaseAdminSDK,
+		AWSSDKInterface:                      awsSDK,
 	}
 
 	return service
@@ -246,7 +251,9 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 		UserCommandRepositoryInterface: &userRepository.UserCommandRepositoryCircuitBreaker{
 			UserCommandRepositoryInterface: repository,
 		},
-		AWSSDKInterface: awsSDK,
+		UserQueryServiceInterface:            k.userQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		AWSSDKInterface:                      awsSDK,
 	}
 
 	return service

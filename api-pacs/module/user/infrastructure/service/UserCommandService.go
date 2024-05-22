@@ -9,6 +9,10 @@ import (
 	"github.com/segmentio/ksuid"
 
 	awsSDKTypes "api-pacs/infrastructures/providers/sdk/aws/types"
+	elasticsearchApplication "api-pacs/module/elasticsearch/application"
+	"api-pacs/module/elasticsearch/domain/entity"
+	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	userApplication "api-pacs/module/user/application"
 	"api-pacs/module/user/domain/repository"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
 	"api-pacs/module/user/infrastructure/service/types"
@@ -17,6 +21,8 @@ import (
 // UserCommandService handles the User command service logic
 type UserCommandService struct {
 	repository.UserCommandRepositoryInterface
+	userApplication.UserQueryServiceInterface
+	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	awsSDKTypes.AWSSDKInterface
 }
 
@@ -38,7 +44,27 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 		return "", err
 	}
 
-	// TODO: log to ecs
+	uid := "BJGBhyBcvddIUfJAngwhQRIDbJl2"
+
+	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, uid)
+	if err != nil {
+		return "", err
+	}
+
+	err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(ctx, elasticsearchTypes.CreateAdminMemberLog{
+		TenantID:   data.TenantID,
+		TenantName: data.Name,
+		UserID:     user.ID,
+		Email:      data.Email,
+		Name:       data.Name,
+		Role:       data.Role,
+		LicenseNo:  data.LicenseNo,
+		Specialty:  data.Specialty,
+		Action:     entity.CreateAction,
+	})
+	if err != nil {
+		return "", err
+	}
 
 	go func() {
 		//  redirect link
@@ -74,7 +100,27 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantI
 		return err
 	}
 
-	// TODO: log to ecs
+	uid := "BJGBhyBcvddIUfJAngwhQRIDbJl2"
+
+	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, uid)
+	if err != nil {
+		return err
+	}
+
+	err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(ctx, elasticsearchTypes.CreateAdminMemberLog{
+		TenantID:   user.TenantID,
+		TenantName: user.Name,
+		UserID:     user.ID,
+		Email:      user.Email,
+		Name:       user.Name,
+		Role:       user.Role,
+		LicenseNo:  user.LicenseNo,
+		Specialty:  user.Specialty,
+		Action:     entity.DeleteAction,
+	})
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -94,7 +140,27 @@ func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data ty
 		return err
 	}
 
-	// TODO: log to ecs
+	uid := "BJGBhyBcvddIUfJAngwhQRIDbJl2"
+
+	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, uid)
+	if err != nil {
+		return err
+	}
+
+	err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(ctx, elasticsearchTypes.CreateAdminMemberLog{
+		TenantID:   data.TenantID,
+		TenantName: user.Name,
+		UserID:     data.ID,
+		Email:      user.Email,
+		Name:       data.Name,
+		Role:       data.Role,
+		LicenseNo:  data.LicenseNo,
+		Specialty:  data.Specialty,
+		Action:     entity.UpdateAction,
+	})
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

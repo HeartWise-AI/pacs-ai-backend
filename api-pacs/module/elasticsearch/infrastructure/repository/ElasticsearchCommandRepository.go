@@ -40,4 +40,25 @@ func (repository *ElasticsearchCommandRepository) InsertLoginLog(ctx context.Con
 	return res, nil
 }
 
-// TODO: InsertAdminMemberLog
+// InsertAdminMemberLog insert admin member log
+func (repository *ElasticsearchCommandRepository) InsertAdminMemberLog(ctx context.Context, data repositoryTypes.CreateAdminMemberLog) (*index.Response, error) {
+	adminMember := entity.AdminMember{
+		TenantID:   data.TenantID,
+		TenantName: data.TenantName,
+		UserID:     data.UserID,
+		Email:      data.Email,
+		Name:       data.Name,
+		Role:       data.Role,
+		LicenseNo:  data.LicenseNo,
+		Specialty:  data.Specialty,
+		Action:     data.Action,
+		Timestamp:  uint(time.Now().Unix()),
+	}
+
+	res, err := repository.ElasticsearchDBHandlerInterface.IndexDocument(ctx, adminMember.GetModelName(), adminMember)
+	if err != nil {
+		return nil, errors.New(apiError.DatabaseError)
+	}
+
+	return res, nil
+}

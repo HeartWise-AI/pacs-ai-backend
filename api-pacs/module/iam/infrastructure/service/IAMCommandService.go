@@ -11,6 +11,8 @@ import (
 	awsSDKTypes "api-pacs/infrastructures/providers/sdk/aws/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	apiError "api-pacs/internal/errors"
+	elasticsearchApplication "api-pacs/module/elasticsearch/application"
+	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	"api-pacs/module/iam/domain/entity"
 	"api-pacs/module/iam/domain/repository"
 	repositoryTypes "api-pacs/module/iam/infrastructure/repository/types"
@@ -21,6 +23,7 @@ import (
 type IAMCommandService struct {
 	repository.IAMCommandRepositoryInterface
 	userApplication.UserQueryServiceInterface
+	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
 	awsSDKTypes.AWSSDKInterface
 }
@@ -118,7 +121,19 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 		return "", err
 	}
 
-	// TODO: log to ecs
+	err = service.ElasticsearchCommandServiceInterface.CreateLoginLog(ctx, elasticsearchTypes.CreateLoginLog{
+		SessionID:  sessionToken,
+		TenantID:   tenantID,
+		TenantName: user.Name,
+		UserID:     user.ID,
+		Email:      user.Email,
+		Name:       user.Name,
+		Role:       user.Role,
+		Specialty:  user.Specialty,
+	})
+	if err != nil {
+		return "", err
+	}
 
 	return sessionToken, nil
 }
