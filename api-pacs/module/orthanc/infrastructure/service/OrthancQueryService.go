@@ -16,14 +16,14 @@ type OrthancQueryService struct {
 }
 
 // GetModalityStudies get modality studies
-func (service *OrthancQueryService) GetModalityStudies(ctx context.Context, tenantID string, data types.GetModalityStudies) ([]orthancAPITypes.QueryModalitiesAnswersResponse, error) {
+func (service *OrthancQueryService) GetModalityStudies(ctx context.Context, tenantID string, data types.GetModalityStudies) ([]orthancAPITypes.QueryModalitiesAnswersResponse, string, error) {
 	// get tenant info
 	tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	res, err := service.OrthancAPIInterface.GetModalityStudies(ctx, tenant.AET, orthancAPITypes.QueryModalitiesRequest{
+	res, queryID, err := service.OrthancAPIInterface.GetModalityStudies(ctx, tenant.AET, orthancAPITypes.QueryModalitiesRequest{
 		Level:     "Study",
 		LocalAET:  os.Getenv("ORTHANC_AET"),
 		Normalize: true,
@@ -44,11 +44,11 @@ func (service *OrthancQueryService) GetModalityStudies(ctx context.Context, tena
 			StudyInstanceUID:           data.StudyInstanceUID,
 			StudyTime:                  data.StudyTime,
 		},
-		Timeout: 300, // timeout in seconds
+		Timeout: 0,
 	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return res, nil
+	return res, queryID, nil
 }

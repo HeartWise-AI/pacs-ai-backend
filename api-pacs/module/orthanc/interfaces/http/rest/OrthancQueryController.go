@@ -37,7 +37,7 @@ func (controller *OrthancQueryController) GetModalityStudies(w http.ResponseWrit
 		return
 	}
 
-	res, err := controller.OrthancQueryServiceInterface.GetModalityStudies(context.TODO(), tenantID, serviceTypes.GetModalityStudies{
+	res, queryID, err := controller.OrthancQueryServiceInterface.GetModalityStudies(context.TODO(), tenantID, serviceTypes.GetModalityStudies{
 		AccessionNumber:            request.AccessionNumber,
 		InstitutionName:            request.InstitutionName,
 		ModalitiesInStudy:          request.ModalitiesInStudy,
@@ -90,10 +90,12 @@ func (controller *OrthancQueryController) GetModalityStudies(w http.ResponseWrit
 		return
 	}
 
-	var modalityStudies []types.GetModalityStudiesResponse
+	modalityStudies := types.GetModalityStudiesResponse{
+		QueryID: queryID,
+	}
 
 	for _, modalityStudy := range res {
-		modalityStudies = append(modalityStudies, types.GetModalityStudiesResponse{
+		modalityStudies.Studies = append(modalityStudies.Studies, types.Study{
 			AccessionNumber:            modalityStudy.AccessionNumber,
 			ModalitiesInStudy:          modalityStudy.ModalitiesInStudy,
 			NumberOfStudyRelatedSeries: modalityStudy.NumberOfStudyRelatedSeries,

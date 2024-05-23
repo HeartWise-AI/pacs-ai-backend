@@ -1,11 +1,43 @@
 package types
 
+const (
+	JobPending string = "Pending"
+	JobRunning string = "Running"
+	JobSuccess string = "Success"
+	JobFailure string = "Failure"
+	JobPaused  string = "Paused"
+	JobRetry   string = "Retry"
+)
+
+type RetrieveQueryModalityAnswerRequest struct {
+	Asynchronous bool   `json:"Asynchronous"`
+	Full         bool   `json:"Full"`
+	Permissive   bool   `json:"Permissive"`
+	Priority     uint   `json:"Priority"`
+	Simplify     bool   `json:"Simplify"`
+	Synchronous  bool   `json:"Synchronous"`
+	TargetAet    string `json:"TargetAet"`
+	Timeout      uint   `json:"Timeout"`
+}
+
 type QueryModalitiesRequest struct {
 	Level     string     `json:"Level"`
 	LocalAET  string     `json:"LocalAet"`
 	Normalize bool       `json:"Normalize"`
 	Query     QueryStudy `json:"Query"`
 	Timeout   uint       `json:"Timeout"`
+}
+
+type GetJobResponse struct {
+	ID       string `json:"ID"`
+	Priority uint   `json:"Priority"`
+	Progress uint   `json:"Progress"`
+	State    string `json:"State"`
+}
+
+type RetrieveQueryModalityAnswerResponse struct {
+	ID   string `json:"ID"`
+	Path string `json:"Path"`
 }
 
 type QueryModalitiesResponse struct {

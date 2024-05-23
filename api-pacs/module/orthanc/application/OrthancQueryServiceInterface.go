@@ -9,5 +9,5 @@ import (
 
 // OrthancQueryServiceInterface holds the implementable methods for the Orthanc query service
 type OrthancQueryServiceInterface interface {
-	GetModalityStudies(ctx context.Context, tenantID string, data types.GetModalityStudies) ([]orthancAPITypes.QueryModalitiesAnswersResponse, error)
+	GetModalityStudies(ctx context.Context, tenantID string, data types.GetModalityStudies) ([]orthancAPITypes.QueryModalitiesAnswersResponse, string, error)
 }

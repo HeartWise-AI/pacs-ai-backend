@@ -185,7 +185,10 @@ func (k *kernel) iamQueryServiceContainer() *iamService.IAMQueryService {
 }
 
 func (k *kernel) orthancCommandServiceContainer() *orthancService.OrthancCommandService {
-	service := &orthancService.OrthancCommandService{}
+	service := &orthancService.OrthancCommandService{
+		OrthancAPIInterface:         orthancAPI,
+		TenantQueryServiceInterface: k.tenantQueryServiceContainer(),
+	}
 
 	return service
 }

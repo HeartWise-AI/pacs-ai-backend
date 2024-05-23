@@ -164,6 +164,49 @@
         }
       }
     },
+    "/orthanc/retrieve/query/{queryID}/answer/{answerIndex}": {
+      "post": {
+        "tags": ["orthanc"],
+        "summary": "Retrieve Modality Study",
+        "description": "Retrieve modality study.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "queryID",
+            "in": "path",
+            "description": "Query ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "answerIndex",
+            "in": "path",
+            "description": "Answer Index",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/tenant": {
       "get": {
         "tags": ["tenant"],

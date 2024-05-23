@@ -28,6 +28,16 @@ type GetModalityStudiesRequest struct {
 }
 
 type GetModalityStudiesResponse struct {
+	QueryID string  `json:"queryId"`
+	Studies []Study `json:"studies"`
+}
+
+type RetrieveQueryModalityAnswerResponse struct {
+	ID   string `json:"id"`
+	Path string `json:"path"`
+}
+
+type Study struct {
 	AccessionNumber            string `json:"accessionNumber"`
 	ModalitiesInStudy          string `json:"modalitiesInStudy"`
 	NumberOfStudyRelatedSeries string `json:"numberOfStudyRelatedSeries"`
