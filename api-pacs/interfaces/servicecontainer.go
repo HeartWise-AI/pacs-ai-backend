@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	"api-pacs/infrastructures/database/redis"
+	"api-pacs/infrastructures/providers/api/orthanc"
 	"api-pacs/infrastructures/providers/sdk/aws"
 	awsTypes "api-pacs/infrastructures/providers/sdk/aws/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
@@ -25,6 +26,8 @@ import (
 	iamRepository "api-pacs/module/iam/infrastructure/repository"
 	iamService "api-pacs/module/iam/infrastructure/service"
 	iamREST "api-pacs/module/iam/interfaces/http/rest"
+	orthancService "api-pacs/module/orthanc/infrastructure/service"
+	orthancREST "api-pacs/module/orthanc/interfaces/http/rest"
 	tenantRepository "api-pacs/module/tenant/infrastructure/repository"
 	tenantService "api-pacs/module/tenant/infrastructure/service"
 	tenantREST "api-pacs/module/tenant/interfaces/http/rest"
@@ -39,6 +42,8 @@ type ServiceContainerInterface interface {
 	RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware
 	// REST Controllers
 	RegisterIAMRESTCommandController() iamREST.IAMCommandController
+	RegisterOrthancRESTCommandController() orthancREST.OrthancCommandController
+	RegisterOrthancRESTQueryController() orthancREST.OrthancQueryController
 	RegisterTenantRESTCommandController() tenantREST.TenantCommandController
 	RegisterTenantRESTQueryController() tenantREST.TenantQueryController
 	RegisterUserRESTCommandController() userREST.UserCommandController
@@ -54,6 +59,7 @@ var (
 	redisIAMDBHandler *redis.RedisDBHandler
 	firebaseAdminSDK  *firebaseadmin.FirebaseAdminSDK
 	awsSDK            *aws.AWSSDK
+	orthancAPI        *orthanc.OrthancAPI
 )
 
 // ================================= REST ===================================
@@ -74,6 +80,28 @@ func (k *kernel) RegisterIAMRESTCommandController() iamREST.IAMCommandController
 
 	controller := iamREST.IAMCommandController{
 		IAMCommandServiceInterface: service,
+	}
+
+	return controller
+}
+
+// RegisterOrthancRESTCommandController performs dependency injection to the RegisterOrthancRESTCommandController
+func (k *kernel) RegisterOrthancRESTCommandController() orthancREST.OrthancCommandController {
+	service := k.orthancCommandServiceContainer()
+
+	controller := orthancREST.OrthancCommandController{
+		OrthancCommandServiceInterface: service,
+	}
+
+	return controller
+}
+
+// RegisterOrthancRESTQueryController performs dependency injection to the RegisterOrthancRESTQueryController
+func (k *kernel) RegisterOrthancRESTQueryController() orthancREST.OrthancQueryController {
+	service := k.orthancQueryServiceContainer()
+
+	controller := orthancREST.OrthancQueryController{
+		OrthancQueryServiceInterface: service,
 	}
 
 	return controller
@@ -156,6 +184,21 @@ func (k *kernel) iamQueryServiceContainer() *iamService.IAMQueryService {
 	return service
 }
 
+func (k *kernel) orthancCommandServiceContainer() *orthancService.OrthancCommandService {
+	service := &orthancService.OrthancCommandService{}
+
+	return service
+}
+
+func (k *kernel) orthancQueryServiceContainer() *orthancService.OrthancQueryService {
+	service := &orthancService.OrthancQueryService{
+		OrthancAPIInterface:         orthancAPI,
+		TenantQueryServiceInterface: k.tenantQueryServiceContainer(),
+	}
+
+	return service
+}
+
 func (k *kernel) tenantCommandServiceContainer() *tenantService.TenantCommandService {
 	repository := &tenantRepository.TenantCommandRepository{}
 
@@ -228,6 +271,9 @@ func registerHandlers() {
 	if err != nil {
 		log.Fatalf("[SERVER] cannot initialize firebase admin app: %v", err)
 	}
+
+	// init orthanc connection
+	orthancAPI = orthanc.Init(os.Getenv("ORTHANC_BASE_URL"))
 
 	// init aws session
 	awsSDK, err = aws.NewSession(awsTypes.Config{

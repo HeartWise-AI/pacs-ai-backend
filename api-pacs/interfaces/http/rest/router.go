@@ -44,6 +44,7 @@ func (router *router) InitRouter() *chi.Mux {
 	// DI assignment
 	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
+	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
 	tenantQueryController := interfaces.ServiceContainer().RegisterTenantRESTQueryController()
 	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
 	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
@@ -87,12 +88,20 @@ func (router *router) InitRouter() *chi.Mux {
 	// API routes
 	r.Group(func(r chi.Router) {
 		r.Route("/v1", func(r chi.Router) {
-
 			// iam module
 			r.Route("/iam", func(r chi.Router) {
 				r.Post("/login", iamCommandController.LoginTenantUser)
 				r.Post("/forgot-password", iamCommandController.ForgotTenantUserPassword)
 				r.Post("/verify-email", iamCommandController.VerifyTenantUserEmail)
+			})
+
+			// orthanc module
+			r.Route("/orthanc", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.TokenSessionAuthGuard)
+
+					r.Post("/modality/studies", orthancQueryController.GetModalityStudies)
+				})
 			})
 
 			// tenant module
@@ -102,12 +111,7 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
-					// admin or owner only
-					r.Group(func(r chi.Router) {
-						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
-
-						r.Get("/", tenantQueryController.GetTenantByID)
-					})
+					r.Get("/", tenantQueryController.GetTenantByID)
 				})
 			})
 

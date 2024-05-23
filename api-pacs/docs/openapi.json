@@ -30,6 +30,10 @@
       "description": "IAM service"
     },
     {
+      "name": "orthanc",
+      "description": "Orthanc service"
+    },
+    {
       "name": "tenant",
       "description": "Tenant service"
     },
@@ -108,6 +112,40 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/VerifyTenantUserEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/orthanc/modality/studies": {
+      "post": {
+        "tags": ["orthanc"],
+        "summary": "Get Modality Studies",
+        "description": "Get modality studies.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Get modality studies request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetModalityStudiesRequest"
               }
             }
           },
@@ -485,6 +523,57 @@
             "type": "string"
           },
           "email": {
+            "type": "string"
+          }
+        }
+      },
+      "GetModalityStudiesRequest": {
+        "required": [],
+        "type": "object",
+        "properties": {
+          "accessionNumber": {
+            "type": "string"
+          },
+          "institutionName": {
+            "type": "string"
+          },
+          "modalitiesInStudy": {
+            "type": "string"
+          },
+          "numberOfStudyRelatedSeries": {
+            "type": "string"
+          },
+          "patientBirthDate": {
+            "type": "string"
+          },
+          "patientID": {
+            "type": "string"
+          },
+          "patientName": {
+            "type": "string"
+          },
+          "patientSex": {
+            "type": "string"
+          },
+          "referringPhysicianName": {
+            "type": "string"
+          },
+          "requestingPhysician": {
+            "type": "string"
+          },
+          "studyDate": {
+            "type": "string"
+          },
+          "studyDescription": {
+            "type": "string"
+          },
+          "studyID": {
+            "type": "string"
+          },
+          "studyInstanceUID": {
+            "type": "string"
+          },
+          "studyTime": {
             "type": "string"
           }
         }
