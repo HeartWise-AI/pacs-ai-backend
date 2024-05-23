@@ -27,6 +27,13 @@ type GetModalityStudiesRequest struct {
 	StudyTime                  string `json:"studyTime"`
 }
 
+type GetJobInfoResponse struct {
+	ID       string `json:"id"`
+	Priority uint   `json:"priority"`
+	Progress uint   `json:"progress"`
+	State    string `json:"state"`
+}
+
 type GetModalityStudiesResponse struct {
 	QueryID string  `json:"queryId"`
 	Studies []Study `json:"studies"`

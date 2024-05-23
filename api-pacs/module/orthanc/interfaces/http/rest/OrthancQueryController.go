@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/go-chi/chi"
+
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	"api-pacs/internal/errors"
@@ -17,6 +19,58 @@ import (
 // OrthancQueryController request controller for orthanc query
 type OrthancQueryController struct {
 	application.OrthancQueryServiceInterface
+}
+
+// GetJobInfo get job information
+func (controller *OrthancQueryController) GetJobInfo(w http.ResponseWriter, r *http.Request) {
+	jobID := chi.URLParam(r, "jobID")
+	if len(jobID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid job ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	res, err := controller.OrthancQueryServiceInterface.GetJobInfo(context.TODO(), jobID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Server error."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully fetched job info.",
+		Data: &types.GetJobInfoResponse{
+			ID:       res.ID,
+			Priority: res.Priority,
+			Progress: res.Progress,
+			State:    res.State,
+		},
+	}
+
+	response.JSON(w)
 }
 
 // GetModalityStudies get modality studies

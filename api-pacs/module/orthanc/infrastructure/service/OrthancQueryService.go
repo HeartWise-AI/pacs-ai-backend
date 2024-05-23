@@ -15,6 +15,16 @@ type OrthancQueryService struct {
 	tenantApplication.TenantQueryServiceInterface
 }
 
+// GetJobInfo get job info
+func (service *OrthancQueryService) GetJobInfo(ctx context.Context, jobID string) (orthancAPITypes.GetJobResponse, error) {
+	res, err := service.OrthancAPIInterface.GetJobInfo(ctx, jobID)
+	if err != nil {
+		return orthancAPITypes.GetJobResponse{}, err
+	}
+
+	return res, nil
+}
+
 // GetModalityStudies get modality studies
 func (service *OrthancQueryService) GetModalityStudies(ctx context.Context, tenantID string, data types.GetModalityStudies) ([]orthancAPITypes.QueryModalitiesAnswersResponse, string, error) {
 	// get tenant info

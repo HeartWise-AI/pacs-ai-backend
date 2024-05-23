@@ -207,6 +207,40 @@
         }
       }
     },
+    "/orthanc/job/{jobID}": {
+      "get": {
+        "tags": ["orthanc"],
+        "summary": "Get Job Info",
+        "description": "Get job information.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "jobID",
+            "in": "path",
+            "description": "Job ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/tenant": {
       "get": {
         "tags": ["tenant"],
