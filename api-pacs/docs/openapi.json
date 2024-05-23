@@ -30,6 +30,10 @@
       "description": "IAM service"
     },
     {
+      "name": "elasticsearch",
+      "description": "Elasticsearch service"
+    },
+    {
       "name": "tenant",
       "description": "Tenant service"
     },
@@ -113,6 +117,50 @@
           },
           "required": true
         },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/ecs/logs": {
+      "get": {
+        "tags": ["elasticsearch"],
+        "summary": "Get Search Result from Query",
+        "description": "Get search result from query",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "index",
+            "in": "query",
+            "description": "index name",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["LOGIN_LOG", "ADMIN_MEMBER_LOG"]
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "description": "query follow this format {`fieldname`:{`query`:`value`}}",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "2xx": {
             "description": "Success"

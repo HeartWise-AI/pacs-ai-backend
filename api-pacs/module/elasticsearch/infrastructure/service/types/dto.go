@@ -22,3 +22,15 @@ type CreateLoginLog struct {
 	Role       string
 	Specialty  string
 }
+
+type GetLoginLog struct {
+	SessionID  string
+	TenantID   string
+	TenantName string
+	UserID     string
+	Email      string
+	Name       string
+	Role       string
+	Specialty  string
+	Timestamp  uint
+}

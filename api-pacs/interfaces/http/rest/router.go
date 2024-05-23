@@ -42,6 +42,7 @@ var (
 // InitRouter initializes main routes
 func (router *router) InitRouter() *chi.Mux {
 	// DI assignment
+	elasticsearchController := interfaces.ServiceContainer().RegisterElasticsearchRESTQueryController()
 	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
 	tenantQueryController := interfaces.ServiceContainer().RegisterTenantRESTQueryController()
@@ -93,6 +94,16 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Post("/login", iamCommandController.LoginTenantUser)
 				r.Post("/forgot-password", iamCommandController.ForgotTenantUserPassword)
 				r.Post("/verify-email", iamCommandController.VerifyTenantUserEmail)
+			})
+
+			// elasticsearch module
+			r.Route("/ecs", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.TokenSessionAuthGuard)
+
+					r.Get("/logs", elasticsearchController.SearchDocument)
+
+				})
 			})
 
 			// tenant module

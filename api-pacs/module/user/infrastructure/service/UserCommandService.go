@@ -44,10 +44,15 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 		return "", err
 	}
 
+	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, uid)
+	if err != nil {
+		return "", err
+	}
+
 	go func() {
 		_, err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(ctx, elasticsearchTypes.CreateAdminMemberLog{
 			TenantID:   data.TenantID,
-			TenantName: data.Name,
+			TenantName: user.Name,
 			UserID:     uid,
 			Email:      data.Email,
 			Name:       data.Name,

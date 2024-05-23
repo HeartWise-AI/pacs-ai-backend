@@ -2,9 +2,8 @@ package elasticsearch
 
 import (
 	"context"
-	"log"
 
-	elasticsearch "github.com/elastic/go-elasticsearch/v8"
+	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/index"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
 	searchTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
@@ -42,18 +41,15 @@ func (c *ElasticsearchDBHandler) IndexDocument(ctx context.Context, index string
 }
 
 // SearchDocument search a document
-func (c *ElasticsearchDBHandler) SearchDocument(ctx context.Context, index string) (*search.Response, error) {
+func (c *ElasticsearchDBHandler) SearchDocument(ctx context.Context, index string, query map[string]searchTypes.MatchQuery) (*search.Response, error) {
 	res, err := c.TypedClient.Search().Index(index).Request(&search.Request{
 		Query: &searchTypes.Query{
-			Match: map[string]searchTypes.MatchQuery{
-				"name": {Query: "Andrea"},
-			},
+			Match: query,
 		},
 	}).Do(ctx)
 	if err != nil {
 		return nil, err
 	}
-	log.Print(res)
 
 	return res, nil
 }
