@@ -31,7 +31,7 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 	// generate random password
 	generatedPassword := generateID()
 
-	_, err := service.UserCommandRepositoryInterface.InsertTenantUser(ctx, repositoryTypes.CreateTenantUser{
+	uid, err := service.UserCommandRepositoryInterface.InsertTenantUser(ctx, repositoryTypes.CreateTenantUser{
 		TenantID:  data.TenantID,
 		Role:      data.Role,
 		Name:      data.Name,
@@ -44,27 +44,23 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 		return "", err
 	}
 
-	uid := "BJGBhyBcvddIUfJAngwhQRIDbJl2"
-
-	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, uid)
-	if err != nil {
-		return "", err
-	}
-
-	err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(ctx, elasticsearchTypes.CreateAdminMemberLog{
-		TenantID:   data.TenantID,
-		TenantName: data.Name,
-		UserID:     user.ID,
-		Email:      data.Email,
-		Name:       data.Name,
-		Role:       data.Role,
-		LicenseNo:  data.LicenseNo,
-		Specialty:  data.Specialty,
-		Action:     entity.CreateAction,
-	})
-	if err != nil {
-		return "", err
-	}
+	go func() {
+		_, err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(ctx, elasticsearchTypes.CreateAdminMemberLog{
+			TenantID:   data.TenantID,
+			TenantName: data.Name,
+			UserID:     uid,
+			Email:      data.Email,
+			Name:       data.Name,
+			Role:       data.Role,
+			LicenseNo:  data.LicenseNo,
+			Specialty:  data.Specialty,
+			Action:     entity.CreateAction,
+		})
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	}()
 
 	go func() {
 		//  redirect link
@@ -100,27 +96,28 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantI
 		return err
 	}
 
-	uid := "BJGBhyBcvddIUfJAngwhQRIDbJl2"
-
-	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, uid)
+	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, id)
 	if err != nil {
 		return err
 	}
 
-	err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(ctx, elasticsearchTypes.CreateAdminMemberLog{
-		TenantID:   user.TenantID,
-		TenantName: user.Name,
-		UserID:     user.ID,
-		Email:      user.Email,
-		Name:       user.Name,
-		Role:       user.Role,
-		LicenseNo:  user.LicenseNo,
-		Specialty:  user.Specialty,
-		Action:     entity.DeleteAction,
-	})
-	if err != nil {
-		return err
-	}
+	go func() {
+		_, err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(ctx, elasticsearchTypes.CreateAdminMemberLog{
+			TenantID:   user.TenantID,
+			TenantName: user.Name,
+			UserID:     user.ID,
+			Email:      user.Email,
+			Name:       user.Name,
+			Role:       user.Role,
+			LicenseNo:  user.LicenseNo,
+			Specialty:  user.Specialty,
+			Action:     entity.DeleteAction,
+		})
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	}()
 
 	return nil
 }
@@ -140,27 +137,28 @@ func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data ty
 		return err
 	}
 
-	uid := "BJGBhyBcvddIUfJAngwhQRIDbJl2"
-
-	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, uid)
+	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, data.ID)
 	if err != nil {
 		return err
 	}
 
-	err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(ctx, elasticsearchTypes.CreateAdminMemberLog{
-		TenantID:   data.TenantID,
-		TenantName: user.Name,
-		UserID:     data.ID,
-		Email:      user.Email,
-		Name:       data.Name,
-		Role:       data.Role,
-		LicenseNo:  data.LicenseNo,
-		Specialty:  data.Specialty,
-		Action:     entity.UpdateAction,
-	})
-	if err != nil {
-		return err
-	}
+	go func() {
+		_, err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(ctx, elasticsearchTypes.CreateAdminMemberLog{
+			TenantID:   user.TenantID,
+			TenantName: user.Name,
+			UserID:     user.ID,
+			Email:      user.Email,
+			Name:       user.Name,
+			Role:       user.Role,
+			LicenseNo:  user.LicenseNo,
+			Specialty:  user.Specialty,
+			Action:     entity.UpdateAction,
+		})
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	}()
 
 	return nil
 }

@@ -6,6 +6,8 @@ import (
 	"api-pacs/module/elasticsearch/domain/repository"
 	repositoryTypes "api-pacs/module/elasticsearch/infrastructure/repository/types"
 	"api-pacs/module/elasticsearch/infrastructure/service/types"
+
+	"github.com/elastic/go-elasticsearch/v8/typedapi/core/index"
 )
 
 // ElasticsearchCommandService handles the Elasticsearch command service logic
@@ -14,8 +16,8 @@ type ElasticsearchCommandService struct {
 }
 
 // CreateLoginLog add a new login log
-func (service *ElasticsearchCommandService) CreateLoginLog(ctx context.Context, data types.CreateLoginLog) error {
-	_, err := service.ElasticsearchCommandRepositoryInterface.InsertLoginLog(ctx, repositoryTypes.CreateLoginLog{
+func (service *ElasticsearchCommandService) CreateLoginLog(ctx context.Context, data types.CreateLoginLog) (*index.Response, error) {
+	res, err := service.ElasticsearchCommandRepositoryInterface.InsertLoginLog(ctx, repositoryTypes.CreateLoginLog{
 		SessionID:  data.SessionID,
 		TenantID:   data.TenantID,
 		TenantName: data.TenantName,
@@ -26,15 +28,15 @@ func (service *ElasticsearchCommandService) CreateLoginLog(ctx context.Context, 
 		Specialty:  data.Specialty,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return res, nil
 }
 
 // CreateAdminMemberLog add a new admin member log
-func (service *ElasticsearchCommandService) CreateAdminMemberLog(ctx context.Context, data types.CreateAdminMemberLog) error {
-	_, err := service.ElasticsearchCommandRepositoryInterface.InsertAdminMemberLog(ctx, repositoryTypes.CreateAdminMemberLog{
+func (service *ElasticsearchCommandService) CreateAdminMemberLog(ctx context.Context, data types.CreateAdminMemberLog) (*index.Response, error) {
+	res, err := service.ElasticsearchCommandRepositoryInterface.InsertAdminMemberLog(ctx, repositoryTypes.CreateAdminMemberLog{
 		TenantID:   data.TenantID,
 		TenantName: data.TenantName,
 		UserID:     data.UserID,
@@ -46,8 +48,8 @@ func (service *ElasticsearchCommandService) CreateAdminMemberLog(ctx context.Con
 		Action:     data.Action,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return res, nil
 }

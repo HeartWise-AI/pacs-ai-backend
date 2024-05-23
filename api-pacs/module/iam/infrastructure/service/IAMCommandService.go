@@ -121,19 +121,22 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 		return "", err
 	}
 
-	err = service.ElasticsearchCommandServiceInterface.CreateLoginLog(ctx, elasticsearchTypes.CreateLoginLog{
-		SessionID:  sessionToken,
-		TenantID:   tenantID,
-		TenantName: user.Name,
-		UserID:     user.ID,
-		Email:      user.Email,
-		Name:       user.Name,
-		Role:       user.Role,
-		Specialty:  user.Specialty,
-	})
-	if err != nil {
-		return "", err
-	}
+	go func() {
+		_, err = service.ElasticsearchCommandServiceInterface.CreateLoginLog(ctx, elasticsearchTypes.CreateLoginLog{
+			SessionID:  sessionToken,
+			TenantID:   tenantID,
+			TenantName: user.Name,
+			UserID:     user.ID,
+			Email:      user.Email,
+			Name:       user.Name,
+			Role:       user.Role,
+			Specialty:  user.Specialty,
+		})
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	}()
 
 	return sessionToken, nil
 }
