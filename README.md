@@ -34,7 +34,7 @@ You can also opt to launch selected services. Below are the supported commands:
 
 Optional:
 
-- `make up-orthanc-pacs` to run only 2 instances of orthanc simulating 2 hospital pacs
+- `make up-orthanc-pacs` to run 2 instances of orthanc simulating 2 hospital pacs
 
 ## Demo
 
