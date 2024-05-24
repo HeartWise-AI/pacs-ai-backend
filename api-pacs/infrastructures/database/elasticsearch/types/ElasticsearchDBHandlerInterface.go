@@ -5,7 +5,6 @@ import (
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/index"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
-
 	searchTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
 )
 
