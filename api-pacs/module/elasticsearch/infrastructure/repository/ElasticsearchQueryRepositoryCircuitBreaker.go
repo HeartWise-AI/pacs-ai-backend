@@ -17,8 +17,8 @@ type ElasticsearchQueryRepositoryCircuitBreaker struct {
 // SearchLoginLogs decorator pattern to search login logs
 func (repository *ElasticsearchQueryRepositoryCircuitBreaker) SearchLoginLogs(ctx context.Context, query map[string]searchTypes.MatchQuery) (*search.Response, error) {
 	output := make(chan *search.Response, 1)
-	hystrix.ConfigureCommand("search_login_logs_request", config.Settings())
-	errors := hystrix.Go("search_login_logs_request", func() error {
+	hystrix.ConfigureCommand("search_login_logs", config.Settings())
+	errors := hystrix.Go("search_login_logs", func() error {
 		login, err := repository.ElasticsearchQueryRepositoryInterface.SearchLoginLogs(ctx, query)
 		if err != nil {
 			return err
@@ -39,8 +39,8 @@ func (repository *ElasticsearchQueryRepositoryCircuitBreaker) SearchLoginLogs(ct
 // SearchAdminMemberLogs decorator pattern to search admin member logs
 func (repository *ElasticsearchQueryRepositoryCircuitBreaker) SearchAdminMemberLogs(ctx context.Context, query map[string]searchTypes.MatchQuery) (*search.Response, error) {
 	output := make(chan *search.Response, 1)
-	hystrix.ConfigureCommand("search_admin_member_logs_request", config.Settings())
-	errors := hystrix.Go("search_admin_member_logs_request", func() error {
+	hystrix.ConfigureCommand("search_admin_member_logs", config.Settings())
+	errors := hystrix.Go("search_admin_member_logs", func() error {
 		adminMember, err := repository.ElasticsearchQueryRepositoryInterface.SearchLoginLogs(ctx, query)
 		if err != nil {
 			return err

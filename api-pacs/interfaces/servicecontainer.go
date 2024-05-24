@@ -223,6 +223,7 @@ func (k *kernel) iamCommandServiceContainer() *iamService.IAMCommandService {
 		},
 		UserQueryServiceInterface:            k.userQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		FirebaseAdminSDK:                     firebaseAdminSDK,
 		AWSSDKInterface:                      awsSDK,
 	}
@@ -299,6 +300,7 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 		},
 		UserQueryServiceInterface:            k.userQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		AWSSDKInterface:                      awsSDK,
 	}
 

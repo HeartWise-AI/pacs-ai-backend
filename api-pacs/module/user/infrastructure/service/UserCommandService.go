@@ -12,6 +12,7 @@ import (
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	"api-pacs/module/elasticsearch/domain/entity"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	tenantApplication "api-pacs/module/tenant/application"
 	userApplication "api-pacs/module/user/application"
 	"api-pacs/module/user/domain/repository"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
@@ -22,6 +23,7 @@ import (
 type UserCommandService struct {
 	repository.UserCommandRepositoryInterface
 	userApplication.UserQueryServiceInterface
+	tenantApplication.TenantQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	awsSDKTypes.AWSSDKInterface
 }
@@ -44,15 +46,16 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 		return "", err
 	}
 
-	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, uid)
-	if err != nil {
-		return "", err
-	}
-
+	// logs to elasticsearch
 	go func() {
+		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
+		if err != nil {
+			return
+		}
+
 		_, err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(ctx, elasticsearchTypes.CreateAdminMemberLog{
 			TenantID:   data.TenantID,
-			TenantName: user.Name,
+			TenantName: tenant.Name,
 			UserID:     uid,
 			Email:      data.Email,
 			Name:       data.Name,
@@ -67,6 +70,7 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 		}
 	}()
 
+	// log to elasticsearch
 	go func() {
 		//  redirect link
 		redirectLink := fmt.Sprintf("%s/%s/login", os.Getenv("APP_URL"), data.TenantID)
@@ -106,10 +110,16 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantI
 		return err
 	}
 
+	// log to elasticsearch
 	go func() {
+		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			return
+		}
+
 		_, err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(ctx, elasticsearchTypes.CreateAdminMemberLog{
 			TenantID:   user.TenantID,
-			TenantName: user.Name,
+			TenantName: tenant.Name,
 			UserID:     user.ID,
 			Email:      user.Email,
 			Name:       user.Name,
@@ -147,10 +157,16 @@ func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data ty
 		return err
 	}
 
+	// log to elasticsearch
 	go func() {
+		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
+		if err != nil {
+			return
+		}
+
 		_, err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(ctx, elasticsearchTypes.CreateAdminMemberLog{
 			TenantID:   user.TenantID,
-			TenantName: user.Name,
+			TenantName: tenant.Name,
 			UserID:     user.ID,
 			Email:      user.Email,
 			Name:       user.Name,
