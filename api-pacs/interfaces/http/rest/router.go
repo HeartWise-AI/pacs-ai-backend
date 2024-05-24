@@ -45,6 +45,8 @@ func (router *router) InitRouter() *chi.Mux {
 	elasticsearchController := interfaces.ServiceContainer().RegisterElasticsearchRESTQueryController()
 	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
+	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
+	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
 	tenantQueryController := interfaces.ServiceContainer().RegisterTenantRESTQueryController()
 	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
 	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
@@ -88,6 +90,14 @@ func (router *router) InitRouter() *chi.Mux {
 	// API routes
 	r.Group(func(r chi.Router) {
 		r.Route("/v1", func(r chi.Router) {
+			// elasticsearch module
+			r.Route("/ecs", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.TokenSessionAuthGuard)
+
+					r.Get("/logs", elasticsearchController.SearchDocument)
+				})
+			})
 
 			// iam module
 			r.Route("/iam", func(r chi.Router) {
@@ -96,13 +106,14 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Post("/verify-email", iamCommandController.VerifyTenantUserEmail)
 			})
 
-			// elasticsearch module
-			r.Route("/ecs", func(r chi.Router) {
+			// orthanc module
+			r.Route("/orthanc", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
-					r.Get("/logs", elasticsearchController.SearchDocument)
-
+					r.Post("/modality/studies", orthancQueryController.GetModalityStudies)
+					r.Post("/retrieve/query/{queryID}/answer/{answerIndex}", orthancCommandController.RetrieveModalityStudy)
+					r.Get("/job/{jobID}", orthancQueryController.GetJobInfo)
 				})
 			})
 
@@ -113,12 +124,7 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
-					// admin or owner only
-					r.Group(func(r chi.Router) {
-						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
-
-						r.Get("/", tenantQueryController.GetTenantByID)
-					})
+					r.Get("/", tenantQueryController.GetTenantByID)
 				})
 			})
 

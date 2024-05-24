@@ -26,12 +26,16 @@
   ],
   "tags": [
     {
+      "name": "elasticsearch",
+      "description": "Elasticsearch service"
+    },
+    {
       "name": "iam",
       "description": "IAM service"
     },
     {
-      "name": "elasticsearch",
-      "description": "Elasticsearch service"
+      "name": "orthanc",
+      "description": "Orthanc service"
     },
     {
       "name": "tenant",
@@ -43,6 +47,50 @@
     }
   ],
   "paths": {
+    "/ecs/logs": {
+      "get": {
+        "tags": ["elasticsearch"],
+        "summary": "Get Search Result from Query",
+        "description": "Get search result from query",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "index",
+            "in": "query",
+            "description": "index name",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["LOGIN_LOG", "ADMIN_MEMBER_LOG"]
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "description": "query follow this format {`fieldname`:{`query`:`value`}}",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/iam/login": {
       "post": {
         "tags": ["iam"],
@@ -130,11 +178,68 @@
         }
       }
     },
-    "/ecs/logs": {
+    "/tenant": {
       "get": {
-        "tags": ["elasticsearch"],
-        "summary": "Get Search Result from Query",
-        "description": "Get search result from query",
+        "tags": ["tenant"],
+        "summary": "Get Tenant By ID",
+        "description": "Get tenant by id.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/orthanc/modality/studies": {
+      "post": {
+        "tags": ["orthanc"],
+        "summary": "Get Modality Studies",
+        "description": "Get modality studies.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Get modality studies request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetModalityStudiesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/orthanc/retrieve/query/{queryID}/answer/{answerIndex}": {
+      "post": {
+        "tags": ["orthanc"],
+        "summary": "Retrieve Modality Study",
+        "description": "Retrieve modality study.",
         "security": [
           {
             "bearerAuth": []
@@ -142,22 +247,21 @@
         ],
         "parameters": [
           {
-            "name": "index",
-            "in": "query",
-            "description": "index name",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": ["LOGIN_LOG", "ADMIN_MEMBER_LOG"]
-            }
-          },
-          {
-            "name": "query",
-            "in": "query",
-            "description": "query follow this format {`fieldname`:{`query`:`value`}}",
+            "name": "queryID",
+            "in": "path",
+            "description": "Query ID",
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "answerIndex",
+            "in": "path",
+            "description": "Answer Index",
+            "required": true,
+            "schema": {
+              "type": "integer"
             }
           }
         ],
@@ -174,14 +278,25 @@
         }
       }
     },
-    "/tenant": {
+    "/orthanc/job/{jobID}": {
       "get": {
-        "tags": ["tenant"],
-        "summary": "Get Tenant By ID",
-        "description": "Get tenant by id.",
+        "tags": ["orthanc"],
+        "summary": "Get Job Info",
+        "description": "Get job information.",
         "security": [
           {
             "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "jobID",
+            "in": "path",
+            "description": "Job ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -533,6 +648,57 @@
             "type": "string"
           },
           "email": {
+            "type": "string"
+          }
+        }
+      },
+      "GetModalityStudiesRequest": {
+        "required": [],
+        "type": "object",
+        "properties": {
+          "accessionNumber": {
+            "type": "string"
+          },
+          "institutionName": {
+            "type": "string"
+          },
+          "modalitiesInStudy": {
+            "type": "string"
+          },
+          "numberOfStudyRelatedSeries": {
+            "type": "string"
+          },
+          "patientBirthDate": {
+            "type": "string"
+          },
+          "patientID": {
+            "type": "string"
+          },
+          "patientName": {
+            "type": "string"
+          },
+          "patientSex": {
+            "type": "string"
+          },
+          "referringPhysicianName": {
+            "type": "string"
+          },
+          "requestingPhysician": {
+            "type": "string"
+          },
+          "studyDate": {
+            "type": "string"
+          },
+          "studyDescription": {
+            "type": "string"
+          },
+          "studyID": {
+            "type": "string"
+          },
+          "studyInstanceUID": {
+            "type": "string"
+          },
+          "studyTime": {
             "type": "string"
           }
         }

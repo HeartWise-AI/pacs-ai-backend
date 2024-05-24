@@ -45,6 +45,7 @@ func (repository *TenantQueryRepository) SelectTenantByID(ctx context.Context, t
 		Name:            tenant.Name,
 		Address:         tenant.Address,
 		AvailableModels: tenant.AvailableModels,
+		AET:             tenant.AET,
 		CreatedAt:       uint(tenant.CreatedAt),
 		UpdatedAt:       uint(tenant.UpdatedAt),
 	}, nil
