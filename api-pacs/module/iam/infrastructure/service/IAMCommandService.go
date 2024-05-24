@@ -11,9 +11,12 @@ import (
 	awsSDKTypes "api-pacs/infrastructures/providers/sdk/aws/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	apiError "api-pacs/internal/errors"
+	elasticsearchApplication "api-pacs/module/elasticsearch/application"
+	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	"api-pacs/module/iam/domain/entity"
 	"api-pacs/module/iam/domain/repository"
 	repositoryTypes "api-pacs/module/iam/infrastructure/repository/types"
+	tenantApplication "api-pacs/module/tenant/application"
 	userApplication "api-pacs/module/user/application"
 )
 
@@ -21,6 +24,8 @@ import (
 type IAMCommandService struct {
 	repository.IAMCommandRepositoryInterface
 	userApplication.UserQueryServiceInterface
+	elasticsearchApplication.ElasticsearchCommandServiceInterface
+	tenantApplication.TenantQueryServiceInterface
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
 	awsSDKTypes.AWSSDKInterface
 }
@@ -117,6 +122,29 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 	if err != nil {
 		return "", err
 	}
+
+	// log to elasticsearch
+	go func() {
+		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			return
+		}
+
+		_, err = service.ElasticsearchCommandServiceInterface.CreateLoginLog(ctx, elasticsearchTypes.CreateLoginLog{
+			SessionID:  sessionToken,
+			TenantID:   tenantID,
+			TenantName: tenant.Name,
+			UserID:     user.ID,
+			Email:      user.Email,
+			Name:       user.Name,
+			Role:       user.Role,
+			Specialty:  user.Specialty,
+		})
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	}()
 
 	return sessionToken, nil
 }

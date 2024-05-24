@@ -26,6 +26,10 @@
   ],
   "tags": [
     {
+      "name": "elasticsearch",
+      "description": "Elasticsearch service"
+    },
+    {
       "name": "iam",
       "description": "IAM service"
     },
@@ -43,6 +47,50 @@
     }
   ],
   "paths": {
+    "/ecs/logs": {
+      "get": {
+        "tags": ["elasticsearch"],
+        "summary": "Get Search Results from Query",
+        "description": "Get search results from query",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "index",
+            "in": "query",
+            "description": "Index of document",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["logins", "admin_members"]
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Format: {`fieldname`:{`query`:`value`}}",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/iam/login": {
       "post": {
         "tags": ["iam"],
@@ -117,6 +165,29 @@
           },
           "required": true
         },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/tenant": {
+      "get": {
+        "tags": ["tenant"],
+        "summary": "Get Tenant By ID",
+        "description": "Get tenant by id.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "2xx": {
             "description": "Success"
@@ -226,29 +297,6 @@
             "schema": {
               "type": "string"
             }
-          }
-        ],
-        "responses": {
-          "2xx": {
-            "description": "Success"
-          },
-          "4xx": {
-            "description": "Client side errors"
-          },
-          "5xx": {
-            "description": "Server side errors"
-          }
-        }
-      }
-    },
-    "/tenant": {
-      "get": {
-        "tags": ["tenant"],
-        "summary": "Get Tenant By ID",
-        "description": "Get tenant by id.",
-        "security": [
-          {
-            "bearerAuth": []
           }
         ],
         "responses": {
