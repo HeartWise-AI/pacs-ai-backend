@@ -50,8 +50,8 @@
     "/ecs/logs": {
       "get": {
         "tags": ["elasticsearch"],
-        "summary": "Get Search Result from Query",
-        "description": "Get search result from query",
+        "summary": "Get Search Results from Query",
+        "description": "Get search results from query",
         "security": [
           {
             "bearerAuth": []
@@ -61,17 +61,17 @@
           {
             "name": "index",
             "in": "query",
-            "description": "index name",
+            "description": "Index of document",
             "required": true,
             "schema": {
               "type": "string",
-              "enum": ["LOGIN_LOG", "ADMIN_MEMBER_LOG"]
+              "enum": ["logins", "admin_members"]
             }
           },
           {
             "name": "query",
             "in": "query",
-            "description": "query follow this format {`fieldname`:{`query`:`value`}}",
+            "description": "Format: {`fieldname`:{`query`:`value`}}",
             "required": true,
             "schema": {
               "type": "string"
