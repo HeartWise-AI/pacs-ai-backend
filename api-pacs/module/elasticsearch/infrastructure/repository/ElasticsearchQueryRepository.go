@@ -2,12 +2,14 @@ package repository
 
 import (
 	"context"
-
-	"api-pacs/infrastructures/database/elasticsearch/types"
-	"api-pacs/module/elasticsearch/domain/entity"
+	"errors"
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
 	searchTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
+
+	"api-pacs/infrastructures/database/elasticsearch/types"
+	apiError "api-pacs/internal/errors"
+	"api-pacs/module/elasticsearch/domain/entity"
 )
 
 // ElasticsearchQueryRepository handles elasticsearch query repository
@@ -24,6 +26,10 @@ func (repository *ElasticsearchQueryRepository) SearchLoginLogs(ctx context.Cont
 		return nil, err
 	}
 
+	if len(res.Hits.Hits) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
 	return res, nil
 }
 
@@ -34,6 +40,10 @@ func (repository *ElasticsearchQueryRepository) SearchAdminMemberLogs(ctx contex
 	res, err := repository.ElasticsearchDBHandlerInterface.SearchDocument(ctx, adminMember.GetModelName(), query)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(res.Hits.Hits) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
 	}
 
 	return res, nil

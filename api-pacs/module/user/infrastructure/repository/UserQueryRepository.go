@@ -6,14 +6,14 @@ import (
 	"log"
 	"sync"
 
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/api/iterator"
+
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/user/domain/entity"
 	"api-pacs/module/user/infrastructure/repository/types"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
-
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/api/iterator"
 )
 
 // UserQueryRepository handles the user query repository logic
