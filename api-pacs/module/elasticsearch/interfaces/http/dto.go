@@ -31,6 +31,31 @@ type VerifyTenantUserEmailRequest struct {
 	Email    string `json:"email" validate:"required"`
 }
 
+type AdminMemberLogResponse struct {
+	TenantID   string `json:"sessionId"`
+	TenantName string `json:"tenantName"`
+	UserID     string `json:"userId"`
+	Email      string `json:"email"`
+	Name       string `json:"name"`
+	Role       string `json:"role"`
+	LicenseNo  string `json:"licenseNo"`
+	Specialty  string `json:"specialty"`
+	Action     string `json:"action"`
+	Timestamp  uint   `json:"timestamp"`
+}
+
+type LoginLogResponse struct {
+	SessionID  string `json:"sessionId"`
+	TenantID   string `json:"tenantId"`
+	TenantName string `json:"tenantName"`
+	UserID     string `json:"userId"`
+	Email      string `json:"email"`
+	Name       string `json:"name"`
+	Role       string `json:"role"`
+	Specialty  string `json:"specialty"`
+	Timestamp  uint   `json:"timestamp"`
+}
+
 type LoginTenantUserResponse struct {
 	SessionToken string `json:"sessionToken"`
 }
