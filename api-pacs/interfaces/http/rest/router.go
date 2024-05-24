@@ -95,7 +95,7 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
-					r.Get("/logs", elasticsearchController.SearchDocument)
+					r.Get("/logs", elasticsearchController.SearchDocumentLogs)
 				})
 			})
 

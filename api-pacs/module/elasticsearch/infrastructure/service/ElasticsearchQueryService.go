@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 
+	searchTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
+
 	"api-pacs/module/elasticsearch/domain/entity"
 	"api-pacs/module/elasticsearch/domain/repository"
-
-	searchTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
 )
 
 // ElasticsearchQueryService handles the Elasticsearch query service logic
@@ -24,7 +24,6 @@ func (service *ElasticsearchQueryService) SearchLoginLogs(ctx context.Context, q
 	}
 
 	var logins []entity.Login
-	var login entity.Login
 
 	for count, _ := range res.Hits.Hits {
 		jsonData, err := json.Marshal(res.Hits.Hits[count].Source_)
@@ -32,6 +31,7 @@ func (service *ElasticsearchQueryService) SearchLoginLogs(ctx context.Context, q
 			fmt.Println(err)
 		}
 
+		var login entity.Login
 		err = json.Unmarshal([]byte(jsonData), &login)
 		if err != nil {
 			fmt.Println(err)
@@ -51,7 +51,6 @@ func (service *ElasticsearchQueryService) SearchAdminMemberLogs(ctx context.Cont
 	}
 
 	var adminMembers []entity.AdminMember
-	var adminMember entity.AdminMember
 
 	for count, _ := range res.Hits.Hits {
 		jsonData, err := json.Marshal(res.Hits.Hits[count].Source_)
@@ -59,6 +58,7 @@ func (service *ElasticsearchQueryService) SearchAdminMemberLogs(ctx context.Cont
 			fmt.Println(err)
 		}
 
+		var adminMember entity.AdminMember
 		err = json.Unmarshal([]byte(jsonData), &adminMember)
 		if err != nil {
 			fmt.Println(err)

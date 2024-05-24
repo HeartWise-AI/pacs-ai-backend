@@ -3,11 +3,11 @@ package service
 import (
 	"context"
 
+	"github.com/elastic/go-elasticsearch/v8/typedapi/core/index"
+
 	"api-pacs/module/elasticsearch/domain/repository"
 	repositoryTypes "api-pacs/module/elasticsearch/infrastructure/repository/types"
 	"api-pacs/module/elasticsearch/infrastructure/service/types"
-
-	"github.com/elastic/go-elasticsearch/v8/typedapi/core/index"
 )
 
 // ElasticsearchCommandService handles the Elasticsearch command service logic

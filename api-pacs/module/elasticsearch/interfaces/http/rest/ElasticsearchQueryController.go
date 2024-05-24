@@ -10,6 +10,7 @@ import (
 	"api-pacs/interfaces/http/rest/viewmodels"
 	"api-pacs/internal/errors"
 	"api-pacs/module/elasticsearch/application"
+	"api-pacs/module/elasticsearch/domain/entity"
 	types "api-pacs/module/elasticsearch/interfaces/http"
 )
 
@@ -18,8 +19,8 @@ type ElasticsearchQueryController struct {
 	application.ElasticsearchQueryServiceInterface
 }
 
-// SearchDocument search document for login logs and admin member logs
-func (controller *ElasticsearchQueryController) SearchDocument(w http.ResponseWriter, r *http.Request) {
+// SearchDocumentLogs search document logs from elasticsearch
+func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("query")
 
 	var queryMap map[string]searchTypes.MatchQuery
@@ -29,7 +30,7 @@ func (controller *ElasticsearchQueryController) SearchDocument(w http.ResponseWr
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
-			Message:   "Can't parse json payload.",
+			Message:   "Invalid query.",
 			ErrorCode: errors.InvalidRequestPayload,
 		}
 
@@ -38,8 +39,23 @@ func (controller *ElasticsearchQueryController) SearchDocument(w http.ResponseWr
 	}
 
 	index := r.URL.Query().Get("index")
+	if len(index) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid index.",
+			ErrorCode: errors.InvalidRequestPayload,
+		}
 
-	if index == "LOGIN_LOG" {
+		response.JSON(w)
+		return
+	}
+
+	var login entity.Login
+	var adminMember entity.AdminMember
+
+	switch index {
+	case login.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchLoginLogs(context.TODO(), queryMap)
 		if err != nil {
 			var httpCode int
@@ -90,7 +106,8 @@ func (controller *ElasticsearchQueryController) SearchDocument(w http.ResponseWr
 		}
 
 		response.JSON(w)
-	} else {
+		return
+	case adminMember.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchAdminMemberLogs(context.TODO(), queryMap)
 		if err != nil {
 			var httpCode int
@@ -142,7 +159,16 @@ func (controller *ElasticsearchQueryController) SearchDocument(w http.ResponseWr
 		}
 
 		response.JSON(w)
+		return
+	default:
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusNotFound,
+			Success:   false,
+			Message:   "No records found.",
+			ErrorCode: errors.MissingRecord,
+		}
 
+		response.JSON(w)
+		return
 	}
-
 }
