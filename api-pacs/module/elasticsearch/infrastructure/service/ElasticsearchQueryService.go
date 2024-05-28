@@ -5,8 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	searchTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
-
+	"api-pacs/infrastructures/database/elasticsearch/types"
 	"api-pacs/module/elasticsearch/domain/entity"
 	"api-pacs/module/elasticsearch/domain/repository"
 )
@@ -17,8 +16,8 @@ type ElasticsearchQueryService struct {
 }
 
 // SearchLoginLogs search login logs
-func (service *ElasticsearchQueryService) SearchLoginLogs(ctx context.Context, query map[string]searchTypes.MatchQuery) ([]entity.Login, error) {
-	res, err := service.ElasticsearchQueryRepositoryInterface.SearchLoginLogs(ctx, query)
+func (service *ElasticsearchQueryService) SearchLoginLogs(ctx context.Context, searchParam types.SearchParameter) ([]entity.Login, error) {
+	res, err := service.ElasticsearchQueryRepositoryInterface.SearchLoginLogs(ctx, searchParam)
 	if err != nil {
 		return nil, err
 	}
@@ -44,8 +43,8 @@ func (service *ElasticsearchQueryService) SearchLoginLogs(ctx context.Context, q
 }
 
 // SearchAdminMemberLogs search admin member logs
-func (service *ElasticsearchQueryService) SearchAdminMemberLogs(ctx context.Context, query map[string]searchTypes.MatchQuery) ([]entity.AdminMember, error) {
-	res, err := service.ElasticsearchQueryRepositoryInterface.SearchAdminMemberLogs(ctx, query)
+func (service *ElasticsearchQueryService) SearchAdminMemberLogs(ctx context.Context, searchParam types.SearchParameter) ([]entity.AdminMember, error) {
+	res, err := service.ElasticsearchQueryRepositoryInterface.SearchAdminMemberLogs(ctx, searchParam)
 	if err != nil {
 		return nil, err
 	}

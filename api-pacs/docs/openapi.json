@@ -71,10 +71,28 @@
           {
             "name": "query",
             "in": "query",
-            "description": "Format: {`fieldname`:{`query`:`value`}}",
+            "description": "Query value inside the fields",
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "description": "Start Date",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "description": "End Date",
+            "required": true,
+            "schema": {
+              "type": "integer"
             }
           }
         ],
