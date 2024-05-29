@@ -21,44 +21,46 @@
       "Training_data_location_and_time-period": "University of California, San Francisco (UCSF), Dec 12, 2012, to Dec 31, 2019",
       "Model_type": "X3D architecture"
     },
-    "Validation_and_performance": {
-      "UCSF_test_dataset": {
-        "AUC_ROC_LVEF_40": 0.911,
-        "AUC_ROC_LVEF_50": 0.879,
-        "Specificity_LVEF_40": 81.3,
-        "Sensitivity_LVEF_40": 83.9,
-        "ICC_continuous_LVEF": 0.77,
-        "Pearson_correlation_continuous_LVEF": 0.71,
-        "MAE_continuous_LVEF": 8.5
+    "Validation_and_performance": [
+      {
+        "UCSF_test_dataset": {
+          "AUC_ROC_LVEF_40": 0.911,
+          "AUC_ROC_LVEF_50": 0.879,
+          "Specificity_LVEF_40": 81.3,
+          "Sensitivity_LVEF_40": 83.9,
+          "ICC_continuous_LVEF": 0.77,
+          "Pearson_correlation_continuous_LVEF": 0.71,
+          "MAE_continuous_LVEF": 8.5
+        },
+        "UOHI_external_validation": {
+          "AUC_ROC_LVEF_40": 0.906,
+          "AUC_ROC_LVEF_50": "N/A",
+          "Specificity_LVEF_40": 88.6,
+          "Sensitivity_LVEF_40": 77.9,
+          "ICC_continuous_LVEF": 0.62,
+          "Pearson_correlation_continuous_LVEF": 0.72,
+          "MAE_continuous_LVEF": 7
+        }
       },
-      "UOHI_external_validation": {
-        "AUC_ROC_LVEF_40": 0.906,
-        "AUC_ROC_LVEF_50": "N/A",
-        "Specificity_LVEF_40": 88.6,
-        "Sensitivity_LVEF_40": 77.9,
-        "ICC_continuous_LVEF": 0.62,
-        "Pearson_correlation_continuous_LVEF": 0.72,
-        "MAE_continuous_LVEF": 7
+      {
+        "UCSF_study_cohort": {
+          "Number_of_patients": 3404,
+          "Number_of_angiograms": 3960,
+          "Mean_age": "64.3±13.3",
+          "Female_percentage": 35,
+          "LVEF_under_40_percentage": 17.7,
+          "LVEF_over_40_percentage": 82.2
+        },
+        "UOHI_external_validation_cohort": {
+          "Number_of_patients": 744,
+          "Number_of_angiograms": 776,
+          "Mean_age": "68.6±13.3",
+          "Female_percentage": 33,
+          "LVEF_under_40_percentage": 16.8,
+          "LVEF_over_40_percentage": 76.3
+        }
       }
-    },
-    "Cohort": {
-      "UCSF_study_cohort": {
-        "Number_of_patients": 3404,
-        "Number_of_angiograms": 3960,
-        "Mean_age": "64.3±13.3",
-        "Female_percentage": 35,
-        "LVEF_under_40_percentage": 17.7,
-        "LVEF_over_40_percentage": 82.2
-      },
-      "UOHI_external_validation_cohort": {
-        "Number_of_patients": 744,
-        "Number_of_angiograms": 776,
-        "Mean_age": "68.6±13.3",
-        "Female_percentage": 33,
-        "LVEF_under_40_percentage": 16.8,
-        "LVEF_over_40_percentage": 76.3
-      }
-    },
+    ],
     "Uses_and_directions": {
       "Benefits": "Estimation of LVEF from standard LCA angiogram videos without additional",
       "Target_population_and_use_case": "Adult patients aged ≥18 years who received a coronary angiogram of the left coronmary angiography.",
