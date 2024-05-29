@@ -1,6 +1,8 @@
 package types
 
 type GetModalityStudies struct {
+	TenantID                   string
+	UserID                     string
 	AccessionNumber            string
 	InstitutionName            string
 	ModalitiesInStudy          string
@@ -16,4 +18,12 @@ type GetModalityStudies struct {
 	StudyID                    string
 	StudyInstanceUID           string
 	StudyTime                  string
+}
+
+type RetrieveModalityStudy struct {
+	TenantID         string
+	UserID           string
+	QueryID          string
+	AnswerIndex      uint
+	StudyInstanceUID string
 }

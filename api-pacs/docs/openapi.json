@@ -245,6 +245,17 @@
             "bearerAuth": []
           }
         ],
+        "requestBody": {
+          "description": "Retrieve modality study request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetrieveModalityStudyRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "parameters": [
           {
             "name": "queryID",
@@ -627,6 +638,15 @@
             "type": "string"
           },
           "specialty": {
+            "type": "string"
+          }
+        }
+      },
+      "RetrieveModalityStudyRequest": {
+        "required": ["studyInstanceUID"],
+        "type": "object",
+        "properties": {
+          "studyInstanceUID": {
             "type": "string"
           }
         }

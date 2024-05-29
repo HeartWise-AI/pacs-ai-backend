@@ -22,3 +22,25 @@ type CreateLoginLog struct {
 	Role       string
 	Specialty  string
 }
+
+type CreateGetModalityStudyLog struct {
+	TenantID   string
+	TenantName string
+	TenantAET  string
+	UserID     string
+	Email      string
+	Name       string
+	QueryID    string
+}
+
+type CreateRetrieveStudyLog struct {
+	TenantID         string
+	TenantName       string
+	TenantAET        string
+	UserID           string
+	Email            string
+	Name             string
+	StudyInstanceUID string
+	QueryID          string
+	AnswerIndex      uint
+}

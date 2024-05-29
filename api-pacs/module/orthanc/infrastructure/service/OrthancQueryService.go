@@ -2,17 +2,23 @@ package service
 
 import (
 	"context"
+	"log"
 	"os"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
+	elasticsearchApplication "api-pacs/module/elasticsearch/application"
+	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	"api-pacs/module/orthanc/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
+	userApplication "api-pacs/module/user/application"
 )
 
 // OrthancQueryService handles the Orthanc query service logic
 type OrthancQueryService struct {
 	orthancAPITypes.OrthancAPIInterface
 	tenantApplication.TenantQueryServiceInterface
+	elasticsearchApplication.ElasticsearchCommandServiceInterface
+	userApplication.UserQueryServiceInterface
 }
 
 // GetJobInfo get job info
@@ -26,9 +32,9 @@ func (service *OrthancQueryService) GetJobInfo(ctx context.Context, jobID string
 }
 
 // GetModalityStudies get modality studies
-func (service *OrthancQueryService) GetModalityStudies(ctx context.Context, tenantID string, data types.GetModalityStudies) ([]orthancAPITypes.QueryModalitiesAnswersResponse, string, error) {
+func (service *OrthancQueryService) GetModalityStudies(ctx context.Context, data types.GetModalityStudies) ([]orthancAPITypes.QueryModalitiesAnswersResponse, string, error) {
 	// get tenant info
-	tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
+	tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
 	if err != nil {
 		return nil, "", err
 	}
@@ -59,6 +65,33 @@ func (service *OrthancQueryService) GetModalityStudies(ctx context.Context, tena
 	if err != nil {
 		return nil, "", err
 	}
+
+	// logs to elasticsearch
+	go func() {
+		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, data.UserID)
+		if err != nil {
+			return
+		}
+
+		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
+		if err != nil {
+			return
+		}
+
+		_, err = service.ElasticsearchCommandServiceInterface.CreateGetModalityStudyLog(ctx, elasticsearchTypes.CreateGetModalityStudyLog{
+			TenantID:   data.TenantID,
+			TenantName: tenant.Name,
+			TenantAET:  tenant.AET,
+			UserID:     data.UserID,
+			Email:      user.Email,
+			Name:       user.Name,
+			QueryID:    queryID,
+		})
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	}()
 
 	return res, queryID, nil
 }

@@ -76,6 +76,7 @@ func (controller *OrthancQueryController) GetJobInfo(w http.ResponseWriter, r *h
 // GetModalityStudies get modality studies
 func (controller *OrthancQueryController) GetModalityStudies(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
 	var request types.GetModalityStudiesRequest
 
@@ -91,7 +92,9 @@ func (controller *OrthancQueryController) GetModalityStudies(w http.ResponseWrit
 		return
 	}
 
-	res, queryID, err := controller.OrthancQueryServiceInterface.GetModalityStudies(context.TODO(), tenantID, serviceTypes.GetModalityStudies{
+	res, queryID, err := controller.OrthancQueryServiceInterface.GetModalityStudies(context.TODO(), serviceTypes.GetModalityStudies{
+		TenantID:                   tenantID,
+		UserID:                     userID,
 		AccessionNumber:            request.AccessionNumber,
 		InstitutionName:            request.InstitutionName,
 		ModalitiesInStudy:          request.ModalitiesInStudy,

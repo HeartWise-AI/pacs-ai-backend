@@ -247,8 +247,10 @@ func (k *kernel) iamQueryServiceContainer() *iamService.IAMQueryService {
 
 func (k *kernel) orthancCommandServiceContainer() *orthancService.OrthancCommandService {
 	service := &orthancService.OrthancCommandService{
-		OrthancAPIInterface:         orthancAPI,
-		TenantQueryServiceInterface: k.tenantQueryServiceContainer(),
+		OrthancAPIInterface:                  orthancAPI,
+		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		UserQueryServiceInterface:            k.userQueryServiceContainer(),
 	}
 
 	return service
@@ -256,8 +258,10 @@ func (k *kernel) orthancCommandServiceContainer() *orthancService.OrthancCommand
 
 func (k *kernel) orthancQueryServiceContainer() *orthancService.OrthancQueryService {
 	service := &orthancService.OrthancQueryService{
-		OrthancAPIInterface:         orthancAPI,
-		TenantQueryServiceInterface: k.tenantQueryServiceContainer(),
+		OrthancAPIInterface:                  orthancAPI,
+		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		UserQueryServiceInterface:            k.userQueryServiceContainer(),
 	}
 
 	return service
