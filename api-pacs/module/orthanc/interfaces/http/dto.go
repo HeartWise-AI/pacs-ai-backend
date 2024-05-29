@@ -6,7 +6,9 @@ import (
 
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
-	ValidationErrors map[string]string   = map[string]string{}
+	ValidationErrors map[string]string   = map[string]string{
+		"RetrieveStudyRequest.StudyInstanceUID": "Study instance uid is required.",
+	}
 )
 
 type GetModalityStudiesRequest struct {
@@ -25,6 +27,10 @@ type GetModalityStudiesRequest struct {
 	StudyID                    string `json:"studyID"`
 	StudyInstanceUID           string `json:"studyInstanceUID"`
 	StudyTime                  string `json:"studyTime"`
+}
+
+type RetrieveStudyRequest struct {
+	StudyInstanceUID string `json:"studyInstanceUid" validate:"required"`
 }
 
 type GetJobInfoResponse struct {
