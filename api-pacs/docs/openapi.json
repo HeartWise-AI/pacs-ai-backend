@@ -246,11 +246,11 @@
           }
         ],
         "requestBody": {
-          "description": "Create retrieve study request",
+          "description": "Retrieve modality study request",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateRetrieveStudyRequest"
+                "$ref": "#/components/schemas/RetrieveModalityStudyRequest"
               }
             }
           },
@@ -642,11 +642,11 @@
           }
         }
       },
-      "CreateRetrieveStudyRequest": {
-        "required": ["studyInstanceUid"],
+      "RetrieveModalityStudyRequest": {
+        "required": ["studyInstanceUID"],
         "type": "object",
         "properties": {
-          "studyInstanceUid": {
+          "studyInstanceUID": {
             "type": "string"
           }
         }
