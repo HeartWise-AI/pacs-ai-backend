@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   orthanc:
-    image: orthancteam/orthanc
+    image: orthancteam/orthanc:22.12.2
     container_name: orthanc
     restart: unless-stopped
     ports:
