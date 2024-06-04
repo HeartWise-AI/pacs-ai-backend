@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   orthanc:
-    image: orthancteam/orthanc:22.12.2
+    image: orthancteam/orthanc:latest
     container_name: orthanc
     restart: unless-stopped
     ports:
@@ -38,11 +38,12 @@ services:
       - orthanc-index
 
   orthanc-index:
-    image: postgres:15
+    image: postgres:latest
     container_name: orthanc-index
     restart: unless-stopped
     ports: ["5432:5432"]
     volumes: ["orthanc-index:/var/lib/postgresql/data"]
+    command: -c 'max_connections=200'
     environment:
       POSTGRES_HOST_AUTH_METHOD: "trust"
 

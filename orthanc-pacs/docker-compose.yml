@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   orthanc-hospital-1:
-    image: orthancteam/orthanc:22.12.2
+    image: orthancteam/orthanc:latest
     container_name: orthanc-hospital-1
     restart: unless-stopped
     ports:
@@ -37,7 +37,7 @@ services:
       - orthanc-index-hospital-1
 
   orthanc-hospital-2:
-    image: orthancteam/orthanc:22.12.2
+    image: orthancteam/orthanc:latest
     container_name: orthanc-hospital-2
     restart: unless-stopped
     ports:
@@ -72,20 +72,22 @@ services:
       - orthanc-index-hospital-2
 
   orthanc-index-hospital-1:
-    image: postgres:15
+    image: postgres:latest
     container_name: orthanc-index-hospital-1
     restart: unless-stopped
     ports: ["5433:5432"]
     volumes: ["orthanc-index-hospital-1:/var/lib/postgresql/data"]
+    command: -c 'max_connections=200'
     environment:
       POSTGRES_HOST_AUTH_METHOD: "trust"
 
   orthanc-index-hospital-2:
-    image: postgres:15
+    image: postgres:latest
     container_name: orthanc-index-hospital-2
     restart: unless-stopped
     ports: ["5434:5432"]
     volumes: ["orthanc-index-hospital-2:/var/lib/postgresql/data"]
+    command: -c 'max_connections=200'
     environment:
       POSTGRES_HOST_AUTH_METHOD: "trust"
       
