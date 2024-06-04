@@ -60,21 +60,24 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		if err != nil {
 			var httpCode int
 			var errorMsg string
+			var ifSuccess bool
 
 			switch err.Error() {
 			case errors.MissingRecord:
-				httpCode = http.StatusNotFound
+				httpCode = http.StatusOK
 				errorMsg = "No records found."
+				ifSuccess = true
+
 			default:
 				httpCode = http.StatusInternalServerError
 				errorMsg = "Database error."
+				ifSuccess = false
 			}
 
 			response := viewmodels.HTTPResponseVM{
-				Status:    httpCode,
-				Success:   false,
-				Message:   errorMsg,
-				ErrorCode: err.Error(),
+				Status:  httpCode,
+				Success: ifSuccess,
+				Message: errorMsg,
 			}
 
 			response.JSON(w)
@@ -112,21 +115,23 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		if err != nil {
 			var httpCode int
 			var errorMsg string
+			var ifSuccess bool
 
 			switch err.Error() {
 			case errors.MissingRecord:
-				httpCode = http.StatusNotFound
+				httpCode = http.StatusOK
 				errorMsg = "No records found."
+				ifSuccess = true
 			default:
 				httpCode = http.StatusInternalServerError
 				errorMsg = "Database error."
+				ifSuccess = false
 			}
 
 			response := viewmodels.HTTPResponseVM{
-				Status:    httpCode,
-				Success:   false,
-				Message:   errorMsg,
-				ErrorCode: err.Error(),
+				Status:  httpCode,
+				Success: ifSuccess,
+				Message: errorMsg,
 			}
 
 			response.JSON(w)

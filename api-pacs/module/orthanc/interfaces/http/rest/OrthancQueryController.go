@@ -114,21 +114,23 @@ func (controller *OrthancQueryController) GetModalityStudies(w http.ResponseWrit
 	if err != nil {
 		var httpCode int
 		var errorMsg string
+		var ifSuccess bool
 
 		switch err.Error() {
 		case errors.MissingRecord:
 			httpCode = http.StatusNotFound
 			errorMsg = "No records found."
+			ifSuccess = true
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Server error."
+			ifSuccess = false
 		}
 
 		response := viewmodels.HTTPResponseVM{
-			Status:    httpCode,
-			Success:   false,
-			Message:   errorMsg,
-			ErrorCode: err.Error(),
+			Status:  httpCode,
+			Success: ifSuccess,
+			Message: errorMsg,
 		}
 
 		response.JSON(w)
