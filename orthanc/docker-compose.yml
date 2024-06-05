@@ -38,7 +38,7 @@ services:
       - orthanc-index
 
   orthanc-index:
-    image: postgres:latest
+    image: postgres:14
     container_name: orthanc-index
     restart: unless-stopped
     ports: ["5432:5432"]
