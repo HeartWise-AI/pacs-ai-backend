@@ -149,6 +149,24 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 	return sessionToken, nil
 }
 
+// SetTokenSession sets token session
+func (service *IAMCommandService) SetTokenSession(ctx context.Context, data repositoryTypes.SetTokenSession) error {
+	sessionToken := generateID()
+
+	err := service.IAMCommandRepositoryInterface.SetTokenSession(repositoryTypes.SetTokenSession{
+		SessionID:           sessionToken,
+		TenantID:            data.TenantID,
+		UserID:              data.UserID,
+		Role:                data.Role,
+		ExpireTimeInSeconds: entity.ExpireTimeInSeconds,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // VerifyTenantUserEmail verifies tenant user email
 func (service *IAMCommandService) VerifyTenantUserEmail(ctx context.Context, tenantID, email string) error {
 	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
