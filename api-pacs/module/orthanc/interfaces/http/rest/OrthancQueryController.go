@@ -111,38 +111,21 @@ func (controller *OrthancQueryController) GetModalityStudies(w http.ResponseWrit
 		StudyInstanceUID:           request.StudyInstanceUID,
 		StudyTime:                  request.StudyTime,
 	})
-	if err != nil {
+	if err != nil && err.Error() != errors.MissingRecord {
 		var httpCode int
 		var errorMsg string
-		var ifSuccess bool
 
 		switch err.Error() {
-		case errors.MissingRecord:
-			httpCode = http.StatusNotFound
-			errorMsg = "No records found."
-			ifSuccess = true
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Server error."
-			ifSuccess = false
 		}
 
 		response := viewmodels.HTTPResponseVM{
-			Status:  httpCode,
-			Success: ifSuccess,
-			Message: errorMsg,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	if len(res) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusNotFound,
+			Status:    httpCode,
 			Success:   false,
-			Message:   "No records found.",
-			ErrorCode: errors.MissingRecord,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
 		}
 
 		response.JSON(w)
@@ -151,6 +134,7 @@ func (controller *OrthancQueryController) GetModalityStudies(w http.ResponseWrit
 
 	modalityStudies := types.GetModalityStudiesResponse{
 		QueryID: queryID,
+		Studies: []types.Study{},
 	}
 
 	for _, modalityStudy := range res {

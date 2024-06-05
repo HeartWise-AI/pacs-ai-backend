@@ -2,12 +2,10 @@ package service
 
 import (
 	"context"
-	"errors"
 	"log"
 	"os"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
-	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	"api-pacs/module/orthanc/infrastructure/service/types"
@@ -64,11 +62,6 @@ func (service *OrthancQueryService) GetModalityStudies(ctx context.Context, data
 		},
 		Timeout: 0,
 	})
-
-	if len(res) == 0 {
-		return []orthancAPITypes.QueryModalitiesAnswersResponse{}, "", errors.New(apiError.MissingRecord)
-	}
-
 	if err != nil {
 		return nil, "", err
 	}

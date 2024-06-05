@@ -3,11 +3,9 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 
 	searchTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
 
-	apiError "api-pacs/internal/errors"
 	"api-pacs/module/elasticsearch/domain/entity"
 	"api-pacs/module/elasticsearch/domain/repository"
 )
@@ -21,16 +19,12 @@ type ElasticsearchQueryService struct {
 func (service *ElasticsearchQueryService) SearchLoginLogs(ctx context.Context, query map[string]searchTypes.MatchQuery) ([]entity.Login, error) {
 	res, err := service.ElasticsearchQueryRepositoryInterface.SearchLoginLogs(ctx, query)
 	if err != nil {
-		if err == errors.New(apiError.MissingRecord) {
-			return []entity.Login{}, err
-		}
-
 		return nil, err
 	}
 
 	var logins []entity.Login
 
-	for count, _ := range res.Hits.Hits {
+	for count := range res.Hits.Hits {
 		jsonData, err := json.Marshal(res.Hits.Hits[count].Source_)
 		if err != nil {
 			return nil, err
@@ -52,25 +46,21 @@ func (service *ElasticsearchQueryService) SearchLoginLogs(ctx context.Context, q
 func (service *ElasticsearchQueryService) SearchAdminMemberLogs(ctx context.Context, query map[string]searchTypes.MatchQuery) ([]entity.AdminMember, error) {
 	res, err := service.ElasticsearchQueryRepositoryInterface.SearchAdminMemberLogs(ctx, query)
 	if err != nil {
-		if err == errors.New(apiError.MissingRecord) {
-			return []entity.AdminMember{}, err
-		}
-
 		return nil, err
 	}
 
 	var adminMembers []entity.AdminMember
 
-	for count, _ := range res.Hits.Hits {
+	for count := range res.Hits.Hits {
 		jsonData, err := json.Marshal(res.Hits.Hits[count].Source_)
 		if err != nil {
-			return []entity.AdminMember{}, err
+			return nil, err
 		}
 
 		var adminMember entity.AdminMember
 		err = json.Unmarshal([]byte(jsonData), &adminMember)
 		if err != nil {
-			return []entity.AdminMember{}, err
+			return nil, err
 		}
 
 		adminMembers = append(adminMembers, adminMember)

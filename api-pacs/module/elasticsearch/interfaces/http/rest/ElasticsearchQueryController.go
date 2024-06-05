@@ -57,34 +57,28 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 	switch index {
 	case login.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchLoginLogs(context.TODO(), queryMap)
-		if err != nil {
+		if err != nil && err.Error() != errors.MissingRecord {
 			var httpCode int
 			var errorMsg string
-			var ifSuccess bool
 
 			switch err.Error() {
-			case errors.MissingRecord:
-				httpCode = http.StatusOK
-				errorMsg = "No records found."
-				ifSuccess = true
-
 			default:
 				httpCode = http.StatusInternalServerError
 				errorMsg = "Database error."
-				ifSuccess = false
 			}
 
 			response := viewmodels.HTTPResponseVM{
-				Status:  httpCode,
-				Success: ifSuccess,
-				Message: errorMsg,
+				Status:    httpCode,
+				Success:   false,
+				Message:   errorMsg,
+				ErrorCode: err.Error(),
 			}
 
 			response.JSON(w)
 			return
 		}
 
-		var logins []types.LoginLogResponse
+		logins := []types.LoginLogResponse{}
 
 		for _, login := range res {
 			logins = append(logins, types.LoginLogResponse{
@@ -112,33 +106,28 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		return
 	case adminMember.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchAdminMemberLogs(context.TODO(), queryMap)
-		if err != nil {
+		if err != nil && err.Error() != errors.MissingRecord {
 			var httpCode int
 			var errorMsg string
-			var ifSuccess bool
 
 			switch err.Error() {
-			case errors.MissingRecord:
-				httpCode = http.StatusOK
-				errorMsg = "No records found."
-				ifSuccess = true
 			default:
 				httpCode = http.StatusInternalServerError
 				errorMsg = "Database error."
-				ifSuccess = false
 			}
 
 			response := viewmodels.HTTPResponseVM{
-				Status:  httpCode,
-				Success: ifSuccess,
-				Message: errorMsg,
+				Status:    httpCode,
+				Success:   false,
+				Message:   errorMsg,
+				ErrorCode: err.Error(),
 			}
 
 			response.JSON(w)
 			return
 		}
 
-		var adminMembers []types.AdminMemberLogResponse
+		adminMembers := []types.AdminMemberLogResponse{}
 
 		for _, adminMember := range res {
 			adminMembers = append(adminMembers, types.AdminMemberLogResponse{

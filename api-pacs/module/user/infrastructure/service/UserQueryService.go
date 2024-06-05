@@ -3,11 +3,9 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 
-	apiError "api-pacs/internal/errors"
 	"api-pacs/module/user/domain/repository"
 	"api-pacs/module/user/infrastructure/service/types"
 )
@@ -60,9 +58,6 @@ func (service *UserQueryService) GetTenantUserByID(ctx context.Context, tenantID
 func (service *UserQueryService) GetTenantUsers(ctx context.Context, tenantID string) ([]types.GetTenantUser, error) {
 	res, err := service.UserQueryRepositoryInterface.SelectTenantUsers(ctx, tenantID)
 	if err != nil {
-		if err == errors.New(apiError.MissingRecord) {
-			return []types.GetTenantUser{}, err
-		}
 		return []types.GetTenantUser{}, err
 	}
 
