@@ -57,14 +57,11 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 	switch index {
 	case login.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchLoginLogs(context.TODO(), queryMap)
-		if err != nil {
+		if err != nil && err.Error() != errors.MissingRecord {
 			var httpCode int
 			var errorMsg string
 
 			switch err.Error() {
-			case errors.MissingRecord:
-				httpCode = http.StatusNotFound
-				errorMsg = "No records found."
 			default:
 				httpCode = http.StatusInternalServerError
 				errorMsg = "Database error."
@@ -81,7 +78,7 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			return
 		}
 
-		var logins []types.LoginLogResponse
+		logins := []types.LoginLogResponse{}
 
 		for _, login := range res {
 			logins = append(logins, types.LoginLogResponse{
@@ -109,14 +106,11 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		return
 	case adminMember.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchAdminMemberLogs(context.TODO(), queryMap)
-		if err != nil {
+		if err != nil && err.Error() != errors.MissingRecord {
 			var httpCode int
 			var errorMsg string
 
 			switch err.Error() {
-			case errors.MissingRecord:
-				httpCode = http.StatusNotFound
-				errorMsg = "No records found."
 			default:
 				httpCode = http.StatusInternalServerError
 				errorMsg = "Database error."
@@ -133,7 +127,7 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			return
 		}
 
-		var adminMembers []types.AdminMemberLogResponse
+		adminMembers := []types.AdminMemberLogResponse{}
 
 		for _, adminMember := range res {
 			adminMembers = append(adminMembers, types.AdminMemberLogResponse{

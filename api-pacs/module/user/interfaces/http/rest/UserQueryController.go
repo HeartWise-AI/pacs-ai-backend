@@ -111,14 +111,11 @@ func (controller *UserQueryController) GetTenantUsers(w http.ResponseWriter, r *
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
 	res, err := controller.UserQueryServiceInterface.GetTenantUsers(context.TODO(), tenantID)
-	if err != nil {
+	if err != nil && err.Error() != errors.MissingRecord {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
-		case errors.MissingRecord:
-			httpCode = http.StatusNotFound
-			errorMsg = "No records found."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Database error."
@@ -135,7 +132,7 @@ func (controller *UserQueryController) GetTenantUsers(w http.ResponseWriter, r *
 		return
 	}
 
-	var users []types.GetTenantUserResponse
+	users := []types.GetTenantUserResponse{}
 
 	for _, user := range res {
 		users = append(users, types.GetTenantUserResponse{

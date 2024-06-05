@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	searchTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
 
@@ -25,16 +24,16 @@ func (service *ElasticsearchQueryService) SearchLoginLogs(ctx context.Context, q
 
 	var logins []entity.Login
 
-	for count, _ := range res.Hits.Hits {
+	for count := range res.Hits.Hits {
 		jsonData, err := json.Marshal(res.Hits.Hits[count].Source_)
 		if err != nil {
-			fmt.Println(err)
+			return nil, err
 		}
 
 		var login entity.Login
 		err = json.Unmarshal([]byte(jsonData), &login)
 		if err != nil {
-			fmt.Println(err)
+			return nil, err
 		}
 
 		logins = append(logins, login)
@@ -52,16 +51,16 @@ func (service *ElasticsearchQueryService) SearchAdminMemberLogs(ctx context.Cont
 
 	var adminMembers []entity.AdminMember
 
-	for count, _ := range res.Hits.Hits {
+	for count := range res.Hits.Hits {
 		jsonData, err := json.Marshal(res.Hits.Hits[count].Source_)
 		if err != nil {
-			fmt.Println(err)
+			return nil, err
 		}
 
 		var adminMember entity.AdminMember
 		err = json.Unmarshal([]byte(jsonData), &adminMember)
 		if err != nil {
-			fmt.Println(err)
+			return nil, err
 		}
 
 		adminMembers = append(adminMembers, adminMember)
