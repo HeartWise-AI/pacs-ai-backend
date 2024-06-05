@@ -112,7 +112,7 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 		return "", err
 	}
 
-	err = service.IAMCommandRepositoryInterface.SetTokenSession(repositoryTypes.SetTokenSession{
+	err = service.SetTokenSession(ctx, types.SetTokenSession{
 		SessionID:           sessionToken,
 		TenantID:            tenantID,
 		UserID:              user.ID,
@@ -150,11 +150,9 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 }
 
 // SetTokenSession sets token session
-func (service *IAMCommandService) SetTokenSession(ctx context.Context, data repositoryTypes.SetTokenSession) error {
-	sessionToken := generateID()
-
+func (service *IAMCommandService) SetTokenSession(ctx context.Context, data types.SetTokenSession) error {
 	err := service.IAMCommandRepositoryInterface.SetTokenSession(repositoryTypes.SetTokenSession{
-		SessionID:           sessionToken,
+		SessionID:           data.SessionID,
 		TenantID:            data.TenantID,
 		UserID:              data.UserID,
 		Role:                data.Role,

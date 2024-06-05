@@ -15,8 +15,8 @@ import (
 )
 
 type IAMMiddleware struct {
-	application.IAMQueryServiceInterface
 	application.IAMCommandServiceInterface
+	application.IAMQueryServiceInterface
 }
 
 // FirebaseSuperUserGuard firebase superuser guard middleware
