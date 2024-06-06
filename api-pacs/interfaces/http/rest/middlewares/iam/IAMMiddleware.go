@@ -11,7 +11,7 @@ import (
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/iam/application"
 	"api-pacs/module/iam/domain/entity"
-	repositoryTypes "api-pacs/module/iam/infrastructure/repository/types"
+	serviceTypes "api-pacs/module/iam/infrastructure/service/types"
 )
 
 type IAMMiddleware struct {
@@ -99,7 +99,7 @@ func (middleware *IAMMiddleware) TokenSessionAuthGuard(next http.Handler) http.H
 		}
 
 		// reset token session duration
-		err = middleware.IAMCommandServiceInterface.SetTokenSession(r.Context(), repositoryTypes.SetTokenSession{
+		err = middleware.IAMCommandServiceInterface.SetTokenSession(r.Context(), serviceTypes.SetTokenSession{
 			SessionID:           sessionToken,
 			TenantID:            tokenSession.TenantID,
 			UserID:              tokenSession.UserID,

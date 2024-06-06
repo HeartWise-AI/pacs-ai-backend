@@ -16,6 +16,7 @@ import (
 	"api-pacs/module/iam/domain/entity"
 	"api-pacs/module/iam/domain/repository"
 	repositoryTypes "api-pacs/module/iam/infrastructure/repository/types"
+	"api-pacs/module/iam/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
 	userApplication "api-pacs/module/user/application"
 )

@@ -1,6 +1,6 @@
 package types
 
-type SetSessionToken struct {
+type SetTokenSession struct {
 	SessionID           string
 	TenantID            string
 	UserID              string
