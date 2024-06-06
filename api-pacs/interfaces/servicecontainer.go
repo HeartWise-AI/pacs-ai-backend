@@ -75,7 +75,8 @@ var (
 // RegisterIAMRESTMiddleware performs dependency injection to the RegisterIAMRESTMiddleware
 func (k *kernel) RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware {
 	middleware := iamMiddleware.IAMMiddleware{
-		IAMQueryServiceInterface: k.iamQueryServiceContainer(),
+		IAMCommandServiceInterface: k.iamCommandServiceContainer(),
+		IAMQueryServiceInterface:   k.iamQueryServiceContainer(),
 	}
 
 	return middleware

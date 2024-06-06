@@ -16,6 +16,7 @@ import (
 	"api-pacs/module/iam/domain/entity"
 	"api-pacs/module/iam/domain/repository"
 	repositoryTypes "api-pacs/module/iam/infrastructure/repository/types"
+	"api-pacs/module/iam/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
 	userApplication "api-pacs/module/user/application"
 )
@@ -112,7 +113,7 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 		return "", err
 	}
 
-	err = service.IAMCommandRepositoryInterface.SetTokenSession(repositoryTypes.SetTokenSession{
+	err = service.SetTokenSession(ctx, types.SetTokenSession{
 		SessionID:           sessionToken,
 		TenantID:            tenantID,
 		UserID:              user.ID,
@@ -147,6 +148,22 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 	}()
 
 	return sessionToken, nil
+}
+
+// SetTokenSession sets token session
+func (service *IAMCommandService) SetTokenSession(ctx context.Context, data types.SetTokenSession) error {
+	err := service.IAMCommandRepositoryInterface.SetTokenSession(repositoryTypes.SetTokenSession{
+		SessionID:           data.SessionID,
+		TenantID:            data.TenantID,
+		UserID:              data.UserID,
+		Role:                data.Role,
+		ExpireTimeInSeconds: entity.ExpireTimeInSeconds,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // VerifyTenantUserEmail verifies tenant user email
