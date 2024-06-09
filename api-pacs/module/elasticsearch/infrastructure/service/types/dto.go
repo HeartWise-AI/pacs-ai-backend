@@ -44,3 +44,9 @@ type CreateRetrieveStudyLog struct {
 	QueryID          string
 	AnswerIndex      uint
 }
+
+type SearchDocument struct {
+	Query     string
+	StartDate uint
+	EndDate   uint
+}

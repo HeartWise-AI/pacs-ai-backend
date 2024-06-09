@@ -50,8 +50,8 @@
     "/ecs/logs": {
       "get": {
         "tags": ["elasticsearch"],
-        "summary": "Get Search Results from Query",
-        "description": "Get search results from query",
+        "summary": "Search Elasticsearch Logs",
+        "description": "Search elasticsearch logs",
         "security": [
           {
             "bearerAuth": []
@@ -71,7 +71,25 @@
           {
             "name": "query",
             "in": "query",
-            "description": "Format: {`fieldname`:{`query`:`value`}}",
+            "description": "Target query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "description": "Start date range (YYYY-MM-DD)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "description": "End date range (YYYY-MM-DD)",
             "required": true,
             "schema": {
               "type": "string"

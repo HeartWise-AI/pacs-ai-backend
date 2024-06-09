@@ -2,15 +2,14 @@ package rest
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
-
-	searchTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
+	"time"
 
 	"api-pacs/interfaces/http/rest/viewmodels"
 	"api-pacs/internal/errors"
 	"api-pacs/module/elasticsearch/application"
 	"api-pacs/module/elasticsearch/domain/entity"
+	serviceTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	types "api-pacs/module/elasticsearch/interfaces/http"
 )
 
@@ -21,23 +20,7 @@ type ElasticsearchQueryController struct {
 
 // SearchDocumentLogs search document logs from elasticsearch
 func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query().Get("query")
-
-	var queryMap map[string]searchTypes.MatchQuery
-
-	err := json.Unmarshal([]byte(query), &queryMap)
-	if err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid query.",
-			ErrorCode: errors.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
+	// required fields
 	index := r.URL.Query().Get("index")
 	if len(index) == 0 {
 		response := viewmodels.HTTPResponseVM{
@@ -51,12 +34,57 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		return
 	}
 
+	query := r.URL.Query().Get("query")
+	if len(index) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid query.",
+			ErrorCode: errors.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	startDateStr := r.URL.Query().Get("startDate")
+	startDate, err := time.Parse("2006-01-02", startDateStr)
+	if err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid start date.",
+			ErrorCode: errors.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	endDateStr := r.URL.Query().Get("endDate")
+	endDate, err := time.Parse("2006-01-02", endDateStr)
+	if err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid end date.",
+			ErrorCode: errors.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
 	var login entity.Login
 	var adminMember entity.AdminMember
 
 	switch index {
 	case login.GetModelName():
-		res, err := controller.ElasticsearchQueryServiceInterface.SearchLoginLogs(context.TODO(), queryMap)
+		res, err := controller.ElasticsearchQueryServiceInterface.SearchLoginLogs(context.TODO(), serviceTypes.SearchDocument{
+			Query:     query,
+			StartDate: uint(startDate.Unix()),
+			EndDate:   uint(endDate.Unix()),
+		})
 		if err != nil && err.Error() != errors.MissingRecord {
 			var httpCode int
 			var errorMsg string
@@ -105,7 +133,11 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		response.JSON(w)
 		return
 	case adminMember.GetModelName():
-		res, err := controller.ElasticsearchQueryServiceInterface.SearchAdminMemberLogs(context.TODO(), queryMap)
+		res, err := controller.ElasticsearchQueryServiceInterface.SearchAdminMemberLogs(context.TODO(), serviceTypes.SearchDocument{
+			Query:     query,
+			StartDate: uint(startDate.Unix()),
+			EndDate:   uint(endDate.Unix()),
+		})
 		if err != nil && err.Error() != errors.MissingRecord {
 			var httpCode int
 			var errorMsg string

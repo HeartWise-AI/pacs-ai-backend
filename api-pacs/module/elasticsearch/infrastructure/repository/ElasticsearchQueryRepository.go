@@ -5,11 +5,11 @@ import (
 	"errors"
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
-	searchTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
 
 	"api-pacs/infrastructures/database/elasticsearch/types"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/elasticsearch/domain/entity"
+	repositoryTypes "api-pacs/module/elasticsearch/infrastructure/repository/types"
 )
 
 // ElasticsearchQueryRepository handles elasticsearch query repository
@@ -18,10 +18,15 @@ type ElasticsearchQueryRepository struct {
 }
 
 // SearchLoginLogs searches login logs
-func (repository *ElasticsearchQueryRepository) SearchLoginLogs(ctx context.Context, query map[string]searchTypes.MatchQuery) (*search.Response, error) {
+func (repository *ElasticsearchQueryRepository) SearchLoginLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error) {
 	var login entity.Login
 
-	res, err := repository.ElasticsearchDBHandlerInterface.SearchDocument(ctx, login.GetModelName(), query)
+	res, err := repository.ElasticsearchDBHandlerInterface.SearchDocuments(ctx, types.SearchDocument{
+		Index:     login.GetModelName(),
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -34,10 +39,15 @@ func (repository *ElasticsearchQueryRepository) SearchLoginLogs(ctx context.Cont
 }
 
 // SearchAdminMemberLogs searches admin member logs
-func (repository *ElasticsearchQueryRepository) SearchAdminMemberLogs(ctx context.Context, query map[string]searchTypes.MatchQuery) (*search.Response, error) {
+func (repository *ElasticsearchQueryRepository) SearchAdminMemberLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error) {
 	var adminMember entity.AdminMember
 
-	res, err := repository.ElasticsearchDBHandlerInterface.SearchDocument(ctx, adminMember.GetModelName(), query)
+	res, err := repository.ElasticsearchDBHandlerInterface.SearchDocuments(ctx, types.SearchDocument{
+		Index:     adminMember.GetModelName(),
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
 	if err != nil {
 		return nil, err
 	}
