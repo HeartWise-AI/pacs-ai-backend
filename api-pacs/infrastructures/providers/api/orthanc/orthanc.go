@@ -37,7 +37,7 @@ func (o *OrthancAPI) FindLocalStudy(ctx context.Context, requestPayload types.Qu
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/tools/find", o.BaseURL), buf)
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/tools/find", o.BaseURL), buf)
 	if err != nil {
 		return nil, err
 	}
