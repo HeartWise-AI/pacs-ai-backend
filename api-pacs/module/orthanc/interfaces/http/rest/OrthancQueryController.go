@@ -73,12 +73,12 @@ func (controller *OrthancQueryController) GetJobInfo(w http.ResponseWriter, r *h
 	response.JSON(w)
 }
 
-// GetModalityStudies get modality studies
-func (controller *OrthancQueryController) GetModalityStudies(w http.ResponseWriter, r *http.Request) {
+// FindModalityStudies get modality studies
+func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
-	var request types.GetModalityStudiesRequest
+	var request types.FindModalityStudiesRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		response := viewmodels.HTTPResponseVM{
@@ -92,7 +92,7 @@ func (controller *OrthancQueryController) GetModalityStudies(w http.ResponseWrit
 		return
 	}
 
-	res, queryID, err := controller.OrthancQueryServiceInterface.GetModalityStudies(context.TODO(), serviceTypes.GetModalityStudies{
+	res, queryID, err := controller.OrthancQueryServiceInterface.FindModalityStudies(context.TODO(), serviceTypes.FindModalityStudies{
 		TenantID:                   tenantID,
 		UserID:                     userID,
 		AccessionNumber:            request.AccessionNumber,
@@ -132,7 +132,7 @@ func (controller *OrthancQueryController) GetModalityStudies(w http.ResponseWrit
 		return
 	}
 
-	modalityStudies := types.GetModalityStudiesResponse{
+	modalityStudies := types.FindModalityStudiesResponse{
 		QueryID: queryID,
 		Studies: []types.Study{},
 	}

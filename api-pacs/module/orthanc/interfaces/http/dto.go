@@ -11,7 +11,7 @@ var (
 	}
 )
 
-type GetModalityStudiesRequest struct {
+type FindModalityStudiesRequest struct {
 	AccessionNumber            string `json:"accessionNumber"`
 	InstitutionName            string `json:"institutionName"`
 	ModalitiesInStudy          string `json:"modalitiesInStudy"`
@@ -40,7 +40,7 @@ type GetJobInfoResponse struct {
 	State    string `json:"state"`
 }
 
-type GetModalityStudiesResponse struct {
+type FindModalityStudiesResponse struct {
 	QueryID string  `json:"queryId"`
 	Studies []Study `json:"studies"`
 }

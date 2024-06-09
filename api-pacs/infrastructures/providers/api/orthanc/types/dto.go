@@ -28,6 +28,11 @@ type QueryModalitiesRequest struct {
 	Timeout   uint       `json:"Timeout"`
 }
 
+type QueryLocalStudyRequest struct {
+	Level string          `json:"Level"`
+	Query QueryLocalStudy `json:"Query"`
+}
+
 type GetJobResponse struct {
 	ID       string `json:"ID"`
 	Priority uint   `json:"Priority"`
@@ -80,4 +85,8 @@ type QueryStudy struct {
 	StudyID                    string `json:"StudyID"`
 	StudyInstanceUID           string `json:"StudyInstanceUID"`
 	StudyTime                  string `json:"StudyTime"`
+}
+
+type QueryLocalStudy struct {
+	StudyInstanceUID string `json:"StudyInstanceUID"`
 }

@@ -112,7 +112,7 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
-					r.Post("/modality/studies", orthancQueryController.GetModalityStudies)
+					r.Post("/modality/studies", orthancQueryController.FindModalityStudies)
 					r.Post("/retrieve/query/{queryID}/answer/{answerIndex}", orthancCommandController.RetrieveModalityStudy)
 					r.Get("/job/{jobID}", orthancQueryController.GetJobInfo)
 				})

@@ -29,8 +29,39 @@ func Init(baseURL string) *OrthancAPI {
 	}
 }
 
-// GetModalityStudies get modality studies
-func (o *OrthancAPI) GetModalityStudies(ctx context.Context, aet string, requestPayload types.QueryModalitiesRequest) ([]types.QueryModalitiesAnswersResponse, string, error) {
+// FindLocalStudy find local study
+func (o *OrthancAPI) FindLocalStudy(ctx context.Context, requestPayload types.QueryLocalStudyRequest) ([]string, error) {
+	buf := new(bytes.Buffer)
+	err := json.NewEncoder(buf).Encode(requestPayload)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/tools/find", o.BaseURL), buf)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var studies []string
+	if err := json.NewDecoder(resp.Body).Decode(&studies); err != nil {
+		return nil, err
+	}
+
+	if len(studies) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return studies, nil
+}
+
+// FindModalityStudies find modality studies
+func (o *OrthancAPI) FindModalityStudies(ctx context.Context, aet string, requestPayload types.QueryModalitiesRequest) ([]types.QueryModalitiesAnswersResponse, string, error) {
 	// query modalities
 	buf := new(bytes.Buffer)
 	err := json.NewEncoder(buf).Encode(requestPayload)
