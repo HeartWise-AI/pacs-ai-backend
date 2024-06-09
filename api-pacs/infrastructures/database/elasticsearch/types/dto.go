@@ -6,6 +6,7 @@ type Config struct {
 
 type SearchDocument struct {
 	Index     string
+	TenantID  string
 	Query     string
 	StartDate uint
 	EndDate   uint

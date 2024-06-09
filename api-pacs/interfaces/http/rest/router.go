@@ -94,6 +94,7 @@ func (router *router) InitRouter() *chi.Mux {
 			r.Route("/ecs", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
+					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
 					r.Get("/logs", elasticsearchController.SearchDocumentLogs)
 				})

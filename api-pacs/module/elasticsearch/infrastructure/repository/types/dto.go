@@ -46,6 +46,7 @@ type CreateRetrieveStudyLog struct {
 }
 
 type SearchDocument struct {
+	TenantID  string
 	Query     string
 	StartDate uint
 	EndDate   uint

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	"api-pacs/internal/errors"
 	"api-pacs/module/elasticsearch/application"
@@ -20,6 +21,8 @@ type ElasticsearchQueryController struct {
 
 // SearchDocumentLogs search document logs from elasticsearch
 func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
 	// required fields
 	index := r.URL.Query().Get("index")
 	if len(index) == 0 {
@@ -78,13 +81,18 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 	var login entity.Login
 	var adminMember entity.AdminMember
 
+	searchDocument := serviceTypes.SearchDocument{
+		TenantID:  tenantID,
+		Query:     query,
+		StartDate: uint(startDate.Unix()),
+		EndDate:   uint(endDate.Unix()),
+	}
+
+	// TODO: refactor with Go generics
+
 	switch index {
 	case login.GetModelName():
-		res, err := controller.ElasticsearchQueryServiceInterface.SearchLoginLogs(context.TODO(), serviceTypes.SearchDocument{
-			Query:     query,
-			StartDate: uint(startDate.Unix()),
-			EndDate:   uint(endDate.Unix()),
-		})
+		res, err := controller.ElasticsearchQueryServiceInterface.SearchLoginLogs(context.TODO(), searchDocument)
 		if err != nil && err.Error() != errors.MissingRecord {
 			var httpCode int
 			var errorMsg string
@@ -133,11 +141,7 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		response.JSON(w)
 		return
 	case adminMember.GetModelName():
-		res, err := controller.ElasticsearchQueryServiceInterface.SearchAdminMemberLogs(context.TODO(), serviceTypes.SearchDocument{
-			Query:     query,
-			StartDate: uint(startDate.Unix()),
-			EndDate:   uint(endDate.Unix()),
-		})
+		res, err := controller.ElasticsearchQueryServiceInterface.SearchAdminMemberLogs(context.TODO(), searchDocument)
 		if err != nil && err.Error() != errors.MissingRecord {
 			var httpCode int
 			var errorMsg string

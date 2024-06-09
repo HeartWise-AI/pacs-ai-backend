@@ -51,6 +51,12 @@ func (c *ElasticsearchDBHandler) SearchDocuments(ctx context.Context, param type
 				Must: []ecsTypes.Query{
 					{
 						MultiMatch: &ecsTypes.MultiMatchQuery{
+							Query:  param.TenantID,
+							Fields: []string{"tenant_id"},
+						},
+					},
+					{
+						MultiMatch: &ecsTypes.MultiMatchQuery{
 							Query:  param.Query,
 							Fields: []string{"*"},
 						},

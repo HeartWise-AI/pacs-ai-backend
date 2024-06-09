@@ -23,6 +23,7 @@ func (repository *ElasticsearchQueryRepository) SearchLoginLogs(ctx context.Cont
 
 	res, err := repository.ElasticsearchDBHandlerInterface.SearchDocuments(ctx, types.SearchDocument{
 		Index:     login.GetModelName(),
+		TenantID:  data.TenantID,
 		Query:     data.Query,
 		StartDate: data.StartDate,
 		EndDate:   data.EndDate,
@@ -44,6 +45,7 @@ func (repository *ElasticsearchQueryRepository) SearchAdminMemberLogs(ctx contex
 
 	res, err := repository.ElasticsearchDBHandlerInterface.SearchDocuments(ctx, types.SearchDocument{
 		Index:     adminMember.GetModelName(),
+		TenantID:  data.TenantID,
 		Query:     data.Query,
 		StartDate: data.StartDate,
 		EndDate:   data.EndDate,

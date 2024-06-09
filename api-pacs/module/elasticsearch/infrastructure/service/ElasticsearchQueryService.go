@@ -18,6 +18,7 @@ type ElasticsearchQueryService struct {
 // SearchLoginLogs search login logs
 func (service *ElasticsearchQueryService) SearchLoginLogs(ctx context.Context, data types.SearchDocument) ([]entity.Login, error) {
 	res, err := service.ElasticsearchQueryRepositoryInterface.SearchLoginLogs(ctx, repositoryTypes.SearchDocument{
+		TenantID:  data.TenantID,
 		Query:     data.Query,
 		StartDate: data.StartDate,
 		EndDate:   data.EndDate,
@@ -49,6 +50,7 @@ func (service *ElasticsearchQueryService) SearchLoginLogs(ctx context.Context, d
 // SearchAdminMemberLogs search admin member logs
 func (service *ElasticsearchQueryService) SearchAdminMemberLogs(ctx context.Context, data types.SearchDocument) ([]entity.AdminMember, error) {
 	res, err := service.ElasticsearchQueryRepositoryInterface.SearchAdminMemberLogs(ctx, repositoryTypes.SearchDocument{
+		TenantID:  data.TenantID,
 		Query:     data.Query,
 		StartDate: data.StartDate,
 		EndDate:   data.EndDate,
