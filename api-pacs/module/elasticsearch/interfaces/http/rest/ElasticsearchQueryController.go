@@ -80,6 +80,8 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 
 	var login entity.Login
 	var adminMember entity.AdminMember
+	var modalityStudy entity.ModalityStudy
+	var retrievedStudy entity.RetrievedStudy
 
 	searchDocument := serviceTypes.SearchDocument{
 		TenantID:  tenantID,
@@ -186,6 +188,102 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			Success: true,
 			Message: "Successfully fetched search results for admin member logs.",
 			Data:    adminMembers,
+		}
+
+		response.JSON(w)
+		return
+	case modalityStudy.GetModelName():
+		res, err := controller.ElasticsearchQueryServiceInterface.SearchModalityStudyLogs(context.TODO(), searchDocument)
+		if err != nil && err.Error() != errors.MissingRecord {
+			var httpCode int
+			var errorMsg string
+
+			switch err.Error() {
+			default:
+				httpCode = http.StatusInternalServerError
+				errorMsg = "Database error."
+			}
+
+			response := viewmodels.HTTPResponseVM{
+				Status:    httpCode,
+				Success:   false,
+				Message:   errorMsg,
+				ErrorCode: err.Error(),
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		modalityStudies := []types.ModalityStudyLogResponse{}
+
+		for _, modalityStudy := range res {
+			modalityStudies = append(modalityStudies, types.ModalityStudyLogResponse{
+				TenantID:   modalityStudy.TenantID,
+				TenantName: modalityStudy.TenantName,
+				TenantAET:  modalityStudy.TenantAET,
+				UserID:     modalityStudy.UserID,
+				Email:      modalityStudy.Email,
+				Name:       modalityStudy.Name,
+				QueryID:    modalityStudy.QueryID,
+				Timestamp:  modalityStudy.Timestamp,
+			})
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:  http.StatusOK,
+			Success: true,
+			Message: "Successfully fetched search results for modality study logs.",
+			Data:    modalityStudies,
+		}
+
+		response.JSON(w)
+		return
+	case retrievedStudy.GetModelName():
+		res, err := controller.ElasticsearchQueryServiceInterface.SearchRetrievedStudyLogs(context.TODO(), searchDocument)
+		if err != nil && err.Error() != errors.MissingRecord {
+			var httpCode int
+			var errorMsg string
+
+			switch err.Error() {
+			default:
+				httpCode = http.StatusInternalServerError
+				errorMsg = "Database error."
+			}
+
+			response := viewmodels.HTTPResponseVM{
+				Status:    httpCode,
+				Success:   false,
+				Message:   errorMsg,
+				ErrorCode: err.Error(),
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		retrievedStudies := []types.RetrievedStudyLogResponse{}
+
+		for _, retrievedStudy := range res {
+			retrievedStudies = append(retrievedStudies, types.RetrievedStudyLogResponse{
+				TenantID:         retrievedStudy.TenantID,
+				TenantName:       retrievedStudy.TenantName,
+				TenantAET:        retrievedStudy.TenantAET,
+				UserID:           retrievedStudy.UserID,
+				Email:            retrievedStudy.Email,
+				Name:             retrievedStudy.Name,
+				StudyInstanceUID: retrievedStudy.StudyInstanceUID,
+				QueryID:          retrievedStudy.QueryID,
+				AnswerIndex:      retrievedStudy.AnswerIndex,
+				Timestamp:        retrievedStudy.Timestamp,
+			})
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:  http.StatusOK,
+			Success: true,
+			Message: "Successfully fetched search results for retrieved study logs.",
+			Data:    retrievedStudies,
 		}
 
 		response.JSON(w)

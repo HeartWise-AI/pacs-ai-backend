@@ -56,6 +56,30 @@ type LoginLogResponse struct {
 	Timestamp  uint   `json:"timestamp"`
 }
 
+type ModalityStudyLogResponse struct {
+	TenantID   string `json:"tenantId"`
+	TenantName string `json:"tenantName"`
+	TenantAET  string `json:"tenantAet"`
+	UserID     string `json:"userId"`
+	Email      string `json:"email"`
+	Name       string `json:"name"`
+	QueryID    string `json:"queryId"`
+	Timestamp  uint   `json:"timestamp"`
+}
+
+type RetrievedStudyLogResponse struct {
+	TenantID         string `json:"tenantId"`
+	TenantName       string `json:"tenantName"`
+	TenantAET        string `json:"tenantAet"`
+	UserID           string `json:"userId"`
+	Email            string `json:"email"`
+	Name             string `json:"name"`
+	StudyInstanceUID string `json:"studyInstanceUid"`
+	QueryID          string `json:"queryId"`
+	AnswerIndex      uint   `json:"answerIndex"`
+	Timestamp        uint   `json:"timestamp"`
+}
+
 type LoginTenantUserResponse struct {
 	SessionToken string `json:"sessionToken"`
 }

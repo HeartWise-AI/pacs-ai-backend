@@ -65,7 +65,7 @@
             "required": true,
             "schema": {
               "type": "string",
-              "enum": ["logins", "admin_members"]
+              "enum": ["logins", "admin_members","find_modality_studies","retrieved_studies"]
             }
           },
           {
