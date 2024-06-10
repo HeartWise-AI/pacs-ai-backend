@@ -78,6 +78,8 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		return
 	}
 
+	exportOption := r.URL.Query().Get("export")
+
 	var login entity.Login
 	var adminMember entity.AdminMember
 	var modalityStudy entity.ModalityStudy
@@ -130,7 +132,6 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 				Specialty:  login.Specialty,
 				Timestamp:  login.Timestamp,
 			})
-
 		}
 
 		response := viewmodels.HTTPResponseVM{

@@ -94,6 +94,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "export",
+            "in": "query",
+            "description": "Export To CSV",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "nullable": true
+            }
           }
         ],
         "responses": {
