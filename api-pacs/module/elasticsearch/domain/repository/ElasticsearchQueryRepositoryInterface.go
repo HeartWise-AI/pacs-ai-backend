@@ -5,10 +5,12 @@ import (
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
 
-	"api-pacs/module/elasticsearch/infrastructure/repository/types"
+	repositoryTypes "api-pacs/module/elasticsearch/infrastructure/repository/types"
 )
 
 type ElasticsearchQueryRepositoryInterface interface {
-	SearchLoginLogs(ctx context.Context, data types.SearchDocument) (*search.Response, error)
-	SearchAdminMemberLogs(ctx context.Context, data types.SearchDocument) (*search.Response, error)
+	SearchAdminMemberLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error)
+	SearchLoginLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error)
+	SearchModalityStudyLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error)
+	SearchRetrievedStudyLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error)
 }
