@@ -83,8 +83,8 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 	}
 
 	// option to export response to csv
-	exportOption := r.URL.Query().Get("export")
-	export, _ := strconv.ParseBool(exportOption)
+	export := r.URL.Query().Get("export")
+	isExport, _ := strconv.ParseBool(export)
 
 	var login entity.Login
 	var adminMember entity.AdminMember
@@ -99,6 +99,9 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 	}
 
 	// TODO: refactor with Go generics
+
+	var logs interface{}
+	var message string
 
 	switch index {
 	case login.GetModelName():
@@ -140,25 +143,8 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			})
 		}
 
-		if !export {
-			response := viewmodels.HTTPResponseVM{
-				Status:  http.StatusOK,
-				Success: true,
-				Message: "Successfully fetched search results for login logs.",
-				Data:    logins,
-			}
-
-			response.JSON(w)
-			return
-		}
-
-		filename := fmt.Sprintf("%s_export_%s.csv", time.Now().Format("2006-01-02"), login.GetModelName())
-
-		w.Header().Set("Content-Type", "text/csv")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=%s", filename))
-		gocsv.Marshal(logins, w)
-
-		return
+		logs = logins
+		message = "Successfully fetched search results for login logs."
 	case adminMember.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchAdminMemberLogs(context.TODO(), searchDocument)
 		if err != nil && err.Error() != errors.MissingRecord {
@@ -200,25 +186,8 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 
 		}
 
-		if !export {
-			response := viewmodels.HTTPResponseVM{
-				Status:  http.StatusOK,
-				Success: true,
-				Message: "Successfully fetched search results for admin member logs.",
-				Data:    adminMembers,
-			}
-
-			response.JSON(w)
-			return
-		}
-
-		filename := fmt.Sprintf("%s_export_%s.csv", time.Now().Format("2006-01-02"), adminMember.GetModelName())
-
-		w.Header().Set("Content-Type", "text/csv")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=%s", filename))
-		gocsv.Marshal(adminMembers, w)
-
-		return
+		logs = adminMembers
+		message = "Successfully fetched search results for admin member logs."
 	case modalityStudy.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchModalityStudyLogs(context.TODO(), searchDocument)
 		if err != nil && err.Error() != errors.MissingRecord {
@@ -257,25 +226,8 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			})
 		}
 
-		if !export {
-			response := viewmodels.HTTPResponseVM{
-				Status:  http.StatusOK,
-				Success: true,
-				Message: "Successfully fetched search results for modality study logs.",
-				Data:    modalityStudies,
-			}
-
-			response.JSON(w)
-			return
-		}
-
-		filename := fmt.Sprintf("%s_export_%s.csv", time.Now().Format("2006-01-02"), modalityStudy.GetModelName())
-
-		w.Header().Set("Content-Type", "text/csv")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=%s", filename))
-		gocsv.Marshal(modalityStudies, w)
-
-		return
+		logs = modalityStudies
+		message = "Successfully fetched search results for modality study logs."
 	case retrievedStudy.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchRetrievedStudyLogs(context.TODO(), searchDocument)
 		if err != nil && err.Error() != errors.MissingRecord {
@@ -316,25 +268,8 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			})
 		}
 
-		if !export {
-			response := viewmodels.HTTPResponseVM{
-				Status:  http.StatusOK,
-				Success: true,
-				Message: "Successfully fetched search results for retrieved study logs.",
-				Data:    retrievedStudies,
-			}
-
-			response.JSON(w)
-			return
-		}
-
-		filename := fmt.Sprintf("%s_export_%s.csv", time.Now().Format("2006-01-02"), retrievedStudy.GetModelName())
-
-		w.Header().Set("Content-Type", "text/csv")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=%s", filename))
-		gocsv.Marshal(retrievedStudies, w)
-
-		return
+		logs = retrievedStudies
+		message = "Successfully fetched search results for retrieved study logs."
 	default:
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusNotFound,
@@ -346,4 +281,24 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		response.JSON(w)
 		return
 	}
+
+	if !isExport {
+		response := viewmodels.HTTPResponseVM{
+			Status:  http.StatusOK,
+			Success: true,
+			Message: message,
+			Data:    logs,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// return csv file
+	filename := fmt.Sprintf("%s_export_%s.csv", time.Now().Format("2006-01-02"), retrievedStudy.GetModelName())
+
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=%s", filename))
+	gocsv.Marshal(logs, w)
 }
