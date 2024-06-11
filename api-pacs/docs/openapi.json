@@ -65,7 +65,12 @@
             "required": true,
             "schema": {
               "type": "string",
-              "enum": ["logins", "admin_members","find_modality_studies","retrieved_studies"]
+              "enum": [
+                "logins",
+                "admin_members",
+                "find_modality_studies",
+                "retrieved_studies"
+              ]
             }
           },
           {
@@ -93,6 +98,16 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "export",
+            "in": "query",
+            "description": "Export to CSV",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "nullable": true
             }
           }
         ],
