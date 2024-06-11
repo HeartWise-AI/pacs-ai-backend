@@ -297,8 +297,8 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 	// return csv file
 	filename := fmt.Sprintf("%s_export_%s.csv", time.Now().Format("2006-01-02"), retrievedStudy.GetModelName())
 
-	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=%s", filename))
 	gocsv.Marshal(logs, w)
+	w.WriteHeader(http.StatusOK)
 }
