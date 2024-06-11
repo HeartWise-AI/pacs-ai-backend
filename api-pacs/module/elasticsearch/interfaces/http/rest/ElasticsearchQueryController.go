@@ -2,8 +2,12 @@ package rest
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strconv"
 	"time"
+
+	"github.com/gocarina/gocsv"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
@@ -78,7 +82,9 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		return
 	}
 
+	// option to export response to csv
 	exportOption := r.URL.Query().Get("export")
+	export, _ := strconv.ParseBool(exportOption)
 
 	var login entity.Login
 	var adminMember entity.AdminMember
@@ -134,14 +140,24 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			})
 		}
 
-		response := viewmodels.HTTPResponseVM{
-			Status:  http.StatusOK,
-			Success: true,
-			Message: "Successfully fetched search results for login logs.",
-			Data:    logins,
+		if !export {
+			response := viewmodels.HTTPResponseVM{
+				Status:  http.StatusOK,
+				Success: true,
+				Message: "Successfully fetched search results for login logs.",
+				Data:    logins,
+			}
+
+			response.JSON(w)
+			return
 		}
 
-		response.JSON(w)
+		filename := fmt.Sprintf("%s_export_%s.csv", time.Now().Format("2006-01-02"), login.GetModelName())
+
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=%s", filename))
+		gocsv.Marshal(logins, w)
+
 		return
 	case adminMember.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchAdminMemberLogs(context.TODO(), searchDocument)
@@ -184,14 +200,24 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 
 		}
 
-		response := viewmodels.HTTPResponseVM{
-			Status:  http.StatusOK,
-			Success: true,
-			Message: "Successfully fetched search results for admin member logs.",
-			Data:    adminMembers,
+		if !export {
+			response := viewmodels.HTTPResponseVM{
+				Status:  http.StatusOK,
+				Success: true,
+				Message: "Successfully fetched search results for admin member logs.",
+				Data:    adminMembers,
+			}
+
+			response.JSON(w)
+			return
 		}
 
-		response.JSON(w)
+		filename := fmt.Sprintf("%s_export_%s.csv", time.Now().Format("2006-01-02"), adminMember.GetModelName())
+
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=%s", filename))
+		gocsv.Marshal(adminMembers, w)
+
 		return
 	case modalityStudy.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchModalityStudyLogs(context.TODO(), searchDocument)
@@ -231,14 +257,24 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			})
 		}
 
-		response := viewmodels.HTTPResponseVM{
-			Status:  http.StatusOK,
-			Success: true,
-			Message: "Successfully fetched search results for modality study logs.",
-			Data:    modalityStudies,
+		if !export {
+			response := viewmodels.HTTPResponseVM{
+				Status:  http.StatusOK,
+				Success: true,
+				Message: "Successfully fetched search results for modality study logs.",
+				Data:    modalityStudies,
+			}
+
+			response.JSON(w)
+			return
 		}
 
-		response.JSON(w)
+		filename := fmt.Sprintf("%s_export_%s.csv", time.Now().Format("2006-01-02"), modalityStudy.GetModelName())
+
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=%s", filename))
+		gocsv.Marshal(modalityStudies, w)
+
 		return
 	case retrievedStudy.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchRetrievedStudyLogs(context.TODO(), searchDocument)
@@ -280,14 +316,24 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			})
 		}
 
-		response := viewmodels.HTTPResponseVM{
-			Status:  http.StatusOK,
-			Success: true,
-			Message: "Successfully fetched search results for retrieved study logs.",
-			Data:    retrievedStudies,
+		if !export {
+			response := viewmodels.HTTPResponseVM{
+				Status:  http.StatusOK,
+				Success: true,
+				Message: "Successfully fetched search results for retrieved study logs.",
+				Data:    retrievedStudies,
+			}
+
+			response.JSON(w)
+			return
 		}
 
-		response.JSON(w)
+		filename := fmt.Sprintf("%s_export_%s.csv", time.Now().Format("2006-01-02"), retrievedStudy.GetModelName())
+
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=%s", filename))
+		gocsv.Marshal(retrievedStudies, w)
+
 		return
 	default:
 		response := viewmodels.HTTPResponseVM{
