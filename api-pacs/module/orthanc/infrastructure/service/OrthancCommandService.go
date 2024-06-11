@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
+	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	"api-pacs/module/orthanc/infrastructure/service/types"
@@ -23,6 +25,23 @@ type OrthancCommandService struct {
 
 // RetrieveModalityStudy retrieve modality study
 func (service *OrthancCommandService) RetrieveModalityStudy(ctx context.Context, data types.RetrieveModalityStudy) (orthancAPITypes.RetrieveQueryModalityAnswerResponse, error) {
+	// check if study already exist in local
+	studies, err := service.OrthancAPIInterface.FindLocalStudy(ctx, orthancAPITypes.QueryLocalStudyRequest{
+		Level: "Study",
+		Query: orthancAPITypes.QueryLocalStudy{
+			StudyInstanceUID: data.StudyInstanceUID,
+		},
+	})
+	if err != nil && err.Error() != apiError.MissingRecord {
+		log.Println(err)
+		return orthancAPITypes.RetrieveQueryModalityAnswerResponse{}, err
+	}
+
+	// if existing, skip retrieving/download
+	if len(studies) > 0 {
+		return orthancAPITypes.RetrieveQueryModalityAnswerResponse{}, errors.New(apiError.DuplicateRecord) // halt and proceed
+	}
+
 	res, err := service.OrthancAPIInterface.RetrieveModalityStudy(ctx, data.QueryID, data.AnswerIndex, orthancAPITypes.RetrieveQueryModalityAnswerRequest{
 		Asynchronous: true,
 		Full:         true,
@@ -34,6 +53,7 @@ func (service *OrthancCommandService) RetrieveModalityStudy(ctx context.Context,
 		Timeout:      0,
 	})
 	if err != nil {
+		log.Println(err)
 		return orthancAPITypes.RetrieveQueryModalityAnswerResponse{}, err
 	}
 
@@ -41,11 +61,13 @@ func (service *OrthancCommandService) RetrieveModalityStudy(ctx context.Context,
 	go func() {
 		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, data.UserID)
 		if err != nil {
+			log.Println(err)
 			return
 		}
 
 		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
 		if err != nil {
+			log.Println(err)
 			return
 		}
 

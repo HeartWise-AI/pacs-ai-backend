@@ -32,28 +32,52 @@ type VerifyTenantUserEmailRequest struct {
 }
 
 type AdminMemberLogResponse struct {
-	TenantID   string `json:"sessionId"`
-	TenantName string `json:"tenantName"`
-	UserID     string `json:"userId"`
-	Email      string `json:"email"`
-	Name       string `json:"name"`
-	Role       string `json:"role"`
-	LicenseNo  string `json:"licenseNo"`
-	Specialty  string `json:"specialty"`
-	Action     string `json:"action"`
-	Timestamp  uint   `json:"timestamp"`
+	TenantID   string `json:"sessionId" csv:"tenant_id"`
+	TenantName string `json:"tenantName" csv:"tenant_name"`
+	UserID     string `json:"userId" csv:"user_id"`
+	Email      string `json:"email" csv:"email"`
+	Name       string `json:"name" csv:"name"`
+	Role       string `json:"role" csv:"role"`
+	LicenseNo  string `json:"licenseNo" csv:"license_no"`
+	Specialty  string `json:"specialty" csv:"specialty"`
+	Action     string `json:"action" csv:"action"`
+	Timestamp  uint   `json:"timestamp" csv:"timestamp"`
 }
 
 type LoginLogResponse struct {
-	SessionID  string `json:"sessionId"`
-	TenantID   string `json:"tenantId"`
-	TenantName string `json:"tenantName"`
-	UserID     string `json:"userId"`
-	Email      string `json:"email"`
-	Name       string `json:"name"`
-	Role       string `json:"role"`
-	Specialty  string `json:"specialty"`
-	Timestamp  uint   `json:"timestamp"`
+	SessionID  string `json:"sessionId" csv:"session_id"`
+	TenantID   string `json:"tenantId" csv:"tenant_id"`
+	TenantName string `json:"tenantName" csv:"tenant_name"`
+	UserID     string `json:"userId" csv:"user_id"`
+	Email      string `json:"email" csv:"email"`
+	Name       string `json:"name" csv:"name"`
+	Role       string `json:"role" csv:"role"`
+	Specialty  string `json:"specialty" csv:"specialty"`
+	Timestamp  uint   `json:"timestamp" csv:"timestamp"`
+}
+
+type ModalityStudyLogResponse struct {
+	TenantID   string `json:"tenantId" csv:"tenant_id"`
+	TenantName string `json:"tenantName" csv:"tenant_name"`
+	TenantAET  string `json:"tenantAet" csv:"tenant_aet"`
+	UserID     string `json:"userId" csv:"user_id"`
+	Email      string `json:"email" csv:"email"`
+	Name       string `json:"name" csv:"name"`
+	QueryID    string `json:"queryId" csv:"query_id"`
+	Timestamp  uint   `json:"timestamp" csv:"timestamp"`
+}
+
+type RetrievedStudyLogResponse struct {
+	TenantID         string `json:"tenantId" csv:"tenant_id"`
+	TenantName       string `json:"tenantName"  csv:"tenant_name"`
+	TenantAET        string `json:"tenantAet" csv:"tenant_aet"`
+	UserID           string `json:"userId" "user_id"`
+	Email            string `json:"email" csv:"email"`
+	Name             string `json:"name" csv:"name"`
+	StudyInstanceUID string `json:"studyInstanceUid" csv:"study_instance_uid"`
+	QueryID          string `json:"queryId" csv:"query_id"`
+	AnswerIndex      uint   `json:"answerIndex" csv:"answer_index"`
+	Timestamp        uint   `json:"timestamp" csv:"timestamp"`
 }
 
 type LoginTenantUserResponse struct {

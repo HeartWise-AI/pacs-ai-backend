@@ -50,8 +50,8 @@
     "/ecs/logs": {
       "get": {
         "tags": ["elasticsearch"],
-        "summary": "Get Search Results from Query",
-        "description": "Get search results from query",
+        "summary": "Search Elasticsearch Logs",
+        "description": "Search elasticsearch logs",
         "security": [
           {
             "bearerAuth": []
@@ -65,16 +65,49 @@
             "required": true,
             "schema": {
               "type": "string",
-              "enum": ["logins", "admin_members"]
+              "enum": [
+                "logins",
+                "admin_members",
+                "find_modality_studies",
+                "retrieved_studies"
+              ]
             }
           },
           {
             "name": "query",
             "in": "query",
-            "description": "Format: {`fieldname`:{`query`:`value`}}",
+            "description": "Target query",
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "description": "Start date range (YYYY-MM-DD)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "description": "End date range (YYYY-MM-DD)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "export",
+            "in": "query",
+            "description": "Export to CSV",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "nullable": true
             }
           }
         ],
@@ -204,19 +237,19 @@
     "/orthanc/modality/studies": {
       "post": {
         "tags": ["orthanc"],
-        "summary": "Get Modality Studies",
-        "description": "Get modality studies.",
+        "summary": "Find Modality Studies",
+        "description": "Find modality studies.",
         "security": [
           {
             "bearerAuth": []
           }
         ],
         "requestBody": {
-          "description": "Get modality studies request",
+          "description": "Find modality studies request",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GetModalityStudiesRequest"
+                "$ref": "#/components/schemas/FindModalityStudiesRequest"
               }
             }
           },
@@ -672,7 +705,7 @@
           }
         }
       },
-      "GetModalityStudiesRequest": {
+      "FindModalityStudiesRequest": {
         "required": [],
         "type": "object",
         "properties": {

@@ -31,15 +31,15 @@ func (service *OrthancQueryService) GetJobInfo(ctx context.Context, jobID string
 	return res, nil
 }
 
-// GetModalityStudies get modality studies
-func (service *OrthancQueryService) GetModalityStudies(ctx context.Context, data types.GetModalityStudies) ([]orthancAPITypes.QueryModalitiesAnswersResponse, string, error) {
+// FindModalityStudies get modality studies
+func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, data types.FindModalityStudies) ([]orthancAPITypes.QueryModalitiesAnswersResponse, string, error) {
 	// get tenant info
 	tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
 	if err != nil {
 		return nil, "", err
 	}
 
-	res, queryID, err := service.OrthancAPIInterface.GetModalityStudies(ctx, tenant.AET, orthancAPITypes.QueryModalitiesRequest{
+	res, queryID, err := service.OrthancAPIInterface.FindModalityStudies(ctx, tenant.AET, orthancAPITypes.QueryModalitiesRequest{
 		Level:     "Study",
 		LocalAET:  os.Getenv("ORTHANC_AET"),
 		Normalize: true,

@@ -73,12 +73,12 @@ func (controller *OrthancQueryController) GetJobInfo(w http.ResponseWriter, r *h
 	response.JSON(w)
 }
 
-// GetModalityStudies get modality studies
-func (controller *OrthancQueryController) GetModalityStudies(w http.ResponseWriter, r *http.Request) {
+// FindModalityStudies get modality studies
+func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
-	var request types.GetModalityStudiesRequest
+	var request types.FindModalityStudiesRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		response := viewmodels.HTTPResponseVM{
@@ -92,7 +92,7 @@ func (controller *OrthancQueryController) GetModalityStudies(w http.ResponseWrit
 		return
 	}
 
-	res, queryID, err := controller.OrthancQueryServiceInterface.GetModalityStudies(context.TODO(), serviceTypes.GetModalityStudies{
+	res, queryID, err := controller.OrthancQueryServiceInterface.FindModalityStudies(context.TODO(), serviceTypes.FindModalityStudies{
 		TenantID:                   tenantID,
 		UserID:                     userID,
 		AccessionNumber:            request.AccessionNumber,
@@ -111,14 +111,11 @@ func (controller *OrthancQueryController) GetModalityStudies(w http.ResponseWrit
 		StudyInstanceUID:           request.StudyInstanceUID,
 		StudyTime:                  request.StudyTime,
 	})
-	if err != nil {
+	if err != nil && err.Error() != errors.MissingRecord {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
-		case errors.MissingRecord:
-			httpCode = http.StatusNotFound
-			errorMsg = "No records found."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Server error."
@@ -135,20 +132,9 @@ func (controller *OrthancQueryController) GetModalityStudies(w http.ResponseWrit
 		return
 	}
 
-	if len(res) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusNotFound,
-			Success:   false,
-			Message:   "No records found.",
-			ErrorCode: errors.MissingRecord,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	modalityStudies := types.GetModalityStudiesResponse{
+	modalityStudies := types.FindModalityStudiesResponse{
 		QueryID: queryID,
+		Studies: []types.Study{},
 	}
 
 	for _, modalityStudy := range res {

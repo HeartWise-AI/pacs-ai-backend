@@ -6,7 +6,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/index"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
-	searchTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
+	ecsTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
 
 	"api-pacs/infrastructures/database/elasticsearch/types"
 )
@@ -40,11 +40,39 @@ func (c *ElasticsearchDBHandler) IndexDocument(ctx context.Context, index string
 	return res, nil
 }
 
-// SearchDocument search a document
-func (c *ElasticsearchDBHandler) SearchDocument(ctx context.Context, index string, query map[string]searchTypes.MatchQuery) (*search.Response, error) {
-	res, err := c.TypedClient.Search().Index(index).Request(&search.Request{
-		Query: &searchTypes.Query{
-			Match: query,
+// SearchDocuments search ecs documents
+func (c *ElasticsearchDBHandler) SearchDocuments(ctx context.Context, param types.SearchDocument) (*search.Response, error) {
+	startDateTimestamp := ecsTypes.Float64(param.StartDate)
+	endtDateTimestamp := ecsTypes.Float64(param.EndDate)
+
+	res, err := c.TypedClient.Search().Index(param.Index).Request(&search.Request{
+		Query: &ecsTypes.Query{
+			Bool: &ecsTypes.BoolQuery{
+				Must: []ecsTypes.Query{
+					{
+						MultiMatch: &ecsTypes.MultiMatchQuery{
+							Query:  param.TenantID,
+							Fields: []string{"tenant_id"},
+						},
+					},
+					{
+						MultiMatch: &ecsTypes.MultiMatchQuery{
+							Query:  param.Query,
+							Fields: []string{"*"},
+						},
+					},
+				},
+				Filter: []ecsTypes.Query{
+					{
+						Range: map[string]ecsTypes.RangeQuery{
+							"timestamp": ecsTypes.NumberRangeQuery{
+								Gte: &startDateTimestamp,
+								Lte: &endtDateTimestamp,
+							},
+						},
+					},
+				},
+			},
 		},
 	}).Do(ctx)
 	if err != nil {

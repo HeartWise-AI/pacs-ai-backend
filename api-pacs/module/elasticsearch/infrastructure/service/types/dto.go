@@ -44,3 +44,10 @@ type CreateRetrieveStudyLog struct {
 	QueryID          string
 	AnswerIndex      uint
 }
+
+type SearchDocument struct {
+	TenantID  string
+	Query     string
+	StartDate uint
+	EndDate   uint
+}

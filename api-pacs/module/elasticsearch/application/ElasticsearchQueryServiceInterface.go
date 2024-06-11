@@ -4,12 +4,13 @@ import (
 	"context"
 
 	"api-pacs/module/elasticsearch/domain/entity"
-
-	searchTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
+	"api-pacs/module/elasticsearch/infrastructure/service/types"
 )
 
 // ElasticsearchQueryServiceInterface holds the implementable methods for the elasticsearch query service
 type ElasticsearchQueryServiceInterface interface {
-	SearchLoginLogs(ctx context.Context, query map[string]searchTypes.MatchQuery) ([]entity.Login, error)
-	SearchAdminMemberLogs(ctx context.Context, query map[string]searchTypes.MatchQuery) ([]entity.AdminMember, error)
+	SearchAdminMemberLogs(ctx context.Context, data types.SearchDocument) ([]entity.AdminMember, error)
+	SearchLoginLogs(ctx context.Context, data types.SearchDocument) ([]entity.Login, error)
+	SearchModalityStudyLogs(ctx context.Context, data types.SearchDocument) ([]entity.ModalityStudy, error)
+	SearchRetrievedStudyLogs(ctx context.Context, data types.SearchDocument) ([]entity.RetrievedStudy, error)
 }

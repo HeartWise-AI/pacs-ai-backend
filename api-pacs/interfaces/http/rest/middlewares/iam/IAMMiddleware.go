@@ -11,9 +11,11 @@ import (
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/iam/application"
 	"api-pacs/module/iam/domain/entity"
+	serviceTypes "api-pacs/module/iam/infrastructure/service/types"
 )
 
 type IAMMiddleware struct {
+	application.IAMCommandServiceInterface
 	application.IAMQueryServiceInterface
 }
 
@@ -94,6 +96,27 @@ func (middleware *IAMMiddleware) TokenSessionAuthGuard(next http.Handler) http.H
 
 			response.JSON(w)
 			return
+		}
+
+		// reset token session duration
+		err = middleware.IAMCommandServiceInterface.SetTokenSession(r.Context(), serviceTypes.SetTokenSession{
+			SessionID:           sessionToken,
+			TenantID:            tokenSession.TenantID,
+			UserID:              tokenSession.UserID,
+			Role:                tokenSession.Role,
+			ExpireTimeInSeconds: entity.ExpireTimeInSeconds,
+		})
+		if err != nil {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusUnauthorized,
+				Success:   false,
+				Message:   "Unauthorized access.",
+				ErrorCode: apiError.UnauthorizedAccess,
+			}
+
+			response.JSON(w)
+			return
+
 		}
 
 		// set context and pass

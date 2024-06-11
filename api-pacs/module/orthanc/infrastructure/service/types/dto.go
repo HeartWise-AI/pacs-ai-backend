@@ -1,6 +1,6 @@
 package types
 
-type GetModalityStudies struct {
+type FindModalityStudies struct {
 	TenantID                   string
 	UserID                     string
 	AccessionNumber            string

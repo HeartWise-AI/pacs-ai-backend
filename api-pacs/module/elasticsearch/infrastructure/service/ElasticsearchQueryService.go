@@ -3,12 +3,11 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-
-	searchTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
 
 	"api-pacs/module/elasticsearch/domain/entity"
 	"api-pacs/module/elasticsearch/domain/repository"
+	repositoryTypes "api-pacs/module/elasticsearch/infrastructure/repository/types"
+	"api-pacs/module/elasticsearch/infrastructure/service/types"
 )
 
 // ElasticsearchQueryService handles the Elasticsearch query service logic
@@ -16,25 +15,62 @@ type ElasticsearchQueryService struct {
 	repository.ElasticsearchQueryRepositoryInterface
 }
 
+// SearchAdminMemberLogs search admin member logs
+func (service *ElasticsearchQueryService) SearchAdminMemberLogs(ctx context.Context, data types.SearchDocument) ([]entity.AdminMember, error) {
+	res, err := service.ElasticsearchQueryRepositoryInterface.SearchAdminMemberLogs(ctx, repositoryTypes.SearchDocument{
+		TenantID:  data.TenantID,
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var adminMembers []entity.AdminMember
+
+	for count := range res.Hits.Hits {
+		jsonData, err := json.Marshal(res.Hits.Hits[count].Source_)
+		if err != nil {
+			return nil, err
+		}
+
+		var adminMember entity.AdminMember
+		err = json.Unmarshal([]byte(jsonData), &adminMember)
+		if err != nil {
+			return nil, err
+		}
+
+		adminMembers = append(adminMembers, adminMember)
+	}
+
+	return adminMembers, nil
+}
+
 // SearchLoginLogs search login logs
-func (service *ElasticsearchQueryService) SearchLoginLogs(ctx context.Context, query map[string]searchTypes.MatchQuery) ([]entity.Login, error) {
-	res, err := service.ElasticsearchQueryRepositoryInterface.SearchLoginLogs(ctx, query)
+func (service *ElasticsearchQueryService) SearchLoginLogs(ctx context.Context, data types.SearchDocument) ([]entity.Login, error) {
+	res, err := service.ElasticsearchQueryRepositoryInterface.SearchLoginLogs(ctx, repositoryTypes.SearchDocument{
+		TenantID:  data.TenantID,
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	var logins []entity.Login
 
-	for count, _ := range res.Hits.Hits {
+	for count := range res.Hits.Hits {
 		jsonData, err := json.Marshal(res.Hits.Hits[count].Source_)
 		if err != nil {
-			fmt.Println(err)
+			return nil, err
 		}
 
 		var login entity.Login
 		err = json.Unmarshal([]byte(jsonData), &login)
 		if err != nil {
-			fmt.Println(err)
+			return nil, err
 		}
 
 		logins = append(logins, login)
@@ -43,29 +79,66 @@ func (service *ElasticsearchQueryService) SearchLoginLogs(ctx context.Context, q
 	return logins, nil
 }
 
-// SearchAdminMemberLogs search admin member logs
-func (service *ElasticsearchQueryService) SearchAdminMemberLogs(ctx context.Context, query map[string]searchTypes.MatchQuery) ([]entity.AdminMember, error) {
-	res, err := service.ElasticsearchQueryRepositoryInterface.SearchAdminMemberLogs(ctx, query)
+// SearchModalityStudyLogs search modality study logs
+func (service *ElasticsearchQueryService) SearchModalityStudyLogs(ctx context.Context, data types.SearchDocument) ([]entity.ModalityStudy, error) {
+	res, err := service.ElasticsearchQueryRepositoryInterface.SearchModalityStudyLogs(ctx, repositoryTypes.SearchDocument{
+		TenantID:  data.TenantID,
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	var adminMembers []entity.AdminMember
+	var modalityStudies []entity.ModalityStudy
 
-	for count, _ := range res.Hits.Hits {
+	for count := range res.Hits.Hits {
 		jsonData, err := json.Marshal(res.Hits.Hits[count].Source_)
 		if err != nil {
-			fmt.Println(err)
+			return nil, err
 		}
 
-		var adminMember entity.AdminMember
-		err = json.Unmarshal([]byte(jsonData), &adminMember)
+		var modalityStudy entity.ModalityStudy
+		err = json.Unmarshal([]byte(jsonData), &modalityStudy)
 		if err != nil {
-			fmt.Println(err)
+			return nil, err
 		}
 
-		adminMembers = append(adminMembers, adminMember)
+		modalityStudies = append(modalityStudies, modalityStudy)
 	}
 
-	return adminMembers, nil
+	return modalityStudies, nil
+}
+
+// SearchRetrievedStudyLogs search retrieved study logs
+func (service *ElasticsearchQueryService) SearchRetrievedStudyLogs(ctx context.Context, data types.SearchDocument) ([]entity.RetrievedStudy, error) {
+	res, err := service.ElasticsearchQueryRepositoryInterface.SearchRetrievedStudyLogs(ctx, repositoryTypes.SearchDocument{
+		TenantID:  data.TenantID,
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var retrievedStudies []entity.RetrievedStudy
+
+	for count := range res.Hits.Hits {
+		jsonData, err := json.Marshal(res.Hits.Hits[count].Source_)
+		if err != nil {
+			return nil, err
+		}
+
+		var retrievedStudy entity.RetrievedStudy
+		err = json.Unmarshal([]byte(jsonData), &retrievedStudy)
+		if err != nil {
+			return nil, err
+		}
+
+		retrievedStudies = append(retrievedStudies, retrievedStudy)
+	}
+
+	return retrievedStudies, nil
 }
