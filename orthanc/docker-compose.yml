@@ -12,9 +12,10 @@ services:
     environment:
       ORTHANC__NAME: "PACS Orthanc"
       ORTHANC__DICOM_AET: "PACS_AI"
+      # Need to manualy update ORTHANC__DICOM_MODALITIES for now
       ORTHANC__DICOM_MODALITIES: |
         {
-          "${FIREBASE_AET_1}": ["${PACS_AET_1}", "${PACS_IP_1}", ${PACS_PORT_1}]
+          "${FIREBASE_AET_1}": ["${PACS_AET_1}", "${PACS_IP_1}", ${PACS_PORT_1}] 
         }
       DICOM_WEB_PLUGIN_ENABLED: "true"
       ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
