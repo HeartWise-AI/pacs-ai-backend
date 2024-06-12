@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   orthanc-hospital-1:
     image: orthancteam/orthanc:latest

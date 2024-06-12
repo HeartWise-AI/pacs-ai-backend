@@ -6,5 +6,5 @@ services:
     command: ["redis-server", "/etc/redis/redis.conf"]
     volumes:
       - ./redis.conf:/etc/redis/redis.conf
-    expose:
-      - "6379"
+    ports:
+      - 6379:6379

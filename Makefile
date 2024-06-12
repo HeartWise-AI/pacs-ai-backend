@@ -3,42 +3,50 @@ default: up-local
 .PHONY: up
 up:
 	docker compose down
-	docker compose up -d --build
+	docker compose -f docker-compose-dev.yml up -d --build
 
 .PHONY: down
 down:
-	docker compose down
+	docker compose -f docker-compose-dev.yml down
 
 .PHONY: up-local
 up-local:
-	docker compose up --build
+	docker compose -f docker-compose-dev.yml up --build
+
+.PHONY: up-prod
+up-prod:
+	docker compose up -d --build
+
+.PHONY: down-prod
+down-prod:
+	docker compose down
 
 .PHONY: up-api-pacs
 up-api-pacs:
 	cd api-pacs
-	docker compose up --build
+	docker compose -f docker-compose-dev.yml up --build
 
 .PHONY: up-orthanc
 up-orthanc:
 	cd orthanc
-	docker compose up --build
+	docker compose -f docker-compose-dev.yml up --build
 
 .PHONY: up-orthanc-pacs
 up-orthanc:
 	cd orthanc-pacs
-	docker compose up --build
+	docker compose -f docker-compose-dev.yml up --build
 
 .PHONY: up-orthanc
 up-orthanc:
 	cd orthanc
-	docker compose up --build
+	docker compose -f docker-compose-dev.yml up --build
 
 .PHONY: up-redis
 up-redis:
 	cd redis
-	docker compose up --build
+	docker compose -f docker-compose-dev.yml up --build
 
 .PHONY: up-elasticsearch
 up-redis:
 	cd elasticsearch
-	docker compose up --build
+	docker compose -f docker-compose-dev.yml up --build

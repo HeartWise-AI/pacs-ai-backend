@@ -1,6 +1,8 @@
 services:
   nginx:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile-dev
     container_name: nginx
     restart: unless-stopped
     ports:
