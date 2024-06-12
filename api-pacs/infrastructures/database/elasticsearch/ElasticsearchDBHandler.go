@@ -42,10 +42,12 @@ func (c *ElasticsearchDBHandler) IndexDocument(ctx context.Context, index string
 
 // SearchDocuments search ecs documents
 func (c *ElasticsearchDBHandler) SearchDocuments(ctx context.Context, param types.SearchDocument) (*search.Response, error) {
+	size := 5000 // TODO: max size, dynamic size for pagination
 	startDateTimestamp := ecsTypes.Float64(param.StartDate)
 	endtDateTimestamp := ecsTypes.Float64(param.EndDate)
 
 	res, err := c.TypedClient.Search().Index(param.Index).Request(&search.Request{
+		Size: &size,
 		Query: &ecsTypes.Query{
 			Bool: &ecsTypes.BoolQuery{
 				Must: []ecsTypes.Query{

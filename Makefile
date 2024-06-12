@@ -2,7 +2,6 @@ default: up-local
 
 .PHONY: up
 up:
-	docker compose down
 	docker compose -f docker-compose-dev.yml up -d --build
 
 .PHONY: down
