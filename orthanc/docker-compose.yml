@@ -7,14 +7,13 @@ services:
       - "4242"
     volumes:
       - orthanc-storage:/var/lib/orthanc/db/
-    env_file:
-      - ../api-pacs/.env
+    env_file: /home/code6800/pacs-ai-backend/api-pacs/.env
     environment:
       ORTHANC__NAME: "PACS Orthanc"
       ORTHANC__DICOM_AET: "PACS_AI"
       ORTHANC__DICOM_MODALITIES: |
         {
-          "${FIREBASE_AET_1}": ["${PACS_AET_1}", "${PACS_IP_1}", ${PACS_PORT_1}]
+          "SGBMECHOCARD": ["ORTHANC", "10.128.228.205", 4242]
         }
       DICOM_WEB_PLUGIN_ENABLED: "true"
       ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
