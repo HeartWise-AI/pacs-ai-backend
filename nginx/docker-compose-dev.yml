@@ -1,0 +1,12 @@
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile-dev
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - 80:80
+    depends_on:
+      - orthanc
+      - api-pacs

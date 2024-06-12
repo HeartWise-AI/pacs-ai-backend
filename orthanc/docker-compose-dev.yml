@@ -3,18 +3,17 @@ services:
     image: orthancteam/orthanc:latest
     container_name: orthanc
     restart: unless-stopped
-    expose:
-      - "4242"
+    ports:
+      - 8053:8042
     volumes:
       - orthanc-storage:/var/lib/orthanc/db/
-    env_file:
-      - ../api-pacs/.env
     environment:
       ORTHANC__NAME: "PACS Orthanc"
       ORTHANC__DICOM_AET: "PACS_AI"
       ORTHANC__DICOM_MODALITIES: |
         {
-          "${FIREBASE_AET_1}": ["${PACS_AET_1}", "${PACS_IP_1}", ${PACS_PORT_1}]
+          "hospital-1": ["HOSPITAL_1", "orthanc-hospital-1", 4242],
+          "hospital-2": ["HOSPITAL_2", "orthanc-hospital-2", 4242]
         }
       DICOM_WEB_PLUGIN_ENABLED: "true"
       ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
@@ -40,8 +39,7 @@ services:
     image: postgres:latest
     container_name: orthanc-index
     restart: unless-stopped
-    expose: 
-      - "5432"
+    ports: ["5432:5432"]
     volumes: ["orthanc-index:/var/lib/postgresql/data"]
     command: -c 'max_connections=200'
     environment:

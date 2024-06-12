@@ -4,9 +4,9 @@ networks:
 
 include:
   - orthanc/docker-compose.yml
-  - orthanc-pacs/docker-compose.yml # uncomment to launch othanc pacs for simulation
+  # - orthanc-pacs/docker-compose.yml # uncomment to launch othanc pacs for simulation
   - redis/docker-compose.yml
   - elasticsearch/docker-compose.yml
   - api-pacs/docker-compose.yml
-  # - nginx/docker-compose.yml
+  - nginx/docker-compose.yml
   - ../PACS-AI/docker-compose.yml

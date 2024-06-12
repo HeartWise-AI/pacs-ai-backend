@@ -3,8 +3,8 @@ services:
     build: .
     container_name: api-pacs
     restart: unless-stopped
-    expose:
-      - ${API_URL_REST_PORT}
+    ports:
+      - ${API_URL_REST_PORT}:${API_URL_REST_PORT}
     depends_on:
       - redis
       - elasticsearch
