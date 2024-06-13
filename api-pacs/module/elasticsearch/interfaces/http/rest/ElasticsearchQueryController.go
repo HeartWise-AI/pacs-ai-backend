@@ -3,7 +3,6 @@ package rest
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -188,7 +187,6 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			})
 
 		}
-		log.Print("this is from admin member controller")
 
 		logs = adminMembers
 		message = "Successfully fetched search results for admin member logs."
