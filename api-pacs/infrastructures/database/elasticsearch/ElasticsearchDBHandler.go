@@ -7,6 +7,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/index"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
 	ecsTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/sortorder"
 
 	"api-pacs/infrastructures/database/elasticsearch/types"
 )
@@ -47,7 +48,6 @@ func (c *ElasticsearchDBHandler) SearchDocuments(ctx context.Context, param type
 	endtDateTimestamp := ecsTypes.Float64(param.EndDate)
 
 	res, err := c.TypedClient.Search().Index(param.Index).Request(&search.Request{
-		Size: &size,
 		Query: &ecsTypes.Query{
 			Bool: &ecsTypes.BoolQuery{
 				Must: []ecsTypes.Query{
@@ -71,6 +71,18 @@ func (c *ElasticsearchDBHandler) SearchDocuments(ctx context.Context, param type
 								Gte: &startDateTimestamp,
 								Lte: &endtDateTimestamp,
 							},
+						},
+					},
+				},
+			},
+		},
+		Size: &size,
+		Sort: []ecsTypes.SortCombinations{
+			ecsTypes.SortOptions{
+				SortOptions: map[string]ecsTypes.FieldSort{
+					"timestamp": {
+						Order: &sortorder.SortOrder{
+							Name: "desc",
 						},
 					},
 				},
