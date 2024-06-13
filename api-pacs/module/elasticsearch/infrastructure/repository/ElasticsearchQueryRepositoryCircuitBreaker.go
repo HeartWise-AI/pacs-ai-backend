@@ -20,7 +20,7 @@ func (repository *ElasticsearchQueryRepositoryCircuitBreaker) SearchAdminMemberL
 	output := make(chan *search.Response, 1)
 	hystrix.ConfigureCommand("search_admin_member_logs", config.Settings())
 	errors := hystrix.Go("search_admin_member_logs", func() error {
-		adminMember, err := repository.ElasticsearchQueryRepositoryInterface.SearchLoginLogs(ctx, data)
+		adminMember, err := repository.ElasticsearchQueryRepositoryInterface.SearchAdminMemberLogs(ctx, data)
 		if err != nil {
 			return err
 		}
