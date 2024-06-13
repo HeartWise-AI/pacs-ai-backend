@@ -82,7 +82,7 @@ func (c *ElasticsearchDBHandler) SearchDocuments(ctx context.Context, param type
 				SortOptions: map[string]ecsTypes.FieldSort{
 					"timestamp": {
 						Order: &sortorder.SortOrder{
-							Name: "desc",
+							Name: "desc", // TODO: should be from params
 						},
 					},
 				},
