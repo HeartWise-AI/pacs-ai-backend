@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     ports:
       - 8053:8042
+      - 4242:4242
     volumes:
       - orthanc-storage:/var/lib/orthanc/db/
     environment:
@@ -12,7 +13,7 @@ services:
       ORTHANC__DICOM_AET: "PACS_AI"
       ORTHANC__DICOM_MODALITIES: |
         {
-          "hospital-1": ["HOSPITAL_1", "orthanc-hospital-1", 4242],
+          "hospital-1": ["HOSPITAL_1", "34.95.47.89", 4242],
           "hospital-2": ["HOSPITAL_2", "orthanc-hospital-2", 4242]
         }
       DICOM_WEB_PLUGIN_ENABLED: "true"
