@@ -57,7 +57,7 @@ func (o *OrthancAPI) FindLocalStudy(ctx context.Context, requestPayload types.Qu
 		}
 		errorMessage := string(response)
 
-		log.Print("Error:", errorMessage)
+		log.Println("Error:", errorMessage)
 		return nil, errors.New(apiError.OrthancError)
 	}
 
@@ -100,7 +100,7 @@ func (o *OrthancAPI) FindModalityStudies(ctx context.Context, aet string, reques
 		}
 		errorMessage := string(response)
 
-		log.Print("Error:", errorMessage)
+		log.Println("Error:", errorMessage)
 		return nil, "", errors.New(apiError.OrthancError)
 	}
 
@@ -125,14 +125,14 @@ func (o *OrthancAPI) FindModalityStudies(ctx context.Context, aet string, reques
 	}
 	defer resp1.Body.Close()
 
-	if resp1.StatusCode <= 200 || resp1.StatusCode >= 299 {
+	if resp1.StatusCode < 200 || resp1.StatusCode > 299 {
 		response, err := io.ReadAll(resp1.Body)
 		if err != nil {
 			return nil, "", err
 		}
 		errorMessage := string(response)
 
-		log.Print("Error:", errorMessage)
+		log.Println("Error:", errorMessage)
 		return nil, "", errors.New(apiError.OrthancError)
 	}
 
@@ -168,7 +168,7 @@ func (o *OrthancAPI) GetJobInfo(ctx context.Context, jobID string) (types.GetJob
 		}
 		errorMessage := string(response)
 
-		log.Print("Error:", errorMessage)
+		log.Println("Error:", errorMessage)
 		return types.GetJobResponse{}, errors.New(apiError.OrthancError)
 	}
 
@@ -206,7 +206,7 @@ func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, 
 		}
 		errorMessage := string(response)
 
-		log.Print("Error:", errorMessage)
+		log.Println("Error:", errorMessage)
 		return types.RetrieveQueryModalityAnswerResponse{}, errors.New(apiError.OrthancError)
 	}
 
