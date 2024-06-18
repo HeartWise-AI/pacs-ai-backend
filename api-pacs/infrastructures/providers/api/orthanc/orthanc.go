@@ -125,6 +125,17 @@ func (o *OrthancAPI) FindModalityStudies(ctx context.Context, aet string, reques
 	}
 	defer resp1.Body.Close()
 
+	if resp1.StatusCode <= 200 || resp1.StatusCode >= 299 {
+		response, err := io.ReadAll(resp1.Body)
+		if err != nil {
+			return nil, "", err
+		}
+		errorMessage := string(response)
+
+		log.Print("Error:", errorMessage)
+		return nil, "", errors.New(apiError.OrthancError)
+	}
+
 	var queryModalitiesAnswersResponse []types.QueryModalitiesAnswersResponse
 	if err := json.NewDecoder(resp1.Body).Decode(&queryModalitiesAnswersResponse); err != nil {
 		return nil, "", err
