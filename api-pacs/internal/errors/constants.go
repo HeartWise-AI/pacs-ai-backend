@@ -37,4 +37,7 @@ const (
 
 	// AWS-related errors
 	SESError string = "SES_ERROR"
+
+	// Orthanc-related errors
+	OrthancError string = "ORTHANC_ERROR"
 )

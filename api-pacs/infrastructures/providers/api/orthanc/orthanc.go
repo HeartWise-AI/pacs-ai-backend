@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -48,6 +50,17 @@ func (o *OrthancAPI) FindLocalStudy(ctx context.Context, requestPayload types.Qu
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode <= 200 || resp.StatusCode >= 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		errorMessage := string(response)
+
+		log.Print("Error:", errorMessage)
+		return nil, errors.New(apiError.OrthancError)
+	}
+
 	var studies []string
 	if err := json.NewDecoder(resp.Body).Decode(&studies); err != nil {
 		return nil, err
@@ -79,6 +92,17 @@ func (o *OrthancAPI) FindModalityStudies(ctx context.Context, aet string, reques
 		return nil, "", err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode <= 200 || resp.StatusCode >= 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, "", err
+		}
+		errorMessage := string(response)
+
+		log.Print("Error:", errorMessage)
+		return nil, "", errors.New(apiError.OrthancError)
+	}
 
 	var queryModalitiesResponse types.QueryModalitiesResponse
 	if err := json.NewDecoder(resp.Body).Decode(&queryModalitiesResponse); err != nil {
@@ -126,6 +150,17 @@ func (o *OrthancAPI) GetJobInfo(ctx context.Context, jobID string) (types.GetJob
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode <= 200 || resp.StatusCode >= 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return types.GetJobResponse{}, err
+		}
+		errorMessage := string(response)
+
+		log.Print("Error:", errorMessage)
+		return types.GetJobResponse{}, errors.New(apiError.OrthancError)
+	}
+
 	var job types.GetJobResponse
 	if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
 		return types.GetJobResponse{}, err
@@ -152,6 +187,17 @@ func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, 
 		return types.RetrieveQueryModalityAnswerResponse{}, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode <= 200 || resp.StatusCode >= 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return types.RetrieveQueryModalityAnswerResponse{}, err
+		}
+		errorMessage := string(response)
+
+		log.Print("Error:", errorMessage)
+		return types.RetrieveQueryModalityAnswerResponse{}, errors.New(apiError.OrthancError)
+	}
 
 	var answerResponse types.RetrieveQueryModalityAnswerResponse
 	if err := json.NewDecoder(resp.Body).Decode(&answerResponse); err != nil {
