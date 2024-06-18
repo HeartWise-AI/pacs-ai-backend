@@ -50,7 +50,7 @@ func (o *OrthancAPI) FindLocalStudy(ctx context.Context, requestPayload types.Qu
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode <= 200 || resp.StatusCode >= 299 {
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		response, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return nil, err
@@ -93,7 +93,7 @@ func (o *OrthancAPI) FindModalityStudies(ctx context.Context, aet string, reques
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode <= 200 || resp.StatusCode >= 299 {
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		response, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return nil, "", err
@@ -161,7 +161,7 @@ func (o *OrthancAPI) GetJobInfo(ctx context.Context, jobID string) (types.GetJob
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode <= 200 || resp.StatusCode >= 299 {
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		response, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return types.GetJobResponse{}, err
@@ -199,7 +199,7 @@ func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, 
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode <= 200 || resp.StatusCode >= 299 {
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		response, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return types.RetrieveQueryModalityAnswerResponse{}, err
