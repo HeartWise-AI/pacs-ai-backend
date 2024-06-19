@@ -42,6 +42,9 @@ func (controller *OrthancQueryController) GetJobInfo(w http.ResponseWriter, r *h
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.OrthancError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Orthanc service encountered an error or timeout."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Server error."
@@ -116,6 +119,9 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.OrthancError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Orthanc service encountered an error or timeout."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Server error."

@@ -109,6 +109,9 @@ func (controller *OrthancCommandController) RetrieveModalityStudy(w http.Respons
 		case apiError.DuplicateRecord:
 			httpCode = http.StatusConflict
 			errorMsg = "Skipping retrieve."
+		case apiError.OrthancError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Orthanc service encountered an error or timeout."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Server error."
