@@ -2,9 +2,13 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"log"
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/index"
 
+	kibanaAPITypes "api-pacs/infrastructures/providers/api/kibana/types"
+	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	"api-pacs/module/elasticsearch/domain/repository"
 	repositoryTypes "api-pacs/module/elasticsearch/infrastructure/repository/types"
 	"api-pacs/module/elasticsearch/infrastructure/service/types"
@@ -13,6 +17,29 @@ import (
 // ElasticsearchCommandService handles the Elasticsearch command service logic
 type ElasticsearchCommandService struct {
 	repository.ElasticsearchCommandRepositoryInterface
+	elasticsearchApplication.ElasticsearchQueryServiceInterface
+	kibanaAPITypes.KibanaAPIInterface
+}
+
+// CreateDataView add a new data view to kibana
+func (service *ElasticsearchCommandService) CreateDataView(ctx context.Context) error {
+	res, err := service.ElasticsearchQueryServiceInterface.GetAllIndices()
+	if err != nil {
+		return err
+	}
+
+	for _, index := range res {
+		log.Println(*index.Index)
+		err := service.KibanaAPIInterface.CreateDataView(ctx, kibanaAPITypes.DataView{
+			Title: *index.Index,
+			Name:  fmt.Sprintf("%s logs", *index.Index),
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // CreateAdminMemberLog add a new admin member log

@@ -11,6 +11,7 @@ import (
 // ElasticsearchCommandServiceInterface holds the implementable methods for the elasticsearch command service
 type ElasticsearchCommandServiceInterface interface {
 	CreateAdminMemberLog(ctx context.Context, data types.CreateAdminMemberLog) (*index.Response, error)
+	CreateDataView(ctx context.Context) error
 	CreateGetModalityStudyLog(ctx context.Context, data types.CreateGetModalityStudyLog) (*index.Response, error)
 	CreateLoginLog(ctx context.Context, data types.CreateLoginLog) (*index.Response, error)
 	CreateRetrieveStudyLog(ctx context.Context, data types.CreateRetrieveStudyLog) (*index.Response, error)

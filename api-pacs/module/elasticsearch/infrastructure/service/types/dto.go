@@ -51,3 +51,8 @@ type SearchDocument struct {
 	StartDate uint
 	EndDate   uint
 }
+
+type CreateDataView struct {
+	Title string
+	Name  string
+}

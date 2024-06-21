@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/afex/hystrix-go/hystrix"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/cat/indices"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
 
 	"api-pacs/module/elasticsearch/domain/repository"
@@ -13,6 +14,28 @@ import (
 // ElasticsearchQueryRepositoryCircuitBreaker is the circuit breaker for the elasticsearch query repository
 type ElasticsearchQueryRepositoryCircuitBreaker struct {
 	repository.ElasticsearchQueryRepositoryInterface
+}
+
+// GetAllIndices decorator pattern to get all indices from elasticsearch
+func (repository *ElasticsearchQueryRepositoryCircuitBreaker) GetAllIndices() (indices.Response, error) {
+	output := make(chan indices.Response, 1)
+	hystrix.ConfigureCommand("get_all_indices", config.Settings())
+	errors := hystrix.Go("get_all_indices", func() error {
+		indices, err := repository.ElasticsearchQueryRepositoryInterface.GetAllIndices()
+		if err != nil {
+			return err
+		}
+
+		output <- indices
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errors:
+		return nil, err
+	}
 }
 
 // SearchAdminMemberLogs decorator pattern to search admin member logs
