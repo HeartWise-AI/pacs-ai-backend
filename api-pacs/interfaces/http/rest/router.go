@@ -111,9 +111,7 @@ func (router *router) InitRouter() *chi.Mux {
 			// kibana module
 			r.Route("/kibana", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
-					r.Use(iamMiddleware.TokenSessionAuthGuard)
-					//r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
-					//r.Use(iamMiddleware.FirebaseSuperUserGuard)
+					r.Use(iamMiddleware.FirebaseSuperUserGuard)
 
 					r.Post("/data-view/add", elasticsearchCommandController.CreateDataView)
 				})
