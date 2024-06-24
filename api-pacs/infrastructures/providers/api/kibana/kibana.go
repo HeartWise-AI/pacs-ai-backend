@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,7 +11,6 @@ import (
 	"time"
 
 	"api-pacs/infrastructures/providers/api/kibana/types"
-	apiError "api-pacs/internal/errors"
 )
 
 type KibanaAPI struct {
@@ -64,7 +62,7 @@ func (k *KibanaAPI) CreateDataView(ctx context.Context, requestPayload types.Dat
 		errorMessage := string(response)
 
 		log.Println("Error:", errorMessage)
-		return errors.New(apiError.KibanaError)
+		return err
 	}
 
 	response, err := io.ReadAll(resp.Body)
