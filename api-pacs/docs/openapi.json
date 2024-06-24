@@ -34,6 +34,10 @@
       "description": "IAM service"
     },
     {
+      "name": "kibana",
+      "description": "Kibana service"
+    },
+    {
       "name": "orthanc",
       "description": "Orthanc service"
     },
@@ -216,6 +220,29 @@
         "tags": ["tenant"],
         "summary": "Get Tenant By ID",
         "description": "Get tenant by id.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/kibana/data-view/add": {
+      "post": {
+        "tags": ["kibana"],
+        "summary": "Create Data View",
+        "description": "Create data view on kibana.",
         "security": [
           {
             "bearerAuth": []

@@ -42,7 +42,8 @@ var (
 // InitRouter initializes main routes
 func (router *router) InitRouter() *chi.Mux {
 	// DI assignment
-	elasticsearchController := interfaces.ServiceContainer().RegisterElasticsearchRESTQueryController()
+	elasticsearchCommandController := interfaces.ServiceContainer().RegisterElasticsearchRESTCommandController()
+	elasticsearchQueryController := interfaces.ServiceContainer().RegisterElasticsearchRESTQueryController()
 	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
@@ -96,7 +97,7 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
-					r.Get("/logs", elasticsearchController.SearchDocumentLogs)
+					r.Get("/logs", elasticsearchQueryController.SearchDocumentLogs)
 				})
 			})
 
@@ -105,6 +106,17 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Post("/login", iamCommandController.LoginTenantUser)
 				r.Post("/forgot-password", iamCommandController.ForgotTenantUserPassword)
 				r.Post("/verify-email", iamCommandController.VerifyTenantUserEmail)
+			})
+
+			// kibana module
+			r.Route("/kibana", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.TokenSessionAuthGuard)
+					//r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+					//r.Use(iamMiddleware.FirebaseSuperUserGuard)
+
+					r.Post("/data-view/add", elasticsearchCommandController.CreateDataView)
+				})
 			})
 
 			// orthanc module

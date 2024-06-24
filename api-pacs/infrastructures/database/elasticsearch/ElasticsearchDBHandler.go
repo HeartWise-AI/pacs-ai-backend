@@ -18,6 +18,16 @@ type ElasticsearchDBHandler struct {
 	TypedClient *elasticsearch.TypedClient
 }
 
+// GetAllIndices get all indices from elasticsearch
+func (c *ElasticsearchDBHandler) GetAllIndices() (indices.Response, error) {
+	res, err := c.TypedClient.Cat.Indices().Do(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
 // NewTypedClient create a new typed client for elasticsearch api
 func NewTypedClient(config types.Config) (*ElasticsearchDBHandler, error) {
 	typedclient, err := elasticsearch.NewTypedClient(elasticsearch.Config{
@@ -35,17 +45,6 @@ func NewTypedClient(config types.Config) (*ElasticsearchDBHandler, error) {
 // IndexDocument index a document
 func (c *ElasticsearchDBHandler) IndexDocument(ctx context.Context, index string, document interface{}) (*index.Response, error) {
 	res, err := c.TypedClient.Index(index).Request(document).Do(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return res, nil
-}
-
-// TODO: call ecs client to fetch all indices from elasticsearch and loop to check for duplicates and add if there are new index are found.
-// GetAllIndices get all indices from elasticsearch
-func (c *ElasticsearchDBHandler) GetAllIndices() (indices.Response, error) {
-	res, err := c.TypedClient.Cat.Indices().Do(context.Background())
 	if err != nil {
 		return nil, err
 	}

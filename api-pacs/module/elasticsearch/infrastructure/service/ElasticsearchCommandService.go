@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/index"
 
@@ -28,15 +27,12 @@ func (service *ElasticsearchCommandService) CreateDataView(ctx context.Context) 
 		return err
 	}
 
+	// loops all indices and creates data view on kibana, if existing it wont create a duplicate data view and returns an error message on log.
 	for _, index := range res {
-		log.Println(*index.Index)
-		err := service.KibanaAPIInterface.CreateDataView(ctx, kibanaAPITypes.DataView{
+		_ = service.KibanaAPIInterface.CreateDataView(ctx, kibanaAPITypes.DataView{
 			Title: *index.Index,
 			Name:  fmt.Sprintf("%s logs", *index.Index),
 		})
-		if err != nil {
-			return err
-		}
 	}
 
 	return nil

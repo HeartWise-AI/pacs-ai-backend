@@ -40,7 +40,4 @@ const (
 
 	// Orthanc-related errors
 	OrthancError string = "ORTHANC_ERROR"
-
-	// Kibana-related errors
-	KibanaError string = "KIBANA_ERROR"
 )

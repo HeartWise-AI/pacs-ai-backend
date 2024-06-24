@@ -72,7 +72,7 @@ func (k *KibanaAPI) CreateDataView(ctx context.Context, requestPayload types.Dat
 		return err
 	}
 	responseMessage := string(response)
-	log.Print(responseMessage)
+	log.Println("Success:", responseMessage)
 
 	return nil
 }
