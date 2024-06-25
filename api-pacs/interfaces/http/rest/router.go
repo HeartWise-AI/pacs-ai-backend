@@ -42,7 +42,8 @@ var (
 // InitRouter initializes main routes
 func (router *router) InitRouter() *chi.Mux {
 	// DI assignment
-	elasticsearchController := interfaces.ServiceContainer().RegisterElasticsearchRESTQueryController()
+	elasticsearchCommandController := interfaces.ServiceContainer().RegisterElasticsearchRESTCommandController()
+	elasticsearchQueryController := interfaces.ServiceContainer().RegisterElasticsearchRESTQueryController()
 	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
@@ -92,11 +93,18 @@ func (router *router) InitRouter() *chi.Mux {
 		r.Route("/v1", func(r chi.Router) {
 			// elasticsearch module
 			r.Route("/ecs", func(r chi.Router) {
+				// superuser only
+				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.FirebaseSuperUserGuard)
+
+					r.Patch("/kibana/indices/sync", elasticsearchCommandController.SyncKibanaIndices)
+				})
+
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
-					r.Get("/logs", elasticsearchController.SearchDocumentLogs)
+					r.Get("/logs", elasticsearchQueryController.SearchDocumentLogs)
 				})
 			})
 

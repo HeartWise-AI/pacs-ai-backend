@@ -14,4 +14,5 @@ type ElasticsearchCommandServiceInterface interface {
 	CreateGetModalityStudyLog(ctx context.Context, data types.CreateGetModalityStudyLog) (*index.Response, error)
 	CreateLoginLog(ctx context.Context, data types.CreateLoginLog) (*index.Response, error)
 	CreateRetrieveStudyLog(ctx context.Context, data types.CreateRetrieveStudyLog) (*index.Response, error)
+	SyncKibanaIndices(ctx context.Context) error
 }

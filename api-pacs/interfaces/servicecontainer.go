@@ -20,6 +20,7 @@ import (
 	"api-pacs/infrastructures/database/elasticsearch"
 	elasticsearchTypes "api-pacs/infrastructures/database/elasticsearch/types"
 	"api-pacs/infrastructures/database/redis"
+	"api-pacs/infrastructures/providers/api/kibana"
 	"api-pacs/infrastructures/providers/api/orthanc"
 	"api-pacs/infrastructures/providers/sdk/aws"
 	awsTypes "api-pacs/infrastructures/providers/sdk/aws/types"
@@ -68,6 +69,7 @@ var (
 	firebaseAdminSDK       *firebaseadmin.FirebaseAdminSDK
 	awsSDK                 *aws.AWSSDK
 	orthancAPI             *orthanc.OrthancAPI
+	kibanaAPI              *kibana.KibanaAPI
 )
 
 // ================================= REST ===================================
@@ -186,6 +188,10 @@ func (k *kernel) RegisterUserRESTQueryController() userREST.UserQueryController 
 // ==========================================================================
 
 func (k *kernel) elasticsearchCommandServiceContainer() *elasticsearchService.ElasticsearchCommandService {
+	queryRepository := &elasticsearchRepository.ElasticsearchQueryRepository{
+		ElasticsearchDBHandlerInterface: elasticsearchDBHandler,
+	}
+
 	repository := &elasticsearchRepository.ElasticsearchCommandRepository{
 		ElasticsearchDBHandlerInterface: elasticsearchDBHandler,
 	}
@@ -194,6 +200,10 @@ func (k *kernel) elasticsearchCommandServiceContainer() *elasticsearchService.El
 		ElasticsearchCommandRepositoryInterface: &elasticsearchRepository.ElasticsearchCommandRepositoryCircuitBreaker{
 			ElasticsearchCommandRepositoryInterface: repository,
 		},
+		ElasticsearchQueryRepositoryInterface: &elasticsearchRepository.ElasticsearchQueryRepositoryCircuitBreaker{
+			ElasticsearchQueryRepositoryInterface: queryRepository,
+		},
+		KibanaAPIInterface: kibanaAPI,
 	}
 
 	return service
@@ -353,6 +363,9 @@ func registerHandlers() {
 
 	// init orthanc connection
 	orthancAPI = orthanc.Init(os.Getenv("ORTHANC_BASE_URL"))
+
+	// init kibana connection
+	kibanaAPI = kibana.Init(os.Getenv("KIBANA_BASE_URL"))
 
 	// init aws session
 	awsSDK, err = aws.NewSession(awsTypes.Config{
