@@ -93,11 +93,17 @@ func (router *router) InitRouter() *chi.Mux {
 		r.Route("/v1", func(r chi.Router) {
 			// elasticsearch module
 			r.Route("/ecs", func(r chi.Router) {
+				// superuser only
+				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.FirebaseSuperUserGuard)
+
+					r.Patch("/kibana/indices/sync", elasticsearchCommandController.SyncKibanaIndices)
+				})
+
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
-					r.Patch("/kibana/indices/sync", elasticsearchCommandController.SyncKibanaIndices)
 					r.Get("/logs", elasticsearchQueryController.SearchDocumentLogs)
 				})
 			})
