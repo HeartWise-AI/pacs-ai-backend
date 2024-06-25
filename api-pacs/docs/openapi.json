@@ -12,11 +12,11 @@
   },
   "servers": [
     {
-      "url": "https://pacs-api.heartwise.ai/v1",
+      "url": "https://pacs-api.heartwise.ai/api/v1",
       "description": "Production"
     },
     {
-      "url": "http://185.223.207.27/v1",
+      "url": "http://185.223.207.27/api/v1",
       "description": "Staging"
     },
     {
