@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/elastic/go-elasticsearch/v8/typedapi/cat/indices"
-
 	"api-pacs/module/elasticsearch/domain/entity"
 	"api-pacs/module/elasticsearch/domain/repository"
 	repositoryTypes "api-pacs/module/elasticsearch/infrastructure/repository/types"
@@ -15,16 +13,6 @@ import (
 // ElasticsearchQueryService handles the Elasticsearch query service logic
 type ElasticsearchQueryService struct {
 	repository.ElasticsearchQueryRepositoryInterface
-}
-
-// GetAllIndices get all indices
-func (service *ElasticsearchQueryService) GetAllIndices() (indices.Response, error) {
-	res, err := service.ElasticsearchQueryRepositoryInterface.GetAllIndices()
-	if err != nil {
-		return nil, err
-	}
-
-	return res, nil
 }
 
 // SearchAdminMemberLogs search admin member logs

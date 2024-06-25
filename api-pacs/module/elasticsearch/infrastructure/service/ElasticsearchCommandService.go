@@ -2,11 +2,12 @@ package service
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/index"
 
 	kibanaAPITypes "api-pacs/infrastructures/providers/api/kibana/types"
+	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	"api-pacs/module/elasticsearch/domain/repository"
 	repositoryTypes "api-pacs/module/elasticsearch/infrastructure/repository/types"
@@ -16,23 +17,31 @@ import (
 // ElasticsearchCommandService handles the Elasticsearch command service logic
 type ElasticsearchCommandService struct {
 	repository.ElasticsearchCommandRepositoryInterface
+	repository.ElasticsearchQueryRepositoryInterface
 	elasticsearchApplication.ElasticsearchQueryServiceInterface
 	kibanaAPITypes.KibanaAPIInterface
 }
 
-// CreateDataView add a new data view to kibana
-func (service *ElasticsearchCommandService) CreateDataView(ctx context.Context) error {
-	res, err := service.ElasticsearchQueryServiceInterface.GetAllIndices()
+// SyncKibanaIndices sync kibana indices
+func (service *ElasticsearchCommandService) SyncKibanaIndices(ctx context.Context) error {
+	res, err := service.ElasticsearchQueryRepositoryInterface.GetAllIndices()
 	if err != nil {
 		return err
 	}
 
-	// loops all indices and creates data view on kibana, if existing it wont create a duplicate data view and returns an error message on log.
+	// loops all indices and creates data view on kibana, if existing it wont create a duplicate data view and returns an duplicate error message on log.
 	for _, index := range res {
-		_ = service.KibanaAPIInterface.CreateDataView(ctx, kibanaAPITypes.DataView{
+		err := service.KibanaAPIInterface.CreateDataView(ctx, kibanaAPITypes.DataView{
 			Title: *index.Index,
-			Name:  fmt.Sprintf("%s logs", *index.Index),
+			Name:  *index.Index,
 		})
+		if err != nil {
+			if err.Error() == apiError.KibanaDuplicateRecord {
+				continue
+			}
+
+			return errors.New(apiError.KibanaError)
+		}
 	}
 
 	return nil

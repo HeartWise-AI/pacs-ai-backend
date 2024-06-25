@@ -14,17 +14,16 @@ type ElasticsearchCommandController struct {
 	application.ElasticsearchCommandServiceInterface
 }
 
-// RetrieveModalityStudy retrieve modality study
-func (controller *ElasticsearchCommandController) CreateDataView(w http.ResponseWriter, r *http.Request) {
-	err := controller.ElasticsearchCommandServiceInterface.CreateDataView(context.TODO())
+// SyncKibanaIndices sync kibana indices
+func (controller *ElasticsearchCommandController) SyncKibanaIndices(w http.ResponseWriter, r *http.Request) {
+	err := controller.ElasticsearchCommandServiceInterface.SyncKibanaIndices(context.TODO())
 	if err != nil {
 		var httpCode int
 		var errorMsg string
-
 		switch err.Error() {
-		case apiError.DatabaseError:
+		case apiError.KibanaError:
 			httpCode = http.StatusInternalServerError
-			errorMsg = "Server Error."
+			errorMsg = "Kibana service encountered an error or timeout."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Server error."
@@ -44,7 +43,7 @@ func (controller *ElasticsearchCommandController) CreateDataView(w http.Response
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,
-		Message: "Successfully created data views.",
+		Message: "Successfully synced kibana indices.",
 	}
 
 	response.JSON(w)

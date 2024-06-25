@@ -97,6 +97,7 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
+					r.Patch("/kibana/indices/sync", elasticsearchCommandController.SyncKibanaIndices)
 					r.Get("/logs", elasticsearchQueryController.SearchDocumentLogs)
 				})
 			})
@@ -106,15 +107,6 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Post("/login", iamCommandController.LoginTenantUser)
 				r.Post("/forgot-password", iamCommandController.ForgotTenantUserPassword)
 				r.Post("/verify-email", iamCommandController.VerifyTenantUserEmail)
-			})
-
-			// kibana module
-			r.Route("/kibana", func(r chi.Router) {
-				r.Group(func(r chi.Router) {
-					r.Use(iamMiddleware.FirebaseSuperUserGuard)
-
-					r.Post("/data-view/add", elasticsearchCommandController.CreateDataView)
-				})
 			})
 
 			// orthanc module

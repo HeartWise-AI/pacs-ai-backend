@@ -188,6 +188,10 @@ func (k *kernel) RegisterUserRESTQueryController() userREST.UserQueryController 
 // ==========================================================================
 
 func (k *kernel) elasticsearchCommandServiceContainer() *elasticsearchService.ElasticsearchCommandService {
+	queryRepository := &elasticsearchRepository.ElasticsearchQueryRepository{
+		ElasticsearchDBHandlerInterface: elasticsearchDBHandler,
+	}
+
 	repository := &elasticsearchRepository.ElasticsearchCommandRepository{
 		ElasticsearchDBHandlerInterface: elasticsearchDBHandler,
 	}
@@ -196,8 +200,10 @@ func (k *kernel) elasticsearchCommandServiceContainer() *elasticsearchService.El
 		ElasticsearchCommandRepositoryInterface: &elasticsearchRepository.ElasticsearchCommandRepositoryCircuitBreaker{
 			ElasticsearchCommandRepositoryInterface: repository,
 		},
-		ElasticsearchQueryServiceInterface: k.elasticsearchQueryServiceContainer(),
-		KibanaAPIInterface:                 kibanaAPI,
+		ElasticsearchQueryRepositoryInterface: &elasticsearchRepository.ElasticsearchQueryRepositoryCircuitBreaker{
+			ElasticsearchQueryRepositoryInterface: queryRepository,
+		},
+		KibanaAPIInterface: kibanaAPI,
 	}
 
 	return service

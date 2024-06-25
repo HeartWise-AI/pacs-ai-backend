@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"api-pacs/infrastructures/providers/api/kibana/types"
+	apiError "api-pacs/internal/errors"
 )
 
 type KibanaAPI struct {
@@ -61,16 +64,14 @@ func (k *KibanaAPI) CreateDataView(ctx context.Context, requestPayload types.Dat
 		}
 		errorMessage := string(response)
 
-		log.Println("Error:", errorMessage)
-		return err
-	}
+		if strings.Contains(errorMessage, "Duplicate") {
+			log.Println("Error:", errorMessage)
+			return errors.New(apiError.KibanaDuplicateRecord)
+		}
 
-	response, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
+		log.Println("Error:", errorMessage)
+		return errors.New(apiError.KibanaError)
 	}
-	responseMessage := string(response)
-	log.Println("Success:", responseMessage)
 
 	return nil
 }
