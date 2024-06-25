@@ -62,14 +62,14 @@ func (k *KibanaAPI) CreateDataView(ctx context.Context, requestPayload types.Dat
 		if err != nil {
 			return err
 		}
+
 		errorMessage := string(response)
+		log.Println("Error:", errorMessage)
 
 		if strings.Contains(errorMessage, "Duplicate") {
-			log.Println("Error:", errorMessage)
 			return errors.New(apiError.KibanaDuplicateRecord)
 		}
 
-		log.Println("Error:", errorMessage)
 		return errors.New(apiError.KibanaError)
 	}
 

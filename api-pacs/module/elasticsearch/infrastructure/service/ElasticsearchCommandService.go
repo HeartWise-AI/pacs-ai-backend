@@ -35,11 +35,7 @@ func (service *ElasticsearchCommandService) SyncKibanaIndices(ctx context.Contex
 			Title: *index.Index,
 			Name:  *index.Index,
 		})
-		if err != nil {
-			if err.Error() == apiError.KibanaDuplicateRecord {
-				continue
-			}
-
+		if err != nil && err.Error() != apiError.KibanaDuplicateRecord {
 			return errors.New(apiError.KibanaError)
 		}
 	}
