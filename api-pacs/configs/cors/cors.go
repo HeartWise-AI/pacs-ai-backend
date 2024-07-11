@@ -15,6 +15,7 @@ func (c *Config) AllowedHeaders() []string {
 		"Authorization",
 		"Content-Type",
 		"X-CSRF-Token",
+		"X-FB-SUDO-KEY",
 	}
 }
 

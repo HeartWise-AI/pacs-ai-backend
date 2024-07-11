@@ -26,13 +26,7 @@ services:
           "DataSource" : "dicom-web"
         }
       ORTHANC__AUTHENTICATION_ENABLED: "false"
-      ORTHANC__POSTGRESQL: |
-        {
-          "Host": "orthanc-index-hospital-1"
-        }
       VERBOSE_STARTUP: "true"
-    depends_on:
-      - orthanc-index-hospital-1
 
   orthanc-hospital-2:
     image: orthancteam/orthanc:latest
@@ -61,36 +55,8 @@ services:
           "DataSource" : "dicom-web"
         }
       ORTHANC__AUTHENTICATION_ENABLED: "false"
-      ORTHANC__POSTGRESQL: |
-        {
-          "Host": "orthanc-index-hospital-2"
-        }
       VERBOSE_STARTUP: "true"
-    depends_on:
-      - orthanc-index-hospital-2
 
-  orthanc-index-hospital-1:
-    image: postgres:latest
-    container_name: orthanc-index-hospital-1
-    restart: unless-stopped
-    ports: ["5433:5432"]
-    volumes: ["orthanc-index-hospital-1:/var/lib/postgresql/data"]
-    command: -c 'max_connections=200'
-    environment:
-      POSTGRES_HOST_AUTH_METHOD: "trust"
-
-  orthanc-index-hospital-2:
-    image: postgres:latest
-    container_name: orthanc-index-hospital-2
-    restart: unless-stopped
-    ports: ["5434:5432"]
-    volumes: ["orthanc-index-hospital-2:/var/lib/postgresql/data"]
-    command: -c 'max_connections=200'
-    environment:
-      POSTGRES_HOST_AUTH_METHOD: "trust"
-      
 volumes:
   orthanc-storage-hospital-1:
-  orthanc-index-hospital-1:
   orthanc-storage-hospital-2:
-  orthanc-index-hospital-2:

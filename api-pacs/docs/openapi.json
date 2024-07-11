@@ -12,11 +12,11 @@
   },
   "servers": [
     {
-      "url": "https://pacs-api.heartwise.ai/v1",
+      "url": "https://pacs-api.heartwise.ai/api/v1",
       "description": "Production"
     },
     {
-      "url": "http://185.223.207.27/v1",
+      "url": "http://185.223.207.27/api/v1",
       "description": "Staging"
     },
     {
@@ -109,6 +109,29 @@
               "type": "boolean",
               "nullable": true
             }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/ecs/kibana/indices/sync": {
+      "patch": {
+        "tags": ["elasticsearch"],
+        "summary": "Sync Kibana Indices - SUPERADMIN",
+        "description": "Sync kibana indices. Callable by superadmin only.",
+        "security": [
+          {
+            "firebaseSudoKey": []
           }
         ],
         "responses": {

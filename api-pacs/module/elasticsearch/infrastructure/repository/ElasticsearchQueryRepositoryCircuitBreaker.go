@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/afex/hystrix-go/hystrix"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/cat/indices"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
 
 	"api-pacs/module/elasticsearch/domain/repository"
@@ -15,12 +16,34 @@ type ElasticsearchQueryRepositoryCircuitBreaker struct {
 	repository.ElasticsearchQueryRepositoryInterface
 }
 
+// GetAllIndices decorator pattern to get all indices from elasticsearch
+func (repository *ElasticsearchQueryRepositoryCircuitBreaker) GetAllIndices() (indices.Response, error) {
+	output := make(chan indices.Response, 1)
+	hystrix.ConfigureCommand("get_all_indices", config.Settings())
+	errors := hystrix.Go("get_all_indices", func() error {
+		indices, err := repository.ElasticsearchQueryRepositoryInterface.GetAllIndices()
+		if err != nil {
+			return err
+		}
+
+		output <- indices
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errors:
+		return nil, err
+	}
+}
+
 // SearchAdminMemberLogs decorator pattern to search admin member logs
 func (repository *ElasticsearchQueryRepositoryCircuitBreaker) SearchAdminMemberLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error) {
 	output := make(chan *search.Response, 1)
 	hystrix.ConfigureCommand("search_admin_member_logs", config.Settings())
 	errors := hystrix.Go("search_admin_member_logs", func() error {
-		adminMember, err := repository.ElasticsearchQueryRepositoryInterface.SearchLoginLogs(ctx, data)
+		adminMember, err := repository.ElasticsearchQueryRepositoryInterface.SearchAdminMemberLogs(ctx, data)
 		if err != nil {
 			return err
 		}

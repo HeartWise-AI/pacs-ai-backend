@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/elastic/go-elasticsearch/v8/typedapi/cat/indices"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
 
 	"api-pacs/infrastructures/database/elasticsearch/types"
@@ -15,6 +16,16 @@ import (
 // ElasticsearchQueryRepository handles elasticsearch query repository
 type ElasticsearchQueryRepository struct {
 	types.ElasticsearchDBHandlerInterface
+}
+
+// GetAllIndices get all indices
+func (repository *ElasticsearchQueryRepository) GetAllIndices() (indices.Response, error) {
+	res, err := repository.ElasticsearchDBHandlerInterface.GetAllIndices()
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 // SearchAdminMemberLogs searches admin member logs

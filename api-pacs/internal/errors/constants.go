@@ -37,4 +37,11 @@ const (
 
 	// AWS-related errors
 	SESError string = "SES_ERROR"
+
+	// Orthanc-related errors
+	OrthancError string = "ORTHANC_ERROR"
+
+	// Kibana-related errors
+	KibanaError           string = "KIBANA_ERROR"
+	KibanaDuplicateRecord string = "KIBANA_DUPLICATE_RECORD"
 )

@@ -102,6 +102,7 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 
 	var logs interface{}
 	var message string
+	var indexName string
 
 	switch index {
 	case login.GetModelName():
@@ -145,6 +146,7 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 
 		logs = logins
 		message = "Successfully fetched search results for login logs."
+		indexName = login.GetModelName()
 	case adminMember.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchAdminMemberLogs(context.TODO(), searchDocument)
 		if err != nil && err.Error() != errors.MissingRecord {
@@ -188,6 +190,7 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 
 		logs = adminMembers
 		message = "Successfully fetched search results for admin member logs."
+		indexName = adminMember.GetModelName()
 	case modalityStudy.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchModalityStudyLogs(context.TODO(), searchDocument)
 		if err != nil && err.Error() != errors.MissingRecord {
@@ -228,6 +231,7 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 
 		logs = modalityStudies
 		message = "Successfully fetched search results for modality study logs."
+		indexName = modalityStudy.GetModelName()
 	case retrievedStudy.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchRetrievedStudyLogs(context.TODO(), searchDocument)
 		if err != nil && err.Error() != errors.MissingRecord {
@@ -270,6 +274,7 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 
 		logs = retrievedStudies
 		message = "Successfully fetched search results for retrieved study logs."
+		indexName = retrievedStudy.GetModelName()
 	default:
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusNotFound,
@@ -295,7 +300,7 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 	}
 
 	// return csv file
-	filename := fmt.Sprintf("%s_export_%s.csv", time.Now().Format("2006-01-02"), retrievedStudy.GetModelName())
+	filename := fmt.Sprintf("%s_export_%s.csv", time.Now().Format("2006-01-02"), indexName)
 
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=%s", filename))

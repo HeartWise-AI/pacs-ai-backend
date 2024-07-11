@@ -4,9 +4,11 @@ import (
 	"context"
 
 	"github.com/elastic/go-elasticsearch/v8"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/cat/indices"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/index"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
 	ecsTypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/sortorder"
 
 	"api-pacs/infrastructures/database/elasticsearch/types"
 )
@@ -14,6 +16,16 @@ import (
 // ElasticsearchDBHandler elasticsearch db handler
 type ElasticsearchDBHandler struct {
 	TypedClient *elasticsearch.TypedClient
+}
+
+// GetAllIndices get all indices from elasticsearch
+func (c *ElasticsearchDBHandler) GetAllIndices() (indices.Response, error) {
+	res, err := c.TypedClient.Cat.Indices().Do(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 // NewTypedClient create a new typed client for elasticsearch api
@@ -47,7 +59,6 @@ func (c *ElasticsearchDBHandler) SearchDocuments(ctx context.Context, param type
 	endtDateTimestamp := ecsTypes.Float64(param.EndDate)
 
 	res, err := c.TypedClient.Search().Index(param.Index).Request(&search.Request{
-		Size: &size,
 		Query: &ecsTypes.Query{
 			Bool: &ecsTypes.BoolQuery{
 				Must: []ecsTypes.Query{
@@ -71,6 +82,18 @@ func (c *ElasticsearchDBHandler) SearchDocuments(ctx context.Context, param type
 								Gte: &startDateTimestamp,
 								Lte: &endtDateTimestamp,
 							},
+						},
+					},
+				},
+			},
+		},
+		Size: &size,
+		Sort: []ecsTypes.SortCombinations{
+			ecsTypes.SortOptions{
+				SortOptions: map[string]ecsTypes.FieldSort{
+					"timestamp": {
+						Order: &sortorder.SortOrder{
+							Name: "desc", // TODO: should be from params
 						},
 					},
 				},

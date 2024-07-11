@@ -6,7 +6,7 @@ require (
 	cloud.google.com/go/firestore v1.15.0
 	firebase.google.com/go/v4 v4.14.0
 	github.com/afex/hystrix-go v0.0.0-20180502004556-fa1af6a1f4f5
-	github.com/aws/aws-sdk-go v1.51.29
+	github.com/aws/aws-sdk-go v1.54.7
 	github.com/elastic/go-elasticsearch/v8 v8.13.1
 	github.com/go-chi/chi v1.5.4
 	github.com/go-chi/cors v1.2.1
