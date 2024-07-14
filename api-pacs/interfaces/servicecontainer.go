@@ -188,6 +188,9 @@ func (k *kernel) RegisterUserRESTQueryController() userREST.UserQueryController 
 // ==========================================================================
 
 func OrthancCommandServiceDI() *orthancService.OrthancCommandService {
+	m.Lock()
+	defer m.Unlock()
+
 	service := &orthancService.OrthancCommandService{
 		OrthancAPIInterface:                  orthancAPI,
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
