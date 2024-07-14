@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"time"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	apiError "api-pacs/internal/errors"
@@ -21,6 +22,48 @@ type OrthancCommandService struct {
 	tenantApplication.TenantQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	userApplication.UserQueryServiceInterface
+}
+
+// ClearLocalResourcesCache clear local resources cache
+func (service *OrthancCommandService) ClearLocalResourcesCache(ctx context.Context) error {
+	// get all local resources
+	localResources, err := service.OrthancAPIInterface.FindLocalResources(ctx)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	var expiredResources []string
+
+	for _, resource := range localResources {
+		lastUpdateTime, err := time.Parse("20060102T150405", resource.LastUpdate)
+		if err != nil {
+			log.Println(err)
+			return err
+		}
+
+		// check if last update time is more than 24h
+		expirationTime := lastUpdateTime.Add(time.Hour * 24)
+
+		// if true, include the resource for bulk delete
+		if time.Now().After(expirationTime) {
+			expiredResources = append(expiredResources, resource.ID)
+		}
+	}
+
+	if len(expiredResources) > 0 {
+		err := service.OrthancAPIInterface.DeleteLocalResources(ctx, orthancAPITypes.DeleteLocalResourcesRequest{
+			Resources: expiredResources,
+		})
+		if err != nil {
+			log.Println(err)
+			return err
+		}
+
+		log.Println("[Cache] deleted resources:", expiredResources)
+	}
+
+	return nil
 }
 
 // RetrieveModalityStudy retrieve modality study

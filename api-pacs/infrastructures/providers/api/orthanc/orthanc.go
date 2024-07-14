@@ -31,6 +31,85 @@ func Init(baseURL string) *OrthancAPI {
 	}
 }
 
+// DeleteLocalResources delete local resources
+func (o *OrthancAPI) DeleteLocalResources(ctx context.Context, requestPayload types.DeleteLocalResourcesRequest) error {
+	buf := new(bytes.Buffer)
+	err := json.NewEncoder(buf).Encode(requestPayload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/tools/bulk-delete", o.BaseURL), buf)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return errors.New(apiError.OrthancError)
+	}
+
+	return nil
+}
+
+// FindLocalResources find local resources from orthanc
+func (o *OrthancAPI) FindLocalResources(ctx context.Context) ([]types.GetLocalResourceResponse, error) {
+	buf := new(bytes.Buffer)
+	err := json.NewEncoder(buf).Encode(map[string]interface{}{
+		"Level":  "Study",
+		"Query":  map[string]interface{}{},
+		"Expand": true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/tools/find", o.BaseURL), buf)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return nil, errors.New(apiError.OrthancError)
+	}
+
+	var localResources []types.GetLocalResourceResponse
+	if err := json.NewDecoder(resp.Body).Decode(&localResources); err != nil {
+		return nil, err
+	}
+
+	if len(localResources) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return localResources, nil
+}
+
 // FindLocalStudy find local study
 func (o *OrthancAPI) FindLocalStudy(ctx context.Context, requestPayload types.QueryLocalStudyRequest) ([]string, error) {
 	buf := new(bytes.Buffer)

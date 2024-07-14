@@ -187,6 +187,17 @@ func (k *kernel) RegisterUserRESTQueryController() userREST.UserQueryController 
 
 // ==========================================================================
 
+func OrthancCommandServiceDI() *orthancService.OrthancCommandService {
+	service := &orthancService.OrthancCommandService{
+		OrthancAPIInterface:                  orthancAPI,
+		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		UserQueryServiceInterface:            k.userQueryServiceContainer(),
+	}
+
+	return service
+}
+
 func (k *kernel) elasticsearchCommandServiceContainer() *elasticsearchService.ElasticsearchCommandService {
 	queryRepository := &elasticsearchRepository.ElasticsearchQueryRepository{
 		ElasticsearchDBHandlerInterface: elasticsearchDBHandler,
@@ -257,14 +268,7 @@ func (k *kernel) iamQueryServiceContainer() *iamService.IAMQueryService {
 }
 
 func (k *kernel) orthancCommandServiceContainer() *orthancService.OrthancCommandService {
-	service := &orthancService.OrthancCommandService{
-		OrthancAPIInterface:                  orthancAPI,
-		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
-		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
-		UserQueryServiceInterface:            k.userQueryServiceContainer(),
-	}
-
-	return service
+	return OrthancCommandServiceDI()
 }
 
 func (k *kernel) orthancQueryServiceContainer() *orthancService.OrthancQueryService {
@@ -376,6 +380,9 @@ func registerHandlers() {
 	if err != nil {
 		log.Fatalf("[SERVER] cannot create aws session: %v", err)
 	}
+
+	// run event listeners and cron jobs
+	go RunOrthancLocalResourceCacheHandler()
 }
 
 // ServiceContainer export instantiated service container once
