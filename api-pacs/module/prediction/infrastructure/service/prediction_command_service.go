@@ -6,19 +6,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"image"
-	"image/color"
-	"image/png"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/suyashkumar/dicom"
+	"github.com/suyashkumar/dicom/pkg/frame"
 	"github.com/suyashkumar/dicom/pkg/tag"
 )
 
@@ -94,7 +92,7 @@ func sendServerRequest(serverURL string, instances []map[string]interface{}) (ma
 
 const (
 	// Hardcoded DICOM URL
-	HARDCODED_DICOM_URL = "http://orthanc-hospital-1:8042/instances/3d0069ae-97a2251d-5433aa87-8c60feb9-f8900eaf/file"
+	HARDCODED_DICOM_URL = "http://localhost:8063/instances/3d0069ae-97a2251d-5433aa87-8c60feb9-f8900eaf/file"
 )
 
 // PredictionCommandServiceInterface interface
@@ -171,48 +169,62 @@ func dcmToInstances(dataset *dicom.Dataset) ([]map[string]interface{}, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error getting pixel data: %v", err)
 	}
+	frames := pixelDataElement.Value.GetValue().(dicom.PixelDataInfo).Frames
+	return convertFramesToBase64Maps(frames)
+}
 
-	pixelData := pixelDataElement.Value
-	log.Printf("Pixel data: %v", pixelData)
-	log.Printf("Pixel data Element: %v", pixelDataElement)
+// Temporary
+func writeToFile(filename string, content interface{}) error {
+	// Open the file, creating it if it doesn't exist
+	file, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("error creating file: %v", err)
+	}
+	defer file.Close()
 
-	height := dataset.Elements[0x00280010].Value.GetValue().(int64)
-	width := dataset.Elements[0x00280011].Value.GetValue().(int64)
-
-	log.Printf("Height: %v", height)
-	log.Printf("Width: %v", width)
-
-	img := image.NewGray16(image.Rect(0, 0, int(width), int(height)))
-	for i, pixel := range pixelDataElement.Value.GetValue().([]int) {
-		img.SetGray16(i%int(width), i/int(width), color.Gray16{Y: uint16(pixel)})
+	// Write the content to the file
+	_, err = fmt.Fprintf(file, "%v", content)
+	if err != nil {
+		return fmt.Errorf("error writing to file: %v", err)
 	}
 
-	return base64ImageCathef(img)
+	return nil
 }
 
 // base64ImageCathef function (simplified version without video processing)
-func base64ImageCathef(img image.Image) ([]map[string]interface{}, error) {
-	instances := []map[string]interface{}{}
+func convertFramesToBase64Maps(frames []*frame.Frame) ([]map[string]interface{}, error) {
+	result := make([]map[string]interface{}, len(frames))
 
-	// Convert to RGB
-	bounds := img.Bounds()
-	rgbImg := image.NewRGBA(bounds)
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			rgbImg.Set(x, y, img.At(x, y))
+	for i, frame := range frames {
+		// Convert 2D int slice to byte slice
+		buf := new(bytes.Buffer)
+		for _, row := range frame.NativeData.Data {
+			for _, val := range row {
+				err := binary.Write(buf, binary.LittleEndian, int32(val))
+				if err != nil {
+					return nil, fmt.Errorf("error writing to buffer: %v", err)
+				}
+			}
 		}
+
+		// Encode to base64
+		base64Data := base64.StdEncoding.EncodeToString(buf.Bytes())
+
+		// Create a map for each frame
+		frameMap := map[string]interface{}{
+			"id":   i,
+			"data": base64Data,
+		}
+
+		result[i] = frameMap
 	}
 
-	// Encode to base64
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, rgbImg); err != nil {
-		return nil, fmt.Errorf("error encoding image: %v", err)
+	err := writeToFile("output.txt", result[0]["data"].(string))
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
 	}
 
-	b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
-	instances = append(instances, map[string]interface{}{"b64": b64})
-
-	return instances, nil
+	return result, nil
 }
 
 // detectVesselFromDcm function
