@@ -29,6 +29,7 @@ require (
 	cloud.google.com/go/longrunning v0.5.5 // indirect
 	cloud.google.com/go/storage v1.40.0 // indirect
 	github.com/MicahParks/keyfunc v1.9.0 // indirect
+	github.com/elastic/go-elasticsearch/v7 v7.17.10
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
@@ -44,9 +45,11 @@ require (
 	github.com/googleapis/gax-go/v2 v2.12.3 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/gomega v1.33.0 // indirect
 	github.com/smartystreets/goconvey v1.6.4 // indirect
+	github.com/suyashkumar/dicom v1.0.7
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect

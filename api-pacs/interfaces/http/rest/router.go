@@ -51,6 +51,7 @@ func (router *router) InitRouter() *chi.Mux {
 	tenantQueryController := interfaces.ServiceContainer().RegisterTenantRESTQueryController()
 	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
 	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
+	predictionController := interfaces.ServiceContainer().RegisterPredictionRESTController()
 
 	// create router
 	r := chi.NewRouter()
@@ -135,6 +136,11 @@ func (router *router) InitRouter() *chi.Mux {
 
 					r.Get("/", tenantQueryController.GetTenantByID)
 				})
+			})
+
+			// prediction module
+			r.Route("/prediction", func(r chi.Router) {
+				r.Get("/", predictionController.HandlePrediction)
 			})
 
 			// user module
