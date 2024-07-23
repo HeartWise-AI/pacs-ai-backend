@@ -25,6 +25,8 @@ import (
 	"api-pacs/infrastructures/providers/sdk/aws"
 	awsTypes "api-pacs/infrastructures/providers/sdk/aws/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
+	"api-pacs/infrastructures/providers/sdk/mailgun"
+	mailgunTypes "api-pacs/infrastructures/providers/sdk/mailgun/types"
 	iamMiddleware "api-pacs/interfaces/http/rest/middlewares/iam"
 	elasticsearchRepository "api-pacs/module/elasticsearch/infrastructure/repository"
 	elasticsearchService "api-pacs/module/elasticsearch/infrastructure/service"
@@ -70,6 +72,7 @@ var (
 	awsSDK                 *aws.AWSSDK
 	orthancAPI             *orthanc.OrthancAPI
 	kibanaAPI              *kibana.KibanaAPI
+	mailgunSDK             *mailgun.MailgunSDK
 )
 
 // ================================= REST ===================================
@@ -382,6 +385,15 @@ func registerHandlers() {
 	})
 	if err != nil {
 		log.Fatalf("[SERVER] cannot create aws session: %v", err)
+	}
+
+	// init mailgun sdk
+	mailgunSDK, err = mailgun.NewMailgun(mailgunTypes.Config{
+		APIKey: os.Getenv("MAILGUN_API_KEY"),
+		Domain: os.Getenv("MAILGUN_DOMAIN"),
+	})
+	if err != nil {
+		log.Fatalf("[SERVER] cannot initialize mailgun: %v", err)
 	}
 
 	// run event listeners and cron jobs
