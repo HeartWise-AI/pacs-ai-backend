@@ -6,8 +6,9 @@ type Config struct {
 }
 
 type MailgunSendEmailRequest struct {
-	Sender    string
-	Subject   string
-	Body      string
-	Recipient string
+	Sender        string
+	Subject       string
+	HTMLBody      string
+	PlainTextBody string
+	Recipient     string
 }

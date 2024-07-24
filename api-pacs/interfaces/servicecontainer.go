@@ -22,8 +22,6 @@ import (
 	"api-pacs/infrastructures/database/redis"
 	"api-pacs/infrastructures/providers/api/kibana"
 	"api-pacs/infrastructures/providers/api/orthanc"
-	"api-pacs/infrastructures/providers/sdk/aws"
-	awsTypes "api-pacs/infrastructures/providers/sdk/aws/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	"api-pacs/infrastructures/providers/sdk/mailgun"
 	mailgunTypes "api-pacs/infrastructures/providers/sdk/mailgun/types"
@@ -69,7 +67,6 @@ var (
 	elasticsearchDBHandler *elasticsearch.ElasticsearchDBHandler
 	redisIAMDBHandler      *redis.RedisDBHandler
 	firebaseAdminSDK       *firebaseadmin.FirebaseAdminSDK
-	awsSDK                 *aws.AWSSDK
 	orthancAPI             *orthanc.OrthancAPI
 	kibanaAPI              *kibana.KibanaAPI
 	mailgunSDK             *mailgun.MailgunSDK
@@ -253,7 +250,7 @@ func (k *kernel) iamCommandServiceContainer() *iamService.IAMCommandService {
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		FirebaseAdminSDK:                     firebaseAdminSDK,
-		AWSSDKInterface:                      awsSDK,
+		MailgunSDK:                           mailgunSDK,
 	}
 
 	return service
@@ -326,7 +323,7 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 		UserQueryServiceInterface:            k.userQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
-		AWSSDKInterface:                      awsSDK,
+		MailgunSDK:                           mailgunSDK,
 	}
 
 	return service
@@ -376,16 +373,6 @@ func registerHandlers() {
 
 	// init kibana connection
 	kibanaAPI = kibana.Init(os.Getenv("KIBANA_BASE_URL"))
-
-	// init aws session
-	awsSDK, err = aws.NewSession(awsTypes.Config{
-		Region:    os.Getenv("AWS_REGION"),
-		AccessID:  os.Getenv("AWS_ACCESS_ID"),
-		SecretKey: os.Getenv("AWS_SECRET_KEY"),
-	})
-	if err != nil {
-		log.Fatalf("[SERVER] cannot create aws session: %v", err)
-	}
 
 	// init mailgun sdk
 	mailgunSDK, err = mailgun.NewMailgun(mailgunTypes.Config{

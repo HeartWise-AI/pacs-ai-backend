@@ -2,6 +2,7 @@ package mailgun
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/mailgun/mailgun-go/v4"
@@ -25,15 +26,22 @@ func NewMailgun(config types.Config) (*MailgunSDK, error) {
 
 // SendEmail sends an email using mailgun
 func (m *MailgunSDK) SendEmail(ctx context.Context, data types.MailgunSendEmailRequest) error {
-	message := m.MailgunImpl.NewMessage(data.Sender, data.Subject, data.Body, data.Recipient)
+	if len(data.HTMLBody) == 0 {
+		data.HTMLBody = data.PlainTextBody
+	}
 
-	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
+	message := m.MailgunImpl.NewMessage(data.Sender, data.Subject, "", data.Recipient)
+	message.SetHtml(data.HTMLBody)
+
+	ctx, cancel := context.WithTimeout(ctx, time.Second*30)
 	defer cancel()
 
-	_, _, err := m.MailgunImpl.Send(ctx, message)
+	resp, _, err := m.MailgunImpl.Send(ctx, message)
 	if err != nil {
 		return err
 	}
+
+	log.Printf("Email Resp: %s\n", resp)
 
 	return nil
 }
