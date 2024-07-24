@@ -6,7 +6,6 @@ require (
 	cloud.google.com/go/firestore v1.15.0
 	firebase.google.com/go/v4 v4.14.0
 	github.com/afex/hystrix-go v0.0.0-20180502004556-fa1af6a1f4f5
-	github.com/aws/aws-sdk-go v1.54.7
 	github.com/elastic/go-elasticsearch/v8 v8.13.1
 	github.com/go-chi/chi v1.5.4
 	github.com/go-chi/cors v1.2.1
@@ -14,6 +13,7 @@ require (
 	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/gocarina/gocsv v0.0.0-20240520201108-78e41c74b4b1
 	github.com/joho/godotenv v1.5.1
+	github.com/mailgun/mailgun-go/v4 v4.12.0
 	github.com/segmentio/ksuid v1.0.4
 	golang.org/x/sync v0.6.0
 	google.golang.org/api v0.170.0
@@ -31,6 +31,7 @@ require (
 	github.com/MicahParks/keyfunc v1.9.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
+	github.com/go-chi/chi/v5 v5.0.8 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
@@ -42,10 +43,13 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.3 // indirect
-	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/json-iterator/go v1.1.10 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
+	github.com/modern-go/reflect2 v0.0.0-20180701023420-4b7aa43c6742 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/gomega v1.33.0 // indirect
+	github.com/pkg/errors v0.8.1 // indirect
 	github.com/smartystreets/goconvey v1.6.4 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect

@@ -8,7 +8,8 @@ import (
 
 	"github.com/segmentio/ksuid"
 
-	awsSDKTypes "api-pacs/infrastructures/providers/sdk/aws/types"
+	"api-pacs/infrastructures/providers/sdk/mailgun"
+	mailgunTypes "api-pacs/infrastructures/providers/sdk/mailgun/types"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	"api-pacs/module/elasticsearch/domain/entity"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
@@ -25,7 +26,7 @@ type UserCommandService struct {
 	userApplication.UserQueryServiceInterface
 	tenantApplication.TenantQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
-	awsSDKTypes.AWSSDKInterface
+	MailgunSDK *mailgun.MailgunSDK
 }
 
 // CreateTenantUser add a new tenant user with random generated password
@@ -83,10 +84,10 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 			"You can use this and login to PACS AI via <a href=\"%s\">%s</a>. You will be then prompted to change password. <br /><br />"+
 			"Thanks, <br /><br />"+
 			"Your PACS AI team", data.Name, data.Email, generatedPassword, redirectLink, redirectLink)
-		err = service.AWSSDKInterface.SESSendEmail(ctx, awsSDKTypes.SESSendEmailRequest{
-			Subject:          "[PACS AI]: New account credentials",
-			ToAddresses:      []string{data.Email},
-			PlainTextMessage: emailMessage,
+		err = service.MailgunSDK.SendEmail(ctx, mailgunTypes.MailgunSendEmailRequest{
+			Subject:       "[PACS AI]: New account credentials",
+			Recipient:     data.Email,
+			PlainTextBody: emailMessage,
 		})
 		if err != nil {
 			log.Println("[error] cannot send account credentials via aws ses", err)

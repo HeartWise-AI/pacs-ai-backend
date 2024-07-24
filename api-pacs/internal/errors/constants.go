@@ -44,4 +44,7 @@ const (
 	// Kibana-related errors
 	KibanaError           string = "KIBANA_ERROR"
 	KibanaDuplicateRecord string = "KIBANA_DUPLICATE_RECORD"
+
+	// Mailgun-related errors
+	MailgunError string = "MAILGUN_ERROR"
 )
