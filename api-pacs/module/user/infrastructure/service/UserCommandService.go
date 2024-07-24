@@ -85,7 +85,6 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 			"Thanks, <br /><br />"+
 			"Your PACS AI team", data.Name, data.Email, generatedPassword, redirectLink, redirectLink)
 		err = service.MailgunSDK.SendEmail(ctx, mailgunTypes.MailgunSendEmailRequest{
-			Sender:        "nuxify@noreply.com",
 			Subject:       "[PACS AI]: New account credentials",
 			Recipient:     data.Email,
 			PlainTextBody: emailMessage,

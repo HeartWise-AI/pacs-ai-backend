@@ -3,6 +3,7 @@ package mailgun
 import (
 	"context"
 	"log"
+	"os"
 	"time"
 
 	"github.com/mailgun/mailgun-go/v4"
@@ -30,7 +31,7 @@ func (m *MailgunSDK) SendEmail(ctx context.Context, data types.MailgunSendEmailR
 		data.HTMLBody = data.PlainTextBody
 	}
 
-	message := m.MailgunImpl.NewMessage(data.Sender, data.Subject, "", data.Recipient)
+	message := m.MailgunImpl.NewMessage(os.Getenv("MAILGUN_SENDER_EMAIL"), data.Subject, "", data.Recipient)
 	message.SetHtml(data.HTMLBody)
 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*30)

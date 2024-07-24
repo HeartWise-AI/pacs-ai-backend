@@ -73,7 +73,6 @@ func (service *IAMCommandService) ForgotTenantUserPassword(ctx context.Context, 
 		"Thanks,<br />"+
 		"Your PACS AI team", email, resetLink)
 	err = service.MailgunSDK.SendEmail(ctx, mailgunTypes.MailgunSendEmailRequest{
-		Sender:        "nuxify@noreply.com",
 		Subject:       "[PACS AI]: Reset password",
 		Recipient:     email,
 		PlainTextBody: textMessage,
