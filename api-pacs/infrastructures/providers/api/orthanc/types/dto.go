@@ -9,6 +9,10 @@ const (
 	JobRetry   string = "Retry"
 )
 
+type DeleteLocalResourcesRequest struct {
+	Resources []string `json:"Resources"`
+}
+
 type RetrieveQueryModalityAnswerRequest struct {
 	Asynchronous bool   `json:"Asynchronous"`
 	Full         bool   `json:"Full"`
@@ -38,6 +42,11 @@ type GetJobResponse struct {
 	Priority uint   `json:"Priority"`
 	Progress uint   `json:"Progress"`
 	State    string `json:"State"`
+}
+
+type GetLocalResourceResponse struct {
+	ID         string `json:"ID"`
+	LastUpdate string `json:"LastUpdate"` // in 20240627T182452 format
 }
 
 type RetrieveQueryModalityAnswerResponse struct {

@@ -8,8 +8,9 @@ import (
 
 	"github.com/segmentio/ksuid"
 
-	awsSDKTypes "api-pacs/infrastructures/providers/sdk/aws/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
+	"api-pacs/infrastructures/providers/sdk/mailgun"
+	mailgunTypes "api-pacs/infrastructures/providers/sdk/mailgun/types"
 	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
@@ -28,7 +29,7 @@ type IAMCommandService struct {
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	tenantApplication.TenantQueryServiceInterface
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
-	awsSDKTypes.AWSSDKInterface
+	MailgunSDK       *mailgun.MailgunSDK
 }
 
 // ForgotTenantUserPassword forgot password
@@ -71,14 +72,14 @@ func (service *IAMCommandService) ForgotTenantUserPassword(ctx context.Context, 
 		"If you didn’t ask to reset your password, you can ignore this email.<br /><br />"+
 		"Thanks,<br />"+
 		"Your PACS AI team", email, resetLink)
-	err = service.AWSSDKInterface.SESSendEmail(ctx, awsSDKTypes.SESSendEmailRequest{
-		Subject:          "[PACS AI]: Reset password",
-		ToAddresses:      []string{email},
-		PlainTextMessage: textMessage,
+	err = service.MailgunSDK.SendEmail(ctx, mailgunTypes.MailgunSendEmailRequest{
+		Subject:       "[PACS AI]: Reset password",
+		Recipient:     email,
+		PlainTextBody: textMessage,
 	})
 	if err != nil {
-		log.Println("[error] cannot send verification code via aws ses", err)
-		return errors.New(apiError.SESError)
+		log.Println("[error] cannot send verification code via mailgun", err)
+		return errors.New(apiError.MailgunError)
 	}
 
 	return nil
