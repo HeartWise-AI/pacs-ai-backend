@@ -4,15 +4,16 @@ import (
 	"api-pacs/module/prediction/infrastructure/repository"
 	"api-pacs/module/prediction/types"
 	"bytes"
-	"context"
-	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
+	"reflect"
+	"time"
 
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/suyashkumar/dicom"
@@ -72,32 +73,58 @@ func readDicomFile(filePath string) (*dicom.Dataset, error) {
 	return &ds, nil
 }
 
+type QueryTorchserve struct {
+	Instances [][][][]int `json:"instances"`
+}
+
+var (
+	client *http.Client = &http.Client{Timeout: 5 * time.Minute}
+)
+
 // Send server request
-func sendServerRequest(serverURL string, instances []map[string]interface{}) (map[string]interface{}, error) {
-	predictRequest, err := json.Marshal(map[string]interface{}{"instances": instances})
+func sendServerRequest(serverURL string, instances QueryTorchserve) ([][]float64, error) {
+	buf := new(bytes.Buffer)
+	err := json.NewEncoder(buf).Encode(instances)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.Post(serverURL, "application/json", bytes.NewBuffer(predictRequest))
+	req, err := http.NewRequest(http.MethodPost, serverURL, buf)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+
+	// Read the response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
 		return nil, err
 	}
+
+	// Convert body bytes to string
+	bodyString := string(bodyBytes)
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		log.Println("Error:", bodyString)
+		return nil, fmt.Errorf("server returned non-2xx status code: %d", resp.StatusCode)
+	}
+
+	// Parse the response into a 2D slice of float64
+	var result [][]float64
+	err = json.Unmarshal(bodyBytes, &result)
+	if err != nil {
+		return nil, err
+	}
+
 	return result, nil
 }
 
-const (
-	// Hardcoded DICOM URL
-	HARDCODED_DICOM_URL = "http://localhost:8063/instances/3d0069ae-97a2251d-5433aa87-8c60feb9-f8900eaf/file"
-)
-
 // PredictionCommandServiceInterface interface
 type PredictionCommandServiceInterface interface {
-	CreatePrediction(ctx context.Context, data types.DicomInputData) (types.DicomPrediction, error)
+	CreatePrediction(data types.DicomInputData) (types.DicomPrediction, error)
 }
 
 // PredictionCommandService struct
@@ -105,43 +132,30 @@ type PredictionCommandService struct {
 	PredictionCommandRepositoryInterface repository.PredictionCommandRepositoryInterface
 }
 
-func (s *PredictionCommandService) CreatePrediction(ctx context.Context, data types.DicomInputData) (types.DicomPrediction, error) {
-	// Fetch DICOM file from the hardcoded URL
-	resp, err := http.Get(HARDCODED_DICOM_URL)
+func (s *PredictionCommandService) CreatePrediction(data types.DicomInputData) (types.DicomPrediction, error) {
+	// Fetch and process DICOM file
+	dataset, err := s.fetchAndProcessDicom(data.URL)
 	if err != nil {
-		return types.DicomPrediction{}, err
-	}
-	defer resp.Body.Close()
-
-	// Read the response body
-	dicomData, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return types.DicomPrediction{}, err
+		return types.DicomPrediction{}, fmt.Errorf("failed to fetch and process DICOM: %w", err)
 	}
 
-	// Create a temporary file to store the DICOM data
-	tempFile, err := ioutil.TempFile("", "dicom-*.dcm")
+	ageElement, err := dataset.FindElementByTag(tag.PatientAge)
 	if err != nil {
-		return types.DicomPrediction{}, err
-	}
-	defer os.Remove(tempFile.Name())
-	defer tempFile.Close()
-
-	// Write the DICOM data to the temporary file
-	if _, err := tempFile.Write(dicomData); err != nil {
-		return types.DicomPrediction{}, err
+		ageElement = nil
 	}
 
-	// Now use the temp file path in your existing logic
-	dataset, err := readDicomFile(tempFile.Name())
-	if err != nil {
-		return types.DicomPrediction{}, err
+	ageString := "0"
+	if ageElement == nil {
+		ageString = "0"
+	} else {
+		ageString = ageElement.String()
 	}
+	log.Printf("Age: %s", ageString)
 
 	// Detect vessel
 	vesselResult, err := detectVesselFromDcm(dataset)
 	if err != nil {
-		return types.DicomPrediction{}, err
+		return types.DicomPrediction{}, fmt.Errorf("failed to detect vessel: %w", err)
 	}
 
 	// Detect LVEF if the vessel is Left Coronary
@@ -149,142 +163,153 @@ func (s *PredictionCommandService) CreatePrediction(ctx context.Context, data ty
 	if vesselResult.DetectedVessel == VESSEL_TYPES[5] {
 		lvefResult, err := detectLVEFFromDcm(dataset)
 		if err != nil {
-			return types.DicomPrediction{}, err
+			return types.DicomPrediction{}, fmt.Errorf("failed to detect LVEF: %w", err)
 		}
-		lvef = (lvefResult.LVEF * 100)
+		lvef = lvefResult.LVEF
 	}
 
-	prediction := types.DicomPrediction{
+	return types.DicomPrediction{
 		DetectedVessel: vesselResult.DetectedVessel,
 		LVEF:           lvef,
-		Age:            data.Age,
+		Age:            ageString,
+	}, nil
+}
+
+func (s *PredictionCommandService) fetchAndProcessDicom(url string) (*dicom.Dataset, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch DICOM: %w", err)
+	}
+	defer resp.Body.Close()
+
+	tempFile, err := ioutil.TempFile("", "dicom-*.dcm")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
+
+	if _, err := io.Copy(tempFile, resp.Body); err != nil {
+		return nil, fmt.Errorf("failed to write DICOM data: %w", err)
 	}
 
-	return prediction, nil
+	dataset, err := readDicomFile(tempFile.Name())
+	if err != nil {
+		return nil, fmt.Errorf("failed to read DICOM file: %w", err)
+	}
+
+	return dataset, nil
 }
 
 // Helper function to convert DICOM to instances
-func dcmToInstances(dataset *dicom.Dataset) ([]map[string]interface{}, error) {
+func dcmToInstances(dataset *dicom.Dataset) ([][][][]int, error) {
 	pixelDataElement, err := dataset.FindElementByTag(tag.PixelData)
 	if err != nil {
-		return nil, fmt.Errorf("error getting pixel data: %v", err)
+		return nil, fmt.Errorf("error getting pixel data: %w", err)
 	}
-	frames := pixelDataElement.Value.GetValue().(dicom.PixelDataInfo).Frames
-	return convertFramesToBase64Maps(frames)
+
+	pixelDataInfo, ok := pixelDataElement.Value.GetValue().(dicom.PixelDataInfo)
+	if !ok {
+		return nil, fmt.Errorf("invalid pixel data type")
+	}
+
+	return convertFramesToBase64Maps(pixelDataInfo.Frames)
 }
 
-// Temporary
-func writeToFile(filename string, content interface{}) error {
-	// Open the file, creating it if it doesn't exist
-	file, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("error creating file: %v", err)
-	}
-	defer file.Close()
+func getArrayDepth(arr interface{}) int {
+	value := reflect.ValueOf(arr)
+	depth := 0
 
-	// Write the content to the file
-	_, err = fmt.Fprintf(file, "%v", content)
-	if err != nil {
-		return fmt.Errorf("error writing to file: %v", err)
+	for value.Kind() == reflect.Slice || value.Kind() == reflect.Array {
+		depth++
+		if value.Len() == 0 {
+			break
+		}
+		value = value.Index(0)
 	}
 
-	return nil
+	return depth
 }
 
-// base64ImageCathef function (simplified version without video processing)
-func convertFramesToBase64Maps(frames []*frame.Frame) ([]map[string]interface{}, error) {
-	result := make([]map[string]interface{}, len(frames))
-
+func convertFramesToBase64Maps(frames []*frame.Frame) ([][][][]int, error) {
+	result := make([][][][]int, len(frames))
 	for i, frame := range frames {
-		// Convert 2D int slice to byte slice
-		buf := new(bytes.Buffer)
-		for _, row := range frame.NativeData.Data {
-			for _, val := range row {
-				err := binary.Write(buf, binary.LittleEndian, int32(val))
-				if err != nil {
-					return nil, fmt.Errorf("error writing to buffer: %v", err)
+		rows := frame.NativeData.Rows
+		cols := frame.NativeData.Cols
+		data := frame.NativeData.Data
+
+		// Pre-allocate the entire 3D slice
+		depth := getArrayDepth(frame.NativeData.Data)
+		if depth == 2 {
+			result[i] = make([][][]int, 1)
+		} else {
+			result[i] = make([][][]int, len(frame.NativeData.Data[0]))
+		}
+		result[i][0] = make([][]int, rows)
+		for row := range result[i][0] {
+			result[i][0][row] = make([]int, cols)
+		}
+
+		// Fill the data
+		for row := 0; row < rows; row++ {
+			for col := 0; col < cols; col++ {
+				index := row*cols + col
+				if index < len(data) {
+					result[i][0][row][col] = data[index][0]
 				}
 			}
 		}
-
-		// Encode to base64
-		base64Data := base64.StdEncoding.EncodeToString(buf.Bytes())
-
-		// Create a map for each frame
-		frameMap := map[string]interface{}{
-			"id":   i,
-			"data": base64Data,
-		}
-
-		result[i] = frameMap
 	}
-
-	err := writeToFile("output.txt", result[0]["data"].(string))
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-	}
-
 	return result, nil
 }
 
-// detectVesselFromDcm function
 func detectVesselFromDcm(dataset *dicom.Dataset) (types.DicomPrediction, error) {
 	instances, err := dcmToInstances(dataset)
 	if err != nil {
-		return types.DicomPrediction{}, err
+		return types.DicomPrediction{}, fmt.Errorf("failed to convert DCM to instances: %w", err)
 	}
 
-	result, err := sendServerRequest(SERVER_X3D_1_URL, instances)
+	predictions, err := sendServerRequest(SERVER_X3D_1_URL, QueryTorchserve{Instances: instances})
 	if err != nil {
-		return types.DicomPrediction{}, err
+		return types.DicomPrediction{}, fmt.Errorf("failed to send server request: %w", err)
 	}
 
-	predictions, ok := result["predictions"].([]interface{})
-	if !ok || len(predictions) == 0 {
-		return types.DicomPrediction{}, errors.New("unexpected prediction result format")
+	if len(predictions) == 0 {
+		return types.DicomPrediction{}, errors.New("unexpected empty prediction result")
 	}
 
-	vesselIndex := 0
-	maxProb := 0.0
-	for j, prob := range predictions[0].([]interface{}) {
-		p, ok := prob.(float64)
-		if !ok {
-			return types.DicomPrediction{}, errors.New("unexpected probability format")
-		}
-		if p > maxProb {
-			maxProb = p
-			vesselIndex = j
-		}
-	}
+	vesselIndex := findMaxProbabilityIndex(predictions)
 
 	return types.DicomPrediction{
 		DetectedVessel: VESSEL_TYPES[vesselIndex],
 	}, nil
 }
 
-// detectLVEFFromDcm function
+func findMaxProbabilityIndex(predictions [][]float64) int {
+	maxIndex, maxProb := 0, predictions[0][0]
+	for i, pred := range predictions[1:] {
+		if pred[0] > maxProb {
+			maxProb = pred[0]
+			maxIndex = i + 1
+		}
+	}
+	return maxIndex
+}
+
 func detectLVEFFromDcm(dataset *dicom.Dataset) (types.DicomPrediction, error) {
 	instances, err := dcmToInstances(dataset)
 	if err != nil {
-		return types.DicomPrediction{}, err
+		return types.DicomPrediction{}, fmt.Errorf("failed to convert DCM to instances: %w", err)
 	}
 
-	result, err := sendServerRequest(SERVER_X3D_2_URL, instances)
+	predictions, err := sendServerRequest(SERVER_X3D_2_URL, QueryTorchserve{Instances: instances})
 	if err != nil {
-		return types.DicomPrediction{}, err
+		return types.DicomPrediction{}, fmt.Errorf("failed to send server request: %w", err)
 	}
 
-	predictions, ok := result["predictions"].([]interface{})
-	if !ok || len(predictions) == 0 {
-		return types.DicomPrediction{}, errors.New("unexpected prediction result format")
+	if len(predictions) == 0 || len(predictions[0]) == 0 {
+		return types.DicomPrediction{}, errors.New("unexpected empty prediction result")
 	}
 
-	lvef, ok := predictions[0].(float64)
-	if !ok {
-		return types.DicomPrediction{}, errors.New("unexpected LVEF format")
-	}
-
-	return types.DicomPrediction{
-		LVEF: lvef,
-	}, nil
+	return types.DicomPrediction{LVEF: predictions[0][0]}, nil
 }

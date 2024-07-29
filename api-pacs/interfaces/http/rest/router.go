@@ -140,7 +140,7 @@ func (router *router) InitRouter() *chi.Mux {
 
 			// prediction module
 			r.Route("/prediction", func(r chi.Router) {
-				r.Get("/", predictionController.HandlePrediction)
+				r.Post("/", predictionController.HandlePrediction)
 			})
 
 			// user module

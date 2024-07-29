@@ -2,11 +2,11 @@ package types
 
 type DicomInputData struct {
 	DicomFilePath string
-	Age           int
+	URL           string `json:"url"`
 }
 
 type DicomPrediction struct {
 	DetectedVessel string
 	LVEF           float64
-	Age            int
+	Age            string
 }

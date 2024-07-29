@@ -22,7 +22,7 @@ import (
 
 func init() {
 	// load our environmental variables.
-	if err := godotenv.Load(); err != nil {
+	if err := godotenv.Load("../.env"); err != nil {
 		panic(err)
 	}
 }

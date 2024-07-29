@@ -9,4 +9,4 @@ services:
       - 80:80
     depends_on:
       - orthanc
-      - api-pacs
+      # - api-pacs
