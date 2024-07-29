@@ -49,3 +49,8 @@ up-redis:
 up-redis:
 	cd elasticsearch
 	docker compose -f docker-compose-dev.yml up --build
+
+.PHONY: up-torchserve
+up-torchserve:
+	cd torchserve
+	docker compose -f docker-compose-dev.yml up --build

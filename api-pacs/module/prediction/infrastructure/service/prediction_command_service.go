@@ -8,14 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 	"reflect"
 	"time"
 
-	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/suyashkumar/dicom"
 	"github.com/suyashkumar/dicom/pkg/frame"
 	"github.com/suyashkumar/dicom/pkg/tag"
@@ -23,15 +20,9 @@ import (
 
 // Constants
 const (
-	CERTS_PATH        = "elastic_data/certs/ca/ca.crt"
-	ELASTICSEARCH_URL = "https://localhost:9200"
-	SERVER_X3D_1_URL  = "http://localhost:8080/predictions/X3D_1" // View detection
-	SERVER_X3D_2_URL  = "http://localhost:8080/predictions/X3D_2" // LVEF detection
+	SERVER_X3D_1_URL = "http://localhost:8080/predictions/X3D_1" // View detection
+	SERVER_X3D_2_URL = "http://localhost:8080/predictions/X3D_2" // LVEF detection
 )
-
-// DEVICE_TYPES and VESSEL_TYPES
-var DEVICE_TYPES = []string{"BIO_ICD", "BIO_PM", "BSC_CRT-P", "BSC_ICD", "BSC_PM", "BSC_S-ICD", "ELA_PM", "IMC_PM", "MED_CRT-P",
-	"MED_ICD", "MED_ICM", "MED_PM", "SJM_CRT-P", "SJM_ICD", "SJM_PM", "TPS_PM", "VIT_PM"}
 
 var VESSEL_TYPES = map[int]string{
 	0:  "Aorta",
@@ -45,23 +36,6 @@ var VESSEL_TYPES = map[int]string{
 	8:  "Radial",
 	9:  "Right Coronary",
 	10: "Stenting",
-}
-
-// Elasticsearch client
-func NewElasticsearchClient() (*elasticsearch.Client, error) {
-	cfg := elasticsearch.Config{
-		Addresses: []string{
-			ELASTICSEARCH_URL,
-		},
-		CACert:   []byte(CERTS_PATH),
-		Username: "elastic",
-		Password: "MagicWord",
-	}
-	es, err := elasticsearch.NewClient(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return es, nil
 }
 
 // Read DICOM file
@@ -175,30 +149,30 @@ func (s *PredictionCommandService) CreatePrediction(data types.DicomInputData) (
 	}, nil
 }
 
-func (s *PredictionCommandService) fetchAndProcessDicom(url string) (*dicom.Dataset, error) {
-	resp, err := http.Get(url)
+func (s *PredictionCommandService) fetchAndProcessDicom(uid string) (*dicom.Dataset, error) {
+	dicomData, err := s.fetchDicomDataByUID(uid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch DICOM data: %w", err)
+	}
+
+	// Process the DICOM data
+	dataset, err := dicom.Parse(dicomData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse DICOM data: %w", err)
+	}
+
+	return dataset, nil
+}
+
+func (s *PredictionCommandService) fetchDicomDataByUID(uid string) ([]byte, error) {
+	// Fetch the DICOM data
+	resp, err := http.Get("http://localhost:8063/instances/" + uid + "/file")
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch DICOM: %w", err)
 	}
 	defer resp.Body.Close()
 
-	tempFile, err := ioutil.TempFile("", "dicom-*.dcm")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer os.Remove(tempFile.Name())
-	defer tempFile.Close()
-
-	if _, err := io.Copy(tempFile, resp.Body); err != nil {
-		return nil, fmt.Errorf("failed to write DICOM data: %w", err)
-	}
-
-	dataset, err := readDicomFile(tempFile.Name())
-	if err != nil {
-		return nil, fmt.Errorf("failed to read DICOM file: %w", err)
-	}
-
-	return dataset, nil
+	return resp.Body, nil
 }
 
 // Helper function to convert DICOM to instances

@@ -1,8 +1,7 @@
 package types
 
 type DicomInputData struct {
-	DicomFilePath string
-	URL           string `json:"url"`
+	UID string `json:"uid"`
 }
 
 type DicomPrediction struct {

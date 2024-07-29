@@ -10,3 +10,4 @@ include:
   - api-pacs/docker-compose.yml
   - nginx/docker-compose.yml
   - ../PACS-AI/docker-compose.yml
+  - torchserve/docker-compose.yml
