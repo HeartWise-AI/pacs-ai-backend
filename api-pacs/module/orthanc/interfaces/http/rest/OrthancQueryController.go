@@ -76,6 +76,61 @@ func (controller *OrthancQueryController) GetJobInfo(w http.ResponseWriter, r *h
 	response.JSON(w)
 }
 
+func (controller *OrthancQueryController) FindQueryId(w http.ResponseWriter, r *http.Request) {
+	var findRequest struct {
+		Level string `json:"Level"`
+		Query struct {
+			SOPInstanceUID string `json:"SOPInstanceUID"`
+		} `json:"Query"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&findRequest)
+	if err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid request body",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+		response.JSON(w)
+		return
+	}
+
+	// Validate the request
+	if findRequest.Level != "Instances" || findRequest.Query.SOPInstanceUID == "" {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid Level or missing SOPInstanceUID",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+		response.JSON(w)
+		return
+	}
+
+	// Perform the find operation and get a query ID
+	queryID, err := controller.OrthancQueryServiceInterface.CreateFindQuery(context.TODO(), findRequest.Level, findRequest.Query.SOPInstanceUID)
+	if err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusInternalServerError,
+			Success:   false,
+			Message:   err.Error(),
+			ErrorCode: apiError.OrthancError,
+		}
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully fetched instances.",
+		Data:    queryID,
+	}
+
+	response.JSON(w)
+}
+
 // FindModalityStudies get modality studies
 func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)

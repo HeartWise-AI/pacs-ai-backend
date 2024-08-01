@@ -11,4 +11,5 @@ import (
 type OrthancQueryServiceInterface interface {
 	FindModalityStudies(ctx context.Context, data types.FindModalityStudies) ([]orthancAPITypes.QueryModalitiesAnswersResponse, string, error)
 	GetJobInfo(ctx context.Context, jobID string) (orthancAPITypes.GetJobResponse, error)
+	CreateFindQuery(ctx context.Context, level string, sopInstanceUID string) (string, error)
 }

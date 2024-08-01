@@ -20,8 +20,8 @@ import (
 
 // Constants
 const (
-	SERVER_X3D_1_URL = "http://localhost:8080/predictions/X3D_1" // View detection
-	SERVER_X3D_2_URL = "http://localhost:8080/predictions/X3D_2" // LVEF detection
+	SERVER_X3D_1_URL = "http://torchserve:8080/predictions/X3D_1" // View detection
+	SERVER_X3D_2_URL = "http://torchserve:8080/predictions/X3D_2" // LVEF detection
 )
 
 var VESSEL_TYPES = map[int]string{
@@ -98,7 +98,7 @@ func sendServerRequest(serverURL string, instances QueryTorchserve) ([][]float64
 
 // PredictionCommandServiceInterface interface
 type PredictionCommandServiceInterface interface {
-	CreatePrediction(data types.DicomInputData) (types.DicomPrediction, error)
+	CreatePrediction(data string) (types.DicomPrediction, error)
 }
 
 // PredictionCommandService struct
@@ -106,9 +106,9 @@ type PredictionCommandService struct {
 	PredictionCommandRepositoryInterface repository.PredictionCommandRepositoryInterface
 }
 
-func (s *PredictionCommandService) CreatePrediction(data types.DicomInputData) (types.DicomPrediction, error) {
+func (s *PredictionCommandService) CreatePrediction(data string) (types.DicomPrediction, error) {
 	// Fetch and process DICOM file
-	dataset, err := s.fetchAndProcessDicom(data.URL)
+	dataset, err := s.fetchAndProcessDicom(data)
 	if err != nil {
 		return types.DicomPrediction{}, fmt.Errorf("failed to fetch and process DICOM: %w", err)
 	}
@@ -149,30 +149,40 @@ func (s *PredictionCommandService) CreatePrediction(data types.DicomInputData) (
 	}, nil
 }
 
-func (s *PredictionCommandService) fetchAndProcessDicom(uid string) (*dicom.Dataset, error) {
-	dicomData, err := s.fetchDicomDataByUID(uid)
+func (s *PredictionCommandService) fetchAndProcessDicom(queryID string) (*dicom.Dataset, error) {
+	// Use the queryID to fetch the DICOM data
+	// You'll need to implement this method to use the Orthanc API to fetch the DICOM data using the queryID
+	dicomData, err := s.fetchDicomDataByID(queryID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch DICOM data: %w", err)
 	}
 
 	// Process the DICOM data
-	dataset, err := dicom.Parse(dicomData)
+	dataset, err := dicom.Parse(bytes.NewReader(dicomData), int64(len(dicomData)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse DICOM data: %w", err)
 	}
 
-	return dataset, nil
+	return &dataset, nil
 }
 
-func (s *PredictionCommandService) fetchDicomDataByUID(uid string) ([]byte, error) {
+func (s *PredictionCommandService) fetchDicomDataByID(uid string) ([]byte, error) {
 	// Fetch the DICOM data
-	resp, err := http.Get("http://localhost:8063/instances/" + uid + "/file")
+	link := "http://orthanc:8042/instances/" + uid + "/file"
+	log.Printf("Fetching DICOM from: %s", link)
+	resp, err := http.Get(link)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch DICOM: %w", err)
 	}
 	defer resp.Body.Close()
 
-	return resp.Body, nil
+	// Read the response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	return bodyBytes, nil
 }
 
 // Helper function to convert DICOM to instances
