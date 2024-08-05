@@ -72,14 +72,11 @@ func (controller *UserQueryController) GetCurrentTenantUser(w http.ResponseWrite
 // GetDoctorSpecialties get doctor specialties
 func (controller *UserQueryController) GetDoctorSpecialties(w http.ResponseWriter, r *http.Request) {
 	res, err := controller.UserQueryServiceInterface.GetDoctorSpecialties(context.TODO())
-	if err != nil {
+	if err != nil && err.Error() != errors.MissingRecord {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
-		case errors.MissingRecord:
-			httpCode = http.StatusNotFound
-			errorMsg = "No records found."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Database error."
