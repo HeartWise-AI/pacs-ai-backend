@@ -22,8 +22,8 @@ import (
 
 func init() {
 	// load our environmental variables.
-	if err := godotenv.Load(); err != nil {
-		// if err := godotenv.Load("../.debug.env"); err != nil {
+	// if err := godotenv.Load(); err != nil {
+	if err := godotenv.Load("../.debug.env"); err != nil {
 		panic(err)
 	}
 }

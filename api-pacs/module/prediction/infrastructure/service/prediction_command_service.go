@@ -11,6 +11,8 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/suyashkumar/dicom"
@@ -23,29 +25,6 @@ const (
 	SERVER_X3D_1_URL = "http://torchserve:8080/predictions/X3D_1" // View detection
 	SERVER_X3D_2_URL = "http://torchserve:8080/predictions/X3D_2" // LVEF detection
 )
-
-var VESSEL_TYPES = map[int]string{
-	0:  "Aorta",
-	1:  "Catheter",
-	2:  "Femoral",
-	3:  "Graft",
-	4:  "LV",
-	5:  "Left Coronary",
-	6:  "Other",
-	7:  "Pigtail",
-	8:  "Radial",
-	9:  "Right Coronary",
-	10: "Stenting",
-}
-
-// Read DICOM file
-func readDicomFile(filePath string) (*dicom.Dataset, error) {
-	ds, err := dicom.ParseFile(filePath, nil)
-	if err != nil {
-		return nil, err
-	}
-	return &ds, nil
-}
 
 type QueryTorchserve struct {
 	Instances [][][][]int `json:"instances"`
@@ -106,6 +85,26 @@ type PredictionCommandService struct {
 	PredictionCommandRepositoryInterface repository.PredictionCommandRepositoryInterface
 }
 
+func calculateAgeString(birthDateStr string) string {
+	birthDateStr = strings.Trim(birthDateStr, "[] \t\n\r")
+
+	birthDate, err := time.Parse("20060102", birthDateStr)
+	if err != nil {
+		log.Printf("Error parsing birth date: %v", err)
+		return "Unknown"
+	}
+
+	now := time.Now()
+	age := now.Year() - birthDate.Year()
+
+	// Adjust age if birthday hasn't occurred this year
+	if now.YearDay() < birthDate.YearDay() {
+		age--
+	}
+
+	return strconv.Itoa(age)
+}
+
 func (s *PredictionCommandService) CreatePrediction(data string) (types.DicomPrediction, error) {
 	// Fetch and process DICOM file
 	dataset, err := s.fetchAndProcessDicom(data)
@@ -113,19 +112,10 @@ func (s *PredictionCommandService) CreatePrediction(data string) (types.DicomPre
 		return types.DicomPrediction{}, fmt.Errorf("failed to fetch and process DICOM: %w", err)
 	}
 
-	ageElement, err := dataset.FindElementByTag(tag.PatientAge)
-	if err != nil {
-		ageElement = nil
-	}
+	ageElement, _ := dataset.FindElementByTag(tag.PatientBirthDate)
+	birthDateStr := ageElement.Value.String()
 
-	ageString := "0"
-	if ageElement == nil {
-		ageString = "0"
-	} else {
-		ageString = ageElement.String()
-	}
-	log.Printf("Age: %s", ageString)
-
+	ageString := calculateAgeString(birthDateStr)
 	// Detect vessel
 	vesselResult, err := detectVesselFromDcm(dataset)
 	if err != nil {
@@ -134,7 +124,7 @@ func (s *PredictionCommandService) CreatePrediction(data string) (types.DicomPre
 
 	// Detect LVEF if the vessel is Left Coronary
 	var lvef float64
-	if vesselResult.DetectedVessel == VESSEL_TYPES[5] {
+	if vesselResult.DetectedVessel == types.VESSEL_TYPES[5] {
 		lvefResult, err := detectLVEFFromDcm(dataset)
 		if err != nil {
 			return types.DicomPrediction{}, fmt.Errorf("failed to detect LVEF: %w", err)
@@ -151,7 +141,6 @@ func (s *PredictionCommandService) CreatePrediction(data string) (types.DicomPre
 
 func (s *PredictionCommandService) fetchAndProcessDicom(queryID string) (*dicom.Dataset, error) {
 	// Use the queryID to fetch the DICOM data
-	// You'll need to implement this method to use the Orthanc API to fetch the DICOM data using the queryID
 	dicomData, err := s.fetchDicomDataByID(queryID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch DICOM data: %w", err)
@@ -169,7 +158,6 @@ func (s *PredictionCommandService) fetchAndProcessDicom(queryID string) (*dicom.
 func (s *PredictionCommandService) fetchDicomDataByID(uid string) ([]byte, error) {
 	// Fetch the DICOM data
 	link := "http://orthanc:8042/instances/" + uid + "/file"
-	log.Printf("Fetching DICOM from: %s", link)
 	resp, err := http.Get(link)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch DICOM: %w", err)
@@ -265,7 +253,7 @@ func detectVesselFromDcm(dataset *dicom.Dataset) (types.DicomPrediction, error) 
 	vesselIndex := findMaxProbabilityIndex(predictions)
 
 	return types.DicomPrediction{
-		DetectedVessel: VESSEL_TYPES[vesselIndex],
+		DetectedVessel: types.VESSEL_TYPES[vesselIndex],
 	}, nil
 }
 
