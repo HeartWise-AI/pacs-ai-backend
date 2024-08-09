@@ -345,3 +345,31 @@ func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, 
 
 	return answerResponse, nil
 }
+func (o *OrthancAPI) FetchDicomDataByID(ctx context.Context, uid string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/instances/%s/file", o.BaseURL, uid), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		errorMessage := string(response)
+		log.Println("Error:", errorMessage)
+		return nil, errors.New("error fetching DICOM data")
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return bodyBytes, nil
+}

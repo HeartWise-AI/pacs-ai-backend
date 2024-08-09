@@ -59,7 +59,7 @@ type ServiceContainerInterface interface {
 	RegisterTenantRESTQueryController() tenantREST.TenantQueryController
 	RegisterUserRESTCommandController() userREST.UserCommandController
 	RegisterUserRESTQueryController() userREST.UserQueryController
-	RegisterPredictionRESTController() predictionREST.PredictionController
+	RegisterPredictionRESTCommandController() predictionREST.PredictionCommandController
 }
 
 type kernel struct{}
@@ -189,13 +189,12 @@ func (k *kernel) RegisterUserRESTQueryController() userREST.UserQueryController 
 	return controller
 }
 
-func (k *kernel) RegisterPredictionRESTController() predictionREST.PredictionController {
-	commandService := k.predictionCommandServiceContainer()
-	queryService := k.predictionQueryServiceContainer()
+// RegisterPredictionRESTCommandController performs dependency injection to the RegisterPredictionRESTCommandController
+func (k *kernel) RegisterPredictionRESTCommandController() predictionREST.PredictionCommandController {
+	service := k.predictionCommandServiceContainer()
 
-	controller := predictionREST.PredictionController{
-		PredictionCommandServiceInterface: commandService,
-		PredictionQueryServiceInterface:   queryService,
+	controller := predictionREST.PredictionCommandController{
+		PredictionCommandServiceInterface: service,
 	}
 
 	return controller
@@ -358,6 +357,7 @@ func (k *kernel) userQueryServiceContainer() *userService.UserQueryService {
 
 	return service
 }
+
 func (k *kernel) predictionCommandServiceContainer() *predictionService.PredictionCommandService {
 	repository := &predictionRepository.PredictionCommandRepository{
 		// Add any necessary dependencies
@@ -367,26 +367,11 @@ func (k *kernel) predictionCommandServiceContainer() *predictionService.Predicti
 		PredictionCommandRepositoryInterface: &predictionRepository.PredictionCommandRepositoryCircuitBreaker{
 			PredictionCommandRepositoryInterface: repository,
 		},
-		// Add other necessary services or dependencies
 	}
 
 	return service
 }
 
-func (k *kernel) predictionQueryServiceContainer() *predictionService.PredictionQueryService {
-	repository := &predictionRepository.PredictionQueryRepository{
-		// Add any necessary dependencies
-	}
-
-	service := &predictionService.PredictionQueryService{
-		PredictionQueryRepositoryInterface: &predictionRepository.PredictionQueryRepositoryCircuitBreaker{
-			PredictionQueryRepositoryInterface: repository,
-		},
-		// Add other necessary services or dependencies
-	}
-
-	return service
-}
 func registerHandlers() {
 	var err error
 

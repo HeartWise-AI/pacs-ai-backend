@@ -1,7 +1,7 @@
 package repository
 
 import (
-	"api-pacs/module/prediction/types"
+	"api-pacs/module/prediction/infrastructure/repository/types"
 	"context"
 )
 
