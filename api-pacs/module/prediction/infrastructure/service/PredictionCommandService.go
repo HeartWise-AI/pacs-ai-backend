@@ -22,8 +22,8 @@ import (
 
 // Constants
 const (
-	SERVER_X3D_1_URL = "http://localhost:8080/predictions/X3D_1" // View detection // change to "http://torhcserve:8080/predictions/X3D_1"
-	SERVER_X3D_2_URL = "http://localhost:8080/predictions/X3D_2" // LVEF detection // change to "http://torhcserve:8080/predictions/X3D_2"
+	SERVER_X3D_1_URL = "http://torhcserve:8080/predictions/X3D_1" // View detection // debug change to "http://localhost:8080/predictions/X3D_1"
+	SERVER_X3D_2_URL = "http://torhcserve:8080/predictions/X3D_2" // LVEF detection // debug change to "http://localhost:8080/predictions/X3D_2"
 )
 
 type QueryTorchserve struct {
@@ -141,7 +141,7 @@ func (s *PredictionCommandService) CreatePrediction(data string) (types.DicomPre
 
 func (s *PredictionCommandService) fetchDicomDataByID(uid string) ([]byte, error) {
 	// Fetch the DICOM data
-	link := "http://localhost:8053/instances/" + uid + "/file" // change to "http://orthanc:8042/instances/"
+	link := "http://orthanc:8042/instances/" + uid + "/file" // debug change to "http://localhost:8053/instances/"
 	resp, err := http.Get(link)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch DICOM: %w", err)
