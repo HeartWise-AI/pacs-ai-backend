@@ -22,8 +22,8 @@ import (
 
 // Constants
 const (
-	SERVER_X3D_1_URL = "http://torhcserve:8080/predictions/X3D_1" // View detection // debug change to "http://localhost:8080/predictions/X3D_1"
-	SERVER_X3D_2_URL = "http://torhcserve:8080/predictions/X3D_2" // LVEF detection // debug change to "http://localhost:8080/predictions/X3D_2"
+	SERVER_X3D_1_URL = "http://34.95.47.89:8080/predictions/X3D_1" // View detection // debug change to "http://localhost:8080/predictions/X3D_1" or torchserve
+	SERVER_X3D_2_URL = "http://34.95.47.89:8080/predictions/X3D_2" // LVEF detection // debug change to "http://localhost:8080/predictions/X3D_2" or torchserve
 )
 
 type QueryTorchserve struct {
@@ -74,11 +74,6 @@ func sendServerRequest(serverURL string, instances QueryTorchserve) ([][]float64
 
 	return result, nil
 }
-
-// PredictionCommandServiceInterface interface
-// type PredictionCommandServiceInterface interface {
-// 	CreatePrediction(data string) (types.DicomPrediction, error)
-// }
 
 // PredictionCommandService struct
 type PredictionCommandService struct {
