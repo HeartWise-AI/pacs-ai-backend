@@ -100,14 +100,14 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 
 // DeleteTenantUser delete tenant user by id
 func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantID, id string) error {
-	err := service.UserCommandRepositoryInterface.DeleteTenantUser(ctx, tenantID, id)
+	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, id)
 	if err != nil {
-		log.Println(err)
 		return err
 	}
 
-	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, id)
+	err = service.UserCommandRepositoryInterface.DeleteTenantUser(ctx, tenantID, id)
 	if err != nil {
+		log.Println(err)
 		return err
 	}
 
