@@ -7,9 +7,18 @@ import (
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
+		"FindLocalResourceRequest.Level":                "Level is required",
 		"RetrieveModalityStudyRequest.StudyInstanceUID": "Study instance uid is required.",
 	}
 )
+
+type FindLocalResourceRequest struct {
+	Level string `json:"level" validate:"required"`
+	Query struct {
+		StudyInstanceUID string `json:"studyInstanceUID,omitempty"`
+		SOPInstanceUID   string `json:"sopInstanceUID,omitempty"`
+	} `json:"query"`
+}
 
 type FindModalityStudiesRequest struct {
 	AccessionNumber            string `json:"accessionNumber"`
@@ -33,16 +42,20 @@ type RetrieveModalityStudyRequest struct {
 	StudyInstanceUID string `json:"studyInstanceUID" validate:"required"`
 }
 
-type GetJobInfoResponse struct {
-	ID       string `json:"id"`
-	Priority uint   `json:"priority"`
-	Progress uint   `json:"progress"`
-	State    string `json:"state"`
+type FindLocalResourceResponse struct {
+	QueryIDs []string `json:"queryIds"`
 }
 
 type FindModalityStudiesResponse struct {
 	QueryID string  `json:"queryId"`
 	Studies []Study `json:"studies"`
+}
+
+type GetJobInfoResponse struct {
+	ID       string `json:"id"`
+	Priority uint   `json:"priority"`
+	Progress uint   `json:"progress"`
+	State    string `json:"state"`
 }
 
 type RetrieveQueryModalityAnswerResponse struct {

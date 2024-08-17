@@ -21,31 +21,20 @@ type OrthancQueryService struct {
 	userApplication.UserQueryServiceInterface
 }
 
-// GetJobInfo get job info
-func (service *OrthancQueryService) GetJobInfo(ctx context.Context, jobID string) (orthancAPITypes.GetJobResponse, error) {
-	res, err := service.OrthancAPIInterface.GetJobInfo(ctx, jobID)
-	if err != nil {
-		return orthancAPITypes.GetJobResponse{}, err
-	}
-
-	return res, nil
-}
-
-// CreateFindQuery creates a find query for a specific instance
-func (service *OrthancQueryService) CreateFindQuery(ctx context.Context, level string, sopInstanceUID string) (string, error) {
-
-	queryID, err := service.OrthancAPIInterface.CreateFindQuery(ctx, orthancAPITypes.CreateFindQueryRequest{
-		Level: level,
-		Query: orthancAPITypes.QueryInstance{
-			SOPInstanceUID: sopInstanceUID,
+// FindLocalResource find local resource
+func (service *OrthancQueryService) FindLocalResource(ctx context.Context, data types.FindLocalResource) ([]string, error) {
+	queryIDs, err := service.OrthancAPIInterface.FindLocalResource(ctx, orthancAPITypes.QueryLocalResourceRequest{
+		Level: data.Level,
+		Query: orthancAPITypes.QueryLocalResource{
+			StudyInstanceUID: data.Query.StudyInstanceUID,
+			SOPInstanceUID:   data.Query.SOPInstanceUID,
 		},
 	})
-
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return queryID, nil
+	return queryIDs, nil
 }
 
 // FindModalityStudies get modality studies
@@ -111,4 +100,14 @@ func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, dat
 	}()
 
 	return res, queryID, nil
+}
+
+// GetJobInfo get job info
+func (service *OrthancQueryService) GetJobInfo(ctx context.Context, jobID string) (orthancAPITypes.GetJobResponse, error) {
+	res, err := service.OrthancAPIInterface.GetJobInfo(ctx, jobID)
+	if err != nil {
+		return orthancAPITypes.GetJobResponse{}, err
+	}
+
+	return res, nil
 }

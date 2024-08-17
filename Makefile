@@ -46,7 +46,7 @@ up-redis:
 	docker compose -f docker-compose-dev.yml up --build
 
 .PHONY: up-elasticsearch
-up-redis:
+up-elasticsearch:
 	cd elasticsearch
 	docker compose -f docker-compose-dev.yml up --build
 

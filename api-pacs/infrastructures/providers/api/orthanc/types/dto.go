@@ -32,9 +32,9 @@ type QueryModalitiesRequest struct {
 	Timeout   uint       `json:"Timeout"`
 }
 
-type QueryLocalStudyRequest struct {
-	Level string          `json:"Level"`
-	Query QueryLocalStudy `json:"Query"`
+type QueryLocalResourceRequest struct {
+	Level string             `json:"Level"`
+	Query QueryLocalResource `json:"Query"`
 }
 
 type GetJobResponse struct {
@@ -44,7 +44,7 @@ type GetJobResponse struct {
 	State    string `json:"State"`
 }
 
-type GetLocalResourceResponse struct {
+type GetLocalStudyResponse struct {
 	ID         string `json:"ID"`
 	LastUpdate string `json:"LastUpdate"` // in 20240627T182452 format
 }
@@ -96,17 +96,7 @@ type QueryStudy struct {
 	StudyTime                  string `json:"StudyTime"`
 }
 
-type QueryLocalStudy struct {
-	StudyInstanceUID string `json:"StudyInstanceUID"`
-}
-
-// CreateFindQueryRequest represents the request for creating a find query
-type CreateFindQueryRequest struct {
-	Level string
-	Query QueryInstance
-}
-
-// QueryInstance represents the query parameters for an instance
-type QueryInstance struct {
-	SOPInstanceUID string `json:"SOPInstanceUID,omitempty"`
+type QueryLocalResource struct {
+	StudyInstanceUID string `json:"StudyInstanceUID,omitempty"`
+	SOPInstanceUID   string `json:"SOPInstanceUID,omitempty"`
 }

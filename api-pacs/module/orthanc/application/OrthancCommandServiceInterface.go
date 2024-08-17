@@ -9,6 +9,6 @@ import (
 
 // OrthancCommandServiceInterface holds the implementable methods for the Orthanc command service
 type OrthancCommandServiceInterface interface {
-	ClearLocalResourcesCache(ctx context.Context) error
+	ClearLocalStudiesCache(ctx context.Context) error
 	RetrieveModalityStudy(ctx context.Context, data types.RetrieveModalityStudy) (orthancAPITypes.RetrieveQueryModalityAnswerResponse, error)
 }

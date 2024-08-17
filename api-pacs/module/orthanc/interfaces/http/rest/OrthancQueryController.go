@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi"
+	"github.com/go-playground/validator/v10"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
@@ -76,47 +77,79 @@ func (controller *OrthancQueryController) GetJobInfo(w http.ResponseWriter, r *h
 	response.JSON(w)
 }
 
-func (controller *OrthancQueryController) FindQueryId(w http.ResponseWriter, r *http.Request) {
-	var findRequest struct {
-		Level string `json:"Level"`
-		Query struct {
-			SOPInstanceUID string `json:"SOPInstanceUID"`
-		} `json:"Query"`
-	}
+// FindLocalResource find local resource
+func (controller *OrthancQueryController) FindLocalResource(w http.ResponseWriter, r *http.Request) {
+	var request types.FindLocalResourceRequest
 
-	err := json.NewDecoder(r.Body).Decode(&findRequest)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
-			Message:   "Invalid request body",
+			Message:   "Invalid payload request.",
 			ErrorCode: apiError.InvalidRequestPayload,
 		}
+
 		response.JSON(w)
 		return
 	}
 
-	// Validate the request
-	if findRequest.Level != "Instances" || findRequest.Query.SOPInstanceUID == "" {
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
-			Message:   "Invalid Level or missing SOPInstanceUID",
+			Message:   "Invalid payload request.",
 			ErrorCode: apiError.InvalidRequestPayload,
 		}
+
 		response.JSON(w)
 		return
 	}
 
-	// Perform the find operation and get a query ID
-	queryID, err := controller.OrthancQueryServiceInterface.CreateFindQuery(context.TODO(), findRequest.Level, findRequest.Query.SOPInstanceUID)
+	queryIDs, err := controller.OrthancQueryServiceInterface.FindLocalResource(context.TODO(), serviceTypes.FindLocalResource{
+		Level: request.Level,
+		Query: struct {
+			StudyInstanceUID string
+			SOPInstanceUID   string
+		}{
+			StudyInstanceUID: request.Query.StudyInstanceUID,
+			SOPInstanceUID:   request.Query.SOPInstanceUID,
+		},
+	})
 	if err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusInternalServerError,
-			Success:   false,
-			Message:   err.Error(),
-			ErrorCode: apiError.OrthancError,
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.OrthancError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Orthanc service encountered an error or timeout."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Server error."
 		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
 		response.JSON(w)
 		return
 	}
@@ -124,8 +157,10 @@ func (controller *OrthancQueryController) FindQueryId(w http.ResponseWriter, r *
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,
-		Message: "Successfully fetched instances.",
-		Data:    queryID,
+		Message: "Successfully fetched find local resources.",
+		Data: &types.FindLocalResourceResponse{
+			QueryIDs: queryIDs,
+		},
 	}
 
 	response.JSON(w)

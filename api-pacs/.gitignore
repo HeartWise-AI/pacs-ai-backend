@@ -19,7 +19,6 @@
 vendor/
 
 #single files
-.debug.env
 .env
 
 #executable files

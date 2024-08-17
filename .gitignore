@@ -1,4 +1,1 @@
 .vscode
-torchserve/models/model_info/*
-torchserve/models/torch_serving_model/*
-api-pacs/cmd/main.go

@@ -257,6 +257,40 @@
         }
       }
     },
+    "/orthanc/find/local-resource": {
+      "post": {
+        "tags": ["orthanc"],
+        "summary": "Find Local Resource",
+        "description": "Find local resource.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Find local resource request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindLocalResourceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/orthanc/modality/studies": {
       "post": {
         "tags": ["orthanc"],
@@ -725,6 +759,18 @@
           },
           "email": {
             "type": "string"
+          }
+        }
+      },
+      "FindLocalResourceRequest": {
+        "required": ["level"],
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "string"
+          },
+          "query": {
+            "type": "object"
           }
         }
       },

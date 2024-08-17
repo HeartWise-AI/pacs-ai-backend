@@ -413,7 +413,7 @@ func registerHandlers() {
 	}
 
 	// run event listeners and cron jobs
-	go RunOrthancLocalResourceCacheHandler()
+	go RunOrthancLocalStudiesCacheHandler()
 }
 
 // ServiceContainer export instantiated service container once
