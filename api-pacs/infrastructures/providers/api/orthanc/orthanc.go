@@ -259,6 +259,55 @@ func (o *OrthancAPI) GetJobInfo(ctx context.Context, jobID string) (types.GetJob
 	return job, nil
 }
 
+// CreateFindQuery creates a find query for a specific instance
+func (o *OrthancAPI) CreateFindQuery(ctx context.Context, request types.CreateFindQueryRequest) (string, error) {
+	buf := new(bytes.Buffer)
+	err := json.NewEncoder(buf).Encode(map[string]interface{}{
+		"Level": request.Level,
+		"Query": map[string]string{
+			"SOPInstanceUID": request.Query.SOPInstanceUID,
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/tools/find", o.BaseURL), buf)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return "", errors.New(apiError.OrthancError)
+	}
+
+	var result []string
+
+	// Decode the response body into the result slice
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+
+	// Assuming you need to return the first element in the array. You can adjust as needed.
+	if len(result) == 0 {
+		return "", errors.New("no IDs found in the response")
+	}
+	return result[0], nil
+}
+
 // RetrieveModalityStudy retrieve modality study
 func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, answerIndex uint, requestPayload types.RetrieveQueryModalityAnswerRequest) (types.RetrieveQueryModalityAnswerResponse, error) {
 	buf := new(bytes.Buffer)
@@ -295,4 +344,32 @@ func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, 
 	}
 
 	return answerResponse, nil
+}
+func (o *OrthancAPI) FetchDicomDataByID(ctx context.Context, uid string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/instances/%s/file", o.BaseURL, uid), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		errorMessage := string(response)
+		log.Println("Error:", errorMessage)
+		return nil, errors.New("error fetching DICOM data")
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return bodyBytes, nil
 }

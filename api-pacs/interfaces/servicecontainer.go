@@ -34,6 +34,9 @@ import (
 	iamREST "api-pacs/module/iam/interfaces/http/rest"
 	orthancService "api-pacs/module/orthanc/infrastructure/service"
 	orthancREST "api-pacs/module/orthanc/interfaces/http/rest"
+	predictionRepository "api-pacs/module/prediction/infrastructure/repository"
+	predictionService "api-pacs/module/prediction/infrastructure/service"
+	predictionREST "api-pacs/module/prediction/interfaces/http/rest"
 	tenantRepository "api-pacs/module/tenant/infrastructure/repository"
 	tenantService "api-pacs/module/tenant/infrastructure/service"
 	tenantREST "api-pacs/module/tenant/interfaces/http/rest"
@@ -56,6 +59,7 @@ type ServiceContainerInterface interface {
 	RegisterTenantRESTQueryController() tenantREST.TenantQueryController
 	RegisterUserRESTCommandController() userREST.UserCommandController
 	RegisterUserRESTQueryController() userREST.UserQueryController
+	RegisterPredictionRESTCommandController() predictionREST.PredictionCommandController
 }
 
 type kernel struct{}
@@ -180,6 +184,17 @@ func (k *kernel) RegisterUserRESTQueryController() userREST.UserQueryController 
 
 	controller := userREST.UserQueryController{
 		UserQueryServiceInterface: service,
+	}
+
+	return controller
+}
+
+// RegisterPredictionRESTCommandController performs dependency injection to the RegisterPredictionRESTCommandController
+func (k *kernel) RegisterPredictionRESTCommandController() predictionREST.PredictionCommandController {
+	service := k.predictionCommandServiceContainer()
+
+	controller := predictionREST.PredictionCommandController{
+		PredictionCommandServiceInterface: service,
 	}
 
 	return controller
@@ -337,6 +352,20 @@ func (k *kernel) userQueryServiceContainer() *userService.UserQueryService {
 	service := &userService.UserQueryService{
 		UserQueryRepositoryInterface: &userRepository.UserQueryRepositoryCircuitBreaker{
 			UserQueryRepositoryInterface: repository,
+		},
+	}
+
+	return service
+}
+
+func (k *kernel) predictionCommandServiceContainer() *predictionService.PredictionCommandService {
+	repository := &predictionRepository.PredictionCommandRepository{
+		// Add any necessary dependencies
+	}
+
+	service := &predictionService.PredictionCommandService{
+		PredictionCommandRepositoryInterface: &predictionRepository.PredictionCommandRepositoryCircuitBreaker{
+			PredictionCommandRepositoryInterface: repository,
 		},
 	}
 

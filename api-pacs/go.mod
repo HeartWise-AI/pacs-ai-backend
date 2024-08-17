@@ -19,7 +19,17 @@ require (
 	google.golang.org/api v0.170.0
 )
 
-require github.com/elastic/elastic-transport-go/v8 v8.5.0 // indirect
+require (
+	github.com/Microsoft/go-winio v0.4.14 // indirect
+	github.com/distribution/reference v0.6.0 // indirect
+	github.com/docker/go-connections v0.5.0 // indirect
+	github.com/docker/go-units v0.5.0 // indirect
+	github.com/elastic/elastic-transport-go/v8 v8.5.0 // indirect
+	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/moby/docker-image-spec v1.3.1 // indirect
+	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/image-spec v1.0.2 // indirect
+)
 
 require (
 	cloud.google.com/go v0.112.1 // indirect
@@ -29,6 +39,8 @@ require (
 	cloud.google.com/go/longrunning v0.5.5 // indirect
 	cloud.google.com/go/storage v1.40.0 // indirect
 	github.com/MicahParks/keyfunc v1.9.0 // indirect
+	github.com/docker/docker v27.1.2+incompatible
+	github.com/elastic/go-elasticsearch/v7 v7.17.10
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/go-chi/chi/v5 v5.0.8 // indirect
@@ -47,10 +59,12 @@ require (
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
 	github.com/modern-go/reflect2 v0.0.0-20180701023420-4b7aa43c6742 // indirect
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/gomega v1.33.0 // indirect
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/smartystreets/goconvey v1.6.4 // indirect
+	github.com/suyashkumar/dicom v1.0.7
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect

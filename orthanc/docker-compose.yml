@@ -7,8 +7,7 @@ services:
       - "4242"
     volumes:
       - orthanc-storage:/var/lib/orthanc/db/
-    env_file:
-      - ../api-pacs/.env
+    env_file: /home/code6800/pacs-ai-backend/api-pacs/.env
     environment:
       ORTHANC__NAME: "PACS Orthanc"
       ORTHANC__DICOM_AET: "PACS_AI"

@@ -31,6 +31,23 @@ func (service *OrthancQueryService) GetJobInfo(ctx context.Context, jobID string
 	return res, nil
 }
 
+// CreateFindQuery creates a find query for a specific instance
+func (service *OrthancQueryService) CreateFindQuery(ctx context.Context, level string, sopInstanceUID string) (string, error) {
+
+	queryID, err := service.OrthancAPIInterface.CreateFindQuery(ctx, orthancAPITypes.CreateFindQueryRequest{
+		Level: level,
+		Query: orthancAPITypes.QueryInstance{
+			SOPInstanceUID: sopInstanceUID,
+		},
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return queryID, nil
+}
+
 // FindModalityStudies get modality studies
 func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, data types.FindModalityStudies) ([]orthancAPITypes.QueryModalitiesAnswersResponse, string, error) {
 	// get tenant info

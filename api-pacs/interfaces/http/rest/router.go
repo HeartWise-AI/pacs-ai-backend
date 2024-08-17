@@ -51,6 +51,7 @@ func (router *router) InitRouter() *chi.Mux {
 	tenantQueryController := interfaces.ServiceContainer().RegisterTenantRESTQueryController()
 	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
 	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
+	predictionController := interfaces.ServiceContainer().RegisterPredictionRESTCommandController()
 
 	// create router
 	r := chi.NewRouter()
@@ -121,6 +122,7 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
 					r.Post("/modality/studies", orthancQueryController.FindModalityStudies)
+					r.Post("/tools/find", orthancQueryController.FindQueryId)
 					r.Post("/retrieve/query/{queryID}/answer/{answerIndex}", orthancCommandController.RetrieveModalityStudy)
 					r.Get("/job/{jobID}", orthancQueryController.GetJobInfo)
 				})
@@ -135,6 +137,13 @@ func (router *router) InitRouter() *chi.Mux {
 
 					r.Get("/", tenantQueryController.GetTenantByID)
 				})
+			})
+
+			// prediction module
+			r.Route("/prediction", func(r chi.Router) {
+				r.Post("/", predictionController.HandlePrediction)
+				r.Post("/find-query", orthancQueryController.FindQueryId)
+
 			})
 
 			// user module

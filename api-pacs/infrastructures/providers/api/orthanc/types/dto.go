@@ -99,3 +99,14 @@ type QueryStudy struct {
 type QueryLocalStudy struct {
 	StudyInstanceUID string `json:"StudyInstanceUID"`
 }
+
+// CreateFindQueryRequest represents the request for creating a find query
+type CreateFindQueryRequest struct {
+	Level string
+	Query QueryInstance
+}
+
+// QueryInstance represents the query parameters for an instance
+type QueryInstance struct {
+	SOPInstanceUID string `json:"SOPInstanceUID,omitempty"`
+}
