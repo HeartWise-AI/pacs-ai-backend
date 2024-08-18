@@ -8,7 +8,7 @@ Repository for PACS AI backend and configurations setup.
 > docker compose version should be `>= v2.24.7` <br>
 > Before starting, run `docker compose version` and check the version.
 
-1. Setup `api-pacs/.env`
+1. Setup `api-pacs/.env`, `torchserve/.env`, `orthanc/.env (for production)`
 
 Reach out to Robert Avram to get the latest env contents.
 
@@ -31,6 +31,8 @@ You can also opt to launch selected services. Below are the supported commands:
 - `make up-redis` to run only the redis container
 
 - `make up-elasticsearch` to run only the elasticsearch containers
+
+- `make up-torchserve` to run torchserve service locally or connect to external
 
 Optional:
 
