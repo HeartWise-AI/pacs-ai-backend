@@ -77,7 +77,7 @@ func (controller *OrthancQueryController) GetJobInfo(w http.ResponseWriter, r *h
 	response.JSON(w)
 }
 
-// FindLocalResource find local resource
+// FindLocalResource find local resource.
 func (controller *OrthancQueryController) FindLocalResource(w http.ResponseWriter, r *http.Request) {
 	var request types.FindLocalResourceRequest
 
@@ -157,7 +157,7 @@ func (controller *OrthancQueryController) FindLocalResource(w http.ResponseWrite
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,
-		Message: "Successfully fetched find local resources.",
+		Message: "Successfully fetched local resource.",
 		Data: &types.FindLocalResourceResponse{
 			QueryIDs: queryIDs,
 		},

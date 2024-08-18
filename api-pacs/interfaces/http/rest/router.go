@@ -48,10 +48,10 @@ func (router *router) InitRouter() *chi.Mux {
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
 	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
+	predictionController := interfaces.ServiceContainer().RegisterPredictionRESTCommandController()
 	tenantQueryController := interfaces.ServiceContainer().RegisterTenantRESTQueryController()
 	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
 	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
-	predictionController := interfaces.ServiceContainer().RegisterPredictionRESTCommandController()
 
 	// create router
 	r := chi.NewRouter()
@@ -128,6 +128,15 @@ func (router *router) InitRouter() *chi.Mux {
 				})
 			})
 
+			// prediction module
+			r.Route("/prediction", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.TokenSessionAuthGuard)
+
+					r.Post("/apply", predictionController.Predict)
+				})
+			})
+
 			// tenant module
 			r.Route("/tenant", func(r chi.Router) {
 				r.Get("/public", tenantQueryController.GetPublicTenantByID)
@@ -137,13 +146,6 @@ func (router *router) InitRouter() *chi.Mux {
 
 					r.Get("/", tenantQueryController.GetTenantByID)
 				})
-			})
-
-			// prediction module
-			r.Route("/prediction", func(r chi.Router) {
-				r.Post("/", predictionController.HandlePrediction)
-				r.Post("/find-query", orthancQueryController.FindQueryId)
-
 			})
 
 			// user module

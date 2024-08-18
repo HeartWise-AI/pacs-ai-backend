@@ -9,7 +9,7 @@ services:
     volumes:
       - ./models:/models
     env_file:
-      - ../api-pacs/.env
+      - .env
 
   torchserve:
     image: pytorch/torchserve:0.9.0-gpu

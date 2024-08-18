@@ -84,7 +84,7 @@ func (o *OrthancAPI) DownloadDICOM(ctx context.Context, queryID string) ([]byte,
 		}
 		errorMessage := string(response)
 		log.Println("Error:", errorMessage)
-		return nil, errors.New("error fetching DICOM data")
+		return nil, errors.New(apiError.OrthancError)
 	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)
@@ -148,6 +148,8 @@ func (o *OrthancAPI) FindLocalResource(ctx context.Context, requestPayload types
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Println(requestPayload)
 
 	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/tools/find", o.BaseURL), buf)
 	if err != nil {

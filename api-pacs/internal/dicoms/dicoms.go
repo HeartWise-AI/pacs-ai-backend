@@ -1,0 +1,88 @@
+package dicoms
+
+import (
+	"fmt"
+	"reflect"
+
+	"github.com/suyashkumar/dicom"
+	"github.com/suyashkumar/dicom/pkg/frame"
+	"github.com/suyashkumar/dicom/pkg/tag"
+)
+
+// DICOMToInstances convert DICOM to instances
+func DICOMToInstances(dataset *dicom.Dataset) ([][][][]int, error) {
+	pixelDataElement, err := dataset.FindElementByTag(tag.PixelData)
+	if err != nil {
+		return nil, fmt.Errorf("error getting pixel data: %w", err)
+	}
+
+	pixelDataInfo, ok := pixelDataElement.Value.GetValue().(dicom.PixelDataInfo)
+	if !ok {
+		return nil, fmt.Errorf("invalid pixel data type")
+	}
+
+	return convertFramesToBase64Maps(pixelDataInfo.Frames), nil
+}
+
+// FindMaxProbabilityIndex find max probability index
+func FindMaxProbabilityIndex(dataset [][]float64) int {
+	maxIndex, maxProb := 0, dataset[0][0]
+	for i, pred := range dataset[1:] {
+		if pred[0] > maxProb {
+			maxProb = pred[0]
+			maxIndex = i + 1
+		}
+	}
+
+	return maxIndex
+}
+
+func convertFramesToBase64Maps(frames []*frame.Frame) [][][][]int {
+	result := make([][][][]int, len(frames))
+
+	for i, frame := range frames {
+		rows := frame.NativeData.Rows
+		cols := frame.NativeData.Cols
+		data := frame.NativeData.Data
+
+		// pre-allocate the entire 3D slice
+		depth := getArrayDepth(frame.NativeData.Data)
+		if depth == 2 {
+			result[i] = make([][][]int, 1)
+		} else {
+			result[i] = make([][][]int, len(frame.NativeData.Data[0]))
+		}
+
+		result[i][0] = make([][]int, rows)
+		for row := range result[i][0] {
+			result[i][0][row] = make([]int, cols)
+		}
+
+		// fill the data
+		for row := 0; row < rows; row++ {
+			for col := 0; col < cols; col++ {
+				index := row*cols + col
+				if index < len(data) {
+					result[i][0][row][col] = data[index][0]
+				}
+			}
+		}
+	}
+
+	return result
+}
+
+func getArrayDepth(arr interface{}) int {
+	value := reflect.ValueOf(arr)
+	depth := 0
+
+	for value.Kind() == reflect.Slice || value.Kind() == reflect.Array {
+		depth++
+		if value.Len() == 0 {
+			break
+		}
+		value = value.Index(0)
+	}
+
+	return depth
+}

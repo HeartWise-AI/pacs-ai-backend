@@ -20,6 +20,7 @@ import (
 	"api-pacs/infrastructures/database/elasticsearch"
 	elasticsearchTypes "api-pacs/infrastructures/database/elasticsearch/types"
 	"api-pacs/infrastructures/database/redis"
+	"api-pacs/infrastructures/providers/api/inference"
 	"api-pacs/infrastructures/providers/api/kibana"
 	"api-pacs/infrastructures/providers/api/orthanc"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
@@ -34,7 +35,6 @@ import (
 	iamREST "api-pacs/module/iam/interfaces/http/rest"
 	orthancService "api-pacs/module/orthanc/infrastructure/service"
 	orthancREST "api-pacs/module/orthanc/interfaces/http/rest"
-	predictionRepository "api-pacs/module/prediction/infrastructure/repository"
 	predictionService "api-pacs/module/prediction/infrastructure/service"
 	predictionREST "api-pacs/module/prediction/interfaces/http/rest"
 	tenantRepository "api-pacs/module/tenant/infrastructure/repository"
@@ -55,11 +55,11 @@ type ServiceContainerInterface interface {
 	RegisterIAMRESTCommandController() iamREST.IAMCommandController
 	RegisterOrthancRESTCommandController() orthancREST.OrthancCommandController
 	RegisterOrthancRESTQueryController() orthancREST.OrthancQueryController
+	RegisterPredictionRESTCommandController() predictionREST.PredictionCommandController
 	RegisterTenantRESTCommandController() tenantREST.TenantCommandController
 	RegisterTenantRESTQueryController() tenantREST.TenantQueryController
 	RegisterUserRESTCommandController() userREST.UserCommandController
 	RegisterUserRESTQueryController() userREST.UserQueryController
-	RegisterPredictionRESTCommandController() predictionREST.PredictionCommandController
 }
 
 type kernel struct{}
@@ -73,6 +73,7 @@ var (
 	firebaseAdminSDK       *firebaseadmin.FirebaseAdminSDK
 	orthancAPI             *orthanc.OrthancAPI
 	kibanaAPI              *kibana.KibanaAPI
+	inferenceAPI           *inference.InferenceAPI
 	mailgunSDK             *mailgun.MailgunSDK
 )
 
@@ -145,6 +146,17 @@ func (k *kernel) RegisterOrthancRESTQueryController() orthancREST.OrthancQueryCo
 	return controller
 }
 
+// RegisterPredictionRESTCommandController performs dependency injection to the RegisterPredictionRESTCommandController
+func (k *kernel) RegisterPredictionRESTCommandController() predictionREST.PredictionCommandController {
+	service := k.predictionCommandServiceContainer()
+
+	controller := predictionREST.PredictionCommandController{
+		PredictionCommandServiceInterface: service,
+	}
+
+	return controller
+}
+
 // RegisterTenantRESTCommandController performs dependency injection to the RegisterTenantRESTCommandController
 func (k *kernel) RegisterTenantRESTCommandController() tenantREST.TenantCommandController {
 	service := k.tenantCommandServiceContainer()
@@ -184,17 +196,6 @@ func (k *kernel) RegisterUserRESTQueryController() userREST.UserQueryController 
 
 	controller := userREST.UserQueryController{
 		UserQueryServiceInterface: service,
-	}
-
-	return controller
-}
-
-// RegisterPredictionRESTCommandController performs dependency injection to the RegisterPredictionRESTCommandController
-func (k *kernel) RegisterPredictionRESTCommandController() predictionREST.PredictionCommandController {
-	service := k.predictionCommandServiceContainer()
-
-	controller := predictionREST.PredictionCommandController{
-		PredictionCommandServiceInterface: service,
 	}
 
 	return controller
@@ -289,6 +290,15 @@ func (k *kernel) orthancCommandServiceContainer() *orthancService.OrthancCommand
 	return OrthancCommandServiceDI()
 }
 
+func (k *kernel) predictionCommandServiceContainer() *predictionService.PredictionCommandService {
+	service := &predictionService.PredictionCommandService{
+		InferenceAPIInterface: inferenceAPI,
+		OrthancAPIInterface:   orthancAPI,
+	}
+
+	return service
+}
+
 func (k *kernel) orthancQueryServiceContainer() *orthancService.OrthancQueryService {
 	service := &orthancService.OrthancQueryService{
 		OrthancAPIInterface:                  orthancAPI,
@@ -358,20 +368,6 @@ func (k *kernel) userQueryServiceContainer() *userService.UserQueryService {
 	return service
 }
 
-func (k *kernel) predictionCommandServiceContainer() *predictionService.PredictionCommandService {
-	repository := &predictionRepository.PredictionCommandRepository{
-		// Add any necessary dependencies
-	}
-
-	service := &predictionService.PredictionCommandService{
-		PredictionCommandRepositoryInterface: &predictionRepository.PredictionCommandRepositoryCircuitBreaker{
-			PredictionCommandRepositoryInterface: repository,
-		},
-	}
-
-	return service
-}
-
 func registerHandlers() {
 	var err error
 
@@ -399,6 +395,9 @@ func registerHandlers() {
 
 	// init orthanc connection
 	orthancAPI = orthanc.Init(os.Getenv("ORTHANC_BASE_URL"))
+
+	// init inference connection
+	inferenceAPI = inference.Init(os.Getenv("INFERENCE_BASE_URL"))
 
 	// init kibana connection
 	kibanaAPI = kibana.Init(os.Getenv("KIBANA_BASE_URL"))

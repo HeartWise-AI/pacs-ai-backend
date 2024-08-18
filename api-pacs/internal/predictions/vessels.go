@@ -1,12 +1,6 @@
-package types
+package predictions
 
-type DicomPrediction struct {
-	DetectedVessel string
-	LVEF           float64
-	Age            string
-}
-
-var VESSEL_TYPES = map[int]string{
+var VesselTypes = map[int]string{
 	0:  "Aorta",
 	1:  "Catheter",
 	2:  "Femoral",
