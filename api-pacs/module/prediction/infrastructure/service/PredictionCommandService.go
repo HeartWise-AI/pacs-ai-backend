@@ -5,11 +5,8 @@ import (
 	"context"
 	"errors"
 	"log"
-	"strings"
-	"time"
 
 	"github.com/suyashkumar/dicom"
-	"github.com/suyashkumar/dicom/pkg/tag"
 
 	inferenceAPITypes "api-pacs/infrastructures/providers/api/inference/types"
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
@@ -41,15 +38,14 @@ func (service *PredictionCommandService) Predict(ctx context.Context, queryID st
 	}
 
 	// get age
-	ageElement, _ := dataset.FindElementByTag(tag.PatientBirthDate)
-	birthDateStr := ageElement.Value.String()
-	age, err := calculateAge(birthDateStr)
+	age, err := dicomUtils.ParseAge(dataset)
 	if err != nil {
+		log.Println(err)
 		return types.PredictionResult{}, errors.New(apiError.DICOMParseError)
 	}
 
 	// convert DICOM to instances
-	instances, err := dicomUtils.DICOMToInstances(&dataset)
+	instances, err := dicomUtils.DICOMToInstances(dataset)
 	if err != nil {
 		log.Println(err)
 		return types.PredictionResult{}, errors.New(apiError.DICOMParseError)
@@ -97,23 +93,4 @@ func (service *PredictionCommandService) Predict(ctx context.Context, queryID st
 		LVEF:   detectedLVEF,
 		Age:    age,
 	}, nil
-}
-
-func calculateAge(birthDateStr string) (int, error) {
-	birthDateStr = strings.Trim(birthDateStr, "[] \t\n\r")
-	birthDate, err := time.Parse("20060102", birthDateStr)
-	if err != nil {
-		log.Println(err)
-		return 0, err
-	}
-
-	now := time.Now()
-	age := now.Year() - birthDate.Year()
-
-	// adjust age if birthday hasn't occurred this year
-	if now.YearDay() < birthDate.YearDay() {
-		age--
-	}
-
-	return age, nil
 }
