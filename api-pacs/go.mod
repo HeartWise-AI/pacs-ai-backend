@@ -51,6 +51,7 @@ require (
 	github.com/onsi/gomega v1.33.0 // indirect
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/smartystreets/goconvey v1.6.4 // indirect
+	github.com/suyashkumar/dicom v1.0.7
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect

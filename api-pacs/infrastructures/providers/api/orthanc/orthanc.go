@@ -64,8 +64,39 @@ func (o *OrthancAPI) DeleteLocalResources(ctx context.Context, requestPayload ty
 	return nil
 }
 
-// FindLocalResources find local resources from orthanc
-func (o *OrthancAPI) FindLocalResources(ctx context.Context) ([]types.GetLocalResourceResponse, error) {
+// DownloadDICOM download dicom by query ID
+func (o *OrthancAPI) DownloadDICOM(ctx context.Context, queryID string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/instances/%s/file", o.BaseURL, queryID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		errorMessage := string(response)
+		log.Println("Error:", errorMessage)
+		return nil, errors.New(apiError.OrthancError)
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return bodyBytes, nil
+}
+
+// FindLocalStudies find local studies from orthanc
+func (o *OrthancAPI) FindLocalStudies(ctx context.Context) ([]types.GetLocalStudyResponse, error) {
 	buf := new(bytes.Buffer)
 	err := json.NewEncoder(buf).Encode(map[string]interface{}{
 		"Level":  "Study",
@@ -98,7 +129,7 @@ func (o *OrthancAPI) FindLocalResources(ctx context.Context) ([]types.GetLocalRe
 		return nil, errors.New(apiError.OrthancError)
 	}
 
-	var localResources []types.GetLocalResourceResponse
+	var localResources []types.GetLocalStudyResponse
 	if err := json.NewDecoder(resp.Body).Decode(&localResources); err != nil {
 		return nil, err
 	}
@@ -110,13 +141,15 @@ func (o *OrthancAPI) FindLocalResources(ctx context.Context) ([]types.GetLocalRe
 	return localResources, nil
 }
 
-// FindLocalStudy find local study
-func (o *OrthancAPI) FindLocalStudy(ctx context.Context, requestPayload types.QueryLocalStudyRequest) ([]string, error) {
+// FindLocalResource find local resource
+func (o *OrthancAPI) FindLocalResource(ctx context.Context, requestPayload types.QueryLocalResourceRequest) ([]string, error) {
 	buf := new(bytes.Buffer)
 	err := json.NewEncoder(buf).Encode(requestPayload)
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Println(requestPayload)
 
 	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/tools/find", o.BaseURL), buf)
 	if err != nil {
@@ -140,16 +173,16 @@ func (o *OrthancAPI) FindLocalStudy(ctx context.Context, requestPayload types.Qu
 		return nil, errors.New(apiError.OrthancError)
 	}
 
-	var studies []string
-	if err := json.NewDecoder(resp.Body).Decode(&studies); err != nil {
+	var queryIDs []string
+	if err := json.NewDecoder(resp.Body).Decode(&queryIDs); err != nil {
 		return nil, err
 	}
 
-	if len(studies) == 0 {
+	if len(queryIDs) == 0 {
 		return nil, errors.New(apiError.MissingRecord)
 	}
 
-	return studies, nil
+	return queryIDs, nil
 }
 
 // FindModalityStudies find modality studies

@@ -24,10 +24,10 @@ type OrthancCommandService struct {
 	userApplication.UserQueryServiceInterface
 }
 
-// ClearLocalResourcesCache clear local resources cache
-func (service *OrthancCommandService) ClearLocalResourcesCache(ctx context.Context) error {
-	// get all local resources
-	localResources, err := service.OrthancAPIInterface.FindLocalResources(ctx)
+// ClearLocalStudiesCache clear local studies cache
+func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context) error {
+	// get all local studies
+	localResources, err := service.OrthancAPIInterface.FindLocalStudies(ctx)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -69,9 +69,9 @@ func (service *OrthancCommandService) ClearLocalResourcesCache(ctx context.Conte
 // RetrieveModalityStudy retrieve modality study
 func (service *OrthancCommandService) RetrieveModalityStudy(ctx context.Context, data types.RetrieveModalityStudy) (orthancAPITypes.RetrieveQueryModalityAnswerResponse, error) {
 	// check if study already exist in local
-	studies, err := service.OrthancAPIInterface.FindLocalStudy(ctx, orthancAPITypes.QueryLocalStudyRequest{
+	studies, err := service.OrthancAPIInterface.FindLocalResource(ctx, orthancAPITypes.QueryLocalResourceRequest{
 		Level: "Study",
-		Query: orthancAPITypes.QueryLocalStudy{
+		Query: orthancAPITypes.QueryLocalResource{
 			StudyInstanceUID: data.StudyInstanceUID,
 		},
 	})

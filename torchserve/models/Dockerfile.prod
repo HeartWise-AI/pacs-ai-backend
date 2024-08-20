@@ -1,0 +1,35 @@
+# Use a base image with Git and other necessary tools
+FROM pytorch/torchserve:0.9.0-gpu
+
+# Environment variables
+ARG HF_USERNAME
+ENV HF_USERNAME=${HF_USERNAME}
+ARG HF_TOKEN
+ENV HF_TOKEN=${HF_TOKEN}
+
+WORKDIR /models
+
+# Ensure we're using the root user to install packages
+USER root
+
+# Install Git, Git LFS, jq, xz (for .tar.xz), tar, and other necessary utilities
+RUN apt-get update && apt-get install -y \
+    git \
+    git-lfs \
+    jq \
+    xz-utils \
+    tar \
+    bash \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure Git LFS
+RUN git lfs install
+
+# Copy the script into the container
+COPY get_models.sh /get_models.sh
+
+# Make the script executable
+RUN chmod +x /get_models.sh
+
+# Set the entrypoint to the script
+ENTRYPOINT ["/bin/bash", "/get_models.sh"]

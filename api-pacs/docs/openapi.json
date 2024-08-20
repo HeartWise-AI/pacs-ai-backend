@@ -38,6 +38,10 @@
       "description": "Orthanc service"
     },
     {
+      "name": "prediction",
+      "description": "Prediction service"
+    },
+    {
       "name": "tenant",
       "description": "Tenant service"
     },
@@ -257,6 +261,40 @@
         }
       }
     },
+    "/orthanc/find/local-resource": {
+      "post": {
+        "tags": ["orthanc"],
+        "summary": "Find Local Resource",
+        "description": "Find local resource.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Find local resource request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindLocalResourceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/orthanc/modality/studies": {
       "post": {
         "tags": ["orthanc"],
@@ -366,6 +404,40 @@
             }
           }
         ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/prediction/apply": {
+      "post": {
+        "tags": ["prediction"],
+        "summary": "Predict",
+        "description": "Apply prediction to selected local resource.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Prediction request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictionRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "2xx": {
             "description": "Success"
@@ -728,6 +800,18 @@
           }
         }
       },
+      "FindLocalResourceRequest": {
+        "required": ["level"],
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "string"
+          },
+          "query": {
+            "type": "object"
+          }
+        }
+      },
       "FindModalityStudiesRequest": {
         "required": [],
         "type": "object",
@@ -787,6 +871,15 @@
             "type": "string"
           },
           "idToken": {
+            "type": "string"
+          }
+        }
+      },
+      "PredictionRequest": {
+        "required": ["queryId"],
+        "type": "object",
+        "properties": {
+          "queryId": {
             "type": "string"
           }
         }

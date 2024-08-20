@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi"
+	"github.com/go-playground/validator/v10"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
@@ -70,6 +71,95 @@ func (controller *OrthancQueryController) GetJobInfo(w http.ResponseWriter, r *h
 			Priority: res.Priority,
 			Progress: res.Progress,
 			State:    res.State,
+		},
+	}
+
+	response.JSON(w)
+}
+
+// FindLocalResource find local resource.
+func (controller *OrthancQueryController) FindLocalResource(w http.ResponseWriter, r *http.Request) {
+	var request types.FindLocalResourceRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	queryIDs, err := controller.OrthancQueryServiceInterface.FindLocalResource(context.TODO(), serviceTypes.FindLocalResource{
+		Level: request.Level,
+		Query: struct {
+			StudyInstanceUID string
+			SOPInstanceUID   string
+		}{
+			StudyInstanceUID: request.Query.StudyInstanceUID,
+			SOPInstanceUID:   request.Query.SOPInstanceUID,
+		},
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.OrthancError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Orthanc service encountered an error or timeout."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Server error."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully fetched local resource.",
+		Data: &types.FindLocalResourceResponse{
+			QueryIDs: queryIDs,
 		},
 	}
 

@@ -1,5 +1,13 @@
 package types
 
+type FindLocalResource struct {
+	Level string
+	Query struct {
+		StudyInstanceUID string
+		SOPInstanceUID   string
+	}
+}
+
 type FindModalityStudies struct {
 	TenantID                   string
 	UserID                     string
