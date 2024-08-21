@@ -31,6 +31,11 @@ services:
         {
           "Host": "orthanc-index"
         }
+      ORTHANC__CONCURRENT_JOBS: 16
+      ORTHANC__STORAGE_COMPRESSION: "false"
+      ORTHANC__LIMIT_FIND_RESULTS: 100
+      ORTHANC__KEEP_ALIVE: "true"
+      ORTHANC__TCP_NO_DELAY: "true"
       VERBOSE_STARTUP: "true"
     depends_on:
       - orthanc-index
