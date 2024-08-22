@@ -1,0 +1,9 @@
+FROM python:3.9-slim
+
+RUN pip install requests numpy
+
+WORKDIR /app
+
+COPY send_pixels.py .
+
+CMD ["python", "send_pixels.py"]

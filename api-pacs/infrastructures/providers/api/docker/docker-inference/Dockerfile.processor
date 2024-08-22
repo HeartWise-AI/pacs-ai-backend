@@ -1,0 +1,9 @@
+FROM python:3.9-slim
+
+RUN pip install numpy flask
+
+WORKDIR /app
+
+COPY process_pixels.py .
+
+CMD ["python", "process_pixels.py"]

@@ -1,0 +1,15 @@
+version: '3'
+services:
+  processor:
+    build:
+      context: .
+      dockerfile: Dockerfile.processor
+    ports:
+      - "5000:5000"
+
+  sender:
+    build:
+      context: .
+      dockerfile: Dockerfile.sender
+    depends_on:
+      - processor
