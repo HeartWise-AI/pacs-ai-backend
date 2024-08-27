@@ -20,8 +20,12 @@
       "description": "Staging"
     },
     {
-      "url": "http://localhost:8000/v1",
+      "url": "http://localhost:8000/api/v1",
       "description": "Local"
+    },
+    {
+      "url": "https://sgbmavram01.icm.local/api/v1",
+      "description": "Production MHI"
     }
   ],
   "tags": [
