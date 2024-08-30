@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/go-chi/chi"
 	"github.com/go-playground/validator/v10"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
@@ -248,41 +249,13 @@ func (controller *UserCommandController) CreateTenantUser(w http.ResponseWriter,
 func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
-	var request types.DeleteTenantUserRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+	userID := chi.URLParam(r, "ID")
+	if len(userID) == 0 {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// validate request
-	err := types.Validate.Struct(request)
-	if err != nil {
-		errors := err.(validator.ValidationErrors)
-		if len(errors) > 0 {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   types.ValidationErrors[errors[0].StructNamespace()],
-				ErrorCode: apiError.InvalidPayload,
-			}
-
-			response.JSON(w)
-			return
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
+			Message:   "Invalid user ID.",
+			ErrorCode: errors.InvalidRequestPayload,
 		}
 
 		response.JSON(w)
@@ -290,8 +263,7 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 	}
 
 	// TODO: check user role and target user role to be deleted
-
-	err = controller.UserCommandServiceInterface.DeleteTenantUser(context.TODO(), tenantID, request.UserID)
+	err := controller.UserCommandServiceInterface.DeleteTenantUser(context.TODO(), tenantID, userID)
 	if err != nil {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusInternalServerError,
