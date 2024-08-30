@@ -685,7 +685,7 @@
         }
       }
     },
-    "/user/remove": {
+    "/user/{ID}": {
       "delete": {
         "tags": ["user"],
         "summary": "Remove Tenant User",
@@ -695,17 +695,17 @@
             "bearerAuth": []
           }
         ],
-        "requestBody": {
-          "description": "Delete tenant user request",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeleteTenantUserRequest"
-              }
+        "parameters": [
+          {
+            "name": "ID",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
-          },
-          "required": true
-        },
+          }
+        ],
         "responses": {
           "2xx": { "description": "Success" },
           "4xx": { "description": "Client side errors" },
@@ -775,15 +775,6 @@
         "type": "object",
         "properties": {
           "studyInstanceUID": {
-            "type": "string"
-          }
-        }
-      },
-      "DeleteTenantUserRequest": {
-        "required": ["userId"],
-        "type": "object",
-        "properties": {
-          "userId": {
             "type": "string"
           }
         }
