@@ -685,7 +685,7 @@
         }
       }
     },
-    "/user/remove/{ID}": {
+    "/user/{ID}": {
       "delete": {
         "tags": ["user"],
         "summary": "Remove Tenant User",
