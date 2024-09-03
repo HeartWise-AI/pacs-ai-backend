@@ -5,6 +5,11 @@ services:
     restart: unless-stopped
     ports:
       - 80:80
+      - 443:443
+    volumes:
+      - ./ssl:/etc/nginx/ssl
+    environment:
+      - SERVER_NAME=${SERVER_NAME} 
     depends_on:
       - orthanc
       - api-pacs
