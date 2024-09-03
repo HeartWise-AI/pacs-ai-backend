@@ -24,6 +24,10 @@
       "description": "Local"
     },
     {
+      "url": "http://localhost:8000/api/v1",
+      "description": "Local Docker"
+    },
+    {
       "url": "https://sgbmavram01.icm.local/api/v1",
       "description": "Production MHI"
     }
