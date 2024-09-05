@@ -15,12 +15,13 @@ services:
         {
           "${FIREBASE_AET_1}": ["${PACS_AET_1}", "${PACS_IP_1}", ${PACS_PORT_1}] 
         }
-      DICOM_WEB_PLUGIN_ENABLED: "true"
+      ORTHANC__DICOM_MODALITIES_IN_DATABASE: "true"
       ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
-      ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__ENABLE_OPEN_IN_OHIF_VIEWER_3: "true"
+      DICOM_WEB_PLUGIN_ENABLED: "true"
+      ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__ENABLE_OPEN_IN_OHIF_VIEWER_3: "false"
       ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__OHIF_VIEWER_3_PUBLIC_ROOT: "http://localhost/orthanc/ohif/"
-      STONE_WEB_VIEWER_PLUGIN_ENABLED: "true"
-      OHIF_PLUGIN_ENABLED: "true"
+      STONE_WEB_VIEWER_PLUGIN_ENABLED: "false"
+      OHIF_PLUGIN_ENABLED: "false"
       ORTHANC__OHIF: |
         {
           "RouterBasename": "/orthanc/ohif/",
