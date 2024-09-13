@@ -8,6 +8,7 @@ var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
 		"FindLocalResourceRequest.Level":                "Level is required",
+		"RetrieveModalityStudyRequest.AET":              "AET is required",
 		"RetrieveModalityStudyRequest.StudyInstanceUID": "Study instance uid is required.",
 	}
 )
@@ -39,6 +40,7 @@ type FindModalityStudiesRequest struct {
 }
 
 type RetrieveModalityStudyRequest struct {
+	AET              string `json:"aet"`
 	StudyInstanceUID string `json:"studyInstanceUID" validate:"required"`
 }
 

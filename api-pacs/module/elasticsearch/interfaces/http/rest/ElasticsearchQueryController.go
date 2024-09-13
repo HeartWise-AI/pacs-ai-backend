@@ -266,8 +266,6 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 				Email:            retrievedStudy.Email,
 				Name:             retrievedStudy.Name,
 				StudyInstanceUID: retrievedStudy.StudyInstanceUID,
-				QueryID:          retrievedStudy.QueryID,
-				AnswerIndex:      retrievedStudy.AnswerIndex,
 				Timestamp:        retrievedStudy.Timestamp,
 			})
 		}
@@ -304,6 +302,18 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=%s", filename))
-	gocsv.Marshal(logs, w)
+
+	err = gocsv.Marshal(logs, w)
+	if err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusInternalServerError,
+			Success:   false,
+			Message:   "Failed to generate CSV file.",
+			ErrorCode: errors.ServerError,
+		}
+		response.JSON(w)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 }

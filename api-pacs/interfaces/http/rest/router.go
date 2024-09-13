@@ -123,8 +123,8 @@ func (router *router) InitRouter() *chi.Mux {
 
 					r.Post("/find/local-resource", orthancQueryController.FindLocalResource)
 					r.Post("/modality/studies", orthancQueryController.FindModalityStudies)
-					r.Post("/retrieve/query/{queryID}/answer/{answerIndex}", orthancCommandController.RetrieveModalityStudy)
-					r.Get("/job/{jobID}", orthancQueryController.GetJobInfo)
+					r.Post("/modality/retrieve", orthancCommandController.RetrieveModalityStudy)
+					r.Get("/jobs", orthancQueryController.GetJobsInfo)
 				})
 			})
 

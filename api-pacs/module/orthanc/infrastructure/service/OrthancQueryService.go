@@ -4,6 +4,9 @@ import (
 	"context"
 	"log"
 	"os"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
@@ -38,7 +41,7 @@ func (service *OrthancQueryService) FindLocalResource(ctx context.Context, data 
 }
 
 // FindModalityStudies get modality studies
-func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, data types.FindModalityStudies) ([]orthancAPITypes.QueryModalitiesAnswersResponse, string, error) {
+func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, data types.FindModalityStudies) ([]orthancAPITypes.QueryModalityStudyAnswersResponse, string, error) {
 	// get tenant info
 	tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
 	if err != nil {
@@ -102,12 +105,39 @@ func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, dat
 	return res, queryID, nil
 }
 
-// GetJobInfo get job info
-func (service *OrthancQueryService) GetJobInfo(ctx context.Context, jobID string) (orthancAPITypes.GetJobResponse, error) {
-	res, err := service.OrthancAPIInterface.GetJobInfo(ctx, jobID)
-	if err != nil {
-		return orthancAPITypes.GetJobResponse{}, err
+// GetJobsInfo get jobs info
+func (service *OrthancQueryService) GetJobsInfo(ctx context.Context, jobIDs []string) ([]orthancAPITypes.GetJobResponse, error) {
+	var rw = sync.RWMutex{}
+	eg, _ := errgroup.WithContext(ctx)
+
+	var results []orthancAPITypes.GetJobResponse
+
+	// set limit
+	eg.SetLimit(len(jobIDs))
+
+	for _, jobID := range jobIDs {
+		rw.Lock()
+
+		func(jobID string) {
+			eg.Go(func() error {
+				defer rw.Unlock()
+
+				// get job info
+				job, err := service.OrthancAPIInterface.GetJobInfo(ctx, jobID)
+				if err != nil {
+					return err
+				}
+
+				results = append(results, job)
+				return nil
+			})
+		}(jobID)
 	}
 
-	return res, nil
+	// wait for all goroutines to finish
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }

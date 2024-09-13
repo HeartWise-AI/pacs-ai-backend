@@ -41,8 +41,6 @@ type CreateRetrieveStudyLog struct {
 	Email            string
 	Name             string
 	StudyInstanceUID string
-	QueryID          string
-	AnswerIndex      uint
 }
 
 type SearchDocument struct {

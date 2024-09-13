@@ -110,8 +110,6 @@ func (service *ElasticsearchCommandService) CreateRetrieveStudyLog(ctx context.C
 		Email:            data.Email,
 		Name:             data.Name,
 		StudyInstanceUID: data.StudyInstanceUID,
-		QueryID:          data.QueryID,
-		AnswerIndex:      data.AnswerIndex,
 	})
 	if err != nil {
 		return nil, err
