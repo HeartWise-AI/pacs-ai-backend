@@ -24,9 +24,9 @@ type OrthancQueryService struct {
 	userApplication.UserQueryServiceInterface
 }
 
-// FindLocalResource find local resource
-func (service *OrthancQueryService) FindLocalResource(ctx context.Context, data types.FindLocalResource) ([]string, error) {
-	queryIDs, err := service.OrthancAPIInterface.FindLocalResource(ctx, orthancAPITypes.QueryLocalResourceRequest{
+// FindLocalResource find local resources
+func (service *OrthancQueryService) FindLocalResources(ctx context.Context, data types.FindLocalResource) ([]string, error) {
+	queryIDs, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
 		Level: data.Level,
 		Query: orthancAPITypes.QueryLocalResource{
 			StudyInstanceUID: data.Query.StudyInstanceUID,

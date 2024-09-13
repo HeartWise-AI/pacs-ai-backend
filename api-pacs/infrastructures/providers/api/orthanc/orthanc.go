@@ -100,40 +100,15 @@ func (o *OrthancAPI) DownloadDICOM(ctx context.Context, queryID string) ([]byte,
 
 // FindLocalStudies find local studies from orthanc
 func (o *OrthancAPI) FindLocalStudies(ctx context.Context) ([]types.GetLocalStudyResponse, error) {
-	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(map[string]interface{}{
+	payload := map[string]interface{}{
 		"Level":  "Study",
 		"Query":  map[string]interface{}{},
 		"Expand": true,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/tools/find", o.BaseURL), buf)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		response, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-		errorMessage := string(response)
-
-		log.Println("Error:", errorMessage)
-		return nil, errors.New(apiError.OrthancError)
 	}
 
 	var localResources []types.GetLocalStudyResponse
-	if err := json.NewDecoder(resp.Body).Decode(&localResources); err != nil {
+	err := o.findLocalResources(payload, &localResources)
+	if err != nil {
 		return nil, err
 	}
 
@@ -144,38 +119,11 @@ func (o *OrthancAPI) FindLocalStudies(ctx context.Context) ([]types.GetLocalStud
 	return localResources, nil
 }
 
-// FindLocalResource find local resource
-func (o *OrthancAPI) FindLocalResource(ctx context.Context, request types.QueryLocalResourceRequest) ([]string, error) {
-	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(request)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/tools/find", o.BaseURL), buf)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		response, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-		errorMessage := string(response)
-
-		log.Println("Error:", errorMessage)
-		return nil, errors.New(apiError.OrthancError)
-	}
-
+// FindLocalResource find local resources
+func (o *OrthancAPI) FindLocalResources(ctx context.Context, request types.QueryLocalResourceRequest) ([]string, error) {
 	var queryIDs []string
-	if err := json.NewDecoder(resp.Body).Decode(&queryIDs); err != nil {
+	err := o.findLocalResources(request, &queryIDs)
+	if err != nil {
 		return nil, err
 	}
 
@@ -189,37 +137,8 @@ func (o *OrthancAPI) FindLocalResource(ctx context.Context, request types.QueryL
 // FindModalityStudies find modality studies
 func (o *OrthancAPI) FindModalityStudies(ctx context.Context, AET string, request types.QueryModalitiesRequest) ([]types.QueryModalityStudyAnswersResponse, string, error) {
 	// query modalities
-	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(request)
-	if err != nil {
-		return nil, "", err
-	}
-
-	// query modalities
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/query", o.BaseURL, AET), buf)
-	if err != nil {
-		return nil, "", err
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		response, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, "", err
-		}
-		errorMessage := string(response)
-
-		log.Println("Error:", errorMessage)
-		return nil, "", errors.New(apiError.OrthancError)
-	}
-
 	var queryModalitiesResponse types.QueryModalityResponse
-	if err := json.NewDecoder(resp.Body).Decode(&queryModalitiesResponse); err != nil {
+	if err := o.queryModalities(AET, request, &queryModalitiesResponse); err != nil {
 		return nil, "", err
 	}
 
@@ -228,30 +147,9 @@ func (o *OrthancAPI) FindModalityStudies(ctx context.Context, AET string, reques
 	}
 
 	// query answers
-	req1, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/queries/%s/answers?expand=true&simplify=true", o.BaseURL, queryModalitiesResponse.ID), nil)
-	if err != nil {
-		return nil, "", err
-	}
-
-	resp1, err := client.Do(req1)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp1.Body.Close()
-
-	if resp1.StatusCode < 200 || resp1.StatusCode > 299 {
-		response, err := io.ReadAll(resp1.Body)
-		if err != nil {
-			return nil, "", err
-		}
-		errorMessage := string(response)
-
-		log.Println("Error:", errorMessage)
-		return nil, "", errors.New(apiError.OrthancError)
-	}
-
 	var queryModalitiesAnswersResponse []types.QueryModalityStudyAnswersResponse
-	if err := json.NewDecoder(resp1.Body).Decode(&queryModalitiesAnswersResponse); err != nil {
+	err := o.findQueryAnswers(queryModalitiesResponse.ID, &queryModalitiesAnswersResponse)
+	if err != nil {
 		return nil, "", err
 	}
 
@@ -288,6 +186,7 @@ func (o *OrthancAPI) GetJobInfo(ctx context.Context, jobID string) (types.GetJob
 
 	var job types.GetJobResponse
 	if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
+		log.Println("Error:", err)
 		return types.GetJobResponse{}, err
 	}
 
@@ -327,6 +226,7 @@ func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, 
 
 	var answerResponse types.QueryModalityResponse
 	if err := json.NewDecoder(resp.Body).Decode(&answerResponse); err != nil {
+		log.Println("Error:", err)
 		return types.QueryModalityResponse{}, err
 	}
 
@@ -335,65 +235,20 @@ func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, 
 
 // RetrieveModalityStudyBySeries retrieve modality study by series
 func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, AET string, request types.RetrieveModalityStudyBySeriesRequest) ([]types.QueryModalityResponse, error) {
-	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(request)
-	if err != nil {
-		return nil, err
-	}
-
 	// query modalities
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/query", o.BaseURL, AET), buf)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		response, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-		errorMessage := string(response)
-
-		log.Println("Error:", errorMessage)
-		return nil, errors.New(apiError.OrthancError)
-	}
-
 	var queryModalitySeriesResponse types.QueryModalityResponse
-	if err := json.NewDecoder(resp.Body).Decode(&queryModalitySeriesResponse); err != nil {
+	if err := o.queryModalities(AET, request, &queryModalitySeriesResponse); err != nil {
 		return nil, err
+	}
+
+	if len(queryModalitySeriesResponse.ID) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
 	}
 
 	// query answers
-	req1, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/queries/%s/answers?expand=true&simplify=true", o.BaseURL, queryModalitySeriesResponse.ID), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp1, err := client.Do(req1)
-	if err != nil {
-		return nil, err
-	}
-	defer resp1.Body.Close()
-
-	if resp1.StatusCode < 200 || resp1.StatusCode > 299 {
-		response, err := io.ReadAll(resp1.Body)
-		if err != nil {
-			return nil, err
-		}
-		errorMessage := string(response)
-
-		log.Println("Error:", errorMessage)
-		return nil, errors.New(apiError.OrthancError)
-	}
-
 	var queryModalitySeriesAnswersResponse []types.QueryModalitySeriesAnswersResponse
-	if err := json.NewDecoder(resp1.Body).Decode(&queryModalitySeriesAnswersResponse); err != nil {
+	err := o.findQueryAnswers(queryModalitySeriesResponse.ID, &queryModalitySeriesAnswersResponse)
+	if err != nil {
 		return nil, err
 	}
 
@@ -475,8 +330,114 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, AET stri
 
 	// wait for all goroutines to finish
 	if err := eg.Wait(); err != nil {
+		log.Println("Error:", err)
 		return nil, err
 	}
 
 	return results, nil
+}
+
+func (o *OrthancAPI) findLocalResources(request, response interface{}) error {
+	buf := new(bytes.Buffer)
+	err := json.NewEncoder(buf).Encode(request)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/tools/find", o.BaseURL), buf)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return errors.New(apiError.OrthancError)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
+		log.Println("Error:", err)
+		return err
+	}
+
+	return nil
+}
+
+func (o *OrthancAPI) findQueryAnswers(queryID string, response interface{}) error {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/queries/%s/answers?expand=true&simplify=true", o.BaseURL, queryID), nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return errors.New(apiError.OrthancError)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
+		log.Println("Error:", err)
+		return errors.New(apiError.OrthancError)
+	}
+
+	return nil
+}
+
+func (o *OrthancAPI) queryModalities(AET string, request interface{}, response *types.QueryModalityResponse) error {
+	buf := new(bytes.Buffer)
+	err := json.NewEncoder(buf).Encode(request)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/query", o.BaseURL, AET), buf)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return errors.New(apiError.OrthancError)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
+		log.Println("Error:", err)
+		return errors.New(apiError.OrthancError)
+	}
+
+	return nil
 }

@@ -269,11 +269,11 @@
         }
       }
     },
-    "/orthanc/find/local-resource": {
+    "/orthanc/find/local-resources": {
       "post": {
         "tags": ["orthanc"],
-        "summary": "Find Local Resource",
-        "description": "Find local resource.",
+        "summary": "Find Local Resources",
+        "description": "Find local resources.",
         "security": [
           {
             "bearerAuth": []

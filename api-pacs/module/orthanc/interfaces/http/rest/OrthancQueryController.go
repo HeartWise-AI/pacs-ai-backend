@@ -83,7 +83,7 @@ func (controller *OrthancQueryController) GetJobsInfo(w http.ResponseWriter, r *
 }
 
 // FindLocalResource find local resource.
-func (controller *OrthancQueryController) FindLocalResource(w http.ResponseWriter, r *http.Request) {
+func (controller *OrthancQueryController) FindLocalResources(w http.ResponseWriter, r *http.Request) {
 	var request types.FindLocalResourceRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -125,7 +125,7 @@ func (controller *OrthancQueryController) FindLocalResource(w http.ResponseWrite
 		return
 	}
 
-	queryIDs, err := controller.OrthancQueryServiceInterface.FindLocalResource(context.TODO(), serviceTypes.FindLocalResource{
+	queryIDs, err := controller.OrthancQueryServiceInterface.FindLocalResources(context.TODO(), serviceTypes.FindLocalResource{
 		Level: request.Level,
 		Query: struct {
 			StudyInstanceUID string
