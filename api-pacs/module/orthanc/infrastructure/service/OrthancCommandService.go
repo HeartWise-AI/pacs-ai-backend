@@ -69,7 +69,7 @@ func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context
 // RetrieveModalityStudyBySeries retrieve modality study by series
 func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.Context, data types.RetrieveModalityStudyBySeries) ([]orthancAPITypes.QueryModalityResponse, error) {
 	// check if study already exist in local
-	studies, err := service.OrthancAPIInterface.FindLocalResource(ctx, orthancAPITypes.QueryLocalResourceRequest{
+	studies, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
 		Level: "Study",
 		Query: orthancAPITypes.QueryLocalResource{
 			StudyInstanceUID: data.StudyInstanceUID,
