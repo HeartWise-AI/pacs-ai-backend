@@ -28,10 +28,17 @@ type FindModalityStudies struct {
 	StudyTime                  string
 }
 
-type RetrieveModalityStudy struct {
+// type RetrieveModalityStudy struct {
+// 	TenantID         string
+// 	UserID           string
+// 	QueryID          string
+// 	AnswerIndex      uint
+// 	StudyInstanceUID string
+// }
+
+type RetrieveModalityStudyBySeries struct {
 	TenantID         string
 	UserID           string
-	QueryID          string
-	AnswerIndex      uint
+	AET              string
 	StudyInstanceUID string
 }

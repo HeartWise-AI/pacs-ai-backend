@@ -66,8 +66,8 @@ func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context
 	return nil
 }
 
-// RetrieveModalityStudy retrieve modality study
-func (service *OrthancCommandService) RetrieveModalityStudy(ctx context.Context, data types.RetrieveModalityStudy) (orthancAPITypes.RetrieveQueryModalityAnswerResponse, error) {
+// RetrieveModalityStudyBySeries retrieve modality study by series
+func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.Context, data types.RetrieveModalityStudyBySeries) ([]orthancAPITypes.QueryModalityResponse, error) {
 	// check if study already exist in local
 	studies, err := service.OrthancAPIInterface.FindLocalResource(ctx, orthancAPITypes.QueryLocalResourceRequest{
 		Level: "Study",
@@ -77,27 +77,26 @@ func (service *OrthancCommandService) RetrieveModalityStudy(ctx context.Context,
 	})
 	if err != nil && err.Error() != apiError.MissingRecord {
 		log.Println(err)
-		return orthancAPITypes.RetrieveQueryModalityAnswerResponse{}, err
+		return nil, err
 	}
 
 	// if existing, skip retrieving/download
 	if len(studies) > 0 {
-		return orthancAPITypes.RetrieveQueryModalityAnswerResponse{}, errors.New(apiError.DuplicateRecord) // halt and proceed
+		return nil, errors.New(apiError.DuplicateRecord) // halt and proceed
 	}
 
-	res, err := service.OrthancAPIInterface.RetrieveModalityStudy(ctx, data.QueryID, data.AnswerIndex, orthancAPITypes.RetrieveQueryModalityAnswerRequest{
-		Asynchronous: true,
-		Full:         true,
-		Permissive:   true,
-		Priority:     0,
-		Simplify:     true,
-		Synchronous:  false,
-		TargetAet:    os.Getenv("ORTHANC_AET"),
-		Timeout:      0,
+	res, err := service.OrthancAPIInterface.RetrieveModalityStudyBySeries(ctx, data.AET, orthancAPITypes.RetrieveModalityStudyBySeriesRequest{
+		Level:     "Series",
+		LocalAet:  os.Getenv("ORTHANC_AET"),
+		Normalize: true,
+		Query: orthancAPITypes.QueryModalitySeries{
+			StudyInstanceUID: data.StudyInstanceUID,
+		},
+		Timeout: 0,
 	})
 	if err != nil {
 		log.Println(err)
-		return orthancAPITypes.RetrieveQueryModalityAnswerResponse{}, err
+		return nil, err
 	}
 
 	// logs to elasticsearch
@@ -122,8 +121,6 @@ func (service *OrthancCommandService) RetrieveModalityStudy(ctx context.Context,
 			Email:            user.Email,
 			Name:             user.Name,
 			StudyInstanceUID: data.StudyInstanceUID,
-			QueryID:          data.QueryID,
-			AnswerIndex:      data.AnswerIndex,
 		})
 		if err != nil {
 			log.Println(err)

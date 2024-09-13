@@ -9,7 +9,10 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"api-pacs/infrastructures/providers/api/orthanc/types"
 	apiError "api-pacs/internal/errors"
@@ -32,9 +35,9 @@ func Init(baseURL string) *OrthancAPI {
 }
 
 // DeleteLocalResources delete local resources
-func (o *OrthancAPI) DeleteLocalResources(ctx context.Context, requestPayload types.DeleteLocalResourcesRequest) error {
+func (o *OrthancAPI) DeleteLocalResources(ctx context.Context, request types.DeleteLocalResourcesRequest) error {
 	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(requestPayload)
+	err := json.NewEncoder(buf).Encode(request)
 	if err != nil {
 		return err
 	}
@@ -142,14 +145,12 @@ func (o *OrthancAPI) FindLocalStudies(ctx context.Context) ([]types.GetLocalStud
 }
 
 // FindLocalResource find local resource
-func (o *OrthancAPI) FindLocalResource(ctx context.Context, requestPayload types.QueryLocalResourceRequest) ([]string, error) {
+func (o *OrthancAPI) FindLocalResource(ctx context.Context, request types.QueryLocalResourceRequest) ([]string, error) {
 	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(requestPayload)
+	err := json.NewEncoder(buf).Encode(request)
 	if err != nil {
 		return nil, err
 	}
-
-	fmt.Println(requestPayload)
 
 	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/tools/find", o.BaseURL), buf)
 	if err != nil {
@@ -186,15 +187,16 @@ func (o *OrthancAPI) FindLocalResource(ctx context.Context, requestPayload types
 }
 
 // FindModalityStudies find modality studies
-func (o *OrthancAPI) FindModalityStudies(ctx context.Context, aet string, requestPayload types.QueryModalitiesRequest) ([]types.QueryModalitiesAnswersResponse, string, error) {
+func (o *OrthancAPI) FindModalityStudies(ctx context.Context, AET string, request types.QueryModalitiesRequest) ([]types.QueryModalityStudyAnswersResponse, string, error) {
 	// query modalities
 	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(requestPayload)
+	err := json.NewEncoder(buf).Encode(request)
 	if err != nil {
 		return nil, "", err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/query", o.BaseURL, aet), buf)
+	// query modalities
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/query", o.BaseURL, AET), buf)
 	if err != nil {
 		return nil, "", err
 	}
@@ -216,7 +218,7 @@ func (o *OrthancAPI) FindModalityStudies(ctx context.Context, aet string, reques
 		return nil, "", errors.New(apiError.OrthancError)
 	}
 
-	var queryModalitiesResponse types.QueryModalitiesResponse
+	var queryModalitiesResponse types.QueryModalityResponse
 	if err := json.NewDecoder(resp.Body).Decode(&queryModalitiesResponse); err != nil {
 		return nil, "", err
 	}
@@ -248,7 +250,7 @@ func (o *OrthancAPI) FindModalityStudies(ctx context.Context, aet string, reques
 		return nil, "", errors.New(apiError.OrthancError)
 	}
 
-	var queryModalitiesAnswersResponse []types.QueryModalitiesAnswersResponse
+	var queryModalitiesAnswersResponse []types.QueryModalityStudyAnswersResponse
 	if err := json.NewDecoder(resp1.Body).Decode(&queryModalitiesAnswersResponse); err != nil {
 		return nil, "", err
 	}
@@ -293,39 +295,188 @@ func (o *OrthancAPI) GetJobInfo(ctx context.Context, jobID string) (types.GetJob
 }
 
 // RetrieveModalityStudy retrieve modality study
-func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, answerIndex uint, requestPayload types.RetrieveQueryModalityAnswerRequest) (types.RetrieveQueryModalityAnswerResponse, error) {
+// Retrieve entire study (old implementation)
+func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, answerIndex uint, request types.RetrieveQueryModalityAnswerRequest) (types.QueryModalityResponse, error) {
 	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(requestPayload)
+	err := json.NewEncoder(buf).Encode(request)
 	if err != nil {
-		return types.RetrieveQueryModalityAnswerResponse{}, err
+		return types.QueryModalityResponse{}, err
 	}
 
 	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/queries/%s/answers/%d/retrieve", o.BaseURL, queryID, answerIndex), buf)
 	if err != nil {
-		return types.RetrieveQueryModalityAnswerResponse{}, err
+		return types.QueryModalityResponse{}, err
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return types.RetrieveQueryModalityAnswerResponse{}, err
+		return types.QueryModalityResponse{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		response, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return types.RetrieveQueryModalityAnswerResponse{}, err
+			return types.QueryModalityResponse{}, err
 		}
 		errorMessage := string(response)
 
 		log.Println("Error:", errorMessage)
-		return types.RetrieveQueryModalityAnswerResponse{}, errors.New(apiError.OrthancError)
+		return types.QueryModalityResponse{}, errors.New(apiError.OrthancError)
 	}
 
-	var answerResponse types.RetrieveQueryModalityAnswerResponse
+	var answerResponse types.QueryModalityResponse
 	if err := json.NewDecoder(resp.Body).Decode(&answerResponse); err != nil {
-		return types.RetrieveQueryModalityAnswerResponse{}, err
+		return types.QueryModalityResponse{}, err
 	}
 
 	return answerResponse, nil
+}
+
+// RetrieveModalityStudyBySeries retrieve modality study by series
+func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, AET string, request types.RetrieveModalityStudyBySeriesRequest) ([]types.QueryModalityResponse, error) {
+	buf := new(bytes.Buffer)
+	err := json.NewEncoder(buf).Encode(request)
+	if err != nil {
+		return nil, err
+	}
+
+	// query modalities
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/query", o.BaseURL, AET), buf)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return nil, errors.New(apiError.OrthancError)
+	}
+
+	var queryModalitySeriesResponse types.QueryModalityResponse
+	if err := json.NewDecoder(resp.Body).Decode(&queryModalitySeriesResponse); err != nil {
+		return nil, err
+	}
+
+	// query answers
+	req1, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/queries/%s/answers?expand=true&simplify=true", o.BaseURL, queryModalitySeriesResponse.ID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp1, err := client.Do(req1)
+	if err != nil {
+		return nil, err
+	}
+	defer resp1.Body.Close()
+
+	if resp1.StatusCode < 200 || resp1.StatusCode > 299 {
+		response, err := io.ReadAll(resp1.Body)
+		if err != nil {
+			return nil, err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return nil, errors.New(apiError.OrthancError)
+	}
+
+	var queryModalitySeriesAnswersResponse []types.QueryModalitySeriesAnswersResponse
+	if err := json.NewDecoder(resp1.Body).Decode(&queryModalitySeriesAnswersResponse); err != nil {
+		return nil, err
+	}
+
+	if len(queryModalitySeriesAnswersResponse) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	// retrieve by series concurrently
+	var rw = sync.RWMutex{}
+	eg, _ := errgroup.WithContext(ctx)
+
+	var results []types.QueryModalityResponse
+
+	// set limit
+	eg.SetLimit(len(queryModalitySeriesAnswersResponse))
+
+	for _, series := range queryModalitySeriesAnswersResponse {
+		rw.Lock()
+
+		func(series types.QueryModalitySeriesAnswersResponse) {
+			eg.Go(func() error {
+				defer rw.Unlock()
+
+				// retrieve by series (c-move)
+				buf := new(bytes.Buffer)
+				err := json.NewEncoder(buf).Encode(map[string]interface{}{
+					"Level": "Series",
+					"Resources": []map[string]string{
+						{
+							"StudyInstanceUID":  series.StudyInstanceUID,
+							"SeriesInstanceUID": series.SeriesInstanceUID,
+						},
+					},
+					"Asynchronous": true,
+					"Full":         true,
+					"Permissive":   true,
+					"Priority":     0,
+					"Simplify":     true,
+					"Synchronous":  false,
+					"TargetAet":    request.LocalAet,
+					"Timeout":      0,
+				})
+				if err != nil {
+					return err
+				}
+
+				req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/move", o.BaseURL, AET), buf)
+				if err != nil {
+					return err
+				}
+
+				resp, err := client.Do(req)
+				if err != nil {
+					return err
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode < 200 || resp.StatusCode > 299 {
+					response, err := io.ReadAll(resp.Body)
+					if err != nil {
+						return err
+					}
+					errorMessage := string(response)
+
+					log.Println("Error:", errorMessage)
+					return errors.New(apiError.OrthancError)
+				}
+
+				var answerResponse types.QueryModalityResponse
+				if err := json.NewDecoder(resp.Body).Decode(&answerResponse); err != nil {
+					return err
+				}
+
+				results = append(results, answerResponse)
+				return nil
+			})
+		}(series)
+	}
+
+	// wait for all goroutines to finish
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }

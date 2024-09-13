@@ -9,8 +9,6 @@ type RetrievedStudy struct {
 	Email            string `json:"email"`
 	Name             string `json:"name"`
 	StudyInstanceUID string `json:"study_instance_uid"`
-	QueryID          string `json:"query_id"`
-	AnswerIndex      uint   `json:"answer_index"`
 	Timestamp        uint   `json:"timestamp"`
 }
 

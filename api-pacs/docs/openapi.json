@@ -1,19 +1,23 @@
 {
   "openapi": "3.0.2",
   "info": {
-    "title": "PACS.AI REST API",
+    "title": "PACS.AI API",
     "description": "PACS REST API documentation.",
     "termsOfService": "https://github.com/HeartWise-AI",
     "contact": {
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "servers": [
     {
       "url": "https://pacs-api.heartwise.ai/api/v1",
       "description": "Production"
+    },
+    {
+      "url": "https://sgbmavram01.icm.local/api/v1",
+      "description": "Production MHI"
     },
     {
       "url": "http://185.223.207.27/api/v1",
@@ -26,10 +30,6 @@
     {
       "url": "http://localhost:8000/api/v1",
       "description": "Local Docker"
-    },
-    {
-      "url": "https://sgbmavram01.icm.local/api/v1",
-      "description": "Production MHI"
     }
   ],
   "tags": [
@@ -337,7 +337,7 @@
         }
       }
     },
-    "/orthanc/retrieve/query/{queryID}/answer/{answerIndex}": {
+    "/orthanc/modality/retrieve": {
       "post": {
         "tags": ["orthanc"],
         "summary": "Retrieve Modality Study",
@@ -358,26 +358,6 @@
           },
           "required": true
         },
-        "parameters": [
-          {
-            "name": "queryID",
-            "in": "path",
-            "description": "Query ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "answerIndex",
-            "in": "path",
-            "description": "Answer Index",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
         "responses": {
           "2xx": {
             "description": "Success"
@@ -779,9 +759,12 @@
         }
       },
       "RetrieveModalityStudyRequest": {
-        "required": ["studyInstanceUID"],
+        "required": ["aet", "studyInstanceUID"],
         "type": "object",
         "properties": {
+          "aet": {
+            "type": "string"
+          },
           "studyInstanceUID": {
             "type": "string"
           }

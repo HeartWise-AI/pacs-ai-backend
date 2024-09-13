@@ -38,7 +38,7 @@ func (service *OrthancQueryService) FindLocalResource(ctx context.Context, data 
 }
 
 // FindModalityStudies get modality studies
-func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, data types.FindModalityStudies) ([]orthancAPITypes.QueryModalitiesAnswersResponse, string, error) {
+func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, data types.FindModalityStudies) ([]orthancAPITypes.QueryModalityStudyAnswersResponse, string, error) {
 	// get tenant info
 	tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
 	if err != nil {

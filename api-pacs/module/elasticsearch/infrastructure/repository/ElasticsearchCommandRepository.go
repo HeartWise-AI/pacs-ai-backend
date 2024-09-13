@@ -94,8 +94,6 @@ func (repository *ElasticsearchCommandRepository) InsertRetrieveStudyLog(ctx con
 		Email:            data.Email,
 		Name:             data.Name,
 		StudyInstanceUID: data.StudyInstanceUID,
-		QueryID:          data.QueryID,
-		AnswerIndex:      data.AnswerIndex,
 		Timestamp:        uint(time.Now().Unix()),
 	}
 

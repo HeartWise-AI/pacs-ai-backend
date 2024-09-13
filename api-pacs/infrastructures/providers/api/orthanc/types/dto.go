@@ -24,6 +24,14 @@ type RetrieveQueryModalityAnswerRequest struct {
 	Timeout      uint   `json:"Timeout"`
 }
 
+type RetrieveModalityStudyBySeriesRequest struct {
+	Level     string `json:"Level"`
+	LocalAet  string `json:"LocalAet"`
+	Normalize bool   `json:"Normalize"`
+	Query     QueryModalitySeries
+	Timeout   uint `json:"Timeout"`
+}
+
 type QueryModalitiesRequest struct {
 	Level     string     `json:"Level"`
 	LocalAET  string     `json:"LocalAet"`
@@ -49,17 +57,12 @@ type GetLocalStudyResponse struct {
 	LastUpdate string `json:"LastUpdate"` // in 20240627T182452 format
 }
 
-type RetrieveQueryModalityAnswerResponse struct {
+type QueryModalityResponse struct {
 	ID   string `json:"ID"`
 	Path string `json:"Path"`
 }
 
-type QueryModalitiesResponse struct {
-	ID   string `json:"ID"`
-	Path string `json:"Path"`
-}
-
-type QueryModalitiesAnswersResponse struct {
+type QueryModalityStudyAnswersResponse struct {
 	AccessionNumber            string `json:"AccessionNumber"`
 	ModalitiesInStudy          string `json:"ModalitiesInStudy"`
 	NumberOfStudyRelatedSeries string `json:"NumberOfStudyRelatedSeries"`
@@ -76,6 +79,16 @@ type QueryModalitiesAnswersResponse struct {
 	StudyID                    string `json:"StudyID"`
 	StudyInstanceUID           string `json:"StudyInstanceUID"`
 	StudyTime                  string `json:"StudyTime"`
+}
+
+type QueryModalitySeriesAnswersResponse struct {
+	AccessionNumber      string `json:"AccessionNumber"`
+	PatientID            string `json:"PatientID"`
+	QueryRetrieveLevel   string `json:"QueryRetrieveLevel"`
+	RetrieveAETitle      string `json:"RetrieveAETitle"`
+	SeriesInstanceUID    string `json:"SeriesInstanceUID"`
+	SpecificCharacterSet string `json:"SpecificCharacterSet"`
+	StudyInstanceUID     string `json:"StudyInstanceUID"`
 }
 
 type QueryStudy struct {
@@ -99,4 +112,8 @@ type QueryStudy struct {
 type QueryLocalResource struct {
 	StudyInstanceUID string `json:"StudyInstanceUID,omitempty"`
 	SOPInstanceUID   string `json:"SOPInstanceUID,omitempty"`
+}
+
+type QueryModalitySeries struct {
+	StudyInstanceUID string `json:"StudyInstanceUID"`
 }
