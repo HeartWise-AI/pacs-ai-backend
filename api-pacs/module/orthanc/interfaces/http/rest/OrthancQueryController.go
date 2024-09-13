@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi"
 	"github.com/go-playground/validator/v10"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
@@ -22,22 +21,22 @@ type OrthancQueryController struct {
 	application.OrthancQueryServiceInterface
 }
 
-// GetJobInfo get job information
-func (controller *OrthancQueryController) GetJobInfo(w http.ResponseWriter, r *http.Request) {
-	jobID := chi.URLParam(r, "jobID")
-	if len(jobID) == 0 {
+// GetJobsInfo get jobs information
+func (controller *OrthancQueryController) GetJobsInfo(w http.ResponseWriter, r *http.Request) {
+	jobIDs := r.URL.Query()["jobIDs"]
+
+	if len(jobIDs) == 0 {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
-			Message:   "Invalid job ID.",
+			Message:   "Invalid job IDs.",
 			ErrorCode: apiError.InvalidRequestPayload,
 		}
 
 		response.JSON(w)
 		return
 	}
-
-	res, err := controller.OrthancQueryServiceInterface.GetJobInfo(context.TODO(), jobID)
+	res, err := controller.OrthancQueryServiceInterface.GetJobsInfo(context.TODO(), jobIDs)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -62,16 +61,22 @@ func (controller *OrthancQueryController) GetJobInfo(w http.ResponseWriter, r *h
 		return
 	}
 
+	var jobs []types.GetJobInfoResponse
+
+	for _, job := range res {
+		jobs = append(jobs, types.GetJobInfoResponse{
+			ID:       job.ID,
+			Priority: job.Priority,
+			Progress: job.Progress,
+			State:    job.State,
+		})
+	}
+
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,
-		Message: "Successfully fetched job info.",
-		Data: &types.GetJobInfoResponse{
-			ID:       res.ID,
-			Priority: res.Priority,
-			Progress: res.Progress,
-			State:    res.State,
-		},
+		Message: "Successfully fetched jobs info.",
+		Data:    jobs,
 	}
 
 	response.JSON(w)

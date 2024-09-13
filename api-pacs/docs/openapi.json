@@ -371,11 +371,11 @@
         }
       }
     },
-    "/orthanc/job/{jobID}": {
+    "/orthanc/jobs": {
       "get": {
         "tags": ["orthanc"],
-        "summary": "Get Job Info",
-        "description": "Get job information.",
+        "summary": "Get Jobs Info",
+        "description": "Get jobs information.",
         "security": [
           {
             "bearerAuth": []
@@ -383,12 +383,15 @@
         ],
         "parameters": [
           {
-            "name": "jobID",
-            "in": "path",
-            "description": "Job ID",
+            "name": "jobIDs",
+            "in": "query",
+            "description": "Job IDs",
             "required": true,
             "schema": {
-              "type": "string"
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           }
         ],
