@@ -257,7 +257,7 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, AET stri
 	}
 
 	// retrieve by series concurrently
-	var rw = sync.RWMutex{}
+	var m = sync.Mutex{}
 	eg, _ := errgroup.WithContext(ctx)
 
 	var results []types.QueryModalityResponse
@@ -266,11 +266,11 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, AET stri
 	eg.SetLimit(len(queryModalitySeriesAnswersResponse))
 
 	for _, series := range queryModalitySeriesAnswersResponse {
-		rw.Lock()
+		m.Lock()
 
 		func(series types.QueryModalitySeriesAnswersResponse) {
 			eg.Go(func() error {
-				defer rw.Unlock()
+				defer m.Unlock()
 
 				// retrieve by series (c-move)
 				buf := new(bytes.Buffer)

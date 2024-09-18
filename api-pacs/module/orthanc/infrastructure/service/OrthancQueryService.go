@@ -107,7 +107,7 @@ func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, dat
 
 // GetJobsInfo get jobs info
 func (service *OrthancQueryService) GetJobsInfo(ctx context.Context, jobIDs []string) ([]orthancAPITypes.GetJobResponse, error) {
-	var rw = sync.RWMutex{}
+	var m = sync.Mutex{}
 	eg, _ := errgroup.WithContext(ctx)
 
 	var results []orthancAPITypes.GetJobResponse
@@ -116,11 +116,11 @@ func (service *OrthancQueryService) GetJobsInfo(ctx context.Context, jobIDs []st
 	eg.SetLimit(len(jobIDs))
 
 	for _, jobID := range jobIDs {
-		rw.Lock()
+		m.Lock()
 
 		func(jobID string) {
 			eg.Go(func() error {
-				defer rw.Unlock()
+				defer m.Unlock()
 
 				// get job info
 				job, err := service.OrthancAPIInterface.GetJobInfo(ctx, jobID)
