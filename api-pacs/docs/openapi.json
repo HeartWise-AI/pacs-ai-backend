@@ -898,10 +898,10 @@
         }
       },
       "RetrieveModalityStudyRequest": {
-        "required": ["modalityID", "studyInstanceUID"],
+        "required": ["modalityId", "studyInstanceUID"],
         "type": "object",
         "properties": {
-          "modalityID": {
+          "modalityId": {
             "type": "string"
           },
           "studyInstanceUID": {
@@ -934,9 +934,12 @@
         }
       },
       "FindModalityStudiesRequest": {
-        "required": [],
+        "required": ["modalityId"],
         "type": "object",
         "properties": {
+          "modalityId": {
+            "type": "string"
+          },
           "accessionNumber": {
             "type": "string"
           },
@@ -952,7 +955,7 @@
           "patientBirthDate": {
             "type": "string"
           },
-          "patientID": {
+          "patientId": {
             "type": "string"
           },
           "patientName": {
@@ -973,7 +976,7 @@
           "studyDescription": {
             "type": "string"
           },
-          "studyID": {
+          "studyId": {
             "type": "string"
           },
           "studyInstanceUID": {
