@@ -14,7 +14,6 @@ type GetTenantResponse struct {
 	Name            string                   `json:"name"`
 	Address         string                   `json:"address"`
 	AvailableModels []map[string]interface{} `json:"availableModels"`
-	AET             string                   `json:"aet"`
 	CreatedAt       uint                     `json:"createdAt"`
 	UpdatedAt       uint                     `json:"updatedAt"`
 }

@@ -4,7 +4,7 @@ package entity
 type RetrievedStudy struct {
 	TenantID         string `json:"tenant_id"`
 	TenantName       string `json:"tenant_name"`
-	TenantAET        string `json:"tenant_aet"`
+	ModalityID       string `json:"modality_id"`
 	UserID           string `json:"user_id"`
 	Email            string `json:"email"`
 	Name             string `json:"name"`

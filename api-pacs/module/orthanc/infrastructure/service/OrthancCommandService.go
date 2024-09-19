@@ -66,6 +66,17 @@ func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context
 	return nil
 }
 
+// RemoveDICOMModality remove dicom modality
+func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, modalityID string) error {
+	err := service.OrthancAPIInterface.DeleteDICOMModality(ctx, modalityID)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	return nil
+}
+
 // RetrieveModalityStudyBySeries retrieve modality study by series
 func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.Context, data types.RetrieveModalityStudyBySeries) ([]orthancAPITypes.QueryModalityResponse, error) {
 	// check if study already exist in local
@@ -85,7 +96,7 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 		return nil, errors.New(apiError.DuplicateRecord) // halt and proceed
 	}
 
-	res, err := service.OrthancAPIInterface.RetrieveModalityStudyBySeries(ctx, data.AET, orthancAPITypes.RetrieveModalityStudyBySeriesRequest{
+	res, err := service.OrthancAPIInterface.RetrieveModalityStudyBySeries(ctx, data.ModalityID, orthancAPITypes.RetrieveModalityStudyBySeriesRequest{
 		Level:     "Series",
 		LocalAet:  os.Getenv("ORTHANC_AET"),
 		Normalize: true,
@@ -116,7 +127,7 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 		_, err = service.ElasticsearchCommandServiceInterface.CreateRetrieveStudyLog(ctx, elasticsearchTypes.CreateRetrieveStudyLog{
 			TenantID:         data.TenantID,
 			TenantName:       tenant.Name,
-			TenantAET:        tenant.AET,
+			ModalityID:       data.ModalityID,
 			UserID:           data.UserID,
 			Email:            user.Email,
 			Name:             user.Name,
@@ -129,4 +140,39 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 	}()
 
 	return res, nil
+}
+
+// TriggerDICOMEchoSCU trigger dicom echo scu
+func (service *OrthancCommandService) TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error {
+	err := service.OrthancAPIInterface.TriggerDICOMEchoSCU(ctx, modalityID)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	return nil
+}
+
+// UpdateDICOMModality update dicom modality
+func (service *OrthancCommandService) UpdateDICOMModality(ctx context.Context, data types.UpdateDICOMModality) error {
+	err := service.OrthancAPIInterface.UpdateDICOMModality(ctx, data.ModalityID, orthancAPITypes.UpdateDICOMModalityRequest{
+		AET:                    data.AET,
+		AllowEcho:              true,
+		AllowFind:              true,
+		AllowFindWorklist:      true,
+		AllowGet:               true,
+		AllowMove:              true,
+		AllowStorageCommitment: true,
+		AllowStore:             true,
+		AllowTranscoding:       true,
+		Host:                   data.Host,
+		Port:                   data.Port,
+		UseDicomTLS:            data.UseDicomTLS,
+	})
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	return nil
 }

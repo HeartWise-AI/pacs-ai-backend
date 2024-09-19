@@ -303,6 +303,40 @@
         }
       }
     },
+    "/orthanc/modality/{modalityID}/echo": {
+      "post": {
+        "tags": ["orthanc"],
+        "summary": "Trigger DICOM Echo SCU",
+        "description": "Trigger DICOM Echo SCU. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modalityID",
+            "in": "path",
+            "description": "Modality ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/orthanc/modality/studies": {
       "post": {
         "tags": ["orthanc"],
@@ -392,6 +426,108 @@
               "items": {
                 "type": "string"
               }
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/orthanc/modalities/list": {
+      "get": {
+        "tags": ["orthanc"],
+        "summary": "List DICOM Modalities",
+        "description": "List DICOM modalities.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/orthanc/modality/{modalityID}/update": {
+      "put": {
+        "tags": ["orthanc"],
+        "summary": "Update DICOM Modality",
+        "description": "Update DICOM modality. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modalityID",
+            "in": "path",
+            "description": "Modality ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Update DICOM modality request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDICOMModalityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/orthanc/modality/{modalityID}/remove": {
+      "delete": {
+        "tags": ["orthanc"],
+        "summary": "Remove DICOM Modality",
+        "description": "Remove DICOM modality. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modalityID",
+            "in": "path",
+            "description": "Modality ID",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -762,10 +898,10 @@
         }
       },
       "RetrieveModalityStudyRequest": {
-        "required": ["aet", "studyInstanceUID"],
+        "required": ["modalityID", "studyInstanceUID"],
         "type": "object",
         "properties": {
-          "aet": {
+          "modalityID": {
             "type": "string"
           },
           "studyInstanceUID": {
@@ -888,6 +1024,25 @@
           },
           "specialty": {
             "type": "string"
+          }
+        }
+      },
+      "UpdateDICOMModalityRequest": {
+        "required": ["aet", "host", "port"],
+        "type": "object",
+        "properties": {
+          "aet": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "useDicomTLS": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
