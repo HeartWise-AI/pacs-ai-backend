@@ -220,7 +220,7 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			modalityStudies = append(modalityStudies, types.ModalityStudyLogResponse{
 				TenantID:   modalityStudy.TenantID,
 				TenantName: modalityStudy.TenantName,
-				TenantAET:  modalityStudy.TenantAET,
+				ModalityID: modalityStudy.ModalityID,
 				UserID:     modalityStudy.UserID,
 				Email:      modalityStudy.Email,
 				Name:       modalityStudy.Name,
@@ -261,7 +261,7 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			retrievedStudies = append(retrievedStudies, types.RetrievedStudyLogResponse{
 				TenantID:         retrievedStudy.TenantID,
 				TenantName:       retrievedStudy.TenantName,
-				TenantAET:        retrievedStudy.TenantAET,
+				ModalityID:       retrievedStudy.ModalityID,
 				UserID:           retrievedStudy.UserID,
 				Email:            retrievedStudy.Email,
 				Name:             retrievedStudy.Name,

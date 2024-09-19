@@ -34,6 +34,33 @@ func Init(baseURL string) *OrthancAPI {
 	}
 }
 
+// DeleteDICOMModality delete dicom modality
+func (o *OrthancAPI) DeleteDICOMModality(ctx context.Context, modalityID string) error {
+	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/modalities/%s", o.BaseURL, modalityID), nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return errors.New(apiError.OrthancError)
+	}
+
+	return nil
+}
+
 // DeleteLocalResources delete local resources
 func (o *OrthancAPI) DeleteLocalResources(ctx context.Context, request types.DeleteLocalResourcesRequest) error {
 	buf := new(bytes.Buffer)
@@ -135,10 +162,10 @@ func (o *OrthancAPI) FindLocalResources(ctx context.Context, request types.Query
 }
 
 // FindModalityStudies find modality studies
-func (o *OrthancAPI) FindModalityStudies(ctx context.Context, AET string, request types.QueryModalitiesRequest) ([]types.QueryModalityStudyAnswersResponse, string, error) {
+func (o *OrthancAPI) FindModalityStudies(ctx context.Context, modalityID string, request types.QueryModalitiesRequest) ([]types.QueryModalityStudyAnswersResponse, string, error) {
 	// query modalities
 	var queryModalitiesResponse types.QueryModalityResponse
-	if err := o.queryModalities(AET, request, &queryModalitiesResponse); err != nil {
+	if err := o.queryModalities(modalityID, request, &queryModalitiesResponse); err != nil {
 		return nil, "", err
 	}
 
@@ -193,6 +220,40 @@ func (o *OrthancAPI) GetJobInfo(ctx context.Context, jobID string) (types.GetJob
 	return job, nil
 }
 
+// ListDICOMModalities list dicom modalities
+func (o *OrthancAPI) ListDICOMModalities(ctx context.Context) (map[string]types.ListDICOMModalitiesResponse, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/modalities?expand=true", o.BaseURL), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return nil, errors.New(apiError.OrthancError)
+	}
+
+	listDICOMModalitiesResponse := map[string]types.ListDICOMModalitiesResponse{}
+
+	if err := json.NewDecoder(resp.Body).Decode(&listDICOMModalitiesResponse); err != nil {
+		log.Println("Error:", err)
+		return nil, err
+	}
+
+	return listDICOMModalitiesResponse, nil
+}
+
 // RetrieveModalityStudy retrieve modality study
 // Retrieve entire study (old implementation)
 func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, answerIndex uint, request types.RetrieveQueryModalityAnswerRequest) (types.QueryModalityResponse, error) {
@@ -234,10 +295,10 @@ func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, 
 }
 
 // RetrieveModalityStudyBySeries retrieve modality study by series
-func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, AET string, request types.RetrieveModalityStudyBySeriesRequest) ([]types.QueryModalityResponse, error) {
+func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modalityID string, request types.RetrieveModalityStudyBySeriesRequest) ([]types.QueryModalityResponse, error) {
 	// query modalities
 	var queryModalitySeriesResponse types.QueryModalityResponse
-	if err := o.queryModalities(AET, request, &queryModalitySeriesResponse); err != nil {
+	if err := o.queryModalities(modalityID, request, &queryModalitySeriesResponse); err != nil {
 		return nil, err
 	}
 
@@ -257,7 +318,7 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, AET stri
 	}
 
 	// retrieve by series concurrently
-	var rw = sync.RWMutex{}
+	var m = sync.Mutex{}
 	eg, _ := errgroup.WithContext(ctx)
 
 	var results []types.QueryModalityResponse
@@ -266,11 +327,11 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, AET stri
 	eg.SetLimit(len(queryModalitySeriesAnswersResponse))
 
 	for _, series := range queryModalitySeriesAnswersResponse {
-		rw.Lock()
+		m.Lock()
 
 		func(series types.QueryModalitySeriesAnswersResponse) {
 			eg.Go(func() error {
-				defer rw.Unlock()
+				defer m.Unlock()
 
 				// retrieve by series (c-move)
 				buf := new(bytes.Buffer)
@@ -295,7 +356,7 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, AET stri
 					return err
 				}
 
-				req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/move", o.BaseURL, AET), buf)
+				req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/move", o.BaseURL, modalityID), buf)
 				if err != nil {
 					return err
 				}
@@ -335,6 +396,75 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, AET stri
 	}
 
 	return results, nil
+}
+
+// TriggerDICOMEchoSCU trigger dicom C-ECHO SCU
+func (o *OrthancAPI) TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error {
+	buf := new(bytes.Buffer)
+	err := json.NewEncoder(buf).Encode(map[string]interface{}{
+		"CheckFind": true,
+		"Timeout":   0,
+	})
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/echo", o.BaseURL, modalityID), buf)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return errors.New(apiError.OrthancError)
+	}
+
+	return nil
+}
+
+// UpdateDICOMModality create or update dicom modality
+func (o *OrthancAPI) UpdateDICOMModality(ctx context.Context, modalityID string, request types.UpdateDICOMModalityRequest) error {
+	buf := new(bytes.Buffer)
+	err := json.NewEncoder(buf).Encode(request)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/modalities/%s", o.BaseURL, modalityID), buf)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return errors.New(apiError.OrthancError)
+	}
+
+	return nil
 }
 
 func (o *OrthancAPI) findLocalResources(request, response interface{}) error {
@@ -405,14 +535,14 @@ func (o *OrthancAPI) findQueryAnswers(queryID string, response interface{}) erro
 	return nil
 }
 
-func (o *OrthancAPI) queryModalities(AET string, request interface{}, response *types.QueryModalityResponse) error {
+func (o *OrthancAPI) queryModalities(modalityID string, request interface{}, response *types.QueryModalityResponse) error {
 	buf := new(bytes.Buffer)
 	err := json.NewEncoder(buf).Encode(request)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/query", o.BaseURL, AET), buf)
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/query", o.BaseURL, modalityID), buf)
 	if err != nil {
 		return err
 	}

@@ -50,7 +50,6 @@ func (service *TenantQueryService) GetTenantByID(ctx context.Context, tenantID s
 		Name:            tenant.Name,
 		Address:         tenant.Address,
 		AvailableModels: availableModels,
-		AET:             tenant.AET,
 		CreatedAt:       uint(tenant.CreatedAt),
 		UpdatedAt:       uint(tenant.UpdatedAt),
 	}, nil

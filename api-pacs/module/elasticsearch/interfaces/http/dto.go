@@ -59,7 +59,7 @@ type LoginLogResponse struct {
 type ModalityStudyLogResponse struct {
 	TenantID   string `json:"tenantId" csv:"tenant_id"`
 	TenantName string `json:"tenantName" csv:"tenant_name"`
-	TenantAET  string `json:"tenantAet" csv:"tenant_aet"`
+	ModalityID string `json:"modalityId" csv:"modality_id"`
 	UserID     string `json:"userId" csv:"user_id"`
 	Email      string `json:"email" csv:"email"`
 	Name       string `json:"name" csv:"name"`
@@ -70,7 +70,7 @@ type ModalityStudyLogResponse struct {
 type RetrievedStudyLogResponse struct {
 	TenantID         string `json:"tenantId" csv:"tenant_id"`
 	TenantName       string `json:"tenantName"  csv:"tenant_name"`
-	TenantAET        string `json:"tenantAet" csv:"tenant_aet"`
+	ModalityID       string `json:"modalityId" csv:"modality_id"`
 	UserID           string `json:"userId" "user_id"`
 	Email            string `json:"email" csv:"email"`
 	Name             string `json:"name" csv:"name"`

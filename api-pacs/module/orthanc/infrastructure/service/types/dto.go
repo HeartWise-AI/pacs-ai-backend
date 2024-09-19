@@ -10,6 +10,7 @@ type FindLocalResource struct {
 
 type FindModalityStudies struct {
 	TenantID                   string
+	ModalityID                 string
 	UserID                     string
 	AccessionNumber            string
 	InstitutionName            string
@@ -28,17 +29,17 @@ type FindModalityStudies struct {
 	StudyTime                  string
 }
 
-// type RetrieveModalityStudy struct {
-// 	TenantID         string
-// 	UserID           string
-// 	QueryID          string
-// 	AnswerIndex      uint
-// 	StudyInstanceUID string
-// }
-
 type RetrieveModalityStudyBySeries struct {
 	TenantID         string
 	UserID           string
-	AET              string
+	ModalityID       string
 	StudyInstanceUID string
+}
+
+type UpdateDICOMModality struct {
+	ModalityID  string
+	AET         string
+	Host        string
+	Port        uint
+	UseDicomTLS bool
 }

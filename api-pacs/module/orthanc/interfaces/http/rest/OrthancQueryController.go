@@ -9,7 +9,6 @@ import (
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
-	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/orthanc/application"
 	serviceTypes "api-pacs/module/orthanc/infrastructure/service/types"
@@ -192,6 +191,7 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 
 	res, queryID, err := controller.OrthancQueryServiceInterface.FindModalityStudies(context.TODO(), serviceTypes.FindModalityStudies{
 		TenantID:                   tenantID,
+		ModalityID:                 request.ModalityID,
 		UserID:                     userID,
 		AccessionNumber:            request.AccessionNumber,
 		InstitutionName:            request.InstitutionName,
@@ -209,7 +209,7 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 		StudyInstanceUID:           request.StudyInstanceUID,
 		StudyTime:                  request.StudyTime,
 	})
-	if err != nil && err.Error() != errors.MissingRecord {
+	if err != nil {
 		var httpCode int
 		var errorMsg string
 
@@ -264,6 +264,48 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 		Success: true,
 		Message: "Successfully fetched modality studies.",
 		Data:    modalityStudies,
+	}
+
+	response.JSON(w)
+}
+
+// ListDICOMModalities list dicom modalities
+func (controller *OrthancQueryController) ListDICOMModalities(w http.ResponseWriter, r *http.Request) {
+	res, err := controller.OrthancQueryServiceInterface.ListDICOMModalities(context.TODO())
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.OrthancError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Orthanc service encountered an error or timeout."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	listModalities := types.ListDICOMModalitiesResponse{
+		Modalities: make(map[string]types.ListDICOMModality),
+	}
+
+	for key, modality := range res {
+		listModalities.Modalities[key] = types.ListDICOMModality(modality)
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully fetched dicom modalities.",
+		Data:    listModalities,
 	}
 
 	response.JSON(w)

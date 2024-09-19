@@ -13,6 +13,23 @@ type DeleteLocalResourcesRequest struct {
 	Resources []string `json:"Resources"`
 }
 
+type GetDICOMModalitiesRequest struct {
+	Expand bool `json:"Expand"`
+}
+
+type QueryModalitiesRequest struct {
+	Level     string     `json:"Level"`
+	LocalAET  string     `json:"LocalAet"`
+	Normalize bool       `json:"Normalize"`
+	Query     QueryStudy `json:"Query"`
+	Timeout   uint       `json:"Timeout"`
+}
+
+type QueryLocalResourceRequest struct {
+	Level string             `json:"Level"`
+	Query QueryLocalResource `json:"Query"`
+}
+
 type RetrieveQueryModalityAnswerRequest struct {
 	Asynchronous bool   `json:"Asynchronous"`
 	Full         bool   `json:"Full"`
@@ -32,17 +49,24 @@ type RetrieveModalityStudyBySeriesRequest struct {
 	Timeout   uint `json:"Timeout"`
 }
 
-type QueryModalitiesRequest struct {
-	Level     string     `json:"Level"`
-	LocalAET  string     `json:"LocalAet"`
-	Normalize bool       `json:"Normalize"`
-	Query     QueryStudy `json:"Query"`
-	Timeout   uint       `json:"Timeout"`
+type TriggerDICOMEchoRequest struct {
+	CheckFind bool `json:"CheckFind"`
+	Timeout   uint `json:"Timeout"`
 }
 
-type QueryLocalResourceRequest struct {
-	Level string             `json:"Level"`
-	Query QueryLocalResource `json:"Query"`
+type UpdateDICOMModalityRequest struct {
+	AET                    string `json:"AET"`
+	AllowEcho              bool   `json:"AllowEcho"`
+	AllowFind              bool   `json:"AllowFind"`
+	AllowFindWorklist      bool   `json:"AllowFindWorklist"`
+	AllowGet               bool   `json:"AllowGet"`
+	AllowMove              bool   `json:"AllowMove"`
+	AllowStorageCommitment bool   `json:"AllowStorageCommitment"`
+	AllowStore             bool   `json:"AllowStore"`
+	AllowTranscoding       bool   `json:"AllowTranscoding"`
+	Host                   string `json:"Host"`
+	Port                   uint   `json:"Port"`
+	UseDicomTLS            bool   `json:"UseDicomTls"`
 }
 
 type GetJobResponse struct {
@@ -55,6 +79,21 @@ type GetJobResponse struct {
 type GetLocalStudyResponse struct {
 	ID         string `json:"ID"`
 	LastUpdate string `json:"LastUpdate"` // in 20240627T182452 format
+}
+
+type ListDICOMModalitiesResponse struct {
+	AET               string `json:"AET"`
+	AllowEcho         bool   `json:"AllowEcho"`
+	AllowFind         bool   `json:"AllowFind"`
+	AllowFindWorklist bool   `json:"AllowFindWorklist"`
+	AllowGet          bool   `json:"AllowGet"`
+	AllowMove         bool   `json:"AllowMove"`
+	AllowStore        bool   `json:"AllowStore"`
+	AllowTranscoding  bool   `json:"AllowTranscoding"`
+	Host              string `json:"Host"`
+	Port              uint   `json:"Port"`
+	Timeout           uint   `json:"Timeout"`
+	UseDicomTLS       bool   `json:"UseDicomTls"`
 }
 
 type QueryModalityResponse struct {

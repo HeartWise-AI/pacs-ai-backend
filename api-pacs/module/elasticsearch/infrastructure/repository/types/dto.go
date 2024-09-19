@@ -26,7 +26,7 @@ type CreateLoginLog struct {
 type CreateGetModalityStudyLog struct {
 	TenantID   string
 	TenantName string
-	TenantAET  string
+	ModalityID string
 	UserID     string
 	Email      string
 	Name       string
@@ -36,7 +36,7 @@ type CreateGetModalityStudyLog struct {
 type CreateRetrieveStudyLog struct {
 	TenantID         string
 	TenantName       string
-	TenantAET        string
+	ModalityID       string
 	UserID           string
 	Email            string
 	Name             string

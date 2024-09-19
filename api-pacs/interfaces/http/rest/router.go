@@ -125,6 +125,16 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Post("/modality/studies", orthancQueryController.FindModalityStudies)
 					r.Post("/modality/retrieve", orthancCommandController.RetrieveModalityStudy)
 					r.Get("/jobs", orthancQueryController.GetJobsInfo)
+					r.Get("/modalities/list", orthancQueryController.ListDICOMModalities)
+
+					// admin or owner only
+					r.Group(func(r chi.Router) {
+						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+
+						r.Post("/modality/{modalityID}/echo", orthancCommandController.TriggerDICOMEchoSCU)
+						r.Put("/modality/{modalityID}/update", orthancCommandController.UpdateDICOMModality)
+						r.Delete("/modality/{modalityID}/remove", orthancCommandController.RemoveDICOMModality)
+					})
 				})
 			})
 

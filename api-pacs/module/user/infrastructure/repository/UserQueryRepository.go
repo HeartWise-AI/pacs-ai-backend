@@ -103,7 +103,7 @@ func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, te
 	}
 
 	users := []types.GetTenantUser{} // empty
-	var rw = sync.RWMutex{}
+	var m = sync.Mutex{}
 	eg, egCtx := errgroup.WithContext(ctx)
 
 	iter := tenantAuth.Users(ctx, "")
@@ -119,10 +119,10 @@ func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, te
 			return []types.GetTenantUser{}, err
 		}
 
-		rw.Lock()
+		m.Lock()
 
 		eg.Go(func() error {
-			defer rw.Unlock()
+			defer m.Unlock()
 
 			var user entity.User
 			doc, err := firestoreClient.Collection(user.GetModelName()).Doc(authUser.UID).Get(egCtx)

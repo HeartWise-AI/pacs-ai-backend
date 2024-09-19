@@ -6,7 +6,6 @@ type Tenant struct {
 	Name            string   `firestore:"name"`
 	Address         string   `firestore:"address"`
 	AvailableModels []string `firestore:"available_models"`
-	AET             string   `firestore:"aet"`
 	CreatedAt       int      `firestore:"created_at"`
 	UpdatedAt       int      `firestore:"updated_at"`
 }
