@@ -125,16 +125,10 @@ func (o *OrthancAPI) DownloadDICOM(ctx context.Context, queryID string) ([]byte,
 	return bodyBytes, nil
 }
 
-// FindLocalStudies find local studies from orthanc
-func (o *OrthancAPI) FindLocalStudies(ctx context.Context) ([]types.GetLocalStudyResponse, error) {
-	payload := map[string]interface{}{
-		"Level":  "Study",
-		"Query":  map[string]interface{}{},
-		"Expand": true,
-	}
-
-	var localResources []types.GetLocalStudyResponse
-	err := o.findLocalResources(payload, &localResources)
+// FindLocalResources find local resources from orthanc
+func (o *OrthancAPI) FindLocalResources(ctx context.Context, request types.QueryLocalResourceRequest) ([]types.GetLocalResourceResponse, error) {
+	var localResources []types.GetLocalResourceResponse
+	err := o.findLocalResources(request, &localResources)
 	if err != nil {
 		return nil, err
 	}
@@ -146,10 +140,15 @@ func (o *OrthancAPI) FindLocalStudies(ctx context.Context) ([]types.GetLocalStud
 	return localResources, nil
 }
 
-// FindLocalResource find local resources
-func (o *OrthancAPI) FindLocalResources(ctx context.Context, request types.QueryLocalResourceRequest) ([]string, error) {
+// FindLocalSOPInstance find local SOP instance
+func (o *OrthancAPI) FindLocalSOPInstance(ctx context.Context, sopInstanceUID string) ([]string, error) {
 	var queryIDs []string
-	err := o.findLocalResources(request, &queryIDs)
+	err := o.findLocalResources(map[string]interface{}{
+		"Level": "Instance",
+		"Query": map[string]string{
+			"SOPInstanceUID": sopInstanceUID,
+		},
+	}, &queryIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -185,6 +184,42 @@ func (o *OrthancAPI) FindModalityStudies(ctx context.Context, modalityID string,
 	}
 
 	return queryModalitiesAnswersResponse, queryModalitiesResponse.ID, nil
+}
+
+// FindModalitySeriesByStudy find modality series by study
+func (o *OrthancAPI) FindModalitySeriesByStudy(ctx context.Context, modalityID, localAET, studyInstanceUID string) ([]types.QueryModalitySeriesAnswersResponse, error) {
+	// query modalities
+	request := map[string]interface{}{
+		"Level":     "Series",
+		"LocalAet":  localAET,
+		"Normalize": true,
+		"Query": map[string]string{
+			"StudyInstanceUID": studyInstanceUID,
+		},
+		"Timeout": 0,
+	}
+
+	var queryModalitySeriesResponse types.QueryModalityResponse
+	if err := o.queryModalities(modalityID, request, &queryModalitySeriesResponse); err != nil {
+		return nil, err
+	}
+
+	if len(queryModalitySeriesResponse.ID) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	// query answers
+	var queryModalitySeriesAnswersResponse []types.QueryModalitySeriesAnswersResponse
+	err := o.findQueryAnswers(queryModalitySeriesResponse.ID, &queryModalitySeriesAnswersResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(queryModalitySeriesAnswersResponse) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return queryModalitySeriesAnswersResponse, nil
 }
 
 // GetJobInfo get job info
@@ -295,26 +330,11 @@ func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, 
 }
 
 // RetrieveModalityStudyBySeries retrieve modality study by series
-func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modalityID string, request types.RetrieveModalityStudyBySeriesRequest) ([]types.QueryModalityResponse, error) {
-	// query modalities
-	var queryModalitySeriesResponse types.QueryModalityResponse
-	if err := o.queryModalities(modalityID, request, &queryModalitySeriesResponse); err != nil {
-		return nil, err
-	}
-
-	if len(queryModalitySeriesResponse.ID) == 0 {
-		return nil, errors.New(apiError.MissingRecord)
-	}
-
-	// query answers
-	var queryModalitySeriesAnswersResponse []types.QueryModalitySeriesAnswersResponse
-	err := o.findQueryAnswers(queryModalitySeriesResponse.ID, &queryModalitySeriesAnswersResponse)
+func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modalityID, localAet, studyInstanceUID string) ([]types.QueryModalityResponse, error) {
+	// get modality series by study
+	queryModalitySeriesAnswersResponse, err := o.FindModalitySeriesByStudy(ctx, modalityID, localAet, studyInstanceUID)
 	if err != nil {
 		return nil, err
-	}
-
-	if len(queryModalitySeriesAnswersResponse) == 0 {
-		return nil, errors.New(apiError.MissingRecord)
 	}
 
 	// retrieve by series concurrently
@@ -327,10 +347,9 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modality
 	eg.SetLimit(len(queryModalitySeriesAnswersResponse))
 
 	for _, series := range queryModalitySeriesAnswersResponse {
-		m.Lock()
-
 		func(series types.QueryModalitySeriesAnswersResponse) {
 			eg.Go(func() error {
+				m.Lock()
 				defer m.Unlock()
 
 				// retrieve by series (c-move)
@@ -349,7 +368,7 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modality
 					"Priority":     0,
 					"Simplify":     true,
 					"Synchronous":  false,
-					"TargetAet":    request.LocalAet,
+					"TargetAet":    localAet,
 					"Timeout":      0,
 				})
 				if err != nil {

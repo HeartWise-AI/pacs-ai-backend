@@ -25,15 +25,9 @@ type OrthancQueryService struct {
 	userApplication.UserQueryServiceInterface
 }
 
-// FindLocalResource find local resources
-func (service *OrthancQueryService) FindLocalResources(ctx context.Context, data types.FindLocalResource) ([]string, error) {
-	queryIDs, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
-		Level: data.Level,
-		Query: orthancAPITypes.QueryLocalResource{
-			StudyInstanceUID: data.Query.StudyInstanceUID,
-			SOPInstanceUID:   data.Query.SOPInstanceUID,
-		},
-	})
+// FindLocalSOPInstance find local SOP instance
+func (service *OrthancQueryService) FindLocalSOPInstance(ctx context.Context, sopInstanceUID string) ([]string, error) {
+	queryIDs, err := service.OrthancAPIInterface.FindLocalSOPInstance(ctx, sopInstanceUID)
 	if err != nil {
 		log.Println(err)
 		return nil, err
@@ -113,10 +107,9 @@ func (service *OrthancQueryService) GetJobsInfo(ctx context.Context, jobIDs []st
 	eg.SetLimit(len(jobIDs))
 
 	for _, jobID := range jobIDs {
-		m.Lock()
-
 		func(jobID string) {
 			eg.Go(func() error {
+				m.Lock()
 				defer m.Unlock()
 
 				// get job info

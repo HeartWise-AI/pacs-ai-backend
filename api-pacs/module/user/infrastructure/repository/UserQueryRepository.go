@@ -119,9 +119,8 @@ func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, te
 			return []types.GetTenantUser{}, err
 		}
 
-		m.Lock()
-
 		eg.Go(func() error {
+			m.Lock()
 			defer m.Unlock()
 
 			var user entity.User

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
+	"api-pacs/internal/assert"
 	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
@@ -27,7 +28,10 @@ type OrthancCommandService struct {
 // ClearLocalStudiesCache clear local studies cache
 func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context) error {
 	// get all local studies
-	localResources, err := service.OrthancAPIInterface.FindLocalStudies(ctx)
+	localResources, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
+		Level:  "Study",
+		Expand: true,
+	})
 	if err != nil {
 		log.Println(err)
 		return err
@@ -80,31 +84,45 @@ func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, m
 // RetrieveModalityStudyBySeries retrieve modality study by series
 func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.Context, data types.RetrieveModalityStudyBySeries) ([]orthancAPITypes.QueryModalityResponse, error) {
 	// check if study already exist in local
-	studies, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
-		Level: "Study",
+	resources, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
+		Level: "Series",
 		Query: orthancAPITypes.QueryLocalResource{
 			StudyInstanceUID: data.StudyInstanceUID,
 		},
+		Expand: true,
 	})
 	if err != nil && err.Error() != apiError.MissingRecord {
 		log.Println(err)
 		return nil, err
 	}
 
-	// if existing, skip retrieving/download
-	if len(studies) > 0 {
-		return nil, errors.New(apiError.DuplicateRecord) // halt and proceed
+	if len(resources) > 0 {
+		// check if local resource series matches with modality series
+		// FIXME: ideal is to check it using last update time but modality query doesnt return time related
+		// FIXME: code will detect series changes but not study related changes like change name, etc.
+		var localSeries []string
+		for _, resource := range resources {
+			localSeries = append(localSeries, resource.MainDICOMTags.SeriesInstanceUID)
+		}
+
+		modalitySeriesResponse, err := service.OrthancAPIInterface.FindModalitySeriesByStudy(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID)
+		if err != nil {
+			log.Println(err)
+			return nil, err
+		}
+
+		var modalitySeries []string
+		for _, modality := range modalitySeriesResponse {
+			modalitySeries = append(modalitySeries, modality.SeriesInstanceUID)
+		}
+
+		// if matches (meaning no changes), skip retrieving/download
+		if assert.ElementsMatch(localSeries, modalitySeries) {
+			return nil, errors.New(apiError.DuplicateRecord) // halt and proceed
+		}
 	}
 
-	res, err := service.OrthancAPIInterface.RetrieveModalityStudyBySeries(ctx, data.ModalityID, orthancAPITypes.RetrieveModalityStudyBySeriesRequest{
-		Level:     "Series",
-		LocalAet:  os.Getenv("ORTHANC_AET"),
-		Normalize: true,
-		Query: orthancAPITypes.QueryModalitySeries{
-			StudyInstanceUID: data.StudyInstanceUID,
-		},
-		Timeout: 0,
-	})
+	res, err := service.OrthancAPIInterface.RetrieveModalityStudyBySeries(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID)
 	if err != nil {
 		log.Println(err)
 		return nil, err

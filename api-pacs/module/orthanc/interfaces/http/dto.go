@@ -7,7 +7,6 @@ import (
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
-		"FindLocalResourceRequest.Level":                "Level is required",
 		"FindModalityStudiesRequest.ModalityID":         "Modality ID is required",
 		"RetrieveModalityStudyRequest.ModalityID":       "Modality ID is required",
 		"RetrieveModalityStudyRequest.StudyInstanceUID": "Study instance uid is required.",
@@ -16,14 +15,6 @@ var (
 		"UpdateDICOMModalityRequest.Port":               "Port is required.",
 	}
 )
-
-type FindLocalResourceRequest struct {
-	Level string `json:"level" validate:"required"`
-	Query struct {
-		StudyInstanceUID string `json:"studyInstanceUID,omitempty"`
-		SOPInstanceUID   string `json:"sopInstanceUID,omitempty"`
-	} `json:"query"`
-}
 
 type FindModalityStudiesRequest struct {
 	ModalityID                 string `json:"modalityId" validate:"required"`
@@ -56,7 +47,7 @@ type UpdateDICOMModalityRequest struct {
 	UseDicomTLS bool   `json:"useDicomTLS"`
 }
 
-type FindLocalResourceResponse struct {
+type FindLocalSOPInstanceResponse struct {
 	QueryIDs []string `json:"queryIds"`
 }
 
