@@ -269,40 +269,6 @@
         }
       }
     },
-    "/orthanc/find/local-resources": {
-      "post": {
-        "tags": ["orthanc"],
-        "summary": "Find Local Resources",
-        "description": "Find local resources.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "description": "Find local resource request",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FindLocalResourceRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2xx": {
-            "description": "Success"
-          },
-          "4xx": {
-            "description": "Client side errors"
-          },
-          "5xx": {
-            "description": "Server side errors"
-          }
-        }
-      }
-    },
     "/orthanc/modality/{modalityID}/echo": {
       "post": {
         "tags": ["orthanc"],
@@ -450,6 +416,40 @@
         "security": [
           {
             "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/orthanc/sop-instance/{sopInstanceUID}/find": {
+      "get": {
+        "tags": ["orthanc"],
+        "summary": "Find Local SOP Instance",
+        "description": "Find local SOP instance.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sopInstanceUID",
+            "in": "path",
+            "description": "SOP Instance UID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -918,18 +918,6 @@
           },
           "email": {
             "type": "string"
-          }
-        }
-      },
-      "FindLocalResourceRequest": {
-        "required": ["level"],
-        "type": "object",
-        "properties": {
-          "level": {
-            "type": "string"
-          },
-          "query": {
-            "type": "object"
           }
         }
       },

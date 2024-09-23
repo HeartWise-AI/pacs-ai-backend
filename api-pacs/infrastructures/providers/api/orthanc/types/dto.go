@@ -26,8 +26,9 @@ type QueryModalitiesRequest struct {
 }
 
 type QueryLocalResourceRequest struct {
-	Level string             `json:"Level"`
-	Query QueryLocalResource `json:"Query"`
+	Level  string             `json:"Level"`
+	Query  QueryLocalResource `json:"Query"`
+	Expand bool               `json:"Expand,omitempty"`
 }
 
 type RetrieveQueryModalityAnswerRequest struct {
@@ -39,14 +40,6 @@ type RetrieveQueryModalityAnswerRequest struct {
 	Synchronous  bool   `json:"Synchronous"`
 	TargetAet    string `json:"TargetAet"`
 	Timeout      uint   `json:"Timeout"`
-}
-
-type RetrieveModalityStudyBySeriesRequest struct {
-	Level     string `json:"Level"`
-	LocalAet  string `json:"LocalAet"`
-	Normalize bool   `json:"Normalize"`
-	Query     QueryModalitySeries
-	Timeout   uint `json:"Timeout"`
 }
 
 type TriggerDICOMEchoRequest struct {
@@ -76,9 +69,13 @@ type GetJobResponse struct {
 	State    string `json:"State"`
 }
 
-type GetLocalStudyResponse struct {
-	ID         string `json:"ID"`
-	LastUpdate string `json:"LastUpdate"` // in 20240627T182452 format
+type GetLocalResourceResponse struct {
+	ID            string `json:"ID"`
+	LastUpdate    string `json:"LastUpdate"` // in 20240627T182452 format
+	MainDICOMTags struct {
+		SeriesInstanceUID string `json:"SeriesInstanceUID"`
+		SeriesTime        string `json:"SeriesTime"`
+	} `json:"MainDicomTags,omitempty"` // for level = series
 }
 
 type ListDICOMModalitiesResponse struct {
@@ -150,9 +147,4 @@ type QueryStudy struct {
 
 type QueryLocalResource struct {
 	StudyInstanceUID string `json:"StudyInstanceUID,omitempty"`
-	SOPInstanceUID   string `json:"SOPInstanceUID,omitempty"`
-}
-
-type QueryModalitySeries struct {
-	StudyInstanceUID string `json:"StudyInstanceUID"`
 }
