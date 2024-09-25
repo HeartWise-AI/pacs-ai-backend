@@ -70,7 +70,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.8.0",
+				"version": "v0.8.1-beta",
 			},
 		}
 
