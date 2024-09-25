@@ -131,9 +131,9 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Group(func(r chi.Router) {
 						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
-						r.Post("/modality/{modalityID}/echo", orthancCommandController.TriggerDICOMEchoSCU)
-						r.Put("/modality/{modalityID}/update", orthancCommandController.UpdateDICOMModality)
-						r.Delete("/modality/{modalityID}/remove", orthancCommandController.RemoveDICOMModality)
+						r.Post("/modality/{modalityId}/echo", orthancCommandController.TriggerDICOMEchoSCU)
+						r.Put("/modality/{modalityId}/update", orthancCommandController.UpdateDICOMModality)
+						r.Delete("/modality/{modalityId}/remove", orthancCommandController.RemoveDICOMModality)
 					})
 				})
 			})
@@ -181,7 +181,7 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Get("/all", userQueryController.GetTenantUsers)
 						r.Get("/specialties", userQueryController.GetDoctorSpecialties)
 						r.Put("/update", userCommandController.UpdateTenantUser)
-						r.Delete("/{ID}", userCommandController.DeleteTenantUser)
+						r.Delete("/{Id}", userCommandController.DeleteTenantUser)
 					})
 				})
 			})
