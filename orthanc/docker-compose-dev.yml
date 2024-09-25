@@ -12,12 +12,8 @@ services:
       ORTHANC__NAME: "PACS Orthanc"
       ORTHANC__DICOM_AET: "PACS_AI"
       ORTHANC__DICOM_PORT: 4242
-      ORTHANC__DICOM_MODALITIES: |
-        {
-          "hospital-1": ["HOSPITAL_1", "orthanc-hospital-1", 4242],
-          "hospital-2": ["HOSPITAL_2", "orthanc-hospital-2", 4242]
-        }
       ORTHANC__DICOM_MODALITIES_IN_DATABASE: "true"
+      ORTHANC__DATABASE_SERVER_IDENTIFIER: "Orthanc1"
       ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
       DICOM_WEB_PLUGIN_ENABLED: "true"
       ORTHANC__ORTHANC_EXPLORER_2__ENABLE: "true"

@@ -11,11 +11,8 @@ services:
       ORTHANC__NAME: "PACS Orthanc"
       ORTHANC__DICOM_AET: ${ORTHANC_DICOM_AET}
       ORTHANC__DICOM_PORT: ${ORTHANC_DICOM_PORT}
-      ORTHANC__DICOM_MODALITIES: |
-        {
-          "${FIREBASE_AET_1}": ["${PACS_AET_1}", "${PACS_IP_1}", ${PACS_PORT_1}] 
-        }
       ORTHANC__DICOM_MODALITIES_IN_DATABASE: "true"
+      ORTHANC__DATABASE_SERVER_IDENTIFIER: "Orthanc1"
       ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
       DICOM_WEB_PLUGIN_ENABLED: "true"
       ORTHANC__ORTHANC_EXPLORER_2__ENABLE: "false"
