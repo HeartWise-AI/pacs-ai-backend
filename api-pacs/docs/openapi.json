@@ -812,7 +812,7 @@
         }
       }
     },
-    "/user/{Id}": {
+    "/user/{id}": {
       "delete": {
         "tags": ["user"],
         "summary": "Remove Tenant User",
@@ -824,7 +824,7 @@
         ],
         "parameters": [
           {
-            "name": "Id",
+            "name": "id",
             "in": "path",
             "description": "User ID",
             "required": true,
