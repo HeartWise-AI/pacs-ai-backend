@@ -249,7 +249,7 @@ func (controller *UserCommandController) CreateTenantUser(w http.ResponseWriter,
 func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
-	userID := chi.URLParam(r, "Id")
+	userID := chi.URLParam(r, "ID")
 	if len(userID) == 0 {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,

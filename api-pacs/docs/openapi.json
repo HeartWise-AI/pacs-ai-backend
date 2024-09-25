@@ -283,7 +283,7 @@
           {
             "name": "modalityId",
             "in": "path",
-            "description": "Modality Id",
+            "description": "Modality ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -385,7 +385,7 @@
           {
             "name": "jobIds",
             "in": "query",
-            "description": "Job Ids",
+            "description": "Job IDs",
             "required": true,
             "schema": {
               "type": "array",
@@ -479,7 +479,7 @@
           {
             "name": "modalityId",
             "in": "path",
-            "description": "Modality Id",
+            "description": "Modality ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -524,7 +524,7 @@
           {
             "name": "modalityId",
             "in": "path",
-            "description": "Modality Id",
+            "description": "Modality ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -587,7 +587,7 @@
           {
             "name": "tenantId",
             "in": "query",
-            "description": "Tenant Id",
+            "description": "Tenant ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -826,7 +826,7 @@
           {
             "name": "Id",
             "in": "path",
-            "description": "User Id",
+            "description": "User ID",
             "required": true,
             "schema": {
               "type": "string"
