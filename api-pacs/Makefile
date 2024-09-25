@@ -1,4 +1,4 @@
-default: run
+default: run-dev
 
 .PHONY:	install
 install:
@@ -12,6 +12,12 @@ lint:
 .PHONY:	build
 build:
 	mkdir -p bin
+	go build -o bin/api-pacs \
+	    cmd/main.go
+
+.PHONY:	build-dev
+build-dev:
+	mkdir -p bin
 	go build -race -o bin/api-pacs \
 	    cmd/main.go
 
@@ -21,4 +27,8 @@ test:
 	
 .PHONY:	run
 run:	build
+	./bin/api-pacs
+
+.PHONY:	run-dev
+run-dev:	build-dev
 	./bin/api-pacs
