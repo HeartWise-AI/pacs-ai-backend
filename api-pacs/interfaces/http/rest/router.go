@@ -69,6 +69,9 @@ func (router *router) InitRouter() *chi.Mux {
 			Status:  http.StatusOK,
 			Success: true,
 			Message: "alive",
+			Data: map[string]interface{}{
+				"version": "v0.8.0",
+			},
 		}
 
 		response.JSON(w)
