@@ -23,7 +23,7 @@ type OrthancCommandController struct {
 
 // RemoveDICOMModality remove dicom modality
 func (controller *OrthancCommandController) RemoveDICOMModality(w http.ResponseWriter, r *http.Request) {
-	modalityID := chi.URLParam(r, "modalityID")
+	modalityID := chi.URLParam(r, "modalityId")
 	if len(modalityID) == 0 {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
@@ -170,7 +170,7 @@ func (controller *OrthancCommandController) RetrieveModalityStudy(w http.Respons
 
 // TriggerDICOMEchoSCU trigger dicom C-ECHO SCU
 func (controller *OrthancCommandController) TriggerDICOMEchoSCU(w http.ResponseWriter, r *http.Request) {
-	modalityID := chi.URLParam(r, "modalityID")
+	modalityID := chi.URLParam(r, "modalityId")
 	if len(modalityID) == 0 {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
@@ -219,7 +219,7 @@ func (controller *OrthancCommandController) TriggerDICOMEchoSCU(w http.ResponseW
 
 // UpdateDICOMModality update dicom modality
 func (controller *OrthancCommandController) UpdateDICOMModality(w http.ResponseWriter, r *http.Request) {
-	modalityID := chi.URLParam(r, "modalityID")
+	modalityID := chi.URLParam(r, "modalityId")
 	if len(modalityID) == 0 {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,

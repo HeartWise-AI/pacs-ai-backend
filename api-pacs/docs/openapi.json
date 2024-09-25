@@ -269,7 +269,7 @@
         }
       }
     },
-    "/orthanc/modality/{modalityID}/echo": {
+    "/orthanc/modality/{modalityId}/echo": {
       "post": {
         "tags": ["orthanc"],
         "summary": "Trigger DICOM Echo SCU",
@@ -281,9 +281,9 @@
         ],
         "parameters": [
           {
-            "name": "modalityID",
+            "name": "modalityId",
             "in": "path",
-            "description": "Modality ID",
+            "description": "Modality Id",
             "required": true,
             "schema": {
               "type": "string"
@@ -383,9 +383,9 @@
         ],
         "parameters": [
           {
-            "name": "jobIDs",
+            "name": "jobIds",
             "in": "query",
-            "description": "Job IDs",
+            "description": "Job Ids",
             "required": true,
             "schema": {
               "type": "array",
@@ -465,7 +465,7 @@
         }
       }
     },
-    "/orthanc/modality/{modalityID}/update": {
+    "/orthanc/modality/{modalityId}/update": {
       "put": {
         "tags": ["orthanc"],
         "summary": "Update DICOM Modality",
@@ -477,9 +477,9 @@
         ],
         "parameters": [
           {
-            "name": "modalityID",
+            "name": "modalityId",
             "in": "path",
-            "description": "Modality ID",
+            "description": "Modality Id",
             "required": true,
             "schema": {
               "type": "string"
@@ -510,7 +510,7 @@
         }
       }
     },
-    "/orthanc/modality/{modalityID}/remove": {
+    "/orthanc/modality/{modalityId}/remove": {
       "delete": {
         "tags": ["orthanc"],
         "summary": "Remove DICOM Modality",
@@ -522,9 +522,9 @@
         ],
         "parameters": [
           {
-            "name": "modalityID",
+            "name": "modalityId",
             "in": "path",
-            "description": "Modality ID",
+            "description": "Modality Id",
             "required": true,
             "schema": {
               "type": "string"
@@ -587,7 +587,7 @@
           {
             "name": "tenantId",
             "in": "query",
-            "description": "Tenant ID",
+            "description": "Tenant Id",
             "required": true,
             "schema": {
               "type": "string"
@@ -812,7 +812,7 @@
         }
       }
     },
-    "/user/{ID}": {
+    "/user/{Id}": {
       "delete": {
         "tags": ["user"],
         "summary": "Remove Tenant User",
@@ -824,9 +824,9 @@
         ],
         "parameters": [
           {
-            "name": "ID",
+            "name": "Id",
             "in": "path",
-            "description": "User ID",
+            "description": "User Id",
             "required": true,
             "schema": {
               "type": "string"

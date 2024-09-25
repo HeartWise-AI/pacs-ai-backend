@@ -22,7 +22,7 @@ type OrthancQueryController struct {
 
 // GetJobsInfo get jobs information
 func (controller *OrthancQueryController) GetJobsInfo(w http.ResponseWriter, r *http.Request) {
-	jobIDs := r.URL.Query()["jobIDs"]
+	jobIDs := r.URL.Query()["jobIds"]
 
 	if len(jobIDs) == 0 {
 		response := viewmodels.HTTPResponseVM{
