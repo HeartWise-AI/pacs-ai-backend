@@ -269,7 +269,7 @@
         }
       }
     },
-    "/orthanc/modality/{modalityID}/echo": {
+    "/orthanc/modality/{modalityId}/echo": {
       "post": {
         "tags": ["orthanc"],
         "summary": "Trigger DICOM Echo SCU",
@@ -281,7 +281,7 @@
         ],
         "parameters": [
           {
-            "name": "modalityID",
+            "name": "modalityId",
             "in": "path",
             "description": "Modality ID",
             "required": true,
@@ -383,7 +383,7 @@
         ],
         "parameters": [
           {
-            "name": "jobIDs",
+            "name": "jobIds",
             "in": "query",
             "description": "Job IDs",
             "required": true,
@@ -465,7 +465,7 @@
         }
       }
     },
-    "/orthanc/modality/{modalityID}/update": {
+    "/orthanc/modality/{modalityId}/update": {
       "put": {
         "tags": ["orthanc"],
         "summary": "Update DICOM Modality",
@@ -477,7 +477,7 @@
         ],
         "parameters": [
           {
-            "name": "modalityID",
+            "name": "modalityId",
             "in": "path",
             "description": "Modality ID",
             "required": true,
@@ -510,7 +510,7 @@
         }
       }
     },
-    "/orthanc/modality/{modalityID}/remove": {
+    "/orthanc/modality/{modalityId}/remove": {
       "delete": {
         "tags": ["orthanc"],
         "summary": "Remove DICOM Modality",
@@ -522,7 +522,7 @@
         ],
         "parameters": [
           {
-            "name": "modalityID",
+            "name": "modalityId",
             "in": "path",
             "description": "Modality ID",
             "required": true,
@@ -812,7 +812,7 @@
         }
       }
     },
-    "/user/{ID}": {
+    "/user/{id}": {
       "delete": {
         "tags": ["user"],
         "summary": "Remove Tenant User",
@@ -824,7 +824,7 @@
         ],
         "parameters": [
           {
-            "name": "ID",
+            "name": "id",
             "in": "path",
             "description": "User ID",
             "required": true,
