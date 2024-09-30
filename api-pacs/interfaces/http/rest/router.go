@@ -59,9 +59,9 @@ func (router *router) InitRouter() *chi.Mux {
 	// global and recommended middlewares
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Recoverer)
 	r.Use(middleware.Logger)
 	r.Use(cors.Init().Handler)
+	r.Use(middleware.Recoverer)
 
 	// default route
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +69,9 @@ func (router *router) InitRouter() *chi.Mux {
 			Status:  http.StatusOK,
 			Success: true,
 			Message: "alive",
+			Data: map[string]interface{}{
+				"version": "v0.8.1-beta",
+			},
 		}
 
 		response.JSON(w)
@@ -121,10 +124,20 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
-					r.Post("/find/local-resource", orthancQueryController.FindLocalResource)
 					r.Post("/modality/studies", orthancQueryController.FindModalityStudies)
-					r.Post("/retrieve/query/{queryID}/answer/{answerIndex}", orthancCommandController.RetrieveModalityStudy)
-					r.Get("/job/{jobID}", orthancQueryController.GetJobInfo)
+					r.Post("/modality/retrieve", orthancCommandController.RetrieveModalityStudy)
+					r.Get("/jobs", orthancQueryController.GetJobsInfo)
+					r.Get("/modalities/list", orthancQueryController.ListDICOMModalities)
+					r.Get("/sop-instance/{sopInstanceUID}/find", orthancQueryController.FindLocalSOPInstance)
+
+					// admin or owner only
+					r.Group(func(r chi.Router) {
+						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+
+						r.Post("/modality/{modalityID}/echo", orthancCommandController.TriggerDICOMEchoSCU)
+						r.Put("/modality/{modalityID}/update", orthancCommandController.UpdateDICOMModality)
+						r.Delete("/modality/{modalityID}/remove", orthancCommandController.RemoveDICOMModality)
+					})
 				})
 			})
 

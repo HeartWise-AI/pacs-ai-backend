@@ -8,6 +8,7 @@ import (
 	"time"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
+	"api-pacs/internal/assert"
 	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
@@ -27,7 +28,10 @@ type OrthancCommandService struct {
 // ClearLocalStudiesCache clear local studies cache
 func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context) error {
 	// get all local studies
-	localResources, err := service.OrthancAPIInterface.FindLocalStudies(ctx)
+	localResources, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
+		Level:  "Study",
+		Expand: true,
+	})
 	if err != nil {
 		log.Println(err)
 		return err
@@ -66,38 +70,62 @@ func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context
 	return nil
 }
 
-// RetrieveModalityStudy retrieve modality study
-func (service *OrthancCommandService) RetrieveModalityStudy(ctx context.Context, data types.RetrieveModalityStudy) (orthancAPITypes.RetrieveQueryModalityAnswerResponse, error) {
+// RemoveDICOMModality remove dicom modality
+func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, modalityID string) error {
+	err := service.OrthancAPIInterface.DeleteDICOMModality(ctx, modalityID)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	return nil
+}
+
+// RetrieveModalityStudyBySeries retrieve modality study by series
+func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.Context, data types.RetrieveModalityStudyBySeries) ([]orthancAPITypes.QueryModalityResponse, error) {
 	// check if study already exist in local
-	studies, err := service.OrthancAPIInterface.FindLocalResource(ctx, orthancAPITypes.QueryLocalResourceRequest{
-		Level: "Study",
+	resources, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
+		Level: "Series",
 		Query: orthancAPITypes.QueryLocalResource{
 			StudyInstanceUID: data.StudyInstanceUID,
 		},
+		Expand: true,
 	})
 	if err != nil && err.Error() != apiError.MissingRecord {
 		log.Println(err)
-		return orthancAPITypes.RetrieveQueryModalityAnswerResponse{}, err
+		return nil, err
 	}
 
-	// if existing, skip retrieving/download
-	if len(studies) > 0 {
-		return orthancAPITypes.RetrieveQueryModalityAnswerResponse{}, errors.New(apiError.DuplicateRecord) // halt and proceed
+	if len(resources) > 0 {
+		// check if local resource series matches with modality series
+		// FIXME: ideal is to check it using last update time but modality query doesnt return time related
+		// FIXME: code will detect series changes but not study related changes like change name, etc.
+		var localSeries []string
+		for _, resource := range resources {
+			localSeries = append(localSeries, resource.MainDICOMTags.SeriesInstanceUID)
+		}
+
+		modalitySeriesResponse, err := service.OrthancAPIInterface.FindModalitySeriesByStudy(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID)
+		if err != nil {
+			log.Println(err)
+			return nil, err
+		}
+
+		var modalitySeries []string
+		for _, modality := range modalitySeriesResponse {
+			modalitySeries = append(modalitySeries, modality.SeriesInstanceUID)
+		}
+
+		// if matches (meaning no changes), skip retrieving/download
+		if assert.ElementsMatch(localSeries, modalitySeries) {
+			return nil, errors.New(apiError.DuplicateRecord) // halt and proceed
+		}
 	}
 
-	res, err := service.OrthancAPIInterface.RetrieveModalityStudy(ctx, data.QueryID, data.AnswerIndex, orthancAPITypes.RetrieveQueryModalityAnswerRequest{
-		Asynchronous: true,
-		Full:         true,
-		Permissive:   true,
-		Priority:     0,
-		Simplify:     true,
-		Synchronous:  false,
-		TargetAet:    os.Getenv("ORTHANC_AET"),
-		Timeout:      0,
-	})
+	res, err := service.OrthancAPIInterface.RetrieveModalityStudyBySeries(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID)
 	if err != nil {
 		log.Println(err)
-		return orthancAPITypes.RetrieveQueryModalityAnswerResponse{}, err
+		return nil, err
 	}
 
 	// logs to elasticsearch
@@ -117,13 +145,11 @@ func (service *OrthancCommandService) RetrieveModalityStudy(ctx context.Context,
 		_, err = service.ElasticsearchCommandServiceInterface.CreateRetrieveStudyLog(ctx, elasticsearchTypes.CreateRetrieveStudyLog{
 			TenantID:         data.TenantID,
 			TenantName:       tenant.Name,
-			TenantAET:        tenant.AET,
+			ModalityID:       data.ModalityID,
 			UserID:           data.UserID,
 			Email:            user.Email,
 			Name:             user.Name,
 			StudyInstanceUID: data.StudyInstanceUID,
-			QueryID:          data.QueryID,
-			AnswerIndex:      data.AnswerIndex,
 		})
 		if err != nil {
 			log.Println(err)
@@ -132,4 +158,39 @@ func (service *OrthancCommandService) RetrieveModalityStudy(ctx context.Context,
 	}()
 
 	return res, nil
+}
+
+// TriggerDICOMEchoSCU trigger dicom echo scu
+func (service *OrthancCommandService) TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error {
+	err := service.OrthancAPIInterface.TriggerDICOMEchoSCU(ctx, modalityID)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	return nil
+}
+
+// UpdateDICOMModality update dicom modality
+func (service *OrthancCommandService) UpdateDICOMModality(ctx context.Context, data types.UpdateDICOMModality) error {
+	err := service.OrthancAPIInterface.UpdateDICOMModality(ctx, data.ModalityID, orthancAPITypes.UpdateDICOMModalityRequest{
+		AET:                    data.AET,
+		AllowEcho:              true,
+		AllowFind:              true,
+		AllowFindWorklist:      true,
+		AllowGet:               true,
+		AllowMove:              true,
+		AllowStorageCommitment: true,
+		AllowStore:             true,
+		AllowTranscoding:       true,
+		Host:                   data.Host,
+		Port:                   data.Port,
+		UseDicomTLS:            data.UseDicomTLS,
+	})
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	return nil
 }

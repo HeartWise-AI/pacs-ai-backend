@@ -56,7 +56,6 @@ func (controller *TenantQueryController) GetTenantByID(w http.ResponseWriter, r 
 			Name:            res.Name,
 			Address:         res.Address,
 			AvailableModels: res.AvailableModels,
-			AET:             res.AET,
 			CreatedAt:       res.CreatedAt,
 			UpdatedAt:       res.UpdatedAt,
 		},

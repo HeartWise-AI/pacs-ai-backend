@@ -6,11 +6,9 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi"
-	"github.com/go-playground/validator/v10"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
-	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/orthanc/application"
 	serviceTypes "api-pacs/module/orthanc/infrastructure/service/types"
@@ -22,22 +20,22 @@ type OrthancQueryController struct {
 	application.OrthancQueryServiceInterface
 }
 
-// GetJobInfo get job information
-func (controller *OrthancQueryController) GetJobInfo(w http.ResponseWriter, r *http.Request) {
-	jobID := chi.URLParam(r, "jobID")
-	if len(jobID) == 0 {
+// GetJobsInfo get jobs information
+func (controller *OrthancQueryController) GetJobsInfo(w http.ResponseWriter, r *http.Request) {
+	jobIDs := r.URL.Query()["jobIds"]
+
+	if len(jobIDs) == 0 {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
-			Message:   "Invalid job ID.",
+			Message:   "Invalid job IDs.",
 			ErrorCode: apiError.InvalidRequestPayload,
 		}
 
 		response.JSON(w)
 		return
 	}
-
-	res, err := controller.OrthancQueryServiceInterface.GetJobInfo(context.TODO(), jobID)
+	res, err := controller.OrthancQueryServiceInterface.GetJobsInfo(context.TODO(), jobIDs)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -62,30 +60,35 @@ func (controller *OrthancQueryController) GetJobInfo(w http.ResponseWriter, r *h
 		return
 	}
 
+	var jobs []types.GetJobInfoResponse
+
+	for _, job := range res {
+		jobs = append(jobs, types.GetJobInfoResponse{
+			ID:       job.ID,
+			Priority: job.Priority,
+			Progress: job.Progress,
+			State:    job.State,
+		})
+	}
+
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,
-		Message: "Successfully fetched job info.",
-		Data: &types.GetJobInfoResponse{
-			ID:       res.ID,
-			Priority: res.Priority,
-			Progress: res.Progress,
-			State:    res.State,
-		},
+		Message: "Successfully fetched jobs info.",
+		Data:    jobs,
 	}
 
 	response.JSON(w)
 }
 
-// FindLocalResource find local resource.
-func (controller *OrthancQueryController) FindLocalResource(w http.ResponseWriter, r *http.Request) {
-	var request types.FindLocalResourceRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+// FindLocalSOPInstance find local SOP instance
+func (controller *OrthancQueryController) FindLocalSOPInstance(w http.ResponseWriter, r *http.Request) {
+	sopInstanceUID := chi.URLParam(r, "sopInstanceUID")
+	if len(sopInstanceUID) == 0 {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
-			Message:   "Invalid payload request.",
+			Message:   "Invalid SOPInstanceUID.",
 			ErrorCode: apiError.InvalidRequestPayload,
 		}
 
@@ -93,43 +96,7 @@ func (controller *OrthancQueryController) FindLocalResource(w http.ResponseWrite
 		return
 	}
 
-	// validate request
-	err := types.Validate.Struct(request)
-	if err != nil {
-		errors := err.(validator.ValidationErrors)
-		if len(errors) > 0 {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   types.ValidationErrors[errors[0].StructNamespace()],
-				ErrorCode: apiError.InvalidPayload,
-			}
-
-			response.JSON(w)
-			return
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	queryIDs, err := controller.OrthancQueryServiceInterface.FindLocalResource(context.TODO(), serviceTypes.FindLocalResource{
-		Level: request.Level,
-		Query: struct {
-			StudyInstanceUID string
-			SOPInstanceUID   string
-		}{
-			StudyInstanceUID: request.Query.StudyInstanceUID,
-			SOPInstanceUID:   request.Query.SOPInstanceUID,
-		},
-	})
+	queryIDs, err := controller.OrthancQueryServiceInterface.FindLocalSOPInstance(context.TODO(), sopInstanceUID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -157,8 +124,8 @@ func (controller *OrthancQueryController) FindLocalResource(w http.ResponseWrite
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,
-		Message: "Successfully fetched local resource.",
-		Data: &types.FindLocalResourceResponse{
+		Message: "Successfully fetched local SOP instance.",
+		Data: &types.FindLocalSOPInstanceResponse{
 			QueryIDs: queryIDs,
 		},
 	}
@@ -187,6 +154,7 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 
 	res, queryID, err := controller.OrthancQueryServiceInterface.FindModalityStudies(context.TODO(), serviceTypes.FindModalityStudies{
 		TenantID:                   tenantID,
+		ModalityID:                 request.ModalityID,
 		UserID:                     userID,
 		AccessionNumber:            request.AccessionNumber,
 		InstitutionName:            request.InstitutionName,
@@ -204,7 +172,7 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 		StudyInstanceUID:           request.StudyInstanceUID,
 		StudyTime:                  request.StudyTime,
 	})
-	if err != nil && err.Error() != errors.MissingRecord {
+	if err != nil {
 		var httpCode int
 		var errorMsg string
 
@@ -259,6 +227,48 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 		Success: true,
 		Message: "Successfully fetched modality studies.",
 		Data:    modalityStudies,
+	}
+
+	response.JSON(w)
+}
+
+// ListDICOMModalities list dicom modalities
+func (controller *OrthancQueryController) ListDICOMModalities(w http.ResponseWriter, r *http.Request) {
+	res, err := controller.OrthancQueryServiceInterface.ListDICOMModalities(context.TODO())
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.OrthancError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Orthanc service encountered an error or timeout."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	listModalities := types.ListDICOMModalitiesResponse{
+		Modalities: make(map[string]types.ListDICOMModality),
+	}
+
+	for key, modality := range res {
+		listModalities.Modalities[key] = types.ListDICOMModality(modality)
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully fetched dicom modalities.",
+		Data:    listModalities,
 	}
 
 	response.JSON(w)

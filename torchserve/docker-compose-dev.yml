@@ -1,5 +1,6 @@
 services:
   huggingface-downloader:
+    container_name: huggingface-downloader
     build:
       context: ./models
       dockerfile: Dockerfile.prod
@@ -12,6 +13,7 @@ services:
       - .env
 
   torchserve:
+    container_name: torchserve
     image: pytorch/torchserve:0.9.0-gpu
     command: torchserve --start --model-store /models/torch_serving_model --ts-config /models/torch_serving_model/config.properties
     deploy:

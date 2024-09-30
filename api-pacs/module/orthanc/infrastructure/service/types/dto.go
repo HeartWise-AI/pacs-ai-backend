@@ -1,15 +1,8 @@
 package types
 
-type FindLocalResource struct {
-	Level string
-	Query struct {
-		StudyInstanceUID string
-		SOPInstanceUID   string
-	}
-}
-
 type FindModalityStudies struct {
 	TenantID                   string
+	ModalityID                 string
 	UserID                     string
 	AccessionNumber            string
 	InstitutionName            string
@@ -28,10 +21,17 @@ type FindModalityStudies struct {
 	StudyTime                  string
 }
 
-type RetrieveModalityStudy struct {
+type RetrieveModalityStudyBySeries struct {
 	TenantID         string
 	UserID           string
-	QueryID          string
-	AnswerIndex      uint
+	ModalityID       string
 	StudyInstanceUID string
+}
+
+type UpdateDICOMModality struct {
+	ModalityID  string
+	AET         string
+	Host        string
+	Port        uint
+	UseDicomTLS bool
 }

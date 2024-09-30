@@ -8,14 +8,11 @@ services:
     volumes:
       - orthanc-storage:/var/lib/orthanc/db/
     environment:
-      ORTHANC__NAME: "PACS Orthanc"
+      ORTHANC__NAME: "PACS_AI Orthanc"
       ORTHANC__DICOM_AET: ${ORTHANC_DICOM_AET}
       ORTHANC__DICOM_PORT: ${ORTHANC_DICOM_PORT}
-      ORTHANC__DICOM_MODALITIES: |
-        {
-          "${FIREBASE_AET_1}": ["${PACS_AET_1}", "${PACS_IP_1}", ${PACS_PORT_1}] 
-        }
       ORTHANC__DICOM_MODALITIES_IN_DATABASE: "true"
+      ORTHANC__DATABASE_SERVER_IDENTIFIER: "PACS_AI_ORTHANC"
       ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
       DICOM_WEB_PLUGIN_ENABLED: "true"
       ORTHANC__ORTHANC_EXPLORER_2__ENABLE: "false"
@@ -33,7 +30,8 @@ services:
         {
           "Host": "orthanc-index"
         }
-      ORTHANC__CONCURRENT_JOBS: 16
+      ORTHANC__CONCURRENT_JOBS: 20
+      ORTHANC__JOBS_HISTORY_SIZE: 300
       ORTHANC__STORAGE_COMPRESSION: "false"
       ORTHANC__LIMIT_FIND_RESULTS: 100
       ORTHANC__KEEP_ALIVE: "true"

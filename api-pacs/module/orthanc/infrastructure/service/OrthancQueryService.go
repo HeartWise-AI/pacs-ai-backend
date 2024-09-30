@@ -4,8 +4,12 @@ import (
 	"context"
 	"log"
 	"os"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
+	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	"api-pacs/module/orthanc/infrastructure/service/types"
@@ -21,16 +25,11 @@ type OrthancQueryService struct {
 	userApplication.UserQueryServiceInterface
 }
 
-// FindLocalResource find local resource
-func (service *OrthancQueryService) FindLocalResource(ctx context.Context, data types.FindLocalResource) ([]string, error) {
-	queryIDs, err := service.OrthancAPIInterface.FindLocalResource(ctx, orthancAPITypes.QueryLocalResourceRequest{
-		Level: data.Level,
-		Query: orthancAPITypes.QueryLocalResource{
-			StudyInstanceUID: data.Query.StudyInstanceUID,
-			SOPInstanceUID:   data.Query.SOPInstanceUID,
-		},
-	})
+// FindLocalSOPInstance find local SOP instance
+func (service *OrthancQueryService) FindLocalSOPInstance(ctx context.Context, sopInstanceUID string) ([]string, error) {
+	queryIDs, err := service.OrthancAPIInterface.FindLocalSOPInstance(ctx, sopInstanceUID)
 	if err != nil {
+		log.Println(err)
 		return nil, err
 	}
 
@@ -38,14 +37,8 @@ func (service *OrthancQueryService) FindLocalResource(ctx context.Context, data 
 }
 
 // FindModalityStudies get modality studies
-func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, data types.FindModalityStudies) ([]orthancAPITypes.QueryModalitiesAnswersResponse, string, error) {
-	// get tenant info
-	tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
-	if err != nil {
-		return nil, "", err
-	}
-
-	res, queryID, err := service.OrthancAPIInterface.FindModalityStudies(ctx, tenant.AET, orthancAPITypes.QueryModalitiesRequest{
+func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, data types.FindModalityStudies) ([]orthancAPITypes.QueryModalityStudyAnswersResponse, string, error) {
+	res, queryID, err := service.OrthancAPIInterface.FindModalityStudies(ctx, data.ModalityID, orthancAPITypes.QueryModalitiesRequest{
 		Level:     "Study",
 		LocalAET:  os.Getenv("ORTHANC_AET"),
 		Normalize: true,
@@ -68,7 +61,8 @@ func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, dat
 		},
 		Timeout: 0,
 	})
-	if err != nil {
+	if err != nil && err.Error() != apiError.MissingRecord {
+		log.Println(err)
 		return nil, "", err
 	}
 
@@ -87,7 +81,7 @@ func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, dat
 		_, err = service.ElasticsearchCommandServiceInterface.CreateGetModalityStudyLog(ctx, elasticsearchTypes.CreateGetModalityStudyLog{
 			TenantID:   data.TenantID,
 			TenantName: tenant.Name,
-			TenantAET:  tenant.AET,
+			ModalityID: data.ModalityID,
 			UserID:     data.UserID,
 			Email:      user.Email,
 			Name:       user.Name,
@@ -102,11 +96,49 @@ func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, dat
 	return res, queryID, nil
 }
 
-// GetJobInfo get job info
-func (service *OrthancQueryService) GetJobInfo(ctx context.Context, jobID string) (orthancAPITypes.GetJobResponse, error) {
-	res, err := service.OrthancAPIInterface.GetJobInfo(ctx, jobID)
+// GetJobsInfo get jobs info
+func (service *OrthancQueryService) GetJobsInfo(ctx context.Context, jobIDs []string) ([]orthancAPITypes.GetJobResponse, error) {
+	var m = sync.Mutex{}
+	eg, _ := errgroup.WithContext(ctx)
+
+	var results []orthancAPITypes.GetJobResponse
+
+	// set limit
+	eg.SetLimit(len(jobIDs))
+
+	for _, jobID := range jobIDs {
+		func(jobID string) {
+			eg.Go(func() error {
+				m.Lock()
+				defer m.Unlock()
+
+				// get job info
+				job, err := service.OrthancAPIInterface.GetJobInfo(ctx, jobID)
+				if err != nil {
+					return err
+				}
+
+				results = append(results, job)
+				return nil
+			})
+		}(jobID)
+	}
+
+	// wait for all goroutines to finish
+	if err := eg.Wait(); err != nil {
+		log.Println(err)
+		return nil, err
+	}
+
+	return results, nil
+}
+
+// ListDICOMModalities list dicom modalities
+func (service *OrthancQueryService) ListDICOMModalities(ctx context.Context) (map[string]orthancAPITypes.ListDICOMModalitiesResponse, error) {
+	res, err := service.OrthancAPIInterface.ListDICOMModalities(ctx)
 	if err != nil {
-		return orthancAPITypes.GetJobResponse{}, err
+		log.Println(err)
+		return nil, err
 	}
 
 	return res, nil

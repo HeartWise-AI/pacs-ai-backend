@@ -35,11 +35,6 @@ up-orthanc:
 	cd orthanc-pacs
 	docker compose -f docker-compose-dev.yml up --build
 
-.PHONY: up-orthanc
-up-orthanc:
-	cd orthanc
-	docker compose -f docker-compose-dev.yml up --build
-
 .PHONY: up-redis
 up-redis:
 	cd redis

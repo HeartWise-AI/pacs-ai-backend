@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi"
 	"github.com/go-playground/validator/v10"
@@ -22,36 +21,59 @@ type OrthancCommandController struct {
 	application.OrthancCommandServiceInterface
 }
 
+// RemoveDICOMModality remove dicom modality
+func (controller *OrthancCommandController) RemoveDICOMModality(w http.ResponseWriter, r *http.Request) {
+	modalityID := chi.URLParam(r, "modalityID")
+	if len(modalityID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid modality ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err := controller.OrthancCommandServiceInterface.RemoveDICOMModality(context.TODO(), modalityID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.OrthancError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Orthanc service encountered an error or timeout."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Server error."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully removed DICOM modality.",
+	}
+
+	response.JSON(w)
+}
+
 // RetrieveModalityStudy retrieve modality study
 func (controller *OrthancCommandController) RetrieveModalityStudy(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
-
-	queryID := chi.URLParam(r, "queryID")
-	if len(queryID) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid query ID.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	answerIndex, err := strconv.Atoi(chi.URLParam(r, "answerIndex"))
-	if err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid answer index.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
 
 	var request types.RetrieveModalityStudyRequest
 
@@ -68,7 +90,7 @@ func (controller *OrthancCommandController) RetrieveModalityStudy(w http.Respons
 	}
 
 	// validate request
-	err = types.Validate.Struct(request)
+	err := types.Validate.Struct(request)
 	if err != nil {
 		errors := err.(validator.ValidationErrors)
 		if len(errors) > 0 {
@@ -94,11 +116,10 @@ func (controller *OrthancCommandController) RetrieveModalityStudy(w http.Respons
 		return
 	}
 
-	res, err := controller.OrthancCommandServiceInterface.RetrieveModalityStudy(context.TODO(), serviceTypes.RetrieveModalityStudy{
+	res, err := controller.OrthancCommandServiceInterface.RetrieveModalityStudyBySeries(context.TODO(), serviceTypes.RetrieveModalityStudyBySeries{
 		TenantID:         tenantID,
 		UserID:           userID,
-		QueryID:          queryID,
-		AnswerIndex:      uint(answerIndex),
+		ModalityID:       request.ModalityID,
 		StudyInstanceUID: request.StudyInstanceUID,
 	})
 	if err != nil {
@@ -128,14 +149,165 @@ func (controller *OrthancCommandController) RetrieveModalityStudy(w http.Respons
 		return
 	}
 
+	var jobs []types.RetrieveQueryModalityAnswerResponse
+
+	for _, job := range res {
+		jobs = append(jobs, types.RetrieveQueryModalityAnswerResponse{
+			ID:   job.ID,
+			Path: job.Path,
+		})
+	}
+
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,
-		Message: "Successfully retrieved modality study.",
-		Data: &types.RetrieveQueryModalityAnswerResponse{
-			ID:   res.ID,
-			Path: res.Path,
-		},
+		Message: "Successfully sent retrieve modality study request.",
+		Data:    jobs,
+	}
+
+	response.JSON(w)
+}
+
+// TriggerDICOMEchoSCU trigger dicom C-ECHO SCU
+func (controller *OrthancCommandController) TriggerDICOMEchoSCU(w http.ResponseWriter, r *http.Request) {
+	modalityID := chi.URLParam(r, "modalityID")
+	if len(modalityID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid modality ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err := controller.OrthancCommandServiceInterface.TriggerDICOMEchoSCU(context.TODO(), modalityID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.OrthancError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Orthanc service encountered an error or timeout."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Server error."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully sent DICOM C-ECHO SCU request.",
+	}
+
+	response.JSON(w)
+}
+
+// UpdateDICOMModality update dicom modality
+func (controller *OrthancCommandController) UpdateDICOMModality(w http.ResponseWriter, r *http.Request) {
+	modalityID := chi.URLParam(r, "modalityID")
+	if len(modalityID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid modality ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var request types.UpdateDICOMModalityRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err = controller.OrthancCommandServiceInterface.UpdateDICOMModality(context.TODO(), serviceTypes.UpdateDICOMModality{
+		ModalityID:  modalityID,
+		AET:         request.AET,
+		Host:        request.Host,
+		Port:        request.Port,
+		UseDicomTLS: request.UseDicomTLS,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.OrthancError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Orthanc service encountered an error or timeout."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Server error."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully updated DICOM modality.",
 	}
 
 	response.JSON(w)

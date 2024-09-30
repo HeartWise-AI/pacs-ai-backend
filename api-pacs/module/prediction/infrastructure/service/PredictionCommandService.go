@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"time"
 
 	"github.com/suyashkumar/dicom"
 
@@ -24,6 +25,9 @@ type PredictionCommandService struct {
 
 // Predict get prediction results from inference
 func (service *PredictionCommandService) Predict(ctx context.Context, queryID string) (types.PredictionResult, error) {
+	// TODO: remove this
+	downloadStartTime := time.Now()
+
 	// download DICOM file
 	dicomBytes, err := service.OrthancAPIInterface.DownloadDICOM(ctx, queryID)
 	if err != nil {
@@ -50,6 +54,13 @@ func (service *PredictionCommandService) Predict(ctx context.Context, queryID st
 		log.Println(err)
 		return types.PredictionResult{}, errors.New(apiError.DICOMParseError)
 	}
+
+	// TODO: remove this
+	downloadEndTime := time.Since(downloadStartTime)
+	log.Printf("[prediction] download DICOM file took %f seconds", downloadEndTime.Seconds())
+
+	// TODO: remove this
+	startInferenceTime := time.Now()
 
 	// detect vessel
 	vesselInferenceResult, err := service.InferenceAPIInterface.DetectVessel(ctx, inferenceAPITypes.Instances{
@@ -87,6 +98,10 @@ func (service *PredictionCommandService) Predict(ctx context.Context, queryID st
 
 		detectedLVEF = lvefInferenceResult[0][0]
 	}
+
+	// TODO: remove this
+	inferenceEndTime := time.Since(startInferenceTime)
+	log.Printf("[prediction] inference took %f seconds", inferenceEndTime.Seconds())
 
 	return types.PredictionResult{
 		Vessel: detectedVessel,

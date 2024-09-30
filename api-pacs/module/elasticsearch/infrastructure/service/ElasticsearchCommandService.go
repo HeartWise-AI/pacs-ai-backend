@@ -68,7 +68,7 @@ func (service *ElasticsearchCommandService) CreateGetModalityStudyLog(ctx contex
 	res, err := service.ElasticsearchCommandRepositoryInterface.InsertGetModalityStudyLog(ctx, repositoryTypes.CreateGetModalityStudyLog{
 		TenantID:   data.TenantID,
 		TenantName: data.TenantName,
-		TenantAET:  data.TenantAET,
+		ModalityID: data.ModalityID,
 		UserID:     data.UserID,
 		Email:      data.Email,
 		Name:       data.Name,
@@ -105,13 +105,11 @@ func (service *ElasticsearchCommandService) CreateRetrieveStudyLog(ctx context.C
 	res, err := service.ElasticsearchCommandRepositoryInterface.InsertRetrieveStudyLog(ctx, repositoryTypes.CreateRetrieveStudyLog{
 		TenantID:         data.TenantID,
 		TenantName:       data.TenantName,
-		TenantAET:        data.TenantAET,
+		ModalityID:       data.ModalityID,
 		UserID:           data.UserID,
 		Email:            data.Email,
 		Name:             data.Name,
 		StudyInstanceUID: data.StudyInstanceUID,
-		QueryID:          data.QueryID,
-		AnswerIndex:      data.AnswerIndex,
 	})
 	if err != nil {
 		return nil, err

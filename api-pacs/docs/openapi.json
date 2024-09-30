@@ -1,19 +1,23 @@
 {
   "openapi": "3.0.2",
   "info": {
-    "title": "PACS.AI REST API",
+    "title": "PACS.AI API",
     "description": "PACS REST API documentation.",
     "termsOfService": "https://github.com/HeartWise-AI",
     "contact": {
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "servers": [
     {
       "url": "https://pacs-api.heartwise.ai/api/v1",
       "description": "Production"
+    },
+    {
+      "url": "https://sgbmavram01.icm.local/api/v1",
+      "description": "Production MHI"
     },
     {
       "url": "http://185.223.207.27/api/v1",
@@ -26,10 +30,6 @@
     {
       "url": "http://localhost:8000/api/v1",
       "description": "Local Docker"
-    },
-    {
-      "url": "https://sgbmavram01.icm.local/api/v1",
-      "description": "Production MHI"
     }
   ],
   "tags": [
@@ -269,27 +269,27 @@
         }
       }
     },
-    "/orthanc/find/local-resource": {
+    "/orthanc/modality/{modalityId}/echo": {
       "post": {
         "tags": ["orthanc"],
-        "summary": "Find Local Resource",
-        "description": "Find local resource.",
+        "summary": "Trigger DICOM Echo SCU",
+        "description": "Trigger DICOM Echo SCU. Callable by admin or owner only.",
         "security": [
           {
             "bearerAuth": []
           }
         ],
-        "requestBody": {
-          "description": "Find local resource request",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FindLocalResourceRequest"
-              }
+        "parameters": [
+          {
+            "name": "modalityId",
+            "in": "path",
+            "description": "Modality ID",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
-          },
-          "required": true
-        },
+          }
+        ],
         "responses": {
           "2xx": {
             "description": "Success"
@@ -337,7 +337,7 @@
         }
       }
     },
-    "/orthanc/retrieve/query/{queryID}/answer/{answerIndex}": {
+    "/orthanc/modality/retrieve": {
       "post": {
         "tags": ["orthanc"],
         "summary": "Retrieve Modality Study",
@@ -358,23 +358,40 @@
           },
           "required": true
         },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/orthanc/jobs": {
+      "get": {
+        "tags": ["orthanc"],
+        "summary": "Get Jobs Info",
+        "description": "Get jobs information.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
-            "name": "queryID",
-            "in": "path",
-            "description": "Query ID",
+            "name": "jobIds",
+            "in": "query",
+            "description": "Job IDs",
             "required": true,
             "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "answerIndex",
-            "in": "path",
-            "description": "Answer Index",
-            "required": true,
-            "schema": {
-              "type": "integer"
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           }
         ],
@@ -391,11 +408,34 @@
         }
       }
     },
-    "/orthanc/job/{jobID}": {
+    "/orthanc/modalities/list": {
       "get": {
         "tags": ["orthanc"],
-        "summary": "Get Job Info",
-        "description": "Get job information.",
+        "summary": "List DICOM Modalities",
+        "description": "List DICOM modalities.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/orthanc/sop-instance/{sopInstanceUID}/find": {
+      "get": {
+        "tags": ["orthanc"],
+        "summary": "Find Local SOP Instance",
+        "description": "Find local SOP instance.",
         "security": [
           {
             "bearerAuth": []
@@ -403,9 +443,88 @@
         ],
         "parameters": [
           {
-            "name": "jobID",
+            "name": "sopInstanceUID",
             "in": "path",
-            "description": "Job ID",
+            "description": "SOP Instance UID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/orthanc/modality/{modalityId}/update": {
+      "put": {
+        "tags": ["orthanc"],
+        "summary": "Update DICOM Modality",
+        "description": "Update DICOM modality. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modalityId",
+            "in": "path",
+            "description": "Modality ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Update DICOM modality request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDICOMModalityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/orthanc/modality/{modalityId}/remove": {
+      "delete": {
+        "tags": ["orthanc"],
+        "summary": "Remove DICOM Modality",
+        "description": "Remove DICOM modality. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modalityId",
+            "in": "path",
+            "description": "Modality ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -693,7 +812,7 @@
         }
       }
     },
-    "/user/{ID}": {
+    "/user/{id}": {
       "delete": {
         "tags": ["user"],
         "summary": "Remove Tenant User",
@@ -705,7 +824,7 @@
         ],
         "parameters": [
           {
-            "name": "ID",
+            "name": "id",
             "in": "path",
             "description": "User ID",
             "required": true,
@@ -779,9 +898,12 @@
         }
       },
       "RetrieveModalityStudyRequest": {
-        "required": ["studyInstanceUID"],
+        "required": ["modalityId", "studyInstanceUID"],
         "type": "object",
         "properties": {
+          "modalityId": {
+            "type": "string"
+          },
           "studyInstanceUID": {
             "type": "string"
           }
@@ -799,22 +921,13 @@
           }
         }
       },
-      "FindLocalResourceRequest": {
-        "required": ["level"],
+      "FindModalityStudiesRequest": {
+        "required": ["modalityId"],
         "type": "object",
         "properties": {
-          "level": {
+          "modalityId": {
             "type": "string"
           },
-          "query": {
-            "type": "object"
-          }
-        }
-      },
-      "FindModalityStudiesRequest": {
-        "required": [],
-        "type": "object",
-        "properties": {
           "accessionNumber": {
             "type": "string"
           },
@@ -830,7 +943,7 @@
           "patientBirthDate": {
             "type": "string"
           },
-          "patientID": {
+          "patientId": {
             "type": "string"
           },
           "patientName": {
@@ -851,7 +964,7 @@
           "studyDescription": {
             "type": "string"
           },
-          "studyID": {
+          "studyId": {
             "type": "string"
           },
           "studyInstanceUID": {
@@ -902,6 +1015,25 @@
           },
           "specialty": {
             "type": "string"
+          }
+        }
+      },
+      "UpdateDICOMModalityRequest": {
+        "required": ["aet", "host", "port"],
+        "type": "object",
+        "properties": {
+          "aet": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "useDicomTLS": {
+            "type": "boolean",
+            "default": false
           }
         }
       },

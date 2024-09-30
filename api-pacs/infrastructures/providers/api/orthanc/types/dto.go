@@ -13,15 +13,8 @@ type DeleteLocalResourcesRequest struct {
 	Resources []string `json:"Resources"`
 }
 
-type RetrieveQueryModalityAnswerRequest struct {
-	Asynchronous bool   `json:"Asynchronous"`
-	Full         bool   `json:"Full"`
-	Permissive   bool   `json:"Permissive"`
-	Priority     uint   `json:"Priority"`
-	Simplify     bool   `json:"Simplify"`
-	Synchronous  bool   `json:"Synchronous"`
-	TargetAet    string `json:"TargetAet"`
-	Timeout      uint   `json:"Timeout"`
+type GetDICOMModalitiesRequest struct {
+	Expand bool `json:"Expand"`
 }
 
 type QueryModalitiesRequest struct {
@@ -33,8 +26,40 @@ type QueryModalitiesRequest struct {
 }
 
 type QueryLocalResourceRequest struct {
-	Level string             `json:"Level"`
-	Query QueryLocalResource `json:"Query"`
+	Level  string             `json:"Level"`
+	Query  QueryLocalResource `json:"Query"`
+	Expand bool               `json:"Expand,omitempty"`
+}
+
+type RetrieveQueryModalityAnswerRequest struct {
+	Asynchronous bool   `json:"Asynchronous"`
+	Full         bool   `json:"Full"`
+	Permissive   bool   `json:"Permissive"`
+	Priority     uint   `json:"Priority"`
+	Simplify     bool   `json:"Simplify"`
+	Synchronous  bool   `json:"Synchronous"`
+	TargetAet    string `json:"TargetAet"`
+	Timeout      uint   `json:"Timeout"`
+}
+
+type TriggerDICOMEchoRequest struct {
+	CheckFind bool `json:"CheckFind"`
+	Timeout   uint `json:"Timeout"`
+}
+
+type UpdateDICOMModalityRequest struct {
+	AET                    string `json:"AET"`
+	AllowEcho              bool   `json:"AllowEcho"`
+	AllowFind              bool   `json:"AllowFind"`
+	AllowFindWorklist      bool   `json:"AllowFindWorklist"`
+	AllowGet               bool   `json:"AllowGet"`
+	AllowMove              bool   `json:"AllowMove"`
+	AllowStorageCommitment bool   `json:"AllowStorageCommitment"`
+	AllowStore             bool   `json:"AllowStore"`
+	AllowTranscoding       bool   `json:"AllowTranscoding"`
+	Host                   string `json:"Host"`
+	Port                   uint   `json:"Port"`
+	UseDicomTLS            bool   `json:"UseDicomTls"`
 }
 
 type GetJobResponse struct {
@@ -44,22 +69,36 @@ type GetJobResponse struct {
 	State    string `json:"State"`
 }
 
-type GetLocalStudyResponse struct {
-	ID         string `json:"ID"`
-	LastUpdate string `json:"LastUpdate"` // in 20240627T182452 format
+type GetLocalResourceResponse struct {
+	ID            string `json:"ID"`
+	LastUpdate    string `json:"LastUpdate"` // in 20240627T182452 format
+	MainDICOMTags struct {
+		SeriesInstanceUID string `json:"SeriesInstanceUID"`
+		SeriesTime        string `json:"SeriesTime"`
+	} `json:"MainDicomTags,omitempty"` // for level = series
 }
 
-type RetrieveQueryModalityAnswerResponse struct {
+type ListDICOMModalitiesResponse struct {
+	AET               string `json:"AET"`
+	AllowEcho         bool   `json:"AllowEcho"`
+	AllowFind         bool   `json:"AllowFind"`
+	AllowFindWorklist bool   `json:"AllowFindWorklist"`
+	AllowGet          bool   `json:"AllowGet"`
+	AllowMove         bool   `json:"AllowMove"`
+	AllowStore        bool   `json:"AllowStore"`
+	AllowTranscoding  bool   `json:"AllowTranscoding"`
+	Host              string `json:"Host"`
+	Port              uint   `json:"Port"`
+	Timeout           uint   `json:"Timeout"`
+	UseDicomTLS       bool   `json:"UseDicomTls"`
+}
+
+type QueryModalityResponse struct {
 	ID   string `json:"ID"`
 	Path string `json:"Path"`
 }
 
-type QueryModalitiesResponse struct {
-	ID   string `json:"ID"`
-	Path string `json:"Path"`
-}
-
-type QueryModalitiesAnswersResponse struct {
+type QueryModalityStudyAnswersResponse struct {
 	AccessionNumber            string `json:"AccessionNumber"`
 	ModalitiesInStudy          string `json:"ModalitiesInStudy"`
 	NumberOfStudyRelatedSeries string `json:"NumberOfStudyRelatedSeries"`
@@ -76,6 +115,16 @@ type QueryModalitiesAnswersResponse struct {
 	StudyID                    string `json:"StudyID"`
 	StudyInstanceUID           string `json:"StudyInstanceUID"`
 	StudyTime                  string `json:"StudyTime"`
+}
+
+type QueryModalitySeriesAnswersResponse struct {
+	AccessionNumber      string `json:"AccessionNumber"`
+	PatientID            string `json:"PatientID"`
+	QueryRetrieveLevel   string `json:"QueryRetrieveLevel"`
+	RetrieveAETitle      string `json:"RetrieveAETitle"`
+	SeriesInstanceUID    string `json:"SeriesInstanceUID"`
+	SpecificCharacterSet string `json:"SpecificCharacterSet"`
+	StudyInstanceUID     string `json:"StudyInstanceUID"`
 }
 
 type QueryStudy struct {
@@ -98,5 +147,4 @@ type QueryStudy struct {
 
 type QueryLocalResource struct {
 	StudyInstanceUID string `json:"StudyInstanceUID,omitempty"`
-	SOPInstanceUID   string `json:"SOPInstanceUID,omitempty"`
 }

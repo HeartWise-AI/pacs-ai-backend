@@ -46,7 +46,7 @@ func (repository *ElasticsearchCommandRepository) InsertGetModalityStudyLog(ctx 
 	modalityStudy := entity.ModalityStudy{
 		TenantID:   data.TenantID,
 		TenantName: data.TenantName,
-		TenantAET:  data.TenantAET,
+		ModalityID: data.ModalityID,
 		UserID:     data.UserID,
 		Email:      data.Email,
 		Name:       data.Name,
@@ -89,13 +89,11 @@ func (repository *ElasticsearchCommandRepository) InsertRetrieveStudyLog(ctx con
 	study := entity.RetrievedStudy{
 		TenantID:         data.TenantID,
 		TenantName:       data.TenantName,
-		TenantAET:        data.TenantAET,
+		ModalityID:       data.ModalityID,
 		UserID:           data.UserID,
 		Email:            data.Email,
 		Name:             data.Name,
 		StudyInstanceUID: data.StudyInstanceUID,
-		QueryID:          data.QueryID,
-		AnswerIndex:      data.AnswerIndex,
 		Timestamp:        uint(time.Now().Unix()),
 	}
 
