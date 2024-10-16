@@ -82,6 +82,9 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		return
 	}
 
+	// set end date time to 23:59:59
+	endDate = endDate.Add(time.Hour*23 + time.Minute*59 + time.Second*59)
+
 	// option to export response to csv
 	export := r.URL.Query().Get("export")
 	isExport, _ := strconv.ParseBool(export)
