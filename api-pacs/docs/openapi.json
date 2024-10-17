@@ -812,7 +812,7 @@
         }
       }
     },
-    "/user/{id}": {
+    "/user/{id}/remove": {
       "delete": {
         "tags": ["user"],
         "summary": "Remove Tenant User",
