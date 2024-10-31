@@ -18,11 +18,14 @@ var config = hystrix_config.Config{}
 // DeleteTokenSession is the decorator for the user repository to delete token session
 func (repository *IAMCommandRepositoryCircuitBreaker) DeleteTokenSession(key string) error {
 	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
 	hystrix.ConfigureCommand("delete_token_session", config.Settings())
 	errors := hystrix.Go("delete_token_session", func() error {
 		err := repository.IAMCommandRepositoryInterface.DeleteTokenSession(key)
 		if err != nil {
-			return err
+			errChan <- err
+			return nil
 		}
 
 		output <- true
@@ -32,6 +35,8 @@ func (repository *IAMCommandRepositoryCircuitBreaker) DeleteTokenSession(key str
 	select {
 	case <-output:
 		return nil
+	case err := <-errChan:
+		return err
 	case err := <-errors:
 		return err
 	}
@@ -40,11 +45,14 @@ func (repository *IAMCommandRepositoryCircuitBreaker) DeleteTokenSession(key str
 // SetTokenSession is the decorator for the user repository to set token session
 func (repository *IAMCommandRepositoryCircuitBreaker) SetTokenSession(data repositoryTypes.SetTokenSession) error {
 	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
 	hystrix.ConfigureCommand("set_token_session", config.Settings())
 	errors := hystrix.Go("set_token_session", func() error {
 		err := repository.IAMCommandRepositoryInterface.SetTokenSession(data)
 		if err != nil {
-			return err
+			errChan <- err
+			return nil
 		}
 
 		output <- true
@@ -54,6 +62,8 @@ func (repository *IAMCommandRepositoryCircuitBreaker) SetTokenSession(data repos
 	select {
 	case <-output:
 		return nil
+	case err := <-errChan:
+		return err
 	case err := <-errors:
 		return err
 	}

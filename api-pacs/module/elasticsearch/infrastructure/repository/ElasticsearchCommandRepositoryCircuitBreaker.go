@@ -20,11 +20,14 @@ var config = hystrix_config.Config{}
 // InsertAdminMemberLog decorator pattern to insert admin member log request
 func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertAdminMemberLog(ctx context.Context, data repositoryTypes.CreateAdminMemberLog) (*index.Response, error) {
 	output := make(chan *index.Response, 1)
+	errChan := make(chan error, 1)
+
 	hystrix.ConfigureCommand("insert_admin_member_log", config.Settings())
 	errors := hystrix.Go("insert_admin_member_log", func() error {
 		adminMember, err := repository.ElasticsearchCommandRepositoryInterface.InsertAdminMemberLog(ctx, data)
 		if err != nil {
-			return err
+			errChan <- err
+			return nil
 		}
 
 		output <- adminMember
@@ -34,6 +37,8 @@ func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertAdminMembe
 	select {
 	case out := <-output:
 		return out, nil
+	case err := <-errChan:
+		return nil, err
 	case err := <-errors:
 		return nil, err
 	}
@@ -42,11 +47,14 @@ func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertAdminMembe
 // InsertGetModalityStudyLog decorator pattern to insert get modality study log
 func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertGetModalityStudyLog(ctx context.Context, data repositoryTypes.CreateGetModalityStudyLog) (*index.Response, error) {
 	output := make(chan *index.Response, 1)
+	errChan := make(chan error, 1)
+
 	hystrix.ConfigureCommand("insert_get_modality_study_log", config.Settings())
 	errors := hystrix.Go("insert_get_modality_study_log", func() error {
 		modalityStudy, err := repository.ElasticsearchCommandRepositoryInterface.InsertGetModalityStudyLog(ctx, data)
 		if err != nil {
-			return err
+			errChan <- err
+			return nil
 		}
 
 		output <- modalityStudy
@@ -56,6 +64,8 @@ func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertGetModalit
 	select {
 	case out := <-output:
 		return out, nil
+	case err := <-errChan:
+		return nil, err
 	case err := <-errors:
 		return nil, err
 	}
@@ -64,11 +74,14 @@ func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertGetModalit
 // InsertLoginLog decorator pattern to insert login log request
 func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertLoginLog(ctx context.Context, data repositoryTypes.CreateLoginLog) (*index.Response, error) {
 	output := make(chan *index.Response, 1)
+	errChan := make(chan error, 1)
+
 	hystrix.ConfigureCommand("insert_login_log", config.Settings())
 	errors := hystrix.Go("insert_login_log", func() error {
 		login, err := repository.ElasticsearchCommandRepositoryInterface.InsertLoginLog(ctx, data)
 		if err != nil {
-			return err
+			errChan <- err
+			return nil
 		}
 
 		output <- login
@@ -78,6 +91,8 @@ func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertLoginLog(c
 	select {
 	case out := <-output:
 		return out, nil
+	case err := <-errChan:
+		return nil, err
 	case err := <-errors:
 		return nil, err
 	}
@@ -86,11 +101,14 @@ func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertLoginLog(c
 // InsertRetrieveStudyLog decorator pattern to insert retrieved study log
 func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertRetrieveStudyLog(ctx context.Context, data repositoryTypes.CreateRetrieveStudyLog) (*index.Response, error) {
 	output := make(chan *index.Response, 1)
+	errChan := make(chan error, 1)
+
 	hystrix.ConfigureCommand("insert_retrieved_study_log", config.Settings())
 	errors := hystrix.Go("insert_retrieved_study_log", func() error {
 		study, err := repository.ElasticsearchCommandRepositoryInterface.InsertRetrieveStudyLog(ctx, data)
 		if err != nil {
-			return err
+			errChan <- err
+			return nil
 		}
 
 		output <- study
@@ -100,6 +118,8 @@ func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertRetrieveSt
 	select {
 	case out := <-output:
 		return out, nil
+	case err := <-errChan:
+		return nil, err
 	case err := <-errors:
 		return nil, err
 	}
