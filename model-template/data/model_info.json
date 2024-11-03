@@ -1,0 +1,9 @@
+{
+  "modelName": "cathef",
+  "version": "1.0.0",
+  "dicomTargetLevel": "SERIES",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 5,
+  "supportedDicomModalities": ["XA"],
+  "supportedOutputModes": ["OHIF_ANNOTATIONS", "JSON", "HTML", "WEB_APP"]
+}
