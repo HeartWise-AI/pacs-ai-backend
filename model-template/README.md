@@ -44,6 +44,7 @@ After starting the Docker container, user should be able to interact with the In
 The endpoints are also documented for the payloads and responses they accept and return, as well as examples.
 
 ### POST /inference/predict
+
 ```bash
 Request:
 curl --request POST \
@@ -102,6 +103,7 @@ Response:
 ```
 
 ### GET /inference/model-info
+
 ```bash
 Request:
 curl --request GET \
@@ -133,6 +135,7 @@ Response:
 ```
 
 ### GET /inference/model-facts
+
 ```bash
 curl --request GET \
   --url http://localhost:8000/inference/model-facts \
@@ -246,7 +249,7 @@ Response:
 
 The model version should be defined in the `data/model_info.json` and `data/model_facts.json` files. Both data are served by the API with the former used for the viewer display and the latter used to show the model facts following a common convention for AI models.
 
-And of course, the Docker image tag should match the model version during releases. 
+> And of course, the Docker image tag should match the model version during releases.
 
 ## Access and Ports
 
