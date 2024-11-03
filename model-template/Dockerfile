@@ -20,9 +20,11 @@ FROM alpine:latest
 # Install nginx and supervisor
 RUN apk add --no-cache nginx supervisor
 
-# Copy the Go binary and .env from builder
+# Copy necessary files from builder
 COPY --from=builder /app/build/model-api /app/build/model-api
 COPY --from=builder /app/build/.env /app/build/.env
+COPY --from=builder /app/build/data /app/build/data
+COPY --from=builder /app/build/docs /app/build/docs
 
 # Create directory for static files
 # RUN mkdir -p /usr/share/nginx/html/app/viewer
