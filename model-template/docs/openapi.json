@@ -1,0 +1,517 @@
+{
+  "openapi": "3.0.2",
+  "info": {
+    "title": "PACS.AI Inference Model API",
+    "description": "API Documentation of PACS.AI Model Inference",
+    "termsOfService": "https://github.com/HeartWise-AI",
+    "contact": {
+      "name": "HeartWise AI",
+      "email": "hello@heartwise.ai"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://cathef/api",
+      "description": "Docker"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Local"
+    }
+  ],
+  "tags": [
+    {
+      "name": "inference",
+      "description": "Inference service"
+    }
+  ],
+  "paths": {
+    "/inference/predict": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Predict",
+        "description": "Creates a prediction request",
+        "requestBody": {
+          "description": "Prediction request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/PredictResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "JSON": {
+                    "summary": "Successful JSON prediction request",
+                    "value": {
+                      "success": true,
+                      "message": "Registration request created successfully",
+                      "data": {
+                        "diagnosis": "limit",
+                        "predictions": {
+                          "Vessel": {
+                            "probability": 56.534433434343,
+                            "confidence": "intermediate",
+                            "presentable": true,
+                            "displayResult": "Left Coronary"
+                          }
+                        },
+                        "modelRecommendations": {
+                          "en": "Recommendation for the next model",
+                          "fr": "Recommandation pour le prochain modèle",
+                          "presentable": true
+                        }
+                      }
+                    }
+                  },
+                  "OHIF_ANNOTATIONS": {
+                    "summary": "Successful OHIF Annotations prediction request",
+                    "value": {
+                      "success": true,
+                      "message": "Registration request created successfully",
+                      "data": {
+                        "metadata": {
+                          "key": "value pair"
+                        },
+                        "segmentations": [],
+                        "boundingBoxes": [],
+                        "measurements": []
+                      }
+                    }
+                  },
+                  "HTML": {
+                    "summary": "Successful HTML prediction request",
+                    "value": {
+                      "success": true,
+                      "message": "Registration request created successfully",
+                      "data": {
+                        "htmlBase64": "base64 encoded html..."
+                      }
+                    }
+                  },
+                  "WEB_APP": {
+                    "summary": "Successful WEB_APP prediction request",
+                    "value": {
+                      "success": true,
+                      "message": "Registration request created successfully",
+                      "data": {
+                        "webappPath": "/app/viewer",
+                        "webappDataBase64": "base64 encoded webapp data..."
+                      }
+                    }
+                  },
+                  "PDF": {
+                    "summary": "Successful PDF prediction request",
+                    "value": {
+                      "success": true,
+                      "message": "Registration request created successfully",
+                      "data": {
+                        "pdfBase64": "base64 encoded pdf..."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-info": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Model Info",
+        "description": "Get model info",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/GetModelInfoResponse"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-facts": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Model Facts",
+        "description": "Get model facts",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/GetModelFactsResponse"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Model facts retrieved successfully",
+                  "data": {
+                    "en": {
+                      "Changelogs": {
+                        "1.0.0": "2023-03-01: Initial release"
+                      },
+                      "Mechanism": {
+                        "Input_data_source": "Left coronary angiogram videos",
+                        "Input_data_type": "Video data",
+                        "Model_type": "X3D architecture",
+                        "Outcome": "Prediction of LVEF from left coronary angiograms",
+                        "Output": "Continuous LVEF percentage value",
+                        "Target_population": "Adult patients aged ≥18 years who received a coronary angiogram and transthoracic echocardiogram (TTE)",
+                        "Time_of_prediction": "N/A",
+                        "Training_data_location_and_time-period": "University of California, San Francisco (UCSF), Dec 12, 2012, to Dec 31, 2019"
+                      },
+                      "Other_information": {
+                        "Clinical_impact_evaluation": "N/A",
+                        "Clinical_trial": "LVEF Prediction During ACS Using AI Algorithm Applied on Coronary Angiogram Videos (CathEF) - NCT05317286",
+                        "Clinical_trial_URL": "https://www.clinicaltrials.gov/ct2/show/NCT05317286",
+                        "Contact_info": "robert.avram.md@gmail.com",
+                        "Github": "N/A",
+                        "Outcome_definition": "LVEF",
+                        "Related_model": "CathAI",
+                        "Scientific_publication": "N/A"
+                      },
+                      "Other_results": {
+                        "GradCAM": "GradCAM consistently highlighted epicardial LCA vessel segments and septal perforators predominantly during systole as the strongest predictors of low-LVEF."
+                      },
+                      "Summary": {
+                        "Approval_date": "2023-04-17",
+                        "Description": "CathEF is a video-based deep neural network (DNN) designed to predict left ventricular ejection fraction (LVEF) from left coronary angiograms.",
+                        "Developed_by": "Dr. Avram, Dr. Tison and Dr. Olgin",
+                        "Development_period": "2020-01-01 to 2023-04-17",
+                        "Last_update": "2023-04-17",
+                        "License_date": "2023-03-01",
+                        "Licensed_to": "Montreal Heart Institute",
+                        "Name": "CathEF",
+                        "Version": "1.0"
+                      },
+                      "Uses_and_directions": {
+                        "Appropriate_decision_and_support": "N/A",
+                        "Before_using_this_model": "Make sure you have at least three views available to input into the model (RAO Caudal, AP Cranial and LAO Cranial are the best)",
+                        "Benefits": "Estimation of LVEF from standard LCA angiogram videos without additional",
+                        "General_use": "CathEF is an automated estimation of LVEF from standard coronary angiogram videos. It can be used to provide real-time, dynamic assessment of cardiac function during coronary angiography without additional equipment or procedures. It is especially useful for patients with acute coronary syndrome or those at increased risk of contrast-induced nephropathy.",
+                        "Safety_and_efficacy_evaluation": "N/A",
+                        "Target_population_and_use_case": "Adult patients aged ≥18 years who received a coronary angiogram of the left coronmary angiography."
+                      },
+                      "Validation_and_performance": [
+                        {
+                          "UCSF_test_dataset": {
+                            "AUC_ROC_LVEF_40": 0.911,
+                            "AUC_ROC_LVEF_50": 0.879,
+                            "ICC_continuous_LVEF": 0.77,
+                            "MAE_continuous_LVEF": 8.5,
+                            "Pearson_correlation_continuous_LVEF": 0.71,
+                            "Sensitivity_LVEF_40": 83.9,
+                            "Specificity_LVEF_40": 81.3
+                          },
+                          "UOHI_external_validation": {
+                            "AUC_ROC_LVEF_40": 0.906,
+                            "AUC_ROC_LVEF_50": "N/A",
+                            "ICC_continuous_LVEF": 0.62,
+                            "MAE_continuous_LVEF": 7,
+                            "Pearson_correlation_continuous_LVEF": 0.72,
+                            "Sensitivity_LVEF_40": 77.9,
+                            "Specificity_LVEF_40": 88.6
+                          }
+                        },
+                        {
+                          "UCSF_study_cohort": {
+                            "Female_percentage": 35,
+                            "LVEF_over_40_percentage": 82.2,
+                            "LVEF_under_40_percentage": 17.7,
+                            "Mean_age": "64.3±13.3",
+                            "Number_of_angiograms": 3960,
+                            "Number_of_patients": 3404
+                          },
+                          "UOHI_external_validation_cohort": {
+                            "Female_percentage": 33,
+                            "LVEF_over_40_percentage": 76.3,
+                            "LVEF_under_40_percentage": 16.8,
+                            "Mean_age": "68.6±13.3",
+                            "Number_of_angiograms": 776,
+                            "Number_of_patients": 744
+                          }
+                        }
+                      ],
+                      "Warnings_and_limitations": {
+                        "Clinical_rationale": "CathEF has not been validated for use with right coronary angiograms.",
+                        "Discontinue_use_if": "N/A",
+                        "Generalizability": "The model's generalizability to other healthcare institutions and populations requires further validation.",
+                        "Inappropriate_decision_support": "CathEF performance may be affected by administration of contrast during angiography, which can temporarily depress LVEF.",
+                        "Inappropriate_settings": "The model has not been tested on patients with atrial fibrillation, congenital heart disease, or prior cardiac surgery.",
+                        "Risks": "CathEF's performance may be less accurate at extreme LVEF values."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PredictRequest": {
+        "required": ["inferences", "age", "gender", "outputMode"],
+        "type": "object",
+        "properties": {
+          "inferences": {
+            "type": "array",
+            "description": "DICOM converted frames",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          },
+          "age": {
+            "type": "integer",
+            "description": "Age of the patient"
+          },
+          "gender": {
+            "type": "string",
+            "enum": ["MALE", "FEMALE"],
+            "description": "Gender of the patient"
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": ["OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"],
+            "description": "Output mode"
+          }
+        }
+      },
+      "APIResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Operation successful"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "APIErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "Bad Request"
+          },
+          "errorCode": {
+            "type": "string",
+            "example": "BAD_REQUEST"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "GetModelInfoResponse": {
+        "type": "object",
+        "properties": {
+          "modelName": {
+            "type": "string",
+            "description": "Model name",
+            "example": "cathef"
+          },
+          "version": {
+            "type": "string",
+            "description": "Model version",
+            "example": "0.8.0"
+          },
+          "dicomTargetLevel": {
+            "type": "string",
+            "enum": ["PATIENT", "STUDY", "SERIES", "INSTANCE"],
+            "description": "DICOM target level",
+            "example": "SERIES"
+          },
+          "dicomUploadMin": {
+            "type": "integer",
+            "description": "Minimum number of DICOM frames to upload for inference",
+            "example": 1
+          },
+          "dicomUploadMax": {
+            "type": "integer",
+            "description": "Maximum number of DICOM frames to upload for inference",
+            "example": 5
+          },
+          "supportedDicomModalities": {
+            "type": "array",
+            "description": "Supported DICOM modalities",
+            "items": {
+              "type": "string",
+              "example": "XA"
+            }
+          },
+          "supportedOutputModes": {
+            "type": "array",
+            "description": "Supported output modes",
+            "items": {
+              "type": "string",
+              "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"],
+              "example": "JSON"
+            }
+          }
+        }
+      },
+      "GetModelFactsResponse": {
+        "type": "object",
+        "properties": {
+          "en": {
+            "type": "object",
+            "description": "Model facts in English. See example for more details."
+          }
+        }
+      },
+      "PredictResponse": {
+        "type": "object",
+        "properties": {
+          "htmlBase64": {
+            "type": "string",
+            "description": "Base64 encoded HTML"
+          }
+        }
+      }
+    }
+  }
+}
