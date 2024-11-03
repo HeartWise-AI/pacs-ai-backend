@@ -1,6 +1,6 @@
 networks:
-  default:
-    name: pacs-net
+  pacs-net:
+    external: true
 
 include:
   - orthanc/docker-compose.yml
