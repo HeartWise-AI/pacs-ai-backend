@@ -253,7 +253,7 @@ The model version should be defined in the `data/model_info.json` and `data/mode
 
 ## Access and Ports
 
-Inference Model exposes port `80` served by a reverse proxy (Nginx for this example). See `nginx` directory for the configuration.
+Inference Model exposes port `80` served by a reverse proxy (Nginx for this example). See `nginx.conf` for the configuration.
 
 By default, the `/api` path prefix is reserved for the API service served in port `8000`.
 
