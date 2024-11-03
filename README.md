@@ -18,9 +18,11 @@ You need to paste firebase admin configs `pacs-ai-firebase-admin.json` in `confi
 
 Reach out to Robert Avram to get the configs.
 
-3. To run everything locally, run `make up-local`
+3. Run `docker network create pacs-net` to create a network for the containers to communicate with each other.
 
-4. To run it asynchronously, run `make up`
+4. To run everything locally, run `make up-local`
+
+5. To run it asynchronously, run `make up`
 
 You can also opt to launch selected services. Below are the supported commands:
 
