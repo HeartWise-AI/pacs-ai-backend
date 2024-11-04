@@ -33,6 +33,9 @@ import (
 	iamRepository "api-pacs/module/iam/infrastructure/repository"
 	iamService "api-pacs/module/iam/infrastructure/service"
 	iamREST "api-pacs/module/iam/interfaces/http/rest"
+	inferenceRepository "api-pacs/module/inference/infrastructure/repository"
+	inferenceService "api-pacs/module/inference/infrastructure/service"
+	inferenceREST "api-pacs/module/inference/interfaces/http/rest"
 	orthancService "api-pacs/module/orthanc/infrastructure/service"
 	orthancREST "api-pacs/module/orthanc/interfaces/http/rest"
 	predictionService "api-pacs/module/prediction/infrastructure/service"
@@ -53,6 +56,8 @@ type ServiceContainerInterface interface {
 	RegisterElasticsearchRESTCommandController() elasticsearchREST.ElasticsearchCommandController
 	RegisterElasticsearchRESTQueryController() elasticsearchREST.ElasticsearchQueryController
 	RegisterIAMRESTCommandController() iamREST.IAMCommandController
+	RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController
+	RegisterInferenceRESTQueryController() inferenceREST.InferenceQueryController
 	RegisterOrthancRESTCommandController() orthancREST.OrthancCommandController
 	RegisterOrthancRESTQueryController() orthancREST.OrthancQueryController
 	RegisterPredictionRESTCommandController() predictionREST.PredictionCommandController
@@ -119,6 +124,28 @@ func (k *kernel) RegisterIAMRESTCommandController() iamREST.IAMCommandController
 
 	controller := iamREST.IAMCommandController{
 		IAMCommandServiceInterface: service,
+	}
+
+	return controller
+}
+
+// RegisterInferenceRESTCommandController performs dependency injection to the RegisterInferenceRESTCommandController
+func (k *kernel) RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController {
+	service := k.inferenceCommandServiceContainer()
+
+	controller := inferenceREST.InferenceCommandController{
+		InferenceCommandServiceInterface: service,
+	}
+
+	return controller
+}
+
+// RegisterInferenceRESTQueryController performs dependency injection to the RegisterInferenceRESTQueryController
+func (k *kernel) RegisterInferenceRESTQueryController() inferenceREST.InferenceQueryController {
+	service := k.inferenceQueryServiceContainer()
+
+	controller := inferenceREST.InferenceQueryController{
+		InferenceQueryServiceInterface: service,
 	}
 
 	return controller
@@ -280,6 +307,34 @@ func (k *kernel) iamQueryServiceContainer() *iamService.IAMQueryService {
 	service := &iamService.IAMQueryService{
 		IAMQueryRepositoryInterface: &iamRepository.IAMQueryRepositoryCircuitBreaker{
 			IAMQueryRepositoryInterface: repository,
+		},
+	}
+
+	return service
+}
+
+func (k *kernel) inferenceCommandServiceContainer() *inferenceService.InferenceCommandService {
+	repository := &inferenceRepository.InferenceCommandRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
+	service := &inferenceService.InferenceCommandService{
+		InferenceCommandRepositoryInterface: &inferenceRepository.InferenceCommandRepositoryCircuitBreaker{
+			InferenceCommandRepositoryInterface: repository,
+		},
+	}
+
+	return service
+}
+
+func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQueryService {
+	repository := &inferenceRepository.InferenceQueryRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
+	service := &inferenceService.InferenceQueryService{
+		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
+			InferenceQueryRepositoryInterface: repository,
 		},
 	}
 
