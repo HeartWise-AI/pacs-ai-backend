@@ -14,10 +14,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY main.py .
-COPY http_utils.py .
+COPY logic.py .
+COPY config.json .
 COPY .env .
 COPY data/ ./data/
 COPY docs/ ./docs/
+COPY models/ ./models/
+COPY utils/ ./utils/
 
 # Final stage
 FROM python:3.11-slim
