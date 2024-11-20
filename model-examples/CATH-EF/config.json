@@ -1,5 +1,5 @@
 {
-  "workingDirectory": "/home/denis/Documents/GitHub/pacs-ai-backend/model-examples/CATH-EF",
+  "workingDirectory": "/app",
   "modelDirectory": "models",
   "models": {
       "X3D_1": {
