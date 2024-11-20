@@ -26,14 +26,176 @@
   ],
   "tags": [
     {
-      "name": "inference",
+      "name": "Inference",
       "description": "Inference service"
+    },
+    {
+      "name": "Model Management",
+      "description": "Model management operations"
     }
   ],
   "paths": {
+    "/management/loadModels/": {
+      "get": {
+        "tags": [
+          "Model Management"
+        ],
+        "summary": "Load Model",
+        "description": "Endpoint to load the prediction model into memory",
+        "operationId": "load_model",
+        "responses": {
+          "200": {
+            "description": "Model loaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "integer",
+                          "example": 200
+                        },
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Model loaded successfully"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to load model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIErrorResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "integer",
+                          "example": 500
+                        },
+                        "success": {
+                          "type": "boolean",
+                          "example": false
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Failed to load model"
+                        },
+                        "error_code": {
+                          "type": "string",
+                          "example": "MODEL_ERROR"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/management/unloadModels/": {
+      "get": {
+        "tags": [
+          "Model Management"
+        ],
+        "summary": "Unload Model",
+        "description": "Endpoint to unload the prediction model from memory",
+        "operationId": "unload_model",
+        "responses": {
+          "200": {
+            "description": "Model unloaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "integer",
+                          "example": 200
+                        },
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Model unloaded successfully"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error unloading the model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIErrorResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "integer",
+                          "example": 500
+                        },
+                        "success": {
+                          "type": "boolean",
+                          "example": false
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Error occurred while unloading the model"
+                        },
+                        "error_code": {
+                          "type": "string",
+                          "example": "MODEL_ERROR"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/inference/predict": {
       "post": {
-        "tags": ["inference"],
+        "tags": [
+          "Inference"
+        ],
         "summary": "Predict",
         "description": "Creates a prediction request",
         "requestBody": {
@@ -166,7 +328,9 @@
     },
     "/inference/model-info": {
       "get": {
-        "tags": ["inference"],
+        "tags": [
+          "Inference"
+        ],
         "summary": "Get Model Info",
         "description": "Get model info",
         "responses": {
@@ -220,7 +384,9 @@
     },
     "/inference/model-facts": {
       "get": {
-        "tags": ["inference"],
+        "tags": [
+          "Inference"
+        ],
         "summary": "Get Model Facts",
         "description": "Get model facts",
         "responses": {
@@ -377,12 +543,17 @@
   "components": {
     "schemas": {
       "PredictRequest": {
-        "required": ["inferences", "age", "gender", "outputMode"],
+        "required": [
+          "inferences",
+          "age",
+          "gender",
+          "outputMode"
+        ],
         "type": "object",
         "properties": {
           "inferences": {
             "type": "array",
-            "description": "DICOM converted frames",
+            "description": "DICOM Series",
             "items": {
               "type": "array",
               "items": {
@@ -390,7 +561,10 @@
                 "items": {
                   "type": "array",
                   "items": {
-                    "type": "integer"
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
                   }
                 }
               }
@@ -402,12 +576,20 @@
           },
           "gender": {
             "type": "string",
-            "enum": ["MALE", "FEMALE"],
+            "enum": [
+              "MALE",
+              "FEMALE"
+            ],
             "description": "Gender of the patient"
           },
           "outputMode": {
             "type": "string",
-            "enum": ["OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"],
+            "enum": [
+              "OHIF_ANNOTATIONS",
+              "HTML",
+              "WEB_APP",
+              "PDF"
+            ],
             "description": "Output mode"
           }
         }
@@ -465,7 +647,12 @@
           },
           "dicomTargetLevel": {
             "type": "string",
-            "enum": ["PATIENT", "STUDY", "SERIES", "INSTANCE"],
+            "enum": [
+              "PATIENT",
+              "STUDY",
+              "SERIES",
+              "INSTANCE"
+            ],
             "description": "DICOM target level",
             "example": "SERIES"
           },
@@ -492,7 +679,13 @@
             "description": "Supported output modes",
             "items": {
               "type": "string",
-              "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"],
+              "enum": [
+                "JSON",
+                "OHIF_ANNOTATIONS",
+                "HTML",
+                "WEB_APP",
+                "PDF"
+              ],
               "example": "JSON"
             }
           }

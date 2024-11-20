@@ -31,7 +31,6 @@ PredictionService = CustomPredictionService()
 # Mount static files for documentation
 app.mount("/docs", StaticFiles(directory=os.path.join(root_path, "docs"), html=True), name="docs")
 
-#on start
 # @app.on_event("startup")
 # async def on_startup():
 #     PredictionService.load_model(config)

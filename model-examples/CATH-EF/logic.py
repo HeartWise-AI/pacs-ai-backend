@@ -62,6 +62,32 @@ class CustomPredictionService(BasePredictionService):
 
         CustomPredictionService.is_initialized = True
     
+    def _get_vessel_name(self, index: int) -> str:
+        """
+        Returns the vessel name based on the prediction index.
+        
+        Args:
+            index (int): The prediction index from the model
+            
+        Returns:
+            str: The corresponding vessel name
+        """
+        VESSEL_TYPES = {
+            0: 'Aorta',
+            1: 'Catheter',
+            2: 'Femoral',
+            3: 'Graft',
+            4: 'LV',
+            5: 'Left Coronary',
+            6: 'Other',
+            7: 'Pigtail',
+            8: 'Radial',
+            9: 'Right Coronary',
+            10: 'Stenting'
+        }
+        
+        return VESSEL_TYPES.get(index, "Unknown Vessel")
+    
     def videoShenanigans(self, video):
         # Use uuid.uuid4() to create a unique file name
         unique_filename = f"tmp_{uuid.uuid4()}.avi"
@@ -98,11 +124,10 @@ class CustomPredictionService(BasePredictionService):
 
         return np.asarray(compressedVideo).transpose(0, 3, 1, 2)
     
-    def _common_preprocessing(self, request: PredictRequest, mean: List[float], std: List[float], frames: int) -> torch.Tensor:
+    def _common_preprocessing(self, inferences: List[List[List[List[List[int]]]]], mean: List[float], std: List[float], frames: int) -> torch.Tensor:
         lvef_batch = []
-        for inference in range(2):  # Mock data
-        # for inference in request.inferences:
-            numpyData = self._convertFromBase64(inference)
+        for inference in inferences:
+            numpyData = np.array(inference)
 
             # Arrange data for model input
             data = np.repeat(numpyData, 3, axis=1)
@@ -136,59 +161,60 @@ class CustomPredictionService(BasePredictionService):
     def _X3D_1_preprocessing(self, request: PredictRequest) -> torch.Tensor:
         mean = [93.81117248535156, 93.81117248535156, 93.81117248535156]
         std = [59.551239013671875, 59.551239013671875, 59.551239013671875]
-        return self._common_preprocessing(request, mean, std, frames=48)
+        return self._common_preprocessing(request.inferences, mean, std, frames=48)
 
-    def _X3D_2_preprocessing(self, request: PredictRequest) -> torch.Tensor:
+    def _X3D_2_preprocessing(self, inferences: List[List[List[List[List[int]]]]]) -> torch.Tensor:
         mean = [111.72716, 111.72716, 111.72716]
         std = [47.53218, 47.53218, 47.53218]
-        return self._common_preprocessing(request, mean, std, frames=72)
+        return self._common_preprocessing(inferences, mean, std, frames=72)
 
 
     async def _handle_json_output(self, request: PredictRequest):
+        X3D_1_input = self._X3D_1_preprocessing(request)
+        X3D_1_outputs = self.inference(X3D_1_input, 'X3D_1')
         
+        # Process X3D_1 outputs
+        vessel_predictions = []
+        newInferences = []
+        
+        for i, output in enumerate(X3D_1_outputs):
+            prediction = output.detach().cpu().numpy().argmax()
+            vessel_name = self._get_vessel_name(prediction)
+            vessel_predictions.append({
+                "index": i,
+                "vessel": vessel_name
+            })
+            if prediction == 5:  # Left Main
+                newInferences.append(request.inferences[i])
 
-        # X3D_1_input = self._X3D_1_preprocessing(request)
-        # X3D_1_outputs = self.inference(X3D_1_input, 'X3D_1')
-
-        # Only perform the second inference for Left Coronaries
-        # newRequest = []
-        # for i, output in enumerate(X3D_1_outputs):
-        #     if output.detach().cpu().numpy().argmax() == 5:
-        #         newRequest.append(request[i])
-
-        newRequest = []
-
-        if len(newRequest) > 0:
-            # X3D_2_input = self._X3D_2_preprocessing(newRequest)
-            # X3D_2_outputs = self.inference(X3D_2_input, 'X3D_2')
-            return {
-                "predictions": {
-                    "Vessel": {
-                        "presentable": True,
-                        "displayResult": "Left Coronary"
-                    },
-                    "LVEF": {
-                        "presentable": True,
-                        "displayResult": 42.2
-                    }
-                },
-                "modelRecommendations": {
-                    "en": "Recommendation for the next model",
-                    "fr": "Recommandation pour le prochain modèle",
-                    "presentable": True
-                }
+        response = {
+            "predictions": {
+                "vessels": vessel_predictions,
+            },
+            "modelRecommendations": {
+                "en": "Recommendation for the next model",
+                "fr": "Recommandation pour le prochain modèle",
+                "presentable": len(newInferences) > 0
             }
-        else:
-            return {
-                "predictions": {
-                    "Vessel": {
-                        "presentable": True,
-                        "displayResult": "Right Coronary"
-                    }
-                },
-                "modelRecommendations": {
-                    "en": "Recommendation for the next model",
-                    "fr": "Recommandation pour le prochain modèle",
-                    "presentable": False
-                }
+        }
+
+        # Only perform X3D_2 inference if there are Left Coronary predictions
+        if len(newInferences) > 0:
+            X3D_2_input = self._X3D_2_preprocessing(newInferences)
+            X3D_2_outputs = self.inference(X3D_2_input, 'X3D_2')
+            
+            # Process X3D_2 outputs
+            lvef_predictions = []
+            for i, output in enumerate(X3D_2_outputs):
+                lvef_value = float(output.detach().cpu().numpy())  # Assuming this returns the LVEF value
+                lvef_predictions.append({
+                    "index": i,
+                    "value": lvef_value
+                })
+                
+            response["predictions"]["LVEF"] = {
+                "presentable": True,
+                "values": lvef_predictions
             }
+
+        return response
