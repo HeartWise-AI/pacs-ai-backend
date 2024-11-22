@@ -1,8 +1,11 @@
 # main.py
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 import json
 import os
+from datetime import datetime
+import signal
+import asyncio
 from dotenv import load_dotenv
 
 from utils.http_utils import Config, HTMLPredictionResponse, OHIFPredictionResponse, HTTPResponse, PDFPredictionResponse, PredictRequest, JsonPredictionResponse, WebAppPredictionResponse
@@ -31,9 +34,29 @@ PredictionService = CustomPredictionService()
 # Mount static files for documentation
 app.mount("/docs", StaticFiles(directory=os.path.join(root_path, "docs"), html=True), name="docs")
 
-# @app.on_event("startup")
-# async def on_startup():
-#     PredictionService.load_model(config)
+last_request_time = datetime.now()
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(check_inactivity())
+
+async def check_inactivity():
+    global last_request_time
+    while True:
+        await asyncio.sleep(1)  # Async sleep
+        current_time = datetime.now()
+        time_difference = (current_time - last_request_time).total_seconds()
+                
+        if time_difference > 600:  # 10 minutes threshold
+            print("No requests received for 10 minutes. Restarting server...")
+            os.kill(os.getpid(), signal.SIGTERM)
+
+@app.middleware("http")
+async def update_last_request_time(request: Request, call_next):
+    global last_request_time
+    last_request_time = datetime.now()
+    response = await call_next(request)
+    return response
 
 @app.get("/management/loadModels/")
 async def load_model():
@@ -73,6 +96,17 @@ async def unload_model():
 
 @app.post("/inference/predict")
 async def predict(request: PredictRequest):
+
+    try:
+        PredictionService.load_model(config)
+    except Exception as e:
+        return HTTPResponse(
+            status=500,
+            success=False,
+            message=str(e),
+            error_code="MODEL_ERROR"
+        ).to_response()
+    
     succes, response = await PredictionService.predict(request)
     if not succes:
         return response
