@@ -48,8 +48,11 @@ async def check_inactivity():
         time_difference = (current_time - last_request_time).total_seconds()
                 
         if time_difference > 600:  # 10 minutes threshold
-            print("No requests received for 10 minutes. Restarting server...")
-            os.kill(os.getpid(), signal.SIGTERM)
+            if PredictionService.is_initialized: # Only reset server if models are loaded
+                print("No requests received for 10 minutes. Restarting server...")
+                os.kill(os.getpid(), signal.SIGTERM)
+            else:
+                last_request_time = datetime.now()
 
 @app.middleware("http")
 async def update_last_request_time(request: Request, call_next):
