@@ -58,42 +58,6 @@ async def update_last_request_time(request: Request, call_next):
     response = await call_next(request)
     return response
 
-@app.get("/management/loadModels/")
-async def load_model():
-    try:
-        PredictionService.load_model(config)
-        return HTTPResponse(
-            status=200,
-            success=True,
-            message="Model loaded successfully"
-        ).to_response()
-    
-    except Exception as e:
-        return HTTPResponse(
-            status=500,
-            success=False,
-            message=str(e),
-            error_code="MODEL_ERROR"
-        ).to_response()
-
-@app.get("/management/unloadModels/")
-async def unload_model():
-    try:
-        PredictionService.unload_model()
-        return HTTPResponse(
-            status=200,
-            success=True,
-            message="Model unloaded successfully"
-        ).to_response()
-    
-    except Exception as e:
-        return HTTPResponse(
-            status=500,
-            success=False,
-            message=str(e),
-            error_code="MODEL_ERROR"
-        ).to_response()
-
 @app.post("/inference/predict")
 async def predict(request: PredictRequest):
 
