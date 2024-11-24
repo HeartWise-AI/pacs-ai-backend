@@ -42,6 +42,10 @@
       "description": "IAM service"
     },
     {
+      "name": "inference",
+      "description": "Inference service"
+    },
+    {
       "name": "orthanc",
       "description": "Orthanc service"
     },
@@ -233,6 +237,150 @@
           },
           "required": true
         },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/add": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Add Inference Model",
+        "description": "Add inference model.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Add inference model request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddInferenceModelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/update": {
+      "put": {
+        "tags": ["inference"],
+        "summary": "Update Inference Model",
+        "description": "Update inference model.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update inference model request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInferenceModelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/{id}/container/update": {
+      "put": {
+        "tags": ["inference"],
+        "summary": "Update Inference Model Container",
+        "description": "Update inference model container.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Inference model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Update inference model container request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInferenceModelContainerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/{id}/remove": {
+      "delete": {
+        "tags": ["inference"],
+        "summary": "Delete Inference Model",
+        "description": "Delete inference model.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Inference model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "2xx": {
             "description": "Success"
@@ -843,6 +991,25 @@
   },
   "components": {
     "schemas": {
+      "AddInferenceModelRequest": {
+        "required": ["name", "dockerImage", "outputMode"],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "dockerImage": {
+            "type": "string"
+          },
+          "envs": {
+            "type": "object"
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
+          }
+        }
+      },
       "CreateTenantOwnerRequest": {
         "required": [
           "tenantId",
@@ -992,6 +1159,37 @@
         "type": "object",
         "properties": {
           "queryId": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateInferenceModelRequest": {
+        "required": ["id", "name", "dockerImage", "outputMode"],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "dockerImage": {
+            "type": "string"
+          },
+          "envs": {
+            "type": "object"
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
+          }
+        }
+      },
+      "UpdateInferenceModelContainerRequest": {
+        "required": ["containerId"],
+        "type": "object",
+        "properties": {
+          "containerId": {
             "type": "string"
           }
         }

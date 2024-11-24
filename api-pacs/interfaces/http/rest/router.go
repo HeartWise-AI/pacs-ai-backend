@@ -18,8 +18,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 
 	"api-pacs/interfaces"
 	"api-pacs/interfaces/http/rest/middlewares/cors"
@@ -46,6 +46,7 @@ func (router *router) InitRouter() *chi.Mux {
 	elasticsearchQueryController := interfaces.ServiceContainer().RegisterElasticsearchRESTQueryController()
 	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
+	inferenceCommandController := interfaces.ServiceContainer().RegisterInferenceRESTCommandController()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
 	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
 	predictionController := interfaces.ServiceContainer().RegisterPredictionRESTCommandController()
@@ -117,6 +118,20 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Post("/login", iamCommandController.LoginTenantUser)
 				r.Post("/forgot-password", iamCommandController.ForgotTenantUserPassword)
 				r.Post("/verify-email", iamCommandController.VerifyTenantUserEmail)
+			})
+
+			// inference module
+			r.Route("/inference", func(r chi.Router) {
+				// admin or owner only
+				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.TokenSessionAuthGuard)
+					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+
+					r.Post("/model/add", inferenceCommandController.AddInferenceModel)
+					r.Put("/model/update", inferenceCommandController.UpdateInferenceModel)
+					r.Put("/model/{ID}/container/update", inferenceCommandController.UpdateInferenceModelContainer)
+					r.Delete("/model/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
+				})
 			})
 
 			// orthanc module

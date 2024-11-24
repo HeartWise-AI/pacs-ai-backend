@@ -50,6 +50,7 @@ const (
 
 	// Inference-related errors
 	DICOMParseError string = "DICOM_PARSE_ERROR"
+	DockerError     string = "DOCKER_ERROR"
 	InferenceError  string = "INFERENCE_ERROR"
 	TorchServeError string = "TORCHSERVE_ERROR"
 )

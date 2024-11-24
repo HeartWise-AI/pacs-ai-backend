@@ -7,7 +7,6 @@ require (
 	firebase.google.com/go/v4 v4.14.0
 	github.com/afex/hystrix-go v0.0.0-20180502004556-fa1af6a1f4f5
 	github.com/elastic/go-elasticsearch/v8 v8.13.1
-	github.com/go-chi/chi v1.5.4
 	github.com/go-chi/cors v1.2.1
 	github.com/go-playground/validator/v10 v10.16.0
 	github.com/go-redis/redis v6.15.9+incompatible
@@ -37,7 +36,7 @@ require (
 	github.com/MicahParks/keyfunc v1.9.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
-	github.com/go-chi/chi/v5 v5.0.8 // indirect
+	github.com/go-chi/chi/v5 v5.0.8
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
