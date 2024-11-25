@@ -283,26 +283,27 @@
         }
       }
     },
-    "/inference/model/update": {
-      "put": {
+    "/inference/model/container/{containerID}/restart": {
+      "post": {
         "tags": ["inference"],
-        "summary": "Update Inference Model",
-        "description": "Update inference model.",
+        "summary": "Restart Inference Model Container",
+        "description": "Restart inference model container.",
         "security": [
           {
             "bearerAuth": []
           }
         ],
-        "requestBody": {
-          "description": "Update inference model request",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateInferenceModelRequest"
-              }
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
           }
-        },
+        ],
         "responses": {
           "2xx": {
             "description": "Success"
@@ -316,11 +317,11 @@
         }
       }
     },
-    "/inference/model/{id}/container/update": {
-      "put": {
+    "/inference/model/container/{containerID}/start": {
+      "post": {
         "tags": ["inference"],
-        "summary": "Update Inference Model Container",
-        "description": "Update inference model container.",
+        "summary": "Start Inference Model Container",
+        "description": "Start inference model container.",
         "security": [
           {
             "bearerAuth": []
@@ -328,25 +329,83 @@
         ],
         "parameters": [
           {
-            "name": "id",
+            "name": "containerID",
             "in": "path",
-            "description": "Inference model ID",
+            "description": "Container ID",
             "required": true,
             "schema": {
               "type": "string"
             }
           }
         ],
-        "requestBody": {
-          "description": "Update inference model container request",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateInferenceModelContainerRequest"
-              }
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/container/{containerID}/stop": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Stop Inference Model Container",
+        "description": "Stop inference model container.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
           }
-        },
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/container/{containerID}/info": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Inference Model Container Info",
+        "description": "Get inference model container info.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "2xx": {
             "description": "Success"
@@ -1002,7 +1061,10 @@
             "type": "string"
           },
           "envs": {
-            "type": "object"
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "outputMode": {
             "type": "string",
@@ -1159,37 +1221,6 @@
         "type": "object",
         "properties": {
           "queryId": {
-            "type": "string"
-          }
-        }
-      },
-      "UpdateInferenceModelRequest": {
-        "required": ["id", "name", "dockerImage", "outputMode"],
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "dockerImage": {
-            "type": "string"
-          },
-          "envs": {
-            "type": "object"
-          },
-          "outputMode": {
-            "type": "string",
-            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
-          }
-        }
-      },
-      "UpdateInferenceModelContainerRequest": {
-        "required": ["containerId"],
-        "type": "object",
-        "properties": {
-          "containerId": {
             "type": "string"
           }
         }

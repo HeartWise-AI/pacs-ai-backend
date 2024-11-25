@@ -3,6 +3,7 @@ package http
 import (
 	"github.com/go-playground/validator/v10"
 
+	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	"api-pacs/module/inference/domain/entity"
 )
 
@@ -37,4 +38,15 @@ type UpdateInferenceModelRequest struct {
 
 type UpdateInferenceModelContainerRequest struct {
 	ContainerID string `json:"containerId" validate:"required"`
+}
+
+type GetContainerInfoResponse struct {
+	ID              string             `json:"id"`
+	Name            string             `json:"name"`
+	Status          dockerTypes.Status `json:"status"`
+	Running         bool               `json:"running"`
+	StartedAt       uint64             `json:"startedAt"`
+	FinishedAt      uint64             `json:"finishedAt"`
+	CPUPercentUsage float64            `json:"cpuPercentUsage"`
+	MemoryInBytes   uint64             `json:"memoryInBytes"`
 }

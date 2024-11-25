@@ -23,6 +23,8 @@ import (
 	"api-pacs/infrastructures/providers/api/inference"
 	"api-pacs/infrastructures/providers/api/kibana"
 	"api-pacs/infrastructures/providers/api/orthanc"
+	"api-pacs/infrastructures/providers/sdk/docker"
+	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	"api-pacs/infrastructures/providers/sdk/mailgun"
 	mailgunTypes "api-pacs/infrastructures/providers/sdk/mailgun/types"
@@ -80,6 +82,7 @@ var (
 	kibanaAPI              *kibana.KibanaAPI
 	inferenceAPI           *inference.InferenceAPI
 	mailgunSDK             *mailgun.MailgunSDK
+	dockerSDK              *docker.DockerSDK
 )
 
 // ================================= REST ===================================
@@ -314,14 +317,22 @@ func (k *kernel) iamQueryServiceContainer() *iamService.IAMQueryService {
 }
 
 func (k *kernel) inferenceCommandServiceContainer() *inferenceService.InferenceCommandService {
-	repository := &inferenceRepository.InferenceCommandRepository{
+	commandRepository := &inferenceRepository.InferenceCommandRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
+	queryRepository := &inferenceRepository.InferenceQueryRepository{
 		FirebaseAdminSDK: firebaseAdminSDK,
 	}
 
 	service := &inferenceService.InferenceCommandService{
 		InferenceCommandRepositoryInterface: &inferenceRepository.InferenceCommandRepositoryCircuitBreaker{
-			InferenceCommandRepositoryInterface: repository,
+			InferenceCommandRepositoryInterface: commandRepository,
 		},
+		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
+			InferenceQueryRepositoryInterface: queryRepository,
+		},
+		DockerSDKInterface: dockerSDK,
 	}
 
 	return service
@@ -336,6 +347,7 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
 			InferenceQueryRepositoryInterface: repository,
 		},
+		DockerSDKInterface: dockerSDK,
 	}
 
 	return service
@@ -403,7 +415,7 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 		UserQueryServiceInterface:            k.userQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
-		MailgunSDK:                           mailgunSDK,
+		MailgunSDKInterface:                  mailgunSDK,
 	}
 
 	return service
@@ -464,6 +476,16 @@ func registerHandlers() {
 	})
 	if err != nil {
 		log.Fatalf("[SERVER] cannot initialize mailgun: %v", err)
+	}
+
+	// init docker sdk
+	dockerSDK, err = docker.NewClient(dockerTypes.Config{
+		Username: os.Getenv("DOCKER_USERNAME"),
+		Password: os.Getenv("DOCKER_PASSWORD"),
+		Network:  os.Getenv("DOCKER_NETWORK"),
+	})
+	if err != nil {
+		log.Fatalf("[SERVER] cannot initialize docker: %v", err)
 	}
 
 	// run event listeners and cron jobs

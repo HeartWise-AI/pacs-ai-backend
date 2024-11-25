@@ -162,15 +162,14 @@ func (controller *InferenceCommandController) DeleteInferenceModel(w http.Respon
 	response.JSON(w)
 }
 
-// UpdateInferenceModel update an inference model
-func (controller *InferenceCommandController) UpdateInferenceModel(w http.ResponseWriter, r *http.Request) {
-	var request types.UpdateInferenceModelRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+// RestartInferenceModelContainer restarts an inference model container
+func (controller *InferenceCommandController) RestartInferenceModelContainer(w http.ResponseWriter, r *http.Request) {
+	containerID := chi.URLParam(r, "containerID")
+	if len(containerID) == 0 {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
-			Message:   "Invalid payload request.",
+			Message:   "Invalid container ID.",
 			ErrorCode: apiError.InvalidRequestPayload,
 		}
 
@@ -178,40 +177,7 @@ func (controller *InferenceCommandController) UpdateInferenceModel(w http.Respon
 		return
 	}
 
-	// validate request
-	err := types.Validate.Struct(request)
-	if err != nil {
-		errors := err.(validator.ValidationErrors)
-		if len(errors) > 0 {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   types.ValidationErrors[errors[0].StructNamespace()],
-				ErrorCode: apiError.InvalidPayload,
-			}
-
-			response.JSON(w)
-			return
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	err = controller.InferenceCommandServiceInterface.UpdateInferenceModel(context.TODO(), serviceTypes.UpdateInferenceModel{
-		ID:          request.ID,
-		Name:        request.Name,
-		DockerImage: request.DockerImage,
-		Envs:        request.Envs,
-		OutputMode:  request.OutputMode,
-	})
+	err := controller.InferenceCommandServiceInterface.RestartInferenceModelContainer(context.TODO(), containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -220,9 +186,6 @@ func (controller *InferenceCommandController) UpdateInferenceModel(w http.Respon
 		case apiError.DockerError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker service encountered an error."
-		case errors.DatabaseError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Error occurred while saving inference model."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Please contact technical support."
@@ -242,20 +205,20 @@ func (controller *InferenceCommandController) UpdateInferenceModel(w http.Respon
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,
-		Message: "Successfully updated inference model.",
+		Message: "Successfully restarted inference model container.",
 	}
 
 	response.JSON(w)
 }
 
-// UpdateInferenceModelContainer update inference model container
-func (controller *InferenceCommandController) UpdateInferenceModelContainer(w http.ResponseWriter, r *http.Request) {
-	ID := chi.URLParam(r, "ID")
-	if len(ID) == 0 {
+// StartInferenceModelContainer starts an inference model container
+func (controller *InferenceCommandController) StartInferenceModelContainer(w http.ResponseWriter, r *http.Request) {
+	containerID := chi.URLParam(r, "containerID")
+	if len(containerID) == 0 {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
-			Message:   "Invalid inference model ID.",
+			Message:   "Invalid container ID.",
 			ErrorCode: apiError.InvalidRequestPayload,
 		}
 
@@ -263,48 +226,7 @@ func (controller *InferenceCommandController) UpdateInferenceModelContainer(w ht
 		return
 	}
 
-	var request types.UpdateInferenceModelContainerRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// validate request
-	err := types.Validate.Struct(request)
-	if err != nil {
-		errors := err.(validator.ValidationErrors)
-		if len(errors) > 0 {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   types.ValidationErrors[errors[0].StructNamespace()],
-				ErrorCode: apiError.InvalidPayload,
-			}
-
-			response.JSON(w)
-			return
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	err = controller.InferenceCommandServiceInterface.UpdateInferenceModelContainerID(context.TODO(), ID, request.ContainerID)
+	err := controller.InferenceCommandServiceInterface.StartInferenceModelContainer(context.TODO(), containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -313,9 +235,6 @@ func (controller *InferenceCommandController) UpdateInferenceModelContainer(w ht
 		case apiError.DockerError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker service encountered an error."
-		case errors.DatabaseError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Error occurred while saving inference model."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Please contact technical support."
@@ -335,7 +254,56 @@ func (controller *InferenceCommandController) UpdateInferenceModelContainer(w ht
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,
-		Message: "Successfully updated inference model container.",
+		Message: "Successfully started inference model container.",
+	}
+
+	response.JSON(w)
+}
+
+// StopInferenceModelContainer stops an inference model container
+func (controller *InferenceCommandController) StopInferenceModelContainer(w http.ResponseWriter, r *http.Request) {
+	containerID := chi.URLParam(r, "containerID")
+	if len(containerID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid container ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err := controller.InferenceCommandServiceInterface.StopInferenceModelContainer(context.TODO(), containerID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.DockerError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Docker service encountered an error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully stopped inference model container.",
 	}
 
 	response.JSON(w)

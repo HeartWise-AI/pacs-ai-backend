@@ -12,8 +12,10 @@ type InferenceCommandServiceInterface interface {
 	AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error
 	// DeleteInferenceModel deletes an inference model
 	DeleteInferenceModel(ctx context.Context, ID string) error
-	// UpdateInferenceModel updates an inference model
-	UpdateInferenceModel(ctx context.Context, data types.UpdateInferenceModel) error
-	// UpdateInferenceModelContainerID updates the container ID of an inference model
-	UpdateInferenceModelContainerID(ctx context.Context, ID, containerID string) error
+	// RestartInferenceModelContainer restarts an inference model container
+	RestartInferenceModelContainer(ctx context.Context, containerID string) error
+	// StartInferenceModelContainer starts an inference model container
+	StartInferenceModelContainer(ctx context.Context, containerID string) error
+	// StopInferenceModelContainer stops an inference model container
+	StopInferenceModelContainer(ctx context.Context, containerID string) error
 }
