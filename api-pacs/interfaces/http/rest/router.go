@@ -132,6 +132,7 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Post("/model/container/{containerID}/restart", inferenceCommandController.RestartInferenceModelContainer)
 					r.Post("/model/container/{containerID}/start", inferenceCommandController.StartInferenceModelContainer)
 					r.Post("/model/container/{containerID}/stop", inferenceCommandController.StopInferenceModelContainer)
+					r.Get("/model/list", inferenceQueryController.GetInferenceModels)
 					r.Get("/model/container/{containerID}/info", inferenceQueryController.GetContainerInfo)
 					r.Delete("/model/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
 				})

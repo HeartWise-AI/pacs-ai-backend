@@ -6,6 +6,7 @@ import (
 
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
 	"api-pacs/module/inference/infrastructure/service/types"
 )
@@ -33,4 +34,14 @@ func (service *InferenceQueryService) GetContainerInfo(ctx context.Context, cont
 		CPUPercentUsage: containerInfo.CPUPercentUsage,
 		MemoryInBytes:   containerInfo.MemoryInBytes,
 	}, nil
+}
+
+// GetInferenceModels returns the inference models
+func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, tenantID string) ([]entity.InferenceModel, error) {
+	inferenceModels, err := service.InferenceQueryRepositoryInterface.SelectInferenceModels(ctx, tenantID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	return inferenceModels, nil
 }

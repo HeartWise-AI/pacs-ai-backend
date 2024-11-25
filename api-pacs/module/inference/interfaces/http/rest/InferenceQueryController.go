@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/application"
@@ -68,6 +69,66 @@ func (controller *InferenceQueryController) GetContainerInfo(w http.ResponseWrit
 			StartedAt:  uint64(containerInfo.StartedAt.Unix()),
 			FinishedAt: uint64(containerInfo.FinishedAt.Unix()),
 		},
+	}
+
+	response.JSON(w)
+}
+
+// GetInferenceModels returns the inference models
+func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	inferenceModels, err := controller.InferenceQueryServiceInterface.GetInferenceModels(r.Context(), tenantID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Firestore service encountered an error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var inferenceModelsResponse []types.GetInferenceModelResponse
+	for _, inferenceModel := range inferenceModels {
+		// set env to empty if nil
+		envs := inferenceModel.Envs
+		if envs == nil {
+			envs = []string{}
+		}
+
+		inferenceModelsResponse = append(inferenceModelsResponse, types.GetInferenceModelResponse{
+			ID:          inferenceModel.ID,
+			TenantID:    inferenceModel.TenantID,
+			ContainerID: inferenceModel.ContainerID,
+			Name:        inferenceModel.Name,
+			DockerImage: inferenceModel.DockerImage,
+			Envs:        envs,
+			OutputMode:  inferenceModel.OutputMode,
+			CreatedAt:   uint64(inferenceModel.CreatedAt),
+			UpdatedAt:   uint64(inferenceModel.UpdatedAt),
+		})
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully retrieved inference models.",
+		Data:    inferenceModelsResponse,
 	}
 
 	response.JSON(w)

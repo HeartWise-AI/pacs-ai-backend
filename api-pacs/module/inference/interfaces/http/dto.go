@@ -50,3 +50,15 @@ type GetContainerInfoResponse struct {
 	CPUPercentUsage float64            `json:"cpuPercentUsage"`
 	MemoryInBytes   uint64             `json:"memoryInBytes"`
 }
+
+type GetInferenceModelResponse struct {
+	ID          string            `json:"id"`
+	TenantID    string            `json:"tenantId"`
+	ContainerID string            `json:"containerId"`
+	Name        string            `json:"name"`
+	DockerImage string            `json:"dockerImage"`
+	Envs        []string          `json:"envs"`
+	OutputMode  entity.OutputMode `json:"outputMode"`
+	CreatedAt   uint64            `json:"createdAt"`
+	UpdatedAt   uint64            `json:"updatedAt"`
+}

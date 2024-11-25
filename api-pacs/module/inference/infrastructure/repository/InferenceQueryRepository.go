@@ -74,5 +74,9 @@ func (repository *InferenceQueryRepository) SelectInferenceModels(ctx context.Co
 		inferenceModels = append(inferenceModels, inferenceModel)
 	}
 
+	if len(inferenceModels) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
 	return inferenceModels, nil
 }

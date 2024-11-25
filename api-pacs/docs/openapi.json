@@ -385,6 +385,29 @@
         }
       }
     },
+    "/inference/model/list": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Inference Models",
+        "description": "Get inference models.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/inference/model/container/{containerID}/info": {
       "get": {
         "tags": ["inference"],
