@@ -167,7 +167,6 @@ func (d *DockerSDK) PullImage(ctx context.Context, imageName string) error {
 func (d *DockerSDK) RemoveContainer(ctx context.Context, containerID string) error {
 	err := d.Client.ContainerRemove(ctx, containerID, container.RemoveOptions{
 		RemoveVolumes: true,
-		RemoveLinks:   true,
 		Force:         true,
 	})
 	if err != nil {
