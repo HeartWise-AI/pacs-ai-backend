@@ -51,7 +51,7 @@ class CustomPredictionService(BasePredictionService):
                 model.eval()
 
                 # Send model to device
-                model.to('cuda')
+                model.to('cuda' if torch.cuda.is_available() else 'cpu')
 
                 # Store the model in the class dictionary
                 CustomPredictionService.models[key] = model
@@ -155,7 +155,7 @@ class CustomPredictionService(BasePredictionService):
             video = tuple(video[:, s + 1 * np.arange(length), :, :] for s in start)[0]
             lvef_batch.append(torch.as_tensor(video).unsqueeze(0))
 
-        return torch.cat(lvef_batch, dim=0).to('cuda')
+        return torch.cat(lvef_batch, dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Optionally, redefine your specific preprocessing functions to use the common one
     def _X3D_1_preprocessing(self, request: PredictRequest) -> torch.Tensor:
