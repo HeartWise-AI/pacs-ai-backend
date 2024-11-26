@@ -41,7 +41,7 @@ func (service *InferenceQueryService) GetContainerInfo(ctx context.Context, cont
 }
 
 // GetInferenceModels returns the inference models
-func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, tenantID string) ([]types.GetInferenceModelsResult, error) {
+func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, tenantID string) ([]types.GetInferenceModelResult, error) {
 	inferenceModels, err := service.InferenceQueryRepositoryInterface.SelectInferenceModels(ctx, tenantID)
 	if err != nil && err.Error() != apiError.MissingRecord {
 		return nil, errors.New(apiError.FirestoreError)
@@ -50,7 +50,7 @@ func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, te
 	var m = sync.Mutex{}
 	eg, _ := errgroup.WithContext(ctx)
 
-	inferenceModelsResult := make([]types.GetInferenceModelsResult, len(inferenceModels))
+	inferenceModelsResult := make([]types.GetInferenceModelResult, len(inferenceModels))
 
 	// set limit
 	eg.SetLimit(len(inferenceModels))
@@ -66,10 +66,10 @@ func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, te
 					return err
 				}
 
-				inferenceModelsResult[i] = types.GetInferenceModelsResult{
+				inferenceModelsResult[i] = types.GetInferenceModelResult{
 					ID:       inferenceModel.ID,
 					TenantID: inferenceModel.TenantID,
-					ContainerInfo: types.GetContainerInfoResult{
+					Container: types.GetContainerInfoResult{
 						ID:              containerInfo.ID,
 						Name:            containerInfo.Name,
 						Status:          containerInfo.Status,

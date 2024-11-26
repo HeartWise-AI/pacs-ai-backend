@@ -11,5 +11,5 @@ type InferenceQueryServiceInterface interface {
 	// GetContainerInfo returns the container info
 	GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error)
 	// GetInferenceModels returns the inference models
-	GetInferenceModels(ctx context.Context, tenantID string) ([]types.GetInferenceModelsResult, error)
+	GetInferenceModels(ctx context.Context, tenantID string) ([]types.GetInferenceModelResult, error)
 }
