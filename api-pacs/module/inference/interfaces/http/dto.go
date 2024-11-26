@@ -52,13 +52,13 @@ type GetContainerInfoResponse struct {
 }
 
 type GetInferenceModelResponse struct {
-	ID          string            `json:"id"`
-	TenantID    string            `json:"tenantId"`
-	ContainerID string            `json:"containerId"`
-	Name        string            `json:"name"`
-	DockerImage string            `json:"dockerImage"`
-	Envs        []string          `json:"envs"`
-	OutputMode  entity.OutputMode `json:"outputMode"`
-	CreatedAt   uint64            `json:"createdAt"`
-	UpdatedAt   uint64            `json:"updatedAt"`
+	ID            string                   `json:"id"`
+	TenantID      string                   `json:"tenantId"`
+	ContainerInfo GetContainerInfoResponse `json:"containerInfo"`
+	Name          string                   `json:"name"`
+	DockerImage   string                   `json:"dockerImage"`
+	Envs          []string                 `json:"envs"`
+	OutputMode    entity.OutputMode        `json:"outputMode"`
+	CreatedAt     uint64                   `json:"createdAt"`
+	UpdatedAt     uint64                   `json:"updatedAt"`
 }

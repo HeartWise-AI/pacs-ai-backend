@@ -112,15 +112,24 @@ func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWr
 		}
 
 		inferenceModelsResponse = append(inferenceModelsResponse, types.GetInferenceModelResponse{
-			ID:          inferenceModel.ID,
-			TenantID:    inferenceModel.TenantID,
-			ContainerID: inferenceModel.ContainerID,
+			ID:       inferenceModel.ID,
+			TenantID: inferenceModel.TenantID,
+			ContainerInfo: types.GetContainerInfoResponse{
+				ID:              inferenceModel.ContainerInfo.ID,
+				Name:            inferenceModel.ContainerInfo.Name,
+				Status:          inferenceModel.ContainerInfo.Status,
+				Running:         inferenceModel.ContainerInfo.Running,
+				StartedAt:       uint64(inferenceModel.ContainerInfo.StartedAt.Unix()),
+				FinishedAt:      uint64(inferenceModel.ContainerInfo.FinishedAt.Unix()),
+				CPUPercentUsage: inferenceModel.ContainerInfo.CPUPercentUsage,
+				MemoryInBytes:   inferenceModel.ContainerInfo.MemoryInBytes,
+			},
 			Name:        inferenceModel.Name,
 			DockerImage: inferenceModel.DockerImage,
 			Envs:        envs,
 			OutputMode:  inferenceModel.OutputMode,
-			CreatedAt:   uint64(inferenceModel.CreatedAt),
-			UpdatedAt:   uint64(inferenceModel.UpdatedAt),
+			CreatedAt:   uint64(inferenceModel.CreatedAt.Unix()),
+			UpdatedAt:   uint64(inferenceModel.UpdatedAt.Unix()),
 		})
 	}
 

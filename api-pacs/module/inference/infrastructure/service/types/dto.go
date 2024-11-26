@@ -26,6 +26,18 @@ type GetContainerInfoResult struct {
 	MemoryInBytes   uint64  // in bytes
 }
 
+type GetInferenceModelsResult struct {
+	ID            string
+	TenantID      string
+	ContainerInfo GetContainerInfoResult
+	Name          string
+	DockerImage   string
+	Envs          []string
+	OutputMode    entity.OutputMode
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 type UpdateInferenceModel struct {
 	ID          string
 	Name        string
