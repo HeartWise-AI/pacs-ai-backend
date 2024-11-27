@@ -23,6 +23,8 @@ import (
 	"api-pacs/infrastructures/providers/api/inference"
 	"api-pacs/infrastructures/providers/api/kibana"
 	"api-pacs/infrastructures/providers/api/orthanc"
+	"api-pacs/infrastructures/providers/sdk/docker"
+	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	"api-pacs/infrastructures/providers/sdk/mailgun"
 	mailgunTypes "api-pacs/infrastructures/providers/sdk/mailgun/types"
@@ -33,6 +35,9 @@ import (
 	iamRepository "api-pacs/module/iam/infrastructure/repository"
 	iamService "api-pacs/module/iam/infrastructure/service"
 	iamREST "api-pacs/module/iam/interfaces/http/rest"
+	inferenceRepository "api-pacs/module/inference/infrastructure/repository"
+	inferenceService "api-pacs/module/inference/infrastructure/service"
+	inferenceREST "api-pacs/module/inference/interfaces/http/rest"
 	orthancService "api-pacs/module/orthanc/infrastructure/service"
 	orthancREST "api-pacs/module/orthanc/interfaces/http/rest"
 	predictionService "api-pacs/module/prediction/infrastructure/service"
@@ -53,6 +58,8 @@ type ServiceContainerInterface interface {
 	RegisterElasticsearchRESTCommandController() elasticsearchREST.ElasticsearchCommandController
 	RegisterElasticsearchRESTQueryController() elasticsearchREST.ElasticsearchQueryController
 	RegisterIAMRESTCommandController() iamREST.IAMCommandController
+	RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController
+	RegisterInferenceRESTQueryController() inferenceREST.InferenceQueryController
 	RegisterOrthancRESTCommandController() orthancREST.OrthancCommandController
 	RegisterOrthancRESTQueryController() orthancREST.OrthancQueryController
 	RegisterPredictionRESTCommandController() predictionREST.PredictionCommandController
@@ -75,6 +82,7 @@ var (
 	kibanaAPI              *kibana.KibanaAPI
 	inferenceAPI           *inference.InferenceAPI
 	mailgunSDK             *mailgun.MailgunSDK
+	dockerSDK              *docker.DockerSDK
 )
 
 // ================================= REST ===================================
@@ -119,6 +127,28 @@ func (k *kernel) RegisterIAMRESTCommandController() iamREST.IAMCommandController
 
 	controller := iamREST.IAMCommandController{
 		IAMCommandServiceInterface: service,
+	}
+
+	return controller
+}
+
+// RegisterInferenceRESTCommandController performs dependency injection to the RegisterInferenceRESTCommandController
+func (k *kernel) RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController {
+	service := k.inferenceCommandServiceContainer()
+
+	controller := inferenceREST.InferenceCommandController{
+		InferenceCommandServiceInterface: service,
+	}
+
+	return controller
+}
+
+// RegisterInferenceRESTQueryController performs dependency injection to the RegisterInferenceRESTQueryController
+func (k *kernel) RegisterInferenceRESTQueryController() inferenceREST.InferenceQueryController {
+	service := k.inferenceQueryServiceContainer()
+
+	controller := inferenceREST.InferenceQueryController{
+		InferenceQueryServiceInterface: service,
 	}
 
 	return controller
@@ -286,6 +316,43 @@ func (k *kernel) iamQueryServiceContainer() *iamService.IAMQueryService {
 	return service
 }
 
+func (k *kernel) inferenceCommandServiceContainer() *inferenceService.InferenceCommandService {
+	commandRepository := &inferenceRepository.InferenceCommandRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
+	queryRepository := &inferenceRepository.InferenceQueryRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
+	service := &inferenceService.InferenceCommandService{
+		InferenceCommandRepositoryInterface: &inferenceRepository.InferenceCommandRepositoryCircuitBreaker{
+			InferenceCommandRepositoryInterface: commandRepository,
+		},
+		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
+			InferenceQueryRepositoryInterface: queryRepository,
+		},
+		DockerSDKInterface: dockerSDK,
+	}
+
+	return service
+}
+
+func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQueryService {
+	repository := &inferenceRepository.InferenceQueryRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
+	service := &inferenceService.InferenceQueryService{
+		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
+			InferenceQueryRepositoryInterface: repository,
+		},
+		DockerSDKInterface: dockerSDK,
+	}
+
+	return service
+}
+
 func (k *kernel) orthancCommandServiceContainer() *orthancService.OrthancCommandService {
 	return OrthancCommandServiceDI()
 }
@@ -348,7 +415,7 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 		UserQueryServiceInterface:            k.userQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
-		MailgunSDK:                           mailgunSDK,
+		MailgunSDKInterface:                  mailgunSDK,
 	}
 
 	return service
@@ -409,6 +476,16 @@ func registerHandlers() {
 	})
 	if err != nil {
 		log.Fatalf("[SERVER] cannot initialize mailgun: %v", err)
+	}
+
+	// init docker sdk
+	dockerSDK, err = docker.NewClient(dockerTypes.Config{
+		Username: os.Getenv("DOCKER_USERNAME"),
+		Password: os.Getenv("DOCKER_PASSWORD"),
+		Network:  os.Getenv("DOCKER_NETWORK"),
+	})
+	if err != nil {
+		log.Fatalf("[SERVER] cannot initialize docker: %v", err)
 	}
 
 	// run event listeners and cron jobs

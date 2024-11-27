@@ -8,7 +8,6 @@ import (
 
 	"github.com/segmentio/ksuid"
 
-	"api-pacs/infrastructures/providers/sdk/mailgun"
 	mailgunTypes "api-pacs/infrastructures/providers/sdk/mailgun/types"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	"api-pacs/module/elasticsearch/domain/entity"
@@ -26,7 +25,7 @@ type UserCommandService struct {
 	userApplication.UserQueryServiceInterface
 	tenantApplication.TenantQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
-	MailgunSDK *mailgun.MailgunSDK
+	mailgunTypes.MailgunSDKInterface
 }
 
 // CreateTenantUser add a new tenant user with random generated password
@@ -84,7 +83,7 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 			"You can use this and login to PACS AI via <a href=\"%s\">%s</a>. You will be then prompted to change password. <br /><br />"+
 			"Thanks, <br /><br />"+
 			"Your PACS AI team", data.Name, data.Email, generatedPassword, redirectLink, redirectLink)
-		err = service.MailgunSDK.SendEmail(ctx, mailgunTypes.MailgunSendEmailRequest{
+		err = service.MailgunSDKInterface.SendEmail(ctx, mailgunTypes.MailgunSendEmailRequest{
 			Subject:       "[PACS AI]: New account credentials",
 			Recipient:     data.Email,
 			PlainTextBody: emailMessage,

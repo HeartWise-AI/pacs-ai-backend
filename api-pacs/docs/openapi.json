@@ -42,6 +42,10 @@
       "description": "IAM service"
     },
     {
+      "name": "inference",
+      "description": "Inference service"
+    },
+    {
       "name": "orthanc",
       "description": "Orthanc service"
     },
@@ -233,6 +237,232 @@
           },
           "required": true
         },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/add": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Add Inference Model",
+        "description": "Add inference model.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Add inference model request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddInferenceModelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/container/{containerID}/restart": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Restart Inference Model Container",
+        "description": "Restart inference model container.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/container/{containerID}/start": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Start Inference Model Container",
+        "description": "Start inference model container.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/container/{containerID}/stop": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Stop Inference Model Container",
+        "description": "Stop inference model container.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/list": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Inference Models",
+        "description": "Get inference models.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/container/{containerID}/info": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Inference Model Container Info",
+        "description": "Get inference model container info.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/{id}/remove": {
+      "delete": {
+        "tags": ["inference"],
+        "summary": "Delete Inference Model",
+        "description": "Delete inference model.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Inference model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "2xx": {
             "description": "Success"
@@ -843,6 +1073,28 @@
   },
   "components": {
     "schemas": {
+      "AddInferenceModelRequest": {
+        "required": ["name", "dockerImage", "outputMode"],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "dockerImage": {
+            "type": "string"
+          },
+          "envs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
+          }
+        }
+      },
       "CreateTenantOwnerRequest": {
         "required": [
           "tenantId",

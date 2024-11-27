@@ -18,8 +18,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 
 	"api-pacs/interfaces"
 	"api-pacs/interfaces/http/rest/middlewares/cors"
@@ -46,6 +46,8 @@ func (router *router) InitRouter() *chi.Mux {
 	elasticsearchQueryController := interfaces.ServiceContainer().RegisterElasticsearchRESTQueryController()
 	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
+	inferenceCommandController := interfaces.ServiceContainer().RegisterInferenceRESTCommandController()
+	inferenceQueryController := interfaces.ServiceContainer().RegisterInferenceRESTQueryController()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
 	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
 	predictionController := interfaces.ServiceContainer().RegisterPredictionRESTCommandController()
@@ -70,7 +72,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.8.4-beta",
+				"version": "v0.9.1-beta",
 			},
 		}
 
@@ -117,6 +119,23 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Post("/login", iamCommandController.LoginTenantUser)
 				r.Post("/forgot-password", iamCommandController.ForgotTenantUserPassword)
 				r.Post("/verify-email", iamCommandController.VerifyTenantUserEmail)
+			})
+
+			// inference module
+			r.Route("/inference", func(r chi.Router) {
+				// admin or owner only
+				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.TokenSessionAuthGuard)
+					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+
+					r.Post("/model/add", inferenceCommandController.AddInferenceModel)
+					r.Post("/model/container/{containerID}/restart", inferenceCommandController.RestartInferenceModelContainer)
+					r.Post("/model/container/{containerID}/start", inferenceCommandController.StartInferenceModelContainer)
+					r.Post("/model/container/{containerID}/stop", inferenceCommandController.StopInferenceModelContainer)
+					r.Get("/model/list", inferenceQueryController.GetInferenceModels)
+					r.Get("/model/container/{containerID}/info", inferenceQueryController.GetContainerInfo)
+					r.Delete("/model/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
+				})
 			})
 
 			// orthanc module

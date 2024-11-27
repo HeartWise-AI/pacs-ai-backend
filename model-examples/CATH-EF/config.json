@@ -1,0 +1,18 @@
+{
+  "workingDirectory": "/app",
+  "modelDirectory": "models",
+  "models": {
+      "X3D_1": {
+          "architectureFile": "X3D_1.py",
+          "weightsFile": "X3D_1.pt",
+          "workers": 1,
+          "batchSize": 16
+      },
+      "X3D_2": {
+          "architectureFile": "X3D_2.py",
+          "weightsFile": "X3D_2.pt",
+          "workers": 1,
+          "batchSize": 16
+      }
+  }
+}
