@@ -7,6 +7,8 @@ services:
     image: orthancteam/orthanc:latest
     container_name: orthanc-hospital-1
     restart: unless-stopped
+    networks:
+      - pacs-net
     ports:
       - 8063:8042
     volumes:
@@ -36,6 +38,8 @@ services:
     image: orthancteam/orthanc:latest
     container_name: orthanc-hospital-2
     restart: unless-stopped
+    networks:
+      - pacs-net
     ports:
       - 8073:8042
     volumes:

@@ -8,6 +8,8 @@ services:
     container_name: elasticsearch
     labels:
       co.elastic.logs/module: elasticsearch
+    networks:
+      - pacs-net
     volumes:
       - es_data:/usr/share/elasticsearch/data
     ports:
@@ -39,6 +41,8 @@ services:
     container_name: kibana
     labels:
       co.elastic.logs/module: kibana
+    networks:
+      - pacs-net
     volumes:
       - kibana_data:/usr/share/kibana/data
     ports:
