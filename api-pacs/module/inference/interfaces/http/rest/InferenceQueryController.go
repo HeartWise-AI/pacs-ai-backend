@@ -142,3 +142,109 @@ func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWr
 
 	response.JSON(w)
 }
+
+// GetInferenceModelInfo returns the inference model info
+func (controller *InferenceQueryController) GetInferenceModelInfo(w http.ResponseWriter, r *http.Request) {
+	containerID := chi.URLParam(r, "containerID")
+	if len(containerID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid container ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	modelInfo, err := controller.InferenceQueryServiceInterface.GetInferenceModelInfo(r.Context(), containerID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.DockerError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Docker service encountered an error."
+		case apiError.DockerInferenceError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Docker inference service encountered an error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully retrieved inference model info.",
+		Data:    modelInfo,
+	}
+
+	response.JSON(w)
+}
+
+// GetInferenceModelFacts returns the inference model facts
+func (controller *InferenceQueryController) GetInferenceModelFacts(w http.ResponseWriter, r *http.Request) {
+	containerID := chi.URLParam(r, "containerID")
+	if len(containerID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid container ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	modelFacts, err := controller.InferenceQueryServiceInterface.GetInferenceModelFacts(r.Context(), containerID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.DockerError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Docker service encountered an error."
+		case apiError.DockerInferenceError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Docker inference service encountered an error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully retrieved inference model facts.",
+		Data:    modelFacts,
+	}
+
+	response.JSON(w)
+}

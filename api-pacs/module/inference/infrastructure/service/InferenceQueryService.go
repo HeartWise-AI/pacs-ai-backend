@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
@@ -19,6 +20,7 @@ import (
 type InferenceQueryService struct {
 	repository.InferenceQueryRepositoryInterface
 	dockerTypes.DockerSDKInterface
+	dockerInferenceTypes.DockerInferenceAPIInterface
 }
 
 // GetContainerInfo returns the container info
@@ -98,4 +100,36 @@ func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, te
 	}
 
 	return inferenceModelsResult, nil
+}
+
+// GetInferenceModelInfo gets the inference model info
+func (service *InferenceQueryService) GetInferenceModelInfo(ctx context.Context, containerID string) (dockerInferenceTypes.GetModelInfoResponse, error) {
+	// get container name
+	containerInfo, err := service.GetContainerInfo(ctx, containerID)
+	if err != nil {
+		return dockerInferenceTypes.GetModelInfoResponse{}, err
+	}
+
+	modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerInfo.Name[1:]) // remove "/" prefix
+	if err != nil {
+		return dockerInferenceTypes.GetModelInfoResponse{}, errors.New(apiError.DockerInferenceError)
+	}
+
+	return modelInfo, nil
+}
+
+// GetInferenceModelFacts gets the inference model facts
+func (service *InferenceQueryService) GetInferenceModelFacts(ctx context.Context, containerID string) (dockerInferenceTypes.GetModelFactsResponse, error) {
+	// get container name
+	containerInfo, err := service.GetContainerInfo(ctx, containerID)
+	if err != nil {
+		return dockerInferenceTypes.GetModelFactsResponse{}, err
+	}
+
+	modelFacts, err := service.DockerInferenceAPIInterface.GetModelFacts(ctx, containerInfo.Name[1:]) // remove "/" prefix
+	if err != nil {
+		return dockerInferenceTypes.GetModelFactsResponse{}, errors.New(apiError.DockerInferenceError)
+	}
+
+	return modelFacts, nil
 }

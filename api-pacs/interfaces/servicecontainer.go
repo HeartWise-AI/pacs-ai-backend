@@ -20,6 +20,7 @@ import (
 	"api-pacs/infrastructures/database/elasticsearch"
 	elasticsearchTypes "api-pacs/infrastructures/database/elasticsearch/types"
 	"api-pacs/infrastructures/database/redis"
+	"api-pacs/infrastructures/providers/api/dockerinference"
 	"api-pacs/infrastructures/providers/api/inference"
 	"api-pacs/infrastructures/providers/api/kibana"
 	"api-pacs/infrastructures/providers/api/orthanc"
@@ -83,6 +84,7 @@ var (
 	inferenceAPI           *inference.InferenceAPI
 	mailgunSDK             *mailgun.MailgunSDK
 	dockerSDK              *docker.DockerSDK
+	dockerInferenceAPI     *dockerinference.DockerInferenceAPI
 )
 
 // ================================= REST ===================================
@@ -347,7 +349,8 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
 			InferenceQueryRepositoryInterface: repository,
 		},
-		DockerSDKInterface: dockerSDK,
+		DockerSDKInterface:          dockerSDK,
+		DockerInferenceAPIInterface: dockerInferenceAPI,
 	}
 
 	return service
@@ -487,6 +490,9 @@ func registerHandlers() {
 	if err != nil {
 		log.Fatalf("[SERVER] cannot initialize docker: %v", err)
 	}
+
+	// init docker inference api
+	dockerInferenceAPI = &dockerinference.DockerInferenceAPI{}
 
 	// run event listeners and cron jobs
 	go RunOrthancLocalStudiesCacheHandler()

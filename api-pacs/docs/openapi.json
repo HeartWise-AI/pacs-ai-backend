@@ -442,6 +442,74 @@
         }
       }
     },
+    "/inference/model/proxy/container/{containerID}/info": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Inference Model Info",
+        "description": "Get inference model info.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/proxy/container/{containerID}/facts": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Inference Model Facts",
+        "description": "Get inference model facts.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/inference/model/{id}/remove": {
       "delete": {
         "tags": ["inference"],
@@ -779,6 +847,7 @@
         "tags": ["prediction"],
         "summary": "Predict",
         "description": "Apply prediction to selected local resource.",
+        "deprecated": true,
         "security": [
           {
             "bearerAuth": []

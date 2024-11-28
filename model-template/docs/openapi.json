@@ -33,9 +33,7 @@
   "paths": {
     "/inference/predict": {
       "post": {
-        "tags": [
-          "Inference"
-        ],
+        "tags": ["Inference"],
         "summary": "Predict",
         "description": "Creates a prediction request",
         "requestBody": {
@@ -168,9 +166,7 @@
     },
     "/inference/model-info": {
       "get": {
-        "tags": [
-          "Inference"
-        ],
+        "tags": ["Inference"],
         "summary": "Get Model Info",
         "description": "Get model info",
         "responses": {
@@ -224,9 +220,7 @@
     },
     "/inference/model-facts": {
       "get": {
-        "tags": [
-          "Inference"
-        ],
+        "tags": ["Inference"],
         "summary": "Get Model Facts",
         "description": "Get model facts",
         "responses": {
@@ -383,12 +377,7 @@
   "components": {
     "schemas": {
       "PredictRequest": {
-        "required": [
-          "inferences",
-          "age",
-          "gender",
-          "outputMode"
-        ],
+        "required": ["inferences", "age", "gender", "outputMode"],
         "type": "object",
         "properties": {
           "inferences": {
@@ -416,20 +405,12 @@
           },
           "gender": {
             "type": "string",
-            "enum": [
-              "MALE",
-              "FEMALE"
-            ],
+            "enum": ["MALE", "FEMALE"],
             "description": "Gender of the patient"
           },
           "outputMode": {
             "type": "string",
-            "enum": [
-              "OHIF_ANNOTATIONS",
-              "HTML",
-              "WEB_APP",
-              "PDF"
-            ],
+            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"],
             "description": "Output mode"
           }
         }
@@ -487,12 +468,7 @@
           },
           "dicomTargetLevel": {
             "type": "string",
-            "enum": [
-              "PATIENT",
-              "STUDY",
-              "SERIES",
-              "INSTANCE"
-            ],
+            "enum": ["PATIENT", "STUDY", "SERIES", "INSTANCE"],
             "description": "DICOM target level",
             "example": "SERIES"
           },
@@ -519,13 +495,7 @@
             "description": "Supported output modes",
             "items": {
               "type": "string",
-              "enum": [
-                "JSON",
-                "OHIF_ANNOTATIONS",
-                "HTML",
-                "WEB_APP",
-                "PDF"
-              ],
+              "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"],
               "example": "JSON"
             }
           }

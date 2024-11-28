@@ -128,13 +128,25 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
-					r.Post("/model/add", inferenceCommandController.AddInferenceModel)
-					r.Post("/model/container/{containerID}/restart", inferenceCommandController.RestartInferenceModelContainer)
-					r.Post("/model/container/{containerID}/start", inferenceCommandController.StartInferenceModelContainer)
-					r.Post("/model/container/{containerID}/stop", inferenceCommandController.StopInferenceModelContainer)
-					r.Get("/model/list", inferenceQueryController.GetInferenceModels)
-					r.Get("/model/container/{containerID}/info", inferenceQueryController.GetContainerInfo)
-					r.Delete("/model/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
+					r.Route("/model", func(r chi.Router) {
+						r.Post("/add", inferenceCommandController.AddInferenceModel)
+						r.Get("/list", inferenceQueryController.GetInferenceModels)
+						r.Delete("/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
+
+						// container routes
+						r.Route("/container", func(r chi.Router) {
+							r.Post("/{containerID}/restart", inferenceCommandController.RestartInferenceModelContainer)
+							r.Post("/{containerID}/start", inferenceCommandController.StartInferenceModelContainer)
+							r.Post("/{containerID}/stop", inferenceCommandController.StopInferenceModelContainer)
+							r.Get("/{containerID}/info", inferenceQueryController.GetContainerInfo)
+						})
+
+						// proxy routes
+						r.Route("/proxy", func(r chi.Router) {
+							r.Get("/container/{containerID}/info", inferenceQueryController.GetInferenceModelInfo)
+							r.Get("/container/{containerID}/facts", inferenceQueryController.GetInferenceModelFacts)
+						})
+					})
 				})
 			})
 
