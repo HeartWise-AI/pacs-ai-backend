@@ -1,3 +1,7 @@
+networks:
+  pacs-net:
+    external: true
+
 services:
   api-pacs:
     build: .

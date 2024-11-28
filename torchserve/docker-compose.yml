@@ -1,3 +1,7 @@
+networks:
+  pacs-net:
+    external: true
+
 services:
   huggingface-downloader:
     container_name: huggingface-downloader

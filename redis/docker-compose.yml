@@ -1,3 +1,7 @@
+networks:
+  pacs-net:
+    external: true
+
 services:
   redis:
     image: redis:latest

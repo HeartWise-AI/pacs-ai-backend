@@ -1,7 +1,3 @@
-networks:
-  pacs-net:
-    external: true
-
 include:
   - orthanc/docker-compose-dev.yml
   - orthanc-pacs/docker-compose.yml # uncomment to launch othanc pacs for simulation

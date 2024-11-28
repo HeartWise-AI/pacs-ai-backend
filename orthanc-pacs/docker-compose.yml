@@ -1,3 +1,7 @@
+networks:
+  pacs-net:
+    external: true
+
 services:
   orthanc-hospital-1:
     image: orthancteam/orthanc:latest
