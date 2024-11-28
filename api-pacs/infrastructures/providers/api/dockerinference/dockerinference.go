@@ -20,7 +20,7 @@ var client *http.Client = &http.Client{Timeout: 3 * time.Minute}
 
 // GetModelInfo gets the model info from the docker inference API
 func (d *DockerInferenceAPI) GetModelInfo(ctx context.Context, containerName string) (types.GetModelInfoResponse, error) {
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s/inference/model-info", containerName), nil)
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s/api/inference/model-info", containerName), nil)
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return types.GetModelInfoResponse{}, errors.New(apiError.DockerInferenceError)
@@ -61,7 +61,7 @@ func (d *DockerInferenceAPI) GetModelInfo(ctx context.Context, containerName str
 
 // GetModelFacts gets the model facts from the docker inference API
 func (d *DockerInferenceAPI) GetModelFacts(ctx context.Context, containerName string) (types.GetModelFactsResponse, error) {
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s/inference/model-facts", containerName), nil)
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s/api/inference/model-facts", containerName), nil)
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return types.GetModelFactsResponse{}, errors.New(apiError.DockerInferenceError)
