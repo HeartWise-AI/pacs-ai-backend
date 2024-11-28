@@ -24,17 +24,9 @@ type PredictRequest struct {
 }
 
 type GetModelInfoResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Data    []struct {
-		ModelName                string   `json:"modelName"`
-		Version                  string   `json:"version"`
-		DicomTargetLevel         string   `json:"dicomTargetLevel"`
-		DicomUploadMin           int      `json:"dicomUploadMin"`
-		DicomUploadMax           int      `json:"dicomUploadMax"`
-		SupportedDicomModalities []string `json:"supportedDicomModalities"`
-		SupportedOutputModes     []string `json:"supportedOutputModes"`
-	} `json:"data"`
+	Success bool                   `json:"success"`
+	Message string                 `json:"message"`
+	Data    map[string]interface{} `json:"data"`
 }
 
 type GetModelFactsResponse struct {
