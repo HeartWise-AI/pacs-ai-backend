@@ -183,10 +183,7 @@
                       "type": "object",
                       "properties": {
                         "data": {
-                          "type": "array",
-                          "items": {
-                            "$ref": "#/components/schemas/GetModelInfoResponse"
-                          }
+                          "$ref": "#/components/schemas/GetModelInfoResponse"
                         }
                       }
                     }
@@ -237,10 +234,7 @@
                       "type": "object",
                       "properties": {
                         "data": {
-                          "type": "array",
-                          "items": {
-                            "$ref": "#/components/schemas/GetModelFactsResponse"
-                          }
+                          "$ref": "#/components/schemas/GetModelFactsResponse"
                         }
                       }
                     }
