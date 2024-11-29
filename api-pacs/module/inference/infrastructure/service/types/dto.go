@@ -38,6 +38,17 @@ type GetInferenceModelResult struct {
 	UpdatedAt   time.Time
 }
 
+type GetInferenceAvailableModelResult struct {
+	ContainerID              string
+	ModelName                string
+	Version                  string
+	DicomTargetLevel         string
+	DicomUploadMin           int
+	DicomUploadMax           int
+	SupportedDicomModalities []string
+	OutputMode               entity.OutputMode
+}
+
 type UpdateInferenceModel struct {
 	ID          string
 	Name        string

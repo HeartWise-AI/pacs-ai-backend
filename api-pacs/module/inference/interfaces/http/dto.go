@@ -62,3 +62,14 @@ type GetInferenceModelResponse struct {
 	CreatedAt   uint64                   `json:"createdAt"`
 	UpdatedAt   uint64                   `json:"updatedAt"`
 }
+
+type GetInferenceAvailableModelResponse struct {
+	ContainerID              string            `json:"containerId"`
+	ModelName                string            `json:"modelName"`
+	Version                  string            `json:"version"`
+	DicomTargetLevel         string            `json:"dicomTargetLevel"`
+	DicomUploadMin           int               `json:"dicomUploadMin"`
+	DicomUploadMax           int               `json:"dicomUploadMax"`
+	SupportedDicomModalities []string          `json:"supportedDicomModalities"`
+	OutputMode               entity.OutputMode `json:"outputMode"`
+}

@@ -145,6 +145,7 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Route("/proxy", func(r chi.Router) {
 							r.Get("/container/{containerID}/info", inferenceQueryController.GetInferenceModelInfo)
 							r.Get("/container/{containerID}/facts", inferenceQueryController.GetInferenceModelFacts)
+							r.Get("/available", inferenceQueryController.GetInferenceAvailableModels)
 						})
 					})
 				})

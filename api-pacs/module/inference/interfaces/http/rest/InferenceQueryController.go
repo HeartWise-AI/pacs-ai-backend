@@ -248,3 +248,56 @@ func (controller *InferenceQueryController) GetInferenceModelFacts(w http.Respon
 
 	response.JSON(w)
 }
+
+// GetInferenceAvailableModels returns the inference available models
+func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	inferenceAvailableModels, err := controller.InferenceQueryServiceInterface.GetInferenceAvailableModels(r.Context(), tenantID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "No records found."
+		case apiError.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Firestore service encountered an error."
+		case apiError.DockerError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Docker service encountered an error."
+		case apiError.DockerInferenceError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Docker inference service encountered an error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	inferenceAvailableModelsResponse := []types.GetInferenceAvailableModelResponse{}
+	for _, inferenceAvailableModel := range inferenceAvailableModels {
+		inferenceAvailableModelsResponse = append(inferenceAvailableModelsResponse, types.GetInferenceAvailableModelResponse(inferenceAvailableModel))
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully retrieved inference available models.",
+		Data:    inferenceAvailableModelsResponse,
+	}
+
+	response.JSON(w)
+}

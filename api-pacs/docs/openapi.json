@@ -510,6 +510,29 @@
         }
       }
     },
+    "/inference/model/proxy/available": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Inference Available Models",
+        "description": "Get inference available models.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/inference/model/{id}/remove": {
       "delete": {
         "tags": ["inference"],

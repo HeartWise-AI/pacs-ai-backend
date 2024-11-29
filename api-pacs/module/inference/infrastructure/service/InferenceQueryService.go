@@ -133,3 +133,58 @@ func (service *InferenceQueryService) GetInferenceModelFacts(ctx context.Context
 
 	return modelFacts, nil
 }
+
+// GetInferenceAvailableModels gets the inference available models
+func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Context, tenantID string) ([]types.GetInferenceAvailableModelResult, error) {
+	// get inference models
+	inferenceModels, err := service.GetInferenceModels(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	// get model info for each inference model
+	var m = sync.Mutex{}
+	eg, _ := errgroup.WithContext(ctx)
+
+	var inferenceAvailableModels []types.GetInferenceAvailableModelResult
+
+	// set limit
+	eg.SetLimit(len(inferenceModels))
+
+	for _, inferenceModel := range inferenceModels {
+		func(inferenceModel types.GetInferenceModelResult) {
+			eg.Go(func() error {
+				m.Lock()
+				defer m.Unlock()
+
+				// check if container id is set and running
+				if len(inferenceModel.Container.ID) > 0 && inferenceModel.Container.Running {
+					modelInfo, err := service.GetInferenceModelInfo(ctx, inferenceModel.Container.ID)
+					if err != nil {
+						return err
+					}
+
+					inferenceAvailableModels = append(inferenceAvailableModels, types.GetInferenceAvailableModelResult{
+						ContainerID:              inferenceModel.Container.ID,
+						ModelName:                modelInfo.Data.ModelName,
+						Version:                  modelInfo.Data.Version,
+						DicomTargetLevel:         modelInfo.Data.DicomTargetLevel,
+						DicomUploadMin:           modelInfo.Data.DicomUploadMin,
+						DicomUploadMax:           modelInfo.Data.DicomUploadMax,
+						SupportedDicomModalities: modelInfo.Data.SupportedDicomModalities,
+						OutputMode:               inferenceModel.OutputMode,
+					})
+				}
+
+				return nil
+			})
+		}(inferenceModel)
+	}
+
+	// wait for all goroutines to finish
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	return inferenceAvailableModels, nil
+}
