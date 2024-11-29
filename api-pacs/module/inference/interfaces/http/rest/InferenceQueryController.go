@@ -190,7 +190,7 @@ func (controller *InferenceQueryController) GetInferenceModelInfo(w http.Respons
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully retrieved inference model info.",
-		Data:    modelInfo,
+		Data:    modelInfo.Data,
 	}
 
 	response.JSON(w)
@@ -243,7 +243,7 @@ func (controller *InferenceQueryController) GetInferenceModelFacts(w http.Respon
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully retrieved inference model facts.",
-		Data:    modelFacts,
+		Data:    modelFacts.Data,
 	}
 
 	response.JSON(w)
