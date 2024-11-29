@@ -452,8 +452,8 @@
         "properties": {
           "modelName": {
             "type": "string",
-            "description": "Model name",
-            "example": "cathef"
+            "description": "Model display name",
+            "example": "CathEF"
           },
           "version": {
             "type": "string",
