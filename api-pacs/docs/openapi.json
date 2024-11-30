@@ -385,7 +385,7 @@
         }
       }
     },
-    "/inference/model/container/{containerID}/predict": {
+    "/inference/model/proxy/container/{containerID}/predict": {
       "post": {
         "tags": ["inference"],
         "summary": "Predict Inference Model",
