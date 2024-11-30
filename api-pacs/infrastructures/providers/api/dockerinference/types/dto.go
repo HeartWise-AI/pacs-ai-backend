@@ -5,9 +5,10 @@ type OutputMode string
 
 const (
 	// gender
-	GenderMale   Gender = "MALE"
-	GenderFemale Gender = "FEMALE"
-	GenderOther  Gender = "OTHER"
+	GenderMale    Gender = "MALE"
+	GenderFemale  Gender = "FEMALE"
+	GenderOther   Gender = "OTHER"
+	GenderUnknown Gender = "UNKNOWN"
 
 	// output mode
 	OutputModeJSON            OutputMode = "JSON"

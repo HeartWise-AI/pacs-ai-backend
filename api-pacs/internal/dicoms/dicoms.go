@@ -59,27 +59,12 @@ func ParseGender(dataset dicom.Dataset) (string, error) {
 		return "", fmt.Errorf("error finding patient sex: %w", err)
 	}
 
-	// Get the raw value instead of using String()
-	value := genderElement.Value.GetValue()
-
-	// Handle different possible value types
-	var gender string
-	switch v := value.(type) {
-	case string:
-		gender = v
-	case []string:
-		if len(v) > 0 {
-			gender = v[0]
-		}
-	default:
-		gender = fmt.Sprintf("%v", value)
-	}
-
-	gender = strings.TrimSpace(gender)
-
-	log.Printf("GENDER raw value: %#v, processed: %s", value, gender)
+	gender := strings.Trim(genderElement.Value.String(), "[] \t\n\r")
 
 	// DICOM standard defines these values:
+	// M = male
+	// F = female
+	// O = other
 	switch gender {
 	case "M":
 		return "MALE", nil
@@ -88,7 +73,8 @@ func ParseGender(dataset dicom.Dataset) (string, error) {
 	case "O":
 		return "OTHER", nil
 	default:
-		return "", fmt.Errorf("invalid gender value: %s", gender)
+		log.Println("GENDER:", genderElement.Value.String(), gender)
+		return "UNKNOWN", nil
 	}
 }
 
