@@ -151,7 +151,12 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	log.Printf("[prediction] download DICOM file took %f seconds", downloadEndTime.Seconds())
 
 	/// send to docker inference model
-	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerID, dockerInferenceTypes.PredictRequest{
+	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
+	if err != nil {
+		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
+	}
+
+	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerInfo.Name, dockerInferenceTypes.PredictRequest{
 		Inferences: inferences,
 		Age:        uint(age),
 		Gender:     dockerInferenceTypes.Gender(gender),
