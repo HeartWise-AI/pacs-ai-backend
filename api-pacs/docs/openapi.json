@@ -395,6 +395,17 @@
             "bearerAuth": []
           }
         ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "description": "Predict inference model request",
           "content": {
