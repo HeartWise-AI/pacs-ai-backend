@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 
+	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
 	"api-pacs/module/inference/infrastructure/service/types"
 )
 
@@ -12,6 +13,8 @@ type InferenceCommandServiceInterface interface {
 	AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error
 	// DeleteInferenceModel deletes an inference model
 	DeleteInferenceModel(ctx context.Context, ID string) error
+	// PredictInferenceModel predicts an inference model
+	PredictInferenceModel(ctx context.Context, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
 	// RestartInferenceModelContainer restarts an inference model container
 	RestartInferenceModelContainer(ctx context.Context, containerID string) error
 	// StartInferenceModelContainer starts an inference model container

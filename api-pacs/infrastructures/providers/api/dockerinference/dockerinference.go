@@ -1,6 +1,7 @@
 package dockerinference
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -100,4 +101,50 @@ func (d *DockerInferenceAPI) GetModelFacts(ctx context.Context, containerName st
 	return response, nil
 }
 
-// TODO: Implement the predict function
+// Predict predicts the result from the docker inference API
+func (d *DockerInferenceAPI) Predict(ctx context.Context, containerName string, request types.PredictRequest) (types.PredictResponse, error) {
+	buf := new(bytes.Buffer)
+	err := json.NewEncoder(buf).Encode(request)
+	if err != nil {
+		log.Println("Error:", err)
+		return types.PredictResponse{}, errors.New(apiError.DockerInferenceError)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/api/inference/predict", containerName), buf)
+	if err != nil {
+		log.Println("Error:", err)
+		return types.PredictResponse{}, errors.New(apiError.DockerInferenceError)
+	}
+
+	// set headers
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Error:", err)
+		return types.PredictResponse{}, errors.New(apiError.DockerInferenceError)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		defer resp.Body.Close()
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Printf("Error: %v", err)
+			return types.PredictResponse{}, errors.New(apiError.DockerInferenceError)
+		}
+		errorMessage := string(response)
+		log.Printf("Response: %v", errorMessage)
+
+		return types.PredictResponse{}, errors.New(apiError.DockerInferenceError)
+	}
+
+	var response types.PredictResponse
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		log.Println("Error:", err)
+		return types.PredictResponse{}, errors.New(apiError.DockerInferenceError)
+	}
+
+	return response, nil
+}

@@ -7,6 +7,7 @@ const (
 	// gender
 	GenderMale   Gender = "MALE"
 	GenderFemale Gender = "FEMALE"
+	GenderOther  Gender = "OTHER"
 
 	// output mode
 	OutputModeJSON            OutputMode = "JSON"

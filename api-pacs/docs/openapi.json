@@ -385,6 +385,39 @@
         }
       }
     },
+    "/inference/model/container/{containerID}/predict": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Predict Inference Model",
+        "description": "Predict inference model.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Predict inference model request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictInferenceModelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/inference/model/list": {
       "get": {
         "tags": ["inference"],
@@ -1238,6 +1271,22 @@
           },
           "specialty": {
             "type": "string"
+          }
+        }
+      },
+      "PredictInferenceModelRequest": {
+        "required": ["queryIDs", "outputMode"],
+        "type": "object",
+        "properties": {
+          "queryIDs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
           }
         }
       },
