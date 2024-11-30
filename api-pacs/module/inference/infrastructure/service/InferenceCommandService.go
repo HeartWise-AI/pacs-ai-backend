@@ -119,6 +119,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DICOMParseError)
 		}
 
+		// get age and gender from first DICOM
 		if i == 0 {
 			// get age from first DICOM
 			age, err = dicomUtils.ParseAge(dataset)
