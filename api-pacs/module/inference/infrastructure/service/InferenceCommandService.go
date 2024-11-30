@@ -156,7 +156,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
 	}
 
-	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerInfo.Name, dockerInferenceTypes.PredictRequest{
+	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerInfo.Name[1:], dockerInferenceTypes.PredictRequest{ // remove "/" prefix in container name
 		Inferences: inferences,
 		Age:        uint(age),
 		Gender:     dockerInferenceTypes.Gender(gender),
