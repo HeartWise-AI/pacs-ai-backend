@@ -61,6 +61,8 @@ func ParseGender(dataset dicom.Dataset) (string, error) {
 
 	gender := strings.Trim(genderElement.Value.String(), "[] \t\n\r")
 
+	log.Println("GENDER:", genderElement.Value.String(), gender)
+
 	// DICOM standard defines these values:
 	// M = male
 	// F = female
