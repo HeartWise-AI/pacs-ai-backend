@@ -1,8 +1,14 @@
+networks:
+  pacs-net:
+    external: true
+
 services:
   api-pacs:
     build: .
     container_name: api-pacs
     restart: unless-stopped
+    networks:
+      - pacs-net
     ports:
       - ${API_URL_REST_PORT}:${API_URL_REST_PORT}
     volumes:

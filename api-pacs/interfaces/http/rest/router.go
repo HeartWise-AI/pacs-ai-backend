@@ -42,6 +42,7 @@ var (
 // InitRouter initializes main routes
 func (router *router) InitRouter() *chi.Mux {
 	// DI assignment
+	dockerInferenceProxy := interfaces.ServiceContainer().RegisterDockerInferenceProxy()
 	elasticsearchCommandController := interfaces.ServiceContainer().RegisterElasticsearchRESTCommandController()
 	elasticsearchQueryController := interfaces.ServiceContainer().RegisterElasticsearchRESTQueryController()
 	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
@@ -72,7 +73,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.10.0-beta",
+				"version": "v0.12.0-beta",
 			},
 		}
 
@@ -128,13 +129,27 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
-					r.Post("/model/add", inferenceCommandController.AddInferenceModel)
-					r.Post("/model/container/{containerID}/restart", inferenceCommandController.RestartInferenceModelContainer)
-					r.Post("/model/container/{containerID}/start", inferenceCommandController.StartInferenceModelContainer)
-					r.Post("/model/container/{containerID}/stop", inferenceCommandController.StopInferenceModelContainer)
-					r.Get("/model/list", inferenceQueryController.GetInferenceModels)
-					r.Get("/model/container/{containerID}/info", inferenceQueryController.GetContainerInfo)
-					r.Delete("/model/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
+					r.Route("/model", func(r chi.Router) {
+						r.Post("/add", inferenceCommandController.AddInferenceModel)
+						r.Get("/list", inferenceQueryController.GetInferenceModels)
+						r.Delete("/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
+
+						// container routes
+						r.Route("/container", func(r chi.Router) {
+							r.Post("/{containerID}/restart", inferenceCommandController.RestartInferenceModelContainer)
+							r.Post("/{containerID}/start", inferenceCommandController.StartInferenceModelContainer)
+							r.Post("/{containerID}/stop", inferenceCommandController.StopInferenceModelContainer)
+							r.Get("/{containerID}/info", inferenceQueryController.GetContainerInfo)
+						})
+
+						// proxy routes
+						r.Route("/proxy", func(r chi.Router) {
+							r.Post("/container/{containerID}/predict", inferenceCommandController.PredictInferenceModel)
+							r.Get("/container/{containerID}/info", inferenceQueryController.GetInferenceModelInfo)
+							r.Get("/container/{containerID}/facts", inferenceQueryController.GetInferenceModelFacts)
+							r.Get("/available", inferenceQueryController.GetInferenceAvailableModels)
+						})
+					})
 				})
 			})
 
@@ -208,6 +223,9 @@ func (router *router) InitRouter() *chi.Mux {
 				})
 			})
 		})
+
+		// proxy routes
+		r.Handle("/proxy/{containerName}/app/viewer/*", dockerInferenceProxy.AppViewerProxy())
 	})
 
 	return r

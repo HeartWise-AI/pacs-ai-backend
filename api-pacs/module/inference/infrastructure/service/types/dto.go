@@ -15,6 +15,19 @@ type AddInferenceModel struct {
 	OutputMode  entity.OutputMode
 }
 
+type UpdateInferenceModel struct {
+	ID          string
+	Name        string
+	DockerImage string
+	Envs        []string
+	OutputMode  entity.OutputMode
+}
+
+type PredictInferenceModel struct {
+	QueryIDs   []string
+	OutputMode entity.OutputMode
+}
+
 type GetContainerInfoResult struct {
 	ID              string
 	Name            string
@@ -38,10 +51,14 @@ type GetInferenceModelResult struct {
 	UpdatedAt   time.Time
 }
 
-type UpdateInferenceModel struct {
-	ID          string
-	Name        string
-	DockerImage string
-	Envs        []string
-	OutputMode  entity.OutputMode
+type GetInferenceAvailableModelResult struct {
+	ContainerID              string
+	ContainerName            string
+	ModelName                string
+	Version                  string
+	DicomTargetLevel         string
+	DicomUploadMin           int
+	DicomUploadMax           int
+	SupportedDicomModalities []string
+	OutputMode               entity.OutputMode
 }

@@ -1,12 +1,19 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
+	"time"
 
 	"github.com/segmentio/ksuid"
+	"github.com/suyashkumar/dicom"
 
+	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
+	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
+	dicomUtils "api-pacs/internal/dicoms"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/repository"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
@@ -18,6 +25,8 @@ type InferenceCommandService struct {
 	repository.InferenceCommandRepositoryInterface
 	repository.InferenceQueryRepositoryInterface
 	dockerTypes.DockerSDKInterface
+	orthancAPITypes.OrthancAPIInterface
+	dockerInferenceTypes.DockerInferenceAPIInterface
 }
 
 // AddInferenceModel adds an inference model
@@ -84,6 +93,80 @@ func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context
 	}
 
 	return nil
+}
+
+// PredictInferenceModel predicts an inference model
+func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
+	/// download dicom from query ids
+	// TODO: remove this
+	downloadStartTime := time.Now()
+
+	var inferences [][][][][]int
+	var age int
+	var gender string
+
+	for i, queryID := range data.QueryIDs {
+		// download DICOM file
+		dicomBytes, err := service.OrthancAPIInterface.DownloadDICOM(ctx, queryID)
+		if err != nil {
+			return dockerInferenceTypes.PredictResponse{}, err
+		}
+
+		// parse DICOM
+		dataset, err := dicom.Parse(bytes.NewReader(dicomBytes), int64(len(dicomBytes)), nil)
+		if err != nil {
+			log.Println(err)
+			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DICOMParseError)
+		}
+
+		// get age and gender from first DICOM
+		if i == 0 {
+			// get age from first DICOM
+			age, err = dicomUtils.ParseAge(dataset)
+			if err != nil {
+				log.Println(err)
+				return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DICOMParseError)
+			}
+
+			// get gender from first DICOM
+			gender, err = dicomUtils.ParseGender(dataset)
+			if err != nil {
+				log.Println(err)
+				return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DICOMParseError)
+			}
+		}
+
+		// convert DICOM to instances
+		instance, err := dicomUtils.DICOMToInstances(dataset)
+		if err != nil {
+			log.Println(err)
+			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DICOMParseError)
+		}
+
+		inferences = append(inferences, instance)
+	}
+
+	// TODO: remove this
+	downloadEndTime := time.Since(downloadStartTime)
+	log.Printf("[prediction] download DICOM file took %f seconds", downloadEndTime.Seconds())
+
+	/// send to docker inference model
+	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
+	if err != nil {
+		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
+	}
+
+	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerInfo.Name[1:], dockerInferenceTypes.PredictRequest{ // remove "/" prefix in container name
+		Inferences: inferences,
+		Age:        uint(age),
+		Gender:     dockerInferenceTypes.Gender(gender),
+		OutputMode: dockerInferenceTypes.OutputMode(data.OutputMode),
+	})
+	if err != nil {
+		return dockerInferenceTypes.PredictResponse{}, err
+	}
+
+	return predictionResult, nil
 }
 
 // RestartInferenceModelContainer restarts an inference model container

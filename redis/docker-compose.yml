@@ -1,9 +1,15 @@
+networks:
+  pacs-net:
+    external: true
+
 services:
   redis:
     image: redis:latest
     container_name: redis
     restart: always
     command: ["redis-server", "/etc/redis/redis.conf"]
+    networks:
+      - pacs-net
     volumes:
       - ./redis.conf:/etc/redis/redis.conf
     expose:

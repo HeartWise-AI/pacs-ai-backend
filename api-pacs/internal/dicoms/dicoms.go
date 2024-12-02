@@ -52,6 +52,32 @@ func ParseAge(dataset dicom.Dataset) (int, error) {
 	return age, nil
 }
 
+// ParseGender parse gender from DICOM dataset
+func ParseGender(dataset dicom.Dataset) (string, error) {
+	genderElement, err := dataset.FindElementByTag(tag.PatientSex)
+	if err != nil {
+		return "", fmt.Errorf("error finding patient sex: %w", err)
+	}
+
+	gender := strings.Trim(genderElement.Value.String(), "[] \t\n\r")
+
+	// DICOM standard defines these values:
+	// M = male
+	// F = female
+	// O = other
+	switch gender {
+	case "M":
+		return "MALE", nil
+	case "F":
+		return "FEMALE", nil
+	case "O":
+		return "OTHER", nil
+	default:
+		log.Println("GENDER:", genderElement.Value.String(), gender)
+		return "UNKNOWN", nil
+	}
+}
+
 func calculateAge(birthDateStr string) (int, error) {
 	birthDateStr = strings.Trim(birthDateStr, "[] \t\n\r")
 	birthDate, err := time.Parse("20060102", birthDateStr)

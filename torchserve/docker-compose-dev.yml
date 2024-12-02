@@ -1,3 +1,7 @@
+networks:
+  pacs-net:
+    external: true
+
 services:
   huggingface-downloader:
     container_name: huggingface-downloader
@@ -7,6 +11,8 @@ services:
       args:
         HF_USERNAME: ${HF_USERNAME}
         HF_TOKEN: ${HF_TOKEN}
+    networks:
+      - pacs-net
     volumes:
       - ./models:/models
     env_file:
@@ -23,9 +29,10 @@ services:
             - driver: nvidia
               device_ids: ['0']
               capabilities: [gpu]
+    networks:
+      - pacs-net
     volumes:
       - ./models:/models
-
     ports:
       - "8080:8080"
       - "8081:8081"

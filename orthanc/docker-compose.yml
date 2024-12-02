@@ -1,8 +1,14 @@
+networks:
+  pacs-net:
+    external: true
+
 services:
   orthanc:
     image: orthancteam/orthanc:latest
     container_name: orthanc
     restart: unless-stopped
+    networks:
+      - pacs-net
     ports:
       - ${ORTHANC_DICOM_PORT}:${ORTHANC_DICOM_PORT}
     volumes:
@@ -44,6 +50,8 @@ services:
     image: postgres:latest
     container_name: orthanc-index
     restart: unless-stopped
+    networks:
+      - pacs-net
     expose:
       - "5432"
     volumes: ["orthanc-index:/var/lib/postgresql/data"]

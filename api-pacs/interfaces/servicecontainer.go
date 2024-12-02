@@ -20,6 +20,7 @@ import (
 	"api-pacs/infrastructures/database/elasticsearch"
 	elasticsearchTypes "api-pacs/infrastructures/database/elasticsearch/types"
 	"api-pacs/infrastructures/database/redis"
+	"api-pacs/infrastructures/providers/api/dockerinference"
 	"api-pacs/infrastructures/providers/api/inference"
 	"api-pacs/infrastructures/providers/api/kibana"
 	"api-pacs/infrastructures/providers/api/orthanc"
@@ -29,6 +30,7 @@ import (
 	"api-pacs/infrastructures/providers/sdk/mailgun"
 	mailgunTypes "api-pacs/infrastructures/providers/sdk/mailgun/types"
 	iamMiddleware "api-pacs/interfaces/http/rest/middlewares/iam"
+	dockerInferenceProxy "api-pacs/interfaces/http/rest/proxies/dockerinference"
 	elasticsearchRepository "api-pacs/module/elasticsearch/infrastructure/repository"
 	elasticsearchService "api-pacs/module/elasticsearch/infrastructure/service"
 	elasticsearchREST "api-pacs/module/elasticsearch/interfaces/http/rest"
@@ -54,6 +56,8 @@ import (
 type ServiceContainerInterface interface {
 	// REST Middlewares
 	RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware
+	// REST Proxies
+	RegisterDockerInferenceProxy() dockerInferenceProxy.DockerInferenceProxy
 	// REST Controllers
 	RegisterElasticsearchRESTCommandController() elasticsearchREST.ElasticsearchCommandController
 	RegisterElasticsearchRESTQueryController() elasticsearchREST.ElasticsearchQueryController
@@ -83,6 +87,7 @@ var (
 	inferenceAPI           *inference.InferenceAPI
 	mailgunSDK             *mailgun.MailgunSDK
 	dockerSDK              *docker.DockerSDK
+	dockerInferenceAPI     *dockerinference.DockerInferenceAPI
 )
 
 // ================================= REST ===================================
@@ -95,6 +100,12 @@ func (k *kernel) RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware {
 	}
 
 	return middleware
+}
+
+// Proxies
+// RegisterDockerInferenceProxy performs dependency injection to the RegisterDockerInferenceProxy
+func (k *kernel) RegisterDockerInferenceProxy() dockerInferenceProxy.DockerInferenceProxy {
+	return dockerInferenceProxy.DockerInferenceProxy{}
 }
 
 // Controllers
@@ -332,7 +343,9 @@ func (k *kernel) inferenceCommandServiceContainer() *inferenceService.InferenceC
 		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
 			InferenceQueryRepositoryInterface: queryRepository,
 		},
-		DockerSDKInterface: dockerSDK,
+		DockerSDKInterface:          dockerSDK,
+		OrthancAPIInterface:         orthancAPI,
+		DockerInferenceAPIInterface: dockerInferenceAPI,
 	}
 
 	return service
@@ -347,7 +360,8 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
 			InferenceQueryRepositoryInterface: repository,
 		},
-		DockerSDKInterface: dockerSDK,
+		DockerSDKInterface:          dockerSDK,
+		DockerInferenceAPIInterface: dockerInferenceAPI,
 	}
 
 	return service
@@ -487,6 +501,9 @@ func registerHandlers() {
 	if err != nil {
 		log.Fatalf("[SERVER] cannot initialize docker: %v", err)
 	}
+
+	// init docker inference api
+	dockerInferenceAPI = &dockerinference.DockerInferenceAPI{}
 
 	// run event listeners and cron jobs
 	go RunOrthancLocalStudiesCacheHandler()

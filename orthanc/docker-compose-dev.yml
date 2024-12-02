@@ -1,8 +1,14 @@
+networks:
+  pacs-net:
+    external: true
+
 services:
   orthanc:
     image: orthancteam/orthanc:latest
     container_name: orthanc
     restart: unless-stopped
+    networks:
+      - pacs-net
     ports:
       - 8053:8042
       - 4242:4242
@@ -45,6 +51,8 @@ services:
     image: postgres:latest
     container_name: orthanc-index
     restart: unless-stopped
+    networks:
+      - pacs-net
     ports: ["5432:5432"]
     volumes: ["orthanc-index:/var/lib/postgresql/data"]
     command: -c 'max_connections=200'

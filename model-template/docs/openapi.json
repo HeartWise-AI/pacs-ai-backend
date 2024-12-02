@@ -33,9 +33,7 @@
   "paths": {
     "/inference/predict": {
       "post": {
-        "tags": [
-          "Inference"
-        ],
+        "tags": ["Inference"],
         "summary": "Predict",
         "description": "Creates a prediction request",
         "requestBody": {
@@ -124,7 +122,7 @@
                       "success": true,
                       "message": "Registration request created successfully",
                       "data": {
-                        "webappPath": "/app/viewer",
+                        "webappPath": "/app/viewer/",
                         "webappDataBase64": "base64 encoded webapp data..."
                       }
                     }
@@ -168,9 +166,7 @@
     },
     "/inference/model-info": {
       "get": {
-        "tags": [
-          "Inference"
-        ],
+        "tags": ["Inference"],
         "summary": "Get Model Info",
         "description": "Get model info",
         "responses": {
@@ -187,10 +183,7 @@
                       "type": "object",
                       "properties": {
                         "data": {
-                          "type": "array",
-                          "items": {
-                            "$ref": "#/components/schemas/GetModelInfoResponse"
-                          }
+                          "$ref": "#/components/schemas/GetModelInfoResponse"
                         }
                       }
                     }
@@ -224,9 +217,7 @@
     },
     "/inference/model-facts": {
       "get": {
-        "tags": [
-          "Inference"
-        ],
+        "tags": ["Inference"],
         "summary": "Get Model Facts",
         "description": "Get model facts",
         "responses": {
@@ -243,10 +234,7 @@
                       "type": "object",
                       "properties": {
                         "data": {
-                          "type": "array",
-                          "items": {
-                            "$ref": "#/components/schemas/GetModelFactsResponse"
-                          }
+                          "$ref": "#/components/schemas/GetModelFactsResponse"
                         }
                       }
                     }
@@ -383,12 +371,7 @@
   "components": {
     "schemas": {
       "PredictRequest": {
-        "required": [
-          "inferences",
-          "age",
-          "gender",
-          "outputMode"
-        ],
+        "required": ["inferences", "age", "gender", "outputMode"],
         "type": "object",
         "properties": {
           "inferences": {
@@ -416,20 +399,12 @@
           },
           "gender": {
             "type": "string",
-            "enum": [
-              "MALE",
-              "FEMALE"
-            ],
+            "enum": ["MALE", "FEMALE"],
             "description": "Gender of the patient"
           },
           "outputMode": {
             "type": "string",
-            "enum": [
-              "OHIF_ANNOTATIONS",
-              "HTML",
-              "WEB_APP",
-              "PDF"
-            ],
+            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"],
             "description": "Output mode"
           }
         }
@@ -477,8 +452,8 @@
         "properties": {
           "modelName": {
             "type": "string",
-            "description": "Model name",
-            "example": "cathef"
+            "description": "Model display name",
+            "example": "CathEF"
           },
           "version": {
             "type": "string",
@@ -487,12 +462,7 @@
           },
           "dicomTargetLevel": {
             "type": "string",
-            "enum": [
-              "PATIENT",
-              "STUDY",
-              "SERIES",
-              "INSTANCE"
-            ],
+            "enum": ["PATIENT", "STUDY", "SERIES", "INSTANCE"],
             "description": "DICOM target level",
             "example": "SERIES"
           },
@@ -519,13 +489,7 @@
             "description": "Supported output modes",
             "items": {
               "type": "string",
-              "enum": [
-                "JSON",
-                "OHIF_ANNOTATIONS",
-                "HTML",
-                "WEB_APP",
-                "PDF"
-              ],
+              "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"],
               "example": "JSON"
             }
           }

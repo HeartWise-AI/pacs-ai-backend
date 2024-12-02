@@ -1,6 +1,6 @@
 {
-  "modelName": "cathef",
-  "version": "1.0.0",
+  "modelName": "Model Template",
+  "version": "1.2.0",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 5,
