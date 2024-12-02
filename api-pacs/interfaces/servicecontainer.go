@@ -30,6 +30,7 @@ import (
 	"api-pacs/infrastructures/providers/sdk/mailgun"
 	mailgunTypes "api-pacs/infrastructures/providers/sdk/mailgun/types"
 	iamMiddleware "api-pacs/interfaces/http/rest/middlewares/iam"
+	dockerInferenceProxy "api-pacs/interfaces/http/rest/proxies/dockerinference"
 	elasticsearchRepository "api-pacs/module/elasticsearch/infrastructure/repository"
 	elasticsearchService "api-pacs/module/elasticsearch/infrastructure/service"
 	elasticsearchREST "api-pacs/module/elasticsearch/interfaces/http/rest"
@@ -55,6 +56,8 @@ import (
 type ServiceContainerInterface interface {
 	// REST Middlewares
 	RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware
+	// REST Proxies
+	RegisterDockerInferenceProxy() dockerInferenceProxy.DockerInferenceProxy
 	// REST Controllers
 	RegisterElasticsearchRESTCommandController() elasticsearchREST.ElasticsearchCommandController
 	RegisterElasticsearchRESTQueryController() elasticsearchREST.ElasticsearchQueryController
@@ -97,6 +100,12 @@ func (k *kernel) RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware {
 	}
 
 	return middleware
+}
+
+// Proxies
+// RegisterDockerInferenceProxy performs dependency injection to the RegisterDockerInferenceProxy
+func (k *kernel) RegisterDockerInferenceProxy() dockerInferenceProxy.DockerInferenceProxy {
+	return dockerInferenceProxy.DockerInferenceProxy{}
 }
 
 // Controllers

@@ -42,6 +42,7 @@ var (
 // InitRouter initializes main routes
 func (router *router) InitRouter() *chi.Mux {
 	// DI assignment
+	dockerInferenceProxy := interfaces.ServiceContainer().RegisterDockerInferenceProxy()
 	elasticsearchCommandController := interfaces.ServiceContainer().RegisterElasticsearchRESTCommandController()
 	elasticsearchQueryController := interfaces.ServiceContainer().RegisterElasticsearchRESTQueryController()
 	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
@@ -222,6 +223,9 @@ func (router *router) InitRouter() *chi.Mux {
 				})
 			})
 		})
+
+		// proxy routes
+		r.Handle("/proxy/{containerName}/app/viewer/*", dockerInferenceProxy.AppViewerProxy())
 	})
 
 	return r
