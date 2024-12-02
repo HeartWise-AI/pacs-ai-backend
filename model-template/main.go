@@ -168,7 +168,7 @@ func predict(w http.ResponseWriter, r *http.Request) {
 			Message: "Prediction successful",
 			Data: map[string]interface{}{
 				"webappPath":       "/app/viewer/",
-				"webappDataBase64": "base64 encoded webapp data...",
+				"webappDataBase64": "W3siY291bnRyeSI6IkNoaW5hIiwicG9wdWxhdGlvbiI6MTQxMTc1MDAwMH0seyJjb3VudHJ5IjoiSW5kaWEiLCJwb3B1bGF0aW9uIjoxMzkyMzI5MDAwfSx7ImNvdW50cnkiOiJVbml0ZWQgU3RhdGVzIiwicG9wdWxhdGlvbiI6MzM5OTk2NTYzfSx7ImNvdW50cnkiOiJJbmRvbmVzaWEiLCJwb3B1bGF0aW9uIjoyNzc1MzQxMjJ9LHsiY291bnRyeSI6IlBha2lzdGFuIiwicG9wdWxhdGlvbiI6MjQwNDg1NjU4fSx7ImNvdW50cnkiOiJCcmF6aWwiLCJwb3B1bGF0aW9uIjoyMTUzNTM1OTN9LHsiY291bnRyeSI6Ik5pZ2VyaWEiLCJwb3B1bGF0aW9uIjoyMTM0MDEzMjN9LHsiY291bnRyeSI6IkJhbmdsYWRlc2giLCJwb3B1bGF0aW9uIjoxNjc4ODU2ODl9LHsiY291bnRyeSI6IlJ1c3NpYSIsInBvcHVsYXRpb24iOjE0NDQ0NDM1OX0seyJjb3VudHJ5IjoiTWV4aWNvIiwicG9wdWxhdGlvbiI6MTMwMjA3MzcxfV0",
 			},
 		}
 
