@@ -34,7 +34,7 @@ class CustomPredictionService(BasePredictionService):
 
                 # Load the model weights
                 weightsPath = os.path.join(workingDirectory, model_dir, value.weightsFile)
-                checkpoint = torch.load(weightsPath, weights_only=False)
+                checkpoint = torch.load(weightsPath, weights_only=False, map_location='cuda' if torch.cuda.is_available() else 'cpu')
                 state_dict = checkpoint['state_dict']
                 new_state_dict = OrderedDict()
                 if key == "X3D_1":
