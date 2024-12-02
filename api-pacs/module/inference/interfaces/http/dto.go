@@ -72,6 +72,7 @@ type GetInferenceModelResponse struct {
 
 type GetInferenceAvailableModelResponse struct {
 	ContainerID              string            `json:"containerId"`
+	ContainerName            string            `json:"containerName"`
 	ModelName                string            `json:"modelName"`
 	Version                  string            `json:"version"`
 	DicomTargetLevel         string            `json:"dicomTargetLevel"`

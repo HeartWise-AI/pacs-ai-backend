@@ -103,7 +103,7 @@ func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWr
 		return
 	}
 
-	var inferenceModelsResponse []types.GetInferenceModelResponse
+	 inferenceModelsResponse := []types.GetInferenceModelResponse{}
 	for _, inferenceModel := range inferenceModels {
 		// set env to empty if nil
 		envs := inferenceModel.Envs

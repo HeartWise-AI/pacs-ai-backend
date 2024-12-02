@@ -53,6 +53,7 @@ type GetInferenceModelResult struct {
 
 type GetInferenceAvailableModelResult struct {
 	ContainerID              string
+	ContainerName            string
 	ModelName                string
 	Version                  string
 	DicomTargetLevel         string

@@ -32,7 +32,7 @@ func (service *InferenceQueryService) GetContainerInfo(ctx context.Context, cont
 
 	return types.GetContainerInfoResult{
 		ID:              containerInfo.ID,
-		Name:            containerInfo.Name,
+		Name:            containerInfo.Name[1:], // remove "/" prefix
 		Status:          containerInfo.Status,
 		Running:         containerInfo.Running,
 		StartedAt:       containerInfo.StartedAt,
@@ -110,7 +110,7 @@ func (service *InferenceQueryService) GetInferenceModelInfo(ctx context.Context,
 		return dockerInferenceTypes.GetModelInfoResponse{}, err
 	}
 
-	modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerInfo.Name[1:]) // remove "/" prefix
+	modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerInfo.Name)
 	if err != nil {
 		return dockerInferenceTypes.GetModelInfoResponse{}, errors.New(apiError.DockerInferenceError)
 	}
@@ -126,7 +126,7 @@ func (service *InferenceQueryService) GetInferenceModelFacts(ctx context.Context
 		return dockerInferenceTypes.GetModelFactsResponse{}, err
 	}
 
-	modelFacts, err := service.DockerInferenceAPIInterface.GetModelFacts(ctx, containerInfo.Name[1:]) // remove "/" prefix
+	modelFacts, err := service.DockerInferenceAPIInterface.GetModelFacts(ctx, containerInfo.Name)
 	if err != nil {
 		return dockerInferenceTypes.GetModelFactsResponse{}, errors.New(apiError.DockerInferenceError)
 	}
@@ -166,6 +166,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 
 					inferenceAvailableModels = append(inferenceAvailableModels, types.GetInferenceAvailableModelResult{
 						ContainerID:              inferenceModel.Container.ID,
+						ContainerName:            inferenceModel.Container.Name,
 						ModelName:                modelInfo.Data.ModelName,
 						Version:                  modelInfo.Data.Version,
 						DicomTargetLevel:         modelInfo.Data.DicomTargetLevel,
