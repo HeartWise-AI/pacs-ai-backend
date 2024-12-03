@@ -32,7 +32,7 @@ func (proxy *DockerInferenceProxy) AppViewerProxy() http.HandlerFunc {
 		}
 
 		// construct the target container URL
-		target := fmt.Sprintf("http://%s/app/viewer", containerName)
+		target := fmt.Sprintf("http://%s/app/viewer/", containerName)
 		targetURL, err := url.Parse(target)
 		if err != nil {
 			response := viewmodels.HTTPResponseVM{
@@ -49,11 +49,17 @@ func (proxy *DockerInferenceProxy) AppViewerProxy() http.HandlerFunc {
 		// create the reverse proxy
 		reverseProxy := httputil.NewSingleHostReverseProxy(targetURL)
 
-		// modify the request path to strip the prefix
-		fmt.Println("BEFORE:", r.URL.Host, r.URL.Path)
-		r.URL.Path = strings.TrimPrefix(r.URL.Path, fmt.Sprintf("/api/proxy/%s/app/viewer", containerName))
+		// modify the request path to only strip the proxy prefix but keep the rest of the path
+		prefix := fmt.Sprintf("/api/proxy/%s/app/viewer/", containerName)
+		if strings.HasPrefix(r.URL.Path, prefix) {
+			r.URL.Path = r.URL.Path[len(prefix):]
+			// ensure there's always a leading slash
+			if !strings.HasPrefix(r.URL.Path, "/") {
+				r.URL.Path = "/" + r.URL.Path
+			}
+		}
+
 		r.Host = targetURL.Host
-		fmt.Println("AFTER:", r.URL.Host, r.URL.Path, r.URL.String())
 		r.Header.Set("X-Forwarded-Host", r.Host)
 		r.Header.Set("X-Forwarded-For", r.RemoteAddr)
 
