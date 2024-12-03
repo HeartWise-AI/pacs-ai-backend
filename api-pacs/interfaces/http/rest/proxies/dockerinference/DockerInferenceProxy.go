@@ -32,7 +32,7 @@ func (proxy *DockerInferenceProxy) AppViewerProxy() http.HandlerFunc {
 		}
 
 		// construct the target container URL
-		target := fmt.Sprintf("http://%s", containerName)
+		target := fmt.Sprintf("http://%s/app/viewer", containerName)
 		targetURL, err := url.Parse(target)
 		if err != nil {
 			response := viewmodels.HTTPResponseVM{
