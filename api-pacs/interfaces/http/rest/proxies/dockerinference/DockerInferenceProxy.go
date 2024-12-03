@@ -50,7 +50,9 @@ func (proxy *DockerInferenceProxy) AppViewerProxy() http.HandlerFunc {
 		reverseProxy := httputil.NewSingleHostReverseProxy(targetURL)
 
 		// modify the request path to strip the prefix
+		fmt.Println("BEFORE:", r.URL.Host, r.URL.Path)
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, fmt.Sprintf("/api/proxy/%s/app/viewer", containerName))
+		fmt.Println("AFTER:", r.URL.Host, r.URL.Path)
 		r.Host = targetURL.Host
 		r.Header.Set("X-Forwarded-Host", r.Host)
 		r.Header.Set("X-Forwarded-For", r.RemoteAddr)
