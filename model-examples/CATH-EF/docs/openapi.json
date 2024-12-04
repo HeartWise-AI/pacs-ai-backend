@@ -122,7 +122,7 @@
                       "success": true,
                       "message": "Registration request created successfully",
                       "data": {
-                        "webappPath": "/app/viewer",
+                        "webappPath": "/app/viewer/",
                         "webappDataBase64": "base64 encoded webapp data..."
                       }
                     }

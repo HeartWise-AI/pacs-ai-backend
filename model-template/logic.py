@@ -12,6 +12,6 @@ class CustomPredictionService(BasePredictionService):
         CustomPredictionService.is_initialized = True
     
 
-    async def _handle_json_output(self, request: PredictRequest):
-        # TODO: Implement JSON output logic here. This method should return a dictionary with keys matching the output schema defined in the API documentation.
-        pass
+    # async def _handle_json_output(self, request: PredictRequest):
+    #     # TODO: Implement JSON output logic here. This method should return a dictionary with keys matching the output schema defined in the API documentation.
+    #     pass

@@ -1,6 +1,7 @@
 from typing import List, OrderedDict
 from utils.genericLogic import BasePredictionService
 from utils.http_utils import Config, PredictRequest
+from utils.html_parser import generate_vessel_report
 import torch
 import importlib
 import os
@@ -168,6 +169,63 @@ class CustomPredictionService(BasePredictionService):
         std = [47.53218, 47.53218, 47.53218]
         return self._common_preprocessing(inferences, mean, std, frames=72)
 
+    async def _handle_html_output(self, request: PredictRequest):
+        X3D_1_input = self._X3D_1_preprocessing(request)
+        X3D_1_outputs = self.inference(X3D_1_input, 'X3D_1')
+        
+        # Process vessels and collect data for the report
+        vessels_data = []
+        left_coronary_inferences = []
+        left_coronary_indices = []
+        
+        for i, output in enumerate(X3D_1_outputs):
+            prediction = output.detach().cpu().numpy().argmax()
+            vessel_name = self._get_vessel_name(prediction)
+            
+            if vessel_name is not None:
+                # Generate a unique series number for each vessel
+                series_number = f"Series {i+1}"
+                
+                if prediction == 5:  # Left Coronary
+                    left_coronary_inferences.append(request.inferences[i])
+                    left_coronary_indices.append(len(vessels_data))
+                    # Temporarily store without LVEF
+                    vessels_data.append((series_number, vessel_name, None))
+                else:
+                    vessels_data.append((series_number, vessel_name, None))
+
+        # Process LVEF for left coronary vessels if any
+        if left_coronary_inferences:
+            X3D_2_input = self._X3D_2_preprocessing(left_coronary_inferences)
+            X3D_2_outputs = self.inference(X3D_2_input, 'X3D_2')
+            
+            # Update vessels_data with LVEF values
+            for idx, output in enumerate(X3D_2_outputs):
+                lvef_value = float(output.detach().cpu().numpy())
+                vessel_idx = left_coronary_indices[idx]
+                
+                # Replace the tuple at vessel_idx with updated LVEF
+                old_tuple = vessels_data[vessel_idx]
+                vessels_data[vessel_idx] = (old_tuple[0], old_tuple[1], lvef_value)
+
+        # Generate the HTML report
+        patient_age = request.age
+        
+        try:
+            # Generate the report
+            html_report = generate_vessel_report(
+                vessels=vessels_data,
+                patient_age=patient_age,
+                display=False  # Don't display in browser, just return the base64
+            )
+            return {"htmlBase64": html_report}
+            
+        except Exception as e:
+            print(f"Error generating vessel report: {str(e)}")
+            return {
+                "error": "Failed to generate vessel report",
+                "details": str(e)
+            }
 
     async def _handle_json_output(self, request: PredictRequest):
         X3D_1_input = self._X3D_1_preprocessing(request)
