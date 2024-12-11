@@ -49,6 +49,7 @@ func (router *router) InitRouter() *chi.Mux {
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
 	inferenceCommandController := interfaces.ServiceContainer().RegisterInferenceRESTCommandController()
 	inferenceQueryController := interfaces.ServiceContainer().RegisterInferenceRESTQueryController()
+	orthancProxy := interfaces.ServiceContainer().RegisterOrthancProxy()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
 	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
 	predictionController := interfaces.ServiceContainer().RegisterPredictionRESTCommandController()
@@ -225,7 +226,10 @@ func (router *router) InitRouter() *chi.Mux {
 		})
 
 		// proxy routes
-		r.Handle("/proxy/{containerName}/app/viewer/*", dockerInferenceProxy.AppViewerProxy())
+		r.Route("/proxy", func(r chi.Router) {
+			r.Handle("/docker-inference/{containerName}/app/viewer/*", dockerInferenceProxy.AppViewerProxy())
+			r.Handle("/orthanc/dicom-web/*", orthancProxy.DICOMWebProxy())
+		})
 	})
 
 	return r
