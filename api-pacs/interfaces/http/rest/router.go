@@ -228,7 +228,13 @@ func (router *router) InitRouter() *chi.Mux {
 		// proxy routes
 		r.Route("/proxy", func(r chi.Router) {
 			r.Handle("/docker-inference/{containerName}/app/viewer/*", dockerInferenceProxy.AppViewerProxy())
-			r.Handle("/orthanc/dicom-web/*", orthancProxy.DICOMWebProxy())
+
+			// protected routes
+			r.Group(func(r chi.Router) {
+				r.Use(iamMiddleware.TokenSessionAuthGuard)
+
+				r.Handle("/orthanc/dicom-web/*", orthancProxy.DICOMWebProxy())
+			})
 		})
 	})
 
