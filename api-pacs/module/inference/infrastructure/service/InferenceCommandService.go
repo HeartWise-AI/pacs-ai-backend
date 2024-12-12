@@ -150,11 +150,21 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	downloadEndTime := time.Since(downloadStartTime)
 	log.Printf("[prediction] download DICOM file took %f seconds", downloadEndTime.Seconds())
 
+	// TODO: remove this
+	containerInfoStartTime := time.Now()
+
 	/// send to docker inference model
 	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
 	}
+
+	// TODO: remove this
+	containerInfoEndTime := time.Since(containerInfoStartTime)
+	log.Printf("[prediction] get container info took %f seconds", containerInfoEndTime.Seconds())
+
+	// TODO: remove this
+	predictionStartTime := time.Now()
 
 	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerInfo.Name[1:], dockerInferenceTypes.PredictRequest{ // remove "/" prefix in container name
 		Inferences: inferences,
@@ -165,6 +175,10 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
+
+	// TODO: remove this
+	predictionEndTime := time.Since(predictionStartTime)
+	log.Printf("[prediction] predict call took %f seconds", predictionEndTime.Seconds())
 
 	return predictionResult, nil
 }
