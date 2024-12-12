@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
 )
@@ -42,6 +43,11 @@ func main() {
 	port := ":8000"
 
 	r := chi.NewRouter()
+
+	// global and recommended middlewares
+	r.Use(middleware.RequestID)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 
 	// openapi docs
 	r.Group(func(r chi.Router) {
