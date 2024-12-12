@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -63,6 +64,26 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 
 	// define host config
 	hostConfig := &container.HostConfig{}
+
+	// try to use NVIDIA runtime if available
+	isNvidiaSupported, err := d.checkNvidiaRuntime(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	if isNvidiaSupported {
+		hostConfig.Runtime = "nvidia"
+		// use all GPUs
+		hostConfig.Resources = container.Resources{
+			DeviceRequests: []container.DeviceRequest{
+				{
+					Driver:       "nvidia",
+					Count:        -1, // Use all available GPUs
+					Capabilities: [][]string{{"gpu"}},
+				},
+			},
+		}
+	}
 
 	// define network config
 	networkConfig := &network.NetworkingConfig{
@@ -223,4 +244,21 @@ func (d *DockerSDK) StopContainer(ctx context.Context, containerID string) error
 	}
 
 	return nil
+}
+
+func (d *DockerSDK) checkNvidiaRuntime(ctx context.Context) (bool, error) {
+	info, err := d.Client.Info(ctx)
+	if err != nil {
+		log.Println("[docker] error:", err)
+		return false, err
+	}
+
+	// check if 'nvidia' is in the list of available runtimes
+	for runtime := range info.Runtimes {
+		if strings.EqualFold(runtime, "nvidia") {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
