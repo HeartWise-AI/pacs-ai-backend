@@ -94,6 +94,10 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 		},
 	}
 
+	// override with DNS settings to block internet access
+	hostConfig.DNS = []string{"0.0.0.0"} // invalid DNS to prevent resolution
+	hostConfig.DNSSearch = []string{""}  // empty DNS search
+
 	// create container
 	resp, err := d.Client.ContainerCreate(ctx, containerConfig, hostConfig, networkConfig, nil, config.Name)
 	if err != nil {
