@@ -83,6 +83,8 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 				},
 			},
 		}
+	} else {
+		log.Println("[docker] NVIDIA runtime not available")
 	}
 
 	// define network config
