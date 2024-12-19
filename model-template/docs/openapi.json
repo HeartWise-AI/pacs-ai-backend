@@ -484,6 +484,32 @@
               "example": "XA"
             }
           },
+          "supportedAdditionalMetadata": {
+            "type": "array",
+            "description": "Supported additional metadata",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "example": "smoking"
+                },
+                "name": {
+                  "type": "string",
+                  "example": "Smoking"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["boolean", "number", "string"],
+                  "example": "boolean"
+                },
+                "required": {
+                  "type": "boolean",
+                  "example": true
+                }
+              }
+            }
+          },
           "supportedOutputModes": {
             "type": "array",
             "description": "Supported output modes",

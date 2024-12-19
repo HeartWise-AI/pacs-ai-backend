@@ -5,5 +5,19 @@
   "dicomUploadMin": 1,
   "dicomUploadMax": 5,
   "supportedDicomModalities": ["XA"],
+  "supportedAdditionalMetadata": [
+    {
+      "id": "smoking",
+      "name": "Smoking",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "siblings",
+      "name": "Siblings",
+      "type": "number",
+      "required": false
+    }
+  ],
   "supportedOutputModes": ["OHIF_ANNOTATIONS", "JSON", "HTML", "WEB_APP"]
 }
