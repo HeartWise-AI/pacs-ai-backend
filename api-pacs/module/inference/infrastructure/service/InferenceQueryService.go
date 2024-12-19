@@ -165,15 +165,16 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 					}
 
 					inferenceAvailableModels = append(inferenceAvailableModels, types.GetInferenceAvailableModelResult{
-						ContainerID:              inferenceModel.Container.ID,
-						ContainerName:            inferenceModel.Container.Name,
-						ModelName:                modelInfo.Data.ModelName,
-						Version:                  modelInfo.Data.Version,
-						DicomTargetLevel:         modelInfo.Data.DicomTargetLevel,
-						DicomUploadMin:           modelInfo.Data.DicomUploadMin,
-						DicomUploadMax:           modelInfo.Data.DicomUploadMax,
-						SupportedDicomModalities: modelInfo.Data.SupportedDicomModalities,
-						OutputMode:               inferenceModel.OutputMode,
+						ContainerID:                 inferenceModel.Container.ID,
+						ContainerName:               inferenceModel.Container.Name,
+						ModelName:                   modelInfo.Data.ModelName,
+						Version:                     modelInfo.Data.Version,
+						DicomTargetLevel:            modelInfo.Data.DicomTargetLevel,
+						DicomUploadMin:              modelInfo.Data.DicomUploadMin,
+						DicomUploadMax:              modelInfo.Data.DicomUploadMax,
+						SupportedDicomModalities:    modelInfo.Data.SupportedDicomModalities,
+						SupportedAdditionalMetadata: modelInfo.Data.SupportedAdditionalMetadata,
+						OutputMode:                  inferenceModel.OutputMode,
 					})
 				}
 
