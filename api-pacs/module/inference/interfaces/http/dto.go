@@ -71,13 +71,14 @@ type GetInferenceModelResponse struct {
 }
 
 type GetInferenceAvailableModelResponse struct {
-	ContainerID              string            `json:"containerId"`
-	ContainerName            string            `json:"containerName"`
-	ModelName                string            `json:"modelName"`
-	Version                  string            `json:"version"`
-	DicomTargetLevel         string            `json:"dicomTargetLevel"`
-	DicomUploadMin           int               `json:"dicomUploadMin"`
-	DicomUploadMax           int               `json:"dicomUploadMax"`
-	SupportedDicomModalities []string          `json:"supportedDicomModalities"`
-	OutputMode               entity.OutputMode `json:"outputMode"`
+	ContainerID                 string            `json:"containerId"`
+	ContainerName               string            `json:"containerName"`
+	ModelName                   string            `json:"modelName"`
+	Version                     string            `json:"version"`
+	DicomTargetLevel            string            `json:"dicomTargetLevel"`
+	DicomUploadMin              int               `json:"dicomUploadMin"`
+	DicomUploadMax              int               `json:"dicomUploadMax"`
+	SupportedDicomModalities    []string          `json:"supportedDicomModalities"`
+	SupportedAdditionalMetadata []interface{}     `json:"supportedAdditionalMetadata"`
+	OutputMode                  entity.OutputMode `json:"outputMode"`
 }

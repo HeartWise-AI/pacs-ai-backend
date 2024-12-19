@@ -52,13 +52,14 @@ type GetInferenceModelResult struct {
 }
 
 type GetInferenceAvailableModelResult struct {
-	ContainerID              string
-	ContainerName            string
-	ModelName                string
-	Version                  string
-	DicomTargetLevel         string
-	DicomUploadMin           int
-	DicomUploadMax           int
-	SupportedDicomModalities []string
-	OutputMode               entity.OutputMode
+	ContainerID                 string
+	ContainerName               string
+	ModelName                   string
+	Version                     string
+	DicomTargetLevel            string
+	DicomUploadMin              int
+	DicomUploadMax              int
+	SupportedDicomModalities    []string
+	SupportedAdditionalMetadata []interface{}
+	OutputMode                  entity.OutputMode
 }
