@@ -110,6 +110,9 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 
 // GetContainerInfo gets the container info
 func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error) {
+	// TODO: remove this
+	inspectStartTime := time.Now()
+
 	// inspect the container for basic info
 	containerJSON, err := d.Client.ContainerInspect(ctx, containerID)
 	if err != nil {
@@ -129,6 +132,13 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 		log.Println("[docker] error:", err)
 		return types.GetContainerInfoResult{}, err
 	}
+
+	// TODO: remove this
+	inspectDuration := time.Since(inspectStartTime)
+	log.Println("[docker] inspect duration:", inspectDuration)
+
+	// TODO: remove this
+	statsStartTime := time.Now()
 
 	// fetch real-time stats
 	stats, err := d.Client.ContainerStats(ctx, containerID, false)
@@ -159,6 +169,10 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 	if cpuDelta > 0.0 && systemDelta > 0.0 {
 		cpuUsagePercent = (cpuDelta / systemDelta) * onlineCPUs * 100.0
 	}
+
+	// TODO: remove this
+	statsDuration := time.Since(statsStartTime)
+	log.Println("[docker] stats duration:", statsDuration)
 
 	return types.GetContainerInfoResult{
 		ID:              containerJSON.ID,
