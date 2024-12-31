@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"log"
 	"sync"
 	"time"
 
@@ -161,7 +162,8 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 				if len(inferenceModel.Container.ID) > 0 && inferenceModel.Container.Running {
 					modelInfo, err := service.GetInferenceModelInfo(ctx, inferenceModel.Container.ID)
 					if err != nil {
-						return err
+						log.Println(err)
+						return nil // skip error
 					}
 
 					inferenceAvailableModels = append(inferenceAvailableModels, types.GetInferenceAvailableModelResult{
