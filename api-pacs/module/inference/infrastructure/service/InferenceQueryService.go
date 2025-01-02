@@ -53,12 +53,12 @@ func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, te
 	var m = sync.Mutex{}
 	eg, _ := errgroup.WithContext(ctx)
 
-	inferenceModelsResult := make([]types.GetInferenceModelResult, len(inferenceModels))
+	var inferenceModelsResult []types.GetInferenceModelResult
 
 	// set limit
 	eg.SetLimit(len(inferenceModels))
 
-	for i, inferenceModel := range inferenceModels {
+	for _, inferenceModel := range inferenceModels {
 		func(inferenceModel entity.InferenceModel) {
 			eg.Go(func() error {
 				m.Lock()
@@ -66,10 +66,11 @@ func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, te
 
 				containerInfo, err := service.GetContainerInfo(ctx, inferenceModel.ContainerID)
 				if err != nil {
-					return err
+					log.Println(err)
+					return nil // skip error
 				}
 
-				inferenceModelsResult[i] = types.GetInferenceModelResult{
+				inferenceModelsResult = append(inferenceModelsResult, types.GetInferenceModelResult{
 					ID:       inferenceModel.ID,
 					TenantID: inferenceModel.TenantID,
 					Container: types.GetContainerInfoResult{
@@ -88,7 +89,7 @@ func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, te
 					OutputMode:  inferenceModel.OutputMode,
 					CreatedAt:   time.Unix(int64(inferenceModel.CreatedAt), 0),
 					UpdatedAt:   time.Unix(int64(inferenceModel.UpdatedAt), 0),
-				}
+				})
 
 				return nil
 			})
