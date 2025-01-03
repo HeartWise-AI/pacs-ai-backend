@@ -4,7 +4,7 @@ networks:
 
 services:
   orthanc:
-    image: orthancteam/orthanc:latest
+    image: orthancteam/orthanc:24.12.0-full
     container_name: orthanc
     restart: unless-stopped
     networks:
@@ -48,7 +48,7 @@ services:
       - orthanc-index
 
   orthanc-index:
-    image: postgres:latest
+    image: postgres:17.2
     container_name: orthanc-index
     restart: unless-stopped
     networks:
