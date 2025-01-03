@@ -41,11 +41,10 @@ func (repository *TenantQueryRepository) SelectTenantByID(ctx context.Context, t
 	}
 
 	return repositoryTypes.GetTenant{
-		ID:              tenantID,
-		Name:            tenant.Name,
-		Address:         tenant.Address,
-		AvailableModels: tenant.AvailableModels,
-		CreatedAt:       uint(tenant.CreatedAt),
-		UpdatedAt:       uint(tenant.UpdatedAt),
+		ID:        tenantID,
+		Name:      tenant.Name,
+		Address:   tenant.Address,
+		CreatedAt: uint(tenant.CreatedAt),
+		UpdatedAt: uint(tenant.UpdatedAt),
 	}, nil
 }
