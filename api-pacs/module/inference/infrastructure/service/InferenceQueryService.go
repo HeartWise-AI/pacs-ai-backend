@@ -161,7 +161,15 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 
 				// check if container id is set and running
 				if len(inferenceModel.Container.ID) > 0 && inferenceModel.Container.Running {
+					// get model info
 					modelInfo, err := service.GetInferenceModelInfo(ctx, inferenceModel.Container.ID)
+					if err != nil {
+						log.Println(err)
+						return nil // skip error
+					}
+
+					// get model facts
+					modelFacts, err := service.GetInferenceModelFacts(ctx, inferenceModel.Container.ID)
 					if err != nil {
 						log.Println(err)
 						return nil // skip error
@@ -171,6 +179,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 						ContainerID:                 inferenceModel.Container.ID,
 						ContainerName:               inferenceModel.Container.Name,
 						ModelName:                   modelInfo.Data.ModelName,
+						ModelFacts:                  types.ModelFacts(modelFacts.Data),
 						Version:                     modelInfo.Data.Version,
 						DicomTargetLevel:            modelInfo.Data.DicomTargetLevel,
 						DicomUploadMin:              modelInfo.Data.DicomUploadMin,
