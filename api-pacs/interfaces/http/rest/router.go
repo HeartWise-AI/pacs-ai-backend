@@ -52,7 +52,6 @@ func (router *router) InitRouter() *chi.Mux {
 	orthancProxy := interfaces.ServiceContainer().RegisterOrthancProxy()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
 	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
-	predictionController := interfaces.ServiceContainer().RegisterPredictionRESTCommandController()
 	tenantQueryController := interfaces.ServiceContainer().RegisterTenantRESTQueryController()
 	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
 	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
@@ -173,15 +172,6 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Put("/modality/{modalityID}/update", orthancCommandController.UpdateDICOMModality)
 						r.Delete("/modality/{modalityID}/remove", orthancCommandController.RemoveDICOMModality)
 					})
-				})
-			})
-
-			// prediction module
-			r.Route("/prediction", func(r chi.Router) {
-				r.Group(func(r chi.Router) {
-					r.Use(iamMiddleware.TokenSessionAuthGuard)
-
-					r.Post("/apply", predictionController.Predict)
 				})
 			})
 
