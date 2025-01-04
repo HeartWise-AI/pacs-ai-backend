@@ -158,6 +158,8 @@ Update `api-pacs/.env` with the following variables:
 | `MAILGUN_DOMAIN` | Your Mailgun domain |
 | `MAILGUN_SENDER_EMAIL` | Your sender email (e.g., `no-reply@MyDomain.com`) |
 | `OPENAPI_DOCS_PASSWORD` | Strong password for API documentation access |
+| `ORTHANC_AET` | Should be set to `PACS_AI` |
+| `ORTHANC_BASE_URL` | Should be set to `http://orthanc:8042` or correct port |
 | `REDIS_HOST` | Should be set to `redis` |
 | `REDIS_PORT` | Should be set to `6379` (do not change) |
 | `REDIS_PASSWORD` | Should be set to `pacs.staging` (requires update in `redis/redis.conf` if changed) |
@@ -224,6 +226,8 @@ Update `api-pacs/.env` with the following variables:
 | `MAILGUN_DOMAIN` | Your Mailgun domain |
 | `MAILGUN_SENDER_EMAIL` | Your sender email (e.g., `no-reply@MyDomain.com`) |
 | `OPENAPI_DOCS_PASSWORD` | Strong password for API documentation access |
+| `ORTHANC_AET` | Should be set to `PACS_AI` |
+| `ORTHANC_BASE_URL` | Should be set to `http://orthanc:8042` or correct port |
 | `REDIS_HOST` | Should be set to `localhost` |
 | `REDIS_PORT` | Should be set to `6379` (do not change) |
 | `REDIS_PASSWORD` | Should be set to `pacs.staging` (requires update in `redis/redis.conf` if changed) |

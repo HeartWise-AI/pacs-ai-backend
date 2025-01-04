@@ -50,10 +50,6 @@
       "description": "Orthanc service"
     },
     {
-      "name": "prediction",
-      "description": "Prediction service"
-    },
-    {
       "name": "tenant",
       "description": "Tenant service"
     },
@@ -896,41 +892,6 @@
             }
           }
         ],
-        "responses": {
-          "2xx": {
-            "description": "Success"
-          },
-          "4xx": {
-            "description": "Client side errors"
-          },
-          "5xx": {
-            "description": "Server side errors"
-          }
-        }
-      }
-    },
-    "/prediction/apply": {
-      "post": {
-        "tags": ["prediction"],
-        "summary": "Predict",
-        "description": "Apply prediction to selected local resource.",
-        "deprecated": true,
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "description": "Prediction request",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PredictionRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "2xx": {
             "description": "Success"
