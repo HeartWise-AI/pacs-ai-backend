@@ -55,6 +55,7 @@ type GetInferenceAvailableModelResult struct {
 	ContainerID                 string
 	ContainerName               string
 	ModelName                   string
+	ModelFacts                  ModelFacts
 	Version                     string
 	DicomTargetLevel            string
 	DicomUploadMin              int
@@ -62,4 +63,8 @@ type GetInferenceAvailableModelResult struct {
 	SupportedDicomModalities    []string
 	SupportedAdditionalMetadata []interface{}
 	OutputMode                  entity.OutputMode
+}
+
+type ModelFacts struct {
+	En map[string]interface{}
 }

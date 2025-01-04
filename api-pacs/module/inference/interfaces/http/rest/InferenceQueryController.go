@@ -103,7 +103,7 @@ func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWr
 		return
 	}
 
-	 inferenceModelsResponse := []types.GetInferenceModelResponse{}
+	inferenceModelsResponse := []types.GetInferenceModelResponse{}
 	for _, inferenceModel := range inferenceModels {
 		// set env to empty if nil
 		envs := inferenceModel.Envs
@@ -289,7 +289,19 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 
 	inferenceAvailableModelsResponse := []types.GetInferenceAvailableModelResponse{}
 	for _, inferenceAvailableModel := range inferenceAvailableModels {
-		inferenceAvailableModelsResponse = append(inferenceAvailableModelsResponse, types.GetInferenceAvailableModelResponse(inferenceAvailableModel))
+		inferenceAvailableModelsResponse = append(inferenceAvailableModelsResponse, types.GetInferenceAvailableModelResponse{
+			ContainerID:                 inferenceAvailableModel.ContainerID,
+			ContainerName:               inferenceAvailableModel.ContainerName,
+			ModelName:                   inferenceAvailableModel.ModelName,
+			ModelFacts:                  types.ModelFacts(inferenceAvailableModel.ModelFacts),
+			Version:                     inferenceAvailableModel.Version,
+			DicomTargetLevel:            inferenceAvailableModel.DicomTargetLevel,
+			DicomUploadMin:              inferenceAvailableModel.DicomUploadMin,
+			DicomUploadMax:              inferenceAvailableModel.DicomUploadMax,
+			SupportedDicomModalities:    inferenceAvailableModel.SupportedDicomModalities,
+			SupportedAdditionalMetadata: inferenceAvailableModel.SupportedAdditionalMetadata,
+			OutputMode:                  inferenceAvailableModel.OutputMode,
+		})
 	}
 
 	response := viewmodels.HTTPResponseVM{

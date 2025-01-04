@@ -74,6 +74,7 @@ type GetInferenceAvailableModelResponse struct {
 	ContainerID                 string            `json:"containerId"`
 	ContainerName               string            `json:"containerName"`
 	ModelName                   string            `json:"modelName"`
+	ModelFacts                  ModelFacts        `json:"modelFacts"`
 	Version                     string            `json:"version"`
 	DicomTargetLevel            string            `json:"dicomTargetLevel"`
 	DicomUploadMin              int               `json:"dicomUploadMin"`
@@ -81,4 +82,8 @@ type GetInferenceAvailableModelResponse struct {
 	SupportedDicomModalities    []string          `json:"supportedDicomModalities"`
 	SupportedAdditionalMetadata []interface{}     `json:"supportedAdditionalMetadata"`
 	OutputMode                  entity.OutputMode `json:"outputMode"`
+}
+
+type ModelFacts struct {
+	En map[string]interface{} `json:"en"`
 }
