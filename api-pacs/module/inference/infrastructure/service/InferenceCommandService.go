@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -121,7 +120,19 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 				for _, instance := range instances {
 					seriesNumber := int(instance["00200011"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
 					sopInstanceUID := instance["00080018"].(map[string]interface{})["Value"].([]interface{})[0].(string)
+
+					// if a study got series but no instance, skip it
+					if _, ok := instance["00200013"]; !ok {
+						log.Println("[dicom-web] skipping because 00080018 is missing")
+						continue
+					}
+
 					sopInstanceNumber := int(instance["00200013"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
+
+					// init instance map if doesnt exist yet
+					if _, ok := seriesInstanceMetadata[seriesNumber]; !ok {
+						seriesInstanceMetadata[seriesNumber] = make(map[int]interface{})
+					}
 
 					instanceMetadata, err := service.OrthancAPIInterface.RetrieveDICOMWebInstanceMetadata(egCtx, data.StudyInstanceUID, seriesInstanceUID, sopInstanceUID)
 					if err != nil {
@@ -140,8 +151,6 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	if err := eg.Wait(); err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
-
-	fmt.Println(seriesInstanceMetadata)
 
 	// TODO: remove this
 	containerInfoStartTime := time.Now()
