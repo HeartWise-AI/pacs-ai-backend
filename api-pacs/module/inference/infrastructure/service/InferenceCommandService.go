@@ -101,7 +101,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	var m = sync.Mutex{}
 	eg, egCtx := errgroup.WithContext(ctx)
 
-	var seriesInstanceMetadata map[int]map[int]interface{}
+	seriesInstanceMetadata := map[int]map[int]interface{}{}
 
 	// set limit
 	eg.SetLimit(len(data.SeriesInstanceUIDs))
