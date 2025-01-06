@@ -218,8 +218,10 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 	}
 
 	predictionResult, err := controller.InferenceCommandServiceInterface.PredictInferenceModel(context.TODO(), containerID, serviceTypes.PredictInferenceModel{
-		QueryIDs:   request.QueryIDs,
-		OutputMode: request.OutputMode,
+		StudyInstanceUID:   request.StudyInstanceUID,
+		SeriesInstanceUIDs: request.SeriesInstanceUIDs,
+		AdditionalMetadata: request.AdditionalMetadata,
+		OutputMode:         request.OutputMode,
 	})
 	if err != nil {
 		var httpCode int

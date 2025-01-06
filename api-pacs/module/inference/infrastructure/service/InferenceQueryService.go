@@ -51,7 +51,7 @@ func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, te
 	}
 
 	var m = sync.Mutex{}
-	eg, _ := errgroup.WithContext(ctx)
+	eg, egCtx := errgroup.WithContext(ctx)
 
 	var inferenceModelsResult []types.GetInferenceModelResult
 
@@ -64,7 +64,7 @@ func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, te
 				m.Lock()
 				defer m.Unlock()
 
-				containerInfo, err := service.GetContainerInfo(ctx, inferenceModel.ContainerID)
+				containerInfo, err := service.GetContainerInfo(egCtx, inferenceModel.ContainerID)
 				if err != nil {
 					log.Println(err)
 					return nil // skip error
@@ -146,7 +146,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 
 	// get model info for each inference model
 	var m = sync.Mutex{}
-	eg, _ := errgroup.WithContext(ctx)
+	eg, egCtx := errgroup.WithContext(ctx)
 
 	var inferenceAvailableModels []types.GetInferenceAvailableModelResult
 
@@ -162,13 +162,13 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 				// check if container id is set and running
 				if len(inferenceModel.Container.ID) > 0 && inferenceModel.Container.Running {
 					// get model info
-					modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, inferenceModel.Container.Name)
+					modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(egCtx, inferenceModel.Container.Name)
 					if err != nil {
 						log.Println(err)
 						return nil // skip error
 					}
 
-					modelFacts, err := service.DockerInferenceAPIInterface.GetModelFacts(ctx, inferenceModel.Container.Name)
+					modelFacts, err := service.DockerInferenceAPIInterface.GetModelFacts(egCtx, inferenceModel.Container.Name)
 					if err != nil {
 						log.Println(err)
 						return nil // skip error

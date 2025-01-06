@@ -24,8 +24,10 @@ type UpdateInferenceModel struct {
 }
 
 type PredictInferenceModel struct {
-	QueryIDs   []string
-	OutputMode entity.OutputMode
+	StudyInstanceUID   string
+	SeriesInstanceUIDs []string
+	AdditionalMetadata map[string]interface{}
+	OutputMode         entity.OutputMode
 }
 
 type GetContainerInfoResult struct {

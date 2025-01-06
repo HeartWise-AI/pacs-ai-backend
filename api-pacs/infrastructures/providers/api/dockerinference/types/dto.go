@@ -19,10 +19,9 @@ const (
 )
 
 type PredictRequest struct {
-	Inferences [][][][][]int `json:"inferences"`
-	Age        uint          `json:"age"`
-	Gender     Gender        `json:"gender"`
-	OutputMode OutputMode    `json:"outputMode"`
+	SeriesInstanceMetadata map[int]map[int]interface{} `json:"seriesInstanceMetadata"`
+	AdditionalMetadata     map[string]interface{}      `json:"additionalMetadata"`
+	OutputMode             OutputMode                  `json:"outputMode"`
 }
 
 type GetModelInfoResponse struct {

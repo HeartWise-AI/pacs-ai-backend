@@ -13,7 +13,8 @@ var (
 		"AddInferenceModel.Name":                    "Name is required.",
 		"AddInferenceModel.DockerImage":             "Docker image is required.",
 		"AddInferenceModel.OutputMode":              "Output mode is required.",
-		"PredictInferenceModel.QueryIDs":            "Query IDs are required.",
+		"PredictInferenceModel.StudyInstanceUID":    "Study Instance UID is required.",
+		"PredictInferenceModel.SeriesInstanceUIDs":  "Series Instance UIDs are required.",
 		"PredictInferenceModel.OutputMode":          "Output mode is required.",
 		"UpdateInferenceModel.ID":                   "ID is required.",
 		"UpdateInferenceModel.Name":                 "Name is required.",
@@ -39,8 +40,10 @@ type UpdateInferenceModelRequest struct {
 }
 
 type PredictInferenceModelRequest struct {
-	QueryIDs   []string          `json:"queryIds" validate:"required"`
-	OutputMode entity.OutputMode `json:"outputMode" validate:"required"`
+	StudyInstanceUID   string                 `json:"studyInstanceUID" validate:"required"`
+	SeriesInstanceUIDs []string               `json:"seriesInstanceUIDs" validate:"required"`
+	AdditionalMetadata map[string]interface{} `json:"additionalMetadata"`
+	OutputMode         entity.OutputMode      `json:"outputMode" validate:"required"`
 }
 
 type UpdateInferenceModelContainerRequest struct {
