@@ -1247,12 +1247,7 @@
         }
       },
       "PredictInferenceModelRequest": {
-        "required": [
-          "studyInstanceUID",
-          "seriesInstanceUIDs",
-          "additionalMetadata",
-          "outputMode"
-        ],
+        "required": ["studyInstanceUID", "seriesInstanceUIDs", "outputMode"],
         "type": "object",
         "properties": {
           "studyInstanceUID": {
@@ -1263,6 +1258,10 @@
             "items": {
               "type": "string"
             }
+          },
+          "additionalMetadata": {
+            "type": "object",
+            "nullable": true
           },
           "outputMode": {
             "type": "string",

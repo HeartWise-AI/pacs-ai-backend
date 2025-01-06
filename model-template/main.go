@@ -24,7 +24,6 @@ var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
 		"predictRequest.SeriesInstanceMetadata": "Series instance metadata is required",
-		"predictRequest.AdditionalMetadata":     "Additional metadata is required",
 		"predictRequest.OutputMode":             "Output mode is required",
 	}
 )
