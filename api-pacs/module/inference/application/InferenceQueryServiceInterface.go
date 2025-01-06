@@ -9,7 +9,7 @@ import (
 
 // InferenceQueryServiceInterface holds the implementable methods for the inference query service
 type InferenceQueryServiceInterface interface {
-	// GetContainerInfo returns the container info
+	// GetContainerInfo returns the container info with stats
 	GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error)
 	// GetInferenceModels returns the inference models
 	GetInferenceModels(ctx context.Context, tenantID string) ([]types.GetInferenceModelResult, error)

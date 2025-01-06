@@ -27,12 +27,16 @@ type CreateContainer struct {
 }
 
 type GetContainerInfoResult struct {
-	ID              string
-	Name            string
-	Status          Status
-	Running         bool
-	StartedAt       time.Time
-	FinishedAt      time.Time
+	ID         string
+	Name       string
+	Status     Status
+	Running    bool
+	StartedAt  time.Time
+	FinishedAt time.Time
+}
+
+type GetContainerStatsResult struct {
+	ContainerID     string
 	CPUPercentUsage float64 // in percent
 	MemoryInBytes   uint64  // in bytes
 }

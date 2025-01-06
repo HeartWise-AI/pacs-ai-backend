@@ -24,9 +24,16 @@ type InferenceQueryService struct {
 	dockerInferenceTypes.DockerInferenceAPIInterface
 }
 
-// GetContainerInfo returns the container info
+// GetContainerInfo returns the container info with stats
 func (service *InferenceQueryService) GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error) {
+	// get container info
 	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
+	if err != nil {
+		return types.GetContainerInfoResult{}, errors.New(apiError.DockerError)
+	}
+
+	// get container stats
+	containerStats, err := service.DockerSDKInterface.GetContainerStats(ctx, containerID)
 	if err != nil {
 		return types.GetContainerInfoResult{}, errors.New(apiError.DockerError)
 	}
@@ -38,8 +45,8 @@ func (service *InferenceQueryService) GetContainerInfo(ctx context.Context, cont
 		Running:         containerInfo.Running,
 		StartedAt:       containerInfo.StartedAt,
 		FinishedAt:      containerInfo.FinishedAt,
-		CPUPercentUsage: containerInfo.CPUPercentUsage,
-		MemoryInBytes:   containerInfo.MemoryInBytes,
+		CPUPercentUsage: containerStats.CPUPercentUsage,
+		MemoryInBytes:   containerStats.MemoryInBytes,
 	}, nil
 }
 
@@ -107,12 +114,12 @@ func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, te
 // GetInferenceModelInfo gets the inference model info
 func (service *InferenceQueryService) GetInferenceModelInfo(ctx context.Context, containerID string) (dockerInferenceTypes.GetModelInfoResponse, error) {
 	// get container name
-	containerInfo, err := service.GetContainerInfo(ctx, containerID)
+	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
 	if err != nil {
 		return dockerInferenceTypes.GetModelInfoResponse{}, err
 	}
 
-	modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerInfo.Name)
+	modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerInfo.Name[1:]) // remove "/" prefix
 	if err != nil {
 		return dockerInferenceTypes.GetModelInfoResponse{}, errors.New(apiError.DockerInferenceError)
 	}
@@ -123,12 +130,12 @@ func (service *InferenceQueryService) GetInferenceModelInfo(ctx context.Context,
 // GetInferenceModelFacts gets the inference model facts
 func (service *InferenceQueryService) GetInferenceModelFacts(ctx context.Context, containerID string) (dockerInferenceTypes.GetModelFactsResponse, error) {
 	// get container name
-	containerInfo, err := service.GetContainerInfo(ctx, containerID)
+	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
 	if err != nil {
 		return dockerInferenceTypes.GetModelFactsResponse{}, err
 	}
 
-	modelFacts, err := service.DockerInferenceAPIInterface.GetModelFacts(ctx, containerInfo.Name)
+	modelFacts, err := service.DockerInferenceAPIInterface.GetModelFacts(ctx, containerInfo.Name[1:]) // remove "/" prefix
 	if err != nil {
 		return dockerInferenceTypes.GetModelFactsResponse{}, errors.New(apiError.DockerInferenceError)
 	}
@@ -139,8 +146,8 @@ func (service *InferenceQueryService) GetInferenceModelFacts(ctx context.Context
 // GetInferenceAvailableModels gets the inference available models
 func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Context, tenantID string) ([]types.GetInferenceAvailableModelResult, error) {
 	// get inference models
-	inferenceModels, err := service.GetInferenceModels(ctx, tenantID)
-	if err != nil {
+	inferenceModels, err := service.InferenceQueryRepositoryInterface.SelectInferenceModels(ctx, tenantID)
+	if err != nil && err.Error() != apiError.MissingRecord {
 		return nil, err
 	}
 
@@ -154,29 +161,38 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 	eg.SetLimit(len(inferenceModels))
 
 	for _, inferenceModel := range inferenceModels {
-		func(inferenceModel types.GetInferenceModelResult) {
+		func(inferenceModel entity.InferenceModel) {
 			eg.Go(func() error {
 				m.Lock()
 				defer m.Unlock()
 
+				containerInfo, err := service.DockerSDKInterface.GetContainerInfo(egCtx, inferenceModel.ContainerID)
+				if err != nil {
+					log.Println(err)
+					return nil // skip error
+				}
+
+				containerName := containerInfo.Name[1:] // remove "/" prefix
+
 				// check if container id is set and running
-				if len(inferenceModel.Container.ID) > 0 && inferenceModel.Container.Running {
+				if len(inferenceModel.ContainerID) > 0 && containerInfo.Running {
 					// get model info
-					modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(egCtx, inferenceModel.Container.Name)
+					modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(egCtx, containerName)
 					if err != nil {
 						log.Println(err)
 						return nil // skip error
 					}
 
-					modelFacts, err := service.DockerInferenceAPIInterface.GetModelFacts(egCtx, inferenceModel.Container.Name)
+					// get model facts
+					modelFacts, err := service.DockerInferenceAPIInterface.GetModelFacts(egCtx, containerName)
 					if err != nil {
 						log.Println(err)
 						return nil // skip error
 					}
 
 					inferenceAvailableModels = append(inferenceAvailableModels, types.GetInferenceAvailableModelResult{
-						ContainerID:                 inferenceModel.Container.ID,
-						ContainerName:               inferenceModel.Container.Name,
+						ContainerID:                 inferenceModel.ContainerID,
+						ContainerName:               containerName,
 						ModelName:                   modelInfo.Data.ModelName,
 						ModelFacts:                  types.ModelFacts(modelFacts.Data),
 						Version:                     modelInfo.Data.Version,

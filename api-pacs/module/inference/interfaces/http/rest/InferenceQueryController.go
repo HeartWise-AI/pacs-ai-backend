@@ -17,7 +17,7 @@ type InferenceQueryController struct {
 	application.InferenceQueryServiceInterface
 }
 
-// GetContainerInfo returns the inference model container info
+// GetContainerInfo returns the inference model container info with stats
 func (controller *InferenceQueryController) GetContainerInfo(w http.ResponseWriter, r *http.Request) {
 	containerID := chi.URLParam(r, "containerID")
 	if len(containerID) == 0 {

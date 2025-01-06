@@ -137,6 +137,18 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 	inspectDuration := time.Since(inspectStartTime)
 	log.Println("[docker] inspect duration:", inspectDuration)
 
+	return types.GetContainerInfoResult{
+		ID:         containerJSON.ID,
+		Name:       containerJSON.Name,
+		Status:     types.Status(containerJSON.State.Status),
+		Running:    containerJSON.State.Running,
+		StartedAt:  startedAtTime,
+		FinishedAt: finishedAtTime,
+	}, nil
+}
+
+// GetContainerStats gets the container stats
+func (d *DockerSDK) GetContainerStats(ctx context.Context, containerID string) (types.GetContainerStatsResult, error) {
 	// TODO: remove this
 	statsStartTime := time.Now()
 
@@ -144,14 +156,14 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 	stats, err := d.Client.ContainerStats(ctx, containerID, false)
 	if err != nil {
 		log.Println("[docker] error:", err)
-		return types.GetContainerInfoResult{}, err
+		return types.GetContainerStatsResult{}, err
 	}
 	defer stats.Body.Close()
 
 	var statsJSON container.Stats
 	if err := json.NewDecoder(stats.Body).Decode(&statsJSON); err != nil {
 		log.Println("[docker] error:", err)
-		return types.GetContainerInfoResult{}, err
+		return types.GetContainerStatsResult{}, err
 	}
 
 	// calculate cpu usage percentage
@@ -174,13 +186,8 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 	statsDuration := time.Since(statsStartTime)
 	log.Println("[docker] stats duration:", statsDuration)
 
-	return types.GetContainerInfoResult{
-		ID:              containerJSON.ID,
-		Name:            containerJSON.Name,
-		Status:          types.Status(containerJSON.State.Status),
-		Running:         containerJSON.State.Running,
-		StartedAt:       startedAtTime,
-		FinishedAt:      finishedAtTime,
+	return types.GetContainerStatsResult{
+		ContainerID:     containerID,
 		CPUPercentUsage: cpuUsagePercent,
 		MemoryInBytes:   statsJSON.MemoryStats.Usage,
 	}, nil
