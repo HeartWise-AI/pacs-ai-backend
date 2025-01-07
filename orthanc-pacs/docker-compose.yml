@@ -3,8 +3,6 @@ services:
     image: orthancteam/orthanc:24.12.0-full
     container_name: orthanc-hospital-1
     restart: unless-stopped
-    networks:
-      - pacs-net
     ports:
       - 8063:8042
     volumes:
@@ -34,8 +32,6 @@ services:
     image: orthancteam/orthanc:24.12.0-full
     container_name: orthanc-hospital-2
     restart: unless-stopped
-    networks:
-      - pacs-net
     ports:
       - 8073:8042
     volumes:
@@ -60,10 +56,6 @@ services:
         }
       ORTHANC__AUTHENTICATION_ENABLED: "false"
       VERBOSE_STARTUP: "true"
-
-networks:
-  pacs-net:
-    internal: true
 
 volumes:
   orthanc-storage-hospital-1:

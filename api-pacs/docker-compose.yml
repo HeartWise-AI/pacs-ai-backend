@@ -4,8 +4,8 @@ services:
     container_name: api-pacs
     restart: unless-stopped
     networks:
+      - default
       - pacs-net
-      - pacs-net-external
     expose:
       - ${API_URL_REST_PORT}
     volumes:
@@ -16,6 +16,4 @@ services:
 
 networks:
   pacs-net:
-    internal: true
-  pacs-net-external:
     external: true

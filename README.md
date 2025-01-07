@@ -20,6 +20,7 @@ Before running this repository, ensure you have:
 ### 1. Project Setup
 
 1. Create and setup project directory:
+
    ```bash
    # Create project directory and clone repository
    mkdir pacs-ai
@@ -36,7 +37,7 @@ Before running this repository, ensure you have:
 
 2. Create Docker network:
    ```bash
-   docker network create pacs-net-external
+   docker network create pacs-net
    ```
 
 ### 2. External Services Setup
@@ -80,6 +81,7 @@ Before running this repository, ensure you have:
      <img src="docs/images/image-4.png" alt="Authentication setup">
    </p>
 3. Setup Firestore Database:
+
    - In the left sidebar, under Build, click on `Firestore Database`
    - Click on `Create database`
    - Do not change the `Database Id` and set the `Location` to `northamerica-northeast1 (Montréal)`
@@ -104,6 +106,7 @@ Before running this repository, ensure you have:
    ```
 
 4. Configure Web Application:
+
    - Go to the project settings page
    <p align="center">
      <img src="docs/images/image-8.png" alt="Project settings">
@@ -126,7 +129,7 @@ Before running this repository, ensure you have:
    - Click on `Generate new private key`
    - Rename the downloaded file to `pacs-ai-firebase-admin.json`
    - Save it in `api-pacs/configs/firebase/pacs-ai-firebase-admin.json`
-   > Note: This file contains the credentials for the GO API to access the Firebase database
+     > Note: This file contains the credentials for the GO API to access the Firebase database
 
 #### 2.3 Mailgun Setup
 
@@ -141,39 +144,41 @@ Before running this repository, ensure you have:
 
 Update `api-pacs/.env` with the following variables:
 
-| Variable | Description |
-|----------|-------------|
-| `API_NAME` | Should be set to `api-pacs` (do not change) |
-| `API_URL_REST_PORT` | Should be set to `8000` (do not change) |
-| `APP_URL` | Your domain URL (e.g., `https://MyDomain.com`) |
-| `DOCKER_USERNAME` | Your DockerHub username |
-| `DOCKER_PASSWORD` | Your DockerHub password |
-| `DOCKER_NETWORK` | Should be set to `pacs-net` |
-| `ELASTICSEARCH_URL` | Should be set to `http://elasticsearch:9200` |
-| `FIREBASE_CONFIG_FILE_PATH` | Should be set to `/app/build/configs/firebase/pacs-ai-firebase-admin.json` |
-| `FIREBASE_PROJECT_ID` | Your Firebase project ID (same as in `PACS-AI/platform/app/.env`) |
-| `FIREBASE_SUPERUSER_KEY` | Strong password for super user access (used for first user creation and API access) |
-| `KIBANA_BASE_URL` | Should be set to `http://kibana:5601` |
-| `MAILGUN_API_KEY` | Your Mailgun API key |
-| `MAILGUN_DOMAIN` | Your Mailgun domain |
-| `MAILGUN_SENDER_EMAIL` | Your sender email (e.g., `no-reply@MyDomain.com`) |
-| `OPENAPI_DOCS_PASSWORD` | Strong password for API documentation access |
-| `ORTHANC_AET` | Should be set to `PACS_AI` |
-| `ORTHANC_BASE_URL` | Should be set to `http://orthanc:8042` or correct port |
-| `REDIS_HOST` | Should be set to `redis` |
-| `REDIS_PORT` | Should be set to `6379` (do not change) |
-| `REDIS_PASSWORD` | Should be set to `pacs.staging` (requires update in `redis/redis.conf` if changed) |
-| `REDIS_IAM_DB` | Should be set to `1` (do not change) |
+| Variable                    | Description                                                                         |
+| --------------------------- | ----------------------------------------------------------------------------------- |
+| `API_NAME`                  | Should be set to `api-pacs` (do not change)                                         |
+| `API_URL_REST_PORT`         | Should be set to `8000` (do not change)                                             |
+| `APP_URL`                   | Your domain URL (e.g., `https://MyDomain.com`)                                      |
+| `DOCKER_USERNAME`           | Your DockerHub username                                                             |
+| `DOCKER_PASSWORD`           | Your DockerHub password                                                             |
+| `DOCKER_NETWORK`            | Should be set to `pacs-net`                                                         |
+| `ELASTICSEARCH_URL`         | Should be set to `http://elasticsearch:9200`                                        |
+| `FIREBASE_CONFIG_FILE_PATH` | Should be set to `/app/build/configs/firebase/pacs-ai-firebase-admin.json`          |
+| `FIREBASE_PROJECT_ID`       | Your Firebase project ID (same as in `PACS-AI/platform/app/.env`)                   |
+| `FIREBASE_SUPERUSER_KEY`    | Strong password for super user access (used for first user creation and API access) |
+| `KIBANA_BASE_URL`           | Should be set to `http://kibana:5601`                                               |
+| `MAILGUN_API_KEY`           | Your Mailgun API key                                                                |
+| `MAILGUN_DOMAIN`            | Your Mailgun domain                                                                 |
+| `MAILGUN_SENDER_EMAIL`      | Your sender email (e.g., `no-reply@MyDomain.com`)                                   |
+| `OPENAPI_DOCS_PASSWORD`     | Strong password for API documentation access                                        |
+| `ORTHANC_AET`               | Should be set to `PACS_AI`                                                          |
+| `ORTHANC_BASE_URL`          | Should be set to `http://orthanc:8042` or correct port                              |
+| `REDIS_HOST`                | Should be set to `redis`                                                            |
+| `REDIS_PORT`                | Should be set to `6379` (do not change)                                             |
+| `REDIS_PASSWORD`            | Should be set to `pacs.staging` (requires update in `redis/redis.conf` if changed)  |
+| `REDIS_IAM_DB`              | Should be set to `1` (do not change)                                                |
 
 #### DICOM Configuration
 
 Update `pacs-ai-backend/orthanc/.env` with appropriate port and AET settings:
+
 - Consult with PACS admins for proper port configuration if you are unsure
 - The AET (Application Entity Title) must be unique in your PACS network
 
 #### Network Configuration
 
 1. Update `pacs-ai-backend/nginx/.env` with your domain:
+
    ```env
    SERVER_NAME=MyDomain.com  # or IP address
    ```
@@ -192,46 +197,49 @@ Update `pacs-ai-backend/orthanc/.env` with appropriate port and AET settings:
 ### Launching the Application in Production
 
 From the `pacs-ai-backend` directory:
+
 ```bash
 make up-prod # This will start the application in production mode
 make down-prod # This will stop the application
 ```
+
 > Note: Initial startup may take several minutes while containers are being built and initialized. Subsequent restarts will be faster as containers are reused.
 
 ### Access Points
 
-| Service | URL |
-|---------|-----|
+| Service           | URL                           |
+| ----------------- | ----------------------------- |
 | API Documentation | https://MyDomain.com/api/docs |
 
 ### 4. Configuration for Development
+
 #### API Configuration
 
 Update `api-pacs/.env` with the following variables:
 
-| Variable | Description |
-|----------|-------------|
-| `API_NAME` | Should be set to `api-pacs` (do not change) |
-| `API_URL_REST_PORT` | Should be set to `8000` (do not change) |
-| `APP_URL` | Should be set to `http://localhost:3000` |
-| `DOCKER_USERNAME` | Your DockerHub username |
-| `DOCKER_PASSWORD` | Your DockerHub password |
-| `DOCKER_NETWORK` | Should be set to `pacs-net` |
-| `ELASTICSEARCH_URL` | Should be set to `http://localhost:9200` |
+| Variable                    | Description                                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `API_NAME`                  | Should be set to `api-pacs` (do not change)                                                                               |
+| `API_URL_REST_PORT`         | Should be set to `8000` (do not change)                                                                                   |
+| `APP_URL`                   | Should be set to `http://localhost:3000`                                                                                  |
+| `DOCKER_USERNAME`           | Your DockerHub username                                                                                                   |
+| `DOCKER_PASSWORD`           | Your DockerHub password                                                                                                   |
+| `DOCKER_NETWORK`            | Should be set to `pacs-net`                                                                                               |
+| `ELASTICSEARCH_URL`         | Should be set to `http://localhost:9200`                                                                                  |
 | `FIREBASE_CONFIG_FILE_PATH` | Should be set to `pacs-ai-backend/api-pacs/configs/firebase/pacs-ai-firebase-admin.json`, make sure it's the correct path |
-| `FIREBASE_PROJECT_ID` | Your Firebase project ID (same as in `PACS-AI/platform/app/.env`) |
-| `FIREBASE_SUPERUSER_KEY` | Strong password for super user access (used for first user creation and API access) |
-| `KIBANA_BASE_URL` | Should be set to `http://localhost:5601` |
-| `MAILGUN_API_KEY` | Your Mailgun API key |
-| `MAILGUN_DOMAIN` | Your Mailgun domain |
-| `MAILGUN_SENDER_EMAIL` | Your sender email (e.g., `no-reply@MyDomain.com`) |
-| `OPENAPI_DOCS_PASSWORD` | Strong password for API documentation access |
-| `ORTHANC_AET` | Should be set to `PACS_AI` |
-| `ORTHANC_BASE_URL` | Should be set to `http://orthanc:8042` or correct port |
-| `REDIS_HOST` | Should be set to `localhost` |
-| `REDIS_PORT` | Should be set to `6379` (do not change) |
-| `REDIS_PASSWORD` | Should be set to `pacs.staging` (requires update in `redis/redis.conf` if changed) |
-| `REDIS_IAM_DB` | Should be set to `1` (do not change) |
+| `FIREBASE_PROJECT_ID`       | Your Firebase project ID (same as in `PACS-AI/platform/app/.env`)                                                         |
+| `FIREBASE_SUPERUSER_KEY`    | Strong password for super user access (used for first user creation and API access)                                       |
+| `KIBANA_BASE_URL`           | Should be set to `http://localhost:5601`                                                                                  |
+| `MAILGUN_API_KEY`           | Your Mailgun API key                                                                                                      |
+| `MAILGUN_DOMAIN`            | Your Mailgun domain                                                                                                       |
+| `MAILGUN_SENDER_EMAIL`      | Your sender email (e.g., `no-reply@MyDomain.com`)                                                                         |
+| `OPENAPI_DOCS_PASSWORD`     | Strong password for API documentation access                                                                              |
+| `ORTHANC_AET`               | Should be set to `PACS_AI`                                                                                                |
+| `ORTHANC_BASE_URL`          | Should be set to `http://orthanc:8042` or correct port                                                                    |
+| `REDIS_HOST`                | Should be set to `localhost`                                                                                              |
+| `REDIS_PORT`                | Should be set to `6379` (do not change)                                                                                   |
+| `REDIS_PASSWORD`            | Should be set to `pacs.staging` (requires update in `redis/redis.conf` if changed)                                        |
+| `REDIS_IAM_DB`              | Should be set to `1` (do not change)                                                                                      |
 
 #### DICOM Configuration
 
@@ -246,6 +254,7 @@ No network configuration is needed for local development
 ### Launching the Application in Production
 
 From the `pacs-ai-backend` directory:
+
 ```bash
 make up # This will start the application in local mode
 make down # This will stop the application

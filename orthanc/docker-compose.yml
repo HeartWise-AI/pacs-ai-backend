@@ -3,8 +3,6 @@ services:
     image: orthancteam/orthanc:24.12.0-full
     container_name: orthanc
     restart: unless-stopped
-    networks:
-      - pacs-net
     ports:
       - ${ORTHANC_DICOM_PORT}:${ORTHANC_DICOM_PORT}
     volumes:
@@ -46,18 +44,12 @@ services:
     image: postgres:17.2
     container_name: orthanc-index
     restart: unless-stopped
-    networks:
-      - pacs-net
     expose:
       - "5432"
     volumes: ["orthanc-index:/var/lib/postgresql/data"]
     command: -c 'max_connections=200'
     environment:
       POSTGRES_HOST_AUTH_METHOD: "trust"
-
-networks:
-  pacs-net:
-    internal: true
 
 volumes:
   orthanc-storage:

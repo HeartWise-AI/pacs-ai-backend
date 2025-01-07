@@ -1,3 +1,7 @@
+networks:
+  default:
+    name: pacs-net-default
+
 include:
   - orthanc/docker-compose-dev.yml
   - orthanc-pacs/docker-compose.yml # uncomment to launch othanc pacs for simulation

@@ -4,8 +4,6 @@ services:
     container_name: elasticsearch
     labels:
       co.elastic.logs/module: elasticsearch
-    networks:
-      - pacs-net
     volumes:
       - es_data:/usr/share/elasticsearch/data
     expose:
@@ -37,8 +35,6 @@ services:
     container_name: kibana
     labels:
       co.elastic.logs/module: kibana
-    networks:
-      - pacs-net
     volumes:
       - kibana_data:/usr/share/kibana/data
     ports:
@@ -64,10 +60,6 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
-
-networks:
-  pacs-net:
-    internal: true
 
 volumes:
   es_data:
