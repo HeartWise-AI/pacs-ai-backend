@@ -1,7 +1,3 @@
-networks:
-  pacs-net:
-    external: true
-
 services:
   redis:
     image: redis:8.0-M02-bookworm
@@ -14,3 +10,7 @@ services:
       - ./redis.conf:/etc/redis/redis.conf
     ports:
       - 6379:6379
+
+networks:
+  pacs-net:
+    internal: true

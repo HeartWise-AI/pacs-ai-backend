@@ -1,7 +1,3 @@
-networks:
-  pacs-net:
-    external: true
-
 services:
   orthanc-hospital-1:
     image: orthancteam/orthanc:24.12.0-full
@@ -64,6 +60,10 @@ services:
         }
       ORTHANC__AUTHENTICATION_ENABLED: "false"
       VERBOSE_STARTUP: "true"
+
+networks:
+  pacs-net:
+    internal: true
 
 volumes:
   orthanc-storage-hospital-1:

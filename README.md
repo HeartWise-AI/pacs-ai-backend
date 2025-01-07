@@ -36,7 +36,7 @@ Before running this repository, ensure you have:
 
 2. Create Docker network:
    ```bash
-   docker network create pacs-net
+   docker network create pacs-net-external
    ```
 
 ### 2. External Services Setup
