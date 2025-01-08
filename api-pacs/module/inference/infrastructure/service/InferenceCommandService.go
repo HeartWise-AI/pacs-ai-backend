@@ -205,18 +205,20 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 					}
 
 					// prepare forwarded instance metadata
-					forwardedInstanceMetadata := []map[string]interface{}{} // follow instance metadata format
+					var forwardedInstanceMetadata []map[string]interface{} // follow instance metadata format
 
 					for _, instanceMetadataMap := range instanceMetadata {
+						allowedInstanceMetadata := map[string]interface{}{}
+
 						for _, allowedDICOMTag := range allowedDICOMTags {
 							if _, ok := instanceMetadataMap[allowedDICOMTag]; ok {
 								// TODO: modify 7FE00010 to download
 
-								forwardedInstanceMetadata = append(forwardedInstanceMetadata, map[string]interface{}{
-									allowedDICOMTag: instanceMetadataMap[allowedDICOMTag],
-								})
+								allowedInstanceMetadata[allowedDICOMTag] = instanceMetadataMap[allowedDICOMTag]
 							}
 						}
+
+						forwardedInstanceMetadata = append(forwardedInstanceMetadata, allowedInstanceMetadata)
 					}
 
 					seriesInstanceMetadata[seriesNumber][sopInstanceNumber] = forwardedInstanceMetadata
