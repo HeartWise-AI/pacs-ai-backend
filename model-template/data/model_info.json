@@ -5,6 +5,7 @@
   "dicomUploadMin": 1,
   "dicomUploadMax": 5,
   "supportedDicomModalities": ["XA"],
+  "supportedDicomTags": ["00200011", "00080018"],
   "supportedAdditionalMetadata": [
     {
       "id": "smoking",

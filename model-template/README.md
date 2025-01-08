@@ -139,6 +139,10 @@ Response:
       "supportedDicomModalities": [
         "XA"
       ],
+      "supportedDicomTags": [
+        "00200011",
+        "00080018"
+      ],
       "supportedAdditionalMetadata": [
         {
           "id": "smoking",

@@ -463,6 +463,14 @@
               "example": "XA"
             }
           },
+          "supportedDicomTags": {
+            "type": "array",
+            "description": "Supported DICOM tags",
+            "items": {
+              "type": "string",
+              "example": "00200011"
+            }
+          },
           "supportedAdditionalMetadata": {
             "type": "array",
             "description": "Supported additional metadata",
