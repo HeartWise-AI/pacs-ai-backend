@@ -16,11 +16,9 @@ type AddInferenceModel struct {
 }
 
 type UpdateInferenceModel struct {
-	ID          string
-	Name        string
-	DockerImage string
-	Envs        []string
-	OutputMode  entity.OutputMode
+	ID                  string
+	DisallowedDICOMTags []string
+	OutputMode          entity.OutputMode
 }
 
 type PredictInferenceModel struct {
@@ -42,15 +40,16 @@ type GetContainerInfoResult struct {
 }
 
 type GetInferenceModelResult struct {
-	ID          string
-	TenantID    string
-	Container   GetContainerInfoResult
-	Name        string
-	DockerImage string
-	Envs        []string
-	OutputMode  entity.OutputMode
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID                  string
+	TenantID            string
+	Container           GetContainerInfoResult
+	Name                string
+	DockerImage         string
+	DisallowedDICOMTags []string
+	Envs                []string
+	OutputMode          entity.OutputMode
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 type GetInferenceAvailableModelResult struct {
@@ -63,6 +62,7 @@ type GetInferenceAvailableModelResult struct {
 	DicomUploadMin              int
 	DicomUploadMax              int
 	SupportedDicomModalities    []string
+	SupportedDicomTags          []string
 	SupportedAdditionalMetadata []interface{}
 	OutputMode                  entity.OutputMode
 }

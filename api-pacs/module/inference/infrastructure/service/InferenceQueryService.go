@@ -90,12 +90,13 @@ func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, te
 						CPUPercentUsage: containerInfo.CPUPercentUsage,
 						MemoryInBytes:   containerInfo.MemoryInBytes,
 					},
-					Name:        inferenceModel.Name,
-					DockerImage: inferenceModel.DockerImage,
-					Envs:        inferenceModel.Envs,
-					OutputMode:  inferenceModel.OutputMode,
-					CreatedAt:   time.Unix(int64(inferenceModel.CreatedAt), 0),
-					UpdatedAt:   time.Unix(int64(inferenceModel.UpdatedAt), 0),
+					Name:                inferenceModel.Name,
+					DockerImage:         inferenceModel.DockerImage,
+					Envs:                inferenceModel.Envs,
+					DisallowedDICOMTags: inferenceModel.DisallowedDICOMTags,
+					OutputMode:          inferenceModel.OutputMode,
+					CreatedAt:           time.Unix(int64(inferenceModel.CreatedAt), 0),
+					UpdatedAt:           time.Unix(int64(inferenceModel.UpdatedAt), 0),
 				})
 
 				return nil
@@ -200,6 +201,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 						DicomUploadMin:              modelInfo.Data.DicomUploadMin,
 						DicomUploadMax:              modelInfo.Data.DicomUploadMax,
 						SupportedDicomModalities:    modelInfo.Data.SupportedDicomModalities,
+						SupportedDicomTags:          modelInfo.Data.SupportedDicomTags,
 						SupportedAdditionalMetadata: modelInfo.Data.SupportedAdditionalMetadata,
 						OutputMode:                  inferenceModel.OutputMode,
 					})

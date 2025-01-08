@@ -34,6 +34,7 @@ type GetModelInfoResponse struct {
 		DicomUploadMin              int           `json:"dicomUploadMin"`
 		DicomUploadMax              int           `json:"dicomUploadMax"`
 		SupportedDicomModalities    []string      `json:"supportedDicomModalities"`
+		SupportedDicomTags          []string      `json:"supportedDicomTags"`
 		SupportedAdditionalMetadata []interface{} `json:"supportedAdditionalMetadata"`
 		SupportedOutputModes        []string      `json:"supportedOutputModes"`
 	} `json:"data"`

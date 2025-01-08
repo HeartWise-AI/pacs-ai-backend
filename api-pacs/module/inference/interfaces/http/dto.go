@@ -16,9 +16,7 @@ var (
 		"PredictInferenceModel.StudyInstanceUID":    "Study Instance UID is required.",
 		"PredictInferenceModel.SeriesInstanceUIDs":  "Series Instance UIDs are required.",
 		"PredictInferenceModel.OutputMode":          "Output mode is required.",
-		"UpdateInferenceModel.ID":                   "ID is required.",
-		"UpdateInferenceModel.Name":                 "Name is required.",
-		"UpdateInferenceModel.DockerImage":          "Docker image is required.",
+		"UpdateInferenceModel.DisallowedDICOMTags":  "Disallowed DICOM tags are required.",
 		"UpdateInferenceModel.OutputMode":           "Output mode is required.",
 		"UpdateInferenceModelContainer.ContainerID": "Container ID is required.",
 	}
@@ -32,11 +30,8 @@ type AddInferenceModelRequest struct {
 }
 
 type UpdateInferenceModelRequest struct {
-	ID          string            `json:"id" validate:"required"`
-	Name        string            `json:"name" validate:"required"`
-	DockerImage string            `json:"dockerImage" validate:"required"`
-	Envs        []string          `json:"envs"`
-	OutputMode  entity.OutputMode `json:"outputMode" validate:"required"`
+	DisallowedDICOMTags []string          `json:"disallowedDICOMTags" validate:"required"`
+	OutputMode          entity.OutputMode `json:"outputMode" validate:"required"`
 }
 
 type PredictInferenceModelRequest struct {
@@ -62,15 +57,16 @@ type GetContainerInfoResponse struct {
 }
 
 type GetInferenceModelResponse struct {
-	ID          string                   `json:"id"`
-	TenantID    string                   `json:"tenantId"`
-	Container   GetContainerInfoResponse `json:"container"`
-	Name        string                   `json:"name"`
-	DockerImage string                   `json:"dockerImage"`
-	Envs        []string                 `json:"envs"`
-	OutputMode  entity.OutputMode        `json:"outputMode"`
-	CreatedAt   uint64                   `json:"createdAt"`
-	UpdatedAt   uint64                   `json:"updatedAt"`
+	ID                  string                   `json:"id"`
+	TenantID            string                   `json:"tenantId"`
+	Container           GetContainerInfoResponse `json:"container"`
+	Name                string                   `json:"name"`
+	DockerImage         string                   `json:"dockerImage"`
+	Envs                []string                 `json:"envs"`
+	DisallowedDICOMTags []string                 `json:"disallowedDICOMTags"`
+	OutputMode          entity.OutputMode        `json:"outputMode"`
+	CreatedAt           uint64                   `json:"createdAt"`
+	UpdatedAt           uint64                   `json:"updatedAt"`
 }
 
 type GetInferenceAvailableModelResponse struct {
@@ -83,6 +79,7 @@ type GetInferenceAvailableModelResponse struct {
 	DicomUploadMin              int               `json:"dicomUploadMin"`
 	DicomUploadMax              int               `json:"dicomUploadMax"`
 	SupportedDicomModalities    []string          `json:"supportedDicomModalities"`
+	SupportedDicomTags          []string          `json:"supportedDicomTags"`
 	SupportedAdditionalMetadata []interface{}     `json:"supportedAdditionalMetadata"`
 	OutputMode                  entity.OutputMode `json:"outputMode"`
 }

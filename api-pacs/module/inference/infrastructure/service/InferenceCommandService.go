@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"slices"
 	"sync"
 	"time"
 
@@ -56,13 +57,14 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 	ID := generateID()
 
 	err = service.InferenceCommandRepositoryInterface.InsertInferenceModel(ctx, repositoryTypes.AddInferenceModel{
-		ID:          ID,
-		TenantID:    data.TenantID,
-		ContainerID: containerID,
-		Name:        data.Name,
-		DockerImage: data.DockerImage,
-		Envs:        data.Envs,
-		OutputMode:  data.OutputMode,
+		ID:                  ID,
+		TenantID:            data.TenantID,
+		ContainerID:         containerID,
+		Name:                data.Name,
+		DockerImage:         data.DockerImage,
+		Envs:                data.Envs,
+		DisallowedDICOMTags: []string{}, // initialize empty list
+		OutputMode:          data.OutputMode,
 	})
 	if err != nil {
 		return err
@@ -95,7 +97,42 @@ func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context
 }
 
 // PredictInferenceModel predicts an inference model
-func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
+func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
+	// get inference model
+	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
+	if err != nil {
+		return dockerInferenceTypes.PredictResponse{}, err
+	}
+
+	// get container model info
+	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
+	if err != nil {
+		return dockerInferenceTypes.PredictResponse{}, err
+	}
+
+	containerName := containerInfo.Name[1:] // remove "/" prefix
+
+	modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerName) // remove "/" prefix
+	if err != nil {
+		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerInferenceError)
+	}
+
+	// get allowed dicom tags
+	var allowedDICOMTags []string
+	for _, supportedDICOMTag := range modelInfo.Data.SupportedDicomTags {
+		isAllowed := true
+		for _, disallowedTag := range inferenceModel.DisallowedDICOMTags {
+			if supportedDICOMTag == disallowedTag {
+				isAllowed = false
+				break
+			}
+		}
+
+		if isAllowed {
+			allowedDICOMTags = append(allowedDICOMTags, supportedDICOMTag)
+		}
+	}
+
 	// get series instances metadata
 	var m = sync.Mutex{}
 	eg, egCtx := errgroup.WithContext(ctx)
@@ -121,25 +158,62 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 					seriesNumber := int(instance["00200011"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
 					sopInstanceUID := instance["00080018"].(map[string]interface{})["Value"].([]interface{})[0].(string)
 
-					// if a study got series but no instance, skip it
-					if _, ok := instance["00200013"]; !ok {
-						log.Println("[dicom-web] skipping because 00080018 is missing")
-						continue
-					}
-
-					sopInstanceNumber := int(instance["00200013"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
-
 					// init instance map if doesnt exist yet
 					if _, ok := seriesInstanceMetadata[seriesNumber]; !ok {
 						seriesInstanceMetadata[seriesNumber] = make(map[int]interface{})
 					}
 
+					var sopInstanceNumber int
+					var reservedTags []string
+
+					// check for RTSTRUCT
+					if instance["00080016"].(map[string]interface{})["Value"].([]interface{})[0].(string) == "1.2.840.10008.5.1.4.1.1.481.3" {
+						sopInstanceNumber = seriesNumber // in RTSTRUCT, sopInstanceUID = seriesInstanceUID
+
+						// assign reserved tags required for RTSTRUCT
+						reservedTags = []string{"30060020", "30060039", "30060080", "300E0002"}
+					} else {
+						// if a study got series but no instance, skip it
+						if _, ok := instance["00200013"]; !ok {
+							log.Println("[dicom-web] skipping because 00080018 is missing")
+							continue
+						}
+
+						sopInstanceNumber = int(instance["00200013"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
+
+						// assign reserved tags
+						reservedTags = []string{"7FE00010"}
+					}
+
+					// filter already added preserved tags
+					for _, tag := range reservedTags {
+						if !slices.Contains(allowedDICOMTags, tag) {
+							allowedDICOMTags = append(allowedDICOMTags, tag)
+						}
+					}
+
+					// get instance metadata
 					instanceMetadata, err := service.OrthancAPIInterface.RetrieveDICOMWebInstanceMetadata(egCtx, data.StudyInstanceUID, seriesInstanceUID, sopInstanceUID)
 					if err != nil {
 						return err
 					}
 
-					seriesInstanceMetadata[seriesNumber][sopInstanceNumber] = instanceMetadata
+					// prepare forwarded instance metadata
+					forwardedInstanceMetadata := []map[string]interface{}{} // follow instance metadata format
+
+					for _, instanceMetadataMap := range instanceMetadata {
+						for _, allowedDICOMTag := range allowedDICOMTags {
+							if _, ok := instanceMetadataMap[allowedDICOMTag]; ok {
+								// TODO: modify 7FE00010 to download
+
+								forwardedInstanceMetadata = append(forwardedInstanceMetadata, map[string]interface{}{
+									allowedDICOMTag: instanceMetadataMap[allowedDICOMTag],
+								})
+							}
+						}
+					}
+
+					seriesInstanceMetadata[seriesNumber][sopInstanceNumber] = forwardedInstanceMetadata
 				}
 
 				return nil
@@ -153,22 +227,9 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	}
 
 	// TODO: remove this
-	containerInfoStartTime := time.Now()
-
-	/// send to docker inference model
-	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
-	if err != nil {
-		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
-	}
-
-	// TODO: remove this
-	containerInfoEndTime := time.Since(containerInfoStartTime)
-	log.Printf("[prediction] get container info took %f seconds", containerInfoEndTime.Seconds())
-
-	// TODO: remove this
 	predictionStartTime := time.Now()
 
-	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerInfo.Name[1:], dockerInferenceTypes.PredictRequest{ // remove "/" prefix in container name
+	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, dockerInferenceTypes.PredictRequest{ // remove "/" prefix in container name
 		SeriesInstanceMetadata: seriesInstanceMetadata,
 		AdditionalMetadata:     data.AdditionalMetadata,
 		OutputMode:             dockerInferenceTypes.OutputMode(data.OutputMode),
@@ -214,16 +275,12 @@ func (service *InferenceCommandService) StopInferenceModelContainer(ctx context.
 	return nil
 }
 
-// TODO: check if needed
 // UpdateInferenceModel updates an inference model
 func (service *InferenceCommandService) UpdateInferenceModel(ctx context.Context, data types.UpdateInferenceModel) error {
-	// TODO: checks to only update
 	err := service.InferenceCommandRepositoryInterface.UpdateInferenceModel(ctx, repositoryTypes.UpdateInferenceModel{
-		ID:          data.ID,
-		Name:        data.Name,
-		DockerImage: data.DockerImage,
-		Envs:        data.Envs,
-		OutputMode:  data.OutputMode,
+		ID:                  data.ID,
+		DisallowedDICOMTags: data.DisallowedDICOMTags,
+		OutputMode:          data.OutputMode,
 	})
 	if err != nil {
 		return err

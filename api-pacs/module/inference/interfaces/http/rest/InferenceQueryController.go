@@ -124,12 +124,13 @@ func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWr
 				CPUPercentUsage: inferenceModel.Container.CPUPercentUsage,
 				MemoryInBytes:   inferenceModel.Container.MemoryInBytes,
 			},
-			Name:        inferenceModel.Name,
-			DockerImage: inferenceModel.DockerImage,
-			Envs:        envs,
-			OutputMode:  inferenceModel.OutputMode,
-			CreatedAt:   uint64(inferenceModel.CreatedAt.Unix()),
-			UpdatedAt:   uint64(inferenceModel.UpdatedAt.Unix()),
+			Name:                inferenceModel.Name,
+			DockerImage:         inferenceModel.DockerImage,
+			Envs:                envs,
+			DisallowedDICOMTags: inferenceModel.DisallowedDICOMTags,
+			OutputMode:          inferenceModel.OutputMode,
+			CreatedAt:           uint64(inferenceModel.CreatedAt.Unix()),
+			UpdatedAt:           uint64(inferenceModel.UpdatedAt.Unix()),
 		})
 	}
 
@@ -299,6 +300,7 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 			DicomUploadMin:              inferenceAvailableModel.DicomUploadMin,
 			DicomUploadMax:              inferenceAvailableModel.DicomUploadMax,
 			SupportedDicomModalities:    inferenceAvailableModel.SupportedDicomModalities,
+			SupportedDicomTags:          inferenceAvailableModel.SupportedDicomTags,
 			SupportedAdditionalMetadata: inferenceAvailableModel.SupportedAdditionalMetadata,
 			OutputMode:                  inferenceAvailableModel.OutputMode,
 		})
