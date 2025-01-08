@@ -15,7 +15,6 @@ var (
 		"AddInferenceModel.OutputMode":              "Output mode is required.",
 		"PredictInferenceModel.StudyInstanceUID":    "Study Instance UID is required.",
 		"PredictInferenceModel.SeriesInstanceUIDs":  "Series Instance UIDs are required.",
-		"PredictInferenceModel.OutputMode":          "Output mode is required.",
 		"UpdateInferenceModel.DisallowedDICOMTags":  "Disallowed DICOM tags are required.",
 		"UpdateInferenceModel.OutputMode":           "Output mode is required.",
 		"UpdateInferenceModelContainer.ContainerID": "Container ID is required.",
@@ -38,7 +37,6 @@ type PredictInferenceModelRequest struct {
 	StudyInstanceUID   string                 `json:"studyInstanceUID" validate:"required"`
 	SeriesInstanceUIDs []string               `json:"seriesInstanceUIDs" validate:"required"`
 	AdditionalMetadata map[string]interface{} `json:"additionalMetadata"`
-	OutputMode         entity.OutputMode      `json:"outputMode" validate:"required"`
 }
 
 type UpdateInferenceModelContainerRequest struct {

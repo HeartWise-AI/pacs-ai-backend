@@ -223,7 +223,6 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 		StudyInstanceUID:   request.StudyInstanceUID,
 		SeriesInstanceUIDs: request.SeriesInstanceUIDs,
 		AdditionalMetadata: request.AdditionalMetadata,
-		OutputMode:         request.OutputMode,
 	})
 	if err != nil {
 		var httpCode int

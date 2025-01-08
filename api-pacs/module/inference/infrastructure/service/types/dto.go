@@ -25,7 +25,6 @@ type PredictInferenceModel struct {
 	StudyInstanceUID   string
 	SeriesInstanceUIDs []string
 	AdditionalMetadata map[string]interface{}
-	OutputMode         entity.OutputMode
 }
 
 type GetContainerInfoResult struct {

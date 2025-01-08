@@ -1291,7 +1291,7 @@
         }
       },
       "PredictInferenceModelRequest": {
-        "required": ["studyInstanceUID", "seriesInstanceUIDs", "outputMode"],
+        "required": ["studyInstanceUID", "seriesInstanceUIDs"],
         "type": "object",
         "properties": {
           "studyInstanceUID": {
@@ -1306,10 +1306,6 @@
           "additionalMetadata": {
             "type": "object",
             "nullable": true
-          },
-          "outputMode": {
-            "type": "string",
-            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
           }
         }
       },

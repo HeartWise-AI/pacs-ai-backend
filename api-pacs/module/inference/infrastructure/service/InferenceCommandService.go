@@ -53,6 +53,8 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 		return errors.New(apiError.DockerError)
 	}
 
+	// TODO: check and compare output mode if supported
+
 	// generate ID
 	ID := generateID()
 
@@ -155,6 +157,8 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 				}
 
 				for _, instance := range instances {
+					// TODO: refactor to goroutine
+
 					seriesNumber := int(instance["00200011"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
 					sopInstanceUID := instance["00080018"].(map[string]interface{})["Value"].([]interface{})[0].(string)
 
@@ -232,7 +236,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, dockerInferenceTypes.PredictRequest{ // remove "/" prefix in container name
 		SeriesInstanceMetadata: seriesInstanceMetadata,
 		AdditionalMetadata:     data.AdditionalMetadata,
-		OutputMode:             dockerInferenceTypes.OutputMode(data.OutputMode),
+		OutputMode:             dockerInferenceTypes.OutputMode(inferenceModel.OutputMode),
 	})
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
@@ -277,6 +281,8 @@ func (service *InferenceCommandService) StopInferenceModelContainer(ctx context.
 
 // UpdateInferenceModel updates an inference model
 func (service *InferenceCommandService) UpdateInferenceModel(ctx context.Context, data types.UpdateInferenceModel) error {
+	// TODO: check and compare output mode if supported
+
 	err := service.InferenceCommandRepositoryInterface.UpdateInferenceModel(ctx, repositoryTypes.UpdateInferenceModel{
 		ID:                  data.ID,
 		DisallowedDICOMTags: data.DisallowedDICOMTags,

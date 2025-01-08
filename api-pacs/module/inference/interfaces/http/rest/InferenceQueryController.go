@@ -111,6 +111,12 @@ func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWr
 			envs = []string{}
 		}
 
+		// set disallowedDICOMTags to empty if nil
+		disallowedDICOMTags := inferenceModel.DisallowedDICOMTags
+		if disallowedDICOMTags == nil {
+			disallowedDICOMTags = []string{}
+		}
+
 		inferenceModelsResponse = append(inferenceModelsResponse, types.GetInferenceModelResponse{
 			ID:       inferenceModel.ID,
 			TenantID: inferenceModel.TenantID,
@@ -127,7 +133,7 @@ func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWr
 			Name:                inferenceModel.Name,
 			DockerImage:         inferenceModel.DockerImage,
 			Envs:                envs,
-			DisallowedDICOMTags: inferenceModel.DisallowedDICOMTags,
+			DisallowedDICOMTags: disallowedDICOMTags,
 			OutputMode:          inferenceModel.OutputMode,
 			CreatedAt:           uint64(inferenceModel.CreatedAt.Unix()),
 			UpdatedAt:           uint64(inferenceModel.UpdatedAt.Unix()),
