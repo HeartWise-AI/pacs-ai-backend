@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"slices"
 	"sync"
@@ -229,6 +231,9 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	if err := eg.Wait(); err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
+
+	jsonStr, _ := json.Marshal(seriesInstanceMetadata)
+	fmt.Println(string(jsonStr))
 
 	// TODO: remove this
 	predictionStartTime := time.Now()
