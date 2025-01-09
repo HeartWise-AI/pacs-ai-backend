@@ -371,36 +371,15 @@
   "components": {
     "schemas": {
       "PredictRequest": {
-        "required": ["inferences", "age", "gender", "outputMode"],
+        "required": ["seriesInstanceMetadata", "outputMode"],
         "type": "object",
         "properties": {
-          "inferences": {
-            "type": "array",
-            "description": "DICOM Series",
-            "items": {
-              "type": "array",
-              "items": {
-                "type": "array",
-                "items": {
-                  "type": "array",
-                  "items": {
-                    "type": "array",
-                    "items": {
-                      "type": "integer"
-                    }
-                  }
-                }
-              }
-            }
+          "seriesInstanceMetadata": {
+            "type": "object"
           },
-          "age": {
-            "type": "integer",
-            "description": "Age of the patient"
-          },
-          "gender": {
-            "type": "string",
-            "enum": ["MALE", "FEMALE"],
-            "description": "Gender of the patient"
+          "additionalMetadata": {
+            "type": "object",
+            "nullable": true
           },
           "outputMode": {
             "type": "string",
@@ -482,6 +461,40 @@
             "items": {
               "type": "string",
               "example": "XA"
+            }
+          },
+          "supportedDicomTags": {
+            "type": "array",
+            "description": "Supported DICOM tags",
+            "items": {
+              "type": "string",
+              "example": "00200011"
+            }
+          },
+          "supportedAdditionalMetadata": {
+            "type": "array",
+            "description": "Supported additional metadata",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "example": "smoking"
+                },
+                "name": {
+                  "type": "string",
+                  "example": "Smoking"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["boolean", "number", "string"],
+                  "example": "boolean"
+                },
+                "required": {
+                  "type": "boolean",
+                  "example": true
+                }
+              }
             }
           },
           "supportedOutputModes": {

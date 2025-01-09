@@ -1,9 +1,11 @@
 {
   "modelName": "CathEF",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 5,
   "supportedDicomModalities": ["XA"],
+  "supportedDicomTags": ["00280008", "00280010", "00280011", "00101010"],
+  "supportedAdditionalMetadata": [],
   "supportedOutputModes": ["OHIF_ANNOTATIONS", "JSON", "HTML", "WEB_APP"]
 }

@@ -219,11 +219,9 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 						}
 
 						// prepare forwarded instance metadata
-						var forwardedInstanceMetadata []map[string]interface{} // follow instance metadata format
+						var allowedInstanceMetadata = map[string]interface{}{}
 
 						for _, instanceMetadataMap := range instanceMetadata {
-							allowedInstanceMetadata := map[string]interface{}{}
-
 							for _, allowedDICOMTag := range allowedDICOMTags {
 								if _, ok := instanceMetadataMap[allowedDICOMTag]; ok {
 									allowedInstanceMetadata[allowedDICOMTag] = instanceMetadataMap[allowedDICOMTag]
@@ -245,11 +243,9 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 									}
 								}
 							}
-
-							forwardedInstanceMetadata = append(forwardedInstanceMetadata, allowedInstanceMetadata)
 						}
 
-						seriesInstanceMetadata[seriesNumber][sopInstanceNumber] = forwardedInstanceMetadata
+						seriesInstanceMetadata[seriesNumber][sopInstanceNumber] = allowedInstanceMetadata
 					}
 
 					return nil

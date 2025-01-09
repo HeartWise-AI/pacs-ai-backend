@@ -1,7 +1,4 @@
 from utils.http_utils import HTTPResponse, PredictRequest
-import numpy as np
-import torch
-import gc
 
 class BasePredictionService:
     models = {}
@@ -86,19 +83,6 @@ class BasePredictionService:
     @classmethod
     def inference(cls, model_input, model_key: str):
         return cls.models[model_key](model_input)
-
-    @classmethod
-    def unload_model(cls):
-        """Clear all loaded models from GPU and memory"""
-        #TODO Improve this method, it doesn't fully clear the models from memory
-        for _, model in cls.models.items():
-            del model
-        
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        
-        gc.collect()
-        cls.is_initialized = False
 
     def _handle_unsupported_output(self):
         return HTTPResponse(

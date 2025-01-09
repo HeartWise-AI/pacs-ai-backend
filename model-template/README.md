@@ -54,7 +54,7 @@ curl --request POST \
   --data '{
     "seriesInstanceMetadata": {
       "1": { <---------------------------------- series number
-        "1": [{ <---------------------------------- instance number
+        "1": { <---------------------------------- instance number
           "00080005": {
             "Value": [
               "ISO_IR 192"
@@ -73,8 +73,8 @@ curl --request POST \
             ],
             "vr": "UI"
           }
-        }],
-        "2": [{
+        },
+        "2": {
           "00080005": {
             "Value": [
               "ISO_IR 192"
@@ -93,7 +93,7 @@ curl --request POST \
             ],
             "vr": "UI"
           }
-        }]
+        }
       }
     },
     "additionalMetadata": {

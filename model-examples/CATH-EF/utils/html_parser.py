@@ -14,7 +14,7 @@ from typing import List, Dict, Optional, Tuple
 
 
 def create_age_distribution_plot(patient_age: int) -> str:
-    """Create an enhanced age distribution plot with professional green theme"""
+    """Create an enhanced age distribution plot with dark theme and green accents"""
     x = np.linspace(0, 100, 1000)
     mean = 50
     std = 15
@@ -28,8 +28,8 @@ def create_age_distribution_plot(patient_age: int) -> str:
         y=y,
         fill='tozeroy',
         name='Age Distribution',
-        line=dict(color='rgba(0, 128, 0, 0.8)', width=2),  # Dark green
-        fillcolor='rgba(0, 128, 0, 0.1)'  # Light green fill
+        line=dict(color='rgba(0, 255, 0, 0.8)', width=2),  # Bright green
+        fillcolor='rgba(0, 255, 0, 0.1)'  # Light green fill
     ))
 
     # Add patient age point
@@ -39,35 +39,37 @@ def create_age_distribution_plot(patient_age: int) -> str:
         mode='markers',
         name='Patient Age',
         marker=dict(
-            color='white',
+            color='rgb(0, 255, 0)',
             size=12,
             symbol='circle',
-            line=dict(color='black', width=2)
+            line=dict(color='white', width=2)
         )
     ))
 
-    # Update layout with professional styling
+    # Update layout with dark theme styling
     fig.update_layout(
         title=dict(
             text='Age Distribution',
-            font=dict(size=24, color='#333', family='Arial Black'),
+            font=dict(size=24, color='#00ff00', family='Arial Black'),
             x=0.5,
             y=0.95
         ),
         xaxis=dict(
             title='Age (years)',
-            gridcolor='rgba(0,0,0,0.1)',
-            zerolinecolor='rgba(0,0,0,0.2)',
-            tickfont=dict(family='Arial')
+            gridcolor='rgba(255,255,255,0.1)',
+            zerolinecolor='rgba(255,255,255,0.2)',
+            tickfont=dict(family='Arial', color='white'),
+            title_font=dict(color='white')
         ),
         yaxis=dict(
             title='Probability Density',
-            gridcolor='rgba(0,0,0,0.1)',
-            zerolinecolor='rgba(0,0,0,0.2)',
-            tickfont=dict(family='Arial')
+            gridcolor='rgba(255,255,255,0.1)',
+            zerolinecolor='rgba(255,255,255,0.2)',
+            tickfont=dict(family='Arial', color='white'),
+            title_font=dict(color='white')
         ),
-        paper_bgcolor='white',
-        plot_bgcolor='white',
+        paper_bgcolor='black',
+        plot_bgcolor='black',
         showlegend=True,
         width=800,
         height=400,
@@ -77,9 +79,10 @@ def create_age_distribution_plot(patient_age: int) -> str:
             y=0.99,
             xanchor="left",
             x=0.01,
-            bgcolor='rgba(255,255,255,0.9)',
-            bordercolor='black',
-            borderwidth=1
+            bgcolor='rgba(0,0,0,0.9)',
+            bordercolor='#00ff00',
+            borderwidth=1,
+            font=dict(color='white')
         )
     )
 
@@ -87,8 +90,11 @@ def create_age_distribution_plot(patient_age: int) -> str:
 
 
 def create_series_summary_chart(vessels_data: List[Dict]) -> str:
-    """Create a compact summary chart with professional green theme"""
+    """Create a compact summary chart with dark theme and green accents"""
     df = pd.DataFrame(vessels_data)
+
+    # Calculate dynamic height based on number of rows (30px per row plus header)
+    dynamic_height = len(df) * 35 + 45
 
     fig = go.Figure()
 
@@ -96,10 +102,10 @@ def create_series_summary_chart(vessels_data: List[Dict]) -> str:
         go.Table(
             header=dict(
                 values=['Vessel Type', 'Series UID', 'LVEF'],
-                fill_color='rgb(0, 70, 0)',  # Dark green header
-                align='left',
-                font=dict(color='white', size=12, family='Arial Black'),
-                line_color='white',  # White lines between cells
+                fill_color='rgb(0, 200, 0)',  # Bright green header
+                align='center',  # Center align header
+                font=dict(color='black', size=12, family='Arial Black'),
+                line_color='black',
                 height=35
             ),
             cells=dict(
@@ -108,10 +114,10 @@ def create_series_summary_chart(vessels_data: List[Dict]) -> str:
                     df['series_uid'],
                     df.get('lvef', '').apply(lambda x: f"{x}%" if pd.notnull(x) else 'N/A')
                 ],
-                align='left',
-                fill_color=[['white', '#f8f8f8'] * len(df)],  # Alternating white and light gray
-                font=dict(color='black', size=11, family='Arial'),
-                line_color='#e0e0e0',  # Light gray lines between cells
+                align='center',  # Center align cells
+                fill_color=[['rgb(20,20,20)', 'rgb(30,30,30)'] * len(df)],  # Alternating dark grays
+                font=dict(color='white', size=11, family='Arial'),
+                line_color='#333333',
                 height=30
             )
         )
@@ -120,12 +126,13 @@ def create_series_summary_chart(vessels_data: List[Dict]) -> str:
     fig.update_layout(
         title=dict(
             text='Series Summary',
-            font=dict(size=20, color='black', family='Arial Black'),
+            font=dict(size=20, color='#00ff00', family='Arial Black'),
             x=0.5
         ),
         width=800,
+        height=dynamic_height + 40,  # Add some padding
         margin=dict(l=20, r=20, t=40, b=20),
-        paper_bgcolor='white'
+        paper_bgcolor='black'
     )
 
     return pio.to_html(fig, full_html=False)
@@ -178,72 +185,77 @@ def generate_vessel_report(vessels: list[tuple[str, str, Optional[float]]],
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
             :root {{
-                --primary-color: rgb(0, 70, 0);
-                --secondary-color: rgb(0, 128, 0);
-                --background-color: #ffffff;
-                --text-color: #333333;
-                --border-color: #e0e0e0;
+                --primary-color: rgb(0, 255, 0);
+                --secondary-color: rgb(0, 200, 0);
+                --background-color: #000000;
+                --text-color: #ffffff;
+                --border-color: #333333;
             }}
 
             body {{
                 font-family: Arial, sans-serif;
                 margin: 0;
-                padding: 20px;
+                padding: 15px;
                 background-color: var(--background-color);
                 color: var(--text-color);
             }}
 
             .report-container {{
-                max-width: 1000px;
+                max-width: 900px;
                 margin: 0 auto;
-                background-color: white;
+                background-color: #111111;
                 border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                padding: 30px;
+                box-shadow: 0 2px 4px rgba(0,255,0,0.1);
+                padding: 20px;
                 border: 1px solid var(--border-color);
             }}
 
             .header {{
                 text-align: center;
-                margin-bottom: 30px;
-                padding-bottom: 20px;
+                margin-bottom: 20px;
+                padding-bottom: 15px;
                 border-bottom: 2px solid var(--border-color);
             }}
 
             .header h1 {{
                 color: var(--primary-color);
                 margin: 0;
-                font-size: 32px;
+                font-size: 28px;
                 font-family: 'Arial Black', Arial, sans-serif;
             }}
 
             .summary-box {{
-                background-color: #f8f8f8;
+                background-color: #1a1a1a;
                 border-radius: 8px;
-                padding: 25px;
-                margin: 20px 0;
+                padding: 20px;
+                margin: 15px 0;
                 border: 1px solid var(--border-color);
             }}
 
             .lvef-average {{
-                font-size: 24px;
+                font-size: 22px;
                 color: var(--primary-color);
                 text-align: center;
-                margin: 20px 0;
+                margin: 15px 0;
                 font-weight: bold;
             }}
 
             .plot-container {{
-                margin: 30px 0;
-                padding: 20px;
-                background-color: white;
+                margin: 20px auto;  /* Changed from '20px 0' to center horizontally */
+                padding: 15px;
+                background-color: #111111;
                 border-radius: 8px;
                 border: 1px solid var(--border-color);
+                display: flex;  /* Added for centering content */
+                justify-content: center;  /* Center horizontally */
+                align-items: center;  /* Center vertically */
             }}
 
             h2 {{
                 color: var(--primary-color);
                 font-family: 'Arial Black', Arial, sans-serif;
+                font-size: 20px;
+                margin: 10px 0;
             }}
 
             .value-label {{

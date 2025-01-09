@@ -14,7 +14,7 @@ from logic import CustomPredictionService
 # Load environment variables
 load_dotenv()
 
-root_path = os.getenv('ROOT_PATH')
+root_path = os.getcwd()
 
 with open(os.path.join(root_path, 'config.json'), 'r') as f:
     config_dict = json.load(f)

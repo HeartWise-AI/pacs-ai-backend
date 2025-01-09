@@ -16,7 +16,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 COPY logic.py .
 COPY config.json .
-COPY .env .
 COPY data/ ./data/
 COPY docs/ ./docs/
 COPY models/ ./models/

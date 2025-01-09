@@ -1,5 +1,4 @@
 {
-  "workingDirectory": "/app",
   "modelDirectory": "models",
   "models": {
       "X3D_1": {

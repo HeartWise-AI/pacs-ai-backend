@@ -1,7 +1,5 @@
-from fastapi import FastAPI, Request, staticfiles
-from fastapi.responses import JSONResponse, RedirectResponse
-from typing import Any, Dict, List, Optional, Literal, Union
-from pathlib import Path
+from fastapi.responses import JSONResponse
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -13,7 +11,6 @@ class Config(BaseModel):
         workers: int = Field(gt=0)
         batchSize: int = Field(gt=0)
     
-    workingDirectory: str
     modelDirectory: str
     models: Dict[str, ModelConfig]
 
@@ -57,10 +54,8 @@ class HTTPResponse:
         )
 
 class PredictRequest(BaseModel):
-    # Define a 5D List: Series × Frames × Color Channels × Height × Width
-    inferences: List[List[List[List[List[int]]]]]
-    age: int
-    gender: str
+    seriesInstanceMetadata: Dict[str, Any]
+    additionalMetadata: Dict[str, Any]
     outputMode: str
 
 

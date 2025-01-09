@@ -1,4 +1,5 @@
-from typing import List, OrderedDict
+import base64
+from typing import Any, List, OrderedDict, Dict
 from utils.genericLogic import BasePredictionService
 from utils.http_utils import Config, PredictRequest
 from utils.html_parser import generate_vessel_report
@@ -17,7 +18,7 @@ class CustomPredictionService(BasePredictionService):
             print("Models already loaded, skipping initialization")
             return
 
-        workingDirectory = config.workingDirectory
+        workingDirectory = os.getcwd()
         model_dir = config.modelDirectory
 
         for key, value in config.models.items():
@@ -125,58 +126,74 @@ class CustomPredictionService(BasePredictionService):
 
         return np.asarray(compressedVideo).transpose(0, 3, 1, 2)
     
-    def _common_preprocessing(self, inferences: List[List[List[List[List[int]]]]], mean: List[float], std: List[float], frames: int) -> torch.Tensor:
+    def _common_preprocessing(self, series: Dict[str, Any], mean: List[float], std: List[float], framesToUse: int) -> torch.Tensor:
         lvef_batch = []
-        for inference in inferences:
-            numpyData = np.array(inference)
+        
+        for seriesNumber, instances in series.items():
+            for instancesNumber, metadata in instances.items():
+                row = metadata['00280010']['Value'][0]
+                column = metadata['00280011']['Value'][0]
+                frames = metadata['00280008']['Value'][0]
+                data = metadata['7FE00010']['InlineBinary']
+                
+                # Decode base64 data into numpy array
+                data = np.frombuffer(base64.b64decode(data), dtype=np.int8)
+                data = data.reshape(frames, 1, row, column)
+                numpyData = np.array(data)
 
-            # Arrange data for model input
-            data = np.repeat(numpyData, 3, axis=1)
-            compressedVideo = self.videoShenanigans(np.transpose(data, (0, 2, 3, 1)).astype(np.uint8))
-            compressedVideo = compressedVideo.astype(np.float32)
+                # Arrange data for model input
+                data = np.repeat(numpyData, 3, axis=1)
+                compressedVideo = self.videoShenanigans(np.transpose(data, (0, 2, 3, 1)).astype(np.uint8))
+                compressedVideo = compressedVideo.astype(np.float32)
 
-            # Transform video to torch and resize
-            video = torch.from_numpy(compressedVideo)
-            resize_transform = torchvision.transforms.Resize((224, 224), antialias=False)
-            video = resize_transform(video)
+                # Transform video to torch and resize
+                video = torch.from_numpy(compressedVideo)
+                resize_transform = torchvision.transforms.Resize((224, 224), antialias=False)
+                video = resize_transform(video)
 
-            # Apply normalization
-            normalize_transform = torchvision.transforms.Normalize(mean, std)
-            video = normalize_transform(video)
-            video = video.permute(1, 0, 2, 3)
-            video = video.numpy()
+                # Apply normalization
+                normalize_transform = torchvision.transforms.Normalize(mean, std)
+                video = normalize_transform(video)
+                video = video.permute(1, 0, 2, 3)
+                video = video.numpy()
 
-            # Set number of frames
-            c, f, h, w = video.shape
-            length = frames
-            if f < length:
-                video = np.concatenate((video, np.zeros((c, length - f, h, w), video.dtype)), axis=1)
+                # Set number of frames
                 c, f, h, w = video.shape
-            start = np.array([0])
-            video = tuple(video[:, s + 1 * np.arange(length), :, :] for s in start)[0]
-            lvef_batch.append(torch.as_tensor(video).unsqueeze(0))
+                length = framesToUse
+                if f < length:
+                    video = np.concatenate((video, np.zeros((c, length - f, h, w), video.dtype)), axis=1)
+                    c, f, h, w = video.shape
+                start = np.array([0])
+                video = tuple(video[:, s + 1 * np.arange(length), :, :] for s in start)[0]
+                lvef_batch.append(torch.as_tensor(video).unsqueeze(0))
 
         return torch.cat(lvef_batch, dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Optionally, redefine your specific preprocessing functions to use the common one
-    def _X3D_1_preprocessing(self, request: PredictRequest) -> torch.Tensor:
+    def _X3D_1_preprocessing(self, series: Dict[str, Any]) -> torch.Tensor:
         mean = [93.81117248535156, 93.81117248535156, 93.81117248535156]
         std = [59.551239013671875, 59.551239013671875, 59.551239013671875]
-        return self._common_preprocessing(request.inferences, mean, std, frames=48)
+        return self._common_preprocessing(series, mean, std, framesToUse=48)
 
-    def _X3D_2_preprocessing(self, inferences: List[List[List[List[List[int]]]]]) -> torch.Tensor:
+    def _X3D_2_preprocessing(self, series: Dict[str, Any]) -> torch.Tensor:
         mean = [111.72716, 111.72716, 111.72716]
         std = [47.53218, 47.53218, 47.53218]
-        return self._common_preprocessing(inferences, mean, std, frames=72)
+        return self._common_preprocessing(series, mean, std, framesToUse=72)
 
     async def _handle_html_output(self, request: PredictRequest):
-        X3D_1_input = self._X3D_1_preprocessing(request)
+        # Get the age from the first instance metdata from the first series
+        series_metadata = next(iter(request.seriesInstanceMetadata.values()), {})
+        first_instance = next(iter(series_metadata.values()), {})
+        age_dict = first_instance.get('00101010', {})
+        age_value = age_dict.get('Value', [None])[0]
+        patient_age = int(age_value[:-1]) if age_value else None
+
+        X3D_1_input = self._X3D_1_preprocessing(request.seriesInstanceMetadata)
         X3D_1_outputs = self.inference(X3D_1_input, 'X3D_1')
         
         # Process vessels and collect data for the report
         vessels_data = []
-        left_coronary_inferences = []
-        left_coronary_indices = []
+        toDelete = []
         
         for i, output in enumerate(X3D_1_outputs):
             prediction = output.detach().cpu().numpy().argmax()
@@ -184,33 +201,31 @@ class CustomPredictionService(BasePredictionService):
             
             if vessel_name is not None:
                 # Generate a unique series number for each vessel
-                series_number = f"Series {i+1}"
-                
-                if prediction == 5:  # Left Coronary
-                    left_coronary_inferences.append(request.inferences[i])
-                    left_coronary_indices.append(len(vessels_data))
-                    # Temporarily store without LVEF
-                    vessels_data.append((series_number, vessel_name, None))
-                else:
-                    vessels_data.append((series_number, vessel_name, None))
+                seriesNumber = list(request.seriesInstanceMetadata.keys())[i]
+                vessels_data.append((f"Series {seriesNumber}", vessel_name, None))
+
+                if prediction != 5:
+                    toDelete.append(seriesNumber)
+        
+        for element in toDelete:
+            del request.seriesInstanceMetadata[element]
 
         # Process LVEF for left coronary vessels if any
-        if left_coronary_inferences:
-            X3D_2_input = self._X3D_2_preprocessing(left_coronary_inferences)
+        if len(request.seriesInstanceMetadata):
+            X3D_2_input = self._X3D_2_preprocessing(request.seriesInstanceMetadata)
             X3D_2_outputs = self.inference(X3D_2_input, 'X3D_2')
             
             # Update vessels_data with LVEF values
             for idx, output in enumerate(X3D_2_outputs):
                 lvef_value = float(output.detach().cpu().numpy())
-                vessel_idx = left_coronary_indices[idx]
                 
                 # Replace the tuple at vessel_idx with updated LVEF
-                old_tuple = vessels_data[vessel_idx]
-                vessels_data[vessel_idx] = (old_tuple[0], old_tuple[1], lvef_value)
+                seriesNumber = list(request.seriesInstanceMetadata.keys())[idx]
+                index = next(i for i, item in enumerate(vessels_data) if item[0].split()[1] == seriesNumber)
+                old_tuple = vessels_data[index]
+                vessels_data[index] = (old_tuple[0], old_tuple[1], lvef_value)
 
         # Generate the HTML report
-        patient_age = request.age
-        
         try:
             # Generate the report
             html_report = generate_vessel_report(
@@ -228,22 +243,31 @@ class CustomPredictionService(BasePredictionService):
             }
 
     async def _handle_json_output(self, request: PredictRequest):
-        X3D_1_input = self._X3D_1_preprocessing(request)
+        # Get the age from the first instance metdata from the first series
+        X3D_1_input = self._X3D_1_preprocessing(request.seriesInstanceMetadata)
         X3D_1_outputs = self.inference(X3D_1_input, 'X3D_1')
         
-        # Process X3D_1 outputs
+        # Process vessels and collect predictions
         vessel_predictions = []
-        newInferences = []
+        toDelete = []
         
         for i, output in enumerate(X3D_1_outputs):
             prediction = output.detach().cpu().numpy().argmax()
             vessel_name = self._get_vessel_name(prediction)
+            
+            # Get the series number for this prediction
+            seriesNumber = list(request.seriesInstanceMetadata.keys())[i]
+            
             vessel_predictions.append({
-                "index": i,
+                "seriesNumber": seriesNumber,
                 "vessel": vessel_name
             })
-            if prediction == 5:  # Left Main
-                newInferences.append(request.inferences[i])
+            
+            if prediction != 5:  # Not Left Coronary
+                toDelete.append(seriesNumber)
+
+        for element in toDelete:
+            del request.seriesInstanceMetadata[element]
 
         response = {
             "predictions": {
@@ -252,21 +276,23 @@ class CustomPredictionService(BasePredictionService):
             "modelRecommendations": {
                 "en": "Recommendation for the next model",
                 "fr": "Recommandation pour le prochain modèle",
-                "presentable": len(newInferences) > 0
+                "presentable": len(request.seriesInstanceMetadata) > 0
             }
         }
 
         # Only perform X3D_2 inference if there are Left Coronary predictions
-        if len(newInferences) > 0:
-            X3D_2_input = self._X3D_2_preprocessing(newInferences)
+        if len(request.seriesInstanceMetadata) > 0:
+            X3D_2_input = self._X3D_2_preprocessing(request.seriesInstanceMetadata)
             X3D_2_outputs = self.inference(X3D_2_input, 'X3D_2')
             
             # Process X3D_2 outputs
             lvef_predictions = []
-            for i, output in enumerate(X3D_2_outputs):
-                lvef_value = float(output.detach().cpu().numpy())  # Assuming this returns the LVEF value
+            for idx, output in enumerate(X3D_2_outputs):
+                lvef_value = float(output.detach().cpu().numpy())
+                seriesNumber = list(request.seriesInstanceMetadata.keys())[idx]
+                
                 lvef_predictions.append({
-                    "index": i,
+                    "seriesNumber": seriesNumber,
                     "value": lvef_value
                 })
                 

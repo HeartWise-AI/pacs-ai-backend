@@ -61,65 +61,68 @@ def send_dicom_data(dicom_paths: Union[str, List[str]], server_url: str, output_
     # Convert single path to list for consistent processing
     if isinstance(dicom_paths, str):
         dicom_paths = [dicom_paths]
-
-    # List to store all processed frames
-    all_dicoms = []
-
-    # Variables to store patient information
-    age = 65 # Default value
-    gender = "MALE"  # Default value
-
+    
+    # Dictionary to store series instance metadata
+    series_instance_metadata = {}
+    
     # Process each DICOM file
-    for dicom_path in dicom_paths:
+    for idx, dicom_path in enumerate(dicom_paths, start=1):
         try:
             # Read DICOM file
             ds = pydicom.dcmread(dicom_path)
 
-            # Extract pixel data
+            # Get series number, default to "5" if not present
+            series_number = str(getattr(ds, 'SeriesNumber', 5))
+            
+            # Create series entry if it doesn't exist
+            if series_number not in series_instance_metadata:
+                series_instance_metadata[series_number] = {}
+
+            # Generate instance number (using format from example)
+            instance_number = f"{series_number}10000"
+
+            # Extract pixel data and convert to base64
             pixel_array = ds.pixel_array
+            pixel_bytes = pixel_array.tobytes()
+            pixel_base64 = base64.b64encode(pixel_bytes).decode('utf-8')
 
-            # Add color channel dimension if grayscale
-            if len(pixel_array.shape) == 2:
-                pixel_array = np.expand_dims(pixel_array, axis=0)
-
-            # Add to frames list
-            all_dicoms.append(pixel_array)
-
-            # Try to extract patient age
-            try:
-                if hasattr(ds, 'PatientAge'):
-                    age = int(ds.PatientAge[:-1])
-                elif hasattr(ds, 'PatientBirthDate'):
-                    age = 0  # Replace with actual calculation if needed
-            except:
-                age = 0
-
-            # Try to extract patient gender
-            try:
-                if hasattr(ds, 'PatientSex'):
-                    gender = "MALE" if ds.PatientSex.upper() == "M" else "FEMALE"
-            except:
-                gender = "MALE"
+            # Extract DICOM metadata for this instance
+            instance_metadata = {
+                "00280008": {
+                    "Value": [getattr(ds, 'NumberOfFrames', 1)],
+                    "vr": "IS"
+                },
+                "00280010": {
+                    "Value": [getattr(ds, 'Rows', 0)],
+                    "vr": "US"
+                },
+                "00280011": {
+                    "Value": [getattr(ds, 'Columns', 0)],
+                    "vr": "US"
+                },
+                "00101010": {
+                    "Value": [getattr(ds, 'PatientAge', '29')],
+                    "vr": "AS"
+                },
+                "7FE00010": {
+                    "InlineBinary": pixel_base64,
+                    "vr": "OB"
+                }
+            }
+            
+            # Add instance metadata to series
+            series_instance_metadata[series_number][instance_number] = instance_metadata
 
         except Exception as e:
             print(f"Error processing DICOM file {dicom_path}: {str(e)}")
             continue
 
-    # Convert frames to numpy array and reshape to required format
-    dicoms_array = np.array(all_dicoms)
-
-    # Reshape to match required 5D format: Series × Frames × Color Channels × Height × Width
-    if len(dicoms_array.shape) == 4:
-        dicoms_array = np.expand_dims(dicoms_array, axis=0)
-
-    # Transpose to match the 5D format:
-    dicoms_array = np.transpose(dicoms_array, (0,2,1,3,4))
-
     # Prepare request payload
     payload = {
-        "inferences": dicoms_array.tolist(),
-        "age": age,
-        "gender": gender,
+        "seriesInstanceMetadata": series_instance_metadata,
+        "additionalMetadata": {
+            "smoker": "false"  # Default value, can be modified as needed
+        },
         "outputMode": output_mode
     }
 
@@ -138,7 +141,7 @@ def main():
 
     parser.add_argument(
         'dicom_files',
-        default=['sample_data/XA_1.dcm', 'sample_data/XA_2.dcm'],
+        default=['sample_data/XA_1.dcm'],#, 'sample_data/XA_2.dcm'],
         nargs='*',
         help='Path(s) to DICOM file(s). You can specify multiple files.'
     )
@@ -151,7 +154,7 @@ def main():
 
     parser.add_argument(
         '--output_mode',
-        default='HTML',
+        default='JSON',
         choices=['HTML','OHIF_ANNOTATIONS','JSON','WEB_APP','PDF'],
         help='Output mode for the request (default: HTML)'
     )
