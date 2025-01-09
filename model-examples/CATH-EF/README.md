@@ -17,6 +17,6 @@ docker run -p 8000:8000 --gpus all cacoool/cath-ef:1.4
 
 To run the docker image locally for debugging with the pacs network, run the following command and then you can attach to the container and debug it:
 ```
-docker run -it --network pacs-net --entrypoint /bin/bash cacoool/cath-ef:1.4
+docker run -it --network pacs-net --gpus all --entrypoint /bin/bash cacoool/cath-ef:1.4
 ```
 

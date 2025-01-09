@@ -13,7 +13,7 @@ import base64
 from typing import List, Dict, Optional, Tuple
 
 
-def create_age_distribution_plot(patient_age: int) -> str:
+def create_age_distribution_plot(patient_age: Optional[int]) -> str:
     """Create an enhanced age distribution plot with dark theme and green accents"""
     x = np.linspace(0, 100, 1000)
     mean = 50
@@ -32,19 +32,20 @@ def create_age_distribution_plot(patient_age: int) -> str:
         fillcolor='rgba(0, 255, 0, 0.1)'  # Light green fill
     ))
 
-    # Add patient age point
-    fig.add_trace(go.Scatter(
-        x=[patient_age],
-        y=[norm.pdf(patient_age, mean, std)],
-        mode='markers',
-        name='Patient Age',
-        marker=dict(
-            color='rgb(0, 255, 0)',
-            size=12,
-            symbol='circle',
-            line=dict(color='white', width=2)
-        )
-    ))
+    # Add patient age point only if age is provided
+    if patient_age is not None:
+        fig.add_trace(go.Scatter(
+            x=[patient_age],
+            y=[norm.pdf(patient_age, mean, std)],
+            mode='markers',
+            name='Patient Age',
+            marker=dict(
+                color='rgb(0, 255, 0)',
+                size=12,
+                symbol='circle',
+                line=dict(color='white', width=2)
+            )
+        ))
 
     # Update layout with dark theme styling
     fig.update_layout(
@@ -139,7 +140,7 @@ def create_series_summary_chart(vessels_data: List[Dict]) -> str:
 
 
 def generate_vessel_report(vessels: list[tuple[str, str, Optional[float]]], 
-                         patient_age: int, 
+                         patient_age: Optional[int], 
                          display: bool = True) -> str:
     """
     Generate a vessel report based on multiple vessels.
@@ -147,7 +148,7 @@ def generate_vessel_report(vessels: list[tuple[str, str, Optional[float]]],
     Args:
         vessels (list[tuple]): List of tuples containing (series_number, vessel_type, lvef)
                              where lvef is optional and only used for left coronary vessels
-        patient_age (int): Patient's age
+        patient_age (Optional[int]): Patient's age, can be None if not available
         display (bool): Whether to display the report in browser
     
     Returns:
@@ -273,7 +274,7 @@ def generate_vessel_report(vessels: list[tuple[str, str, Optional[float]]],
             <div class="header">
                 <h1>Vessel Analysis Report</h1>
                 <p style="color: var(--text-color);">
-                    <span class="value-label">Patient Age:</span> {patient_age} years | 
+                    <span class="value-label">Patient Age:</span> {f"{patient_age} years" if patient_age is not None else "N/A"} | 
                 </p>
             </div>
 
