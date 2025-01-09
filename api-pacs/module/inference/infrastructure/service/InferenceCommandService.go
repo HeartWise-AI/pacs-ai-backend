@@ -2,9 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"slices"
 	"sync"
@@ -264,8 +262,11 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 			return dockerInferenceTypes.PredictResponse{}, err
 		}
 
-		jsonStr, _ := json.Marshal(seriesInstanceMetadata)
-		fmt.Println(string(jsonStr))
+		// check if SeriesInstanceMetadata is null
+		if seriesInstanceMetadata == nil {
+			log.Println("[predict] empty series instance metadata")
+			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InferenceError)
+		}
 	}
 
 	// TODO: remove this
