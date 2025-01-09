@@ -218,8 +218,8 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 							return err
 						}
 
-						// prepare forwarded instance metadata
-						var allowedInstanceMetadata = map[string]interface{}{}
+						// prepare allowed instance metadata
+						allowedInstanceMetadata := map[string]interface{}{}
 
 						for _, instanceMetadataMap := range instanceMetadata {
 							for _, allowedDICOMTag := range allowedDICOMTags {
