@@ -175,6 +175,11 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 						seriesNumber := int(instance["00200011"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
 						sopInstanceUID := instance["00080018"].(map[string]interface{})["Value"].([]interface{})[0].(string)
 
+						// init metadata map if doesnt exist yet
+						if seriesInstanceMetadata == nil {
+							seriesInstanceMetadata = map[int]map[int]interface{}{}
+						}
+
 						// init instance map if doesnt exist yet
 						if _, ok := seriesInstanceMetadata[seriesNumber]; !ok {
 							seriesInstanceMetadata[seriesNumber] = make(map[int]interface{})
