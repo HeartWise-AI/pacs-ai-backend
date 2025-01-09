@@ -1,13 +1,10 @@
-networks:
-  pacs-net:
-    external: true
-
 services:
   api-pacs:
     build: .
     container_name: api-pacs
     restart: unless-stopped
     networks:
+      - default
       - pacs-net
     ports:
       - ${API_URL_REST_PORT}:${API_URL_REST_PORT}
@@ -16,3 +13,7 @@ services:
     depends_on:
       - redis
       - elasticsearch
+
+networks:
+  pacs-net:
+    external: true

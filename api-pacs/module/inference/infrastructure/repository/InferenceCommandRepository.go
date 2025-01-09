@@ -55,15 +55,16 @@ func (repository *InferenceCommandRepository) InsertInferenceModel(ctx context.C
 
 	// add inference model
 	model := entity.InferenceModel{
-		ID:          data.ID,
-		TenantID:    data.TenantID,
-		ContainerID: data.ContainerID,
-		Name:        data.Name,
-		DockerImage: data.DockerImage,
-		Envs:        data.Envs,
-		OutputMode:  data.OutputMode,
-		CreatedAt:   int(time.Now().Unix()),
-		UpdatedAt:   int(time.Now().Unix()),
+		ID:                  data.ID,
+		TenantID:            data.TenantID,
+		ContainerID:         data.ContainerID,
+		Name:                data.Name,
+		DockerImage:         data.DockerImage,
+		Envs:                data.Envs,
+		DisallowedDICOMTags: data.DisallowedDICOMTags,
+		OutputMode:          data.OutputMode,
+		CreatedAt:           int(time.Now().Unix()),
+		UpdatedAt:           int(time.Now().Unix()),
 	}
 
 	collectionPath := fmt.Sprintf("%s/%s", model.GetModelName(), data.ID)
@@ -92,24 +93,12 @@ func (repository *InferenceCommandRepository) UpdateInferenceModel(ctx context.C
 
 	updateInferenceModel := []firestore.Update{
 		{
-			Path:  "name",
-			Value: data.Name,
-		},
-		{
-			Path:  "docker_image",
-			Value: data.DockerImage,
-		},
-		{
-			Path:  "envs",
-			Value: data.Envs,
+			Path:  "disallowed_dicom_tags",
+			Value: data.DisallowedDICOMTags,
 		},
 		{
 			Path:  "output_mode",
 			Value: data.OutputMode,
-		},
-		{
-			Path:  "created_at",
-			Value: int(time.Now().Unix()),
 		},
 		{
 			Path:  "updated_at",

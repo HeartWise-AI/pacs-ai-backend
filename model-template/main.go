@@ -15,19 +15,16 @@ import (
 )
 
 type predictRequest struct {
-	Inferences interface{} `json:"inferences"` // can be 5-dimensional slice
-	Age        uint        `json:"age"`
-	Gender     string      `json:"gender"`
-	OutputMode string      `json:"outputMode"`
+	SeriesInstanceMetadata map[string]interface{} `json:"seriesInstanceMetadata"`
+	AdditionalMetadata     map[string]interface{} `json:"additionalMetadata"`
+	OutputMode             string                 `json:"outputMode"`
 }
 
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
-		"predictRequest.Inferences": "Inferences is required",
-		"predictRequest.Age":        "Age is required",
-		"predictRequest.Gender":     "Gender is required",
-		"predictRequest.OutputMode": "Output mode is required",
+		"predictRequest.SeriesInstanceMetadata": "Series instance metadata is required",
+		"predictRequest.OutputMode":             "Output mode is required",
 	}
 )
 

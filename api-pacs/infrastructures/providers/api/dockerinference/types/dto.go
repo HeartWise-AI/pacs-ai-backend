@@ -19,10 +19,10 @@ const (
 )
 
 type PredictRequest struct {
-	Inferences [][][][][]int `json:"inferences"`
-	Age        uint          `json:"age"`
-	Gender     Gender        `json:"gender"`
-	OutputMode OutputMode    `json:"outputMode"`
+	SeriesInstanceMetadata map[int]map[int]interface{} `json:"seriesInstanceMetadata,omitempty"`
+	SeriesInstanceImages   map[int]map[int]string      `json:"seriesInstanceImages,omitempty"`
+	AdditionalMetadata     map[string]interface{}      `json:"additionalMetadata"`
+	OutputMode             OutputMode                  `json:"outputMode"`
 }
 
 type GetModelInfoResponse struct {
@@ -35,6 +35,7 @@ type GetModelInfoResponse struct {
 		DicomUploadMin              int           `json:"dicomUploadMin"`
 		DicomUploadMax              int           `json:"dicomUploadMax"`
 		SupportedDicomModalities    []string      `json:"supportedDicomModalities"`
+		SupportedDicomTags          []string      `json:"supportedDicomTags"`
 		SupportedAdditionalMetadata []interface{} `json:"supportedAdditionalMetadata"`
 		SupportedOutputModes        []string      `json:"supportedOutputModes"`
 	} `json:"data"`

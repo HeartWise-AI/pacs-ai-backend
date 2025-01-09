@@ -1,15 +1,9 @@
-networks:
-  pacs-net:
-    external: true
-
 services:
   redis:
     image: redis:8.0-M02-bookworm
     container_name: redis
     restart: always
     command: ["redis-server", "/etc/redis/redis.conf"]
-    networks:
-      - pacs-net
     volumes:
       - ./redis.conf:/etc/redis/redis.conf
     expose:

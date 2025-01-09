@@ -14,11 +14,13 @@ type InferenceCommandServiceInterface interface {
 	// DeleteInferenceModel deletes an inference model
 	DeleteInferenceModel(ctx context.Context, ID string) error
 	// PredictInferenceModel predicts an inference model
-	PredictInferenceModel(ctx context.Context, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
+	PredictInferenceModel(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
 	// RestartInferenceModelContainer restarts an inference model container
 	RestartInferenceModelContainer(ctx context.Context, containerID string) error
 	// StartInferenceModelContainer starts an inference model container
 	StartInferenceModelContainer(ctx context.Context, containerID string) error
 	// StopInferenceModelContainer stops an inference model container
 	StopInferenceModelContainer(ctx context.Context, containerID string) error
+	// UpdateInferenceModel updates an inference model
+	UpdateInferenceModel(ctx context.Context, data types.UpdateInferenceModel) error
 }

@@ -74,7 +74,7 @@ type RetrievedStudyLogResponse struct {
 	UserID           string `json:"userId" "user_id"`
 	Email            string `json:"email" csv:"email"`
 	Name             string `json:"name" csv:"name"`
-	StudyInstanceUID string `json:"studyInstanceUid" csv:"study_instance_uid"`
+	StudyInstanceUID string `json:"studyInstanceUID" csv:"study_instance_uid"`
 	QueryID          string `json:"queryId" csv:"query_id"`
 	AnswerIndex      uint   `json:"answerIndex" csv:"answer_index"`
 	Timestamp        uint   `json:"timestamp" csv:"timestamp"`

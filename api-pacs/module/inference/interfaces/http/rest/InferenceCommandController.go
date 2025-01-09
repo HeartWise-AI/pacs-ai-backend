@@ -164,6 +164,8 @@ func (controller *InferenceCommandController) DeleteInferenceModel(w http.Respon
 
 // PredictInferenceModel predicts an inference model
 func (controller *InferenceCommandController) PredictInferenceModel(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
 	containerID := chi.URLParam(r, "containerID")
 	if len(containerID) == 0 {
 		response := viewmodels.HTTPResponseVM{
@@ -217,9 +219,10 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 		return
 	}
 
-	predictionResult, err := controller.InferenceCommandServiceInterface.PredictInferenceModel(context.TODO(), containerID, serviceTypes.PredictInferenceModel{
-		QueryIDs:   request.QueryIDs,
-		OutputMode: request.OutputMode,
+	predictionResult, err := controller.InferenceCommandServiceInterface.PredictInferenceModel(context.TODO(), tenantID, containerID, serviceTypes.PredictInferenceModel{
+		StudyInstanceUID:   request.StudyInstanceUID,
+		SeriesInstanceUIDs: request.SeriesInstanceUIDs,
+		AdditionalMetadata: request.AdditionalMetadata,
 	})
 	if err != nil {
 		var httpCode int
@@ -400,6 +403,103 @@ func (controller *InferenceCommandController) StopInferenceModelContainer(w http
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully stopped inference model container.",
+	}
+
+	response.JSON(w)
+}
+
+// UpdateInferenceModel update an inference model
+func (controller *InferenceCommandController) UpdateInferenceModel(w http.ResponseWriter, r *http.Request) {
+	ID := chi.URLParam(r, "ID")
+	if len(ID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid inference model ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var request types.UpdateInferenceModelRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err = controller.InferenceCommandServiceInterface.UpdateInferenceModel(context.TODO(), serviceTypes.UpdateInferenceModel{
+		ID:                  ID,
+		DisallowedDICOMTags: request.DisallowedDICOMTags,
+		OutputMode:          request.OutputMode,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.DockerError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Docker service encountered an error."
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while saving inference model."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully updated inference model.",
 	}
 
 	response.JSON(w)

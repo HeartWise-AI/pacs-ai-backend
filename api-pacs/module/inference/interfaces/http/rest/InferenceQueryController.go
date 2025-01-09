@@ -17,7 +17,7 @@ type InferenceQueryController struct {
 	application.InferenceQueryServiceInterface
 }
 
-// GetContainerInfo returns the inference model container info
+// GetContainerInfo returns the inference model container info with stats
 func (controller *InferenceQueryController) GetContainerInfo(w http.ResponseWriter, r *http.Request) {
 	containerID := chi.URLParam(r, "containerID")
 	if len(containerID) == 0 {
@@ -111,6 +111,12 @@ func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWr
 			envs = []string{}
 		}
 
+		// set disallowedDICOMTags to empty if nil
+		disallowedDICOMTags := inferenceModel.DisallowedDICOMTags
+		if disallowedDICOMTags == nil {
+			disallowedDICOMTags = []string{}
+		}
+
 		inferenceModelsResponse = append(inferenceModelsResponse, types.GetInferenceModelResponse{
 			ID:       inferenceModel.ID,
 			TenantID: inferenceModel.TenantID,
@@ -124,12 +130,13 @@ func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWr
 				CPUPercentUsage: inferenceModel.Container.CPUPercentUsage,
 				MemoryInBytes:   inferenceModel.Container.MemoryInBytes,
 			},
-			Name:        inferenceModel.Name,
-			DockerImage: inferenceModel.DockerImage,
-			Envs:        envs,
-			OutputMode:  inferenceModel.OutputMode,
-			CreatedAt:   uint64(inferenceModel.CreatedAt.Unix()),
-			UpdatedAt:   uint64(inferenceModel.UpdatedAt.Unix()),
+			Name:                inferenceModel.Name,
+			DockerImage:         inferenceModel.DockerImage,
+			Envs:                envs,
+			DisallowedDICOMTags: disallowedDICOMTags,
+			OutputMode:          inferenceModel.OutputMode,
+			CreatedAt:           uint64(inferenceModel.CreatedAt.Unix()),
+			UpdatedAt:           uint64(inferenceModel.UpdatedAt.Unix()),
 		})
 	}
 
@@ -299,6 +306,7 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 			DicomUploadMin:              inferenceAvailableModel.DicomUploadMin,
 			DicomUploadMax:              inferenceAvailableModel.DicomUploadMax,
 			SupportedDicomModalities:    inferenceAvailableModel.SupportedDicomModalities,
+			SupportedDicomTags:          inferenceAvailableModel.SupportedDicomTags,
 			SupportedAdditionalMetadata: inferenceAvailableModel.SupportedAdditionalMetadata,
 			OutputMode:                  inferenceAvailableModel.OutputMode,
 		})

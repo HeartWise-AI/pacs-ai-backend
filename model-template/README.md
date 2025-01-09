@@ -52,38 +52,55 @@ curl --request POST \
   --header 'Accept: application/json' \
   --header 'Content-Type: application/json' \
   --data '{
-  "inferences": [
-    [
-      [
-        [
-          [1, 2, 3],
-          [4, 5, 6],
-          [7, 8, 9]
-        ],
-        [
-          [10, 11, 12],
-          [13, 14, 15],
-          [16, 17, 18]
-        ]
-      ],
-      [
-        [
-          [19, 20, 21],
-          [22, 23, 24],
-          [25, 26, 27]
-        ],
-        [
-          [28, 29, 30],
-          [31, 32, 33],
-          [34, 35, 36]
-        ]
-      ]
-    ]
-  ],
-  "age": 100,
-  "gender": "MALE",
-  "outputMode": "OHIF_ANNOTATIONS"
-}'
+    "seriesInstanceMetadata": {
+      "1": { <---------------------------------- series number
+        "1": [{ <---------------------------------- instance number
+          "00080005": {
+            "Value": [
+              "ISO_IR 192"
+            ],
+            "vr": "CS"
+          },
+          "00080016": {
+            "Value": [
+              "1.2.840.10008.5.1.4.1.1.2"
+            ],
+            "vr": "UI"
+          },
+          "00080018": {
+            "Value": [
+              "1.3.6.1.4.1.14519.5.2.1.5168.2407.260001599723611356442901090775"
+            ],
+            "vr": "UI"
+          }
+        }],
+        "2": [{
+          "00080005": {
+            "Value": [
+              "ISO_IR 192"
+            ],
+            "vr": "CS"
+          },
+          "00080016": {
+            "Value": [
+              "1.2.840.10008.5.1.4.1.1.2"
+            ],
+            "vr": "UI"
+          },
+          "00080018": {
+            "Value": [
+              "1.3.6.1.4.1.14519.5.2.1.5168.2407.260001599723611356442901090775"
+            ],
+            "vr": "UI"
+          }
+        }]
+      }
+    },
+    "additionalMetadata": {
+      "smoker": "true"
+    },
+    "outputMode": "WEB_APP"
+  }'
 ```
 
 ```bash
@@ -92,20 +109,16 @@ Response:
   "success": true,
   "message": "Prediction successful",
   "data": {
-    "boundingBoxes": [],
-    "measurements": [],
-    "metadata": {
-      "key": "value pair"
-    },
-    "segmentations": []
-  }
+    "webappPath": "/app/viewer/",
+    "webappDataBase64": "base64 encoded webapp data..."
+   }
 }
 ```
 
 ### GET /inference/model-info
 
 ```bash
-Request:
+Request:s
 curl --request GET \
   --url http://localhost:8000/inference/model-info \
   --header 'Accept: application/json'
@@ -125,6 +138,18 @@ Response:
       "dicomUploadMax": 5,
       "supportedDicomModalities": [
         "XA"
+      ],
+      "supportedDicomTags": [
+        "00200011",
+        "00080018"
+      ],
+      "supportedAdditionalMetadata": [
+        {
+          "id": "smoking",
+          "name": "Smoking",
+          "type": "boolean",
+          "required": true
+        }
       ],
       "supportedOutputModes": [
         "JSON"

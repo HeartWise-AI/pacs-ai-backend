@@ -1,8 +1,14 @@
 package dicoms
 
 import (
+	"encoding/base64"
+	"errors"
 	"fmt"
+	"io"
 	"log"
+	"mime"
+	"mime/multipart"
+	"net/http"
 	"reflect"
 	"strings"
 	"time"
@@ -10,7 +16,68 @@ import (
 	"github.com/suyashkumar/dicom"
 	"github.com/suyashkumar/dicom/pkg/frame"
 	"github.com/suyashkumar/dicom/pkg/tag"
+
+	apiError "api-pacs/internal/errors"
 )
+
+// ConvertBulkDataURIToInlineBinary convert bulk data URI to inline binary
+func ConvertBulkDataURIToInlineBinary(bulkDataURI string) (string, error) {
+	bulkDataURI = strings.ReplaceAll(bulkDataURI, "/orthanc/", "/") // remove /orthanc/ prefix
+
+	resp, err := http.Get(bulkDataURI)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", errors.New(apiError.DICOMParseError)
+	}
+
+	// get content type and boundary
+	contentType := resp.Header.Get("Content-Type")
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		log.Println("[dicom-web] error parsing content type", err)
+		return "", errors.New(apiError.DICOMParseError)
+	}
+
+	// check if content type is multipart/related
+	if strings.HasPrefix(mediaType, "multipart/related") {
+		boundary := params["boundary"]
+		if len(boundary) == 0 {
+			log.Println("[dicom-web] boundary is empty")
+			return "", errors.New(apiError.DICOMParseError)
+		}
+
+		mr := multipart.NewReader(resp.Body, boundary)
+		for {
+			part, err := mr.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Println("[dicom-web] error reading part", err)
+				return "", errors.New(apiError.DICOMParseError)
+			}
+
+			if strings.HasPrefix(part.Header.Get("Content-Type"), "application/octet-stream") {
+				data, err := io.ReadAll(part)
+				if err != nil {
+					log.Println("[dicom-web] error reading image data", err)
+					return "", errors.New(apiError.DICOMParseError)
+				}
+
+				// encode to base64
+				base64Data := base64.StdEncoding.EncodeToString(data)
+				return base64Data, nil
+			}
+		}
+	}
+
+	log.Println("[dicom-web] no application/octet-stream part found")
+	return "", errors.New(apiError.DICOMParseError)
+}
 
 // DICOMToInstances convert DICOM to instances
 func DICOMToInstances(dataset dicom.Dataset) ([][][][]int, error) {

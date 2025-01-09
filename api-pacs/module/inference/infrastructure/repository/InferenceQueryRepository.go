@@ -42,6 +42,37 @@ func (repository *InferenceQueryRepository) SelectInferenceModelByID(ctx context
 	return inferenceModel, nil
 }
 
+// SelectInferenceModelByContainerID get inference model by container
+func (repository *InferenceQueryRepository) SelectInferenceModelByContainer(ctx context.Context, tenantID, containerID string) (entity.InferenceModel, error) {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return entity.InferenceModel{}, errors.New(apiError.FirestoreError)
+	}
+
+	// get firestore inference model
+	var inferenceModel entity.InferenceModel
+
+	firestoreRes, err := firestoreClient.Collection(inferenceModel.GetModelName()).Where("tenant_id", "==", tenantID).Where("container_id", "==", containerID).Documents(ctx).GetAll()
+	if err != nil {
+		log.Println(err)
+		return entity.InferenceModel{}, errors.New(apiError.FirestoreError)
+	}
+
+	if len(firestoreRes) == 0 {
+		return entity.InferenceModel{}, errors.New(apiError.MissingRecord)
+	}
+
+	err = firestoreRes[0].DataTo(&inferenceModel)
+	if err != nil {
+		log.Println(err)
+		return entity.InferenceModel{}, errors.New(apiError.FirestoreError)
+	}
+
+	return inferenceModel, nil
+}
+
 // SelectInferenceModels get inference models by tenant id
 func (repository *InferenceQueryRepository) SelectInferenceModels(ctx context.Context, tenantID string) ([]entity.InferenceModel, error) {
 	// firestore client

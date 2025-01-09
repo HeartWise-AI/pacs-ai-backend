@@ -110,6 +110,9 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 
 // GetContainerInfo gets the container info
 func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error) {
+	// TODO: remove this
+	inspectStartTime := time.Now()
+
 	// inspect the container for basic info
 	containerJSON, err := d.Client.ContainerInspect(ctx, containerID)
 	if err != nil {
@@ -130,18 +133,37 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 		return types.GetContainerInfoResult{}, err
 	}
 
+	// TODO: remove this
+	inspectDuration := time.Since(inspectStartTime)
+	log.Println("[docker] inspect duration:", inspectDuration)
+
+	return types.GetContainerInfoResult{
+		ID:         containerJSON.ID,
+		Name:       containerJSON.Name,
+		Status:     types.Status(containerJSON.State.Status),
+		Running:    containerJSON.State.Running,
+		StartedAt:  startedAtTime,
+		FinishedAt: finishedAtTime,
+	}, nil
+}
+
+// GetContainerStats gets the container stats
+func (d *DockerSDK) GetContainerStats(ctx context.Context, containerID string) (types.GetContainerStatsResult, error) {
+	// TODO: remove this
+	statsStartTime := time.Now()
+
 	// fetch real-time stats
 	stats, err := d.Client.ContainerStats(ctx, containerID, false)
 	if err != nil {
 		log.Println("[docker] error:", err)
-		return types.GetContainerInfoResult{}, err
+		return types.GetContainerStatsResult{}, err
 	}
 	defer stats.Body.Close()
 
 	var statsJSON container.Stats
 	if err := json.NewDecoder(stats.Body).Decode(&statsJSON); err != nil {
 		log.Println("[docker] error:", err)
-		return types.GetContainerInfoResult{}, err
+		return types.GetContainerStatsResult{}, err
 	}
 
 	// calculate cpu usage percentage
@@ -160,13 +182,12 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 		cpuUsagePercent = (cpuDelta / systemDelta) * onlineCPUs * 100.0
 	}
 
-	return types.GetContainerInfoResult{
-		ID:              containerJSON.ID,
-		Name:            containerJSON.Name,
-		Status:          types.Status(containerJSON.State.Status),
-		Running:         containerJSON.State.Running,
-		StartedAt:       startedAtTime,
-		FinishedAt:      finishedAtTime,
+	// TODO: remove this
+	statsDuration := time.Since(statsStartTime)
+	log.Println("[docker] stats duration:", statsDuration)
+
+	return types.GetContainerStatsResult{
+		ContainerID:     containerID,
 		CPUPercentUsage: cpuUsagePercent,
 		MemoryInBytes:   statsJSON.MemoryStats.Usage,
 	}, nil

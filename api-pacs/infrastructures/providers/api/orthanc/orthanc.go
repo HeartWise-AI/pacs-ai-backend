@@ -255,6 +255,39 @@ func (o *OrthancAPI) GetJobInfo(ctx context.Context, jobID string) (types.GetJob
 	return job, nil
 }
 
+// GetDICOMWebSeriesInstances get DICOM web series instances
+func (o *OrthancAPI) GetDICOMWebSeriesInstances(ctx context.Context, studyInstanceUID, seriesInstanceUID string) ([]map[string]interface{}, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/dicom-web/studies/%s/series/%s/instances", o.BaseURL, studyInstanceUID, seriesInstanceUID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return nil, errors.New(apiError.OrthancError)
+	}
+
+	var instances []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&instances); err != nil {
+		log.Println("Error:", err)
+		return nil, err
+	}
+
+	return instances, nil
+}
+
 // ListDICOMModalities list dicom modalities
 func (o *OrthancAPI) ListDICOMModalities(ctx context.Context) (map[string]types.ListDICOMModalitiesResponse, error) {
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/modalities?expand=true", o.BaseURL), nil)
@@ -415,6 +448,39 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modality
 	}
 
 	return results, nil
+}
+
+// RetrieveDICOMWebInstanceMetadata retrieve DICOM web instance metadata
+func (o *OrthancAPI) RetrieveDICOMWebInstanceMetadata(ctx context.Context, studyInstanceUID, seriesInstanceUID, sopInstanceUID string) ([]map[string]interface{}, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/dicom-web/studies/%s/series/%s/instances/%s/metadata", o.BaseURL, studyInstanceUID, seriesInstanceUID, sopInstanceUID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return nil, errors.New(apiError.OrthancError)
+	}
+
+	var instanceMetadata []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&instanceMetadata); err != nil {
+		log.Println("Error:", err)
+		return nil, err
+	}
+
+	return instanceMetadata, nil
 }
 
 // TriggerDICOMEchoSCU trigger dicom C-ECHO SCU

@@ -20,7 +20,7 @@
       "description": "Production MHI"
     },
     {
-      "url": "http://185.223.207.27/api/v1",
+      "url": "http://198.168.189.123/api/v1",
       "description": "Staging"
     },
     {
@@ -594,6 +594,50 @@
             }
           }
         ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/{id}/update": {
+      "put": {
+        "tags": ["inference"],
+        "summary": "Update Inference Model",
+        "description": "Update inference model.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Inference model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Update inference model request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInferenceModelRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "2xx": {
             "description": "Success"
@@ -1247,18 +1291,21 @@
         }
       },
       "PredictInferenceModelRequest": {
-        "required": ["queryIDs", "outputMode"],
+        "required": ["studyInstanceUID", "seriesInstanceUIDs"],
         "type": "object",
         "properties": {
-          "queryIDs": {
+          "studyInstanceUID": {
+            "type": "string"
+          },
+          "seriesInstanceUIDs": {
             "type": "array",
             "items": {
               "type": "string"
             }
           },
-          "outputMode": {
-            "type": "string",
-            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
+          "additionalMetadata": {
+            "type": "object",
+            "nullable": true
           }
         }
       },
@@ -1411,6 +1458,22 @@
           },
           "newPassword": {
             "type": "string"
+          }
+        }
+      },
+      "UpdateInferenceModelRequest": {
+        "required": ["disallowedDICOMTags", "outputMode"],
+        "type": "object",
+        "properties": {
+          "disallowedDICOMTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
           }
         }
       },

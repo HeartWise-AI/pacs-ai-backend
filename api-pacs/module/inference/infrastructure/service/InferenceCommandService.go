@@ -1,14 +1,15 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"log"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/segmentio/ksuid"
-	"github.com/suyashkumar/dicom"
+	"golang.org/x/sync/errgroup"
 
 	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
@@ -53,17 +54,20 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 		return errors.New(apiError.DockerError)
 	}
 
+	// TODO: check and compare output mode if supported
+
 	// generate ID
 	ID := generateID()
 
 	err = service.InferenceCommandRepositoryInterface.InsertInferenceModel(ctx, repositoryTypes.AddInferenceModel{
-		ID:          ID,
-		TenantID:    data.TenantID,
-		ContainerID: containerID,
-		Name:        data.Name,
-		DockerImage: data.DockerImage,
-		Envs:        data.Envs,
-		OutputMode:  data.OutputMode,
+		ID:                  ID,
+		TenantID:            data.TenantID,
+		ContainerID:         containerID,
+		Name:                data.Name,
+		DockerImage:         data.DockerImage,
+		Envs:                data.Envs,
+		DisallowedDICOMTags: []string{}, // initialize empty list
+		OutputMode:          data.OutputMode,
 	})
 	if err != nil {
 		return err
@@ -96,81 +100,183 @@ func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context
 }
 
 // PredictInferenceModel predicts an inference model
-func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
-	/// download dicom from query ids
-	// TODO: remove this
-	downloadStartTime := time.Now()
+func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
+	// get inference model
+	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
+	if err != nil {
+		return dockerInferenceTypes.PredictResponse{}, err
+	}
 
-	var inferences [][][][][]int
-	var age int
-	var gender string
+	// get container model info
+	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
+	if err != nil {
+		return dockerInferenceTypes.PredictResponse{}, err
+	}
 
-	for i, queryID := range data.QueryIDs {
-		// download DICOM file
-		dicomBytes, err := service.OrthancAPIInterface.DownloadDICOM(ctx, queryID)
-		if err != nil {
+	containerName := containerInfo.Name[1:] // remove "/" prefix
+
+	modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerName) // remove "/" prefix
+	if err != nil {
+		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerInferenceError)
+	}
+
+	// check payload type
+	var seriesInstanceMetadata map[int]map[int]interface{}
+	var seriesInstanceImages map[int]map[int]string
+
+	// if supportedDicomTags = ["*"]
+	if len(modelInfo.Data.SupportedDicomTags) == 1 && modelInfo.Data.SupportedDicomTags[0] == "*" {
+		/// for dicom images
+		return dockerInferenceTypes.PredictResponse{}, errors.New("No support for dicom images yet.")
+	} else {
+		/// for dicom metadata
+
+		// get allowed dicom tags
+		var allowedDICOMTags []string
+
+		for _, supportedDICOMTag := range modelInfo.Data.SupportedDicomTags {
+			isAllowed := true
+			for _, disallowedTag := range inferenceModel.DisallowedDICOMTags {
+				if supportedDICOMTag == disallowedTag {
+					isAllowed = false
+					break
+				}
+			}
+
+			if isAllowed {
+				allowedDICOMTags = append(allowedDICOMTags, supportedDICOMTag)
+			}
+		}
+
+		// get series instances metadata
+		var m = sync.Mutex{}
+		eg, egCtx := errgroup.WithContext(ctx)
+
+		// set limit
+		eg.SetLimit(len(data.SeriesInstanceUIDs))
+
+		for _, seriesInstanceUID := range data.SeriesInstanceUIDs {
+			func(seriesInstanceUID string) {
+				eg.Go(func() error {
+					m.Lock()
+					defer m.Unlock()
+
+					// get instances
+					instances, err := service.OrthancAPIInterface.GetDICOMWebSeriesInstances(egCtx, data.StudyInstanceUID, seriesInstanceUID)
+					if err != nil {
+						return err
+					}
+
+					for _, instance := range instances {
+						// TODO: refactor to goroutine
+
+						seriesNumber := int(instance["00200011"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
+						sopInstanceUID := instance["00080018"].(map[string]interface{})["Value"].([]interface{})[0].(string)
+
+						// init metadata map if doesnt exist yet
+						if seriesInstanceMetadata == nil {
+							seriesInstanceMetadata = map[int]map[int]interface{}{}
+						}
+
+						// init instance map if doesnt exist yet
+						if _, ok := seriesInstanceMetadata[seriesNumber]; !ok {
+							seriesInstanceMetadata[seriesNumber] = make(map[int]interface{})
+						}
+
+						var sopInstanceNumber int
+						var reservedTags []string
+
+						// check for RTSTRUCT
+						if instance["00080016"].(map[string]interface{})["Value"].([]interface{})[0].(string) == "1.2.840.10008.5.1.4.1.1.481.3" {
+							sopInstanceNumber = seriesNumber // in RTSTRUCT, sopInstanceUID = seriesInstanceUID
+
+							// assign reserved tags required for RTSTRUCT
+							reservedTags = []string{"30060020", "30060039", "30060080", "300E0002"}
+						} else {
+							// if a study got series but no instance, skip it
+							if _, ok := instance["00200013"]; !ok {
+								log.Println("[dicom-web] skipping because 00080018 is missing")
+								continue
+							}
+
+							sopInstanceNumber = int(instance["00200013"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
+
+							// assign reserved tags
+							reservedTags = []string{"7FE00010"}
+						}
+
+						// filter already added reserved tags (avoid duplicates)
+						for _, tag := range reservedTags {
+							if !slices.Contains(allowedDICOMTags, tag) {
+								allowedDICOMTags = append(allowedDICOMTags, tag)
+							}
+						}
+
+						// get instance metadata
+						instanceMetadata, err := service.OrthancAPIInterface.RetrieveDICOMWebInstanceMetadata(egCtx, data.StudyInstanceUID, seriesInstanceUID, sopInstanceUID)
+						if err != nil {
+							return err
+						}
+
+						// prepare forwarded instance metadata
+						var forwardedInstanceMetadata []map[string]interface{} // follow instance metadata format
+
+						for _, instanceMetadataMap := range instanceMetadata {
+							allowedInstanceMetadata := map[string]interface{}{}
+
+							for _, allowedDICOMTag := range allowedDICOMTags {
+								if _, ok := instanceMetadataMap[allowedDICOMTag]; ok {
+									allowedInstanceMetadata[allowedDICOMTag] = instanceMetadataMap[allowedDICOMTag]
+								}
+							}
+
+							// iterate all tags and convert BulkDataURI to InlineBinary
+							for key := range allowedInstanceMetadata {
+								if metadata, ok := allowedInstanceMetadata[key].(map[string]interface{}); ok {
+									if bulkDataURI, hasBulkData := metadata["BulkDataURI"].(string); hasBulkData {
+										// convert bulk data URI to inline binary
+										inlineBinary, err := dicomUtils.ConvertBulkDataURIToInlineBinary(bulkDataURI)
+										if err != nil {
+											return err
+										}
+
+										metadata["InlineBinary"] = inlineBinary
+										delete(metadata, "BulkDataURI")
+									}
+								}
+							}
+
+							forwardedInstanceMetadata = append(forwardedInstanceMetadata, allowedInstanceMetadata)
+						}
+
+						seriesInstanceMetadata[seriesNumber][sopInstanceNumber] = forwardedInstanceMetadata
+					}
+
+					return nil
+				})
+			}(seriesInstanceUID)
+		}
+
+		// wait for all goroutines to finish
+		if err := eg.Wait(); err != nil {
 			return dockerInferenceTypes.PredictResponse{}, err
 		}
 
-		// parse DICOM
-		dataset, err := dicom.Parse(bytes.NewReader(dicomBytes), int64(len(dicomBytes)), nil)
-		if err != nil {
-			log.Println(err)
-			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DICOMParseError)
+		// check if SeriesInstanceMetadata is null
+		if seriesInstanceMetadata == nil {
+			log.Println("[predict] empty series instance metadata")
+			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InferenceError)
 		}
-
-		// get age and gender from first DICOM
-		if i == 0 {
-			// get age from first DICOM
-			age, err = dicomUtils.ParseAge(dataset)
-			if err != nil {
-				log.Println(err)
-				return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DICOMParseError)
-			}
-
-			// get gender from first DICOM
-			gender, err = dicomUtils.ParseGender(dataset)
-			if err != nil {
-				log.Println(err)
-				return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DICOMParseError)
-			}
-		}
-
-		// convert DICOM to instances
-		instance, err := dicomUtils.DICOMToInstances(dataset)
-		if err != nil {
-			log.Println(err)
-			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DICOMParseError)
-		}
-
-		inferences = append(inferences, instance)
 	}
-
-	// TODO: remove this
-	downloadEndTime := time.Since(downloadStartTime)
-	log.Printf("[prediction] download DICOM file took %f seconds", downloadEndTime.Seconds())
-
-	// TODO: remove this
-	containerInfoStartTime := time.Now()
-
-	/// send to docker inference model
-	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
-	if err != nil {
-		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
-	}
-
-	// TODO: remove this
-	containerInfoEndTime := time.Since(containerInfoStartTime)
-	log.Printf("[prediction] get container info took %f seconds", containerInfoEndTime.Seconds())
 
 	// TODO: remove this
 	predictionStartTime := time.Now()
 
-	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerInfo.Name[1:], dockerInferenceTypes.PredictRequest{ // remove "/" prefix in container name
-		Inferences: inferences,
-		Age:        uint(age),
-		Gender:     dockerInferenceTypes.Gender(gender),
-		OutputMode: dockerInferenceTypes.OutputMode(data.OutputMode),
+	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, dockerInferenceTypes.PredictRequest{
+		SeriesInstanceMetadata: seriesInstanceMetadata,
+		SeriesInstanceImages:   seriesInstanceImages,
+		AdditionalMetadata:     data.AdditionalMetadata,
+		OutputMode:             dockerInferenceTypes.OutputMode(inferenceModel.OutputMode),
 	})
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
@@ -213,16 +319,14 @@ func (service *InferenceCommandService) StopInferenceModelContainer(ctx context.
 	return nil
 }
 
-// TODO: check if needed
 // UpdateInferenceModel updates an inference model
 func (service *InferenceCommandService) UpdateInferenceModel(ctx context.Context, data types.UpdateInferenceModel) error {
-	// TODO: checks to only update
+	// TODO: check and compare output mode if supported
+
 	err := service.InferenceCommandRepositoryInterface.UpdateInferenceModel(ctx, repositoryTypes.UpdateInferenceModel{
-		ID:          data.ID,
-		Name:        data.Name,
-		DockerImage: data.DockerImage,
-		Envs:        data.Envs,
-		OutputMode:  data.OutputMode,
+		ID:                  data.ID,
+		DisallowedDICOMTags: data.DisallowedDICOMTags,
+		OutputMode:          data.OutputMode,
 	})
 	if err != nil {
 		return err

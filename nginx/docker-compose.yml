@@ -1,21 +1,15 @@
-networks:
-  pacs-net:
-    external: true
-
 services:
   nginx:
     build: .
     container_name: nginx
     restart: unless-stopped
-    networks:
-      - pacs-net
     ports:
       - 80:80
       - 443:443
     volumes:
       - ./ssl:/etc/nginx/ssl
     environment:
-      - SERVER_NAME=${SERVER_NAME} 
+      - SERVER_NAME=${SERVER_NAME}
     depends_on:
       - orthanc
       - api-pacs

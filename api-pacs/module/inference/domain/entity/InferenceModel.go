@@ -12,15 +12,16 @@ const (
 
 // InferenceModel holds the inference model entity fields
 type InferenceModel struct {
-	ID          string     `firestore:"id,omitempty"`
-	TenantID    string     `firestore:"tenant_id"`
-	ContainerID string     `firestore:"container_id"`
-	Name        string     `firestore:"name"`
-	DockerImage string     `firestore:"docker_image"`
-	Envs        []string   `firestore:"envs"`
-	OutputMode  OutputMode `firestore:"output_mode"`
-	CreatedAt   int        `firestore:"created_at"`
-	UpdatedAt   int        `firestore:"updated_at"`
+	ID                  string     `firestore:"id,omitempty"`
+	TenantID            string     `firestore:"tenant_id"`
+	ContainerID         string     `firestore:"container_id"`
+	Name                string     `firestore:"name"`
+	DockerImage         string     `firestore:"docker_image"`
+	Envs                []string   `firestore:"envs"`
+	DisallowedDICOMTags []string   `firestore:"disallowed_dicom_tags"`
+	OutputMode          OutputMode `firestore:"output_mode"`
+	CreatedAt           int        `firestore:"created_at"`
+	UpdatedAt           int        `firestore:"updated_at"`
 }
 
 // GetModelName returns the model name of inference entity that can be used for naming schemas
