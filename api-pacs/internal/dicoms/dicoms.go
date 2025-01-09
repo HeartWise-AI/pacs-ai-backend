@@ -22,7 +22,7 @@ import (
 
 // ConvertBulkDataURIToInlineBinary convert bulk data URI to inline binary
 func ConvertBulkDataURIToInlineBinary(bulkDataURI string) (string, error) {
-	bulkDataURI = strings.ReplaceAll(bulkDataURI, "/orthanc", "") // remove /orthanc prefix
+	bulkDataURI = strings.ReplaceAll(bulkDataURI, "/orthanc/", "/") // remove /orthanc/ prefix
 
 	resp, err := http.Get(bulkDataURI)
 	if err != nil {
