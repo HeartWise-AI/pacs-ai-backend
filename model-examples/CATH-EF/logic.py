@@ -196,7 +196,7 @@ class CustomPredictionService(BasePredictionService):
         toDelete = []
         
         for i, output in enumerate(X3D_1_outputs):
-            prediction = output.detach().cpu().numpy().argmax()
+            prediction = output.numpy().argmax()
             vessel_name = self._get_vessel_name(prediction)
             
             if vessel_name is not None:
@@ -217,7 +217,7 @@ class CustomPredictionService(BasePredictionService):
             
             # Update vessels_data with LVEF values
             for idx, output in enumerate(X3D_2_outputs):
-                lvef_value = float(output.detach().cpu().numpy())
+                lvef_value = float(output.numpy())
                 
                 # Replace the tuple at vessel_idx with updated LVEF
                 seriesNumber = list(request.seriesInstanceMetadata.keys())[idx]
@@ -252,7 +252,7 @@ class CustomPredictionService(BasePredictionService):
         toDelete = []
         
         for i, output in enumerate(X3D_1_outputs):
-            prediction = output.detach().cpu().numpy().argmax()
+            prediction = output.numpy().argmax()
             vessel_name = self._get_vessel_name(prediction)
             
             # Get the series number for this prediction
@@ -288,7 +288,7 @@ class CustomPredictionService(BasePredictionService):
             # Process X3D_2 outputs
             lvef_predictions = []
             for idx, output in enumerate(X3D_2_outputs):
-                lvef_value = float(output.detach().cpu().numpy())
+                lvef_value = float(output.numpy())
                 seriesNumber = list(request.seriesInstanceMetadata.keys())[idx]
                 
                 lvef_predictions.append({

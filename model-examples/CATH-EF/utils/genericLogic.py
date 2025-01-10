@@ -1,4 +1,5 @@
 from utils.http_utils import HTTPResponse, PredictRequest
+import torch
 
 class BasePredictionService:
     models = {}
@@ -82,7 +83,22 @@ class BasePredictionService:
     
     @classmethod
     def inference(cls, model_input, model_key: str):
-        return cls.models[model_key](model_input)
+        try:
+            outputs = cls.models[model_key](model_input)
+            # Move outputs to CPU and clear GPU memory
+            if hasattr(outputs, 'detach'):  # Single output
+                outputs = outputs.detach().cpu()
+            elif isinstance(outputs, (list, tuple)):  # Multiple outputs
+                outputs = [out.detach().cpu() for out in outputs]
+            
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                del model_input
+            
+            return outputs
+        except Exception as e:
+            print(f"Error during inference: {str(e)}")
+            raise
 
     def _handle_unsupported_output(self):
         return HTTPResponse(
