@@ -6,13 +6,9 @@ import os
 from datetime import datetime
 import signal
 import asyncio
-from dotenv import load_dotenv
 
 from utils.http_utils import Config, HTMLPredictionResponse, OHIFPredictionResponse, HTTPResponse, PDFPredictionResponse, PredictRequest, JsonPredictionResponse, WebAppPredictionResponse
 from logic import CustomPredictionService
-
-# Load environment variables
-load_dotenv()
 
 root_path = os.getcwd()
 
@@ -50,6 +46,7 @@ async def check_inactivity():
         if time_difference > 600:  # 10 minutes threshold
             if PredictionService.is_initialized: # Only reset server if models are loaded
                 print("No requests received for 10 minutes. Restarting server...")
+                PredictionService.stop_model()
                 os.kill(os.getpid(), signal.SIGTERM)
             else:
                 last_request_time = datetime.now()

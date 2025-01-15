@@ -100,6 +100,14 @@ def send_dicom_data(dicom_paths: Union[str, List[str]], server_url: str, output_
                     "Value": [getattr(ds, 'Columns', 0)],
                     "vr": "US"
                 },
+                "00280100": {
+                    "Value": [getattr(ds, 'BitsAllocated', 8)],
+                    "vr": "US"
+                },
+                "00280101": {
+                    "Value": [getattr(ds, 'BitsStored', 8)],
+                    "vr": "US"
+                },
                 "00101010": {
                     "Value": [getattr(ds, 'PatientAge', '29')],
                     "vr": "AS"
@@ -141,7 +149,7 @@ def main():
 
     parser.add_argument(
         'dicom_files',
-        default=['sample_data/XA_1.dcm'],#, 'sample_data/XA_2.dcm'],
+        default=['sample_data/DX_1.dcm'],#, 'sample_data/XA_2.dcm'],
         nargs='*',
         help='Path(s) to DICOM file(s). You can specify multiple files.'
     )
@@ -154,7 +162,7 @@ def main():
 
     parser.add_argument(
         '--output_mode',
-        default='JSON',
+        default='HTML',
         choices=['HTML','OHIF_ANNOTATIONS','JSON','WEB_APP','PDF'],
         help='Output mode for the request (default: HTML)'
     )

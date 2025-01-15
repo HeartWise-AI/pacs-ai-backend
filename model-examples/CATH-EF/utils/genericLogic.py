@@ -1,5 +1,4 @@
 from utils.http_utils import HTTPResponse, PredictRequest
-import torch
 
 class BasePredictionService:
     models = {}
@@ -81,8 +80,14 @@ class BasePredictionService:
         """
         raise NotImplementedError("Method load_model must be implemented in the custom logic class")
     
+    def stop_model(self):
+        """
+        Abstract method that must be implemented by child classes
+        """
+    
     @classmethod
     def inference(cls, model_input, model_key: str):
+        import torch
         try:
             outputs = cls.models[model_key](model_input)
             # Move outputs to CPU and clear GPU memory
