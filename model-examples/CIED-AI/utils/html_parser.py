@@ -101,7 +101,8 @@ class HTMLParser:
                 .device-type {{
                     font-size: 14px;
                     color: var(--secondary-color);
-                    margin-top: 4px;
+                    margin-left: 8px;
+                    display: inline;
                 }}
             </style>
         </head>
@@ -119,10 +120,9 @@ class HTMLParser:
                 device = results['device_info'][i]
                 html_content += f"""
                 <div class='device-info'>
-                    <h4>{device['manufacturer']}</h4>
+                    <h4>{device['type_full']} <span class="device-type">({device['type_short']})</span></h4>
                     <img src="data:image/png;base64,{results['images'][i]}" alt="Detected Device {i+1}" style="max-width: 300px;"/>
-                    <p><span class="value-label">Device Type:</span> {device['type_full']}</p>
-                    <p class="device-type">({device['type_short']})</p>
+                    <p><span class="value-label">Manufacturer:</span> {device['manufacturer']}</p>
                     <p><span class="value-label">Confidence:</span> {results['confidence'][i]:.2%}</p>
                     <p><span class="value-label">Image Quality:</span> {results['image_quality'][i]:.1f}/4.0</p>
                 </div>
