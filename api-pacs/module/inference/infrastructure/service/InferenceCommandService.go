@@ -338,8 +338,8 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	predictionStartTime := time.Now()
 
 	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, dockerInferenceTypes.PredictRequest{
-		SeriesInstanceMetadata: seriesInstanceMetadata,
 		SeriesInstanceImages:   seriesInstanceImages,
+		SeriesInstanceMetadata: seriesInstanceMetadata,
 		AdditionalMetadata:     data.AdditionalMetadata,
 		OutputMode:             dockerInferenceTypes.OutputMode(inferenceModel.OutputMode),
 	})
