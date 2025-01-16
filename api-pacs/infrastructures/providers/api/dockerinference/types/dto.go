@@ -19,9 +19,9 @@ const (
 )
 
 type PredictRequest struct {
-	SeriesInstanceMetadata map[int]map[int]interface{} `json:"seriesInstanceMetadata,omitempty"`
 	SeriesInstanceImages   map[int]map[int]string      `json:"seriesInstanceImages,omitempty"`
-	AdditionalMetadata     map[string]interface{}      `json:"additionalMetadata"`
+	SeriesInstanceMetadata map[int]map[int]interface{} `json:"seriesInstanceMetadata,omitempty"`
+	AdditionalMetadata     map[string]interface{}      `json:"additionalMetadata,omitempty"`
 	OutputMode             OutputMode                  `json:"outputMode"`
 }
 

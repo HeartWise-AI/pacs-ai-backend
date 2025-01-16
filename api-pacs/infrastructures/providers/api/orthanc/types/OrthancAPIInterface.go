@@ -30,6 +30,8 @@ type OrthancAPIInterface interface {
 	RetrieveModalityStudy(ctx context.Context, queryID string, answerIndex uint, request RetrieveQueryModalityAnswerRequest) (QueryModalityResponse, error)
 	// RetrieveModalityStudyBySeries retrieves modality study by series
 	RetrieveModalityStudyBySeries(ctx context.Context, modalityID, localAet, studyInstanceUID string) ([]QueryModalityResponse, error)
+	// RetrieveDICOMWebInstanceFile retrieves DICOM web instance file
+	RetrieveDICOMWebInstanceFile(ctx context.Context, studyInstanceUID, seriesInstanceUID, sopInstanceUID string) ([]byte, error)
 	// RetrieveDICOMWebInstanceMetadata retrieves DICOM web instance metadata
 	RetrieveDICOMWebInstanceMetadata(ctx context.Context, studyInstanceUID, seriesInstanceUID, sopInstanceUID string) ([]map[string]interface{}, error)
 	// TriggerDICOMEchoSCU trigger dicom C-ECHO SCU

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"log"
 	"slices"
@@ -120,17 +121,91 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerInferenceError)
 	}
 
-	// check payload type
-	var seriesInstanceMetadata map[int]map[int]interface{}
 	var seriesInstanceImages map[int]map[int]string
+	var seriesInstanceMetadata map[int]map[int]interface{}
 
+	// check payload type
 	// if supportedDicomTags = ["*"]
 	if len(modelInfo.Data.SupportedDicomTags) == 1 && modelInfo.Data.SupportedDicomTags[0] == "*" {
-		/// for dicom images
-		return dockerInferenceTypes.PredictResponse{}, errors.New("No support for dicom images yet.")
-	} else {
-		/// for dicom metadata
+		/// ---------------------- for DICOM images
+		// purposely re-implementing the series instances loop because of potential refactors and differences vs metadata
 
+		// get series instances
+		var m = sync.Mutex{}
+		eg, egCtx := errgroup.WithContext(ctx)
+
+		// set limit
+		eg.SetLimit(len(data.SeriesInstanceUIDs))
+
+		for _, seriesInstanceUID := range data.SeriesInstanceUIDs {
+			func(seriesInstanceUID string) {
+				eg.Go(func() error {
+					m.Lock()
+					defer m.Unlock()
+
+					// get instances
+					instances, err := service.OrthancAPIInterface.GetDICOMWebSeriesInstances(egCtx, data.StudyInstanceUID, seriesInstanceUID)
+					if err != nil {
+						return err
+					}
+
+					for _, instance := range instances {
+						// TODO: refactor to goroutine
+
+						seriesNumber := int(instance["00200011"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
+						sopInstanceUID := instance["00080018"].(map[string]interface{})["Value"].([]interface{})[0].(string)
+
+						// init images map if doesnt exist yet
+						if seriesInstanceImages == nil {
+							seriesInstanceImages = map[int]map[int]string{}
+						}
+
+						// init instance map if doesnt exist yet
+						if _, ok := seriesInstanceImages[seriesNumber]; !ok {
+							seriesInstanceImages[seriesNumber] = make(map[int]string)
+						}
+
+						var sopInstanceNumber int
+
+						// check for RTSTRUCT
+						if instance["00080016"].(map[string]interface{})["Value"].([]interface{})[0].(string) == "1.2.840.10008.5.1.4.1.1.481.3" {
+							sopInstanceNumber = seriesNumber // in RTSTRUCT, sopInstanceUID = seriesInstanceUID
+						} else {
+							// if a study got series but no instance, skip it
+							if _, ok := instance["00200013"]; !ok {
+								log.Println("[dicom-web] skipping because 00200013 is missing")
+								continue
+							}
+
+							sopInstanceNumber = int(instance["00200013"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
+						}
+
+						// get instance file
+						instanceFile, err := service.OrthancAPIInterface.RetrieveDICOMWebInstanceFile(egCtx, data.StudyInstanceUID, seriesInstanceUID, sopInstanceUID)
+						if err != nil {
+							return err
+						}
+
+						seriesInstanceImages[seriesNumber][sopInstanceNumber] = base64.StdEncoding.EncodeToString(instanceFile) // convert to base64
+					}
+
+					return nil
+				})
+			}(seriesInstanceUID)
+		}
+
+		// wait for all goroutines to finish
+		if err := eg.Wait(); err != nil {
+			return dockerInferenceTypes.PredictResponse{}, err
+		}
+
+		// check if SeriesInstanceImages is null
+		if seriesInstanceImages == nil {
+			log.Println("[predict] empty series instance images")
+			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InferenceError)
+		}
+	} else {
+		/// ---------------------- for DICOM metadata
 		// get allowed dicom tags
 		var allowedDICOMTags []string
 
@@ -148,7 +223,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 			}
 		}
 
-		// get series instances metadata
+		// get series instances
 		var m = sync.Mutex{}
 		eg, egCtx := errgroup.WithContext(ctx)
 
@@ -195,7 +270,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 						} else {
 							// if a study got series but no instance, skip it
 							if _, ok := instance["00200013"]; !ok {
-								log.Println("[dicom-web] skipping because 00080018 is missing")
+								log.Println("[dicom-web] skipping because 00200013 is missing")
 								continue
 							}
 
@@ -269,8 +344,8 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	predictionStartTime := time.Now()
 
 	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, dockerInferenceTypes.PredictRequest{
-		SeriesInstanceMetadata: seriesInstanceMetadata,
 		SeriesInstanceImages:   seriesInstanceImages,
+		SeriesInstanceMetadata: seriesInstanceMetadata,
 		AdditionalMetadata:     data.AdditionalMetadata,
 		OutputMode:             dockerInferenceTypes.OutputMode(inferenceModel.OutputMode),
 	})

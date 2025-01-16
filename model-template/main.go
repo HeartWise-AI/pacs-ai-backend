@@ -15,6 +15,7 @@ import (
 )
 
 type predictRequest struct {
+	SeriesInstanceImages   map[int]map[int]string `json:"seriesInstanceImages"`
 	SeriesInstanceMetadata map[string]interface{} `json:"seriesInstanceMetadata"`
 	AdditionalMetadata     map[string]interface{} `json:"additionalMetadata"`
 	OutputMode             string                 `json:"outputMode"`
@@ -23,8 +24,7 @@ type predictRequest struct {
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
-		"predictRequest.SeriesInstanceMetadata": "Series instance metadata is required",
-		"predictRequest.OutputMode":             "Output mode is required",
+		"predictRequest.OutputMode": "Output mode is required",
 	}
 )
 

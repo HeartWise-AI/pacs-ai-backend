@@ -371,9 +371,22 @@
   "components": {
     "schemas": {
       "PredictRequest": {
-        "required": ["seriesInstanceMetadata", "outputMode"],
+        "required": ["outputMode"],
+        "oneOf": [
+          {
+            "required": ["seriesInstanceImages"],
+            "not": { "required": ["seriesInstanceMetadata"] }
+          },
+          {
+            "required": ["seriesInstanceMetadata"],
+            "not": { "required": ["seriesInstanceImages"] }
+          }
+        ],
         "type": "object",
         "properties": {
+          "seriesInstanceImages": {
+            "type": "object"
+          },
           "seriesInstanceMetadata": {
             "type": "object"
           },

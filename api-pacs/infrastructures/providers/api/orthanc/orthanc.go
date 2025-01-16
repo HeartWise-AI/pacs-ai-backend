@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
+	"mime/multipart"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -448,6 +451,73 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modality
 	}
 
 	return results, nil
+}
+
+// RetrieveDICOMWebInstanceFile retrieve DICOM web instance file
+func (o *OrthancAPI) RetrieveDICOMWebInstanceFile(ctx context.Context, studyInstanceUID, seriesInstanceUID, sopInstanceUID string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/dicom-web/studies/%s/series/%s/instances/%s", o.BaseURL, studyInstanceUID, seriesInstanceUID, sopInstanceUID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return nil, errors.New(apiError.DICOMParseError)
+	}
+
+	// get content type and boundary
+	contentType := resp.Header.Get("Content-Type")
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		log.Println("[dicom-web] error parsing content type", err)
+		return nil, errors.New(apiError.DICOMParseError)
+	}
+
+	// check if content type is multipart/related
+	if strings.HasPrefix(mediaType, "multipart/related") {
+		boundary := params["boundary"]
+		if len(boundary) == 0 {
+			log.Println("[dicom-web] boundary is empty")
+			return nil, errors.New(apiError.DICOMParseError)
+		}
+
+		mr := multipart.NewReader(resp.Body, boundary)
+		for {
+			part, err := mr.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Println("[dicom-web] error reading part", err)
+				return nil, errors.New(apiError.DICOMParseError)
+			}
+
+			if strings.HasPrefix(part.Header.Get("Content-Type"), "application/dicom") {
+				data, err := io.ReadAll(part)
+				if err != nil {
+					log.Println("[dicom-web] error reading image data", err)
+					return nil, errors.New(apiError.DICOMParseError)
+				}
+
+				return data, nil
+			}
+		}
+	}
+
+	log.Println("[dicom-web] no application/dicom part found")
+	return nil, errors.New(apiError.DICOMParseError)
 }
 
 // RetrieveDICOMWebInstanceMetadata retrieve DICOM web instance metadata
