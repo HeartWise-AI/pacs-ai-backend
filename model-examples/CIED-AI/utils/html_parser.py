@@ -6,7 +6,7 @@ class HTMLParser:
         Args:
             patient_age: Age of the patient
             results: Dictionary containing device detection results with keys:
-                    'device_type', 'confidence', 'image_quality', 'images'
+                    'device_info', 'confidence', 'image_quality', 'images'
         
         Returns:
             str: HTML formatted string containing the detection results
@@ -97,6 +97,12 @@ class HTMLParser:
                     color: var(--secondary-color);
                     font-size: 18px;
                 }}
+
+                .device-type {{
+                    font-size: 14px;
+                    color: var(--secondary-color);
+                    margin-top: 4px;
+                }}
             </style>
         </head>
         <body>
@@ -109,12 +115,14 @@ class HTMLParser:
         
         if results:
             html_content += "<div class='devices-container'>"
-            for i in range(len(results['device_type'])):
+            for i in range(len(results['device_info'])):
+                device = results['device_info'][i]
                 html_content += f"""
                 <div class='device-info'>
-                    <h4>Device {i+1}</h4>
+                    <h4>{device['manufacturer']}</h4>
                     <img src="data:image/png;base64,{results['images'][i]}" alt="Detected Device {i+1}" style="max-width: 300px;"/>
-                    <p><span class="value-label">Type:</span> {results['device_type'][i]}</p>
+                    <p><span class="value-label">Device Type:</span> {device['type_full']}</p>
+                    <p class="device-type">({device['type_short']})</p>
                     <p><span class="value-label">Confidence:</span> {results['confidence'][i]:.2%}</p>
                     <p><span class="value-label">Image Quality:</span> {results['image_quality'][i]:.1f}/4.0</p>
                 </div>
@@ -155,10 +163,23 @@ if __name__ == "__main__":
 
     # Create test data
     test_results = {
-        'device_type': ['BIO_ICD', 'MED_PM', 'BSC_CRT-P'],
-        'confidence': [0.98, 0.95, 0.97],
-        'image_quality': [3.8, 3.2, 3.5],
-        'images': [create_dummy_image() for _ in range(3)]
+        'device_info': [
+            {
+                'raw_type': 'BIO_ICD',
+                'manufacturer': 'Biotronik',
+                'type_full': 'Implantable cardioverter-defibrillator',
+                'type_short': 'ICD'
+            },
+            {
+                'raw_type': 'MED_PM',
+                'manufacturer': 'Medtronic',
+                'type_full': 'Pacemaker',
+                'type_short': 'Pacemaker'
+            }
+        ],
+        'confidence': [0.98, 0.95],
+        'image_quality': [3.8, 3.2],
+        'images': [create_dummy_image() for _ in range(2)]
     }
 
     # Generate HTML

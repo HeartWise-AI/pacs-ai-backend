@@ -20,7 +20,51 @@ class CustomPredictionService(BasePredictionService):
 
     DEVICE_TYPES = ['BIO_ICD', 'BIO_PM', 'BSC_CRT-P', 'BSC_ICD', 'BSC_PM', 'BSC_S-ICD', 'ELA_PM', 'IMC_PM', 'MED_CRT-P',
                     'MED_ICD', 'MED_ICM', 'MED_PM', 'SJM_CRT-P', 'SJM_ICD', 'SJM_PM', 'TPS_PM', 'VIT_PM']
-                    
+
+    MANUFACTURER_MAP = {
+        'MED': 'Medtronic',
+        'BIO': 'Biotronik',
+        'BSC': 'Boston Scientific',
+        'ELA': 'ELA Medical',
+        'IMC': 'Intermedics',
+        'SJM': 'St. Jude Medical (Abbott)',
+        'TPS': 'Telectronics',
+        'VIT': 'Vitatron'
+    }
+
+    DEVICE_TYPE_MAP = {
+        'ICD': 'Implantable cardioverter-defibrillator',
+        'PM': 'Pacemaker',
+        'CRT-P': 'Cardiac resynchronization therapy pacemaker',
+        'ICM': 'Implantable cardiac monitor',
+        'S-ICD': 'Subcutaneous implantable cardioverter-defibrillator'
+    }
+
+    DEVICE_TYPE_SHORT_MAP = {
+        'ICD': 'ICD',
+        'PM': 'Pacemaker',
+        'CRT-P': 'CRT-P',
+        'ICM': 'ILR',
+        'S-ICD': 'Subcutaneous ICD'
+    }
+
+    def _format_device_info(self, device_type):
+        """Format device information with manufacturer and type details.
+        
+        Args:
+            device_type: String in format 'MFR_TYPE' (e.g., 'MED_ICD')
+            
+        Returns:
+            dict: Formatted device information
+        """
+        mfr_code, dev_type = device_type.split('_')
+        return {
+            'raw_type': device_type,
+            'manufacturer': self.MANUFACTURER_MAP.get(mfr_code, mfr_code),
+            'type_full': self.DEVICE_TYPE_MAP.get(dev_type, dev_type),
+            'type_short': self.DEVICE_TYPE_SHORT_MAP.get(dev_type, dev_type)
+        }
+
     def load_model(self, config: Config):
         if CustomPredictionService.is_initialized:
             print("Models already loaded, skipping initialization")
@@ -180,15 +224,7 @@ class CustomPredictionService(BasePredictionService):
         return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
     def _process_device_detections(self, image):
-        """Process image for device detection and get predictions.
-        
-        Args:
-            image: PIL Image to process
-            
-        Returns:
-            dict or None: Detection results containing device_type, confidence, and image_quality
-                         Returns None if no devices detected
-        """
+        """Process image for device detection and get predictions."""
         detections = self._detect_devices(image)
         if not detections['boxes']:
             return None
@@ -201,8 +237,11 @@ class CustomPredictionService(BasePredictionService):
         image_quality = self._get_quality_predictions(instances)
         device_types, confidence = self._get_device_type_predictions(instances)
         
+        # Format device information with detailed mappings
+        formatted_devices = [self._format_device_info(dt) for dt in device_types]
+        
         return {
-            'device_type': device_types,
+            'device_info': formatted_devices,
             'confidence': confidence,
             'image_quality': image_quality,
             'images': [self._base64_image(im) for im in cropped_images]
