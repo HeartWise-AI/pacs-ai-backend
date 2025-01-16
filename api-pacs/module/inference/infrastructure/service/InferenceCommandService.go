@@ -198,6 +198,12 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 		if err := eg.Wait(); err != nil {
 			return dockerInferenceTypes.PredictResponse{}, err
 		}
+
+		// check if SeriesInstanceImages is null
+		if seriesInstanceImages == nil {
+			log.Println("[predict] empty series instance images")
+			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InferenceError)
+		}
 	} else {
 		/// ---------------------- for DICOM metadata
 		// get allowed dicom tags
