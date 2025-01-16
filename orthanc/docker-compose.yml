@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     ports:
       - ${ORTHANC_DICOM_PORT}:${ORTHANC_DICOM_PORT}
+      - 8053:8042
     volumes:
       - orthanc-storage:/var/lib/orthanc/db/
     environment:
@@ -25,6 +26,7 @@ services:
           "RouterBasename": "/orthanc/ohif/",
           "DataSource" : "dicom-web"
         }
+      ORTHANC__INGEST_TRANSCODING: "1.2.840.10008.1.2"
       ORTHANC__AUTHENTICATION_ENABLED: "false"
       ORTHANC__POSTGRESQL: |
         {

@@ -26,6 +26,7 @@ services:
           "RouterBasename": "/orthanc/ohif/",
           "DataSource" : "dicom-web"
         }
+      ORTHANC__INGEST_TRANSCODING: "1.2.840.10008.1.2"
       ORTHANC__AUTHENTICATION_ENABLED: "false"
       ORTHANC__POSTGRESQL: |
         {
