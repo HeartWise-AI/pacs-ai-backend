@@ -52,7 +52,13 @@ curl --request POST \
   --header 'Accept: application/json' \
   --header 'Content-Type: application/json' \
   --data '{
-    "seriesInstanceMetadata": {
+      "seriesInstanceImages": { <---------------------------------- key for series instance images, not passed when using seriesInstanceMetadata
+      "1": { <---------------------------------- series number
+        "1": "AAAAAAAAAAAAAAAAAAAAAAAAAA....", <---------------------------------- instance number and base64 encoded image
+        "2": "AAAAAAAAAAAAAAAAAAAAAAAAAA...."
+      }
+    },
+    "seriesInstanceMetadata": { <---------------------------------- key for series instance metadata, not passed when using seriesInstanceImages
       "1": { <---------------------------------- series number
         "1": { <---------------------------------- instance number
           "00080005": {
