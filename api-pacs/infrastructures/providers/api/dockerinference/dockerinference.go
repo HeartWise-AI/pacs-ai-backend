@@ -110,6 +110,9 @@ func (d *DockerInferenceAPI) Predict(ctx context.Context, containerName string, 
 		return types.PredictResponse{}, errors.New(apiError.DockerInferenceError)
 	}
 
+	// inspect request payload
+	log.Println("Test Request payload:", buf.String())
+
 	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/api/inference/predict", containerName), buf)
 	if err != nil {
 		log.Println("Error:", err)
