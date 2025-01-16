@@ -1,11 +1,11 @@
 {
   "modelName": "Model Template",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 5,
   "supportedDicomModalities": ["XA"],
-  "supportedDicomTags": ["*"],
+  "supportedDicomTags": ["00200011", "00080018"],
   "supportedAdditionalMetadata": [
     {
       "id": "smoking",
