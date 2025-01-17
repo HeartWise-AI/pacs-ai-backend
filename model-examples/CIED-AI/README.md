@@ -1,3 +1,10 @@
+You need (git-lfs)[https://git-lfs.com/] installed to pull the model files.
+
+You can pull the model files by running the following command:
+```
+git lfs fetch --all
+```
+
 To build the docker image and push it to the docker hub, run the following command:
 
 ```
@@ -19,4 +26,3 @@ To run the docker image locally for debugging with the pacs network, run the fol
 ```
 docker run -it --network pacs-net --gpus all --entrypoint /bin/bash cacoool/cied-ai:1.0
 ```
-
