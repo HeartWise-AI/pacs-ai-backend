@@ -97,11 +97,15 @@
                       "success": true,
                       "message": "Registration request created successfully",
                       "data": {
-                        "metadata": {
-                          "key": "value pair"
+                        "segmentation": {
+                          "labelmap": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                          "dimensions": [44, 512, 512],
+                          "label": "Two Spheres",
+                          "segments": {
+                            "Red Sphere": 1,
+                            "Green Sphere": 5
+                          }
                         },
-                        "segmentations": [],
-                        "boundingBoxes": [],
                         "measurements": []
                       }
                     }
