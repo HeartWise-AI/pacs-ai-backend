@@ -222,7 +222,7 @@ func (router *router) InitRouter() *chi.Mux {
 
 			// protected routes
 			r.Group(func(r chi.Router) {
-				r.Use(iamMiddleware.TokenSessionAuthGuard)
+				r.Use(iamMiddleware.TokenSessionOrthancProxyAuthGuard)
 
 				r.Handle("/orthanc/dicom-web/*", orthancProxy.DICOMWebProxy())
 			})
