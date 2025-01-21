@@ -1,3 +1,5 @@
+Important: Models are stored on huggingface, please refer to [pacs-ai-examples](https://huggingface.co/heartwise/pacs-ai-examples).
+
 To build the docker image and push it to the docker hub, run the following command:
 
 ```

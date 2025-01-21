@@ -1,9 +1,4 @@
-You need (git-lfs)[https://git-lfs.com/] installed to pull the model files.
-
-You can pull the model files by running the following command:
-```
-git lfs fetch --all
-```
+Important: Models are stored on huggingface, please refer to [pacs-ai-examples](https://huggingface.co/heartwise/pacs-ai-examples).
 
 To build the docker image and push it to the docker hub, run the following command:
 
