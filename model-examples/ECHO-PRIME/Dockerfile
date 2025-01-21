@@ -1,5 +1,4 @@
-# Build stage
-FROM python:3.11-slim
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
 
 # Install nginx and supervisor
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -15,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY main.py .
+COPY EchoPrime.py .
 COPY logic.py .
 COPY config.json .
 COPY data/ ./data/

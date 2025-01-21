@@ -1,0 +1,17 @@
+{
+  "modelDirectory": "models",
+  "models": {
+      "echo_encoder": {
+          "architectureFile": "",
+          "weightsFile": "weights/echo_encoder.pt",
+          "workers": 1,
+          "batchSize": 16
+      },
+      "view_classifier": {
+          "architectureFile": "",
+          "weightsFile": "weights/view_classifier.ckpt",
+          "workers": 1,
+          "batchSize": 16
+      }
+  }
+}

@@ -10,6 +10,31 @@ import base64
 import tempfile
 import os
 
+from tqdm import tqdm
+
+
+def collect_dicom_files(paths: List[str]) -> List[str]:
+    """
+    Collect DICOM files from a list of paths that can include both files and directories.
+    
+    Args:
+        paths: List of paths to files or directories
+        
+    Returns:
+        List of paths to DICOM files
+    """
+    dicom_files = []
+    for path in paths:
+        path = Path(path)
+        if path.is_file():
+            if path.suffix.lower() in ['.dcm', '.dicom']:
+                dicom_files.append(str(path))
+        elif path.is_dir():
+            for file_path in path.rglob('*'):
+                if file_path.is_file() and file_path.suffix.lower() in ['.dcm', '.dicom']:
+                    dicom_files.append(str(file_path))
+    return dicom_files
+
 
 def display_response(response_data, output_mode):
     """
@@ -66,13 +91,13 @@ def send_dicom_data(dicom_paths: Union[str, List[str]], server_url: str, output_
     series_instance_metadata = {}
     
     # Process each DICOM file
-    for idx, dicom_path in enumerate(dicom_paths, start=1):
+    for idx, dicom_path in tqdm(enumerate(dicom_paths, start=1), total=len(dicom_paths), desc="Processing DICOM files"):
         try:
             # Read DICOM file
             ds = pydicom.dcmread(dicom_path)
 
             # Get series number, default to "5" if not present
-            series_number = str(getattr(ds, 'SeriesNumber', 5))
+            series_number = idx
             
             # Create series entry if it doesn't exist
             if series_number not in series_instance_metadata:
@@ -91,6 +116,10 @@ def send_dicom_data(dicom_paths: Union[str, List[str]], server_url: str, output_
                 "00280008": {
                     "Value": [getattr(ds, 'NumberOfFrames', 1)],
                     "vr": "IS"
+                },
+                "00280002": {
+                    "Value": [getattr(ds, 'SamplesPerPixel', 1)],
+                    "vr": "US"
                 },
                 "00280010": {
                     "Value": [getattr(ds, 'Rows', 0)],
@@ -148,10 +177,10 @@ def main():
     parser = argparse.ArgumentParser(description='Send DICOM data to server via POST request.')
 
     parser.add_argument(
-        'dicom_files',
-        default=['sample_data/DX_1.dcm'],#, 'sample_data/XA_2.dcm'],
+        'dicom_paths',
+        default=['/home/denis/Documents/GitHub/pacs-ai-backend/model-template/sample_data/US_Study'],
         nargs='*',
-        help='Path(s) to DICOM file(s). You can specify multiple files.'
+        help='Path(s) to DICOM file(s) or directories containing DICOM files.'
     )
 
     parser.add_argument(
@@ -169,15 +198,18 @@ def main():
 
     args = parser.parse_args()
 
-    # Verify that all files exist
-    for file_path in args.dicom_files:
-        if not Path(file_path).is_file():
-            print(f"Error: File not found: {file_path}")
-            sys.exit(1)
+    # Collect all DICOM files from the provided paths
+    dicom_files = collect_dicom_files(args.dicom_paths)
+    
+    if not dicom_files:
+        print("Error: No DICOM files found in the specified paths")
+        sys.exit(1)
+    
+    print(f"Found {len(dicom_files)} DICOM files")
 
     # Send the request
     result = send_dicom_data(
-        dicom_paths=args.dicom_files,
+        dicom_paths=dicom_files,
         server_url=args.url,
         output_mode=args.output_mode
     )

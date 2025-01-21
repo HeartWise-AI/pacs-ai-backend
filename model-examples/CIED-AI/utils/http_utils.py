@@ -54,8 +54,9 @@ class HTTPResponse:
         )
 
 class PredictRequest(BaseModel):
-    seriesInstanceMetadata: Dict[str, Any]
-    additionalMetadata: Dict[str, Any]
+    seriesInstanceImages: Optional[Dict[str, Any]] = None
+    seriesInstanceMetadata: Optional[Dict[str, Any]] = None
+    additionalMetadata: Optional[Dict[str, Any]] = None
     outputMode: str
 
 
