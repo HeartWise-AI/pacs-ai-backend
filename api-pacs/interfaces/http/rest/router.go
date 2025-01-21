@@ -73,7 +73,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.16.0-beta",
+				"version": "v0.17.0-beta",
 			},
 		}
 
@@ -222,7 +222,7 @@ func (router *router) InitRouter() *chi.Mux {
 
 			// protected routes
 			r.Group(func(r chi.Router) {
-				r.Use(iamMiddleware.TokenSessionAuthGuard)
+				r.Use(iamMiddleware.TokenSessionOrthancProxyAuthGuard)
 
 				r.Handle("/orthanc/dicom-web/*", orthancProxy.DICOMWebProxy())
 			})
