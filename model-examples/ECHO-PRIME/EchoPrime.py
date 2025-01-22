@@ -60,7 +60,11 @@ class EchoPrimeInference:
         self.MEAN = torch.tensor([29.110628, 28.076836, 29.096405]).reshape(3, 1, 1, 1)
         self.STD = torch.tensor([47.989223, 46.456997, 47.20083]).reshape(3, 1, 1, 1)
         self.DEFAULT_TOP_K = 50
-        self.DEVICE = torch.device("cpu")
+        self.DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Move tensors to the correct device
+        self.MEAN = self.MEAN.to(self.DEVICE)
+        self.STD = self.STD.to(self.DEVICE)
+        self.candidate_embeddings = self.candidate_embeddings.to(self.DEVICE)
         self.FRAMES_TO_TAKE = 32
         self.FRAME_STRIDE = 2
         self.VIDEO_SIZE = 224
@@ -224,7 +228,7 @@ class EchoPrimeInference:
         Returns:
             Generated report text
         """
-        study_embedding = study_embedding.cpu()
+        study_embedding = study_embedding.to(self.DEVICE)  # Ensure study embedding is on correct device
         generated_report = ""
         
         for s_dx, sec in enumerate(self.non_empty_sections):
@@ -234,7 +238,7 @@ class EchoPrimeInference:
             ]
             no_view_study_embedding = (
                 study_embedding[:, :512] *
-                torch.tensor(cur_weights, dtype=torch.float).unsqueeze(1)
+                torch.tensor(cur_weights, dtype=torch.float, device=self.DEVICE).unsqueeze(1)  # Create tensor on correct device
             )
             no_view_study_embedding = torch.mean(no_view_study_embedding, dim=0)
             no_view_study_embedding = torch.nn.functional.normalize(no_view_study_embedding, dim=0)
@@ -261,8 +265,8 @@ class EchoPrimeInference:
         Returns:
             Dictionary of predicted metrics
         """
-        per_section_study_embedding = torch.zeros(len(self.non_empty_sections), 512)
-        study_embedding = study_embedding.cpu()
+        study_embedding = study_embedding.to(self.DEVICE)  # Ensure study embedding is on correct device
+        per_section_study_embedding = torch.zeros(len(self.non_empty_sections), 512, device=self.DEVICE)  # Create tensor on correct device
         
         for s_dx, sec in enumerate(self.non_empty_sections):
             this_section_weights = [
@@ -271,7 +275,7 @@ class EchoPrimeInference:
             ]
             this_section_study_embedding = (
                 study_embedding[:, :512] *
-                torch.tensor(this_section_weights, dtype=torch.float).unsqueeze(1)
+                torch.tensor(this_section_weights, dtype=torch.float, device=self.DEVICE).unsqueeze(1)  # Create tensor on correct device
             )
             this_section_study_embedding = torch.sum(this_section_study_embedding, dim=0)
             per_section_study_embedding[s_dx] = this_section_study_embedding
@@ -285,7 +289,7 @@ class EchoPrimeInference:
             for pheno in self.section_to_phenotypes[section]:
                 preds[pheno] = np.nanmean([
                     self.candidate_labels[pheno][self.candidate_studies[c_ids]]
-                    for c_ids in top_candidate_ids[s_dx]
+                    for c_ids in top_candidate_ids[s_dx].cpu()  # Move indices to CPU for numpy operations
                     if self.candidate_studies[c_ids] in self.candidate_labels[pheno]
                 ])
                 
@@ -360,6 +364,7 @@ class EchoPrimeInference:
             x[i] = video_utils.crop_and_scale(pixels[i])
         
         x = torch.as_tensor(x, dtype=torch.float).permute([3, 0, 1, 2])
+        x = x.to(self.DEVICE)  # Move tensor to correct device before normalization
         # Normalize
         x.sub_(self.MEAN).div_(self.STD)
         
@@ -368,6 +373,7 @@ class EchoPrimeInference:
             padding = torch.zeros(
                 (3, self.FRAMES_TO_TAKE - x.shape[1], self.VIDEO_SIZE, self.VIDEO_SIZE),
                 dtype=torch.float,
+                device=self.DEVICE  # Create padding tensor on correct device
             )
             x = torch.cat((x, padding), dim=1)
         
@@ -461,7 +467,9 @@ class EchoPrimeInference:
                 if result is not None:
                     stack_of_videos.append(result)
         
-        return torch.stack(stack_of_videos) if stack_of_videos else None 
+        if not stack_of_videos:
+            return None
+        return torch.stack(stack_of_videos).to(self.DEVICE)  # Move stacked tensor to correct device
     
     def process_series_instance_metadata(self, seriesInstanceMetadata: Dict[str, Any]) -> torch.Tensor:
         """Process all DICOM files in a directory using concurrent processing.
@@ -492,4 +500,6 @@ class EchoPrimeInference:
                 if result is not None:
                     stack_of_videos.extend(result)
         
-        return torch.stack(stack_of_videos) if stack_of_videos else None 
+        if not stack_of_videos:
+            return None
+        return torch.stack(stack_of_videos).to(self.DEVICE)  # Move stacked tensor to correct device
