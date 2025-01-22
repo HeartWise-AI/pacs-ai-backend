@@ -9,6 +9,8 @@ import webbrowser
 import base64
 import tempfile
 import os
+import random
+from visualization import visualize_segmentation
 
 from tqdm import tqdm
 
@@ -73,7 +75,7 @@ def display_response(response_data, output_mode):
         print(f"Error displaying content: {str(e)}")
 
 
-def send_dicom_data(dicom_paths: Union[str, List[str]], server_url: str, output_mode: str = "JSON"):
+def send_dicom_data(dicom_paths: Union[str, List[str]], server_url: str, output_mode: str = "JSON", send_metadata_only: bool = False, group_series: bool = False):
     """
     Read DICOM file(s), process the data, and send a POST request to the server.
 
@@ -81,6 +83,8 @@ def send_dicom_data(dicom_paths: Union[str, List[str]], server_url: str, output_
         dicom_paths: Path to a single DICOM file or list of paths to multiple DICOM files
         server_url: URL of the server
         output_mode: Output mode for the request (default: JSON)
+        send_metadata_only: If True, sends only DICOM metadata without pixel data (default: False)
+        group_series: If True, treats all DICOM files as part of the same series (default: False)
     """
 
     # Convert single path to list for consistent processing
@@ -89,6 +93,7 @@ def send_dicom_data(dicom_paths: Union[str, List[str]], server_url: str, output_
     
     # Dictionary to store series instance metadata
     series_instance_metadata = {}
+    series_instance_images = {} if not send_metadata_only else None
     
     # Process each DICOM file
     for idx, dicom_path in tqdm(enumerate(dicom_paths, start=1), total=len(dicom_paths), desc="Processing DICOM files"):
@@ -96,20 +101,28 @@ def send_dicom_data(dicom_paths: Union[str, List[str]], server_url: str, output_
             # Read DICOM file
             ds = pydicom.dcmread(dicom_path)
 
-            # Get series number, default to "5" if not present
-            series_number = idx
+            # Get series number - use 1 for all files if group_series is True, otherwise use idx
+            series_number = 1 if group_series else idx
             
             # Create series entry if it doesn't exist
             if series_number not in series_instance_metadata:
                 series_instance_metadata[series_number] = {}
+                if not send_metadata_only and series_instance_images is not None:
+                    series_instance_images[series_number] = {}
 
             # Generate instance number (using format from example)
-            instance_number = f"{series_number}10000"
+            instance_number = str(random.randint(1000000000, 9999999999))
 
-            # Extract pixel data and convert to base64
+            # Extract pixel data and convert to base64 for metadata
             pixel_array = ds.pixel_array
             pixel_bytes = pixel_array.tobytes()
             pixel_base64 = base64.b64encode(pixel_bytes).decode('utf-8')
+
+            # Read the entire DICOM file as bytes and convert to base64 for images
+            if not send_metadata_only and series_instance_images is not None:
+                with open(dicom_path, 'rb') as f:
+                    dicom_bytes = f.read()
+                    dicom_base64 = base64.b64encode(dicom_bytes).decode('utf-8')
 
             # Extract DICOM metadata for this instance
             instance_metadata = {
@@ -150,18 +163,27 @@ def send_dicom_data(dicom_paths: Union[str, List[str]], server_url: str, output_
             # Add instance metadata to series
             series_instance_metadata[series_number][instance_number] = instance_metadata
 
+            # Add full DICOM file as base64 if not sending metadata only
+            if not send_metadata_only and series_instance_images is not None:
+                series_instance_images[series_number][instance_number] = dicom_base64
+
         except Exception as e:
             print(f"Error processing DICOM file {dicom_path}: {str(e)}")
             continue
 
     # Prepare request payload
     payload = {
-        "seriesInstanceMetadata": series_instance_metadata,
         "additionalMetadata": {
             "smoker": "false"  # Default value, can be modified as needed
         },
         "outputMode": output_mode
     }
+
+    # Add either metadata or images based on send_metadata_only flag
+    if send_metadata_only:
+        payload["seriesInstanceMetadata"] = series_instance_metadata
+    else:
+        payload["seriesInstanceImages"] = series_instance_images
 
     # Send POST request
     try:
@@ -178,22 +200,36 @@ def main():
 
     parser.add_argument(
         'dicom_paths',
-        default=['/home/denis/Documents/GitHub/pacs-ai-backend/model-template/sample_data/US_Study'],
+        default=['/home/denis/Documents/GitHub/pacs-ai-backend/model-template/sample_data/CT_Study'],
         nargs='*',
         help='Path(s) to DICOM file(s) or directories containing DICOM files.'
     )
 
     parser.add_argument(
         '--url',
-        default='http://localhost:8000/inference/predict',
+        default='http://localhost:8001/inference/predict',
         help='Server URL (default: http://localhost:8000/inference/predict)'
     )
 
     parser.add_argument(
         '--output_mode',
-        default='HTML',
+        default='OHIF_ANNOTATIONS',
         choices=['HTML','OHIF_ANNOTATIONS','JSON','WEB_APP','PDF'],
         help='Output mode for the request (default: HTML)'
+    )
+
+    parser.add_argument(
+        '--metadata-only',
+        default=False,
+        action='store_true',
+        help='Send only DICOM metadata without separate pixel data'
+    )
+
+    parser.add_argument(
+        '--group-series',
+        default=True,
+        action='store_true',
+        help='Treat all DICOM files as part of the same series'
     )
 
     args = parser.parse_args()
@@ -211,7 +247,9 @@ def main():
     result = send_dicom_data(
         dicom_paths=dicom_files,
         server_url=args.url,
-        output_mode=args.output_mode
+        output_mode=args.output_mode,
+        send_metadata_only=args.metadata_only,
+        group_series=args.group_series
     )
 
     if result:
@@ -220,9 +258,19 @@ def main():
         # Display content if it's HTML or PDF
         if args.output_mode in ['HTML', 'PDF']:
             display_response(result, args.output_mode)
-        else:
-            print("Server response:")
-            print(result)
+            return
+        
+        if args.output_mode == 'OHIF_ANNOTATIONS':
+            payload = result['data']
+            visualize_segmentation(
+                    encoded_data=payload['segmentation']['labelmap'],
+                    dimensions=payload['segmentation']['dimensions'],
+                    segments=payload['segmentation']['segments']
+                )
+            return
+        print(result)
+        # result will be an HTML string containing an interactive 3D visualization
+
 
 if __name__ == "__main__":
     main()
