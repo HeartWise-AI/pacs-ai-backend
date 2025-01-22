@@ -63,7 +63,9 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 	}
 
 	// define host config
-	hostConfig := &container.HostConfig{}
+	hostConfig := &container.HostConfig{
+		ShmSize: 2 * 1024 * 1024 * 1024, // 2GB in bytes
+	}
 
 	// try to use NVIDIA runtime if available
 	isNvidiaSupported, err := d.checkNvidiaRuntime(ctx)
