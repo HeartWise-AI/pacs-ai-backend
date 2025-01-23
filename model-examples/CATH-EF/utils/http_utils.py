@@ -54,7 +54,7 @@ class HTTPResponse:
         )
 
 class PredictRequest(BaseModel):
-    seriesInstanceImages: Optional[Dict[str, Any]] = None
+    seriesInstanceImages: Optional[Dict[int, Dict[int, str]]] = None
     seriesInstanceMetadata: Optional[Dict[str, Any]] = None
     additionalMetadata: Optional[Dict[str, Any]] = None
     outputMode: str
@@ -71,10 +71,14 @@ class JsonPredictionResponse(BaseModel):
     modelRecommendations: Optional[ModelRecommendations]
 
 class OHIFPredictionResponse(BaseModel):
-    metadata: Dict[str, Any]
-    segmentations: List[Any]
-    boundingBoxes: List[Any]
-    measurements: List[Any]
+    class Segmentation(BaseModel):
+        labelmap: str
+        dimensions: List[int]
+        label: str
+        segments: Dict[str, int]
+
+    segmentation: Segmentation
+    measurements: List[Any] = Field(default_factory=list)
 
 class HTMLPredictionResponse(BaseModel):
     htmlBase64: str = Field(..., title="Base64 Encoded HTML", description="A base64 encoded HTML string.")
