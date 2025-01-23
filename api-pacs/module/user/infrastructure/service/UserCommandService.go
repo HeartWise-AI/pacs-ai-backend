@@ -73,7 +73,7 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 	// log to elasticsearch
 	go func() {
 		//  redirect link
-		redirectLink := fmt.Sprintf("%s/%s/login", os.Getenv("APP_URL"), data.TenantID)
+		redirectLink := fmt.Sprintf("%s/login?t=%s", os.Getenv("APP_URL"), data.TenantID)
 
 		// send to email
 		emailMessage := fmt.Sprintf("Hi %s, <br /><br />"+
