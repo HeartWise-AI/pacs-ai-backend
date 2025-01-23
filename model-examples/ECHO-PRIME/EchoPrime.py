@@ -499,6 +499,10 @@ class EchoPrimeInference:
                 result = future.result()
                 if result is not None:
                     stack_of_videos.extend(result)
+                    # Clean up intermediate result tensor
+                    if torch.cuda.is_available():
+                        del result
+                        torch.cuda.empty_cache()
         
         if not stack_of_videos:
             return None

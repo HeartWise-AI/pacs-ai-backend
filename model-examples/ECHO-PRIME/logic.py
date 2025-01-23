@@ -95,4 +95,10 @@ class CustomPredictionService(BasePredictionService):
         # Generate HTML report
         html_report = generate_html_report(report, metrics, self.roc_thresholds_path)
 
+        # Clean up GPU memory
+        if torch.cuda.is_available():
+            del stack_of_videos
+            del encoded_study
+            torch.cuda.empty_cache()
+
         return {"htmlBase64": html_report}
