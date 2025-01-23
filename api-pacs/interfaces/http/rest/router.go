@@ -127,28 +127,37 @@ func (router *router) InitRouter() *chi.Mux {
 				// admin or owner only
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
-					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
 					r.Route("/model", func(r chi.Router) {
-						r.Post("/add", inferenceCommandController.AddInferenceModel)
-						r.Get("/list", inferenceQueryController.GetInferenceModels)
-						r.Delete("/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
-						r.Put("/{ID}/update", inferenceCommandController.UpdateInferenceModel)
+						r.Group(func(r chi.Router) {
+							r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
-						// container routes
-						r.Route("/container", func(r chi.Router) {
-							r.Post("/{containerID}/restart", inferenceCommandController.RestartInferenceModelContainer)
-							r.Post("/{containerID}/start", inferenceCommandController.StartInferenceModelContainer)
-							r.Post("/{containerID}/stop", inferenceCommandController.StopInferenceModelContainer)
-							r.Get("/{containerID}/info", inferenceQueryController.GetContainerInfo)
+							// inference model routes
+							r.Post("/add", inferenceCommandController.AddInferenceModel)
+							r.Get("/list", inferenceQueryController.GetInferenceModels)
+							r.Delete("/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
+							r.Put("/{ID}/update", inferenceCommandController.UpdateInferenceModel)
+
+							// container routes
+							r.Route("/container", func(r chi.Router) {
+								r.Post("/{containerID}/restart", inferenceCommandController.RestartInferenceModelContainer)
+								r.Post("/{containerID}/start", inferenceCommandController.StartInferenceModelContainer)
+								r.Post("/{containerID}/stop", inferenceCommandController.StopInferenceModelContainer)
+								r.Get("/{containerID}/info", inferenceQueryController.GetContainerInfo)
+							})
 						})
 
 						// proxy routes
 						r.Route("/proxy", func(r chi.Router) {
-							r.Post("/container/{containerID}/predict", inferenceCommandController.PredictInferenceModel)
-							r.Get("/container/{containerID}/info", inferenceQueryController.GetInferenceModelInfo)
-							r.Get("/container/{containerID}/facts", inferenceQueryController.GetInferenceModelFacts)
 							r.Get("/available", inferenceQueryController.GetInferenceAvailableModels)
+
+							r.Group(func(r chi.Router) {
+								r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+
+								r.Post("/container/{containerID}/predict", inferenceCommandController.PredictInferenceModel)
+								r.Get("/container/{containerID}/info", inferenceQueryController.GetInferenceModelInfo)
+								r.Get("/container/{containerID}/facts", inferenceQueryController.GetInferenceModelFacts)
+							})
 						})
 					})
 				})
