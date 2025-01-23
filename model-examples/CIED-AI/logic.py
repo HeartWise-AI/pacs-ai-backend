@@ -10,8 +10,11 @@ import base64
 from io import BytesIO
 from PIL import Image
 import numpy as np
-import json
 import requests
+import os
+
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
 
 class CustomPredictionService(BasePredictionService):
     SERVER_QUALITY_URL = 'http://localhost:8501/v1/models/quality_model:predict'
@@ -81,7 +84,8 @@ class CustomPredictionService(BasePredictionService):
                 "tensorflow_model_server",
                 "--rest_api_port=8501",
                 "--model_config_file=/app/models/tf_models.config",
-                "--model_config_file_poll_wait_seconds=60"
+                "--model_config_file_poll_wait_seconds=60",
+                "--per_process_gpu_memory_fraction=0.1",  # 10% GPU memory limit
             ])
             
             # Wait for server to start (max 30 seconds)
