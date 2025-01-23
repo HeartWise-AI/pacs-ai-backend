@@ -149,15 +149,10 @@ func (router *router) InitRouter() *chi.Mux {
 
 						// proxy routes
 						r.Route("/proxy", func(r chi.Router) {
+							r.Post("/container/{containerID}/predict", inferenceCommandController.PredictInferenceModel)
+							r.Get("/container/{containerID}/info", inferenceQueryController.GetInferenceModelInfo)
+							r.Get("/container/{containerID}/facts", inferenceQueryController.GetInferenceModelFacts)
 							r.Get("/available", inferenceQueryController.GetInferenceAvailableModels)
-
-							r.Group(func(r chi.Router) {
-								r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
-
-								r.Post("/container/{containerID}/predict", inferenceCommandController.PredictInferenceModel)
-								r.Get("/container/{containerID}/info", inferenceQueryController.GetInferenceModelInfo)
-								r.Get("/container/{containerID}/facts", inferenceQueryController.GetInferenceModelFacts)
-							})
 						})
 					})
 				})
