@@ -121,8 +121,8 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerInferenceError)
 	}
 
-	var seriesInstanceImages map[int]map[int]string
-	var seriesInstanceMetadata map[int]map[int]interface{}
+	seriesInstanceImages := map[int]map[int]string{}
+	seriesInstanceMetadata := map[int]map[int]interface{}{}
 
 	// check payload type
 	// if supportedDicomTags = ["*"]
@@ -149,44 +149,57 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 						return err
 					}
 
+					var mInstance = sync.Mutex{}
+					egInstance, egInstanceCtx := errgroup.WithContext(egCtx)
+
+					// set limit
+					egInstance.SetLimit(len(instances))
+
 					for _, instance := range instances {
-						// TODO: refactor to goroutine
+						func(instance map[string]interface{}) {
+							egInstance.Go(func() error {
+								mInstance.Lock()
+								defer mInstance.Unlock()
 
-						seriesNumber := int(instance["00200011"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
-						sopInstanceUID := instance["00080018"].(map[string]interface{})["Value"].([]interface{})[0].(string)
+								seriesNumber := int(instance["00200011"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
+								sopInstanceUID := instance["00080018"].(map[string]interface{})["Value"].([]interface{})[0].(string)
 
-						// init images map if doesnt exist yet
-						if seriesInstanceImages == nil {
-							seriesInstanceImages = map[int]map[int]string{}
-						}
+								// assign by series number if doesnt exist yet
+								if _, ok := seriesInstanceImages[seriesNumber]; !ok {
+									seriesInstanceImages[seriesNumber] = make(map[int]string)
+								}
 
-						// init instance map if doesnt exist yet
-						if _, ok := seriesInstanceImages[seriesNumber]; !ok {
-							seriesInstanceImages[seriesNumber] = make(map[int]string)
-						}
+								var sopInstanceNumber int
 
-						var sopInstanceNumber int
+								// check for RTSTRUCT
+								if instance["00080016"].(map[string]interface{})["Value"].([]interface{})[0].(string) == "1.2.840.10008.5.1.4.1.1.481.3" {
+									sopInstanceNumber = seriesNumber // in RTSTRUCT, sopInstanceUID = seriesInstanceUID
+								} else {
+									// if a study got series but no instance, skip it
+									if _, ok := instance["00200013"]; !ok {
+										log.Println("[dicom-web] skipping because 00200013 is missing")
+										return nil
+									}
 
-						// check for RTSTRUCT
-						if instance["00080016"].(map[string]interface{})["Value"].([]interface{})[0].(string) == "1.2.840.10008.5.1.4.1.1.481.3" {
-							sopInstanceNumber = seriesNumber // in RTSTRUCT, sopInstanceUID = seriesInstanceUID
-						} else {
-							// if a study got series but no instance, skip it
-							if _, ok := instance["00200013"]; !ok {
-								log.Println("[dicom-web] skipping because 00200013 is missing")
-								continue
-							}
+									sopInstanceNumber = int(instance["00200013"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
+								}
 
-							sopInstanceNumber = int(instance["00200013"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
-						}
+								// get instance file
+								instanceFile, err := service.OrthancAPIInterface.RetrieveDICOMWebInstanceFile(egInstanceCtx, data.StudyInstanceUID, seriesInstanceUID, sopInstanceUID)
+								if err != nil {
+									return err
+								}
 
-						// get instance file
-						instanceFile, err := service.OrthancAPIInterface.RetrieveDICOMWebInstanceFile(egCtx, data.StudyInstanceUID, seriesInstanceUID, sopInstanceUID)
-						if err != nil {
-							return err
-						}
+								seriesInstanceImages[seriesNumber][sopInstanceNumber] = base64.StdEncoding.EncodeToString(instanceFile) // convert to base64
 
-						seriesInstanceImages[seriesNumber][sopInstanceNumber] = base64.StdEncoding.EncodeToString(instanceFile) // convert to base64
+								return nil
+							})
+						}(instance)
+					}
+
+					// wait for all goroutines to finish
+					if err := egInstance.Wait(); err != nil {
+						return err
 					}
 
 					return nil
@@ -199,8 +212,8 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 			return dockerInferenceTypes.PredictResponse{}, err
 		}
 
-		// check if SeriesInstanceImages is null
-		if seriesInstanceImages == nil {
+		// check if SeriesInstanceImages is empty
+		if len(seriesInstanceImages) == 0 {
 			log.Println("[predict] empty series instance images")
 			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InferenceError)
 		}
@@ -242,85 +255,97 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 						return err
 					}
 
+					var mInstance = sync.Mutex{}
+					egInstance, egInstanceCtx := errgroup.WithContext(egCtx)
+
+					// set limit
+					egInstance.SetLimit(len(instances))
+
 					for _, instance := range instances {
-						// TODO: refactor to goroutine
+						func(instance map[string]interface{}) {
+							egInstance.Go(func() error {
+								mInstance.Lock()
+								defer mInstance.Unlock()
 
-						seriesNumber := int(instance["00200011"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
-						sopInstanceUID := instance["00080018"].(map[string]interface{})["Value"].([]interface{})[0].(string)
+								seriesNumber := int(instance["00200011"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
+								sopInstanceUID := instance["00080018"].(map[string]interface{})["Value"].([]interface{})[0].(string)
 
-						// init metadata map if doesnt exist yet
-						if seriesInstanceMetadata == nil {
-							seriesInstanceMetadata = map[int]map[int]interface{}{}
-						}
-
-						// init instance map if doesnt exist yet
-						if _, ok := seriesInstanceMetadata[seriesNumber]; !ok {
-							seriesInstanceMetadata[seriesNumber] = make(map[int]interface{})
-						}
-
-						var sopInstanceNumber int
-						var reservedTags []string
-
-						// check for RTSTRUCT
-						if instance["00080016"].(map[string]interface{})["Value"].([]interface{})[0].(string) == "1.2.840.10008.5.1.4.1.1.481.3" {
-							sopInstanceNumber = seriesNumber // in RTSTRUCT, sopInstanceUID = seriesInstanceUID
-
-							// assign reserved tags required for RTSTRUCT
-							reservedTags = []string{"30060020", "30060039", "30060080", "300E0002"}
-						} else {
-							// if a study got series but no instance, skip it
-							if _, ok := instance["00200013"]; !ok {
-								log.Println("[dicom-web] skipping because 00200013 is missing")
-								continue
-							}
-
-							sopInstanceNumber = int(instance["00200013"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
-
-							// assign reserved tags
-							reservedTags = []string{"7FE00010"}
-						}
-
-						// filter already added reserved tags (avoid duplicates)
-						for _, tag := range reservedTags {
-							if !slices.Contains(allowedDICOMTags, tag) {
-								allowedDICOMTags = append(allowedDICOMTags, tag)
-							}
-						}
-
-						// get instance metadata
-						instanceMetadata, err := service.OrthancAPIInterface.RetrieveDICOMWebInstanceMetadata(egCtx, data.StudyInstanceUID, seriesInstanceUID, sopInstanceUID)
-						if err != nil {
-							return err
-						}
-
-						// prepare allowed instance metadata
-						allowedInstanceMetadata := map[string]interface{}{}
-
-						for _, instanceMetadataMap := range instanceMetadata {
-							for _, allowedDICOMTag := range allowedDICOMTags {
-								if _, ok := instanceMetadataMap[allowedDICOMTag]; ok {
-									allowedInstanceMetadata[allowedDICOMTag] = instanceMetadataMap[allowedDICOMTag]
+								// assign by series number if doesnt exist yet
+								if _, ok := seriesInstanceMetadata[seriesNumber]; !ok {
+									seriesInstanceMetadata[seriesNumber] = make(map[int]interface{})
 								}
-							}
 
-							// iterate all tags and convert BulkDataURI to InlineBinary
-							for key := range allowedInstanceMetadata {
-								if metadata, ok := allowedInstanceMetadata[key].(map[string]interface{}); ok {
-									if bulkDataURI, hasBulkData := metadata["BulkDataURI"].(string); hasBulkData {
-										// convert bulk data URI to inline binary
-										inlineBinary, err := dicomUtils.ConvertBulkDataURIToInlineBinary(bulkDataURI)
-										if err != nil {
-											return err
-										}
+								var sopInstanceNumber int
+								var reservedTags []string
 
-										metadata["InlineBinary"] = inlineBinary
-										delete(metadata, "BulkDataURI")
+								// check for RTSTRUCT
+								if instance["00080016"].(map[string]interface{})["Value"].([]interface{})[0].(string) == "1.2.840.10008.5.1.4.1.1.481.3" {
+									sopInstanceNumber = seriesNumber // in RTSTRUCT, sopInstanceUID = seriesInstanceUID
+
+									// assign reserved tags required for RTSTRUCT
+									reservedTags = []string{"30060020", "30060039", "30060080", "300E0002"}
+								} else {
+									// if a study got series but no instance, skip it
+									if _, ok := instance["00200013"]; !ok {
+										log.Println("[dicom-web] skipping because 00200013 is missing")
+										return nil
+									}
+
+									sopInstanceNumber = int(instance["00200013"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
+
+									// assign reserved tags
+									reservedTags = []string{"7FE00010"}
+								}
+
+								// filter already added reserved tags (avoid duplicates)
+								for _, tag := range reservedTags {
+									if !slices.Contains(allowedDICOMTags, tag) {
+										allowedDICOMTags = append(allowedDICOMTags, tag)
 									}
 								}
-							}
-						}
 
-						seriesInstanceMetadata[seriesNumber][sopInstanceNumber] = allowedInstanceMetadata
+								// get instance metadata
+								instanceMetadata, err := service.OrthancAPIInterface.RetrieveDICOMWebInstanceMetadata(egInstanceCtx, data.StudyInstanceUID, seriesInstanceUID, sopInstanceUID)
+								if err != nil {
+									return err
+								}
+
+								// prepare allowed instance metadata
+								allowedInstanceMetadata := map[string]interface{}{}
+
+								for _, instanceMetadataMap := range instanceMetadata {
+									for _, allowedDICOMTag := range allowedDICOMTags {
+										if _, ok := instanceMetadataMap[allowedDICOMTag]; ok {
+											allowedInstanceMetadata[allowedDICOMTag] = instanceMetadataMap[allowedDICOMTag]
+										}
+									}
+
+									// iterate all tags and convert BulkDataURI to InlineBinary
+									for key := range allowedInstanceMetadata {
+										if metadata, ok := allowedInstanceMetadata[key].(map[string]interface{}); ok {
+											if bulkDataURI, hasBulkData := metadata["BulkDataURI"].(string); hasBulkData {
+												// convert bulk data URI to inline binary
+												inlineBinary, err := dicomUtils.ConvertBulkDataURIToInlineBinary(bulkDataURI)
+												if err != nil {
+													return err
+												}
+
+												metadata["InlineBinary"] = inlineBinary
+												delete(metadata, "BulkDataURI")
+											}
+										}
+									}
+								}
+
+								seriesInstanceMetadata[seriesNumber][sopInstanceNumber] = allowedInstanceMetadata
+								return nil
+							})
+						}(instance)
+					}
+
+					// wait for all goroutines to finish
+					if err := egInstance.Wait(); err != nil {
+						return err
 					}
 
 					return nil
@@ -333,8 +358,8 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 			return dockerInferenceTypes.PredictResponse{}, err
 		}
 
-		// check if SeriesInstanceMetadata is null
-		if seriesInstanceMetadata == nil {
+		// check if SeriesInstanceMetadata is empty
+		if len(seriesInstanceMetadata) == 0 {
 			log.Println("[predict] empty series instance metadata")
 			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InferenceError)
 		}
