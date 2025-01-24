@@ -1,0 +1,37 @@
+\033[0;33m USAGE \033[0m
+
+nextflow run main.nf [OPTIONAL_ARGUMENTS] (--input)
+
+\033[0;33m Example: \033[0m
+
+nextflow pull llgneuroresearch/raster -r main
+nextflow run llgneuroresearch/raster -r main --input input -with-profile docker
+
+\033[0;33m DESCRIPTION \033[0m
+
+RASTER is a radiology stroke report generation pipeline that processes CT brain scans
+to automatically generate structured reports for stroke analysis. The pipeline uses
+advanced image processing and AI techniques to detect and analyze stroke-related abnormalities.
+
+    --input=/path/to/[root]             Root folder containing multiple subjects
+
+                                        [root]
+                                        ├── S1
+                                        │   └── *ct.nii.gz
+                                        └── S2
+                                            └── *ct.nii.gz
+
+\033[0;33m OPTIONAL ARGUMENTS (current value) \033[0m
+
+--output_dir                                Directory where to write the final results.
+                                            By default, will be in ($output_dir)
+
+\033[0;33m AVAILABLE PROFILES (using -profile option (e.g. -profile docker)) \033[0m
+
+docker                                      When this profile is used, the pipeline will use the Docker containers.
+
+apptainer                                   When this profile is used, the pipeline will use the Apptainer containers.
+
+singularity                                 When this profile is used, the pipeline will use the Singularity containers.
+
+slurm                                       When this profile is used, the pipeline will use the Slurm executor.
