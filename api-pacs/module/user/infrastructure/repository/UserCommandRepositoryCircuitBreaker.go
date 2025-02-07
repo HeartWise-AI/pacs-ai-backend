@@ -20,11 +20,14 @@ var config = hystrix_config.Config{}
 // DeleteTenantUser is the decorator for the user repository to delete tenant user
 func (repository *UserCommandRepositoryCircuitBreaker) DeleteTenantUser(ctx context.Context, tenantID, id string) error {
 	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
 	hystrix.ConfigureCommand("delete_tenant_user", config.Settings())
 	errors := hystrix.Go("delete_tenant_user", func() error {
 		err := repository.UserCommandRepositoryInterface.DeleteTenantUser(ctx, tenantID, id)
 		if err != nil {
-			return err
+			errChan <- err
+			return nil
 		}
 
 		output <- true
@@ -34,6 +37,8 @@ func (repository *UserCommandRepositoryCircuitBreaker) DeleteTenantUser(ctx cont
 	select {
 	case <-output:
 		return nil
+	case err := <-errChan:
+		return err
 	case err := <-errors:
 		return err
 	}
@@ -42,11 +47,14 @@ func (repository *UserCommandRepositoryCircuitBreaker) DeleteTenantUser(ctx cont
 // InsertTenantUser is the decorator for the user repository to insert tenant user
 func (repository *UserCommandRepositoryCircuitBreaker) InsertTenantUser(ctx context.Context, data repositoryTypes.CreateTenantUser) (string, error) {
 	output := make(chan string, 1)
+	errChan := make(chan error, 1)
+
 	hystrix.ConfigureCommand("insert_tenant_user", config.Settings())
 	errors := hystrix.Go("insert_tenant_user", func() error {
 		id, err := repository.UserCommandRepositoryInterface.InsertTenantUser(ctx, data)
 		if err != nil {
-			return err
+			errChan <- err
+			return nil
 		}
 
 		output <- id
@@ -56,6 +64,8 @@ func (repository *UserCommandRepositoryCircuitBreaker) InsertTenantUser(ctx cont
 	select {
 	case out := <-output:
 		return out, nil
+	case err := <-errChan:
+		return "", err
 	case err := <-errors:
 		return "", err
 	}
@@ -64,11 +74,14 @@ func (repository *UserCommandRepositoryCircuitBreaker) InsertTenantUser(ctx cont
 // UpdateTenantUser decorator pattern to update tenant user
 func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUser(ctx context.Context, data repositoryTypes.UpdateTenantUser) error {
 	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
 	hystrix.ConfigureCommand("update_tenant_user", config.Settings())
 	errors := hystrix.Go("update_tenant_user", func() error {
 		err := repository.UserCommandRepositoryInterface.UpdateTenantUser(ctx, data)
 		if err != nil {
-			return err
+			errChan <- err
+			return nil
 		}
 
 		output <- true
@@ -78,6 +91,8 @@ func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUser(ctx cont
 	select {
 	case <-output:
 		return nil
+	case err := <-errChan:
+		return err
 	case err := <-errors:
 		return err
 	}
@@ -86,11 +101,14 @@ func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUser(ctx cont
 // UpdateTenantUserPassword decorator pattern to update tenant user password
 func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUserPassword(ctx context.Context, data repositoryTypes.UpdateTenantUserPassword) error {
 	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
 	hystrix.ConfigureCommand("update_tenant_user_password", config.Settings())
 	errors := hystrix.Go("update_tenant_user_password", func() error {
 		err := repository.UserCommandRepositoryInterface.UpdateTenantUserPassword(ctx, data)
 		if err != nil {
-			return err
+			errChan <- err
+			return nil
 		}
 
 		output <- true
@@ -100,6 +118,8 @@ func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUserPassword(
 	select {
 	case <-output:
 		return nil
+	case err := <-errChan:
+		return err
 	case err := <-errors:
 		return err
 	}

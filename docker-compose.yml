@@ -1,6 +1,6 @@
 networks:
   default:
-    name: pacs-net
+    name: pacs-net-default
 
 include:
   - orthanc/docker-compose.yml
@@ -9,5 +9,4 @@ include:
   - elasticsearch/docker-compose.yml
   - api-pacs/docker-compose.yml
   - ../PACS-AI/docker-compose.yml
-  - torchserve/docker-compose.yml
   - nginx/docker-compose.yml

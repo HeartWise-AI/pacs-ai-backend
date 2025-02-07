@@ -1,6 +1,6 @@
 services:
   orthanc-hospital-1:
-    image: orthancteam/orthanc:latest
+    image: orthancteam/orthanc:24.12.0-full
     container_name: orthanc-hospital-1
     restart: unless-stopped
     ports:
@@ -29,7 +29,7 @@ services:
       VERBOSE_STARTUP: "true"
 
   orthanc-hospital-2:
-    image: orthancteam/orthanc:latest
+    image: orthancteam/orthanc:24.12.0-full
     container_name: orthanc-hospital-2
     restart: unless-stopped
     ports:

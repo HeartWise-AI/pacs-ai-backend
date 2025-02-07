@@ -1,6 +1,6 @@
 services:
   orthanc:
-    image: orthancteam/orthanc:latest
+    image: orthancteam/orthanc:24.12.0-full
     container_name: orthanc
     restart: unless-stopped
     ports:
@@ -26,6 +26,7 @@ services:
           "RouterBasename": "/orthanc/ohif/",
           "DataSource" : "dicom-web"
         }
+      ORTHANC__INGEST_TRANSCODING: "1.2.840.10008.1.2"
       ORTHANC__AUTHENTICATION_ENABLED: "false"
       ORTHANC__POSTGRESQL: |
         {
@@ -42,7 +43,7 @@ services:
       - orthanc-index
 
   orthanc-index:
-    image: postgres:latest
+    image: postgres:17.2
     container_name: orthanc-index
     restart: unless-stopped
     ports: ["5432:5432"]

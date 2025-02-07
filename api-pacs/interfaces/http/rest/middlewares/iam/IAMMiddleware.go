@@ -127,3 +127,31 @@ func (middleware *IAMMiddleware) TokenSessionAuthGuard(next http.Handler) http.H
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
+
+// TokenSessionOrthancProxyAuthGuard token session orthanc proxy authenticator guard
+func (middleware *IAMMiddleware) TokenSessionOrthancProxyAuthGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorization := r.Header.Get("Authorization")
+		sessionToken := strings.TrimSpace(strings.Replace(authorization, "Bearer", "", 1))
+
+		tokenSession, err := middleware.IAMQueryServiceInterface.GetSessionToken(r.Context(), sessionToken)
+		if err != nil {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusUnauthorized,
+				Success:   false,
+				Message:   "Unauthorized access.",
+				ErrorCode: apiError.UnauthorizedAccess,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		// set context and pass
+		ctx := context.WithValue(r.Context(), types.TenantIDCtx, tokenSession.TenantID)
+		ctx = context.WithValue(ctx, types.UserIDCtx, tokenSession.UserID)
+		ctx = context.WithValue(ctx, types.RoleCtx, tokenSession.Role)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}

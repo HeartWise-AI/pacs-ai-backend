@@ -20,7 +20,7 @@
       "description": "Production MHI"
     },
     {
-      "url": "http://185.223.207.27/api/v1",
+      "url": "http://198.168.189.123/api/v1",
       "description": "Staging"
     },
     {
@@ -42,12 +42,12 @@
       "description": "IAM service"
     },
     {
-      "name": "orthanc",
-      "description": "Orthanc service"
+      "name": "inference",
+      "description": "Inference service"
     },
     {
-      "name": "prediction",
-      "description": "Prediction service"
+      "name": "orthanc",
+      "description": "Orthanc service"
     },
     {
       "name": "tenant",
@@ -232,6 +232,411 @@
             }
           },
           "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/add": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Add Inference Model",
+        "description": "Add inference model.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Add inference model request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddInferenceModelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/container/{containerID}/restart": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Restart Inference Model Container",
+        "description": "Restart inference model container.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/container/{containerID}/start": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Start Inference Model Container",
+        "description": "Start inference model container.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/container/{containerID}/stop": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Stop Inference Model Container",
+        "description": "Stop inference model container.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/proxy/container/{containerID}/predict": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Predict Inference Model",
+        "description": "Predict inference model.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Predict inference model request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictInferenceModelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/list": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Inference Models",
+        "description": "Get inference models.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/container/{containerID}/info": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Inference Model Container Info",
+        "description": "Get inference model container info.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/proxy/container/{containerID}/info": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Inference Model Info",
+        "description": "Get inference model info.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/proxy/container/{containerID}/facts": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Inference Model Facts",
+        "description": "Get inference model facts.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "containerID",
+            "in": "path",
+            "description": "Container ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/proxy/available": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Inference Available Models",
+        "description": "Get inference available models.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/{id}/remove": {
+      "delete": {
+        "tags": ["inference"],
+        "summary": "Delete Inference Model",
+        "description": "Delete inference model.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Inference model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/{id}/update": {
+      "put": {
+        "tags": ["inference"],
+        "summary": "Update Inference Model",
+        "description": "Update inference model.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Inference model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Update inference model request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInferenceModelRequest"
+              }
+            }
+          }
         },
         "responses": {
           "2xx": {
@@ -544,40 +949,6 @@
         }
       }
     },
-    "/prediction/apply": {
-      "post": {
-        "tags": ["prediction"],
-        "summary": "Predict",
-        "description": "Apply prediction to selected local resource.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "description": "Prediction request",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PredictionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2xx": {
-            "description": "Success"
-          },
-          "4xx": {
-            "description": "Client side errors"
-          },
-          "5xx": {
-            "description": "Server side errors"
-          }
-        }
-      }
-    },
     "/tenant/public": {
       "get": {
         "tags": ["tenant"],
@@ -843,6 +1214,28 @@
   },
   "components": {
     "schemas": {
+      "AddInferenceModelRequest": {
+        "required": ["name", "dockerImage", "outputMode"],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "dockerImage": {
+            "type": "string"
+          },
+          "envs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
+          }
+        }
+      },
       "CreateTenantOwnerRequest": {
         "required": [
           "tenantId",
@@ -894,6 +1287,25 @@
           },
           "specialty": {
             "type": "string"
+          }
+        }
+      },
+      "PredictInferenceModelRequest": {
+        "required": ["studyInstanceUID", "seriesInstanceUIDs"],
+        "type": "object",
+        "properties": {
+          "studyInstanceUID": {
+            "type": "string"
+          },
+          "seriesInstanceUIDs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "additionalMetadata": {
+            "type": "object",
+            "nullable": true
           }
         }
       },
@@ -1046,6 +1458,22 @@
           },
           "newPassword": {
             "type": "string"
+          }
+        }
+      },
+      "UpdateInferenceModelRequest": {
+        "required": ["disallowedDICOMTags", "outputMode"],
+        "type": "object",
+        "properties": {
+          "disallowedDICOMTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
           }
         }
       },

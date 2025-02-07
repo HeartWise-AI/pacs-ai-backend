@@ -18,8 +18,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 
 	"api-pacs/interfaces"
 	"api-pacs/interfaces/http/rest/middlewares/cors"
@@ -42,13 +42,16 @@ var (
 // InitRouter initializes main routes
 func (router *router) InitRouter() *chi.Mux {
 	// DI assignment
+	dockerInferenceProxy := interfaces.ServiceContainer().RegisterDockerInferenceProxy()
 	elasticsearchCommandController := interfaces.ServiceContainer().RegisterElasticsearchRESTCommandController()
 	elasticsearchQueryController := interfaces.ServiceContainer().RegisterElasticsearchRESTQueryController()
 	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
+	inferenceCommandController := interfaces.ServiceContainer().RegisterInferenceRESTCommandController()
+	inferenceQueryController := interfaces.ServiceContainer().RegisterInferenceRESTQueryController()
+	orthancProxy := interfaces.ServiceContainer().RegisterOrthancProxy()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
 	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
-	predictionController := interfaces.ServiceContainer().RegisterPredictionRESTCommandController()
 	tenantQueryController := interfaces.ServiceContainer().RegisterTenantRESTQueryController()
 	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
 	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
@@ -70,7 +73,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.8.3-beta",
+				"version": "v0.17.1-beta",
 			},
 		}
 
@@ -119,6 +122,42 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Post("/verify-email", iamCommandController.VerifyTenantUserEmail)
 			})
 
+			// inference module
+			r.Route("/inference", func(r chi.Router) {
+				// admin or owner only
+				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.TokenSessionAuthGuard)
+
+					r.Route("/model", func(r chi.Router) {
+						r.Group(func(r chi.Router) {
+							r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+
+							// inference model routes
+							r.Post("/add", inferenceCommandController.AddInferenceModel)
+							r.Get("/list", inferenceQueryController.GetInferenceModels)
+							r.Delete("/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
+							r.Put("/{ID}/update", inferenceCommandController.UpdateInferenceModel)
+
+							// container routes
+							r.Route("/container", func(r chi.Router) {
+								r.Post("/{containerID}/restart", inferenceCommandController.RestartInferenceModelContainer)
+								r.Post("/{containerID}/start", inferenceCommandController.StartInferenceModelContainer)
+								r.Post("/{containerID}/stop", inferenceCommandController.StopInferenceModelContainer)
+								r.Get("/{containerID}/info", inferenceQueryController.GetContainerInfo)
+							})
+						})
+
+						// proxy routes
+						r.Route("/proxy", func(r chi.Router) {
+							r.Post("/container/{containerID}/predict", inferenceCommandController.PredictInferenceModel)
+							r.Get("/container/{containerID}/info", inferenceQueryController.GetInferenceModelInfo)
+							r.Get("/container/{containerID}/facts", inferenceQueryController.GetInferenceModelFacts)
+							r.Get("/available", inferenceQueryController.GetInferenceAvailableModels)
+						})
+					})
+				})
+			})
+
 			// orthanc module
 			r.Route("/orthanc", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
@@ -138,15 +177,6 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Put("/modality/{modalityID}/update", orthancCommandController.UpdateDICOMModality)
 						r.Delete("/modality/{modalityID}/remove", orthancCommandController.RemoveDICOMModality)
 					})
-				})
-			})
-
-			// prediction module
-			r.Route("/prediction", func(r chi.Router) {
-				r.Group(func(r chi.Router) {
-					r.Use(iamMiddleware.TokenSessionAuthGuard)
-
-					r.Post("/apply", predictionController.Predict)
 				})
 			})
 
@@ -187,6 +217,18 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Delete("/{ID}/remove", userCommandController.DeleteTenantUser)
 					})
 				})
+			})
+		})
+
+		// proxy routes
+		r.Route("/proxy", func(r chi.Router) {
+			r.Handle("/docker-inference/{containerName}/app/viewer/*", dockerInferenceProxy.AppViewerProxy())
+
+			// protected routes
+			r.Group(func(r chi.Router) {
+				r.Use(iamMiddleware.TokenSessionOrthancProxyAuthGuard)
+
+				r.Handle("/orthanc/dicom-web/*", orthancProxy.DICOMWebProxy())
 			})
 		})
 	})

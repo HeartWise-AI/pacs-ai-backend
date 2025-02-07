@@ -49,7 +49,9 @@ const (
 	MailgunError string = "MAILGUN_ERROR"
 
 	// Inference-related errors
-	DICOMParseError string = "DICOM_PARSE_ERROR"
-	InferenceError  string = "INFERENCE_ERROR"
-	TorchServeError string = "TORCHSERVE_ERROR"
+	DICOMParseError      string = "DICOM_PARSE_ERROR"
+	DockerError          string = "DOCKER_ERROR"
+	DockerInferenceError string = "DOCKER_INFERENCE_ERROR"
+	InferenceError       string = "INFERENCE_ERROR"
+	TorchServeError      string = "TORCHSERVE_ERROR"
 )

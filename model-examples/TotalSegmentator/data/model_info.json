@@ -1,0 +1,11 @@
+{
+  "modelName": "TotalSegmentator",
+  "version": "2.5.0",
+  "dicomTargetLevel": "SERIES",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 1,
+  "supportedDicomModalities": ["CT", "MRI"],
+  "supportedDicomTags": ["*"],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": ["OHIF_ANNOTATIONS"]
+}

@@ -1,0 +1,48 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "CIED-AI",
+      "Description": "CIED-AI is a deep learning model designed to detect and classify cardiac implantable electronic devices (CIEDs) from chest X-ray images.",
+      "Developed_by": "Pascal Thériault-Lauzier",
+      "Development_period": "2020",
+      "Version": "1.0.0"
+    },
+    "Mechanism": {
+      "Outcome": "Detection and classification of cardiac implantable electronic devices",
+      "Output": "Device type classification with confidence score and image quality assessment",
+      "Target_population": "Patients with implanted cardiac devices",
+      "Input_data_source": "Chest X-ray images",
+      "Input_data_type": "Image data (PNG format)",
+      "Model_type": "Multi-model system (Detection, Quality Assessment, and Device Type Classification)"
+    },
+    "Model_Components": {
+      "Detection_Model": {
+        "Purpose": "Locates CIED devices in chest X-rays",
+        "Output": "Bounding box coordinates and detection scores"
+      },
+      "Quality_Model": {
+        "Purpose": "Assesses image quality",
+        "Output": "Quality score on a scale of 0-4"
+      },
+      "Device_Type_Model": {
+        "Purpose": "Classifies device type",
+        "Output": "Device type classification with confidence score",
+        "Supported_Devices": [
+          "BIO_ICD", "BIO_PM", "BSC_CRT-P", "BSC_ICD", "BSC_PM", "BSC_S-ICD",
+          "ELA_PM", "IMC_PM", "MED_CRT-P", "MED_ICD", "MED_ICM", "MED_PM",
+          "SJM_CRT-P", "SJM_ICD", "SJM_PM", "TPS_PM", "VIT_PM"
+        ]
+      }
+    },
+    "Uses_and_directions": {
+      "General_use": "Automated detection and classification of CIEDs from chest X-rays",
+      "Target_population_and_use_case": "Patients with implanted cardiac devices requiring device identification or verification",
+      "Before_using_this_model": "Ensure chest X-ray image is of sufficient quality and properly positioned"
+    },
+    "Warnings_and_limitations": {
+      "Image_Quality": "Model performance depends on X-ray image quality",
+      "Multiple_Devices": "System can detect multiple devices in a single image",
+      "Confidence_Scores": "Classifications should be verified when confidence scores are low"
+    }
+  }
+}

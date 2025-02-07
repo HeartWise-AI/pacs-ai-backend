@@ -1,0 +1,35 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "TotalSegmentator",
+      "Description": "Segment organs on full-body CT scans.",
+      "Developed_by": "",
+      "Development_period": "",
+      "Version": "2.5.0"
+    },
+    "Mechanism": {
+      "Outcome": "Image segmentation of organs",
+      "Output": "Image segmentation of organs",
+      "Target_population": "",
+      "Input_data_source": "computed tomography (CT)",
+      "Input_data_type": "labelmap (Nifti)",
+      "Model_type": ""
+    },
+    "Model_Components": {
+      "Segmentation_Model": {
+        "Purpose": "Segment organs",
+        "Output": "Labelmap (Nifti)"
+      }
+    },
+    "Uses_and_directions": {
+      "General_use": "",
+      "Target_population_and_use_case": "",
+      "Before_using_this_model": ""
+    },
+    "Warnings_and_limitations": {
+      "Image_Quality": "",
+      "Multiple_Devices": "",
+      "Confidence_Scores": ""
+    }
+  }
+}

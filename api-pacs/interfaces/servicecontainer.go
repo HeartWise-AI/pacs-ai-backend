@@ -20,23 +20,28 @@ import (
 	"api-pacs/infrastructures/database/elasticsearch"
 	elasticsearchTypes "api-pacs/infrastructures/database/elasticsearch/types"
 	"api-pacs/infrastructures/database/redis"
-	"api-pacs/infrastructures/providers/api/inference"
+	"api-pacs/infrastructures/providers/api/dockerinference"
 	"api-pacs/infrastructures/providers/api/kibana"
 	"api-pacs/infrastructures/providers/api/orthanc"
+	"api-pacs/infrastructures/providers/sdk/docker"
+	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	"api-pacs/infrastructures/providers/sdk/mailgun"
 	mailgunTypes "api-pacs/infrastructures/providers/sdk/mailgun/types"
 	iamMiddleware "api-pacs/interfaces/http/rest/middlewares/iam"
+	dockerInferenceProxy "api-pacs/interfaces/http/rest/proxies/dockerinference"
+	orthancProxy "api-pacs/interfaces/http/rest/proxies/orthanc"
 	elasticsearchRepository "api-pacs/module/elasticsearch/infrastructure/repository"
 	elasticsearchService "api-pacs/module/elasticsearch/infrastructure/service"
 	elasticsearchREST "api-pacs/module/elasticsearch/interfaces/http/rest"
 	iamRepository "api-pacs/module/iam/infrastructure/repository"
 	iamService "api-pacs/module/iam/infrastructure/service"
 	iamREST "api-pacs/module/iam/interfaces/http/rest"
+	inferenceRepository "api-pacs/module/inference/infrastructure/repository"
+	inferenceService "api-pacs/module/inference/infrastructure/service"
+	inferenceREST "api-pacs/module/inference/interfaces/http/rest"
 	orthancService "api-pacs/module/orthanc/infrastructure/service"
 	orthancREST "api-pacs/module/orthanc/interfaces/http/rest"
-	predictionService "api-pacs/module/prediction/infrastructure/service"
-	predictionREST "api-pacs/module/prediction/interfaces/http/rest"
 	tenantRepository "api-pacs/module/tenant/infrastructure/repository"
 	tenantService "api-pacs/module/tenant/infrastructure/service"
 	tenantREST "api-pacs/module/tenant/interfaces/http/rest"
@@ -49,13 +54,17 @@ import (
 type ServiceContainerInterface interface {
 	// REST Middlewares
 	RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware
+	// REST Proxies
+	RegisterDockerInferenceProxy() dockerInferenceProxy.DockerInferenceProxy
+	RegisterOrthancProxy() orthancProxy.OrthancProxy
 	// REST Controllers
 	RegisterElasticsearchRESTCommandController() elasticsearchREST.ElasticsearchCommandController
 	RegisterElasticsearchRESTQueryController() elasticsearchREST.ElasticsearchQueryController
 	RegisterIAMRESTCommandController() iamREST.IAMCommandController
+	RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController
+	RegisterInferenceRESTQueryController() inferenceREST.InferenceQueryController
 	RegisterOrthancRESTCommandController() orthancREST.OrthancCommandController
 	RegisterOrthancRESTQueryController() orthancREST.OrthancQueryController
-	RegisterPredictionRESTCommandController() predictionREST.PredictionCommandController
 	RegisterTenantRESTCommandController() tenantREST.TenantCommandController
 	RegisterTenantRESTQueryController() tenantREST.TenantQueryController
 	RegisterUserRESTCommandController() userREST.UserCommandController
@@ -73,8 +82,9 @@ var (
 	firebaseAdminSDK       *firebaseadmin.FirebaseAdminSDK
 	orthancAPI             *orthanc.OrthancAPI
 	kibanaAPI              *kibana.KibanaAPI
-	inferenceAPI           *inference.InferenceAPI
 	mailgunSDK             *mailgun.MailgunSDK
+	dockerSDK              *docker.DockerSDK
+	dockerInferenceAPI     *dockerinference.DockerInferenceAPI
 )
 
 // ================================= REST ===================================
@@ -87,6 +97,17 @@ func (k *kernel) RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware {
 	}
 
 	return middleware
+}
+
+// Proxies
+// RegisterDockerInferenceProxy performs dependency injection to the RegisterDockerInferenceProxy
+func (k *kernel) RegisterDockerInferenceProxy() dockerInferenceProxy.DockerInferenceProxy {
+	return dockerInferenceProxy.DockerInferenceProxy{}
+}
+
+// RegisterOrthancProxy performs dependency injection to the RegisterOrthancProxy
+func (k *kernel) RegisterOrthancProxy() orthancProxy.OrthancProxy {
+	return orthancProxy.OrthancProxy{}
 }
 
 // Controllers
@@ -124,6 +145,28 @@ func (k *kernel) RegisterIAMRESTCommandController() iamREST.IAMCommandController
 	return controller
 }
 
+// RegisterInferenceRESTCommandController performs dependency injection to the RegisterInferenceRESTCommandController
+func (k *kernel) RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController {
+	service := k.inferenceCommandServiceContainer()
+
+	controller := inferenceREST.InferenceCommandController{
+		InferenceCommandServiceInterface: service,
+	}
+
+	return controller
+}
+
+// RegisterInferenceRESTQueryController performs dependency injection to the RegisterInferenceRESTQueryController
+func (k *kernel) RegisterInferenceRESTQueryController() inferenceREST.InferenceQueryController {
+	service := k.inferenceQueryServiceContainer()
+
+	controller := inferenceREST.InferenceQueryController{
+		InferenceQueryServiceInterface: service,
+	}
+
+	return controller
+}
+
 // RegisterOrthancRESTCommandController performs dependency injection to the RegisterOrthancRESTCommandController
 func (k *kernel) RegisterOrthancRESTCommandController() orthancREST.OrthancCommandController {
 	service := k.orthancCommandServiceContainer()
@@ -141,17 +184,6 @@ func (k *kernel) RegisterOrthancRESTQueryController() orthancREST.OrthancQueryCo
 
 	controller := orthancREST.OrthancQueryController{
 		OrthancQueryServiceInterface: service,
-	}
-
-	return controller
-}
-
-// RegisterPredictionRESTCommandController performs dependency injection to the RegisterPredictionRESTCommandController
-func (k *kernel) RegisterPredictionRESTCommandController() predictionREST.PredictionCommandController {
-	service := k.predictionCommandServiceContainer()
-
-	controller := predictionREST.PredictionCommandController{
-		PredictionCommandServiceInterface: service,
 	}
 
 	return controller
@@ -286,17 +318,48 @@ func (k *kernel) iamQueryServiceContainer() *iamService.IAMQueryService {
 	return service
 }
 
-func (k *kernel) orthancCommandServiceContainer() *orthancService.OrthancCommandService {
-	return OrthancCommandServiceDI()
-}
+func (k *kernel) inferenceCommandServiceContainer() *inferenceService.InferenceCommandService {
+	commandRepository := &inferenceRepository.InferenceCommandRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
 
-func (k *kernel) predictionCommandServiceContainer() *predictionService.PredictionCommandService {
-	service := &predictionService.PredictionCommandService{
-		InferenceAPIInterface: inferenceAPI,
-		OrthancAPIInterface:   orthancAPI,
+	queryRepository := &inferenceRepository.InferenceQueryRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
+	service := &inferenceService.InferenceCommandService{
+		InferenceCommandRepositoryInterface: &inferenceRepository.InferenceCommandRepositoryCircuitBreaker{
+			InferenceCommandRepositoryInterface: commandRepository,
+		},
+		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
+			InferenceQueryRepositoryInterface: queryRepository,
+		},
+		DockerSDKInterface:          dockerSDK,
+		OrthancAPIInterface:         orthancAPI,
+		DockerInferenceAPIInterface: dockerInferenceAPI,
 	}
 
 	return service
+}
+
+func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQueryService {
+	repository := &inferenceRepository.InferenceQueryRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
+	service := &inferenceService.InferenceQueryService{
+		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
+			InferenceQueryRepositoryInterface: repository,
+		},
+		DockerSDKInterface:          dockerSDK,
+		DockerInferenceAPIInterface: dockerInferenceAPI,
+	}
+
+	return service
+}
+
+func (k *kernel) orthancCommandServiceContainer() *orthancService.OrthancCommandService {
+	return OrthancCommandServiceDI()
 }
 
 func (k *kernel) orthancQueryServiceContainer() *orthancService.OrthancQueryService {
@@ -348,7 +411,7 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 		UserQueryServiceInterface:            k.userQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
-		MailgunSDK:                           mailgunSDK,
+		MailgunSDKInterface:                  mailgunSDK,
 	}
 
 	return service
@@ -396,9 +459,6 @@ func registerHandlers() {
 	// init orthanc connection
 	orthancAPI = orthanc.Init(os.Getenv("ORTHANC_BASE_URL"))
 
-	// init inference connection
-	inferenceAPI = inference.Init(os.Getenv("INFERENCE_BASE_URL"))
-
 	// init kibana connection
 	kibanaAPI = kibana.Init(os.Getenv("KIBANA_BASE_URL"))
 
@@ -410,6 +470,19 @@ func registerHandlers() {
 	if err != nil {
 		log.Fatalf("[SERVER] cannot initialize mailgun: %v", err)
 	}
+
+	// init docker sdk
+	dockerSDK, err = docker.NewClient(dockerTypes.Config{
+		Username: os.Getenv("DOCKER_USERNAME"),
+		Password: os.Getenv("DOCKER_PASSWORD"),
+		Network:  os.Getenv("DOCKER_NETWORK"),
+	})
+	if err != nil {
+		log.Fatalf("[SERVER] cannot initialize docker: %v", err)
+	}
+
+	// init docker inference api
+	dockerInferenceAPI = &dockerinference.DockerInferenceAPI{}
 
 	// run event listeners and cron jobs
 	go RunOrthancLocalStudiesCacheHandler()

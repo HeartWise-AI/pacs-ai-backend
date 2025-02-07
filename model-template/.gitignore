@@ -1,0 +1,4 @@
+pacs-model-template
+vendor
+__pycache__
+.env

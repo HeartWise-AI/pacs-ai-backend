@@ -3,8 +3,17 @@ services:
     build: .
     container_name: api-pacs
     restart: unless-stopped
+    networks:
+      - default
+      - pacs-net
     expose:
       - ${API_URL_REST_PORT}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       - redis
       - elasticsearch
+
+networks:
+  pacs-net:
+    external: true
