@@ -45,6 +45,9 @@ const (
 	KibanaError           string = "KIBANA_ERROR"
 	KibanaDuplicateRecord string = "KIBANA_DUPLICATE_RECORD"
 
+	// Mailchimp-related errors
+	MailchimpAPIError string = "MAILCHIMP_API_ERROR"
+
 	// Mailgun-related errors
 	MailgunError string = "MAILGUN_ERROR"
 

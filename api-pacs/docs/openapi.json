@@ -46,6 +46,10 @@
       "description": "Inference service"
     },
     {
+      "name": "lead",
+      "description": "Lead service"
+    },
+    {
       "name": "orthanc",
       "description": "Orthanc service"
     },
@@ -651,6 +655,62 @@
         }
       }
     },
+    "/lead/subscribe": {
+      "post": {
+        "tags": ["lead"],
+        "summary": "Add Subscriber",
+        "description": "Add subscriber.",
+        "requestBody": {
+          "description": "Add subscriber request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscribeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/lead/contact-form": {
+      "post": {
+        "tags": ["lead"],
+        "summary": "Add Contact Form",
+        "description": "Add contact form.",
+        "requestBody": {
+          "description": "Add contact form request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddContactFormRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/tenant": {
       "get": {
         "tags": ["tenant"],
@@ -1233,6 +1293,30 @@
           "outputMode": {
             "type": "string",
             "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
+          }
+        }
+      },
+      "AddContactFormRequest": {
+        "required": ["name", "email", "message"],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "SubscribeRequest": {
+        "required": ["email"],
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
           }
         }
       },

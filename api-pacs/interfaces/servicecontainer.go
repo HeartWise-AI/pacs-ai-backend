@@ -22,6 +22,8 @@ import (
 	"api-pacs/infrastructures/database/redis"
 	"api-pacs/infrastructures/providers/api/dockerinference"
 	"api-pacs/infrastructures/providers/api/kibana"
+	"api-pacs/infrastructures/providers/api/mailchimp"
+	mailchimpTypes "api-pacs/infrastructures/providers/api/mailchimp/types"
 	"api-pacs/infrastructures/providers/api/orthanc"
 	"api-pacs/infrastructures/providers/sdk/docker"
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
@@ -40,6 +42,8 @@ import (
 	inferenceRepository "api-pacs/module/inference/infrastructure/repository"
 	inferenceService "api-pacs/module/inference/infrastructure/service"
 	inferenceREST "api-pacs/module/inference/interfaces/http/rest"
+	leadService "api-pacs/module/lead/infrastructure/service"
+	leadREST "api-pacs/module/lead/interfaces/http/rest"
 	orthancService "api-pacs/module/orthanc/infrastructure/service"
 	orthancREST "api-pacs/module/orthanc/interfaces/http/rest"
 	tenantRepository "api-pacs/module/tenant/infrastructure/repository"
@@ -63,6 +67,7 @@ type ServiceContainerInterface interface {
 	RegisterIAMRESTCommandController() iamREST.IAMCommandController
 	RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController
 	RegisterInferenceRESTQueryController() inferenceREST.InferenceQueryController
+	RegisterLeadRESTCommandController() leadREST.LeadCommandController
 	RegisterOrthancRESTCommandController() orthancREST.OrthancCommandController
 	RegisterOrthancRESTQueryController() orthancREST.OrthancQueryController
 	RegisterTenantRESTCommandController() tenantREST.TenantCommandController
@@ -82,6 +87,7 @@ var (
 	firebaseAdminSDK       *firebaseadmin.FirebaseAdminSDK
 	orthancAPI             *orthanc.OrthancAPI
 	kibanaAPI              *kibana.KibanaAPI
+	mailchimpAPI           *mailchimp.MailchimpAPI
 	mailgunSDK             *mailgun.MailgunSDK
 	dockerSDK              *docker.DockerSDK
 	dockerInferenceAPI     *dockerinference.DockerInferenceAPI
@@ -97,6 +103,17 @@ func (k *kernel) RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware {
 	}
 
 	return middleware
+}
+
+// RegisterLeadRESTCommandController performs dependency injection to the RegisterLeadRESTCommandController
+func (k *kernel) RegisterLeadRESTCommandController() leadREST.LeadCommandController {
+	service := k.leadCommandServiceContainer()
+
+	controller := leadREST.LeadCommandController{
+		LeadCommandServiceInterface: service,
+	}
+
+	return controller
 }
 
 // Proxies
@@ -318,6 +335,20 @@ func (k *kernel) iamQueryServiceContainer() *iamService.IAMQueryService {
 	return service
 }
 
+func (k *kernel) leadCommandServiceContainer() *leadService.LeadCommandService {
+	service := &leadService.LeadCommandService{
+		MailchimpAPIInterface: mailchimpAPI,
+	}
+
+	return service
+}
+
+func (k *kernel) leadQueryServiceContainer() *leadService.LeadQueryService {
+	service := &leadService.LeadQueryService{}
+
+	return service
+}
+
 func (k *kernel) inferenceCommandServiceContainer() *inferenceService.InferenceCommandService {
 	commandRepository := &inferenceRepository.InferenceCommandRepository{
 		FirebaseAdminSDK: firebaseAdminSDK,
@@ -461,6 +492,13 @@ func registerHandlers() {
 
 	// init kibana connection
 	kibanaAPI = kibana.Init(os.Getenv("KIBANA_BASE_URL"))
+
+	// init mailchimp connection
+	mailchimpAPI = mailchimp.Init(mailchimpTypes.Config{
+		APIKey:  os.Getenv("MAILCHIMP_API_KEY"),
+		BaseURL: os.Getenv("MAILCHIMP_BASE_URL"),
+		ListID:  os.Getenv("MAILCHIMP_LIST_ID"),
+	})
 
 	// init mailgun sdk
 	mailgunSDK, err = mailgun.NewMailgun(mailgunTypes.Config{

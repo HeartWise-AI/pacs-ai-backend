@@ -49,6 +49,7 @@ func (router *router) InitRouter() *chi.Mux {
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
 	inferenceCommandController := interfaces.ServiceContainer().RegisterInferenceRESTCommandController()
 	inferenceQueryController := interfaces.ServiceContainer().RegisterInferenceRESTQueryController()
+	leadCommandController := interfaces.ServiceContainer().RegisterLeadRESTCommandController()
 	orthancProxy := interfaces.ServiceContainer().RegisterOrthancProxy()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
 	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
@@ -156,6 +157,12 @@ func (router *router) InitRouter() *chi.Mux {
 						})
 					})
 				})
+			})
+
+			// lead module
+			r.Route("/lead", func(r chi.Router) {
+				r.Post("/subscribe", leadCommandController.Subscribe)
+				r.Post("/contact-form", leadCommandController.AddContactForm)
 			})
 
 			// orthanc module
