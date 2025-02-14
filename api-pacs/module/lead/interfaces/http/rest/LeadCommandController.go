@@ -77,8 +77,8 @@ func (controller *LeadCommandController) AddContactForm(w http.ResponseWriter, r
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Unauthorized access."
 		case errors.CloudflareAPIError:
-			httpCode = http.StatusUnauthorized
-			errorMsg = "Unauthorized access."
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Cloudflare API error."
 		case errors.MailchimpAPIError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Mailchimp API error."
@@ -163,8 +163,8 @@ func (controller *LeadCommandController) Subscribe(w http.ResponseWriter, r *htt
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Unauthorized access."
 		case errors.CloudflareAPIError:
-			httpCode = http.StatusUnauthorized
-			errorMsg = "Unauthorized access."
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Cloudflare API error."
 		case errors.MailchimpAPIError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Mailchimp API error."
