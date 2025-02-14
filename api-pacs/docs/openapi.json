@@ -20,7 +20,7 @@
       "description": "Production MHI"
     },
     {
-      "url": "http://198.168.189.123/api/v1",
+      "url": "http://198.168.188.204/api/v1",
       "description": "Staging"
     },
     {
