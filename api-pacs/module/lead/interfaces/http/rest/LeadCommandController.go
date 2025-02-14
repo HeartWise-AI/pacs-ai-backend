@@ -64,6 +64,7 @@ func (controller *LeadCommandController) AddContactForm(w http.ResponseWriter, r
 	}
 
 	err = controller.LeadCommandServiceInterface.AddContactForm(context.TODO(), serviceTypes.AddContactForm{
+		Token:   request.Token,
 		Name:    request.Name,
 		Email:   request.Email,
 		Message: request.Message,
