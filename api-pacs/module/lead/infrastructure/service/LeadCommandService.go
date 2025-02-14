@@ -4,13 +4,14 @@ import (
 	"context"
 
 	mailchimpAPITypes "api-pacs/infrastructures/providers/api/mailchimp/types"
+	turnstileAPITypes "api-pacs/infrastructures/providers/api/turnstile/types"
 	"api-pacs/module/lead/infrastructure/service/types"
 )
 
 // LeadCommandService handles the lead command service logic
-// LeadCommandService handles the lead command service logic
 type LeadCommandService struct {
 	mailchimpAPITypes.MailchimpAPIInterface
+	turnstileAPITypes.TurnstileAPIInterface
 }
 
 // Subscribe adds a subscriber to the mailchimp list
@@ -35,4 +36,14 @@ func (service *LeadCommandService) AddContactForm(ctx context.Context, data type
 	}
 
 	return nil
+}
+
+// ValidateTurnstileToken validates the turnstile token
+func (service *LeadCommandService) ValidateTurnstileToken(ctx context.Context, token string) (bool, error) {
+	res, err := service.TurnstileAPIInterface.ValidateTurnstileToken(ctx, token)
+	if err != nil {
+		return false, err
+	}
+
+	return res.Success, nil
 }

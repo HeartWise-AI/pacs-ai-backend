@@ -7,10 +7,11 @@ import (
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
-		"CreateLeadRequest.Email":       "Email field is required.",
-		"AddContactFormRequest.Name":    "Name field is required.",
-		"AddContactFormRequest.Email":   "Email field is required.",
-		"AddContactFormRequest.Message": "Message field is required.",
+		"CreateLeadRequest.Email":             "Email field is required.",
+		"AddContactFormRequest.Name":          "Name field is required.",
+		"AddContactFormRequest.Email":         "Email field is required.",
+		"AddContactFormRequest.Message":       "Message field is required.",
+		"ValidateTurnstileTokenRequest.Token": "Token field is required.",
 	}
 )
 
@@ -22,4 +23,8 @@ type AddContactFormRequest struct {
 	Name    string `json:"name" validate:"required"`
 	Email   string `json:"email" validate:"required,email"`
 	Message string `json:"message" validate:"required"`
+}
+
+type ValidateTurnstileTokenRequest struct {
+	Token string `json:"token" validate:"required"`
 }

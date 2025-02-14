@@ -12,4 +12,6 @@ type LeadCommandServiceInterface interface {
 	Subscribe(ctx context.Context, email string) error
 	// AddContactForm adds a contact form to the mailchimp list
 	AddContactForm(ctx context.Context, data serviceTypes.AddContactForm) error
+	// ValidateTurnstileToken validates the turnstile token
+	ValidateTurnstileToken(ctx context.Context, token string) (bool, error)
 }

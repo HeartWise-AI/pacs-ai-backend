@@ -25,6 +25,7 @@ import (
 	"api-pacs/infrastructures/providers/api/mailchimp"
 	mailchimpTypes "api-pacs/infrastructures/providers/api/mailchimp/types"
 	"api-pacs/infrastructures/providers/api/orthanc"
+	"api-pacs/infrastructures/providers/api/turnstile"
 	"api-pacs/infrastructures/providers/sdk/docker"
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
@@ -88,6 +89,7 @@ var (
 	orthancAPI             *orthanc.OrthancAPI
 	kibanaAPI              *kibana.KibanaAPI
 	mailchimpAPI           *mailchimp.MailchimpAPI
+	turnstileAPI           *turnstile.TurnstileAPI
 	mailgunSDK             *mailgun.MailgunSDK
 	dockerSDK              *docker.DockerSDK
 	dockerInferenceAPI     *dockerinference.DockerInferenceAPI
@@ -338,6 +340,7 @@ func (k *kernel) iamQueryServiceContainer() *iamService.IAMQueryService {
 func (k *kernel) leadCommandServiceContainer() *leadService.LeadCommandService {
 	service := &leadService.LeadCommandService{
 		MailchimpAPIInterface: mailchimpAPI,
+		TurnstileAPIInterface: turnstileAPI,
 	}
 
 	return service
@@ -499,6 +502,9 @@ func registerHandlers() {
 		BaseURL: os.Getenv("MAILCHIMP_BASE_URL"),
 		ListID:  os.Getenv("MAILCHIMP_LIST_ID"),
 	})
+
+	// init turnstile connection
+	turnstileAPI = turnstile.Init(os.Getenv("TURNSTILE_BASE_URL"), os.Getenv("TURNSTILE_SECRET_KEY"))
 
 	// init mailgun sdk
 	mailgunSDK, err = mailgun.NewMailgun(mailgunTypes.Config{
