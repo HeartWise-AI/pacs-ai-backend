@@ -20,12 +20,12 @@ import (
 	"api-pacs/infrastructures/database/elasticsearch"
 	elasticsearchTypes "api-pacs/infrastructures/database/elasticsearch/types"
 	"api-pacs/infrastructures/database/redis"
+	cloudflare "api-pacs/infrastructures/providers/api/cloudflare"
 	"api-pacs/infrastructures/providers/api/dockerinference"
 	"api-pacs/infrastructures/providers/api/kibana"
 	"api-pacs/infrastructures/providers/api/mailchimp"
 	mailchimpTypes "api-pacs/infrastructures/providers/api/mailchimp/types"
 	"api-pacs/infrastructures/providers/api/orthanc"
-	"api-pacs/infrastructures/providers/api/turnstile"
 	"api-pacs/infrastructures/providers/sdk/docker"
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
@@ -89,7 +89,7 @@ var (
 	orthancAPI             *orthanc.OrthancAPI
 	kibanaAPI              *kibana.KibanaAPI
 	mailchimpAPI           *mailchimp.MailchimpAPI
-	turnstileAPI           *turnstile.TurnstileAPI
+	cloudflareAPI          *cloudflare.CloudflareAPI
 	mailgunSDK             *mailgun.MailgunSDK
 	dockerSDK              *docker.DockerSDK
 	dockerInferenceAPI     *dockerinference.DockerInferenceAPI
@@ -339,8 +339,8 @@ func (k *kernel) iamQueryServiceContainer() *iamService.IAMQueryService {
 
 func (k *kernel) leadCommandServiceContainer() *leadService.LeadCommandService {
 	service := &leadService.LeadCommandService{
-		MailchimpAPIInterface: mailchimpAPI,
-		TurnstileAPIInterface: turnstileAPI,
+		MailchimpAPIInterface:  mailchimpAPI,
+		CloudflareAPIInterface: cloudflareAPI,
 	}
 
 	return service
@@ -496,15 +496,15 @@ func registerHandlers() {
 	// init kibana connection
 	kibanaAPI = kibana.Init(os.Getenv("KIBANA_BASE_URL"))
 
-	// init mailchimp connection
+	// init mailchimp API
 	mailchimpAPI = mailchimp.Init(mailchimpTypes.Config{
-		APIKey:  os.Getenv("MAILCHIMP_API_KEY"),
 		BaseURL: os.Getenv("MAILCHIMP_BASE_URL"),
+		APIKey:  os.Getenv("MAILCHIMP_API_KEY"),
 		ListID:  os.Getenv("MAILCHIMP_LIST_ID"),
 	})
 
-	// init turnstile connection
-	turnstileAPI = turnstile.Init(os.Getenv("TURNSTILE_BASE_URL"), os.Getenv("TURNSTILE_SECRET_KEY"))
+	// init cloudflare API
+	cloudflareAPI = cloudflare.Init(os.Getenv("CLOUDFLARE_SECRET_KEY"))
 
 	// init mailgun sdk
 	mailgunSDK, err = mailgun.NewMailgun(mailgunTypes.Config{

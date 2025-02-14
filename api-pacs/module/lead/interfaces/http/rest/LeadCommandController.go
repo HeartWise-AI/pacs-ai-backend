@@ -152,9 +152,9 @@ func (controller *LeadCommandController) ValidateTurnstileToken(w http.ResponseW
 		case errors.UnauthorizedAccess:
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Unauthorized access."
-		case errors.TurnstileAPIError:
+		case errors.CloudflareAPIError:
 			httpCode = http.StatusInternalServerError
-			errorMsg = "Turnstile API error."
+			errorMsg = "Cloudflare API error."
 		default:
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Unauthorized access."

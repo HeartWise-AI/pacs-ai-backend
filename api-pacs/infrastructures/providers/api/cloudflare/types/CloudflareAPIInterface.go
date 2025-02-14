@@ -2,8 +2,8 @@ package types
 
 import "context"
 
-// TurnstileAPIInterface is the interface for the Turnstile API
-type TurnstileAPIInterface interface {
+// CloudflareAPIInterface is the interface for the Cloudflare API
+type CloudflareAPIInterface interface {
 	// ValidateTurnstileToken validates the turnstile token
 	ValidateTurnstileToken(ctx context.Context, token string) (ValidateTurnstileTokenResponse, error)
 }

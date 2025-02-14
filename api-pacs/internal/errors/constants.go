@@ -58,6 +58,6 @@ const (
 	InferenceError       string = "INFERENCE_ERROR"
 	TorchServeError      string = "TORCHSERVE_ERROR"
 
-	// Turnstile-related errors
-	TurnstileAPIError string = "TURNSTILE_API_ERROR"
+	// Cloudflare-related errors
+	CloudflareAPIError string = "CLOUDFLARE_API_ERROR"
 )

@@ -655,17 +655,17 @@
         }
       }
     },
-    "/lead/subscribe": {
+    "/lead/contact-form": {
       "post": {
         "tags": ["lead"],
-        "summary": "Add Subscriber",
-        "description": "Add subscriber.",
+        "summary": "Add Contact Form",
+        "description": "Add contact form.",
         "requestBody": {
-          "description": "Add subscriber request",
+          "description": "Add contact form request",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SubscribeRequest"
+                "$ref": "#/components/schemas/AddContactFormRequest"
               }
             }
           }
@@ -683,17 +683,17 @@
         }
       }
     },
-    "/lead/contact-form": {
+    "/lead/subscribe": {
       "post": {
         "tags": ["lead"],
-        "summary": "Add Contact Form",
-        "description": "Add contact form.",
+        "summary": "Add Subscriber",
+        "description": "Add subscriber.",
         "requestBody": {
-          "description": "Add contact form request",
+          "description": "Add subscriber request",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AddContactFormRequest"
+                "$ref": "#/components/schemas/SubscribeRequest"
               }
             }
           }
