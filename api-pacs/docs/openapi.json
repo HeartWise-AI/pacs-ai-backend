@@ -686,10 +686,10 @@
     "/lead/subscribe": {
       "post": {
         "tags": ["lead"],
-        "summary": "Add Subscriber",
-        "description": "Add subscriber.",
+        "summary": "Subscribe to Newsletter",
+        "description": "Subscribe to newsletter.",
         "requestBody": {
-          "description": "Add subscriber request",
+          "description": "Subscribe request",
           "content": {
             "application/json": {
               "schema": {
