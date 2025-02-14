@@ -20,178 +20,6 @@ type LeadCommandController struct {
 	application.LeadCommandServiceInterface
 }
 
-// Subscribe request handler to subscribe to the mailchimp list
-func (controller *LeadCommandController) Subscribe(w http.ResponseWriter, r *http.Request) {
-	var request types.SubscribeRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// validate request
-	err := types.Validate.Struct(request)
-	if err != nil {
-		errors := err.(validator.ValidationErrors)
-		if len(errors) > 0 {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   types.ValidationErrors[errors[0].StructNamespace()],
-				ErrorCode: apiError.InvalidPayload,
-			}
-
-			response.JSON(w)
-			return
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	err = controller.LeadCommandServiceInterface.Subscribe(context.TODO(), request.Email)
-	if err != nil {
-		var httpCode int
-		var errorMsg string
-
-		switch err.Error() {
-		case errors.UnauthorizedAccess:
-			httpCode = http.StatusUnauthorized
-			errorMsg = "Unauthorized access."
-		case errors.MailchimpAPIError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Mailchimp API error."
-		default:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Please contact technical support."
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    httpCode,
-			Success:   false,
-			Message:   errorMsg,
-			ErrorCode: err.Error(),
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	response := viewmodels.HTTPResponseVM{
-		Status:  http.StatusOK,
-		Success: true,
-		Message: "Successfully subscribed to the list.",
-	}
-
-	response.JSON(w)
-}
-
-// ValidateTurnstileToken request handler to validate the turnstile token
-func (controller *LeadCommandController) ValidateTurnstileToken(w http.ResponseWriter, r *http.Request) {
-	var request types.ValidateTurnstileTokenRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// validate request
-	err := types.Validate.Struct(request)
-	if err != nil {
-		errors := err.(validator.ValidationErrors)
-		if len(errors) > 0 {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   types.ValidationErrors[errors[0].StructNamespace()],
-				ErrorCode: apiError.InvalidPayload,
-			}
-
-			response.JSON(w)
-			return
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	success, err := controller.LeadCommandServiceInterface.ValidateTurnstileToken(context.TODO(), request.Token)
-	if err != nil {
-		var httpCode int
-		var errorMsg string
-
-		switch err.Error() {
-		case errors.UnauthorizedAccess:
-			httpCode = http.StatusUnauthorized
-			errorMsg = "Unauthorized access."
-		case errors.CloudflareAPIError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Cloudflare API error."
-		default:
-			httpCode = http.StatusUnauthorized
-			errorMsg = "Unauthorized access."
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    httpCode,
-			Success:   false,
-			Message:   errorMsg,
-			ErrorCode: err.Error(),
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	if !success {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusUnauthorized,
-			Success:   false,
-			Message:   "Unauthorized access.",
-			ErrorCode: apiError.UnauthorizedAccess,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	response := viewmodels.HTTPResponseVM{
-		Status:  http.StatusOK,
-		Success: success,
-		Message: "Successfully validated turnstile token.",
-	}
-
-	response.JSON(w)
-}
-
 // AddContactForm request handler to add contact form
 func (controller *LeadCommandController) AddContactForm(w http.ResponseWriter, r *http.Request) {
 	var request types.AddContactFormRequest
@@ -248,6 +76,9 @@ func (controller *LeadCommandController) AddContactForm(w http.ResponseWriter, r
 		case errors.UnauthorizedAccess:
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Unauthorized access."
+		case errors.CloudflareAPIError:
+			httpCode = http.StatusUnauthorized
+			errorMsg = "Unauthorized access."
 		case errors.MailchimpAPIError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Mailchimp API error."
@@ -271,6 +102,92 @@ func (controller *LeadCommandController) AddContactForm(w http.ResponseWriter, r
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully added contact form.",
+	}
+
+	response.JSON(w)
+}
+
+// Subscribe request handler to subscribe to the mailchimp list
+func (controller *LeadCommandController) Subscribe(w http.ResponseWriter, r *http.Request) {
+	var request types.SubscribeRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err = controller.LeadCommandServiceInterface.Subscribe(context.TODO(), serviceTypes.Subscribe{
+		Email: request.Email,
+		Token: request.Token,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.UnauthorizedAccess:
+			httpCode = http.StatusUnauthorized
+			errorMsg = "Unauthorized access."
+		case errors.CloudflareAPIError:
+			httpCode = http.StatusUnauthorized
+			errorMsg = "Unauthorized access."
+		case errors.MailchimpAPIError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Mailchimp API error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully subscribed to the list.",
 	}
 
 	response.JSON(w)

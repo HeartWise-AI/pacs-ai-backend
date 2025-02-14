@@ -163,7 +163,6 @@ func (router *router) InitRouter() *chi.Mux {
 			r.Route("/lead", func(r chi.Router) {
 				r.Post("/contact-form", leadCommandController.AddContactForm)
 				r.Post("/subscribe", leadCommandController.Subscribe)
-				r.Post("/turnstile-token/validate", leadCommandController.ValidateTurnstileToken)
 			})
 
 			// orthanc module
