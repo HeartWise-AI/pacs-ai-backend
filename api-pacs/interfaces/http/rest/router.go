@@ -74,7 +74,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.18.0-beta",
+				"version": "v0.18.1-beta",
 			},
 		}
 
@@ -163,7 +163,6 @@ func (router *router) InitRouter() *chi.Mux {
 			r.Route("/lead", func(r chi.Router) {
 				r.Post("/contact-form", leadCommandController.AddContactForm)
 				r.Post("/subscribe", leadCommandController.Subscribe)
-				r.Post("/turnstile-token/validate", leadCommandController.ValidateTurnstileToken)
 			})
 
 			// orthanc module

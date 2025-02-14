@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	cloudflareAPITypes "api-pacs/infrastructures/providers/api/cloudflare/types"
 	mailchimpAPITypes "api-pacs/infrastructures/providers/api/mailchimp/types"
+	apiError "api-pacs/internal/errors"
 	"api-pacs/module/lead/infrastructure/service/types"
 )
 
@@ -16,7 +18,16 @@ type LeadCommandService struct {
 
 // AddContactForm adds a contact form to the mailchimp list
 func (service *LeadCommandService) AddContactForm(ctx context.Context, data types.AddContactForm) error {
-	err := service.MailchimpAPIInterface.AddContactForm(ctx, mailchimpAPITypes.AddContactFormRequest{
+	res, err := service.CloudflareAPIInterface.ValidateTurnstileToken(ctx, data.Token)
+	if err != nil {
+		return err
+	}
+
+	if !res.Success {
+		return errors.New(apiError.UnauthorizedAccess)
+	}
+
+	err = service.MailchimpAPIInterface.AddContactForm(ctx, mailchimpAPITypes.AddContactFormRequest{
 		Name:    data.Name,
 		Email:   data.Email,
 		Message: data.Message,
@@ -29,21 +40,20 @@ func (service *LeadCommandService) AddContactForm(ctx context.Context, data type
 }
 
 // Subscribe adds a subscriber to the mailchimp list
-func (service *LeadCommandService) Subscribe(ctx context.Context, email string) error {
-	err := service.MailchimpAPIInterface.Subscribe(ctx, email)
+func (service *LeadCommandService) Subscribe(ctx context.Context, data types.Subscribe) error {
+	res, err := service.CloudflareAPIInterface.ValidateTurnstileToken(ctx, data.Token)
+	if err != nil {
+		return err
+	}
+
+	if !res.Success {
+		return errors.New(apiError.UnauthorizedAccess)
+	}
+
+	err = service.MailchimpAPIInterface.Subscribe(ctx, data.Email)
 	if err != nil {
 		return err
 	}
 
 	return nil
-}
-
-// ValidateTurnstileToken validates the turnstile token
-func (service *LeadCommandService) ValidateTurnstileToken(ctx context.Context, token string) (bool, error) {
-	res, err := service.CloudflareAPIInterface.ValidateTurnstileToken(ctx, token)
-	if err != nil {
-		return false, err
-	}
-
-	return res.Success, nil
 }

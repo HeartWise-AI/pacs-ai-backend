@@ -711,34 +711,6 @@
         }
       }
     },
-    "/lead/turnstile-token/validate": {
-      "post": {
-        "tags": ["lead"],
-        "summary": "Validate Turnstile Token",
-        "description": "Validate turnstile token.",
-        "requestBody": {
-          "description": "Validate turnstile token request",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ValidateTurnstileTokenRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "2xx": {
-            "description": "Success"
-          },
-          "4xx": {
-            "description": "Client side errors"
-          },
-          "5xx": {
-            "description": "Server side errors"
-          }
-        }
-      }
-    },
     "/tenant": {
       "get": {
         "tags": ["tenant"],
@@ -1325,9 +1297,12 @@
         }
       },
       "AddContactFormRequest": {
-        "required": ["name", "email", "message"],
+        "required": ["token", "name", "email", "message"],
         "type": "object",
         "properties": {
+          "token": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -1340,9 +1315,12 @@
         }
       },
       "SubscribeRequest": {
-        "required": ["email"],
+        "required": ["token", "email"],
         "type": "object",
         "properties": {
+          "token": {
+            "type": "string"
+          },
           "email": {
             "type": "string"
           }
