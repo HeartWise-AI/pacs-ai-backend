@@ -222,6 +222,8 @@ Update `api-pacs/.env` with the following variables:
 | `API_NAME`                  | Should be set to `api-pacs` (do not change)                                                                               |
 | `API_URL_REST_PORT`         | Should be set to `8000` (do not change)                                                                                   |
 | `APP_URL`                   | Should be set to `http://localhost:3000`                                                                                  |
+| `CLOUDFLARE_SECRET_KEY`    | Your Cloudflare secret key                                                                                                 |
+| `CLOUDFLARE_TURNSTILE_BASE_URL` | Should be set to `https://challenges.cloudflare.com/turnstile/v0`                                                |
 | `DOCKER_USERNAME`           | Your DockerHub username                                                                                                   |
 | `DOCKER_PASSWORD`           | Your DockerHub password                                                                                                   |
 | `DOCKER_NETWORK`            | Should be set to `pacs-net`                                                                                               |
