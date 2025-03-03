@@ -58,23 +58,29 @@ func (c *ElasticsearchDBHandler) SearchDocuments(ctx context.Context, param type
 	startDateTimestamp := ecsTypes.Float64(param.StartDate)
 	endtDateTimestamp := ecsTypes.Float64(param.EndDate)
 
+	mustQuery := []ecsTypes.Query{
+		{
+			MultiMatch: &ecsTypes.MultiMatchQuery{
+				Query:  param.TenantID,
+				Fields: []string{"tenant_id"},
+			},
+		},
+	}
+
+	// check if query is not empty
+	if len(param.Query) > 0 {
+		mustQuery = append(mustQuery, ecsTypes.Query{
+			MultiMatch: &ecsTypes.MultiMatchQuery{
+				Query:  param.Query,
+				Fields: []string{"*"},
+			},
+		})
+	}
+
 	res, err := c.TypedClient.Search().Index(param.Index).Request(&search.Request{
 		Query: &ecsTypes.Query{
 			Bool: &ecsTypes.BoolQuery{
-				Must: []ecsTypes.Query{
-					{
-						MultiMatch: &ecsTypes.MultiMatchQuery{
-							Query:  param.TenantID,
-							Fields: []string{"tenant_id"},
-						},
-					},
-					{
-						MultiMatch: &ecsTypes.MultiMatchQuery{
-							Query:  param.Query,
-							Fields: []string{"*"},
-						},
-					},
-				},
+				Must: mustQuery,
 				Filter: []ecsTypes.Query{
 					{
 						Range: map[string]ecsTypes.RangeQuery{
