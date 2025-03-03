@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/index"
@@ -35,6 +36,7 @@ func (repository *ElasticsearchCommandRepository) InsertAdminMemberLog(ctx conte
 
 	res, err := repository.ElasticsearchDBHandlerInterface.IndexDocument(ctx, adminMember.GetModelName(), adminMember)
 	if err != nil {
+		log.Println(err)
 		return nil, errors.New(apiError.DatabaseError)
 	}
 
@@ -56,6 +58,7 @@ func (repository *ElasticsearchCommandRepository) InsertGetModalityStudyLog(ctx 
 
 	res, err := repository.ElasticsearchDBHandlerInterface.IndexDocument(ctx, modalityStudy.GetModelName(), modalityStudy)
 	if err != nil {
+		log.Println(err)
 		return nil, errors.New(apiError.DatabaseError)
 	}
 
@@ -78,6 +81,7 @@ func (repository *ElasticsearchCommandRepository) InsertLoginLog(ctx context.Con
 
 	res, err := repository.ElasticsearchDBHandlerInterface.IndexDocument(ctx, login.GetModelName(), login)
 	if err != nil {
+		log.Println(err)
 		return nil, errors.New(apiError.DatabaseError)
 	}
 
@@ -99,6 +103,7 @@ func (repository *ElasticsearchCommandRepository) InsertRetrieveStudyLog(ctx con
 
 	res, err := repository.ElasticsearchDBHandlerInterface.IndexDocument(ctx, study.GetModelName(), study)
 	if err != nil {
+		log.Println(err)
 		return nil, errors.New(apiError.DatabaseError)
 	}
 
