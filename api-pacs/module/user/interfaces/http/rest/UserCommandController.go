@@ -249,12 +249,12 @@ func (controller *UserCommandController) CreateTenantUser(w http.ResponseWriter,
 func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
-	userID := chi.URLParam(r, "ID")
-	if len(userID) == 0 {
+	var request types.DeleteTenantUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
-			Message:   "Invalid user ID.",
+			Message:   "Invalid payload request.",
 			ErrorCode: errors.InvalidRequestPayload,
 		}
 
@@ -262,8 +262,35 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 		return
 	}
 
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
 	// TODO: check user role and target user role to be deleted
-	err := controller.UserCommandServiceInterface.DeleteTenantUser(context.TODO(), tenantID, userID)
+	err = controller.UserCommandServiceInterface.DeleteTenantUser(context.TODO(), tenantID, request.UserID)
 	if err != nil {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusInternalServerError,
