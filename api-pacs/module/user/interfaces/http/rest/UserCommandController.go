@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
