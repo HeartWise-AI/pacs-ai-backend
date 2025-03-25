@@ -10,7 +10,10 @@ import (
 
 // ElasticsearchDBHandlerInterface list of implementable methods for elasticsearch db
 type ElasticsearchDBHandlerInterface interface {
+	// GetAllIndices get all indices
 	GetAllIndices() (indices.Response, error)
+	// IndexDocument index a document
 	IndexDocument(ctx context.Context, index string, document interface{}) (*index.Response, error)
+	// SearchDocuments searches documents
 	SearchDocuments(ctx context.Context, param SearchDocument) (*search.Response, error)
 }

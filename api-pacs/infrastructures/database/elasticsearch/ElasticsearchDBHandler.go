@@ -70,9 +70,16 @@ func (c *ElasticsearchDBHandler) SearchDocuments(ctx context.Context, param type
 	// check if query is not empty
 	if len(param.Query) > 0 {
 		mustQuery = append(mustQuery, ecsTypes.Query{
-			MultiMatch: &ecsTypes.MultiMatchQuery{
-				Query:  param.Query,
-				Fields: []string{"*"},
+			Bool: &ecsTypes.BoolQuery{
+				Should: []ecsTypes.Query{
+					{
+						// wildcard search
+						QueryString: &ecsTypes.QueryStringQuery{
+							Query:  "*" + param.Query + "*",
+							Fields: []string{"*"},
+						},
+					},
+				},
 			},
 		})
 	}
