@@ -78,7 +78,13 @@ def display_response(response_data, output_mode):
         print(f"Error displaying content: {str(e)}")
 
 
-def send_dicom_data(dicom_paths: Union[str, List[str]], server_url: str, output_mode: str = "JSON", send_metadata_only: bool = False, group_series: bool = False):
+def send_dicom_data(
+    dicom_paths: Union[str, List[str]], 
+    server_url: str, 
+    output_mode: str = "JSON", 
+    send_metadata_only: bool = False,
+    group_series: bool = False
+):
     """
     Read DICOM file(s), process the data, and send a POST request to the server.
 
@@ -93,7 +99,6 @@ def send_dicom_data(dicom_paths: Union[str, List[str]], server_url: str, output_
     # Convert single path to list for consistent processing
     if isinstance(dicom_paths, str):
         dicom_paths = [dicom_paths]
-    
     # Dictionary to store series instance metadata
     series_instance_metadata = {}
     series_instance_images = {} if not send_metadata_only else None
@@ -223,7 +228,7 @@ def main():
 
     parser.add_argument(
         '--metadata-only',
-        default=True,
+        default=False,
         action='store_true',
         help='Send only DICOM metadata without separate pixel data'
     )
