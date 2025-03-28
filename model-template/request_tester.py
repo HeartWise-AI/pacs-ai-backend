@@ -17,24 +17,27 @@ from tqdm import tqdm
 
 def collect_dicom_files(paths: List[str]) -> List[str]:
     """
-    Collect DICOM files from a list of paths that can include both files and directories.
+    Recursively collect DICOM files from a list of paths that can include both files and directories.
     
     Args:
-        paths: List of paths to files or directories
+        paths: List of paths to files or directories.
         
     Returns:
-        List of paths to DICOM files
+        List of paths to DICOM files.
     """
+    allowed_extensions = {'.dcm', '.dicom'}
     dicom_files = []
-    for path in paths:
-        path = Path(path)
-        if path.is_file():
-            if path.suffix.lower() in ['.dcm', '.dicom']:
-                dicom_files.append(str(path))
-        elif path.is_dir():
-            for file_path in path.rglob('*'):
-                if file_path.is_file() and file_path.suffix.lower() in ['.dcm', '.dicom']:
-                    dicom_files.append(str(file_path))
+
+    for path_str in paths:
+        path_obj = Path(path_str)
+        if path_obj.is_file():
+            if path_obj.suffix.lower() in allowed_extensions:
+                dicom_files.append(str(path_obj))
+        elif path_obj.is_dir():
+            child_paths = [str(child) for child in path_obj.iterdir()]
+            dicom_files.extend(collect_dicom_files(child_paths))
+        else:
+            print(f"Warning: {path_obj} is neither a file nor a directory.")
     return dicom_files
 
 
