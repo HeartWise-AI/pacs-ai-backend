@@ -125,9 +125,9 @@ class CustomPredictionService(BasePredictionService):
                     # Expand single channel to 3 channels by repeating
                     pixel_array = np.expand_dims(pixel_array, axis=1)  # Shape: F,1,W,H
                     pixel_array = np.repeat(pixel_array, 3, axis=1)    # Shape: F,3,W,H
-                    print(np.max(pixel_array))
-                    print(np.min(pixel_array))
+                    
                 assert pixel_array.ndim == 4, "Pixel array must have 4 dimensions"
+                
                 pixel_array = self.videoShenanigans(pixel_array.transpose(0, 2, 3, 1)).astype(np.uint8)
                 pixel_array = pixel_array.astype(np.float32)
                 
@@ -158,7 +158,7 @@ class CustomPredictionService(BasePredictionService):
                     output = torch.sigmoid(output)  # Add sigmoid activation
                     output: float = output.squeeze(0).detach().cpu().numpy().astype(float)
                 
-            return True, {}
+            return True, {'probability': output}
         
         except Exception as e:
             # Make sure to clean GPU memory even if there's an error
