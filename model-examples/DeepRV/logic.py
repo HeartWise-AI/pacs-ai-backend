@@ -11,8 +11,9 @@ from io import BytesIO
 from typing import List
 from torchvision.transforms import v2
 
-from utils.genericLogic import BasePredictionService
+from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
+from utils.genericLogic import BasePredictionService
 
 from heartwise_statplots.utils import HuggingFaceWrapper
 
@@ -157,8 +158,8 @@ class CustomPredictionService(BasePredictionService):
                     output: torch.Tensor = CustomPredictionService.models['x3d_m'](video)
                     output = torch.sigmoid(output)  # Add sigmoid activation
                     output: float = output.squeeze(0).detach().cpu().numpy().astype(float)
-                
-            return True, {'probability': output}
+              
+            return {'htmlBase64': HTMLParser.generate_detection_results({'probability': output})}
         
         except Exception as e:
             # Make sure to clean GPU memory even if there's an error
