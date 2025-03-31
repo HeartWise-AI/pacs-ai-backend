@@ -4,19 +4,18 @@ class HTMLParser:
         """Generate HTML output with detection results.
         
         Args:
-            patient_age: Age of the patient
-            results: Dictionary containing device detection results with keys:
-                    'device_info', 'confidence', 'image_quality', 'images'
+            results: Dictionary containing with keys:
+                    'probability': float between 0 and 1
         
         Returns:
-            str: HTML formatted string containing the detection results
+            str: HTML formatted string containing the classification result
         """
         rv = f"Normal Right Ventricle" if results['probability'] > 0.5 else "Abnormal Right Ventricle"
         html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Device Detection Report</title>
+            <title>Right Ventricle Detection Report</title>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
