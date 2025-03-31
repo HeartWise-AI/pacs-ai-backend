@@ -67,10 +67,6 @@ async def update_last_request_time(request: Request, call_next):
     response = await call_next(request)
     return response
 
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
-
 @app.post("/inference/predict")
 async def predict(request: PredictRequest):
     
