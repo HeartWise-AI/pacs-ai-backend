@@ -157,8 +157,9 @@ class CustomPredictionService(BasePredictionService):
                     output: torch.Tensor = CustomPredictionService.models['x3d_m'](video)
                     output = torch.sigmoid(output)  # Add sigmoid activation
                     output: float = output.squeeze(0).detach().cpu().numpy().astype(float)
-              
-            return {'htmlBase64': HTMLParser.generate_detection_results({'probability': output})}
+            
+            html_output = HTMLParser.generate_detection_results({'probability': output})
+            return {'htmlBase64': base64.b64encode(html_output.encode('utf-8')).decode('utf-8')}
         
         except Exception as e:
             # Make sure to clean GPU memory even if there's an error
