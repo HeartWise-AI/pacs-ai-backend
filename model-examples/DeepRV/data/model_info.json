@@ -1,11 +1,11 @@
 {
-  "modelName": "TotalSegmentator",
-  "version": "2.5.0",
+  "modelName": "DeepRV",
+  "version": "1.0.0",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 1,
-  "supportedDicomModalities": ["CT", "MRI"],
+  "supportedDicomModalities": ["ANGIOGRAM"],
   "supportedDicomTags": ["*"],
   "supportedAdditionalMetadata": [],
-  "supportedOutputModes": ["OHIF_ANNOTATIONS"]
+  "supportedOutputModes": ["HTML"]
 }
