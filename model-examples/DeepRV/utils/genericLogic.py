@@ -6,7 +6,6 @@ class BasePredictionService:
     
     async def predict(self, request: PredictRequest):
         output_mode = request.outputMode
-        print(output_mode)
         if output_mode not in ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]:
             return False, self._handle_unsupported_output()
         
