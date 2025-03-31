@@ -64,7 +64,6 @@ class CustomPredictionService(BasePredictionService):
         print('Model loaded')
         
     async def _handle_html_output(self, request: PredictRequest):
-        print('Handling HTML output')
         dicoms = []
         for series_number in request.seriesInstanceImages:
             for instance_number in request.seriesInstanceImages[series_number]:
