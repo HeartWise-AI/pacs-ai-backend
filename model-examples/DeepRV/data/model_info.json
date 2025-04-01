@@ -4,7 +4,7 @@
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 1,
-  "supportedDicomModalities": ["ANGIOGRAM"],
+  "supportedDicomModalities": ["XA"],
   "supportedDicomTags": ["*"],
   "supportedAdditionalMetadata": [],
   "supportedOutputModes": ["HTML"]
