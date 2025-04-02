@@ -5,6 +5,20 @@ import cv2
 import pydicom as dicom
 
 
+def save_array_to_video(frames_array, output_path, fps=30):
+    # Define the codec and create VideoWriter object
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # or 'XVID' for .avi
+    out = cv2.VideoWriter(output_path, fourcc, fps, (800, 600))
+    
+    # Write each frame
+    for i in range(frames_array.shape[0]):
+        # Convert from RGB to BGR if necessary
+        frame = cv2.cvtColor(frames_array[i], cv2.COLOR_RGB2BGR)
+        out.write(frame)
+    
+    # Release the VideoWriter
+    out.release()
+
 _ybr_to_rgb_lut = None
 def apply_zoom(img_batch,zoom=0.1):
     """
@@ -201,19 +215,6 @@ def mask_outside_ultrasound(original_pixels: np.array) -> np.array:
     except Exception as e:
         print("Error masking returned as is.")
         return vid
-
-def write_video(p: Path, pixels: np.ndarray, fps=30.0, codec='h264'):
-    torchvision.io.write_video(str(p), pixels, fps, codec)
-
-def write_to_avi(frames: np.ndarray, out_file, fps=30):
-    out = cv2.VideoWriter(str(out_file), cv2.VideoWriter_fourcc(*'MJPG'), fps, (frames.shape[2], frames.shape[1]))
-    for frame in frames:
-        out.write(frame.astype(np.uint8))
-    out.release()
-
-# def read_video(p: Path, start=None, end=None, units=None, out_format=None):
-#     return torchvision.io.read_video(str(p), start, end, units, out_format)
-
 
 def write_image(p: Path, pixels: np.ndarray):
     cv2.imwrite(str(p), pixels)

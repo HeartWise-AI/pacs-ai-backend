@@ -200,7 +200,7 @@ def main():
 
     parser.add_argument(
         'dicom_paths',
-        default=['/home/denis/Documents/GitHub/pacs-ai-backend/model-template/sample_data/DX_1.dcm'],
+        default=['/home/denis/Documents/GitHub/pacs-ai-backend/model-template/sample_data/US_Study_Full'],
         nargs='*',
         help='Path(s) to DICOM file(s) or directories containing DICOM files.'
     )
@@ -227,7 +227,7 @@ def main():
 
     parser.add_argument(
         '--group-series',
-        default=False,
+        default=True,
         action='store_true',
         help='Treat all DICOM files as part of the same series'
     )
