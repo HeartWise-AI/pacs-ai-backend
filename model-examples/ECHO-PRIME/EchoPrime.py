@@ -501,7 +501,6 @@ class EchoPrimeInference:
                 print(f"Error processing series instance metadata: {str(e)}")
                 continue
 
-        torch.save(torch.stack(pixels_array), 'video_stack_docker_fixed.pt')
         return torch.stack(pixels_array)
 
     def process_dicoms(self, input_dir: Dict[str, Any]) -> torch.Tensor:

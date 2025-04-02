@@ -146,13 +146,13 @@ def mask_outside_ultrasound(original_pixels: np.array) -> np.array:
         ##################### CREATE MASK #####################
         # Sum all the frames
         frame_sum = testarray[0].astype(np.float32)  # Start off the frameSum with the first frame
-        frame_sum = cv2.cvtColor(frame_sum, cv2.COLOR_YUV2RGB)
+        # frame_sum = cv2.cvtColor(frame_sum, cv2.COLOR_YUV2RGB) Images are already RGB from orthanc transcoding layer
         frame_sum = cv2.cvtColor(frame_sum, cv2.COLOR_RGB2GRAY)
         frame_sum = np.where(frame_sum > 0, 1, 0) # make all non-zero values 1
         frames = testarray.shape[0]
         for i in range(frames): # Go through every frame
             frame = testarray[i, :, :, :].astype(np.uint8)
-            frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB)
+            # frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB) Images are already RGB from orthanc transcoding layer
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
             frame = np.where(frame>0,1,0) # make all non-zero values 1
             frame_sum = np.add(frame_sum,frame)
@@ -167,10 +167,10 @@ def mask_outside_ultrasound(original_pixels: np.array) -> np.array:
         # Make the difference frame fr difference between 1st and last frame
         # This gets rid of static elements
         frame0 = testarray[0].astype(np.uint8)
-        frame0 = cv2.cvtColor(frame0, cv2.COLOR_YUV2RGB)
+        # frame0 = cv2.cvtColor(frame0, cv2.COLOR_YUV2RGB) Images are already RGB from orthanc transcoding layer
         frame0 = cv2.cvtColor(frame0, cv2.COLOR_RGB2GRAY)
         frame_last = testarray[testarray.shape[0] - 1].astype(np.uint8)
-        frame_last = cv2.cvtColor(frame_last, cv2.COLOR_YUV2RGB)
+        # frame_last = cv2.cvtColor(frame_last, cv2.COLOR_YUV2RGB) Images are already RGB from orthanc transcoding layer
         frame_last = cv2.cvtColor(frame_last, cv2.COLOR_RGB2GRAY)
         frame_diff = abs(np.subtract(frame0, frame_last))
         frame_diff = np.where(frame_diff > 0, 1, 0)
@@ -208,7 +208,7 @@ def mask_outside_ultrasound(original_pixels: np.array) -> np.array:
         # Apply the mask to every frame and channel (changing in place)
         for i in range(len(vid)):
             frame = vid[i, :, :, :].astype('uint8')
-            frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR)
+            # frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR) Images are already RGB from orthanc transcoding layer
             frame = cv2.bitwise_and(frame, frame, mask = frame_overlap.astype(np.uint8))
             vid[i,:,:,:]=frame
         return vid
