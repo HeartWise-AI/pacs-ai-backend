@@ -221,7 +221,7 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Get("/all", userQueryController.GetTenantUsers)
 						r.Get("/specialties", userQueryController.GetDoctorSpecialties)
 						r.Put("/update", userCommandController.UpdateTenantUser)
-						r.Delete("/remove", userCommandController.DeleteTenantUser)
+						r.Delete("/{ID}/remove", userCommandController.DeleteTenantUser)
 					})
 				})
 			})
