@@ -1,7 +1,7 @@
 services:
-  orthanc-hospital-1:
+  orthanc-hospital-1-query:
     image: orthancteam/orthanc:24.12.0-full
-    container_name: orthanc-hospital-1
+    container_name: orthanc-hospital-1-query
     restart: unless-stopped
     ports:
       - 8063:8042
@@ -9,10 +9,61 @@ services:
       - orthanc-storage-hospital-1:/var/lib/orthanc/db/
     environment:
       ORTHANC__NAME: "Hospital 1 Orthanc"
-      ORTHANC__DICOM_AET: "HOSPITAL_1"
+      ORTHANC__DICOM_AET: "HOSPITAL_1_QUERY"
+      ORTHANC__DICOM_ALWAYS_ALLOW_STORE: "false"
+      ORTHANC__DICOM_PORT: 5000
       ORTHANC__DICOM_MODALITIES: |
         {
-          "pacs-ai": ["PACS_AI", "orthanc", 4242]
+          "pacs-ai" : {
+            "AET" : "PACS_AI",
+            "Port" : 4242,
+            "Host" : "orthanc",
+            "Manufacturer" : "Generic",
+            "AllowEcho" : true,
+            "AllowFind" : true,
+            "AllowMove" : true,
+            "AllowStore" : false
+          }
+        }
+      DICOM_WEB_PLUGIN_ENABLED: "true"
+      ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
+      ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__ENABLE_OPEN_IN_OHIF_VIEWER_3: "true"
+      ORTHANC__ORTHANC_EXPLORER_2__UI_OPTIONS__OHIF_VIEWER_3_PUBLIC_ROOT: "http://localhost/orthanc/ohif/"
+      STONE_WEB_VIEWER_PLUGIN_ENABLED: "true"
+      OHIF_PLUGIN_ENABLED: "true"
+      ORTHANC__OHIF: |
+        {
+          "RouterBasename": "/orthanc/ohif/",
+          "DataSource" : "dicom-web"
+        }
+      ORTHANC__AUTHENTICATION_ENABLED: "false"
+      VERBOSE_STARTUP: "true"
+
+  orthanc-hospital-1-store:
+    image: orthancteam/orthanc:24.12.0-full
+    container_name: orthanc-hospital-1-store
+    restart: unless-stopped
+    ports:
+      - 8073:8042
+    volumes:
+      - orthanc-storage-hospital-1:/var/lib/orthanc/db/
+    environment:
+      ORTHANC__NAME: "Hospital 1 Orthanc Store"
+      ORTHANC__DICOM_AET: "HOSPITAL_1_STORE"
+      ORTHANC__DICOM_ALWAYS_ALLOW_STORE: "false"
+      ORTHANC__DICOM_PORT: 4000
+      ORTHANC__DICOM_MODALITIES: |
+        {
+          "pacs-ai" : {
+            "AET" : "PACS_AI",
+            "Port" : 4242,
+            "Host" : "orthanc",
+            "Manufacturer" : "Generic",
+            "AllowEcho" : true,
+            "AllowFind" : false,
+            "AllowMove" : false,
+            "AllowStore" : true
+          }
         }
       DICOM_WEB_PLUGIN_ENABLED: "true"
       ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
@@ -33,7 +84,7 @@ services:
     container_name: orthanc-hospital-2
     restart: unless-stopped
     ports:
-      - 8073:8042
+      - 8083:8042
     volumes:
       - orthanc-storage-hospital-2:/var/lib/orthanc/db/
     environment:
