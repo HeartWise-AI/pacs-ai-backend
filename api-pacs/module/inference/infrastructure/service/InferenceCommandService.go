@@ -292,8 +292,13 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 					return err
 				}
 
+				compressedInstanceFile, err := utils.CompressAndEncodeToBase64(instanceFile)
+				if err != nil {
+					return err
+				}
+
 				// Store encoded file
-				seriesInstanceImages[info.seriesNumber][info.sopInstanceNumber] = base64.StdEncoding.EncodeToString(instanceFile)
+				seriesInstanceImages[info.seriesNumber][info.sopInstanceNumber] = compressedInstanceFile
 
 				return nil
 			})
