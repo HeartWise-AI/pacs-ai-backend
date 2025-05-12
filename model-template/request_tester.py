@@ -200,27 +200,27 @@ def main():
 
     parser.add_argument(
         'dicom_paths',
-        default=['/home/denis/Documents/GitHub/pacs-ai-backend/model-template/sample_data/US_Study_Full'],
+        default=['/home/denis/Documents/GitHub/pacs-ai-backend/model-template/sample_data/CT_Study'],
         nargs='*',
         help='Path(s) to DICOM file(s) or directories containing DICOM files.'
     )
 
     parser.add_argument(
         '--url',
-        default='http://localhost:8090/inference/predict',
+        default='http://localhost:8000/inference/predict',
         help='Server URL (default: http://localhost:8000/inference/predict)'
     )
 
     parser.add_argument(
         '--output_mode',
-        default='HTML',
+        default='OHIF_ANNOTATIONS',
         choices=['HTML','OHIF_ANNOTATIONS','JSON','WEB_APP','PDF'],
         help='Output mode for the request (default: HTML)'
     )
 
     parser.add_argument(
         '--metadata-only',
-        default=True,
+        default=False,
         action='store_true',
         help='Send only DICOM metadata without separate pixel data'
     )
