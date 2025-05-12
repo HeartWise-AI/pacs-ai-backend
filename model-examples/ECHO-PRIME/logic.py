@@ -85,7 +85,7 @@ class CustomPredictionService(BasePredictionService):
                             binary_data = value_meta['InlineBinary']
                             if isinstance(binary_data, str) and (binary_data.startswith("gz:")):
                                 # Decode and decompress if needed
-                                request.seriesInstanceMetadata[key_series][key_series_instance]['7FE00010']['InlineBinary'] = self.decode_and_decompress_from_base64(binary_data)
+                                request.seriesInstanceMetadata[key_series][key_series_instance]['7FE00010']['InlineBinary'] = self.decode_data(binary_data)
         
         # Process DICOM files
         stack_of_videos = self.EchoPrimeInference.process_series_instance_metadata(request.seriesInstanceMetadata)
