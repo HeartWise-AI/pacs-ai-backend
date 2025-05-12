@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"log"
 	"slices"
@@ -17,6 +16,7 @@ import (
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	dicomUtils "api-pacs/internal/dicoms"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/internal/utils"
 	"api-pacs/module/inference/domain/repository"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
@@ -190,7 +190,11 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 									return err
 								}
 
-								seriesInstanceImages[seriesNumber][sopInstanceNumber] = base64.StdEncoding.EncodeToString(instanceFile) // convert to base64
+								compressedEncodedData, err := utils.CompressAndEncodeToBase64(instanceFile)
+								if err != nil {
+									return err
+								}
+								seriesInstanceImages[seriesNumber][sopInstanceNumber] = compressedEncodedData
 
 								return nil
 							})

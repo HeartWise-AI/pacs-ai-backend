@@ -1,7 +1,6 @@
 package dicoms
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +17,7 @@ import (
 	"github.com/suyashkumar/dicom/pkg/tag"
 
 	apiError "api-pacs/internal/errors"
+	"api-pacs/internal/utils"
 )
 
 // ConvertBulkDataURIToInlineBinary convert bulk data URI to inline binary
@@ -67,10 +67,13 @@ func ConvertBulkDataURIToInlineBinary(bulkDataURI string) (string, error) {
 					log.Println("[dicom-web] error reading image data", err)
 					return "", errors.New(apiError.DICOMParseError)
 				}
-
-				// encode to base64
-				base64Data := base64.StdEncoding.EncodeToString(data)
-				return base64Data, nil
+				
+				compressedEncodedData, err := utils.CompressAndEncodeToBase64(data)
+				if err != nil {
+					log.Println("[dicom-web] error compressing data:", err)
+					return "", errors.New(apiError.DICOMParseError)
+				}
+				return compressedEncodedData, nil
 			}
 		}
 	}
