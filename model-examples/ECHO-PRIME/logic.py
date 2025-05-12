@@ -74,7 +74,19 @@ class CustomPredictionService(BasePredictionService):
         return view_classifier 
     
     async def _handle_html_output(self, request: PredictRequest):
-
+        # Process DICOM files - handle encoded/compressed data
+        if request.seriesInstanceMetadata:
+            # Check if metadata contains encoded/compressed data
+            for key_series, value_series in request.seriesInstanceMetadata.items():
+                for key_series_instance, value_series_instance in value_series.items():
+                    if '7FE00010' in value_series_instance:
+                        value_meta = value_series_instance['7FE00010']
+                        if isinstance(value_meta, dict) and 'InlineBinary' in value_meta:
+                            binary_data = value_meta['InlineBinary']
+                            if isinstance(binary_data, str) and (binary_data.startswith("gz:")):
+                                # Decode and decompress if needed
+                                request.seriesInstanceMetadata[key_series][key_series_instance]['7FE00010']['InlineBinary'] = self.decode_and_decompress_from_base64(binary_data)
+        
         # Process DICOM files
         stack_of_videos = self.EchoPrimeInference.process_series_instance_metadata(request.seriesInstanceMetadata)
         if stack_of_videos is None:

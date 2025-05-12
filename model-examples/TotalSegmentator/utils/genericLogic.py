@@ -1,4 +1,7 @@
 from utils.http_utils import HTTPResponse, PredictRequest
+import base64
+import gzip
+import io
 
 class BasePredictionService:
     models = {}
@@ -85,6 +88,33 @@ class BasePredictionService:
         Abstract method that must be implemented by child classes
         """
     
+    @staticmethod
+    def decode_data(encoded_str):
+        """
+        Decodes base64 string and decompresses if needed.
+        Handles both regular base64 and compressed+encoded data (prefixed with "gz:").
+        
+        Args:
+            encoded_str (str): The base64 encoded string, optionally with 'gz:' prefix
+            
+        Returns:
+            bytes: The decoded (and decompressed if applicable) data
+        """
+        # Check if the string is compressed with gzip
+        if encoded_str.startswith('gz:'):
+            # Strip the prefix
+            encoded_str = encoded_str[3:]
+            
+            # Decode base64
+            compressed_data = base64.b64decode(encoded_str)
+            
+            # Create a reader for the compressed data and decompress
+            with gzip.GzipFile(fileobj=io.BytesIO(compressed_data), mode='rb') as gzip_reader:
+                return gzip_reader.read()
+        
+        # Regular base64 decode if not compressed
+        return base64.b64decode(encoded_str)
+
     @classmethod
     def inference(cls, model_input, model_key: str):
         import torch

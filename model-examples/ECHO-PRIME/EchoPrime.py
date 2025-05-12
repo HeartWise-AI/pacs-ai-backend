@@ -1,4 +1,3 @@
-import base64
 from typing import Any, Dict, List
 import math
 import torch
@@ -480,7 +479,7 @@ class EchoPrimeInference:
                 channels = metadata['00280002']['Value'][0]
                 data = metadata['7FE00010']['InlineBinary']
                 
-                data = np.frombuffer(base64.b64decode(data), dtype=np.uint8)
+                data = np.frombuffer(data, dtype=np.uint8)
                 data = data.reshape(frames, row, column, channels)
                 pixels = np.array(data)
                 # pixels should be shape (frames,row, column, channels)
