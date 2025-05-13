@@ -368,9 +368,11 @@ func (k *kernel) inferenceCommandServiceContainer() *inferenceService.InferenceC
 		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
 			InferenceQueryRepositoryInterface: queryRepository,
 		},
-		DockerSDKInterface:          dockerSDK,
-		OrthancAPIInterface:         orthancAPI,
-		DockerInferenceAPIInterface: dockerInferenceAPI,
+		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		DockerSDKInterface:                   dockerSDK,
+		OrthancAPIInterface:                  orthancAPI,
+		DockerInferenceAPIInterface:          dockerInferenceAPI,
 	}
 
 	return service

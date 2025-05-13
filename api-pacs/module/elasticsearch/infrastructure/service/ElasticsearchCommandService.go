@@ -100,6 +100,21 @@ func (service *ElasticsearchCommandService) CreateLoginLog(ctx context.Context, 
 	return res, nil
 }
 
+// CreatePredictInferenceModelLog add a predict inference model log
+func (service *ElasticsearchCommandService) CreatePredictInferenceModelLog(ctx context.Context, data types.CreatePredictInferenceModelLog) (*index.Response, error) {
+	res, err := service.ElasticsearchCommandRepositoryInterface.InsertPredictInferenceModelLog(ctx, repositoryTypes.CreatePredictInferenceModelLog{
+		TenantID:         data.TenantID,
+		TenantName:       data.TenantName,
+		ContainerID:      data.ContainerID,
+		StudyInstanceUID: data.StudyInstanceUID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
 // CreateRetrievedStudyLog add a retrieved study log
 func (service *ElasticsearchCommandService) CreateRetrieveStudyLog(ctx context.Context, data types.CreateRetrieveStudyLog) (*index.Response, error) {
 	res, err := service.ElasticsearchCommandRepositoryInterface.InsertRetrieveStudyLog(ctx, repositoryTypes.CreateRetrieveStudyLog{

@@ -92,6 +92,7 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 	var login entity.Login
 	var adminMember entity.AdminMember
 	var modalityStudy entity.ModalityStudy
+	var predictInferenceModel entity.PredictInferenceModel
 	var retrievedStudy entity.RetrievedStudy
 
 	searchDocument := serviceTypes.SearchDocument{
@@ -115,6 +116,9 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			var errorMsg string
 
 			switch err.Error() {
+			case errors.DatabaseError:
+				httpCode = http.StatusInternalServerError
+				errorMsg = "Database error."
 			default:
 				httpCode = http.StatusInternalServerError
 				errorMsg = "Database error."
@@ -157,6 +161,9 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			var errorMsg string
 
 			switch err.Error() {
+			case errors.DatabaseError:
+				httpCode = http.StatusInternalServerError
+				errorMsg = "Database error."
 			default:
 				httpCode = http.StatusInternalServerError
 				errorMsg = "Database error."
@@ -201,6 +208,9 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			var errorMsg string
 
 			switch err.Error() {
+			case errors.DatabaseError:
+				httpCode = http.StatusInternalServerError
+				errorMsg = "Database error."
 			default:
 				httpCode = http.StatusInternalServerError
 				errorMsg = "Database error."
@@ -235,6 +245,43 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		logs = modalityStudies
 		message = "Successfully fetched search results for modality study logs."
 		indexName = modalityStudy.GetModelName()
+	case predictInferenceModel.GetModelName():
+		res, err := controller.ElasticsearchQueryServiceInterface.SearchPredictInferenceModelLogs(context.TODO(), searchDocument)
+		if err != nil && err.Error() != errors.MissingRecord {
+			var httpCode int
+			var errorMsg string
+			switch err.Error() {
+			case errors.DatabaseError:
+				httpCode = http.StatusInternalServerError
+				errorMsg = "Database error."
+			default:
+				httpCode = http.StatusInternalServerError
+				errorMsg = "Database error."
+			}
+			response := viewmodels.HTTPResponseVM{
+				Status:    httpCode,
+				Success:   false,
+				Message:   errorMsg,
+				ErrorCode: err.Error(),
+			}
+			response.JSON(w)
+			return
+		}
+
+		predictInferenceModels := []types.PredictInferenceModelLogResponse{}
+		for _, predictInferenceModel := range res {
+			predictInferenceModels = append(predictInferenceModels, types.PredictInferenceModelLogResponse{
+				TenantID:         predictInferenceModel.TenantID,
+				TenantName:       predictInferenceModel.TenantName,
+				ContainerID:      predictInferenceModel.ContainerID,
+				StudyInstanceUID: predictInferenceModel.StudyInstanceUID,
+				Timestamp:        predictInferenceModel.Timestamp,
+			})
+		}
+
+		logs = predictInferenceModels
+		message = "Successfully fetched search results for predict inference model logs."
+		indexName = predictInferenceModel.GetModelName()
 	case retrievedStudy.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchRetrievedStudyLogs(context.TODO(), searchDocument)
 		if err != nil && err.Error() != errors.MissingRecord {
@@ -242,6 +289,9 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			var errorMsg string
 
 			switch err.Error() {
+			case errors.DatabaseError:
+				httpCode = http.StatusInternalServerError
+				errorMsg = "Database error."
 			default:
 				httpCode = http.StatusInternalServerError
 				errorMsg = "Database error."
