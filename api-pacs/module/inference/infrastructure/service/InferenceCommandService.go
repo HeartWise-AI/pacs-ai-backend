@@ -394,10 +394,15 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 			return
 		}
 		_, err = service.ElasticsearchCommandServiceInterface.CreatePredictInferenceModelLog(ctx, elasticsearchTypes.CreatePredictInferenceModelLog{
-			TenantID:         tenant.ID,
-			TenantName:       tenant.Name,
-			ContainerID:      containerID,
-			StudyInstanceUID: data.StudyInstanceUID,
+			TenantID:           tenant.ID,
+			TenantName:         tenant.Name,
+			ContainerID:        containerID,
+			ContainerName:      containerName,
+			InferenceModelID:   inferenceModel.ID,
+			InferenceModelName: inferenceModel.Name,
+			StudyInstanceUID:   data.StudyInstanceUID,
+			SeriesInstanceUIDs: data.SeriesInstanceUIDs,
+			AdditionalMetadata: data.AdditionalMetadata,
 		})
 		if err != nil {
 			log.Println(err)

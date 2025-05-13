@@ -91,11 +91,16 @@ func (repository *ElasticsearchCommandRepository) InsertLoginLog(ctx context.Con
 // InsertPredictInferenceModelLog predict inference model log
 func (repository *ElasticsearchCommandRepository) InsertPredictInferenceModelLog(ctx context.Context, data repositoryTypes.CreatePredictInferenceModelLog) (*index.Response, error) {
 	predictInferenceModel := entity.PredictInferenceModel{
-		TenantID:         data.TenantID,
-		TenantName:       data.TenantName,
-		ContainerID:      data.ContainerID,
-		StudyInstanceUID: data.StudyInstanceUID,
-		Timestamp:        uint(time.Now().Unix()),
+		TenantID:           data.TenantID,
+		TenantName:         data.TenantName,
+		ContainerID:        data.ContainerID,
+		ContainerName:      data.ContainerName,
+		InferenceModelID:   data.InferenceModelID,
+		InferenceModelName: data.InferenceModelName,
+		StudyInstanceUID:   data.StudyInstanceUID,
+		SeriesInstanceUIDs: data.SeriesInstanceUIDs,
+		AdditionalMetadata: data.AdditionalMetadata,
+		Timestamp:          uint(time.Now().Unix()),
 	}
 
 	res, err := repository.ElasticsearchDBHandlerInterface.IndexDocument(ctx, predictInferenceModel.GetModelName(), predictInferenceModel)

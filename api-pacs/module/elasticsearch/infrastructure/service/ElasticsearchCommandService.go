@@ -103,10 +103,15 @@ func (service *ElasticsearchCommandService) CreateLoginLog(ctx context.Context, 
 // CreatePredictInferenceModelLog add a predict inference model log
 func (service *ElasticsearchCommandService) CreatePredictInferenceModelLog(ctx context.Context, data types.CreatePredictInferenceModelLog) (*index.Response, error) {
 	res, err := service.ElasticsearchCommandRepositoryInterface.InsertPredictInferenceModelLog(ctx, repositoryTypes.CreatePredictInferenceModelLog{
-		TenantID:         data.TenantID,
-		TenantName:       data.TenantName,
-		ContainerID:      data.ContainerID,
-		StudyInstanceUID: data.StudyInstanceUID,
+		TenantID:           data.TenantID,
+		TenantName:         data.TenantName,
+		ContainerID:        data.ContainerID,
+		ContainerName:      data.ContainerName,
+		InferenceModelID:   data.InferenceModelID,
+		InferenceModelName: data.InferenceModelName,
+		StudyInstanceUID:   data.StudyInstanceUID,
+		SeriesInstanceUIDs: data.SeriesInstanceUIDs,
+		AdditionalMetadata: data.AdditionalMetadata,
 	})
 	if err != nil {
 		return nil, err

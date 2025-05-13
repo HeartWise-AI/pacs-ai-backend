@@ -271,11 +271,16 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		predictInferenceModels := []types.PredictInferenceModelLogResponse{}
 		for _, predictInferenceModel := range res {
 			predictInferenceModels = append(predictInferenceModels, types.PredictInferenceModelLogResponse{
-				TenantID:         predictInferenceModel.TenantID,
-				TenantName:       predictInferenceModel.TenantName,
-				ContainerID:      predictInferenceModel.ContainerID,
-				StudyInstanceUID: predictInferenceModel.StudyInstanceUID,
-				Timestamp:        predictInferenceModel.Timestamp,
+				TenantID:           predictInferenceModel.TenantID,
+				TenantName:         predictInferenceModel.TenantName,
+				ContainerID:        predictInferenceModel.ContainerID,
+				ContainerName:      predictInferenceModel.ContainerName,
+				InferenceModelID:   predictInferenceModel.InferenceModelID,
+				InferenceModelName: predictInferenceModel.InferenceModelName,
+				StudyInstanceUID:   predictInferenceModel.StudyInstanceUID,
+				SeriesInstanceUIDs: predictInferenceModel.SeriesInstanceUIDs,
+				AdditionalMetadata: predictInferenceModel.AdditionalMetadata,
+				Timestamp:          predictInferenceModel.Timestamp,
 			})
 		}
 
