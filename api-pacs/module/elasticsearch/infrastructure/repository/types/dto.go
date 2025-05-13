@@ -33,6 +33,19 @@ type CreateGetModalityStudyLog struct {
 	QueryID    string
 }
 
+type CreatePredictInferenceModelLog struct {
+	TenantID           string
+	TenantName         string
+	ContainerID        string
+	ContainerName      string
+	InferenceModelID   string
+	InferenceModelName string
+	DockerImage        string
+	StudyInstanceUID   string
+	SeriesInstanceUIDs []string
+	AdditionalMetadata map[string]interface{}
+}
+
 type CreateRetrieveStudyLog struct {
 	TenantID         string
 	TenantName       string

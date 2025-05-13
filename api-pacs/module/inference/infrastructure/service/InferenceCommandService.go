@@ -17,15 +17,20 @@ import (
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	dicomUtils "api-pacs/internal/dicoms"
 	apiError "api-pacs/internal/errors"
+	elasticsearchApplication "api-pacs/module/elasticsearch/application"
+	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	"api-pacs/module/inference/domain/repository"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
+	tenantApplication "api-pacs/module/tenant/application"
 )
 
 // InferenceCommandService handles the Inference command service logic
 type InferenceCommandService struct {
 	repository.InferenceCommandRepositoryInterface
 	repository.InferenceQueryRepositoryInterface
+	tenantApplication.TenantQueryServiceInterface
+	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	dockerTypes.DockerSDKInterface
 	orthancAPITypes.OrthancAPIInterface
 	dockerInferenceTypes.DockerInferenceAPIInterface
@@ -381,6 +386,31 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	// TODO: remove this
 	predictionEndTime := time.Since(predictionStartTime)
 	log.Printf("[prediction] predict call took %f seconds", predictionEndTime.Seconds())
+
+	// log to elasticsearch
+	go func() {
+		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			return
+		}
+
+		_, err = service.ElasticsearchCommandServiceInterface.CreatePredictInferenceModelLog(ctx, elasticsearchTypes.CreatePredictInferenceModelLog{
+			TenantID:           tenant.ID,
+			TenantName:         tenant.Name,
+			ContainerID:        containerID,
+			ContainerName:      containerName,
+			InferenceModelID:   inferenceModel.ID,
+			InferenceModelName: inferenceModel.Name,
+			DockerImage:        inferenceModel.DockerImage,
+			StudyInstanceUID:   data.StudyInstanceUID,
+			SeriesInstanceUIDs: data.SeriesInstanceUIDs,
+			AdditionalMetadata: data.AdditionalMetadata,
+		})
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	}()
 
 	return predictionResult, nil
 }

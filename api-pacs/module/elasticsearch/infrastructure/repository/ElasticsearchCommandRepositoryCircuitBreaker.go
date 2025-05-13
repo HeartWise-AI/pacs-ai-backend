@@ -98,6 +98,33 @@ func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertLoginLog(c
 	}
 }
 
+// InsertPredictInferenceModelLog decorator pattern to insert predict inference model log
+func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertPredictInferenceModelLog(ctx context.Context, data repositoryTypes.CreatePredictInferenceModelLog) (*index.Response, error) {
+	output := make(chan *index.Response, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("insert_predict_inference_model_log", config.Settings())
+	errors := hystrix.Go("insert_predict_inference_model_log", func() error {
+		predictInferenceModel, err := repository.ElasticsearchCommandRepositoryInterface.InsertPredictInferenceModelLog(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- predictInferenceModel
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errChan:
+		return nil, err
+	case err := <-errors:
+		return nil, err
+	}
+}
+
 // InsertRetrieveStudyLog decorator pattern to insert retrieved study log
 func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertRetrieveStudyLog(ctx context.Context, data repositoryTypes.CreateRetrieveStudyLog) (*index.Response, error) {
 	output := make(chan *index.Response, 1)
