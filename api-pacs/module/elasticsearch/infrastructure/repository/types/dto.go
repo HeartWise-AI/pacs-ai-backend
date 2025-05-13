@@ -40,6 +40,7 @@ type CreatePredictInferenceModelLog struct {
 	ContainerName      string
 	InferenceModelID   string
 	InferenceModelName string
+	DockerImage        string
 	StudyInstanceUID   string
 	SeriesInstanceUIDs []string
 	AdditionalMetadata map[string]interface{}

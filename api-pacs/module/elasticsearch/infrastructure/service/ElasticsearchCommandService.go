@@ -109,6 +109,7 @@ func (service *ElasticsearchCommandService) CreatePredictInferenceModelLog(ctx c
 		ContainerName:      data.ContainerName,
 		InferenceModelID:   data.InferenceModelID,
 		InferenceModelName: data.InferenceModelName,
+		DockerImage:        data.DockerImage,
 		StudyInstanceUID:   data.StudyInstanceUID,
 		SeriesInstanceUIDs: data.SeriesInstanceUIDs,
 		AdditionalMetadata: data.AdditionalMetadata,

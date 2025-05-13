@@ -85,6 +85,7 @@
                 "logins",
                 "admin_members",
                 "find_modality_studies",
+                "predict_inference_models",
                 "retrieved_studies"
               ]
             }

@@ -393,6 +393,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 		if err != nil {
 			return
 		}
+
 		_, err = service.ElasticsearchCommandServiceInterface.CreatePredictInferenceModelLog(ctx, elasticsearchTypes.CreatePredictInferenceModelLog{
 			TenantID:           tenant.ID,
 			TenantName:         tenant.Name,
@@ -400,6 +401,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 			ContainerName:      containerName,
 			InferenceModelID:   inferenceModel.ID,
 			InferenceModelName: inferenceModel.Name,
+			DockerImage:        inferenceModel.DockerImage,
 			StudyInstanceUID:   data.StudyInstanceUID,
 			SeriesInstanceUIDs: data.SeriesInstanceUIDs,
 			AdditionalMetadata: data.AdditionalMetadata,
