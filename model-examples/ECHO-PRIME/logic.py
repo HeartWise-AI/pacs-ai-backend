@@ -83,7 +83,7 @@ class CustomPredictionService(BasePredictionService):
                         value_meta = value_series_instance['7FE00010']
                         if isinstance(value_meta, dict) and 'InlineBinary' in value_meta:
                             binary_data = value_meta['InlineBinary']
-                            if isinstance(binary_data, str) and (binary_data.startswith("gz:")):
+                            if isinstance(binary_data, str) and (binary_data.startswith("snappy:")):
                                 # Decode and decompress if needed
                                 request.seriesInstanceMetadata[key_series][key_series_instance]['7FE00010']['InlineBinary'] = self.decode_data(binary_data)
         
