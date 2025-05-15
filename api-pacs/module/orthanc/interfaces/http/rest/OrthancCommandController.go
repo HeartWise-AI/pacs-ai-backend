@@ -219,6 +219,8 @@ func (controller *OrthancCommandController) TriggerDICOMEchoSCU(w http.ResponseW
 
 // UpdateDICOMModality update dicom modality
 func (controller *OrthancCommandController) UpdateDICOMModality(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
 	modalityID := chi.URLParam(r, "modalityID")
 	if len(modalityID) == 0 {
 		response := viewmodels.HTTPResponseVM{
@@ -274,11 +276,15 @@ func (controller *OrthancCommandController) UpdateDICOMModality(w http.ResponseW
 	}
 
 	err = controller.OrthancCommandServiceInterface.UpdateDICOMModality(context.TODO(), serviceTypes.UpdateDICOMModality{
-		ModalityID:  modalityID,
-		AET:         request.AET,
-		Host:        request.Host,
-		Port:        request.Port,
-		UseDicomTLS: request.UseDicomTLS,
+		TenantID:      tenantID,
+		ModalityID:    modalityID,
+		AET:           request.AET,
+		Host:          request.Host,
+		Port:          request.Port,
+		UseDicomTLS:   request.UseDicomTLS,
+		CFindEnabled:  request.CFindEnabled,
+		CMoveEnabled:  request.CMoveEnabled,
+		CStoreEnabled: request.CStoreEnabled,
 	})
 	if err != nil {
 		var httpCode int

@@ -41,10 +41,13 @@ type RetrieveModalityStudyRequest struct {
 }
 
 type UpdateDICOMModalityRequest struct {
-	AET         string `json:"aet" validate:"required"`
-	Host        string `json:"host" validate:"required"`
-	Port        uint   `json:"port" validate:"required"`
-	UseDicomTLS bool   `json:"useDicomTLS"`
+	AET           string `json:"aet" validate:"required"`
+	Host          string `json:"host" validate:"required"`
+	Port          uint   `json:"port" validate:"required"`
+	UseDicomTLS   bool   `json:"useDicomTLS"`
+	CFindEnabled  bool   `json:"cFindEnabled"`
+	CMoveEnabled  bool   `json:"cMoveEnabled"`
+	CStoreEnabled bool   `json:"cStoreEnabled"`
 }
 
 type FindLocalSOPInstanceResponse struct {

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"log"
 	"os"
@@ -12,6 +14,8 @@ import (
 	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	"api-pacs/module/orthanc/domain/repository"
+	repositoryTypes "api-pacs/module/orthanc/infrastructure/repository/types"
 	"api-pacs/module/orthanc/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
 	userApplication "api-pacs/module/user/application"
@@ -19,6 +23,7 @@ import (
 
 // OrthancCommandService handles the Orthanc command service logic
 type OrthancCommandService struct {
+	repository.OrthancCommandRepositoryInterface
 	orthancAPITypes.OrthancAPIInterface
 	tenantApplication.TenantQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
@@ -192,5 +197,27 @@ func (service *OrthancCommandService) UpdateDICOMModality(ctx context.Context, d
 		return err
 	}
 
+	// upsert in firestore
+	err = service.OrthancCommandRepositoryInterface.UpsertDICOMModality(ctx, repositoryTypes.UpsertDICOMModality{
+		ID:            data.ModalityID,
+		TenantID:      data.TenantID,
+		AET:           data.AET,
+		HostHash:      getMD5Hash(data.Host), // hash host using md5
+		CFindEnabled:  data.CFindEnabled,
+		CMoveEnabled:  data.CMoveEnabled,
+		CStoreEnabled: data.CStoreEnabled,
+	})
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
 	return nil
+}
+
+func getMD5Hash(text string) string {
+	hasher := md5.New()
+	hasher.Write([]byte(text))
+
+	return hex.EncodeToString(hasher.Sum(nil))
 }

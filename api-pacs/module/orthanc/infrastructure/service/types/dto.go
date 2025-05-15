@@ -29,9 +29,13 @@ type RetrieveModalityStudyBySeries struct {
 }
 
 type UpdateDICOMModality struct {
-	ModalityID  string
-	AET         string
-	Host        string
-	Port        uint
-	UseDicomTLS bool
+	TenantID      string
+	ModalityID    string
+	AET           string
+	Host          string
+	Port          uint
+	UseDicomTLS   bool
+	CFindEnabled  bool
+	CMoveEnabled  bool
+	CStoreEnabled bool
 }
