@@ -76,18 +76,21 @@ type RetrieveQueryModalityAnswerResponse struct {
 }
 
 type ListDICOMModality struct {
-	AET               string `json:"aet"`
-	AllowEcho         bool   `json:"allowEcho"`
-	AllowFind         bool   `json:"allowFind"`
-	AllowFindWorklist bool   `json:"allowFindWorklist"`
-	AllowGet          bool   `json:"allowGet"`
-	AllowMove         bool   `json:"allowMove"`
-	AllowStore        bool   `json:"allowStore"`
-	AllowTranscoding  bool   `json:"allowTranscoding"`
-	Host              string `json:"host"`
-	Port              uint   `json:"port"`
-	Timeout           uint   `json:"timeout"`
-	UseDicomTLS       bool   `json:"useDicomTLS"`
+	AET                 string `json:"aet"`
+	AllowEcho           bool   `json:"allowEcho"`
+	AllowFind           bool   `json:"allowFind"`
+	AllowFindWorklist   bool   `json:"allowFindWorklist"`
+	AllowGet            bool   `json:"allowGet"`
+	AllowMove           bool   `json:"allowMove"`
+	AllowStore          bool   `json:"allowStore"`
+	AllowTranscoding    bool   `json:"allowTranscoding"`
+	Host                string `json:"host"`
+	Port                uint   `json:"port"`
+	Timeout             uint   `json:"timeout"`
+	UseDicomTLS         bool   `json:"useDicomTLS"`
+	TargetCFindEnabled  bool   `json:"targetCFindEnabled"`
+	TargetCMoveEnabled  bool   `json:"targetCMoveEnabled"`
+	TargetCStoreEnabled bool   `json:"targetCStoreEnabled"`
 }
 
 type Study struct {

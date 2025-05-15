@@ -21,6 +21,24 @@ type FindModalityStudies struct {
 	StudyTime                  string
 }
 
+type ListDICOMModality struct {
+	AET                 string
+	AllowEcho           bool
+	AllowFind           bool
+	AllowFindWorklist   bool
+	AllowGet            bool
+	AllowMove           bool
+	AllowStore          bool
+	AllowTranscoding    bool
+	Host                string
+	Port                uint
+	Timeout             uint
+	UseDicomTLS         bool
+	TargetCFindEnabled  bool
+	TargetCMoveEnabled  bool
+	TargetCStoreEnabled bool
+}
+
 type RetrieveModalityStudyBySeries struct {
 	TenantID         string
 	UserID           string

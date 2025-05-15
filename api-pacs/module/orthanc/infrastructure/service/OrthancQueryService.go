@@ -134,12 +134,14 @@ func (service *OrthancQueryService) GetJobsInfo(ctx context.Context, jobIDs []st
 }
 
 // ListDICOMModalities list dicom modalities
-func (service *OrthancQueryService) ListDICOMModalities(ctx context.Context) (map[string]orthancAPITypes.ListDICOMModalitiesResponse, error) {
+func (service *OrthancQueryService) ListDICOMModalities(ctx context.Context) (map[string]types.ListDICOMModality, error) {
 	res, err := service.OrthancAPIInterface.ListDICOMModalities(ctx)
 	if err != nil {
 		log.Println(err)
 		return nil, err
 	}
+
+	// TODO: fetch the additional response from firestore query using modalityID and tenantID
 
 	return res, nil
 }
