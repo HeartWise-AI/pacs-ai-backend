@@ -15,8 +15,8 @@ type OrthancQueryRepository struct {
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
 }
 
-// SelectDICOMModalityByID get DICOM modality by id
-func (repository *OrthancQueryRepository) SelectDICOMModalityByID(ctx context.Context, ID, tenantID string) (entity.DICOMModality, error) {
+// SelectDICOMModalityByTenantModality get DICOM modality by tenant and modality
+func (repository *OrthancQueryRepository) SelectDICOMModalityByTenantModality(ctx context.Context, tenantID, modalityID string) (entity.DICOMModality, error) {
 	// firestore client
 	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
 	if err != nil {
@@ -27,7 +27,7 @@ func (repository *OrthancQueryRepository) SelectDICOMModalityByID(ctx context.Co
 	// get firestore DICOM modality
 	var dicomModality entity.DICOMModality
 
-	firestoreRes, err := firestoreClient.Collection(dicomModality.GetModelName()).Doc(ID).Get(ctx)
+	firestoreRes, err := firestoreClient.Collection(dicomModality.GetModelName()).Where("tenant_id", "==", tenantID).Where("id", "==", modalityID).Limit(1).Documents(ctx).GetAll()
 	if err != nil {
 		log.Println(err)
 		return entity.DICOMModality{}, errors.New(apiError.FirestoreError)
