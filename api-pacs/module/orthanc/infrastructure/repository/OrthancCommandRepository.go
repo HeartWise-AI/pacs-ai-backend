@@ -30,8 +30,13 @@ func (repository *OrthancCommandRepository) UpsertDICOMModality(ctx context.Cont
 		return errors.New(apiError.FirestoreError)
 	}
 
-	// create/update dicom modality in firestore
-	dicomModality := entity.DICOMModality{
+	var dicomModality entity.DICOMModality
+
+	collectionPath := fmt.Sprintf("%s/%s", dicomModality.GetModelName(), data.ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	// creates a new record if modality id is not existing, if it exists updates instead
+	_, err = docRef.Create(ctx, entity.DICOMModality{
 		ID:            data.ID,
 		TenantID:      data.TenantID,
 		AET:           data.AET,
@@ -41,18 +46,20 @@ func (repository *OrthancCommandRepository) UpsertDICOMModality(ctx context.Cont
 		CStoreEnabled: data.CStoreEnabled,
 		CreatedAt:     int(time.Now().Unix()),
 		UpdatedAt:     int(time.Now().Unix()),
-	}
-
-	collectionPath := fmt.Sprintf("%s/%s", dicomModality.GetModelName(), data.ID)
-	docRef := firestoreClient.Doc(collectionPath)
-
-	// creates a new record if modality id is not existing
-	// if it does, update it
-	_, err = docRef.Create(ctx, dicomModality)
+	})
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
 			// update dicom modality
-			_, err = docRef.Set(ctx, dicomModality)
+			_, err = docRef.Set(ctx, entity.DICOMModality{
+				ID:            data.ID,
+				TenantID:      data.TenantID,
+				AET:           data.AET,
+				HostHash:      data.HostHash,
+				CFindEnabled:  data.CFindEnabled,
+				CMoveEnabled:  data.CMoveEnabled,
+				CStoreEnabled: data.CStoreEnabled,
+				UpdatedAt:     int(time.Now().Unix()),
+			})
 			if err != nil {
 				log.Println(err)
 				return errors.New(apiError.FirestoreError)
