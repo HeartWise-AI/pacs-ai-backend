@@ -40,6 +40,7 @@ func (repository *OrthancCommandRepository) UpsertDICOMModality(ctx context.Cont
 	_, err = docRef.Create(ctx, entity.DICOMModality{
 		ID:            data.ID,
 		TenantID:      data.TenantID,
+		ModalityID:    data.ModalityID,
 		AET:           data.AET,
 		HostHash:      data.HostHash,
 		CFindEnabled:  data.CFindEnabled,

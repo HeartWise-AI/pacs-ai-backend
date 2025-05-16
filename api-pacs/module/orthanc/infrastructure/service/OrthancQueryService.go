@@ -143,8 +143,8 @@ func (service *OrthancQueryService) ListDICOMModalities(ctx context.Context, ten
 		return nil, err
 	}
 
-	// get dicom modality from firestore by tenantID and modalityID
-	firestoreDicom, err := service.OrthancQueryRepositoryInterface.SelectDICOMModalityByTenantModality(ctx, tenantID, *modalityID)
+	// get dicom modality from firestore by modalityID
+	firestoreDicom, err := service.OrthancQueryRepositoryInterface.SelectDICOMModalityByModalityID(ctx, tenantID, *modalityID)
 	if err != nil && err.Error() != apiError.MissingRecord {
 		log.Println(err)
 		return nil, err

@@ -3,6 +3,7 @@ package types
 type UpsertDICOMModality struct {
 	ID            string
 	TenantID      string
+	ModalityID    string
 	AET           string
 	HostHash      string
 	CFindEnabled  bool

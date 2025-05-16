@@ -14,14 +14,14 @@ type OrthancQueryRepositoryCircuitBreaker struct {
 	repository.OrthancQueryRepositoryInterface
 }
 
-// SelectDICOMModalityByTenantModality is the decorator for the orthanc repository to select DICOM modality by tenant and modality
-func (repository *OrthancQueryRepositoryCircuitBreaker) SelectDICOMModalityByTenantModality(ctx context.Context, tenantID, modalityID string) (entity.DICOMModality, error) {
+// SelectDICOMModalityByModalityID is the decorator for the orthanc repository to select DICOM modality by modality id
+func (repository *OrthancQueryRepositoryCircuitBreaker) SelectDICOMModalityByModalityID(ctx context.Context, tenantID, modalityID string) (entity.DICOMModality, error) {
 	output := make(chan entity.DICOMModality, 1)
 	errChan := make(chan error, 1)
 
-	hystrix.ConfigureCommand("select_dicom_modality_by_tenant_modality", config.Settings())
-	errors := hystrix.Go("select_dicom_modality_by_tenant_modality", func() error {
-		dicomModality, err := repository.OrthancQueryRepositoryInterface.SelectDICOMModalityByTenantModality(ctx, tenantID, modalityID)
+	hystrix.ConfigureCommand("select_dicom_modality_by_modality_id", config.Settings())
+	errors := hystrix.Go("select_dicom_modality_by_modality_id", func() error {
+		dicomModality, err := repository.OrthancQueryRepositoryInterface.SelectDICOMModalityByModalityID(ctx, tenantID, modalityID)
 		if err != nil {
 			errChan <- err
 			return nil

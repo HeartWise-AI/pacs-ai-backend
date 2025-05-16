@@ -8,6 +8,6 @@ import (
 
 // OrthancQueryRepositoryInterface is the interface for orthanc query repository
 type OrthancQueryRepositoryInterface interface {
-	// SelectDICOMModalityByTenantModality get DICOM modality by tenant and modality
-	SelectDICOMModalityByTenantModality(ctx context.Context, tenantID, modalityID string) (entity.DICOMModality, error)
+	// SelectDICOMModalityByModalityID get DICOM modality by modality id
+	SelectDICOMModalityByModalityID(ctx context.Context, tenantID, modalityID string) (entity.DICOMModality, error)
 }

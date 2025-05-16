@@ -291,6 +291,9 @@ func (controller *OrthancCommandController) UpdateDICOMModality(w http.ResponseW
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Firestore error."
 		case apiError.OrthancError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Orthanc service encountered an error or timeout."

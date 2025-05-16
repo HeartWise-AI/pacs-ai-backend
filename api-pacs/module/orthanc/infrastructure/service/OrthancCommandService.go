@@ -9,6 +9,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/segmentio/ksuid"
+
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	"api-pacs/internal/assert"
 	apiError "api-pacs/internal/errors"
@@ -199,8 +201,9 @@ func (service *OrthancCommandService) UpdateDICOMModality(ctx context.Context, d
 
 	// upsert in firestore
 	err = service.OrthancCommandRepositoryInterface.UpsertDICOMModality(ctx, repositoryTypes.UpsertDICOMModality{
-		ID:            data.ModalityID,
+		ID:            generateID(),
 		TenantID:      data.TenantID,
+		ModalityID:    data.ModalityID,
 		AET:           data.AET,
 		HostHash:      getMD5Hash(data.Host), // hash host using md5
 		CFindEnabled:  data.CFindEnabled,
@@ -220,4 +223,8 @@ func getMD5Hash(text string) string {
 	hasher.Write([]byte(text))
 
 	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+func generateID() string {
+	return ksuid.New().String()
 }
