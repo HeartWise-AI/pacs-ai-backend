@@ -160,7 +160,7 @@ func (service *OrthancQueryService) ListDICOMModalities(ctx context.Context, ten
 				// get dicom modality from database
 				dbDicomModality, err := service.OrthancQueryRepositoryInterface.SelectDICOMModalityByModalityID(egCtx, tenantID, dicomModalityID)
 				if err != nil {
-					return err
+					log.Println(err) // silently ignore error
 				}
 
 				results[dicomModalityID] = types.ListDICOMModalityResult{
