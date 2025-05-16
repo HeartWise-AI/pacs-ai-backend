@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"cloud.google.com/go/firestore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -35,7 +36,7 @@ func (repository *OrthancCommandRepository) UpsertDICOMModality(ctx context.Cont
 	collectionPath := fmt.Sprintf("%s/%s", dicomModality.GetModelName(), data.ID)
 	docRef := firestoreClient.Doc(collectionPath)
 
-	// creates a new record if modality id is not existing, if it exists updates instead
+	// insert new record else update if existing
 	_, err = docRef.Create(ctx, entity.DICOMModality{
 		ID:            data.ID,
 		TenantID:      data.TenantID,
@@ -50,16 +51,34 @@ func (repository *OrthancCommandRepository) UpsertDICOMModality(ctx context.Cont
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
 			// update dicom modality
-			_, err = docRef.Set(ctx, entity.DICOMModality{
-				ID:            data.ID,
-				TenantID:      data.TenantID,
-				AET:           data.AET,
-				HostHash:      data.HostHash,
-				CFindEnabled:  data.CFindEnabled,
-				CMoveEnabled:  data.CMoveEnabled,
-				CStoreEnabled: data.CStoreEnabled,
-				UpdatedAt:     int(time.Now().Unix()),
-			})
+			updateDICOMModality := []firestore.Update{
+				{
+					Path:  "aet",
+					Value: data.AET,
+				},
+				{
+					Path:  "host_hash",
+					Value: data.HostHash,
+				},
+				{
+					Path:  "c_find_enabled",
+					Value: data.CFindEnabled,
+				},
+				{
+					Path:  "c_move_enabled",
+					Value: data.CMoveEnabled,
+				},
+				{
+					Path:  "c_store_enabled",
+					Value: data.CStoreEnabled,
+				},
+				{
+					Path:  "updated_at",
+					Value: int(time.Now().Unix()),
+				},
+			}
+
+			_, err = docRef.Update(ctx, updateDICOMModality)
 			if err != nil {
 				log.Println(err)
 				return errors.New(apiError.FirestoreError)
@@ -67,6 +86,7 @@ func (repository *OrthancCommandRepository) UpsertDICOMModality(ctx context.Cont
 
 			return nil
 		}
+
 		log.Println(err)
 		return errors.New(apiError.FirestoreError)
 	}

@@ -4,6 +4,7 @@ package entity
 type DICOMModality struct {
 	ID            string `firestore:"id,omitempty"`
 	TenantID      string `firestore:"tenant_id"`
+	ModalityID    string `firestore:"modality_id"`
 	AET           string `firestore:"aet"`
 	HostHash      string `firestore:"host_hash"`
 	CFindEnabled  bool   `firestore:"c_find_enabled"`
