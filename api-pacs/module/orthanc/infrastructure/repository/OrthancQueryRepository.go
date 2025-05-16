@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
@@ -27,17 +28,14 @@ func (repository *OrthancQueryRepository) SelectDICOMModalityByModalityID(ctx co
 	// get firestore DICOM modality
 	var dicomModality entity.DICOMModality
 
-	firestoreRes, err := firestoreClient.Collection(dicomModality.GetModelName()).Where("tenant_id", "==", tenantID).Where("modality_id", "==", modalityID).Limit(1).Documents(ctx).GetAll()
+	ID := fmt.Sprintf("%s:%s", tenantID, modalityID)
+	firestoreRes, err := firestoreClient.Collection(dicomModality.GetModelName()).Doc(ID).Get(ctx)
 	if err != nil {
 		log.Println(err)
 		return entity.DICOMModality{}, errors.New(apiError.FirestoreError)
 	}
 
-	if len(firestoreRes) == 0 {
-		return entity.DICOMModality{}, errors.New(apiError.MissingRecord)
-	}
-
-	err = firestoreRes[0].DataTo(&dicomModality)
+	err = firestoreRes.DataTo(&dicomModality)
 	if err != nil {
 		log.Println(err)
 		return entity.DICOMModality{}, errors.New(apiError.FirestoreError)
