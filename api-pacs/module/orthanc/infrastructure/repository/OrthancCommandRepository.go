@@ -94,3 +94,41 @@ func (repository *OrthancCommandRepository) UpsertDICOMModality(ctx context.Cont
 
 	return nil
 }
+
+// DeleteDicomModality deletes a dicom modality
+func (repository *OrthancCommandRepository) DeleteDicomModality(ctx context.Context, tenantID, modalityID string) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	// delete inference model
+	var model entity.DICOMModality
+
+	// query to get the document ID first
+	collection := firestoreClient.Collection(model.GetModelName())
+	query := collection.Where("tenant_id", "==", tenantID).Where("modality_id", "==", modalityID).Limit(1)
+	docs, err := query.Documents(ctx).GetAll()
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	if len(docs) == 0 {
+		return errors.New(apiError.MissingRecord)
+	}
+
+	// delete the record the matches the document id
+	collectionPath := fmt.Sprintf("%s/%s", model.GetModelName(), docs[0].Ref.ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Delete(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}

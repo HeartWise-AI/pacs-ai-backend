@@ -78,9 +78,16 @@ func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context
 }
 
 // RemoveDICOMModality remove dicom modality
-func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, modalityID string) error {
+func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, tenantID string, modalityID string) error {
 	err := service.OrthancAPIInterface.DeleteDICOMModality(ctx, modalityID)
 	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	// delete dicom modality in firestore
+	err = service.OrthancCommandRepositoryInterface.DeleteDicomModality(ctx, tenantID, modalityID)
+	if err != nil && err.Error() != apiError.MissingRecord {
 		log.Println(err)
 		return err
 	}

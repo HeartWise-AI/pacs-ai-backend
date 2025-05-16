@@ -23,6 +23,8 @@ type OrthancCommandController struct {
 
 // RemoveDICOMModality remove dicom modality
 func (controller *OrthancCommandController) RemoveDICOMModality(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
 	modalityID := chi.URLParam(r, "modalityID")
 	if len(modalityID) == 0 {
 		response := viewmodels.HTTPResponseVM{
@@ -36,7 +38,7 @@ func (controller *OrthancCommandController) RemoveDICOMModality(w http.ResponseW
 		return
 	}
 
-	err := controller.OrthancCommandServiceInterface.RemoveDICOMModality(context.TODO(), modalityID)
+	err := controller.OrthancCommandServiceInterface.RemoveDICOMModality(context.TODO(), tenantID, modalityID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string

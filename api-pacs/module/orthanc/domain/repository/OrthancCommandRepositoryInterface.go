@@ -8,6 +8,8 @@ import (
 
 // OrthancCommandRepositoryInterface is the interface for orthanc command repository
 type OrthancCommandRepositoryInterface interface {
+	// DeleteDicomModality deletes a dicom modality
+	DeleteDicomModality(ctx context.Context, tenantID, modalityID string) error
 	// UpsertDICOMModality upsert DICOM modality
 	UpsertDICOMModality(ctx context.Context, data repositoryTypes.UpsertDICOMModality) error
 }
