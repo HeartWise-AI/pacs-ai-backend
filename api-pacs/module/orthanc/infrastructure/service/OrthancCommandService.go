@@ -10,8 +10,11 @@ import (
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	"api-pacs/internal/assert"
 	apiError "api-pacs/internal/errors"
+	hashUtils "api-pacs/internal/hash"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	"api-pacs/module/orthanc/domain/repository"
+	repositoryTypes "api-pacs/module/orthanc/infrastructure/repository/types"
 	"api-pacs/module/orthanc/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
 	userApplication "api-pacs/module/user/application"
@@ -19,6 +22,7 @@ import (
 
 // OrthancCommandService handles the Orthanc command service logic
 type OrthancCommandService struct {
+	repository.OrthancCommandRepositoryInterface
 	orthancAPITypes.OrthancAPIInterface
 	tenantApplication.TenantQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
@@ -71,8 +75,15 @@ func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context
 }
 
 // RemoveDICOMModality remove dicom modality
-func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, modalityID string) error {
+func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, tenantID string, modalityID string) error {
 	err := service.OrthancAPIInterface.DeleteDICOMModality(ctx, modalityID)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	// delete dicom modality in database
+	err = service.OrthancCommandRepositoryInterface.DeleteDICOMModality(ctx, tenantID, modalityID)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -186,6 +197,21 @@ func (service *OrthancCommandService) UpdateDICOMModality(ctx context.Context, d
 		Host:                   data.Host,
 		Port:                   data.Port,
 		UseDicomTLS:            data.UseDicomTLS,
+	})
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	// perform upsert
+	err = service.OrthancCommandRepositoryInterface.UpsertDICOMModality(ctx, repositoryTypes.UpsertDICOMModality{
+		TenantID:      data.TenantID,
+		ModalityID:    data.ModalityID,
+		AET:           data.AET,
+		HostHash:      hashUtils.GetMD5Hash(data.Host), // hash host using md5
+		CFindEnabled:  data.CFindEnabled,
+		CMoveEnabled:  data.CMoveEnabled,
+		CStoreEnabled: data.CStoreEnabled,
 	})
 	if err != nil {
 		log.Println(err)
