@@ -21,7 +21,7 @@ type FindModalityStudies struct {
 	StudyTime                  string
 }
 
-type ListDICOMModality struct {
+type ListDICOMModalityResult struct {
 	AET                 string
 	AllowEcho           bool
 	AllowFind           bool
@@ -47,6 +47,7 @@ type RetrieveModalityStudyBySeries struct {
 }
 
 type UpdateDICOMModality struct {
+	ID            *string
 	TenantID      string
 	ModalityID    string
 	AET           string

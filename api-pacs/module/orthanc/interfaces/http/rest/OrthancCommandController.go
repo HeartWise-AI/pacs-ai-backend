@@ -278,6 +278,7 @@ func (controller *OrthancCommandController) UpdateDICOMModality(w http.ResponseW
 	}
 
 	err = controller.OrthancCommandServiceInterface.UpdateDICOMModality(context.TODO(), serviceTypes.UpdateDICOMModality{
+		ID:            request.ID,
 		TenantID:      tenantID,
 		ModalityID:    modalityID,
 		AET:           request.AET,

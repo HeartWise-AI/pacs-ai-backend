@@ -1,7 +1,7 @@
 package types
 
 type UpsertDICOMModality struct {
-	ID            string
+	ID            *string
 	TenantID      string
 	ModalityID    string
 	AET           string

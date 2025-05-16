@@ -2,18 +2,15 @@ package service
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"errors"
 	"log"
 	"os"
 	"time"
 
-	"github.com/segmentio/ksuid"
-
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	"api-pacs/internal/assert"
 	apiError "api-pacs/internal/errors"
+	hashUtils "api-pacs/internal/hash"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	"api-pacs/module/orthanc/domain/repository"
@@ -85,8 +82,8 @@ func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, t
 		return err
 	}
 
-	// delete dicom modality in firestore
-	err = service.OrthancCommandRepositoryInterface.DeleteDicomModality(ctx, tenantID, modalityID)
+	// delete dicom modality in database
+	err = service.OrthancCommandRepositoryInterface.DeleteDICOMModality(ctx, tenantID, modalityID)
 	if err != nil && err.Error() != apiError.MissingRecord {
 		log.Println(err)
 		return err
@@ -206,13 +203,13 @@ func (service *OrthancCommandService) UpdateDICOMModality(ctx context.Context, d
 		return err
 	}
 
-	// upsert in firestore
+	// perform upsert
 	err = service.OrthancCommandRepositoryInterface.UpsertDICOMModality(ctx, repositoryTypes.UpsertDICOMModality{
-		ID:            generateID(),
+		ID:            data.ID,
 		TenantID:      data.TenantID,
 		ModalityID:    data.ModalityID,
 		AET:           data.AET,
-		HostHash:      getMD5Hash(data.Host), // hash host using md5
+		HostHash:      hashUtils.GetMD5Hash(data.Host), // hash host using md5
 		CFindEnabled:  data.CFindEnabled,
 		CMoveEnabled:  data.CMoveEnabled,
 		CStoreEnabled: data.CStoreEnabled,
@@ -223,15 +220,4 @@ func (service *OrthancCommandService) UpdateDICOMModality(ctx context.Context, d
 	}
 
 	return nil
-}
-
-func getMD5Hash(text string) string {
-	hasher := md5.New()
-	hasher.Write([]byte(text))
-
-	return hex.EncodeToString(hasher.Sum(nil))
-}
-
-func generateID() string {
-	return ksuid.New().String()
 }

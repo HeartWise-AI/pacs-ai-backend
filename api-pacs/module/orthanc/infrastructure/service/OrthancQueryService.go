@@ -136,42 +136,61 @@ func (service *OrthancQueryService) GetJobsInfo(ctx context.Context, jobIDs []st
 }
 
 // ListDICOMModalities list dicom modalities
-func (service *OrthancQueryService) ListDICOMModalities(ctx context.Context, tenantID string, modalityID *string) (map[string]types.ListDICOMModality, error) {
-	orthancDicom, err := service.OrthancAPIInterface.ListDICOMModalities(ctx)
+func (service *OrthancQueryService) ListDICOMModalities(ctx context.Context, tenantID string) (map[string]types.ListDICOMModalityResult, error) {
+	res, err := service.OrthancAPIInterface.ListDICOMModalities(ctx)
 	if err != nil {
 		log.Println(err)
 		return nil, err
 	}
 
-	// get dicom modality from firestore by modalityID
-	firestoreDicom, err := service.OrthancQueryRepositoryInterface.SelectDICOMModalityByModalityID(ctx, tenantID, *modalityID)
-	if err != nil && err.Error() != apiError.MissingRecord {
+	var m = sync.Mutex{}
+	eg, egCtx := errgroup.WithContext(ctx)
+
+	// set limit
+	eg.SetLimit(len(res))
+
+	results := map[string]types.ListDICOMModalityResult{}
+
+	for dicomModalityID, dicomModality := range res {
+		func(dicomModalityID string, dicomModality orthancAPITypes.ListDICOMModalitiesResponse) {
+			eg.Go(func() error {
+				m.Lock()
+				defer m.Unlock()
+
+				// get dicom modality from database
+				dbDicomModality, err := service.OrthancQueryRepositoryInterface.SelectDICOMModalityByModalityID(egCtx, tenantID, dicomModalityID)
+				if err != nil {
+					return err
+				}
+
+				results[dicomModalityID] = types.ListDICOMModalityResult{
+					AET:                 dicomModality.AET,
+					AllowEcho:           dicomModality.AllowEcho,
+					AllowFind:           dicomModality.AllowFind,
+					AllowFindWorklist:   dicomModality.AllowFindWorklist,
+					AllowGet:            dicomModality.AllowGet,
+					AllowMove:           dicomModality.AllowMove,
+					AllowStore:          dicomModality.AllowStore,
+					AllowTranscoding:    dicomModality.AllowTranscoding,
+					Host:                dicomModality.Host,
+					Port:                dicomModality.Port,
+					Timeout:             dicomModality.Timeout,
+					UseDicomTLS:         dicomModality.UseDicomTLS,
+					TargetCFindEnabled:  dbDicomModality.CFindEnabled,
+					TargetCMoveEnabled:  dbDicomModality.CMoveEnabled,
+					TargetCStoreEnabled: dbDicomModality.CStoreEnabled,
+				}
+
+				return nil
+			})
+		}(dicomModalityID, dicomModality)
+	}
+
+	// wait for all goroutines to finish
+	if err := eg.Wait(); err != nil {
 		log.Println(err)
 		return nil, err
 	}
 
-	result := make(map[string]types.ListDICOMModality)
-
-	for key, orthancModality := range orthancDicom {
-		combined := types.ListDICOMModality{
-			AET:                 orthancModality.AET,
-			AllowEcho:           orthancModality.AllowEcho,
-			AllowFind:           orthancModality.AllowFind,
-			AllowFindWorklist:   orthancModality.AllowFindWorklist,
-			AllowGet:            orthancModality.AllowGet,
-			AllowMove:           orthancModality.AllowMove,
-			AllowStore:          orthancModality.AllowStore,
-			AllowTranscoding:    orthancModality.AllowTranscoding,
-			Host:                orthancModality.Host,
-			Port:                orthancModality.Port,
-			Timeout:             orthancModality.Timeout,
-			UseDicomTLS:         orthancModality.UseDicomTLS,
-			TargetCFindEnabled:  firestoreDicom.CFindEnabled,
-			TargetCMoveEnabled:  firestoreDicom.CMoveEnabled,
-			TargetCStoreEnabled: firestoreDicom.CStoreEnabled,
-		}
-		result[key] = combined
-	}
-
-	return result, nil
+	return results, nil
 }

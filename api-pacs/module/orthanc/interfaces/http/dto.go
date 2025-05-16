@@ -41,13 +41,14 @@ type RetrieveModalityStudyRequest struct {
 }
 
 type UpdateDICOMModalityRequest struct {
-	AET           string `json:"aet" validate:"required"`
-	Host          string `json:"host" validate:"required"`
-	Port          uint   `json:"port" validate:"required"`
-	UseDicomTLS   bool   `json:"useDicomTLS"`
-	CFindEnabled  bool   `json:"cFindEnabled"`
-	CMoveEnabled  bool   `json:"cMoveEnabled"`
-	CStoreEnabled bool   `json:"cStoreEnabled"`
+	ID            *string `json:"id"`
+	AET           string  `json:"aet" validate:"required"`
+	Host          string  `json:"host" validate:"required"`
+	Port          uint    `json:"port" validate:"required"`
+	UseDicomTLS   bool    `json:"useDicomTLS"`
+	CFindEnabled  bool    `json:"cFindEnabled"`
+	CMoveEnabled  bool    `json:"cMoveEnabled"`
+	CStoreEnabled bool    `json:"cStoreEnabled"`
 }
 
 type FindLocalSOPInstanceResponse struct {
@@ -76,6 +77,9 @@ type RetrieveQueryModalityAnswerResponse struct {
 }
 
 type ListDICOMModality struct {
+	ID                  string `json:"id"`
+	TenantID            string `json:"tenantId"`
+	ModalityID          string `json:"modalityId"`
 	AET                 string `json:"aet"`
 	AllowEcho           bool   `json:"allowEcho"`
 	AllowFind           bool   `json:"allowFind"`

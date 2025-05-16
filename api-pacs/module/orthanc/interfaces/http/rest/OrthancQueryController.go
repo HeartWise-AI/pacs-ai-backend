@@ -236,14 +236,7 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 func (controller *OrthancQueryController) ListDICOMModalities(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
-	// optional
-	var modalityID *string
-	modalityIDStr := r.URL.Query().Get("id")
-	if len(modalityIDStr) > 0 {
-		modalityID = &modalityIDStr
-	}
-
-	res, err := controller.OrthancQueryServiceInterface.ListDICOMModalities(context.TODO(), tenantID, modalityID)
+	res, err := controller.OrthancQueryServiceInterface.ListDICOMModalities(context.TODO(), tenantID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -272,8 +265,27 @@ func (controller *OrthancQueryController) ListDICOMModalities(w http.ResponseWri
 		Modalities: make(map[string]types.ListDICOMModality),
 	}
 
-	for key, modality := range res {
-		listModalities.Modalities[key] = types.ListDICOMModality(modality)
+	for dicomModalityID, dicomModality := range res {
+		listModalities.Modalities[dicomModalityID] = types.ListDICOMModality{
+			ID:                  dicomModalityID,
+			TenantID:            tenantID,
+			ModalityID:          dicomModalityID,
+			AET:                 dicomModality.AET,
+			AllowEcho:           dicomModality.AllowEcho,
+			AllowFind:           dicomModality.AllowFind,
+			AllowFindWorklist:   dicomModality.AllowFindWorklist,
+			AllowGet:            dicomModality.AllowGet,
+			AllowMove:           dicomModality.AllowMove,
+			AllowStore:          dicomModality.AllowStore,
+			AllowTranscoding:    dicomModality.AllowTranscoding,
+			Host:                dicomModality.Host,
+			Port:                dicomModality.Port,
+			Timeout:             dicomModality.Timeout,
+			UseDicomTLS:         dicomModality.UseDicomTLS,
+			TargetCFindEnabled:  dicomModality.TargetCFindEnabled,
+			TargetCMoveEnabled:  dicomModality.TargetCMoveEnabled,
+			TargetCStoreEnabled: dicomModality.TargetCStoreEnabled,
+		}
 	}
 
 	response := viewmodels.HTTPResponseVM{
