@@ -12,5 +12,5 @@ type OrthancQueryServiceInterface interface {
 	FindLocalSOPInstance(ctx context.Context, sopInstanceUID string) ([]string, error)
 	FindModalityStudies(ctx context.Context, data types.FindModalityStudies) ([]orthancAPITypes.QueryModalityStudyAnswersResponse, string, error)
 	GetJobsInfo(ctx context.Context, jobIDs []string) ([]orthancAPITypes.GetJobResponse, error)
-	ListDICOMModalities(ctx context.Context) (map[string]types.ListDICOMModality, error)
+	ListDICOMModalities(ctx context.Context, tenantID string, modalityID *string) (map[string]types.ListDICOMModality, error)
 }

@@ -12,6 +12,7 @@ import (
 	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	"api-pacs/module/orthanc/domain/repository"
 	"api-pacs/module/orthanc/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
 	userApplication "api-pacs/module/user/application"
@@ -19,6 +20,7 @@ import (
 
 // OrthancQueryService handles the Orthanc query service logic
 type OrthancQueryService struct {
+	repository.OrthancQueryRepositoryInterface
 	orthancAPITypes.OrthancAPIInterface
 	tenantApplication.TenantQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
@@ -134,14 +136,42 @@ func (service *OrthancQueryService) GetJobsInfo(ctx context.Context, jobIDs []st
 }
 
 // ListDICOMModalities list dicom modalities
-func (service *OrthancQueryService) ListDICOMModalities(ctx context.Context) (map[string]types.ListDICOMModality, error) {
-	res, err := service.OrthancAPIInterface.ListDICOMModalities(ctx)
+func (service *OrthancQueryService) ListDICOMModalities(ctx context.Context, tenantID string, modalityID *string) (map[string]types.ListDICOMModality, error) {
+	orthancDicom, err := service.OrthancAPIInterface.ListDICOMModalities(ctx)
 	if err != nil {
 		log.Println(err)
 		return nil, err
 	}
 
-	// TODO: fetch the additional response from firestore query using modalityID and tenantID
+	// get dicom modality from firestore by tenantID and modalityID
+	firestoreDicom, err := service.OrthancQueryRepositoryInterface.SelectDICOMModalityByTenantModality(ctx, tenantID, *modalityID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		log.Println(err)
+		return nil, err
+	}
 
-	return res, nil
+	result := make(map[string]types.ListDICOMModality)
+
+	for key, orthancModality := range orthancDicom {
+		combined := types.ListDICOMModality{
+			AET:                 orthancModality.AET,
+			AllowEcho:           orthancModality.AllowEcho,
+			AllowFind:           orthancModality.AllowFind,
+			AllowFindWorklist:   orthancModality.AllowFindWorklist,
+			AllowGet:            orthancModality.AllowGet,
+			AllowMove:           orthancModality.AllowMove,
+			AllowStore:          orthancModality.AllowStore,
+			AllowTranscoding:    orthancModality.AllowTranscoding,
+			Host:                orthancModality.Host,
+			Port:                orthancModality.Port,
+			Timeout:             orthancModality.Timeout,
+			UseDicomTLS:         orthancModality.UseDicomTLS,
+			TargetCFindEnabled:  firestoreDicom.CFindEnabled,
+			TargetCMoveEnabled:  firestoreDicom.CMoveEnabled,
+			TargetCStoreEnabled: firestoreDicom.CStoreEnabled,
+		}
+		result[key] = combined
+	}
+
+	return result, nil
 }

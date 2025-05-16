@@ -234,7 +234,16 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 
 // ListDICOMModalities list dicom modalities
 func (controller *OrthancQueryController) ListDICOMModalities(w http.ResponseWriter, r *http.Request) {
-	res, err := controller.OrthancQueryServiceInterface.ListDICOMModalities(context.TODO())
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	// optional
+	var modalityID *string
+	modalityIDStr := r.URL.Query().Get("id")
+	if len(modalityIDStr) > 0 {
+		modalityID = &modalityIDStr
+	}
+
+	res, err := controller.OrthancQueryServiceInterface.ListDICOMModalities(context.TODO(), tenantID, modalityID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string

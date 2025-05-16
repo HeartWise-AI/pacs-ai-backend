@@ -9,9 +9,3 @@ type UpsertDICOMModality struct {
 	CMoveEnabled  bool
 	CStoreEnabled bool
 }
-
-type GetDICOMModalityResult struct {
-	TargetCFindEnabled  bool
-	TargetCMoveEnabled  bool
-	TargetCStoreEnabled bool
-}
