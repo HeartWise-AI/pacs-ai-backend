@@ -407,7 +407,14 @@ func (k *kernel) orthancCommandServiceContainer() *orthancService.OrthancCommand
 }
 
 func (k *kernel) orthancQueryServiceContainer() *orthancService.OrthancQueryService {
+	repository := &orthancRepository.OrthancQueryRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
 	service := &orthancService.OrthancQueryService{
+		OrthancQueryRepositoryInterface: &orthancRepository.OrthancQueryRepositoryCircuitBreaker{
+			OrthancQueryRepositoryInterface: repository,
+		},
 		OrthancAPIInterface:                  orthancAPI,
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
