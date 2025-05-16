@@ -267,7 +267,6 @@ func (controller *OrthancQueryController) ListDICOMModalities(w http.ResponseWri
 
 	for dicomModalityID, dicomModality := range res {
 		listModalities.Modalities[dicomModalityID] = types.ListDICOMModality{
-			ID:                  dicomModalityID,
 			TenantID:            tenantID,
 			ModalityID:          dicomModalityID,
 			AET:                 dicomModality.AET,

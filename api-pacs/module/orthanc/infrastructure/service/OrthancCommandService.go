@@ -84,7 +84,7 @@ func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, t
 
 	// delete dicom modality in database
 	err = service.OrthancCommandRepositoryInterface.DeleteDICOMModality(ctx, tenantID, modalityID)
-	if err != nil && err.Error() != apiError.MissingRecord {
+	if err != nil {
 		log.Println(err)
 		return err
 	}
@@ -205,7 +205,6 @@ func (service *OrthancCommandService) UpdateDICOMModality(ctx context.Context, d
 
 	// perform upsert
 	err = service.OrthancCommandRepositoryInterface.UpsertDICOMModality(ctx, repositoryTypes.UpsertDICOMModality{
-		ID:            data.ID,
 		TenantID:      data.TenantID,
 		ModalityID:    data.ModalityID,
 		AET:           data.AET,

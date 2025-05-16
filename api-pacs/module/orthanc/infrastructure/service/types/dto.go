@@ -47,7 +47,6 @@ type RetrieveModalityStudyBySeries struct {
 }
 
 type UpdateDICOMModality struct {
-	ID            *string
 	TenantID      string
 	ModalityID    string
 	AET           string
