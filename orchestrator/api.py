@@ -117,18 +117,6 @@ class APIHandler:
         
         logger.info(f"Handling DICOM payload for thread {thread_id}")
         
-        # Ensure it's a standard dictionary
-        if not isinstance(payload, dict):
-            try:
-                payload = dict(payload)
-                logger.info("Converted non-dict payload to dict")
-            except Exception as e:
-                logger.error(f"Failed to convert payload to dict: {str(e)}")
-                return {
-                    "status": "error",
-                    "message": f"Invalid payload format: {str(e)}"
-                }
-        
         # Store the DICOM payload in thread data
         thread_data["dicom_payload"] = payload
         

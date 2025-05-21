@@ -1,0 +1,22 @@
+services:
+  orchestrator:
+    build: .
+    container_name: orchestrator
+    restart: unless-stopped
+    ports:
+      - 8585:8585
+    volumes:
+      - ./logs:/app/logs
+      - ./temp:/app/temp
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8585
+      - RELOAD=False
+      # You can add other environment variables from .env file here
+    networks:
+      - pacs-net
+
+networks:
+  pacs-net:
+    external: true

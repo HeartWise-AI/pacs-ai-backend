@@ -1,9 +1,10 @@
-import subprocess
 import json
 import requests
 import re
 from typing import Dict, List, Any, Optional, Tuple, Type
 import os
+import docker
+from docker.errors import DockerException, NotFound
 from pydantic import BaseModel, Field
 
 from langchain_core.tools import BaseTool
@@ -12,6 +13,14 @@ from logger import logger
 
 # Global mapping to store tool name -> container IP and port
 TOOL_CONTAINER_MAPPING: Dict[str, Tuple[str, int]] = {}
+
+# Initialize Docker client
+try:
+    docker_client = docker.from_env()
+    logger.info("Docker client initialized successfully")
+except DockerException as e:
+    logger.error(f"Failed to initialize Docker client: {str(e)}")
+    docker_client = None
 
 class DicomPayloadInput(BaseModel):
     """Input schema for DICOM payload-based tools."""
@@ -127,32 +136,6 @@ class DynamicContainerTool(BaseTool):
         return self._run(dicom_payload)
 
 
-def run_docker_command(cmd: List[str]) -> Tuple[bool, str, Any]:
-    """
-    Run a Docker command and return the result as JSON if successful.
-    
-    Args:
-        cmd (List[str]): Docker command to run
-        
-    Returns:
-        Tuple[bool, str, Any]: Success flag, error message if any, and parsed JSON data
-    """
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        return True, "", json.loads(result.stdout)
-    except subprocess.CalledProcessError as e:
-        return False, f"Command failed: {e.stderr}", None
-    except json.JSONDecodeError as e:
-        return False, f"Failed to parse JSON: {str(e)}", None
-    except Exception as e:
-        return False, f"Unexpected error: {str(e)}", None
-
-
 def get_containers_on_network(network_name: str) -> List[Dict[str, Any]]:
     """
     Get containers running on the specified Docker network.
@@ -163,47 +146,60 @@ def get_containers_on_network(network_name: str) -> List[Dict[str, Any]]:
     Returns:
         List[Dict[str, Any]]: List of container information dictionaries
     """
-    # Get network details
-    success, error, network_data = run_docker_command(
-        ["docker", "network", "inspect", network_name]
-    )
-    
-    if not success:
-        logger.error(f"Failed to inspect network {network_name}: {error}")
+    if docker_client is None:
+        logger.error("Docker client not initialized")
         return []
         
-    if not network_data or len(network_data) == 0:
-        logger.warning(f"No network found with name: {network_name}")
-        return []
-    
-    # No containers in this network
-    if "Containers" not in network_data[0]:
-        logger.info(f"No containers found in network: {network_name}")
-        return []
+    try:
+        # Get network details
+        try:
+            network = docker_client.networks.get(network_name)
+        except NotFound:
+            logger.warning(f"No network found with name: {network_name}")
+            return []
         
-    containers = []
-    # Extract each container's information
-    for container_id, container_data in network_data[0]["Containers"].items():
-        success, error, container_details = run_docker_command(
-            ["docker", "inspect", container_id]
-        )
+        # Use the Docker API to get network details
+        network_attrs = network.attrs
         
-        if not success:
-            logger.error(f"Failed to inspect container {container_id}: {error}")
-            continue
+        # No containers in this network
+        if "Containers" not in network_attrs:
+            logger.info(f"No containers found in network: {network_name}")
+            return []
             
-        container_info = {
-            "id": container_id,
-            "name": container_data.get("Name"),
-            "ipv4_address": container_data.get("IPv4Address", "").split("/")[0],
-            "image": container_details[0].get("Config", {}).get("Image", ""),
-            "labels": container_details[0].get("Config", {}).get("Labels", {}),
-            "ports": container_details[0].get("NetworkSettings", {}).get("Ports", {})
-        }
+        containers = []
+        # Extract each container's information
+        for container_id, container_data in network_attrs["Containers"].items():
+            try:
+                # Get container details
+                container = docker_client.containers.get(container_id)
+                container_attrs = container.attrs
+                
+                # Extract IP address from network data
+                ip_address = container_data.get("IPv4Address", "").split("/")[0]
+                
+                container_info = {
+                    "id": container_id,
+                    "name": container_data.get("Name"),
+                    "ipv4_address": ip_address,
+                    "image": container_attrs.get("Config", {}).get("Image", ""),
+                    "labels": container_attrs.get("Config", {}).get("Labels", {}),
+                    "ports": container_attrs.get("NetworkSettings", {}).get("Ports", {})
+                }
+                
+                containers.append(container_info)
+                
+            except NotFound:
+                logger.warning(f"Container {container_id} not found")
+                continue
+            except Exception as e:
+                logger.error(f"Error getting container {container_id} details: {str(e)}")
+                continue
         
-        containers.append(container_info)
-    
-    return containers
+        return containers
+        
+    except Exception as e:
+        logger.error(f"Error getting containers on network {network_name}: {str(e)}")
+        return []
 
 
 def fetch_tool_info_from_endpoint(container_ip: str, port: int = 80) -> Optional[Dict[str, Any]]:

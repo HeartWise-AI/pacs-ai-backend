@@ -105,25 +105,25 @@ func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context
 	return nil
 }
 
-// PredictInferenceModel predicts an inference model
-func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
+// GenerateInferenceModelPredictRequest generates the prediction request payload
+func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error) {
 	// get inference model
 	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
 	if err != nil {
-		return dockerInferenceTypes.PredictResponse{}, err
+		return dockerInferenceTypes.PredictRequest{}, "", err
 	}
 
 	// get container model info
 	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
 	if err != nil {
-		return dockerInferenceTypes.PredictResponse{}, err
+		return dockerInferenceTypes.PredictRequest{}, "", err
 	}
 
 	containerName := containerInfo.Name[1:] // remove "/" prefix
 
 	modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerName) // remove "/" prefix
 	if err != nil {
-		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerInferenceError)
+		return dockerInferenceTypes.PredictRequest{}, "", errors.New(apiError.DockerInferenceError)
 	}
 
 	seriesInstanceImages := map[int]map[int]string{}
@@ -214,13 +214,13 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 
 		// wait for all goroutines to finish
 		if err := eg.Wait(); err != nil {
-			return dockerInferenceTypes.PredictResponse{}, err
+			return dockerInferenceTypes.PredictRequest{}, "", err
 		}
 
 		// check if SeriesInstanceImages is empty
 		if len(seriesInstanceImages) == 0 {
 			log.Println("[predict] empty series instance images")
-			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InferenceError)
+			return dockerInferenceTypes.PredictRequest{}, "", errors.New(apiError.InferenceError)
 		}
 	} else {
 		/// ---------------------- for DICOM metadata
@@ -360,25 +360,40 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 
 		// wait for all goroutines to finish
 		if err := eg.Wait(); err != nil {
-			return dockerInferenceTypes.PredictResponse{}, err
+			return dockerInferenceTypes.PredictRequest{}, "", err
 		}
 
 		// check if SeriesInstanceMetadata is empty
 		if len(seriesInstanceMetadata) == 0 {
 			log.Println("[predict] empty series instance metadata")
-			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InferenceError)
+			return dockerInferenceTypes.PredictRequest{}, "", errors.New(apiError.InferenceError)
 		}
 	}
-
-	// TODO: remove this
-	predictionStartTime := time.Now()
-
-	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, dockerInferenceTypes.PredictRequest{
+	
+	// Generate the request payload
+	predictRequest := dockerInferenceTypes.PredictRequest{
 		SeriesInstanceImages:   seriesInstanceImages,
 		SeriesInstanceMetadata: seriesInstanceMetadata,
 		AdditionalMetadata:     data.AdditionalMetadata,
 		OutputMode:             dockerInferenceTypes.OutputMode(inferenceModel.OutputMode),
-	})
+	}
+
+	return predictRequest, containerName, nil
+}
+
+// PredictInferenceModel predicts an inference model
+func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
+	// TODO: remove this
+	predictionStartTime := time.Now()
+	
+	// Generate the request payload
+	predictRequest, containerName, err := service.GenerateInferenceModelPredictRequest(ctx, tenantID, containerID, data)
+	if err != nil {
+		return dockerInferenceTypes.PredictResponse{}, err
+	}
+
+	// Send the prediction request
+	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, predictRequest)
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
@@ -390,6 +405,12 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	// log to elasticsearch
 	go func() {
 		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			return
+		}
+
+		// Get inference model data for logging
+		inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
 		if err != nil {
 			return
 		}

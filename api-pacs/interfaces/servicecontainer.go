@@ -13,9 +13,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	"api-pacs/infrastructures/database/elasticsearch"
 	elasticsearchTypes "api-pacs/infrastructures/database/elasticsearch/types"
@@ -45,6 +47,9 @@ import (
 	inferenceREST "api-pacs/module/inference/interfaces/http/rest"
 	leadService "api-pacs/module/lead/infrastructure/service"
 	leadREST "api-pacs/module/lead/interfaces/http/rest"
+	"api-pacs/module/orchestrator/domain/entity"
+	orchestratorService "api-pacs/module/orchestrator/infrastructure/service"
+	orchestratorREST "api-pacs/module/orchestrator/interfaces/http/rest"
 	orthancRepository "api-pacs/module/orthanc/infrastructure/repository"
 	orthancService "api-pacs/module/orthanc/infrastructure/service"
 	orthancREST "api-pacs/module/orthanc/interfaces/http/rest"
@@ -70,6 +75,7 @@ type ServiceContainerInterface interface {
 	RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController
 	RegisterInferenceRESTQueryController() inferenceREST.InferenceQueryController
 	RegisterLeadRESTCommandController() leadREST.LeadCommandController
+	RegisterOrchestratorRESTController() orchestratorREST.OrchestratorController
 	RegisterOrthancRESTCommandController() orthancREST.OrthancCommandController
 	RegisterOrthancRESTQueryController() orthancREST.OrthancQueryController
 	RegisterTenantRESTCommandController() tenantREST.TenantCommandController
@@ -182,6 +188,17 @@ func (k *kernel) RegisterInferenceRESTQueryController() inferenceREST.InferenceQ
 
 	controller := inferenceREST.InferenceQueryController{
 		InferenceQueryServiceInterface: service,
+	}
+
+	return controller
+}
+
+// RegisterOrchestratorRESTController performs dependency injection to the RegisterOrchestratorRESTController
+func (k *kernel) RegisterOrchestratorRESTController() orchestratorREST.OrchestratorController {
+	service := k.orchestratorServiceContainer()
+
+	controller := orchestratorREST.OrchestratorController{
+		OrchestratorServiceInterface: service,
 	}
 
 	return controller
@@ -477,6 +494,25 @@ func (k *kernel) userQueryServiceContainer() *userService.UserQueryService {
 		UserQueryRepositoryInterface: &userRepository.UserQueryRepositoryCircuitBreaker{
 			UserQueryRepositoryInterface: repository,
 		},
+	}
+
+	return service
+}
+
+// orchestratorServiceContainer returns the orchestrator service with dependencies
+func (k *kernel) orchestratorServiceContainer() *orchestratorService.OrchestratorService {
+	inferenceCommandService := k.inferenceCommandServiceContainer()
+
+	// Configure orchestrator service
+	orchestratorAPIURL := os.Getenv("ORCHESTRATOR_API_URL")
+	defaultContainerID := os.Getenv("DEFAULT_CONTAINER_ID")
+
+	service := &orchestratorService.OrchestratorService{
+		InferenceCommandServiceInterface: inferenceCommandService,
+		OrchestratorAPIURL:               orchestratorAPIURL,
+		DefaultContainerID:               defaultContainerID,
+		OrchestratorClient:               &http.Client{Timeout: 5 * time.Minute},
+		ThreadsByID:                      make(map[string]*entity.Thread),
 	}
 
 	return service

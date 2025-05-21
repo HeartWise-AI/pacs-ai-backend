@@ -13,6 +13,8 @@ type InferenceCommandServiceInterface interface {
 	AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error
 	// DeleteInferenceModel deletes an inference model
 	DeleteInferenceModel(ctx context.Context, ID string) error
+	// GenerateInferenceModelPredictRequest generates the prediction request payload
+	GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error)
 	// PredictInferenceModel predicts an inference model
 	PredictInferenceModel(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
 	// RestartInferenceModelContainer restarts an inference model container
