@@ -67,11 +67,24 @@ type ModalityStudyLogResponse struct {
 	Timestamp  uint   `json:"timestamp" csv:"timestamp"`
 }
 
+type PredictInferenceModelLogResponse struct {
+	TenantID           string                 `json:"tenantId" csv:"tenant_id"`
+	TenantName         string                 `json:"tenantName" csv:"tenant_name"`
+	ContainerID        string                 `json:"containerId" csv:"container_id"`
+	ContainerName      string                 `json:"containerName" csv:"container_name"`
+	InferenceModelID   string                 `json:"inferenceModelId" csv:"inference_model_id"`
+	InferenceModelName string                 `json:"inferenceModelName" csv:"inference_model_name"`
+	StudyInstanceUID   string                 `json:"studyInstanceUID" csv:"study_instance_uid"`
+	SeriesInstanceUIDs []string               `json:"seriesInstanceUIDs" csv:"series_instance_uids"`
+	AdditionalMetadata map[string]interface{} `json:"additionalMetadata" csv:"additional_metadata"`
+	Timestamp          uint                   `json:"timestamp" csv:"timestamp"`
+}
+
 type RetrievedStudyLogResponse struct {
 	TenantID         string `json:"tenantId" csv:"tenant_id"`
 	TenantName       string `json:"tenantName"  csv:"tenant_name"`
 	ModalityID       string `json:"modalityId" csv:"modality_id"`
-	UserID           string `json:"userId" "user_id"`
+	UserID           string `json:"userId" csv:"user_id"`
 	Email            string `json:"email" csv:"email"`
 	Name             string `json:"name" csv:"name"`
 	StudyInstanceUID string `json:"studyInstanceUID" csv:"study_instance_uid"`

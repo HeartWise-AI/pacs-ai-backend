@@ -10,7 +10,7 @@ import (
 // OrthancCommandServiceInterface holds the implementable methods for the Orthanc command service
 type OrthancCommandServiceInterface interface {
 	ClearLocalStudiesCache(ctx context.Context) error
-	RemoveDICOMModality(ctx context.Context, modalityID string) error
+	RemoveDICOMModality(ctx context.Context, tenantID string, modalityID string) error
 	RetrieveModalityStudyBySeries(ctx context.Context, data types.RetrieveModalityStudyBySeries) ([]orthancAPITypes.QueryModalityResponse, error)
 	TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error
 	UpdateDICOMModality(ctx context.Context, data types.UpdateDICOMModality) error

@@ -557,7 +557,7 @@ func (o *OrthancAPI) RetrieveDICOMWebInstanceMetadata(ctx context.Context, study
 func (o *OrthancAPI) TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error {
 	buf := new(bytes.Buffer)
 	err := json.NewEncoder(buf).Encode(map[string]interface{}{
-		"CheckFind": true,
+		"CheckFind": false,
 		"Timeout":   0,
 	})
 	if err != nil {

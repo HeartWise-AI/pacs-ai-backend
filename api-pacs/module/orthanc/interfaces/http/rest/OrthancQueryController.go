@@ -234,12 +234,17 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 
 // ListDICOMModalities list dicom modalities
 func (controller *OrthancQueryController) ListDICOMModalities(w http.ResponseWriter, r *http.Request) {
-	res, err := controller.OrthancQueryServiceInterface.ListDICOMModalities(context.TODO())
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	res, err := controller.OrthancQueryServiceInterface.ListDICOMModalities(context.TODO(), tenantID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Firestore error."
 		case apiError.OrthancError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Orthanc service encountered an error or timeout."
@@ -260,8 +265,26 @@ func (controller *OrthancQueryController) ListDICOMModalities(w http.ResponseWri
 		Modalities: make(map[string]types.ListDICOMModality),
 	}
 
-	for key, modality := range res {
-		listModalities.Modalities[key] = types.ListDICOMModality(modality)
+	for dicomModalityID, dicomModality := range res {
+		listModalities.Modalities[dicomModalityID] = types.ListDICOMModality{
+			TenantID:            tenantID,
+			ModalityID:          dicomModalityID,
+			AET:                 dicomModality.AET,
+			AllowEcho:           dicomModality.AllowEcho,
+			AllowFind:           dicomModality.AllowFind,
+			AllowFindWorklist:   dicomModality.AllowFindWorklist,
+			AllowGet:            dicomModality.AllowGet,
+			AllowMove:           dicomModality.AllowMove,
+			AllowStore:          dicomModality.AllowStore,
+			AllowTranscoding:    dicomModality.AllowTranscoding,
+			Host:                dicomModality.Host,
+			Port:                dicomModality.Port,
+			Timeout:             dicomModality.Timeout,
+			UseDicomTLS:         dicomModality.UseDicomTLS,
+			TargetCFindEnabled:  dicomModality.TargetCFindEnabled,
+			TargetCMoveEnabled:  dicomModality.TargetCMoveEnabled,
+			TargetCStoreEnabled: dicomModality.TargetCStoreEnabled,
+		}
 	}
 
 	response := viewmodels.HTTPResponseVM{

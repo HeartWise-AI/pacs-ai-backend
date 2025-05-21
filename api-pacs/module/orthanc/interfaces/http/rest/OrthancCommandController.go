@@ -23,6 +23,8 @@ type OrthancCommandController struct {
 
 // RemoveDICOMModality remove dicom modality
 func (controller *OrthancCommandController) RemoveDICOMModality(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
 	modalityID := chi.URLParam(r, "modalityID")
 	if len(modalityID) == 0 {
 		response := viewmodels.HTTPResponseVM{
@@ -36,7 +38,7 @@ func (controller *OrthancCommandController) RemoveDICOMModality(w http.ResponseW
 		return
 	}
 
-	err := controller.OrthancCommandServiceInterface.RemoveDICOMModality(context.TODO(), modalityID)
+	err := controller.OrthancCommandServiceInterface.RemoveDICOMModality(context.TODO(), tenantID, modalityID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -219,6 +221,8 @@ func (controller *OrthancCommandController) TriggerDICOMEchoSCU(w http.ResponseW
 
 // UpdateDICOMModality update dicom modality
 func (controller *OrthancCommandController) UpdateDICOMModality(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
 	modalityID := chi.URLParam(r, "modalityID")
 	if len(modalityID) == 0 {
 		response := viewmodels.HTTPResponseVM{
@@ -274,17 +278,24 @@ func (controller *OrthancCommandController) UpdateDICOMModality(w http.ResponseW
 	}
 
 	err = controller.OrthancCommandServiceInterface.UpdateDICOMModality(context.TODO(), serviceTypes.UpdateDICOMModality{
-		ModalityID:  modalityID,
-		AET:         request.AET,
-		Host:        request.Host,
-		Port:        request.Port,
-		UseDicomTLS: request.UseDicomTLS,
+		TenantID:      tenantID,
+		ModalityID:    modalityID,
+		AET:           request.AET,
+		Host:          request.Host,
+		Port:          request.Port,
+		UseDicomTLS:   request.UseDicomTLS,
+		CFindEnabled:  request.CFindEnabled,
+		CMoveEnabled:  request.CMoveEnabled,
+		CStoreEnabled: request.CStoreEnabled,
 	})
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Firestore error."
 		case apiError.OrthancError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Orthanc service encountered an error or timeout."

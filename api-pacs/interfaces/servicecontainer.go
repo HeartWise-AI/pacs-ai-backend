@@ -45,6 +45,7 @@ import (
 	inferenceREST "api-pacs/module/inference/interfaces/http/rest"
 	leadService "api-pacs/module/lead/infrastructure/service"
 	leadREST "api-pacs/module/lead/interfaces/http/rest"
+	orthancRepository "api-pacs/module/orthanc/infrastructure/repository"
 	orthancService "api-pacs/module/orthanc/infrastructure/service"
 	orthancREST "api-pacs/module/orthanc/interfaces/http/rest"
 	tenantRepository "api-pacs/module/tenant/infrastructure/repository"
@@ -258,7 +259,14 @@ func OrthancCommandServiceDI() *orthancService.OrthancCommandService {
 	m.Lock()
 	defer m.Unlock()
 
+	repository := &orthancRepository.OrthancCommandRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
 	service := &orthancService.OrthancCommandService{
+		OrthancCommandRepositoryInterface: &orthancRepository.OrthancCommandRepositoryCircuitBreaker{
+			OrthancCommandRepositoryInterface: repository,
+		},
 		OrthancAPIInterface:                  orthancAPI,
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
@@ -368,9 +376,11 @@ func (k *kernel) inferenceCommandServiceContainer() *inferenceService.InferenceC
 		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
 			InferenceQueryRepositoryInterface: queryRepository,
 		},
-		DockerSDKInterface:          dockerSDK,
-		OrthancAPIInterface:         orthancAPI,
-		DockerInferenceAPIInterface: dockerInferenceAPI,
+		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		DockerSDKInterface:                   dockerSDK,
+		OrthancAPIInterface:                  orthancAPI,
+		DockerInferenceAPIInterface:          dockerInferenceAPI,
 	}
 
 	return service
@@ -397,7 +407,14 @@ func (k *kernel) orthancCommandServiceContainer() *orthancService.OrthancCommand
 }
 
 func (k *kernel) orthancQueryServiceContainer() *orthancService.OrthancQueryService {
+	repository := &orthancRepository.OrthancQueryRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
 	service := &orthancService.OrthancQueryService{
+		OrthancQueryRepositoryInterface: &orthancRepository.OrthancQueryRepositoryCircuitBreaker{
+			OrthancQueryRepositoryInterface: repository,
+		},
 		OrthancAPIInterface:                  orthancAPI,
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),

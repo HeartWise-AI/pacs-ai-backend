@@ -88,6 +88,31 @@ func (repository *ElasticsearchCommandRepository) InsertLoginLog(ctx context.Con
 	return res, nil
 }
 
+// InsertPredictInferenceModelLog predict inference model log
+func (repository *ElasticsearchCommandRepository) InsertPredictInferenceModelLog(ctx context.Context, data repositoryTypes.CreatePredictInferenceModelLog) (*index.Response, error) {
+	predictInferenceModel := entity.PredictInferenceModel{
+		TenantID:           data.TenantID,
+		TenantName:         data.TenantName,
+		ContainerID:        data.ContainerID,
+		ContainerName:      data.ContainerName,
+		InferenceModelID:   data.InferenceModelID,
+		InferenceModelName: data.InferenceModelName,
+		DockerImage:        data.DockerImage,
+		StudyInstanceUID:   data.StudyInstanceUID,
+		SeriesInstanceUIDs: data.SeriesInstanceUIDs,
+		AdditionalMetadata: data.AdditionalMetadata,
+		Timestamp:          uint(time.Now().Unix()),
+	}
+
+	res, err := repository.ElasticsearchDBHandlerInterface.IndexDocument(ctx, predictInferenceModel.GetModelName(), predictInferenceModel)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.DatabaseError)
+	}
+
+	return res, nil
+}
+
 // InsertRetrieveStudyLog insert retrieved study log
 func (repository *ElasticsearchCommandRepository) InsertRetrieveStudyLog(ctx context.Context, data repositoryTypes.CreateRetrieveStudyLog) (*index.Response, error) {
 	study := entity.RetrievedStudy{

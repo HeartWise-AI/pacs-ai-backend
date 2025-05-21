@@ -17,27 +17,24 @@ from tqdm import tqdm
 
 def collect_dicom_files(paths: List[str]) -> List[str]:
     """
-    Recursively collect DICOM files from a list of paths that can include both files and directories.
+    Collect DICOM files from a list of paths that can include both files and directories.
     
     Args:
-        paths: List of paths to files or directories.
+        paths: List of paths to files or directories
         
     Returns:
-        List of paths to DICOM files.
+        List of paths to DICOM files
     """
-    allowed_extensions = {'.dcm', '.dicom'}
     dicom_files = []
-
-    for path_str in paths:
-        path_obj = Path(path_str)
-        if path_obj.is_file():
-            if path_obj.suffix.lower() in allowed_extensions:
-                dicom_files.append(str(path_obj))
-        elif path_obj.is_dir():
-            child_paths = [str(child) for child in path_obj.iterdir()]
-            dicom_files.extend(collect_dicom_files(child_paths))
-        else:
-            print(f"Warning: {path_obj} is neither a file nor a directory.")
+    for path in paths:
+        path = Path(path)
+        if path.is_file():
+            if path.suffix.lower() in ['.dcm', '.dicom']:
+                dicom_files.append(str(path))
+        elif path.is_dir():
+            for file_path in path.rglob('*'):
+                if file_path.is_file() and file_path.suffix.lower() in ['.dcm', '.dicom']:
+                    dicom_files.append(str(file_path))
     return dicom_files
 
 
@@ -78,13 +75,7 @@ def display_response(response_data, output_mode):
         print(f"Error displaying content: {str(e)}")
 
 
-def send_dicom_data(
-    dicom_paths: Union[str, List[str]], 
-    server_url: str, 
-    output_mode: str = "JSON", 
-    send_metadata_only: bool = False,
-    group_series: bool = False
-):
+def send_dicom_data(dicom_paths: Union[str, List[str]], server_url: str, output_mode: str = "JSON", send_metadata_only: bool = False, group_series: bool = False):
     """
     Read DICOM file(s), process the data, and send a POST request to the server.
 
@@ -99,6 +90,7 @@ def send_dicom_data(
     # Convert single path to list for consistent processing
     if isinstance(dicom_paths, str):
         dicom_paths = [dicom_paths]
+    
     # Dictionary to store series instance metadata
     series_instance_metadata = {}
     series_instance_images = {} if not send_metadata_only else None
@@ -208,7 +200,7 @@ def main():
 
     parser.add_argument(
         'dicom_paths',
-        default=['/home/denis/Documents/GitHub/pacs-ai-backend/model-template/sample_data/DX_1.dcm'],
+        default=['/home/denis/Documents/GitHub/pacs-ai-backend/model-template/sample_data/CT_Study'],
         nargs='*',
         help='Path(s) to DICOM file(s) or directories containing DICOM files.'
     )
@@ -221,7 +213,7 @@ def main():
 
     parser.add_argument(
         '--output_mode',
-        default='HTML',
+        default='OHIF_ANNOTATIONS',
         choices=['HTML','OHIF_ANNOTATIONS','JSON','WEB_APP','PDF'],
         help='Output mode for the request (default: HTML)'
     )
@@ -235,7 +227,7 @@ def main():
 
     parser.add_argument(
         '--group-series',
-        default=False,
+        default=True,
         action='store_true',
         help='Treat all DICOM files as part of the same series'
     )

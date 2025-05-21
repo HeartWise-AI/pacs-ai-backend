@@ -111,6 +111,38 @@ func (service *ElasticsearchQueryService) SearchModalityStudyLogs(ctx context.Co
 	return modalityStudies, nil
 }
 
+// SearchPredictInferenceModelLogs search predict inference model logs
+func (service *ElasticsearchQueryService) SearchPredictInferenceModelLogs(ctx context.Context, data types.SearchDocument) ([]entity.PredictInferenceModel, error) {
+	res, err := service.ElasticsearchQueryRepositoryInterface.SearchPredictInferenceModelLogs(ctx, repositoryTypes.SearchDocument{
+		TenantID:  data.TenantID,
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var predictInferenceModels []entity.PredictInferenceModel
+
+	for count := range res.Hits.Hits {
+		jsonData, err := json.Marshal(res.Hits.Hits[count].Source_)
+		if err != nil {
+			return nil, err
+		}
+
+		var predictInferenceModel entity.PredictInferenceModel
+		err = json.Unmarshal([]byte(jsonData), &predictInferenceModel)
+		if err != nil {
+			return nil, err
+		}
+
+		predictInferenceModels = append(predictInferenceModels, predictInferenceModel)
+	}
+
+	return predictInferenceModels, nil
+}
+
 // SearchRetrievedStudyLogs search retrieved study logs
 func (service *ElasticsearchQueryService) SearchRetrievedStudyLogs(ctx context.Context, data types.SearchDocument) ([]entity.RetrievedStudy, error) {
 	res, err := service.ElasticsearchQueryRepositoryInterface.SearchRetrievedStudyLogs(ctx, repositoryTypes.SearchDocument{

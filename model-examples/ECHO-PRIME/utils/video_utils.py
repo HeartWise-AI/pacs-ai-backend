@@ -5,6 +5,20 @@ import cv2
 import pydicom as dicom
 
 
+def save_array_to_video(frames_array, output_path, fps=30):
+    # Define the codec and create VideoWriter object
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # or 'XVID' for .avi
+    out = cv2.VideoWriter(output_path, fourcc, fps, (800, 600))
+    
+    # Write each frame
+    for i in range(frames_array.shape[0]):
+        # Convert from RGB to BGR if necessary
+        frame = cv2.cvtColor(frames_array[i], cv2.COLOR_RGB2BGR)
+        out.write(frame)
+    
+    # Release the VideoWriter
+    out.release()
+
 _ybr_to_rgb_lut = None
 def apply_zoom(img_batch,zoom=0.1):
     """
@@ -132,13 +146,13 @@ def mask_outside_ultrasound(original_pixels: np.array) -> np.array:
         ##################### CREATE MASK #####################
         # Sum all the frames
         frame_sum = testarray[0].astype(np.float32)  # Start off the frameSum with the first frame
-        frame_sum = cv2.cvtColor(frame_sum, cv2.COLOR_YUV2RGB)
+        # frame_sum = cv2.cvtColor(frame_sum, cv2.COLOR_YUV2RGB) Images are already RGB from orthanc transcoding layer
         frame_sum = cv2.cvtColor(frame_sum, cv2.COLOR_RGB2GRAY)
         frame_sum = np.where(frame_sum > 0, 1, 0) # make all non-zero values 1
         frames = testarray.shape[0]
         for i in range(frames): # Go through every frame
             frame = testarray[i, :, :, :].astype(np.uint8)
-            frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB)
+            # frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB) Images are already RGB from orthanc transcoding layer
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
             frame = np.where(frame>0,1,0) # make all non-zero values 1
             frame_sum = np.add(frame_sum,frame)
@@ -153,10 +167,10 @@ def mask_outside_ultrasound(original_pixels: np.array) -> np.array:
         # Make the difference frame fr difference between 1st and last frame
         # This gets rid of static elements
         frame0 = testarray[0].astype(np.uint8)
-        frame0 = cv2.cvtColor(frame0, cv2.COLOR_YUV2RGB)
+        # frame0 = cv2.cvtColor(frame0, cv2.COLOR_YUV2RGB) Images are already RGB from orthanc transcoding layer
         frame0 = cv2.cvtColor(frame0, cv2.COLOR_RGB2GRAY)
         frame_last = testarray[testarray.shape[0] - 1].astype(np.uint8)
-        frame_last = cv2.cvtColor(frame_last, cv2.COLOR_YUV2RGB)
+        # frame_last = cv2.cvtColor(frame_last, cv2.COLOR_YUV2RGB) Images are already RGB from orthanc transcoding layer
         frame_last = cv2.cvtColor(frame_last, cv2.COLOR_RGB2GRAY)
         frame_diff = abs(np.subtract(frame0, frame_last))
         frame_diff = np.where(frame_diff > 0, 1, 0)
@@ -194,26 +208,13 @@ def mask_outside_ultrasound(original_pixels: np.array) -> np.array:
         # Apply the mask to every frame and channel (changing in place)
         for i in range(len(vid)):
             frame = vid[i, :, :, :].astype('uint8')
-            frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR)
+            # frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR) Images are already RGB from orthanc transcoding layer
             frame = cv2.bitwise_and(frame, frame, mask = frame_overlap.astype(np.uint8))
             vid[i,:,:,:]=frame
         return vid
     except Exception as e:
         print("Error masking returned as is.")
         return vid
-
-def write_video(p: Path, pixels: np.ndarray, fps=30.0, codec='h264'):
-    torchvision.io.write_video(str(p), pixels, fps, codec)
-
-def write_to_avi(frames: np.ndarray, out_file, fps=30):
-    out = cv2.VideoWriter(str(out_file), cv2.VideoWriter_fourcc(*'MJPG'), fps, (frames.shape[2], frames.shape[1]))
-    for frame in frames:
-        out.write(frame.astype(np.uint8))
-    out.release()
-
-# def read_video(p: Path, start=None, end=None, units=None, out_format=None):
-#     return torchvision.io.read_video(str(p), start, end, units, out_format)
-
 
 def write_image(p: Path, pixels: np.ndarray):
     cv2.imwrite(str(p), pixels)

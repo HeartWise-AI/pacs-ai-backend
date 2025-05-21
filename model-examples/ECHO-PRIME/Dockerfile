@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+FROM nvcr.io/nvidia/pytorch:24.01-py3
 
 # Install nginx and supervisor
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -10,6 +10,9 @@ WORKDIR /app
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
+RUN apt-get update
+RUN python -m pip install --upgrade pip
+RUN python -m pip uninstall opencv-python
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files

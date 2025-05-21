@@ -12,6 +12,71 @@ import pydicom
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import utils.video_utils as video_utils
+import cv2
+import torchvision.utils as vutils
+import os
+
+def save_tensor_images(
+    tensor: torch.Tensor,
+    output_dir: str = 'output_images',
+    prefix: str = 'image',
+    format: str = 'png',
+    normalize: bool = True
+) -> None:
+    """
+    Save a 4D tensor of images to individual files.
+    
+    Args:
+        tensor (torch.Tensor): Input tensor of shape [C, N, H, W] or [N, C, H, W]
+        output_dir (str): Directory where images will be saved
+        prefix (str): Prefix for the image filenames
+        format (str): Image format (e.g., 'png', 'jpg')
+        normalize (bool): Whether to normalize the images to [0,1] range
+    
+    Returns:
+        None
+    """
+    # Ensure tensor is 4D
+    if len(tensor.shape) != 4:
+        raise ValueError(f"Expected 4D tensor, got shape {tensor.shape}")
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Determine if tensor needs transposing (handling both [C,N,H,W] and [N,C,H,W] formats)
+    if tensor.shape[0] == 3:  # [C,N,H,W] format
+        tensor = tensor.permute(1, 0, 2, 3)
+    
+    # Iterate through the images
+    for i in range(tensor.shape[0]):
+        # Extract single image
+        image = tensor[i]
+        
+        # Normalize if requested
+        if normalize:
+            image = (image - image.min()) / (image.max() - image.min())
+        
+        # Save the image
+        filename = f'{prefix}_{i}.{format}'
+        filepath = os.path.join(output_dir, filename)
+        vutils.save_image(image, filepath)
+    
+    print(f"Saved {tensor.shape[0]} images in {output_dir}")
+
+
+def save_array_to_video(frames_array, output_path, fps=30):
+    # Define the codec and create VideoWriter object
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # or 'XVID' for .avi
+    out = cv2.VideoWriter(output_path, fourcc, fps, (800, 600))
+    
+    # Write each frame
+    for i in range(frames_array.shape[0]):
+        # Convert from RGB to BGR if necessary
+        frame = cv2.cvtColor(frames_array[i], cv2.COLOR_RGB2BGR)
+        out.write(frame)
+    
+    # Release the VideoWriter
+    out.release()
 
 class EchoPrimeInference:
     # Constants
@@ -435,6 +500,7 @@ class EchoPrimeInference:
             except Exception as e:
                 print(f"Error processing series instance metadata: {str(e)}")
                 continue
+
         return torch.stack(pixels_array)
 
     def process_dicoms(self, input_dir: Dict[str, Any]) -> torch.Tensor:
