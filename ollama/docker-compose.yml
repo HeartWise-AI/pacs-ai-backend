@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  ollama:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ollama
+    networks:
+      - pacs-net
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+    restart: unless-stopped
+
+networks:
+  pacs-net:
+    external: true
+
+volumes:
+  ollama:
+    name: ollama
