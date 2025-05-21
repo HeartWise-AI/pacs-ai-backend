@@ -1,0 +1,11 @@
+{
+  "modelName": "DeepRV",
+  "version": "1.0.0",
+  "dicomTargetLevel": "SERIES",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 1,
+  "supportedDicomModalities": ["XA"],
+  "supportedDicomTags": ["*"],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": ["HTML"]
+}
