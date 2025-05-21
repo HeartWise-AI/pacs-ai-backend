@@ -10,6 +10,7 @@ import torch.nn as nn
 from io import BytesIO
 from typing import List
 from torchvision.transforms import v2
+from pytorchvideo.models.x3d import create_x3d
 
 from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
@@ -33,26 +34,22 @@ class RegressionHead(nn.Module):
 class CustomPredictionService(BasePredictionService):
     def load_model(self, config: Config):
         print('Loading model')
-        # Retrieve the hugging face token from the environment variable.
-        hugging_face_token = os.getenv("HF_API_KEY")
-        if not hugging_face_token:
-            raise ValueError("HF_API_KEY environment variable is not set")
         
-        CustomPredictionService.huggingface_token = hugging_face_token
-        CustomPredictionService.repo_id = "heartwise/DeepRV_x3d"
         if CustomPredictionService.is_initialized:
             print("Models already loaded, skipping initialization")
             return 
-        CustomPredictionService.model_path = HuggingFaceWrapper.get_model(
-            repo_id=CustomPredictionService.repo_id,
-            local_dir='models',
-            hugging_face_api_key=CustomPredictionService.huggingface_token
-        )
-        CustomPredictionService.model_path = os.path.join(CustomPredictionService.model_path, 'deeprv_x3d.pt')
 
-        CustomPredictionService.models['x3d_m'] = torch.hub.load(
-            "facebookresearch/pytorchvideo", "x3d_m", pretrained=True
-        )
+        # Instead of downloading at runtime, use the model downloaded during the Docker build.
+        CustomPredictionService.model_path = os.path.join('models', 'deeprv_x3d.pt')
+                
+        try:                       
+            # Create the model directly without using torch.hub
+            CustomPredictionService.models['x3d_m'] = create_x3d()
+            print("Successfully created X3D model directly from local package")        
+        except Exception as e2:
+            # If both methods fail, raise a clear error
+            raise RuntimeError(f"Cannot initialize model: first attempt error: {error_msg}, second attempt error: {str(e2)}")
+            
         CustomPredictionService.models['x3d_m'].blocks[-1] = RegressionHead(dim_in=192, num_classes=1)
 
         model_state_dict = torch.load(CustomPredictionService.model_path, map_location=torch.device('cpu'), weights_only=True)['model_state_dict']
