@@ -1,0 +1,441 @@
+import os
+import base64
+import re
+import shutil
+import time
+import json
+from pathlib import Path
+from typing import Dict, List, Optional, Any, Iterator, AsyncIterator
+from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import uuid
+
+from components.agent import Agent
+from agent_init import initialize_agent
+from logger import logger
+
+
+# Define request and response models
+class MessageRequest(BaseModel):
+    message: Optional[str] = None
+    thread_id: Optional[str] = None
+
+
+class DicomPayloadRequest(BaseModel):
+    payload: Dict[str, Any]
+    thread_id: Optional[str] = None
+
+
+class ToolResultResponse(BaseModel):
+    tool_name: str
+    result: Any
+
+
+class MessageResponse(BaseModel):
+    role: str  # 'assistant' or 'tool'
+    content: str
+    tool_results: Optional[List[ToolResultResponse]] = None
+
+
+class ChatResponse(BaseModel):
+    thread_id: str
+    message: Optional[MessageResponse] = None
+    status: str = "success"
+    error: Optional[str] = None
+
+
+# Initialize FastAPI app
+app = FastAPI(title="Orchestrator API", description="Medical Reasoning Agent for X-ray Angiography DICOM Analysis")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+
+class APIHandler:
+    """
+    Handles API requests and manages agent interactions
+    """
+
+    def __init__(self):
+        """Initialize the API handler with necessary directories and the agent."""
+        self._initialize_agent()
+        self.thread_data = {}  # Store thread-specific data
+        self.current_thread_id = None
+        self.display_file_path = None
+        
+    def _initialize_agent(self):
+        """Initialize the agent with the required tools."""
+        try:
+            logger.info("Initializing Orchestrator agent")
+            self.agent, self.tools_dict = initialize_agent(
+                "components/docs/system_prompts.txt",
+                model="gpt-4o",
+                temperature=0.7,
+                top_p=0.95
+            )
+            logger.info(f"Agent initialized with {len(self.tools_dict)} tools")
+        except Exception as e:
+            logger.error(f"Failed to initialize agent: {str(e)}")
+            raise RuntimeError(f"Agent initialization failed: {str(e)}")
+
+    def get_thread_data(self, thread_id: str) -> Dict:
+        """
+        Get thread-specific data or initialize if it doesn't exist
+        
+        Args:
+            thread_id (str): The ID of the thread
+            
+        Returns:
+            Dict: Thread-specific data dictionary
+        """
+        if thread_id not in self.thread_data:
+            self.thread_data[thread_id] = {
+                "dicom_payload": None,
+            }
+        return self.thread_data[thread_id]
+
+    def handle_dicom_payload(self, payload: Dict[str, Any], thread_id: str) -> Dict[str, Any]:
+        """
+        Store DICOM payload for a specific thread
+        
+        Args:
+            payload (Dict[str, Any]): The DICOM payload to store
+            thread_id (str): The ID of the thread
+            
+        Returns:
+            Dict[str, Any]: Response indicating success or failure
+        """
+        thread_data = self.get_thread_data(thread_id)
+        
+        logger.info(f"Handling DICOM payload for thread {thread_id}")
+        
+        # Ensure it's a standard dictionary
+        if not isinstance(payload, dict):
+            try:
+                payload = dict(payload)
+                logger.info("Converted non-dict payload to dict")
+            except Exception as e:
+                logger.error(f"Failed to convert payload to dict: {str(e)}")
+                return {
+                    "status": "error",
+                    "message": f"Invalid payload format: {str(e)}"
+                }
+        
+        # Store the DICOM payload in thread data
+        thread_data["dicom_payload"] = payload
+        
+        return {
+            "status": "success",
+            "message": "DICOM payload received and stored successfully",
+        }
+
+    def _parse_tool_result(self, content: str) -> Any:
+        """
+        Parse the result from a tool call
+        
+        Args:
+            content (str): The content to parse
+            
+        Returns:
+            Any: The parsed content
+        """
+        if not content:
+            return None
+            
+        try:
+            # If content is a JSON array string, parse it and return the first element
+            if content.startswith('[') and content.endswith(']'):
+                return json.loads(content)[0]
+            return content
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse tool result as JSON: {str(e)}")
+            return content
+
+    async def process_message(
+        self, message: Optional[str], thread_id: str
+    ) -> AsyncIterator[tuple]:
+        """
+        Process a message and generate responses.
+
+        Args:
+            message (Optional[str]): User message to process
+            thread_id (str): ID of the current thread
+
+        Yields:
+            Tuple[List[MessageResponse], Optional[str], str]: Updated message history, display path, and empty string
+        """
+        # Initialize processing variables
+        message_history = []
+        self.current_thread_id = thread_id
+        self.display_file_path = None
+        
+        # Get thread data and DICOM payload
+        thread_data = self.get_thread_data(thread_id)
+        dicom_payload = thread_data.get("dicom_payload")
+        
+        logger.info(f"Processing message for thread {thread_id}")
+        
+        if dicom_payload is not None:
+            logger.debug(f"Thread has DICOM payload of type {type(dicom_payload)}")
+        
+        # Prepare messages for the agent
+        messages = []
+        if message is not None:
+            messages.append({"role": "user", "content": [{"type": "text", "text": message}]})
+
+        # Create the initial state and configuration
+        initial_state = {"messages": messages}
+        if dicom_payload is not None:
+            initial_state["dicom_payload"] = dicom_payload
+        
+        config = {"configurable": {"thread_id": self.current_thread_id}}
+
+        try:
+            # Stream responses from the agent
+            for event in self.agent.workflow.stream(initial_state, config):
+                if not isinstance(event, dict):
+                    continue
+                    
+                if "process" in event:
+                    for result in self._handle_process_event(event, message_history):
+                        yield result
+                    
+                elif "execute" in event:
+                    for result in self._handle_execute_event(event, message_history):
+                        yield result
+                    
+        except Exception as e:
+            logger.error(f"Error processing message: {str(e)}")
+            error_message = f"❌ Error: {str(e)}"
+            message_history.append(
+                MessageResponse(role="assistant", content=error_message)
+            )
+            yield message_history, self.display_file_path, ""
+    
+    def _handle_process_event(self, event, message_history):
+        """Handle a 'process' event from the agent workflow."""
+        content = event["process"]["messages"][-1].content
+        if content:
+            # Remove temporary file paths from content
+            content = re.sub(r"temp/[^\s]*", "", content)
+            message_history.append(MessageResponse(role="assistant", content=content))
+            yield message_history, self.display_file_path, ""
+    
+    def _handle_execute_event(self, event, message_history):
+        """Handle an 'execute' event from the agent workflow."""
+        tool_results = []
+        
+        # First, collect all tool results
+        for message in event["execute"]["messages"]:
+            tool_name = message.name
+            tool_result = self._parse_tool_result(message.content)
+            
+            if not tool_result:
+                continue
+                
+            # Format the result for easier processing
+            formatted_result = " ".join(
+                line.strip() for line in str(tool_result).splitlines()
+            ).strip()
+            
+            tool_results.append({
+                "tool_name": tool_name,
+                "result": formatted_result
+            })
+            
+            # Special handling for image_visualizer tool
+            if tool_name == "image_visualizer" and isinstance(tool_result, dict) and "image_path" in tool_result:
+                self.display_file_path = tool_result["image_path"]
+        
+        # If we have tool results, formulate a response
+        if tool_results:
+            # Format tool results for the model
+            tool_results_str = ""
+            for result in tool_results:
+                tool_results_str += f"Tool: {result['tool_name']}\nResult: {result['result']}\n\n"
+            
+            # Construct a prompt for the model to formulate a response
+            response_prompt = f"""The following tool(s) were executed:
+
+{tool_results_str}
+
+Based on these tool results, please provide a clear, helpful response for the user that explains what was found or done."""
+            
+            try:
+                # Send to the model for interpretation
+                messages = [{"role": "user", "content": [{"type": "text", "text": response_prompt}]}]
+                config = {"configurable": {"thread_id": self.current_thread_id}}
+                
+                # Use the agent's model to generate a response
+                response = self.agent.model.invoke(messages)
+                
+                # Add the interpreted response to the message history
+                interpreted_content = response.content if hasattr(response, 'content') else str(response)
+                
+                # Add the formulated response to the message history
+                message_history.append(
+                    MessageResponse(
+                        role="assistant",
+                        content=interpreted_content,
+                        tool_results=[ToolResultResponse(tool_name=result["tool_name"], result=result["result"]) 
+                                     for result in tool_results]
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Error formatting tool results into response: {str(e)}")
+                # Fallback: Add raw tool results if response formatting fails
+                for result in tool_results:
+                    message_history.append(
+                        MessageResponse(
+                            role="assistant",
+                            content=result["result"],
+                            tool_results=[ToolResultResponse(tool_name=result["tool_name"], result=result["result"])]
+                        )
+                    )
+            
+            # Handle special image visualizer case
+            if self.display_file_path:
+                message_history.append(
+                    MessageResponse(
+                        role="assistant",
+                        content={"path": self.display_file_path},
+                    )
+                )
+        
+        yield message_history, self.display_file_path, ""
+
+
+# Initialize API handler
+api_handler = APIHandler()
+
+
+@app.post("/dicom/{thread_id}")
+async def upload_dicom_payload(thread_id: str, request: DicomPayloadRequest):
+    """
+    Upload a DICOM payload for a specific thread
+    
+    Args:
+        thread_id (str): Thread ID
+        request (DicomPayloadRequest): DICOM payload request
+        
+    Returns:
+        JSONResponse: Response indicating success or failure
+    """
+    if not thread_id:
+        thread_id = str(uuid.uuid4())
+    
+    try:
+        # Process the DICOM payload
+        result = api_handler.handle_dicom_payload(request.payload, thread_id)
+        
+        return JSONResponse({
+            "thread_id": thread_id,
+            "status": "success",
+            "message": "DICOM payload stored successfully"
+        })
+    except Exception as e:
+        logger.error(f"Error handling DICOM payload: {str(e)}")
+        return JSONResponse({
+            "thread_id": thread_id,
+            "status": "error",
+            "message": f"Error processing DICOM payload: {str(e)}"
+        }, status_code=500)
+
+
+@app.post("/chat/{thread_id}")
+async def chat(thread_id: str, request: MessageRequest):
+    """
+    Send a message to the agent and get a response
+    
+    Args:
+        thread_id (str): Thread ID
+        request (MessageRequest): Message request
+        
+    Returns:
+        ChatResponse: Response from the agent
+    """
+    # Generate a thread ID if not provided
+    if not thread_id:
+        thread_id = str(uuid.uuid4())
+    
+    try:
+        # Get the first yielded response from the generator
+        async for response_chunk in api_handler.process_message(
+            request.message, 
+            thread_id
+        ):
+            # Return the first meaningful response
+            if response_chunk[0]:
+                return ChatResponse(
+                    thread_id=thread_id,
+                    message=response_chunk[0][0],
+                    status="success"
+                )
+        
+        # If no meaningful response was generated
+        return ChatResponse(
+            thread_id=thread_id,
+            message=MessageResponse(role="assistant", content="No response generated"),
+            status="success"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {str(e)}")
+        return ChatResponse(
+            thread_id=thread_id,
+            message=MessageResponse(role="assistant", content=f"Error processing your message: {str(e)}"),
+            status="error",
+            error=str(e)
+        )
+
+
+@app.post("/new_thread")
+async def new_thread():
+    """
+    Create a new chat thread
+    
+    Returns:
+        JSONResponse: Response with the new thread ID
+    """
+    thread_id = str(uuid.uuid4())
+    # Initialize thread data
+    api_handler.get_thread_data(thread_id)
+    
+    return JSONResponse({
+        "thread_id": thread_id
+    })
+
+
+@app.get("/threads/{thread_id}")
+async def get_thread_info(thread_id: str):
+    """
+    Get information about a specific thread
+    
+    Args:
+        thread_id (str): Thread ID
+        
+    Returns:
+        JSONResponse: Thread information
+    """
+    try:
+        thread_data = api_handler.get_thread_data(thread_id)
+        
+        return JSONResponse({
+            "thread_id": thread_id,
+            "has_dicom_payload": thread_data.get("dicom_payload") is not None
+        })
+    except Exception as e:
+        logger.error(f"Error getting thread info: {str(e)}")
+        return JSONResponse({
+            "thread_id": thread_id,
+            "status": "error",
+            "error": str(e)
+        }, status_code=500) 
