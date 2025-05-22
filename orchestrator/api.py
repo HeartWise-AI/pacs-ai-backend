@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
+from datetime import datetime, timedelta
 
 from components.agent import Agent
 from agent_init import initialize_agent
@@ -69,6 +70,7 @@ class APIHandler:
         self.current_thread_id = None
         self.display_file_path = None
         self._start_tools_refresh_thread()
+        self._start_thread_cleanup_thread()
         
     def _create_agent_and_tools(self):
         """Create and return a new agent and tools dictionary."""
@@ -124,6 +126,43 @@ class APIHandler:
         )
         refresh_thread.start()
         logger.info("Started tools refresh background thread (refreshes every minute)")
+        
+    def _thread_cleanup_worker(self):
+        """Background worker that cleans up inactive threads periodically."""
+        while True:
+            # Sleep for 60 seconds (1 minute)
+            time.sleep(60)
+            self._cleanup_inactive_threads()
+            
+    def _start_thread_cleanup_thread(self):
+        """Start a background thread that cleans up inactive threads every minute."""
+        cleanup_thread = threading.Thread(
+            target=self._thread_cleanup_worker, 
+            daemon=True,  # Make the thread a daemon so it exits when the main program exits
+        )
+        cleanup_thread.start()
+        logger.info("Started thread cleanup background thread (runs every minute)")
+        
+    def _cleanup_inactive_threads(self):
+        """Remove threads that haven't been accessed in the last 5 minutes."""
+        try:
+            current_time = datetime.now()
+            inactive_threshold = current_time - timedelta(minutes=5)
+            
+            # Identify inactive threads
+            inactive_threads = [
+                thread_id for thread_id, data in self.thread_data.items()
+                if data.get("last_accessed", datetime.min) < inactive_threshold
+            ]
+            
+            # Remove inactive threads
+            for thread_id in inactive_threads:
+                del self.thread_data[thread_id]
+                
+            if inactive_threads:
+                logger.info(f"Cleaned up {len(inactive_threads)} inactive threads")
+        except Exception as e:
+            logger.error(f"Error cleaning up inactive threads: {str(e)}")
 
     def get_thread_data(self, thread_id: str) -> Dict:
         """
@@ -138,7 +177,12 @@ class APIHandler:
         if thread_id not in self.thread_data:
             self.thread_data[thread_id] = {
                 "dicom_payload": None,
+                "last_accessed": datetime.now()
             }
+        else:
+            # Update the last accessed timestamp
+            self.thread_data[thread_id]["last_accessed"] = datetime.now()
+            
         return self.thread_data[thread_id]
 
     def handle_dicom_payload(self, payload: Dict[str, Any], thread_id: str) -> Dict[str, Any]:
