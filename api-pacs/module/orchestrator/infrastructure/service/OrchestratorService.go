@@ -187,7 +187,7 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 // UploadDicomPayload uploads a DICOM payload to a thread
 func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, request types.DicomPayloadRequest) (any, error) {
 	// Get the container ID from request or use default
-	containerID := "777d90f47d902f94a437425bed4d4fc4be2035b3764b5cba540666b2ebf0cad9"
+	containerID := "777d90f47d902f94a437425bed4d4fc4be2035b3764b5cba540666b2ebf0cad9" // TODO: Make this configurable
 
 	// Create the inferenceData object from the request fields
 	inferenceData := inferenceTypes.PredictInferenceModel{
@@ -199,7 +199,7 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 	// Use PredictInferenceModel input to generate a PredictRequest
 	predictRequest, _, err := service.InferenceCommandServiceInterface.GenerateInferenceModelPredictRequest(
 		ctx,
-		"mhi1-ygu02", // No tenant ID required
+		"mhi1-ygu02", // TODO: Make this configurable
 		containerID,
 		inferenceData,
 	)
@@ -212,7 +212,12 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 		Payload  dockerInferenceTypes.PredictRequest `json:"payload"`
 		ThreadID string                              `json:"thread_id,omitempty"`
 	}{
-		Payload:  predictRequest,
+		Payload: dockerInferenceTypes.PredictRequest{
+			SeriesInstanceImages:   predictRequest.SeriesInstanceImages,
+			SeriesInstanceMetadata: predictRequest.SeriesInstanceMetadata,
+			AdditionalMetadata:     predictRequest.AdditionalMetadata,
+			OutputMode:             dockerInferenceTypes.OutputModeJSON, // TODO: Make this configurable
+		},
 		ThreadID: request.ThreadID,
 	}
 
