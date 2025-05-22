@@ -70,17 +70,26 @@ class APIHandler:
         self.display_file_path = None
         self._start_tools_refresh_thread()
         
+    def _create_agent_and_tools(self):
+        """Create and return a new agent and tools dictionary."""
+        model = os.getenv("MODEL")
+        base_url = os.getenv("BASE_URL")
+        docker_network = os.getenv("DOCKER_NETWORK")
+        
+        return initialize_agent(
+            "components/docs/system_prompts.txt",
+            model=model,
+            temperature=0,
+            top_p=0.95,
+            base_url=base_url,
+            network_name=docker_network
+        )
+    
     def _initialize_agent(self):
         """Initialize the agent with the required tools."""
-        model = os.getenv("MODEL")
         try:
             logger.info("Initializing Orchestrator agent")
-            self.agent, self.tools_dict = initialize_agent(
-                "components/docs/system_prompts.txt",
-                model=model,
-                temperature=0,
-                top_p=0.95,
-            )
+            self.agent, self.tools_dict = self._create_agent_and_tools()
             logger.info(f"Agent initialized with {len(self.tools_dict)} tools")
         except Exception as e:
             logger.error(f"Failed to initialize agent: {str(e)}")
@@ -91,13 +100,7 @@ class APIHandler:
         try:
             logger.info("Refreshing agent tools")
             # Re-discover and create tools
-            model = os.getenv("MODEL")
-            new_agent, new_tools_dict = initialize_agent(
-                "components/docs/system_prompts.txt",
-                model=model,
-                temperature=0,
-                top_p=0.95,
-            )
+            new_agent, new_tools_dict = self._create_agent_and_tools()
             
             # Update agent and tools
             self.agent = new_agent

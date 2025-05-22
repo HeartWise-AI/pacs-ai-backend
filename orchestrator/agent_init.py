@@ -10,30 +10,13 @@ from components.tools.docker_utils import discover_and_create_tools
 from components.utils import load_prompts_from_file
 from logger import logger
 
-def get_openai_config() -> Dict[str, str]:
-    """
-    Get OpenAI configuration from environment variables.
-    
-    Returns:
-        Dict[str, str]: Dictionary with OpenAI configuration
-    """
-    config = {}
-    
-    if api_key := os.getenv("OPENAI_API_KEY"):
-        config["api_key"] = api_key
-        
-    if base_url := os.getenv("OPENAI_BASE_URL"):
-        config["base_url"] = base_url
-        
-    return config
-
 def initialize_agent(
     prompt_file: str,
     model: str = "qwen3:8b",
     temperature: float = 0.7,
     top_p: float = 0.95,
-    openai_kwargs: Optional[Dict[str, str]] = None,
-    network_name: Optional[str] = None
+    base_url: str = "http://ollama:11434",
+    network_name: str = "pacs-net"
 ) -> Tuple[Agent, Dict[str, BaseTool]]:
     """
     Initialize the Orchestrator agent with tools discovered from Docker containers.
@@ -49,18 +32,6 @@ def initialize_agent(
     Returns:
         Tuple[Agent, Dict[str, BaseTool]]: Initialized agent and dictionary of tool instances
     """
-    # Set default values
-    if openai_kwargs is None:
-        openai_kwargs = {}
-    
-    # If network_name is not provided, read from environment variable or use default
-    if network_name is None:
-        network_name = os.getenv("DOCKER_NETWORK", "pacs-net")
-    
-    # Merge environment config with provided config
-    openai_config = get_openai_config()
-    openai_config.update(openai_kwargs)
-    
     # Load system prompts
     try:
         prompts = load_prompts_from_file(prompt_file)
@@ -98,12 +69,16 @@ def initialize_agent(
     for tool_name, tool in sanitized_tools_dict.items():
         logger.info(f"Tool: {tool_name} - {tool.description}")
 
+    config ={}
+    config["base_url"] = base_url
+
     # Initialize the model and agent
     checkpointer = MemorySaver()
     model_instance = ChatOllama(
         model=model, 
         temperature=temperature, 
         top_p=top_p, 
+        **config
     )
     
     agent = Agent(
