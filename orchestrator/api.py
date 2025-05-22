@@ -1,12 +1,10 @@
 import os
-import base64
 import re
-import shutil
-import time
 import json
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Iterator, AsyncIterator
-from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
+import threading
+import time
+from typing import Dict, List, Optional, Any, AsyncIterator
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -70,21 +68,59 @@ class APIHandler:
         self.thread_data = {}  # Store thread-specific data
         self.current_thread_id = None
         self.display_file_path = None
+        self._start_tools_refresh_thread()
         
     def _initialize_agent(self):
         """Initialize the agent with the required tools."""
+        model = os.getenv("MODEL")
         try:
             logger.info("Initializing Orchestrator agent")
             self.agent, self.tools_dict = initialize_agent(
                 "components/docs/system_prompts.txt",
-                model="gpt-4o",
-                temperature=0.7,
-                top_p=0.95
+                model=model,
+                temperature=0,
+                top_p=0.95,
             )
             logger.info(f"Agent initialized with {len(self.tools_dict)} tools")
         except Exception as e:
             logger.error(f"Failed to initialize agent: {str(e)}")
             raise RuntimeError(f"Agent initialization failed: {str(e)}")
+            
+    def _refresh_tools(self):
+        """Refresh the agent's tools list."""
+        try:
+            logger.info("Refreshing agent tools")
+            # Re-discover and create tools
+            model = os.getenv("MODEL")
+            new_agent, new_tools_dict = initialize_agent(
+                "components/docs/system_prompts.txt",
+                model=model,
+                temperature=0,
+                top_p=0.95,
+            )
+            
+            # Update agent and tools
+            self.agent = new_agent
+            self.tools_dict = new_tools_dict
+            logger.info(f"Agent tools refreshed - now has {len(self.tools_dict)} tools")
+        except Exception as e:
+            logger.error(f"Failed to refresh agent tools: {str(e)}")
+            
+    def _tools_refresh_worker(self):
+        """Background worker that refreshes tools periodically."""
+        while True:
+            # Sleep for 60 seconds (1 minute)
+            time.sleep(60)
+            self._refresh_tools()
+            
+    def _start_tools_refresh_thread(self):
+        """Start a background thread that refreshes tools every minute."""
+        refresh_thread = threading.Thread(
+            target=self._tools_refresh_worker, 
+            daemon=True,  # Make the thread a daemon so it exits when the main program exits
+        )
+        refresh_thread.start()
+        logger.info("Started tools refresh background thread (refreshes every minute)")
 
     def get_thread_data(self, thread_id: str) -> Dict:
         """
@@ -146,6 +182,27 @@ class APIHandler:
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse tool result as JSON: {str(e)}")
             return content
+
+    def _remove_think_tags(self, content: str) -> str:
+        """
+        Remove content enclosed in <think> tags
+        
+        Args:
+            content (str): The content to process
+            
+        Returns:
+            str: Content with <think> tags and their contents removed
+        """
+        if not content:
+            return content
+            
+        # Check if content contains think tags
+        if '<think>' in content:
+            logger.info("Removing <think> tags from response content")
+            # Remove content between <think> and </think> tags
+            return re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
+        
+        return content
 
     async def process_message(
         self, message: Optional[str], thread_id: str
@@ -214,6 +271,8 @@ class APIHandler:
         if content:
             # Remove temporary file paths from content
             content = re.sub(r"temp/[^\s]*", "", content)
+            # Remove think tags and their contents
+            content = self._remove_think_tags(content)
             message_history.append(MessageResponse(role="assistant", content=content))
             yield message_history, self.display_file_path, ""
     
@@ -267,6 +326,9 @@ Based on these tool results, please provide a clear, helpful response for the us
                 
                 # Add the interpreted response to the message history
                 interpreted_content = response.content if hasattr(response, 'content') else str(response)
+                
+                # Remove any think tags from the interpreted content
+                interpreted_content = self._remove_think_tags(interpreted_content)
                 
                 # Add the formulated response to the message history
                 message_history.append(
@@ -426,4 +488,26 @@ async def get_thread_info(thread_id: str):
             "thread_id": thread_id,
             "status": "error",
             "error": str(e)
+        }, status_code=500)
+
+@app.post("/refresh_tools")
+async def refresh_tools():
+    """
+    Manually trigger a refresh of the agent's tools
+    
+    Returns:
+        JSONResponse: Response indicating success or failure
+    """
+    try:
+        api_handler._refresh_tools()
+        
+        return JSONResponse({
+            "status": "success",
+            "message": f"Tools refreshed successfully. Agent now has {len(api_handler.tools_dict)} tools."
+        })
+    except Exception as e:
+        logger.error(f"Error refreshing tools: {str(e)}")
+        return JSONResponse({
+            "status": "error",
+            "message": f"Error refreshing tools: {str(e)}"
         }, status_code=500) 

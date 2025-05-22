@@ -2,7 +2,6 @@ import json
 import requests
 import re
 from typing import Dict, List, Any, Optional, Tuple, Type
-import os
 import docker
 from docker.errors import DockerException, NotFound
 from pydantic import BaseModel, Field

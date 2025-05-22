@@ -3,5 +3,6 @@ transformers==4.52.1
 uvicorn==0.34.2
 fastapi==0.115.12
 langgraph==0.4.5
-langchain_openai==0.3.17
 docker==7.1.0
+langchain-ollama==0.3.3
+ollama==0.4.8

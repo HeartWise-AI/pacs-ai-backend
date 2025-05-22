@@ -1,8 +1,8 @@
 import os
 import re
 from typing import Tuple, Dict, Optional
+from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
-from langchain_openai import ChatOpenAI
 from langchain_core.tools import BaseTool
 
 from components.agent import Agent
@@ -29,7 +29,7 @@ def get_openai_config() -> Dict[str, str]:
 
 def initialize_agent(
     prompt_file: str,
-    model: str = "gpt-4o",
+    model: str = "qwen3:8b",
     temperature: float = 0.7,
     top_p: float = 0.95,
     openai_kwargs: Optional[Dict[str, str]] = None,
@@ -100,11 +100,10 @@ def initialize_agent(
 
     # Initialize the model and agent
     checkpointer = MemorySaver()
-    model_instance = ChatOpenAI(
+    model_instance = ChatOllama(
         model=model, 
         temperature=temperature, 
         top_p=top_p, 
-        **openai_config
     )
     
     agent = Agent(
