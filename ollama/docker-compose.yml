@@ -6,8 +6,8 @@ services:
     container_name: ollama
     networks:
       - pacs-net
-    ports:
-      - "11434:11434"
+    expose:
+      - "11434"
     volumes:
       - ollama:/root/.ollama
     environment:

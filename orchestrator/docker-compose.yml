@@ -3,8 +3,8 @@ services:
     build: .
     container_name: orchestrator
     restart: unless-stopped
-    ports:
-      - 8585:8585
+    expose:
+      - "8585"
     volumes:
       - ./logs:/app/logs
       - ./temp:/app/temp
