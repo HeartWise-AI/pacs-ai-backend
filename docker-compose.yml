@@ -11,3 +11,4 @@ include:
   - ../PACS-AI/docker-compose.yml
   - nginx/docker-compose.yml
   - orchestrator/docker-compose.yml
+  - ollama/docker-compose.yml
