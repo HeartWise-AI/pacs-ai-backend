@@ -7,5 +7,5 @@
   "supportedDicomModalities": ["XA"],
   "supportedDicomTags": ["*"],
   "supportedAdditionalMetadata": [],
-  "supportedOutputModes": ["HTML"]
+  "supportedOutputModes": ["HTML", "JSON"]
 }
