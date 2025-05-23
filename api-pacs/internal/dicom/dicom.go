@@ -1,4 +1,4 @@
-package dicoms
+package dicom
 
 import (
 	"encoding/base64"
@@ -16,6 +16,7 @@ import (
 	"github.com/suyashkumar/dicom"
 	"github.com/suyashkumar/dicom/pkg/frame"
 	"github.com/suyashkumar/dicom/pkg/tag"
+	"github.com/suyashkumar/dicom/pkg/uid"
 
 	apiError "api-pacs/internal/errors"
 )
@@ -77,6 +78,45 @@ func ConvertBulkDataURIToInlineBinary(bulkDataURI string) (string, error) {
 
 	log.Println("[dicom-web] no application/octet-stream part found")
 	return "", errors.New(apiError.DICOMParseError)
+}
+
+// ConvertPDFToDICOM convert PDF to DICOM
+func ConvertPDFToDICOM(pdfData []byte, studyInstanceUID, seriesInstanceUID, sopInstanceUID, seriesDescription, documentTitle string) (*dicom.Dataset, error) {
+	// create DICOM elements
+	elements := []*dicom.Element{
+		// required identifiers
+		mustNewElement(tag.MediaStorageSOPClassUID, "1.2.840.10008.5.1.4.1.1.104.1"), // Encapsulated PDF Storage
+		mustNewElement(tag.MediaStorageSOPInstanceUID, sopInstanceUID),
+		mustNewElement(tag.TransferSyntaxUID, uid.ExplicitVRLittleEndian),
+
+		// study/series relationship
+		mustNewElement(tag.StudyInstanceUID, studyInstanceUID),
+		mustNewElement(tag.SeriesInstanceUID, seriesInstanceUID),
+		mustNewElement(tag.SeriesDescription, seriesDescription),
+
+		// pdf content
+		mustNewElement(tag.Modality, "DOC"), // Document Modality
+		mustNewElement(tag.DocumentTitle, documentTitle),
+		mustNewElement(tag.EncapsulatedDocument, pdfData),
+		mustNewElement(tag.MIMETypeOfEncapsulatedDocument, "application/pdf"),
+
+		// recommended metadata
+		mustNewElement(tag.InstanceNumber, "1"),
+		mustNewElement(tag.ContentDate, time.Now().Format("20060102")),
+		mustNewElement(tag.ContentTime, time.Now().Format("150405")),
+	}
+
+	// create dataset
+	dataset := dicom.Dataset{Elements: elements}
+
+	// write to buffer
+	// var buf bytes.Buffer
+	// if err := dicom.Write(&buf, dataset, nil); err != nil {
+	// 	log.Println("[dicom] error converting PDF to DICOM:", err)
+	// 	return nil, errors.New(apiError.DICOMParseError)
+	// }
+
+	return &dataset, nil
 }
 
 // DICOMToInstances convert DICOM to instances
@@ -212,4 +252,13 @@ func getArrayDepth(arr interface{}) int {
 	}
 
 	return depth
+}
+
+func mustNewElement(t tag.Tag, data any) *dicom.Element {
+	elem, err := dicom.NewElement(t, data)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return elem
 }

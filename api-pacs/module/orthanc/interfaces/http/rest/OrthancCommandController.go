@@ -323,3 +323,87 @@ func (controller *OrthancCommandController) UpdateDICOMModality(w http.ResponseW
 
 	response.JSON(w)
 }
+
+// StoreStudyCustomSeries store study custom series
+func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.ResponseWriter, r *http.Request) {
+	// tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	// get modality ID
+	modalityID := chi.URLParam(r, "modalityID")
+	if len(modalityID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid modality ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// get study instance UID
+	studyInstanceUID := chi.URLParam(r, "studyInstanceUID")
+	if len(studyInstanceUID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid study instance UID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var request types.StoreStudyCustomSeriesRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// TODO: implementation
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusCreated,
+		Success: true,
+		Message: "Successfully stored study custom series.",
+	}
+
+	response.JSON(w)
+}

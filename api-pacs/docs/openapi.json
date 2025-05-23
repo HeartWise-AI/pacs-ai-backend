@@ -837,6 +837,60 @@
         }
       }
     },
+    "/orthanc/modality/{modalityID}/study/{studyInstanceUID}/series/store": {
+      "post": {
+        "tags": ["orthanc"],
+        "summary": "Store Study Custom Series",
+        "description": "Store study custom series and write to PACS.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modalityID",
+            "in": "path",
+            "description": "Modality ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "studyInstanceUID",
+            "in": "path",
+            "description": "Study Instance UID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Store study custom series request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreStudyCustomSeriesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/orthanc/jobs": {
       "get": {
         "tags": ["orthanc"],
@@ -1496,6 +1550,25 @@
         "properties": {
           "queryId": {
             "type": "string"
+          }
+        }
+      },
+      "StoreStudyCustomSeriesRequest": {
+        "required": ["modelName", "modelVersion", "encodedData", "outputMode"],
+        "type": "object",
+        "properties": {
+          "modelName": {
+            "type": "string"
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "encodedData": {
+            "type": "string"
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
           }
         }
       },
