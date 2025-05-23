@@ -29,7 +29,7 @@
     "Warnings_and_limitations": {
       "Image_Quality": "The model requires high-quality angiograms with clear visualization of the right ventricle.",
       "Multiple_Devices": "The model is designed to classify a single right ventricle in the video.",
-      "Confidence_Scores": "Current threshold applied on probability output for classification is 0.5"
+      "Confidence_Scores": "Current threshold applied on probability output for classification is 0.1"
     }
   }
 }
