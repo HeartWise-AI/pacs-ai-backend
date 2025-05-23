@@ -7,5 +7,5 @@
   "supportedDicomModalities": ["DX", "CR"],
   "supportedDicomTags": ["00280008", "00280010", "00280011", "00280100", "00280101", "00101010"],
   "supportedAdditionalMetadata": [],
-  "supportedOutputModes": ["OHIF_ANNOTATIONS", "HTML"]
+  "supportedOutputModes": ["HTML"]
 }

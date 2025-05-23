@@ -72,28 +72,3 @@ def load_tool_prompts(tools: List[str], tools_json_path: str) -> str:
             tool_prompts.append(tool_prompt)
 
     return "\n".join(tool_prompts)
-
-
-def load_system_prompt(
-    system_prompts_file: str,
-    system_prompt_type: str,
-    tools: List[str],
-    tools_json_path: str,
-) -> str:
-    """
-    Load the system prompt by combining the system prompt and tool information.
-
-    Args:
-    system_prompts_file (str): Path to the file containing system prompts.
-    system_prompt_type (str): The type of system prompt to use.
-    tools (List[str]): List of tool names to include in the prompt.
-    tools_json_path (str): Path to the tools.json file.
-
-    Returns:
-    str: The system prompt combining system prompt and tool information.
-    """
-    prompts = load_prompts_from_file(system_prompts_file)
-    system_prompt = prompts.get(system_prompt_type, "GENERAL_ASSISTANT")
-    tool_prompts = load_tool_prompts(tools, tools_json_path)
-
-    return f"{system_prompt}\n\nTools:\n{tool_prompts}".strip()

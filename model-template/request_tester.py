@@ -200,7 +200,7 @@ def main():
 
     parser.add_argument(
         'dicom_paths',
-        default=['/home/denis/Documents/GitHub/pacs-ai-backend/model-template/sample_data/CT_Study'],
+        default=['sample_data/XA_1.dcm', 'sample_data/XA_2.dcm'],
         nargs='*',
         help='Path(s) to DICOM file(s) or directories containing DICOM files.'
     )
@@ -208,12 +208,12 @@ def main():
     parser.add_argument(
         '--url',
         default='http://localhost:8000/inference/predict',
-        help='Server URL (default: http://localhost:8000/inference/predict)'
+        help='Server URL (default: http://localhost:8001/inference/predict)'
     )
 
     parser.add_argument(
         '--output_mode',
-        default='OHIF_ANNOTATIONS',
+        default='JSON',
         choices=['HTML','OHIF_ANNOTATIONS','JSON','WEB_APP','PDF'],
         help='Output mode for the request (default: HTML)'
     )
@@ -227,7 +227,7 @@ def main():
 
     parser.add_argument(
         '--group-series',
-        default=True,
+        default=False,
         action='store_true',
         help='Treat all DICOM files as part of the same series'
     )
