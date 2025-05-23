@@ -187,7 +187,7 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 // UploadDicomPayload uploads a DICOM payload to a thread
 func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, request types.DicomPayloadRequest) (any, error) {
 	// Get the container ID from request or use default
-	containerID := "777d90f47d902f94a437425bed4d4fc4be2035b3764b5cba540666b2ebf0cad9" // TODO: Make this configurable
+	containerID := service.DefaultContainerID
 
 	// Create the inferenceData object from the request fields
 	inferenceData := inferenceTypes.PredictInferenceModel{
