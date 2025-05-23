@@ -66,8 +66,8 @@ class JsonPredictionResponse(BaseModel):
         fr: Optional[str] = None
         presentable: Optional[bool] = None
 
-    diagnosis: Optional[str] = None
     predictions: Any
+    diagnosis: Optional[str] = None
     modelRecommendations: Optional[ModelRecommendations]
 
 class OHIFPredictionResponse(BaseModel):
