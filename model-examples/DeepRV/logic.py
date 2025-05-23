@@ -62,11 +62,11 @@ class CustomPredictionService(BasePredictionService):
 
     def _get_diagnosis(self, probability: float) -> str:
         """Convert probability to diagnosis."""
-        return "Reduced Right Ventricular Function" if probability > 0.5 else "Normal Right Ventricular Function"
+        return "Reduced Right Ventricular Function" if probability > 0.1 else "Normal Right Ventricular Function"
 
     def _get_recommendations(self, probability: float, language: str) -> str:
         """Generate recommendations based on probability and language."""
-        is_reduced = probability > 0.5
+        is_reduced = probability > 0.1
         
         recommendations = {
             "normal": {
@@ -100,7 +100,7 @@ class CustomPredictionService(BasePredictionService):
         probability = float(probability)
         
         # Calculate confidence level
-        confidence = 'high' if abs(probability - 0.5) > 0.3 else 'intermediate' if abs(probability - 0.5) > 0.15 else 'low'
+        confidence = 'high' if abs(probability - 0.1) > 0.3 else 'intermediate' if abs(probability - 0.1) > 0.15 else 'low'
         
         # Prepare comprehensive data for HTML parser
         html_data = {
@@ -140,7 +140,7 @@ class CustomPredictionService(BasePredictionService):
             'predictions': {
                 'RightVentricle': {
                     'probability': probability,
-                    'confidence': 'high' if abs(probability - 0.5) > 0.3 else 'intermediate' if abs(probability - 0.5) > 0.15 else 'low',
+                    'confidence': 'high' if abs(probability - 0.1) > 0.3 else 'intermediate' if abs(probability - 0.1) > 0.15 else 'low',
                     'presentable': True,
                     'displayResult': self._get_diagnosis(probability)
                 }
@@ -190,6 +190,7 @@ class CustomPredictionService(BasePredictionService):
 
     def _run_inference(self, dicoms: List[pydicom.Dataset])->float:
         try:
+            probability = 0.0
             for dicom in dicoms:
                 pixel_array: np.ndarray = dicom.pixel_array
                 if pixel_array.ndim == 1 or pixel_array.ndim == 2:
@@ -230,9 +231,10 @@ class CustomPredictionService(BasePredictionService):
                 with torch.no_grad():
                     output: torch.Tensor = CustomPredictionService.models['x3d_m'](video)
                     output = torch.sigmoid(output)  # Add sigmoid activation
-                    probability: float = output.squeeze(0).detach().cpu().numpy().astype(float)
+                    probability += output.squeeze(0).detach().cpu().numpy().astype(float)
+                    print(output)
             
-                return probability
+            return probability / len(dicoms)
         
         except Exception as e:
             # Make sure to clean GPU memory even if there's an error

@@ -14,12 +14,12 @@ class HTMLParser:
             str: HTML formatted string containing the classification result
         """
         probability = results['probability']
-        diagnosis = results.get('diagnosis', f"Reduced Right Ventricular Function" if probability > 0.5 else "Normal Right Ventricular Function")
-        confidence = results.get('confidence', 'high' if abs(probability - 0.5) > 0.3 else 'intermediate' if abs(probability - 0.5) > 0.15 else 'low')
+        diagnosis = results.get('diagnosis', f"Reduced Right Ventricular Function" if probability > 0.1 else "Normal Right Ventricular Function")
+        confidence = results.get('confidence', 'high' if abs(probability - 0.1) > 0.3 else 'intermediate' if abs(probability - 0.1) > 0.15 else 'low')
         recommendations = results.get('recommendations', {})
         
         # Determine status for styling
-        is_reduced = probability > 0.5
+        is_reduced = probability > 0.1
         status_color = "#ff6b6b" if is_reduced else "#4ecdc4"
         
         html_content = f"""
@@ -235,7 +235,7 @@ class HTMLParser:
                         </div>
                         <div class="metric-item">
                             <span class="metric-label">Model Threshold</span>
-                            <div class="metric-value">0.500</div>
+                            <div class="metric-value">0.100</div>
                         </div>
                     </div>
                 </div>
