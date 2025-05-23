@@ -506,6 +506,7 @@ func (k *kernel) orchestratorServiceContainer() *orchestratorService.Orchestrato
 	// Configure orchestrator service
 	orchestratorAPIURL := os.Getenv("ORCHESTRATOR_API_URL")
 	defaultContainerID := os.Getenv("DEFAULT_CONTAINER_ID") // TODO: remove this and override it so it returns the full dicoms in the paylaod
+	tenantID := os.Getenv("TENANT_ID")
 
 	service := &orchestratorService.OrchestratorService{
 		InferenceCommandServiceInterface: inferenceCommandService,
@@ -513,6 +514,7 @@ func (k *kernel) orchestratorServiceContainer() *orchestratorService.Orchestrato
 		DefaultContainerID:               defaultContainerID,
 		OrchestratorClient:               &http.Client{Timeout: 5 * time.Minute},
 		ThreadsByID:                      make(map[string]*entity.Thread),
+		TenantID:                         tenantID,
 	}
 
 	return service

@@ -24,6 +24,7 @@ type OrchestratorService struct {
 	DefaultContainerID               string
 	OrchestratorClient               *http.Client
 	ThreadsByID                      map[string]*entity.Thread
+	TenantID                         string
 }
 
 // CreateThread creates a new thread
@@ -188,6 +189,7 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, request types.DicomPayloadRequest) (any, error) {
 	// Get the container ID from request or use default
 	containerID := service.DefaultContainerID
+	tenantID := service.TenantID
 
 	// Create the inferenceData object from the request fields
 	inferenceData := inferenceTypes.PredictInferenceModel{
@@ -199,7 +201,7 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 	// Use PredictInferenceModel input to generate a PredictRequest
 	predictRequest, _, err := service.InferenceCommandServiceInterface.GenerateInferenceModelPredictRequest(
 		ctx,
-		"mhi1-ygu02", // TODO: Make this configurable
+		tenantID,
 		containerID,
 		inferenceData,
 	)
