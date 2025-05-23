@@ -217,11 +217,19 @@ def fetch_tool_info_from_endpoint(container_ip: str, port: int = 80) -> Optional
     try:
         response = requests.get(url, timeout=2)
         response.raise_for_status()
-        
-        response_json = response.json()
+        model_facts = response.json()
+
+        response = requests.get(url.replace("model-facts", "model-info"), timeout=2)
+        response.raise_for_status()
+        model_info = response.json()
+
+
         tool_info = {
-            "name": response_json['data']['en']['Summary']['Name'],
-            "description": response_json['data']['en']['Summary']['Description'],
+            "name": model_facts['data']['en']['Summary']['Name'],
+            "description": model_facts['data']['en']['Summary']['Description'],
+            "supported_dicom_tags": model_info['data']['supportedDicomTags'],
+            "supported_output_modes": model_info['data']['supportedOutputModes'],
+            "supported_dicom_modalities": model_info['data']['supportedDicomModalities']
         }
         
         # Store the container IP and port in the global mapping
@@ -262,6 +270,18 @@ def create_dynamic_tool(tool_info: Dict[str, Any], container_ip: str, port: int 
     if not tool_name or not description:
         logger.warning("Missing required tool information (name or description)")
         return None
+
+    # TODO Support more modalities and different level of dicom tags
+    if "XA" not in tool_info.get("supported_dicom_modalities", []):
+        logger.warning(f"Tool {tool_name} does not support XA modality")
+        return None
+    if "JSON" not in tool_info.get("supported_output_modes", []):
+        logger.warning(f"Tool {tool_name} does not support JSON output mode")
+        return None
+    if "*" not in tool_info.get("supported_dicom_tags", []):
+        logger.warning(f"Tool {tool_name} does not support all DICOM tags")
+        return None
+
         
     # Sanitize tool name to match OpenAI's pattern requirement (^[a-zA-Z0-9_-]+$)
     # Replace spaces and other invalid characters with underscores

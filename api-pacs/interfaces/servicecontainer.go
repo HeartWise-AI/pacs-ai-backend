@@ -505,7 +505,7 @@ func (k *kernel) orchestratorServiceContainer() *orchestratorService.Orchestrato
 
 	// Configure orchestrator service
 	orchestratorAPIURL := os.Getenv("ORCHESTRATOR_API_URL")
-	defaultContainerID := os.Getenv("DEFAULT_CONTAINER_ID")
+	defaultContainerID := os.Getenv("DEFAULT_CONTAINER_ID") // TODO: remove this and override it so it returns the full dicoms in the paylaod
 
 	service := &orchestratorService.OrchestratorService{
 		InferenceCommandServiceInterface: inferenceCommandService,
