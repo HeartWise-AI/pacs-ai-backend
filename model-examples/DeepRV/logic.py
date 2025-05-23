@@ -59,6 +59,28 @@ class CustomPredictionService(BasePredictionService):
         CustomPredictionService.models['x3d_m'].to('cuda' if torch.cuda.is_available() else 'cpu')
         CustomPredictionService.is_initialized = True
         print('Model loaded')
+
+    def _get_diagnosis(self, probability: float) -> str:
+        """Convert probability to diagnosis."""
+        return "Reduced Right Ventricular Function" if probability > 0.5 else "Normal Right Ventricular Function"
+
+    def _get_recommendations(self, probability: float, language: str) -> str:
+        """Generate recommendations based on probability and language."""
+        is_reduced = probability > 0.5
+        
+        recommendations = {
+            "normal": {
+                "en": "Right ventricular function appears normal. Continue routine monitoring as per clinical protocol.",
+                "fr": "La fonction du ventricule droit semble normale. Continuer la surveillance de routine selon le protocole clinique."
+            },
+            "reduced": {
+                "en": "Reduce right ventricular function detected. Consider further cardiac evaluation and specialist consultation.",
+                "fr": "Fonction réduite du ventricule droit détectée. Envisager une évaluation cardiaque plus approfondie et une consultation spécialisée."
+            }
+        }
+        
+        status = "reduced" if is_reduced else "normal"
+        return recommendations[status][language]
         
     async def _handle_html_output(self, request: PredictRequest):
         dicoms = []
@@ -72,8 +94,63 @@ class CustomPredictionService(BasePredictionService):
                         )
                     )
                 )
+        probability = self._run_inference(dicoms)
         
-        return self.handler(dicoms)
+        # Convert numpy scalar to Python float to avoid formatting issues
+        probability = float(probability)
+        
+        # Calculate confidence level
+        confidence = 'high' if abs(probability - 0.5) > 0.3 else 'intermediate' if abs(probability - 0.5) > 0.15 else 'low'
+        
+        # Prepare comprehensive data for HTML parser
+        html_data = {
+            'probability': probability,
+            'diagnosis': self._get_diagnosis(probability),
+            'confidence': confidence,
+            'recommendations': {
+                'en': self._get_recommendations(probability, 'en'),
+                'fr': self._get_recommendations(probability, 'fr')
+            }
+        }
+        
+        html_output = HTMLParser.generate_detection_results(html_data)
+        return {
+            'htmlBase64': base64.b64encode(html_output.encode('utf-8')).decode('utf-8')
+        }
+
+    async def _handle_json_output(self, request: PredictRequest):
+        dicoms = []
+        for series_number in request.seriesInstanceImages:
+            for instance_number in request.seriesInstanceImages[series_number]:
+                dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
+                dicoms.append(
+                    pydicom.dcmread(
+                        BytesIO(
+                            base64.b64decode(dicom_base64)
+                        )
+                    )
+                )
+        probability = self._run_inference(dicoms)
+        
+        # Convert numpy scalar to Python float to avoid any issues
+        probability = float(probability)
+        
+        return {
+            'diagnosis': self._get_diagnosis(probability),
+            'predictions': {
+                'RightVentricle': {
+                    'probability': probability,
+                    'confidence': 'high' if abs(probability - 0.5) > 0.3 else 'intermediate' if abs(probability - 0.5) > 0.15 else 'low',
+                    'presentable': True,
+                    'displayResult': self._get_diagnosis(probability)
+                }
+            },
+            'modelRecommendations': {
+                'en': self._get_recommendations(probability, 'en'),
+                'fr': self._get_recommendations(probability, 'fr'),
+                'presentable': True
+            }
+        }
 
     def videoShenanigans(self, video):
         # Use uuid.uuid4() to create a unique file name
@@ -111,7 +188,7 @@ class CustomPredictionService(BasePredictionService):
 
         return np.asarray(compressedVideo).transpose(0, 3, 1, 2)
 
-    def handler(self, dicoms: List[pydicom.Dataset]):
+    def _run_inference(self, dicoms: List[pydicom.Dataset])->float:
         try:
             for dicom in dicoms:
                 pixel_array: np.ndarray = dicom.pixel_array
@@ -153,10 +230,9 @@ class CustomPredictionService(BasePredictionService):
                 with torch.no_grad():
                     output: torch.Tensor = CustomPredictionService.models['x3d_m'](video)
                     output = torch.sigmoid(output)  # Add sigmoid activation
-                    output: float = output.squeeze(0).detach().cpu().numpy().astype(float)
+                    probability: float = output.squeeze(0).detach().cpu().numpy().astype(float)
             
-            html_output = HTMLParser.generate_detection_results({'probability': output})
-            return {'htmlBase64': base64.b64encode(html_output.encode('utf-8')).decode('utf-8')}
+                return probability
         
         except Exception as e:
             # Make sure to clean GPU memory even if there's an error
