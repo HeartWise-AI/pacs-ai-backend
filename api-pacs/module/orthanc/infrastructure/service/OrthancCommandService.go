@@ -3,12 +3,14 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"time"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	"api-pacs/internal/assert"
+	dicomUtils "api-pacs/internal/dicom"
 	apiError "api-pacs/internal/errors"
 	hashUtils "api-pacs/internal/hash"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
@@ -28,6 +30,11 @@ type OrthancCommandService struct {
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	userApplication.UserQueryServiceInterface
 }
+
+const (
+	customSeriesInstanceUIDFormat string = "%s:%s:%s:%s" // <tenant_id>:<user_id>:<study_instance_uid>:<model_name>_<model_version>
+	customSOPInstanceUIDFormat    string = "%s:%s:%s:%s" // <tenant_id>:<user_id>:<study_instance_uid>:<series_instance_uid>
+)
 
 // ClearLocalStudiesCache clear local studies cache
 func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context) error {
@@ -173,6 +180,35 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 
 // StoreStudyCustomSeries store study custom series
 func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context, data types.StoreStudyCustomSeries) error {
+	/// check mime type
+	if data.FileMimeType == "application/pdf" {
+		// convert pdf to dicom
+		customSeriesInstanceUID := fmt.Sprintf(customSeriesInstanceUIDFormat, data.TenantID, data.UserID, data.StudyInstanceUID, data.ModelName+"_"+data.ModelVersion)
+		customSOPInstanceUID := fmt.Sprintf(customSOPInstanceUIDFormat, data.TenantID, data.UserID, data.StudyInstanceUID, customSeriesInstanceUID)
+
+		dicomInstancesBytes, err := dicomUtils.ConvertPDFToDICOM(data.FileBody, data.StudyInstanceUID, customSeriesInstanceUID, customSOPInstanceUID, "PACS.AI Report Series", "PACS.AI Report Series")
+		if err != nil {
+			log.Println(err)
+			return err
+		}
+
+		data.FileBody = dicomInstancesBytes
+	}
+
+	/// upload to local orthanc
+	uploadDICOMInstancesResponse, err := service.OrthancAPIInterface.UploadDICOMInstances(ctx, data.FileBody)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	if uploadDICOMInstancesResponse.Status != orthancAPITypes.UploadDICOMStatusSuccess && uploadDICOMInstancesResponse.Status != orthancAPITypes.UploadDICOMStatusAlreadyStored {
+		log.Println("[orthanc] error uploading DICOM instances:", uploadDICOMInstancesResponse.Status)
+		return errors.New(apiError.OrthancError)
+	}
+
+	// TODO: send via c-store to target PACS
+
 	return nil
 }
 

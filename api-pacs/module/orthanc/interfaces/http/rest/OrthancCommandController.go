@@ -433,12 +433,13 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 	}
 
 	err = controller.OrthancCommandServiceInterface.StoreStudyCustomSeries(context.TODO(), serviceTypes.StoreStudyCustomSeries{
-		TenantID:     tenantID,
-		UserID:       userID,
-		ModelName:    modelName,
-		ModelVersion: modelVersion,
-		FileBody:     []byte(fileBody),
-		FileMimeType: mimeType,
+		TenantID:         tenantID,
+		UserID:           userID,
+		StudyInstanceUID: studyInstanceUID,
+		ModelName:        modelName,
+		ModelVersion:     modelVersion,
+		FileBody:         []byte(fileBody),
+		FileMimeType:     mimeType,
 	})
 	if err != nil {
 		var httpCode int

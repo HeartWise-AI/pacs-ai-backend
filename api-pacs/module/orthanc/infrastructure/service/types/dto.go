@@ -47,12 +47,13 @@ type RetrieveModalityStudyBySeries struct {
 }
 
 type StoreStudyCustomSeries struct {
-	TenantID     string
-	UserID       string
-	ModelName    string
-	ModelVersion string
-	FileBody     []byte
-	FileMimeType string
+	TenantID         string
+	UserID           string
+	StudyInstanceUID string
+	ModelName        string
+	ModelVersion     string
+	FileBody         []byte
+	FileMimeType     string
 }
 
 type UpdateDICOMModality struct {

@@ -38,4 +38,6 @@ type OrthancAPIInterface interface {
 	TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error
 	// UpdateDICOMModality updates a DICOM modality
 	UpdateDICOMModality(ctx context.Context, modalityID string, request UpdateDICOMModalityRequest) error
+	// UploadDICOMInstances uploads DICOM instances
+	UploadDICOMInstances(ctx context.Context, dicomInstances []byte) (UploadDICOMInstancesResponse, error)
 }

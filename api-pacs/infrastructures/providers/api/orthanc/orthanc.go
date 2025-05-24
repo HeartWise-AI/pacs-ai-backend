@@ -622,6 +622,42 @@ func (o *OrthancAPI) UpdateDICOMModality(ctx context.Context, modalityID string,
 	return nil
 }
 
+// UploadDICOMInstances upload dicom instances
+func (o *OrthancAPI) UploadDICOMInstances(ctx context.Context, dicomInstances []byte) (types.UploadDICOMInstancesResponse, error) {
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/instances", o.BaseURL), bytes.NewReader(dicomInstances))
+	if err != nil {
+		return types.UploadDICOMInstancesResponse{}, err
+	}
+
+	// set headers
+	req.Header.Set("Content-Type", "application/dicom")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return types.UploadDICOMInstancesResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return types.UploadDICOMInstancesResponse{}, err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return types.UploadDICOMInstancesResponse{}, errors.New(apiError.OrthancError)
+	}
+
+	var uploadDICOMInstancesResponse types.UploadDICOMInstancesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&uploadDICOMInstancesResponse); err != nil {
+		log.Println("Error:", err)
+		return types.UploadDICOMInstancesResponse{}, err
+	}
+
+	return uploadDICOMInstancesResponse, nil
+}
+
 func (o *OrthancAPI) findLocalResources(request, response interface{}) error {
 	buf := new(bytes.Buffer)
 	err := json.NewEncoder(buf).Encode(request)
