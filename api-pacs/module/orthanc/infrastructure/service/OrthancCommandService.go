@@ -171,6 +171,11 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 	return res, nil
 }
 
+// StoreStudyCustomSeries store study custom series
+func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context, data types.StoreStudyCustomSeries) error {
+	return nil
+}
+
 // TriggerDICOMEchoSCU trigger dicom echo scu
 func (service *OrthancCommandService) TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error {
 	err := service.OrthancAPIInterface.TriggerDICOMEchoSCU(ctx, modalityID)

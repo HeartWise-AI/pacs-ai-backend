@@ -2,8 +2,6 @@ package http
 
 import (
 	"github.com/go-playground/validator/v10"
-
-	"api-pacs/module/inference/domain/entity"
 )
 
 var (
@@ -12,10 +10,6 @@ var (
 		"FindModalityStudiesRequest.ModalityID":         "Modality ID is required",
 		"RetrieveModalityStudyRequest.ModalityID":       "Modality ID is required",
 		"RetrieveModalityStudyRequest.StudyInstanceUID": "Study instance uid is required.",
-		"StoreStudyCustomSeriesRequest.ModelName":       "Model name is required.",
-		"StoreStudyCustomSeriesRequest.ModelVersion":    "Model version is required.",
-		"StoreStudyCustomSeriesRequest.EncodedData":     "Encoded data is required.",
-		"StoreStudyCustomSeriesRequest.OutputMode":      "Output mode is required.",
 		"UpdateDICOMModalityRequest.AET":                "AET is required.",
 		"UpdateDICOMModalityRequest.Host":               "Host is required.",
 		"UpdateDICOMModalityRequest.Port":               "Port is required.",
@@ -44,13 +38,6 @@ type FindModalityStudiesRequest struct {
 type RetrieveModalityStudyRequest struct {
 	ModalityID       string `json:"modalityId" validate:"required"`
 	StudyInstanceUID string `json:"studyInstanceUID" validate:"required"`
-}
-
-type StoreStudyCustomSeriesRequest struct {
-	ModelName    string            `json:"modelName" validate:"required"`
-	ModelVersion string            `json:"modelVersion" validate:"required"`
-	EncodedData  string            `json:"encodedData" validate:"required"`
-	OutputMode   entity.OutputMode `json:"outputMode" validate:"required"`
 }
 
 type UpdateDICOMModalityRequest struct {

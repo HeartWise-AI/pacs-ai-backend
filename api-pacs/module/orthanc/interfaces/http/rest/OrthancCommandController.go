@@ -1,8 +1,11 @@
 package rest
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -20,6 +23,8 @@ import (
 type OrthancCommandController struct {
 	application.OrthancCommandServiceInterface
 }
+
+var inputSeriesAllowedFileTypes = []string{"application/pdf", "application/dicom"}
 
 // RemoveDICOMModality remove dicom modality
 func (controller *OrthancCommandController) RemoveDICOMModality(w http.ResponseWriter, r *http.Request) {
@@ -326,7 +331,8 @@ func (controller *OrthancCommandController) UpdateDICOMModality(w http.ResponseW
 
 // StoreStudyCustomSeries store study custom series
 func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.ResponseWriter, r *http.Request) {
-	// tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
 	// get modality ID
 	modalityID := chi.URLParam(r, "modalityID")
@@ -356,40 +362,56 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 		return
 	}
 
-	var request types.StoreStudyCustomSeriesRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// validate request
-	err := types.Validate.Struct(request)
+	/// get file
+	file, fileHeader, err := r.FormFile("file")
 	if err != nil {
-		errors := err.(validator.ValidationErrors)
-		if len(errors) > 0 {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   types.ValidationErrors[errors[0].StructNamespace()],
-				ErrorCode: apiError.InvalidPayload,
-			}
-
-			response.JSON(w)
-			return
-		}
-
+		log.Println("Cannot read file:", err)
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
-			Message:   "Invalid payload request.",
+			Message:   "Cannot read file.",
+			ErrorCode: apiError.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+	defer file.Close()
+
+	mimeType := fileHeader.Header.Get("Content-Type")
+
+	// limit allowed mime type only
+	var isMimeTypeAllowed bool
+	for _, allowedInputSeriesFileType := range inputSeriesAllowedFileTypes {
+		if mimeType == allowedInputSeriesFileType {
+			isMimeTypeAllowed = true
+		}
+	}
+
+	if !isMimeTypeAllowed {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid input series file type.",
+			ErrorCode: apiError.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// copy content and assign
+	var buf bytes.Buffer
+	io.Copy(&buf, file)
+	fileBody := buf.String()
+
+	/// get metadata
+	modelName := r.FormValue("modelName")
+	if len(modelName) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid model name.",
 			ErrorCode: apiError.InvalidRequestPayload,
 		}
 
@@ -397,7 +419,50 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 		return
 	}
 
-	// TODO: implementation
+	modelVersion := r.FormValue("modelVersion")
+	if len(modelVersion) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid model version.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err = controller.OrthancCommandServiceInterface.StoreStudyCustomSeries(context.TODO(), serviceTypes.StoreStudyCustomSeries{
+		TenantID:     tenantID,
+		UserID:       userID,
+		ModelName:    modelName,
+		ModelVersion: modelVersion,
+		FileBody:     []byte(fileBody),
+		FileMimeType: mimeType,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.OrthancError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Orthanc service encountered an error or timeout."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Server error."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
 
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusCreated,

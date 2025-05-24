@@ -1,6 +1,7 @@
 package dicom
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -81,7 +82,7 @@ func ConvertBulkDataURIToInlineBinary(bulkDataURI string) (string, error) {
 }
 
 // ConvertPDFToDICOM convert PDF to DICOM
-func ConvertPDFToDICOM(pdfData []byte, studyInstanceUID, seriesInstanceUID, sopInstanceUID, seriesDescription, documentTitle string) (*dicom.Dataset, error) {
+func ConvertPDFToDICOM(pdfData []byte, studyInstanceUID, seriesInstanceUID, sopInstanceUID, seriesDescription, documentTitle string) ([]byte, error) {
 	// create DICOM elements
 	elements := []*dicom.Element{
 		// required identifiers
@@ -110,13 +111,13 @@ func ConvertPDFToDICOM(pdfData []byte, studyInstanceUID, seriesInstanceUID, sopI
 	dataset := dicom.Dataset{Elements: elements}
 
 	// write to buffer
-	// var buf bytes.Buffer
-	// if err := dicom.Write(&buf, dataset, nil); err != nil {
-	// 	log.Println("[dicom] error converting PDF to DICOM:", err)
-	// 	return nil, errors.New(apiError.DICOMParseError)
-	// }
+	var buf bytes.Buffer
+	if err := dicom.Write(&buf, dataset, nil); err != nil {
+		log.Println("[dicom] error converting PDF to DICOM:", err)
+		return nil, errors.New(apiError.DICOMParseError)
+	}
 
-	return &dataset, nil
+	return buf.Bytes(), nil
 }
 
 // DICOMToInstances convert DICOM to instances

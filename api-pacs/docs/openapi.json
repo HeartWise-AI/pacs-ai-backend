@@ -870,9 +870,22 @@
         "requestBody": {
           "description": "Store study custom series request",
           "content": {
-            "application/json": {
+            "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/StoreStudyCustomSeriesRequest"
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "modelName": {
+                    "type": "string"
+                  },
+                  "modelVersion": {
+                    "type": "string"
+                  }
+                },
+                "required": ["file", "modelName", "modelVersion"]
               }
             }
           },
@@ -1554,7 +1567,12 @@
         }
       },
       "StoreStudyCustomSeriesRequest": {
-        "required": ["modelName", "modelVersion", "encodedData", "outputMode"],
+        "required": [
+          "modelName",
+          "modelVersion",
+          "encodedData",
+          "inputSeriesFileType"
+        ],
         "type": "object",
         "properties": {
           "modelName": {
@@ -1566,9 +1584,9 @@
           "encodedData": {
             "type": "string"
           },
-          "outputMode": {
+          "inputSeriesFileType": {
             "type": "string",
-            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
+            "enum": ["PDF", "DCM"]
           }
         }
       },
