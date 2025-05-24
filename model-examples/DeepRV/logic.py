@@ -16,8 +16,6 @@ from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
 
-from heartwise_statplots.utils import HuggingFaceWrapper
-
 
 class RegressionHead(nn.Module):
     def __init__(self, dim_in, num_classes=1):
