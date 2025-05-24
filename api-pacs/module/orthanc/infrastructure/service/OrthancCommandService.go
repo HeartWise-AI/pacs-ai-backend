@@ -187,6 +187,9 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 		customSeriesInstanceUID := fmt.Sprintf(customSeriesInstanceUIDFormat, data.TenantID, data.StudyInstanceUID, strings.ToLower(data.ModelName+"_"+data.ModelVersion))
 		customSOPInstanceUID := fmt.Sprintf(customSOPInstanceUIDFormat, data.TenantID, data.StudyInstanceUID, customSeriesInstanceUID)
 
+		fmt.Println("customSeriesInstanceUID", customSeriesInstanceUID)
+		fmt.Println("customSOPInstanceUID", customSOPInstanceUID)
+
 		dicomInstancesBytes, err := dicomUtils.ConvertPDFToDICOM(data.FileBody, data.StudyInstanceUID, customSeriesInstanceUID, customSOPInstanceUID, "PACS.AI Report Series", "PACS.AI Report Series")
 		if err != nil {
 			log.Println("[dicom] error converting pdf to dicom:", err)
