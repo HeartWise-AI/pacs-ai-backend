@@ -33,8 +33,8 @@ type OrthancCommandService struct {
 }
 
 const (
-	customSeriesInstanceUIDFormat string = "%s:%s:%s" // <tenant_id>:<study_instance_uid>:<model_name>_<model_version>
-	customSOPInstanceUIDFormat    string = "%s:%s:%s" // <tenant_id>:<study_instance_uid>:<series_instance_uid>
+	customSeriesInstanceUIDHashFormat string = "%s:%s:%s" // <tenant_id>:<study_instance_uid>:<model_name>_<model_version>
+	customSOPInstanceUIDHashFormat    string = "%s:%s:%s" // <tenant_id>:<study_instance_uid>:<series_instance_uid>
 )
 
 // ClearLocalStudiesCache clear local studies cache
@@ -184,10 +184,10 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 	/// check mime type
 	if data.FileMimeType == "application/pdf" {
 		// convert pdf to dicom
-		customSeriesInstanceUID := fmt.Sprintf(customSeriesInstanceUIDFormat, data.TenantID, data.StudyInstanceUID, strings.ToLower(data.ModelName+"_"+data.ModelVersion))
-		customSOPInstanceUID := fmt.Sprintf(customSOPInstanceUIDFormat, data.TenantID, data.StudyInstanceUID, customSeriesInstanceUID)
+		customSeriesInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%d.%s", time.Now().UnixNano(), hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSeriesInstanceUIDHashFormat, data.TenantID, data.StudyInstanceUID, strings.ToLower(data.ModelName+"_"+data.ModelVersion))))
+		customSOPInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%d.%s", time.Now().UnixNano(), hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSOPInstanceUIDHashFormat, data.TenantID, data.StudyInstanceUID, customSeriesInstanceUID)))
 
-		fmt.Println("customSeriesInstanceUID", customSeriesInstanceUID)
+		fmt.Println("customSeriesInstanceUIDHash", customSeriesInstanceUID)
 		fmt.Println("customSOPInstanceUID", customSOPInstanceUID)
 
 		dicomInstancesBytes, err := dicomUtils.ConvertPDFToDICOM(data.FileBody, data.StudyInstanceUID, customSeriesInstanceUID, customSOPInstanceUID, "PACS.AI Report Series", "PACS.AI Report Series")
