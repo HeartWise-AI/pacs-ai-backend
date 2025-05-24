@@ -86,25 +86,25 @@ func ConvertPDFToDICOM(pdfData []byte, studyInstanceUID, seriesInstanceUID, sopI
 	// create DICOM elements
 	elements := []*dicom.Element{
 		// required identifiers
-		mustNewElement(tag.MediaStorageSOPClassUID, "1.2.840.10008.5.1.4.1.1.104.1"), // Encapsulated PDF Storage
-		mustNewElement(tag.MediaStorageSOPInstanceUID, sopInstanceUID),
-		mustNewElement(tag.TransferSyntaxUID, uid.ExplicitVRLittleEndian),
+		mustNewElement(tag.MediaStorageSOPClassUID, []string{"1.2.840.10008.5.1.4.1.1.104.1"}), // Encapsulated PDF Storage
+		mustNewElement(tag.MediaStorageSOPInstanceUID, []string{sopInstanceUID}),
+		mustNewElement(tag.TransferSyntaxUID, []string{uid.ExplicitVRLittleEndian}),
 
 		// study/series relationship
-		mustNewElement(tag.StudyInstanceUID, studyInstanceUID),
-		mustNewElement(tag.SeriesInstanceUID, seriesInstanceUID),
-		mustNewElement(tag.SeriesDescription, seriesDescription),
+		mustNewElement(tag.StudyInstanceUID, []string{studyInstanceUID}),
+		mustNewElement(tag.SeriesInstanceUID, []string{seriesInstanceUID}),
+		mustNewElement(tag.SeriesDescription, []string{seriesDescription}),
 
 		// pdf content
-		mustNewElement(tag.Modality, "DOC"), // Document Modality
-		mustNewElement(tag.DocumentTitle, documentTitle),
+		mustNewElement(tag.Modality, []string{"DOC"}), // Document Modality
+		mustNewElement(tag.DocumentTitle, []string{documentTitle}),
 		mustNewElement(tag.EncapsulatedDocument, pdfData),
-		mustNewElement(tag.MIMETypeOfEncapsulatedDocument, "application/pdf"),
+		mustNewElement(tag.MIMETypeOfEncapsulatedDocument, []string{"application/pdf"}),
 
 		// recommended metadata
-		mustNewElement(tag.InstanceNumber, 1),
-		mustNewElement(tag.ContentDate, time.Now().Format("20060102")),
-		mustNewElement(tag.ContentTime, time.Now().Format("150405")),
+		mustNewElement(tag.InstanceNumber, []int{1}),
+		mustNewElement(tag.ContentDate, []string{time.Now().Format("20060102")}),
+		mustNewElement(tag.ContentTime, []string{time.Now().Format("150405")}),
 	}
 
 	// create dataset
