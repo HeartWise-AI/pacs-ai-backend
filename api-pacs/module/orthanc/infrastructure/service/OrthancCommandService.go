@@ -189,8 +189,8 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 
 		dicomInstancesBytes, err := dicomUtils.ConvertPDFToDICOM(data.FileBody, data.StudyInstanceUID, customSeriesInstanceUID, customSOPInstanceUID, "PACS.AI Report Series", "PACS.AI Report Series")
 		if err != nil {
-			log.Println(err)
-			return err
+			log.Println("[dicom] error converting pdf to dicom:", err)
+			return errors.New(apiError.DICOMParseError)
 		}
 
 		data.FileBody = dicomInstancesBytes
@@ -199,8 +199,8 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 	/// upload to local orthanc
 	uploadDICOMInstancesResponse, err := service.OrthancAPIInterface.UploadDICOMInstances(ctx, data.FileBody)
 	if err != nil {
-		log.Println(err)
-		return err
+		log.Println("[orthanc] error uploading DICOM instances:", err)
+		return errors.New(apiError.OrthancError)
 	}
 
 	if uploadDICOMInstancesResponse.Status != orthancAPITypes.UploadDICOMStatusSuccess && uploadDICOMInstancesResponse.Status != orthancAPITypes.UploadDICOMStatusAlreadyStored {
