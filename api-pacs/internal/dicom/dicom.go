@@ -102,7 +102,7 @@ func ConvertPDFToDICOM(pdfData []byte, studyInstanceUID, seriesInstanceUID, sopI
 		mustNewElement(tag.MIMETypeOfEncapsulatedDocument, "application/pdf"),
 
 		// recommended metadata
-		mustNewElement(tag.InstanceNumber, "1"),
+		mustNewElement(tag.InstanceNumber, 1),
 		mustNewElement(tag.ContentDate, time.Now().Format("20060102")),
 		mustNewElement(tag.ContentTime, time.Now().Format("150405")),
 	}
