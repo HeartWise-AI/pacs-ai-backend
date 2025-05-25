@@ -90,9 +90,11 @@ func ConvertPDFToDICOM(pdfData []byte, studyInstanceUID, seriesInstanceUID, sopI
 		mustNewElement(tag.MediaStorageSOPInstanceUID, []string{sopInstanceUID}),
 		mustNewElement(tag.TransferSyntaxUID, []string{uid.ExplicitVRLittleEndian}),
 
-		// study/series relationship
+		// study/series/instance relationship
 		mustNewElement(tag.StudyInstanceUID, []string{studyInstanceUID}),
 		mustNewElement(tag.SeriesInstanceUID, []string{seriesInstanceUID}),
+		mustNewElement(tag.SOPClassUID, []string{"1.2.840.10008.5.1.4.1.1.104.1"}),
+		mustNewElement(tag.SOPInstanceUID, []string{sopInstanceUID}),
 		mustNewElement(tag.SeriesDescription, []string{seriesDescription}),
 
 		// pdf content
@@ -102,7 +104,7 @@ func ConvertPDFToDICOM(pdfData []byte, studyInstanceUID, seriesInstanceUID, sopI
 		mustNewElement(tag.MIMETypeOfEncapsulatedDocument, []string{"application/pdf"}),
 
 		// recommended metadata
-		mustNewElement(tag.InstanceNumber, []int{1}),
+		mustNewElement(tag.InstanceNumber, []string{"1"}),
 		mustNewElement(tag.ContentDate, []string{time.Now().Format("20060102")}),
 		mustNewElement(tag.ContentTime, []string{time.Now().Format("150405")}),
 	}
@@ -110,11 +112,9 @@ func ConvertPDFToDICOM(pdfData []byte, studyInstanceUID, seriesInstanceUID, sopI
 	// create dataset
 	dataset := dicom.Dataset{Elements: elements}
 
-	log.Println("DICOM ELEMENT:", dataset.String())
-
 	// write to buffer
 	var buf bytes.Buffer
-	if err := dicom.Write(&buf, dataset, nil); err != nil {
+	if err := dicom.Write(&buf, dataset); err != nil {
 		log.Println("[dicom] error converting PDF to DICOM:", err)
 		return nil, errors.New(apiError.DICOMParseError)
 	}
