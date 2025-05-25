@@ -7,6 +7,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -445,6 +448,23 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 		response.JSON(w)
 		return
 	}
+
+	// sort series instance by last part asc
+	sort.Slice(seriesInstanceUIDs, func(i, j int) bool {
+		partsI := strings.Split(seriesInstanceUIDs[i], ".")
+		lastPartI, err := strconv.ParseInt(partsI[len(partsI)-1], 10, 64)
+		if err != nil {
+			return false
+		}
+
+		partsJ := strings.Split(seriesInstanceUIDs[j], ".")
+		lastPartJ, err := strconv.ParseInt(partsJ[len(partsJ)-1], 10, 64)
+		if err != nil {
+			return false
+		}
+
+		return lastPartI < lastPartJ
+	})
 
 	// patient ID
 	patientID := r.FormValue("patientID")

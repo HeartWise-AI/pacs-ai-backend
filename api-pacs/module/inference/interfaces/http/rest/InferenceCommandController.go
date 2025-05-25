@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -218,6 +221,36 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 		response.JSON(w)
 		return
 	}
+
+	// check if empty
+	if len(request.SeriesInstanceUIDs) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Series instance UIDs is empty.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// sort series instance by last part asc
+	sort.Slice(request.SeriesInstanceUIDs, func(i, j int) bool {
+		partsI := strings.Split(request.SeriesInstanceUIDs[i], ".")
+		lastPartI, err := strconv.ParseInt(partsI[len(partsI)-1], 10, 64)
+		if err != nil {
+			return false
+		}
+
+		partsJ := strings.Split(request.SeriesInstanceUIDs[j], ".")
+		lastPartJ, err := strconv.ParseInt(partsJ[len(partsJ)-1], 10, 64)
+		if err != nil {
+			return false
+		}
+
+		return lastPartI < lastPartJ
+	})
 
 	predictionResult, err := controller.InferenceCommandServiceInterface.PredictInferenceModel(context.TODO(), tenantID, containerID, serviceTypes.PredictInferenceModel{
 		StudyInstanceUID:   request.StudyInstanceUID,
