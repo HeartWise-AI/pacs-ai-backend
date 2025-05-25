@@ -33,8 +33,8 @@ type OrthancCommandService struct {
 }
 
 const (
-	customSeriesInstanceUIDHashFormat string = "%s:%s:%s" // <tenant_id>:<study_instance_uid>:<model_name>_<model_version>
-	customSOPInstanceUIDHashFormat    string = "%s:%s:%s" // <tenant_id>:<study_instance_uid>:<series_instance_uid>
+	customSeriesInstanceUIDHashFormat string = "%s:%s:%s" // <tenant_id>:<series_instance_uids_asc_order>:<model_name>_<model_version>
+	customSOPInstanceUIDHashFormat    string = "%s:%s"    // <tenant_id>:<derived_series_instance_uid>
 )
 
 // ClearLocalStudiesCache clear local studies cache
@@ -184,12 +184,34 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 	/// check mime type
 	if data.FileMimeType == "application/pdf" {
 		// convert pdf to dicom
-		customSeriesInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSeriesInstanceUIDHashFormat, data.TenantID, data.StudyInstanceUID, strings.ToLower(data.ModelName+"_"+data.ModelVersion))))
-		customSOPInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSOPInstanceUIDHashFormat, data.TenantID, data.StudyInstanceUID, customSeriesInstanceUID)))
-		documentDescription := fmt.Sprintf("%s (%s) Report", data.ModelName, data.ModelVersion)
+		// form the series instance uids. It should already be in ascending order (timestamp)
+		var orderedSeriesInstanceUIDsFormat string
+		if len(data.SeriesInstanceUIDs) == 1 {
+			orderedSeriesInstanceUIDsFormat = data.SeriesInstanceUIDs[0]
+		} else {
+			orderedSeriesInstanceUIDsFormat = strings.Join(data.SeriesInstanceUIDs, ":")
+		}
+
+		currentTimestamp := time.Now().Unix()
+
+		// first: use standard prefix: 1.2.826.0.1.3680043.10.511.
+		// second: append unix timestamp in seconds
+		// third: crc32 digit hash of <tenant_id>:<orderedSeriesInstanceUIDsFormat>:<model_name>_<model_version>
+		uniqueSeriesID := hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSeriesInstanceUIDHashFormat, data.TenantID, orderedSeriesInstanceUIDsFormat, strings.ToLower(data.ModelName+"_"+data.ModelVersion)))
+		customSeriesInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%d.%s", currentTimestamp, uniqueSeriesID)
+
+		// first: use standard prefix: 1.2.826.0.1.3680043.10.511.
+		// second: append unix timestamp in seconds
+		// third: crc32 digit hash of <tenant_id>:<custom_series_instance_uid>
+		uniqueInstanceID := hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSOPInstanceUIDHashFormat, data.TenantID, customSeriesInstanceUID))
+		customSOPInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%d.%s", currentTimestamp, uniqueInstanceID)
+
+		// e.g: cathef-v1.0.0 Report
+		documentDescription := fmt.Sprintf("%s-%s Report", data.ModelName, data.ModelVersion)
 
 		log.Println("customSeriesInstanceUIDHash:", customSeriesInstanceUID)
 		log.Println("customSOPInstanceUID:", customSOPInstanceUID)
+		log.Println("documentDescription:", documentDescription)
 
 		dicomInstancesBytes, err := dicomUtils.ConvertPDFToDICOM(data.FileBody, data.StudyInstanceUID, customSeriesInstanceUID, customSOPInstanceUID, documentDescription, documentDescription)
 		if err != nil {

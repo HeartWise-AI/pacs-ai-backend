@@ -406,6 +406,45 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 	fileBody := buf.String()
 
 	/// get metadata
+	seriesInstanceUIDsStr := r.FormValue("seriesInstanceUIDs")
+	if len(seriesInstanceUIDsStr) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid series instance UIDs.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var seriesInstanceUIDs []string
+	if err := json.Unmarshal([]byte(seriesInstanceUIDsStr), &seriesInstanceUIDs); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid series instance UIDs.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// check if empty
+	if len(seriesInstanceUIDs) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Series instance UIDs is empty.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
 	modelName := r.FormValue("modelName")
 	if len(modelName) == 0 {
 		response := viewmodels.HTTPResponseVM{
@@ -433,14 +472,15 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 	}
 
 	err = controller.OrthancCommandServiceInterface.StoreStudyCustomSeries(context.TODO(), serviceTypes.StoreStudyCustomSeries{
-		TenantID:         tenantID,
-		UserID:           userID,
-		ModalityID:       modalityID,
-		StudyInstanceUID: studyInstanceUID,
-		ModelName:        modelName,
-		ModelVersion:     modelVersion,
-		FileBody:         []byte(fileBody),
-		FileMimeType:     mimeType,
+		TenantID:           tenantID,
+		UserID:             userID,
+		ModalityID:         modalityID,
+		StudyInstanceUID:   studyInstanceUID,
+		SeriesInstanceUIDs: seriesInstanceUIDs,
+		ModelName:          modelName,
+		ModelVersion:       modelVersion,
+		FileBody:           []byte(fileBody),
+		FileMimeType:       mimeType,
 	})
 	if err != nil {
 		var httpCode int

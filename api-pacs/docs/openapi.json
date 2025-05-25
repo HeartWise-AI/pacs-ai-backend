@@ -878,6 +878,10 @@
                     "type": "string",
                     "format": "binary"
                   },
+                  "seriesInstanceUIDs": {
+                    "type": "string",
+                    "description": "JSON stringified array of series instance UIDs"
+                  },
                   "modelName": {
                     "type": "string"
                   },
