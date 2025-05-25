@@ -192,8 +192,6 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 			orderedSeriesInstanceUIDsFormat = strings.Join(data.SeriesInstanceUIDs, ":")
 		}
 
-		currentTimestamp := time.Now().Unix()
-
 		// first: use standard prefix: 1.2.826.0.1.3680043.10.511.
 		// second: append unix timestamp in seconds
 		// third: crc32 digit hash of <tenant_id>:<orderedSeriesInstanceUIDsFormat>:<model_name>_<model_version>
