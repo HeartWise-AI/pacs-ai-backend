@@ -193,14 +193,12 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 		}
 
 		// first: use standard prefix: 1.2.826.0.1.3680043.10.511.
-		// second: append unix timestamp in seconds
-		// third: crc32 digit hash of <tenant_id>:<orderedSeriesInstanceUIDsFormat>:<model_name>_<model_version>
+		// second: crc32 digit hash of <tenant_id>:<orderedSeriesInstanceUIDsFormat>:<model_name>_<model_version>
 		uniqueSeriesID := hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSeriesInstanceUIDHashFormat, data.TenantID, orderedSeriesInstanceUIDsFormat, strings.ToLower(data.ModelName+"_"+data.ModelVersion)))
 		customSeriesInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", uniqueSeriesID)
 
 		// first: use standard prefix: 1.2.826.0.1.3680043.10.511.
-		// second: append unix timestamp in seconds
-		// third: crc32 digit hash of <tenant_id>:<custom_series_instance_uid>
+		// second: crc32 digit hash of <tenant_id>:<custom_series_instance_uid>
 		uniqueInstanceID := hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSOPInstanceUIDHashFormat, data.TenantID, customSeriesInstanceUID))
 		customSOPInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", uniqueInstanceID)
 
