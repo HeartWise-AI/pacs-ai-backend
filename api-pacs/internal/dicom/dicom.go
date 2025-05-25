@@ -1,6 +1,7 @@
-package dicoms
+package dicom
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"github.com/suyashkumar/dicom"
 	"github.com/suyashkumar/dicom/pkg/frame"
 	"github.com/suyashkumar/dicom/pkg/tag"
+	"github.com/suyashkumar/dicom/pkg/uid"
 
 	apiError "api-pacs/internal/errors"
 )
@@ -77,6 +79,52 @@ func ConvertBulkDataURIToInlineBinary(bulkDataURI string) (string, error) {
 
 	log.Println("[dicom-web] no application/octet-stream part found")
 	return "", errors.New(apiError.DICOMParseError)
+}
+
+// ConvertPDFToDICOM convert PDF to DICOM
+func ConvertPDFToDICOM(pdfData []byte, studyInstanceUID, seriesInstanceUID, sopInstanceUID, seriesDescription, patientID, patientName string) ([]byte, error) {
+	// create DICOM elements
+	elements := []*dicom.Element{
+		// required identifiers
+		mustNewElement(tag.MediaStorageSOPClassUID, []string{"1.2.840.10008.5.1.4.1.1.104.1"}), // Encapsulated PDF Storage
+		mustNewElement(tag.MediaStorageSOPInstanceUID, []string{sopInstanceUID}),
+		mustNewElement(tag.TransferSyntaxUID, []string{uid.ExplicitVRLittleEndian}),
+
+		// study/series/instance relationship
+		mustNewElement(tag.StudyInstanceUID, []string{studyInstanceUID}),
+		mustNewElement(tag.SeriesInstanceUID, []string{seriesInstanceUID}),
+		mustNewElement(tag.SOPClassUID, []string{"1.2.840.10008.5.1.4.1.1.104.1"}),
+		mustNewElement(tag.SOPInstanceUID, []string{sopInstanceUID}),
+		mustNewElement(tag.SeriesDescription, []string{seriesDescription}),
+
+		// patient information
+		mustNewElement(tag.PatientID, []string{patientID}),
+		mustNewElement(tag.PatientName, []string{patientName}),
+
+		// pdf content
+		mustNewElement(tag.Modality, []string{"DOC"}), // Document Modality
+		mustNewElement(tag.DocumentTitle, []string{seriesDescription}),
+		mustNewElement(tag.EncapsulatedDocument, pdfData),
+		mustNewElement(tag.MIMETypeOfEncapsulatedDocument, []string{"application/pdf"}),
+
+		// recommended metadata
+		mustNewElement(tag.SeriesNumber, []string{fmt.Sprintf("%d", time.Now().Unix())}),
+		mustNewElement(tag.InstanceNumber, []string{"1"}),
+		mustNewElement(tag.ContentDate, []string{time.Now().Format("20060102")}),
+		mustNewElement(tag.ContentTime, []string{time.Now().Format("150405")}),
+	}
+
+	// create dataset
+	dataset := dicom.Dataset{Elements: elements}
+
+	// write to buffer
+	var buf bytes.Buffer
+	if err := dicom.Write(&buf, dataset); err != nil {
+		log.Println("[dicom] error converting PDF to DICOM:", err)
+		return nil, errors.New(apiError.DICOMParseError)
+	}
+
+	return buf.Bytes(), nil
 }
 
 // DICOMToInstances convert DICOM to instances
@@ -212,4 +260,13 @@ func getArrayDepth(arr interface{}) int {
 	}
 
 	return depth
+}
+
+func mustNewElement(t tag.Tag, data any) *dicom.Element {
+	elem, err := dicom.NewElement(t, data)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return elem
 }

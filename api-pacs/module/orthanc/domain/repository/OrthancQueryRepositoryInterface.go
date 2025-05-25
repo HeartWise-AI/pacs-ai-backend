@@ -10,4 +10,6 @@ import (
 type OrthancQueryRepositoryInterface interface {
 	// SelectDICOMModalityByModalityID get DICOM modality by modality id
 	SelectDICOMModalityByModalityID(ctx context.Context, tenantID, modalityID string) (entity.DICOMModality, error)
+	// SelectLinkedDICOMModalityWithEnabledCStore get DICOM modality by enabled C-Store
+	SelectLinkedDICOMModalityWithEnabledCStore(ctx context.Context, tenantID, hostHash string) (entity.DICOMModality, error)
 }
