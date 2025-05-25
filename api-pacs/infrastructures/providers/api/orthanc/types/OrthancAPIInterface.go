@@ -34,6 +34,8 @@ type OrthancAPIInterface interface {
 	RetrieveDICOMWebInstanceFile(ctx context.Context, studyInstanceUID, seriesInstanceUID, sopInstanceUID string) ([]byte, error)
 	// RetrieveDICOMWebInstanceMetadata retrieves DICOM web instance metadata
 	RetrieveDICOMWebInstanceMetadata(ctx context.Context, studyInstanceUID, seriesInstanceUID, sopInstanceUID string) ([]map[string]interface{}, error)
+	// StraightDICOMStoreSCU straight DICOM store SCU
+	StraightDICOMStoreSCU(ctx context.Context, modalityID string, dicomInstances []byte) (StraightDICOMStoreSCUResponse, error)
 	// TriggerDICOMEchoSCU trigger dicom C-ECHO SCU
 	TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error
 	// UpdateDICOMModality updates a DICOM modality

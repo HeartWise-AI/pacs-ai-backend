@@ -553,6 +553,42 @@ func (o *OrthancAPI) RetrieveDICOMWebInstanceMetadata(ctx context.Context, study
 	return instanceMetadata, nil
 }
 
+// StraightDICOMStoreSCU straight DICOM store SCU
+func (o *OrthancAPI) StraightDICOMStoreSCU(ctx context.Context, modalityID string, dicomInstances []byte) (types.StraightDICOMStoreSCUResponse, error) {
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/store-straight", o.BaseURL, modalityID), bytes.NewReader(dicomInstances))
+	if err != nil {
+		return types.StraightDICOMStoreSCUResponse{}, err
+	}
+
+	// set headers
+	req.Header.Set("Content-Type", "application/dicom")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return types.StraightDICOMStoreSCUResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return types.StraightDICOMStoreSCUResponse{}, err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return types.StraightDICOMStoreSCUResponse{}, errors.New(apiError.OrthancError)
+	}
+
+	var straightDICOMStoreSCUResponse types.StraightDICOMStoreSCUResponse
+	if err := json.NewDecoder(resp.Body).Decode(&straightDICOMStoreSCUResponse); err != nil {
+		log.Println("Error:", err)
+		return types.StraightDICOMStoreSCUResponse{}, err
+	}
+
+	return straightDICOMStoreSCUResponse, nil
+}
+
 // TriggerDICOMEchoSCU trigger dicom C-ECHO SCU
 func (o *OrthancAPI) TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error {
 	buf := new(bytes.Buffer)

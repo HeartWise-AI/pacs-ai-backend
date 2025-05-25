@@ -450,6 +450,9 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 		case apiError.OrthancError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Orthanc service encountered an error or timeout."
+		case apiError.DuplicateRecord:
+			httpCode = http.StatusConflict
+			errorMsg = "Report already exist for this study and model version."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Server error."

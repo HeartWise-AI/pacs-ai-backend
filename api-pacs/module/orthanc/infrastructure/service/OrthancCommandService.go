@@ -188,8 +188,8 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 		customSOPInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSOPInstanceUIDHashFormat, data.TenantID, data.StudyInstanceUID, customSeriesInstanceUID)))
 		documentDescription := fmt.Sprintf("%s (%s) Report", data.ModelName, data.ModelVersion)
 
-		fmt.Println("customSeriesInstanceUIDHash", customSeriesInstanceUID)
-		fmt.Println("customSOPInstanceUID", customSOPInstanceUID)
+		log.Println("customSeriesInstanceUIDHash:", customSeriesInstanceUID)
+		log.Println("customSOPInstanceUID:", customSOPInstanceUID)
 
 		dicomInstancesBytes, err := dicomUtils.ConvertPDFToDICOM(data.FileBody, data.StudyInstanceUID, customSeriesInstanceUID, customSOPInstanceUID, documentDescription, documentDescription)
 		if err != nil {
@@ -212,9 +212,31 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 		return errors.New(apiError.OrthancError)
 	}
 
-	// TODO: send via c-store to target PACS
+	// if already exist, return duplicate error
+	if uploadDICOMInstancesResponse.Status == orthancAPITypes.UploadDICOMStatusAlreadyStored {
+		return errors.New(apiError.DuplicateRecord)
+	}
 
-	// TODO: persist to elasticsearch for store to local and c-store to target PACS
+	/// forward to target dicom modality
+	storeRes, err := service.OrthancAPIInterface.StraightDICOMStoreSCU(ctx, data.ModalityID, data.FileBody)
+	if err != nil {
+		log.Println("[orthanc] error straight DICOM store SCU:", err)
+
+		// delete already uploaded local resource
+		err = service.OrthancAPIInterface.DeleteLocalResources(ctx, orthancAPITypes.DeleteLocalResourcesRequest{
+			Resources: []string{uploadDICOMInstancesResponse.ID},
+		})
+		if err != nil {
+			log.Println("[orthanc] error deleting local resource:", err)
+		}
+
+		return errors.New(apiError.OrthancError)
+	}
+
+	log.Println("store SOPClassUID:", storeRes.SOPClassUID)
+	log.Println("store SOPInstanceUID:", storeRes.SOPInstanceUID)
+
+	// TODO: elasticsearch logs
 
 	return nil
 }

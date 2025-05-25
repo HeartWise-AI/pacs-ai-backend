@@ -136,6 +136,11 @@ type QueryModalitySeriesAnswersResponse struct {
 	StudyInstanceUID     string `json:"StudyInstanceUID"`
 }
 
+type StraightDICOMStoreSCUResponse struct {
+	SOPClassUID    string `json:"SOPClassUID"`
+	SOPInstanceUID string `json:"SOPInstanceUID"`
+}
+
 type UploadDICOMInstancesResponse struct {
 	ID            string            `json:"ID"`
 	ParentPatient string            `json:"ParentPatient"`
