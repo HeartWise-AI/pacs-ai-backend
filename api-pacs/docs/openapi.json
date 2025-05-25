@@ -882,6 +882,12 @@
                     "type": "string",
                     "description": "JSON stringified array of series instance UIDs"
                   },
+                  "patientID": {
+                    "type": "string"
+                  },
+                  "patientName": {
+                    "type": "string"
+                  },
                   "modelName": {
                     "type": "string"
                   },
@@ -889,7 +895,14 @@
                     "type": "string"
                   }
                 },
-                "required": ["file", "modelName", "modelVersion"]
+                "required": [
+                  "file",
+                  "seriesInstanceUIDs",
+                  "patientID",
+                  "patientName",
+                  "modelName",
+                  "modelVersion"
+                ]
               }
             }
           },

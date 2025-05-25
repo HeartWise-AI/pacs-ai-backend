@@ -82,7 +82,7 @@ func ConvertBulkDataURIToInlineBinary(bulkDataURI string) (string, error) {
 }
 
 // ConvertPDFToDICOM convert PDF to DICOM
-func ConvertPDFToDICOM(pdfData []byte, studyInstanceUID, seriesInstanceUID, sopInstanceUID, seriesDescription, documentTitle string) ([]byte, error) {
+func ConvertPDFToDICOM(pdfData []byte, studyInstanceUID, seriesInstanceUID, sopInstanceUID, seriesDescription, patientID, patientName string) ([]byte, error) {
 	// create DICOM elements
 	elements := []*dicom.Element{
 		// required identifiers
@@ -97,9 +97,13 @@ func ConvertPDFToDICOM(pdfData []byte, studyInstanceUID, seriesInstanceUID, sopI
 		mustNewElement(tag.SOPInstanceUID, []string{sopInstanceUID}),
 		mustNewElement(tag.SeriesDescription, []string{seriesDescription}),
 
+		// patient information
+		mustNewElement(tag.PatientID, []string{patientID}),
+		mustNewElement(tag.PatientName, []string{patientName}),
+
 		// pdf content
 		mustNewElement(tag.Modality, []string{"DOC"}), // Document Modality
-		mustNewElement(tag.DocumentTitle, []string{documentTitle}),
+		mustNewElement(tag.DocumentTitle, []string{seriesDescription}),
 		mustNewElement(tag.EncapsulatedDocument, pdfData),
 		mustNewElement(tag.MIMETypeOfEncapsulatedDocument, []string{"application/pdf"}),
 

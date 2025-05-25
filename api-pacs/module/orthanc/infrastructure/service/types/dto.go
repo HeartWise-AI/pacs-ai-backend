@@ -52,6 +52,8 @@ type StoreStudyCustomSeries struct {
 	ModalityID         string
 	StudyInstanceUID   string
 	SeriesInstanceUIDs []string
+	PatientID          string
+	PatientName        string
 	ModelName          string
 	ModelVersion       string
 	FileBody           []byte

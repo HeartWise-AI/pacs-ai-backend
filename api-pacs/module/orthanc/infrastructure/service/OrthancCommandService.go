@@ -207,13 +207,13 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 		customSOPInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%d.%s", currentTimestamp, uniqueInstanceID)
 
 		// e.g: cathef-v1.0.0 Report
-		documentDescription := fmt.Sprintf("%s-%s Report", data.ModelName, data.ModelVersion)
+		seriesDescription := fmt.Sprintf("%s-%s Report", data.ModelName, data.ModelVersion)
 
 		log.Println("customSeriesInstanceUIDHash:", customSeriesInstanceUID)
 		log.Println("customSOPInstanceUID:", customSOPInstanceUID)
-		log.Println("documentDescription:", documentDescription)
+		log.Println("seriesDescription:", seriesDescription)
 
-		dicomInstancesBytes, err := dicomUtils.ConvertPDFToDICOM(data.FileBody, data.StudyInstanceUID, customSeriesInstanceUID, customSOPInstanceUID, documentDescription, documentDescription)
+		dicomInstancesBytes, err := dicomUtils.ConvertPDFToDICOM(data.FileBody, data.StudyInstanceUID, customSeriesInstanceUID, customSOPInstanceUID, seriesDescription, data.PatientID, data.PatientName)
 		if err != nil {
 			log.Println("[dicom] error converting pdf to dicom:", err)
 			return errors.New(apiError.DICOMParseError)

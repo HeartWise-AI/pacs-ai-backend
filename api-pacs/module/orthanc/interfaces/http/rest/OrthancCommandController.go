@@ -406,6 +406,7 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 	fileBody := buf.String()
 
 	/// get metadata
+	// series instance UIDs
 	seriesInstanceUIDsStr := r.FormValue("seriesInstanceUIDs")
 	if len(seriesInstanceUIDsStr) == 0 {
 		response := viewmodels.HTTPResponseVM{
@@ -445,6 +446,35 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 		return
 	}
 
+	// patient ID
+	patientID := r.FormValue("patientID")
+	if len(patientID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid patient ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// patient name
+	patientName := r.FormValue("patientName")
+	if len(patientName) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid patient name.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// model name
 	modelName := r.FormValue("modelName")
 	if len(modelName) == 0 {
 		response := viewmodels.HTTPResponseVM{
@@ -458,6 +488,7 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 		return
 	}
 
+	// model version
 	modelVersion := r.FormValue("modelVersion")
 	if len(modelVersion) == 0 {
 		response := viewmodels.HTTPResponseVM{
