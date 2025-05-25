@@ -3,12 +3,15 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	"api-pacs/internal/assert"
+	dicomUtils "api-pacs/internal/dicom"
 	apiError "api-pacs/internal/errors"
 	hashUtils "api-pacs/internal/hash"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
@@ -28,6 +31,11 @@ type OrthancCommandService struct {
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	userApplication.UserQueryServiceInterface
 }
+
+const (
+	customSeriesInstanceUIDHashFormat string = "%s:%s:%s" // <tenant_id>:<series_instance_uids_asc_order>:<model_name>_<model_version>
+	customSOPInstanceUIDHashFormat    string = "%s:%s"    // <tenant_id>:<derived_series_instance_uid>
+)
 
 // ClearLocalStudiesCache clear local studies cache
 func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context) error {
@@ -169,6 +177,88 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 	}()
 
 	return res, nil
+}
+
+// StoreStudyCustomSeries store study custom series
+func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context, data types.StoreStudyCustomSeries) error {
+	/// check mime type
+	if data.FileMimeType == "application/pdf" {
+		// convert pdf to dicom
+		// form the series instance uids. It should already be in ascending order (timestamp)
+		var orderedSeriesInstanceUIDsFormat string
+		if len(data.SeriesInstanceUIDs) == 1 {
+			orderedSeriesInstanceUIDsFormat = data.SeriesInstanceUIDs[0]
+		} else {
+			orderedSeriesInstanceUIDsFormat = strings.Join(data.SeriesInstanceUIDs, ":")
+		}
+
+		// first: use standard prefix: 1.2.826.0.1.3680043.10.511.
+		// second: append unix timestamp in seconds
+		// third: crc32 digit hash of <tenant_id>:<orderedSeriesInstanceUIDsFormat>:<model_name>_<model_version>
+		uniqueSeriesID := hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSeriesInstanceUIDHashFormat, data.TenantID, orderedSeriesInstanceUIDsFormat, strings.ToLower(data.ModelName+"_"+data.ModelVersion)))
+		customSeriesInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", uniqueSeriesID)
+
+		// first: use standard prefix: 1.2.826.0.1.3680043.10.511.
+		// second: append unix timestamp in seconds
+		// third: crc32 digit hash of <tenant_id>:<custom_series_instance_uid>
+		uniqueInstanceID := hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSOPInstanceUIDHashFormat, data.TenantID, customSeriesInstanceUID))
+		customSOPInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", uniqueInstanceID)
+
+		// e.g: cathef-v1.0.0 Report
+		seriesDescription := fmt.Sprintf("%s-%s Report", data.ModelName, data.ModelVersion)
+
+		log.Println("customSeriesInstanceUIDHash:", customSeriesInstanceUID)
+		log.Println("customSOPInstanceUID:", customSOPInstanceUID)
+		log.Println("seriesDescription:", seriesDescription)
+
+		dicomInstancesBytes, err := dicomUtils.ConvertPDFToDICOM(data.FileBody, data.StudyInstanceUID, customSeriesInstanceUID, customSOPInstanceUID, seriesDescription, data.PatientID, data.PatientName)
+		if err != nil {
+			log.Println("[dicom] error converting pdf to dicom:", err)
+			return errors.New(apiError.DICOMParseError)
+		}
+
+		data.FileBody = dicomInstancesBytes
+	}
+
+	/// upload to local orthanc
+	uploadDICOMInstancesResponse, err := service.OrthancAPIInterface.UploadDICOMInstances(ctx, data.FileBody)
+	if err != nil {
+		log.Println("[orthanc] error uploading DICOM instances:", err)
+		return errors.New(apiError.OrthancError)
+	}
+
+	if uploadDICOMInstancesResponse.Status != orthancAPITypes.UploadDICOMStatusSuccess && uploadDICOMInstancesResponse.Status != orthancAPITypes.UploadDICOMStatusAlreadyStored {
+		log.Println("[orthanc] error uploading DICOM instances:", uploadDICOMInstancesResponse.Status)
+		return errors.New(apiError.OrthancError)
+	}
+
+	// if already exist, return duplicate error
+	if uploadDICOMInstancesResponse.Status == orthancAPITypes.UploadDICOMStatusAlreadyStored {
+		return errors.New(apiError.DuplicateRecord)
+	}
+
+	/// forward to target dicom modality
+	storeRes, err := service.OrthancAPIInterface.StraightDICOMStoreSCU(ctx, data.ModalityID, data.FileBody)
+	if err != nil {
+		log.Println("[orthanc] error straight DICOM store SCU:", err)
+
+		// delete already uploaded local resource
+		err = service.OrthancAPIInterface.DeleteLocalResources(ctx, orthancAPITypes.DeleteLocalResourcesRequest{
+			Resources: []string{uploadDICOMInstancesResponse.ID},
+		})
+		if err != nil {
+			log.Println("[orthanc] error deleting local resource:", err)
+		}
+
+		return errors.New(apiError.OrthancError)
+	}
+
+	log.Println("store SOPClassUID:", storeRes.SOPClassUID)
+	log.Println("store SOPInstanceUID:", storeRes.SOPInstanceUID)
+
+	// TODO: elasticsearch logs
+
+	return nil
 }
 
 // TriggerDICOMEchoSCU trigger dicom echo scu

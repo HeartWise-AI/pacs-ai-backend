@@ -66,6 +66,19 @@ type GetJobInfoResponse struct {
 	State    string `json:"state"`
 }
 
+type GetDICOMModalityResponse struct {
+	ID            string `json:"id"`
+	TenantID      string `json:"tenantId"`
+	ModalityID    string `json:"modalityId"`
+	AET           string `json:"aet"`
+	HostHash      string `json:"hostHash"`
+	CFindEnabled  bool   `json:"cFindEnabled"`
+	CMoveEnabled  bool   `json:"cMoveEnabled"`
+	CStoreEnabled bool   `json:"cStoreEnabled"`
+	CreatedAt     int    `json:"createdAt"`
+	UpdatedAt     int    `json:"updatedAt"`
+}
+
 type ListDICOMModalitiesResponse struct {
 	Modalities map[string]ListDICOMModality `json:"modalities"`
 }
