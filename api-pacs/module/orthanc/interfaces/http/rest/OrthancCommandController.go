@@ -435,6 +435,7 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 	err = controller.OrthancCommandServiceInterface.StoreStudyCustomSeries(context.TODO(), serviceTypes.StoreStudyCustomSeries{
 		TenantID:         tenantID,
 		UserID:           userID,
+		ModalityID:       modalityID,
 		StudyInstanceUID: studyInstanceUID,
 		ModelName:        modelName,
 		ModelVersion:     modelVersion,

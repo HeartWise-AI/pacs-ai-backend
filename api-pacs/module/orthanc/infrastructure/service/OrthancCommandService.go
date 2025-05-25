@@ -186,11 +186,12 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 		// convert pdf to dicom
 		customSeriesInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSeriesInstanceUIDHashFormat, data.TenantID, data.StudyInstanceUID, strings.ToLower(data.ModelName+"_"+data.ModelVersion))))
 		customSOPInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSOPInstanceUIDHashFormat, data.TenantID, data.StudyInstanceUID, customSeriesInstanceUID)))
+		documentDescription := fmt.Sprintf("%s (%s) Report", data.ModelName, data.ModelVersion)
 
 		fmt.Println("customSeriesInstanceUIDHash", customSeriesInstanceUID)
 		fmt.Println("customSOPInstanceUID", customSOPInstanceUID)
 
-		dicomInstancesBytes, err := dicomUtils.ConvertPDFToDICOM(data.FileBody, data.StudyInstanceUID, customSeriesInstanceUID, customSOPInstanceUID, "PACS.AI Report Series", "PACS.AI Report Series")
+		dicomInstancesBytes, err := dicomUtils.ConvertPDFToDICOM(data.FileBody, data.StudyInstanceUID, customSeriesInstanceUID, customSOPInstanceUID, documentDescription, documentDescription)
 		if err != nil {
 			log.Println("[dicom] error converting pdf to dicom:", err)
 			return errors.New(apiError.DICOMParseError)

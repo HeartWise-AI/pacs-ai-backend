@@ -964,6 +964,40 @@
         }
       }
     },
+    "/orthanc/modality/{modalityID}/linked/storage/enabled": {
+      "get": {
+        "tags": ["orthanc"],
+        "summary": "Get Linked DICOM Modality With Enabled C-Store",
+        "description": "Get linked DICOM modality with enabled C-Store.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modalityID",
+            "in": "path",
+            "description": "Modality ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/orthanc/sop-instance/{sopInstanceUID}/find": {
       "get": {
         "tags": ["orthanc"],

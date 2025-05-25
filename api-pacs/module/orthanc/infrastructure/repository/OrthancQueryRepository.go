@@ -43,3 +43,34 @@ func (repository *OrthancQueryRepository) SelectDICOMModalityByModalityID(ctx co
 
 	return dicomModality, nil
 }
+
+// SelectLinkedDICOMModalityWithEnabledCStore get DICOM modality by enabled C-Store
+func (repository *OrthancQueryRepository) SelectLinkedDICOMModalityWithEnabledCStore(ctx context.Context, tenantID, hostHash string) (entity.DICOMModality, error) {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return entity.DICOMModality{}, errors.New(apiError.FirestoreError)
+	}
+
+	// get firestore DICOM modality
+	var dicomModality entity.DICOMModality
+
+	firestoreRes, err := firestoreClient.Collection(dicomModality.GetModelName()).
+		Where("tenant_id", "==", tenantID).
+		Where("host_hash", "==", hostHash).
+		Where("c_store_enabled", "==", true).
+		Limit(1).Documents(ctx).GetAll()
+
+	if len(firestoreRes) == 0 {
+		return entity.DICOMModality{}, errors.New(apiError.MissingRecord)
+	}
+
+	err = firestoreRes[0].DataTo(&dicomModality)
+	if err != nil {
+		log.Println(err)
+		return entity.DICOMModality{}, errors.New(apiError.FirestoreError)
+	}
+
+	return dicomModality, nil
+}

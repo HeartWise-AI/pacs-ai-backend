@@ -175,6 +175,7 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Post("/modality/{modalityID}/study/{studyInstanceUID}/series/store", orthancCommandController.StoreStudyCustomSeries)
 					r.Get("/jobs", orthancQueryController.GetJobsInfo)
 					r.Get("/modalities/list", orthancQueryController.ListDICOMModalities)
+					r.Get("/modality/{modalityID}/linked/storage/enabled", orthancQueryController.GetLinkedDICOMModalityWithEnabledCStore)
 					r.Get("/sop-instance/{sopInstanceUID}/find", orthancQueryController.FindLocalSOPInstance)
 
 					// admin or owner only

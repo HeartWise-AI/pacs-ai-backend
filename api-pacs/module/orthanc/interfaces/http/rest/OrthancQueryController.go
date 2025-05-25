@@ -20,67 +20,6 @@ type OrthancQueryController struct {
 	application.OrthancQueryServiceInterface
 }
 
-// GetJobsInfo get jobs information
-func (controller *OrthancQueryController) GetJobsInfo(w http.ResponseWriter, r *http.Request) {
-	jobIDs := r.URL.Query()["jobIds"]
-
-	if len(jobIDs) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid job IDs.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-	res, err := controller.OrthancQueryServiceInterface.GetJobsInfo(context.TODO(), jobIDs)
-	if err != nil {
-		var httpCode int
-		var errorMsg string
-
-		switch err.Error() {
-		case apiError.OrthancError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Orthanc service encountered an error or timeout."
-		default:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Server error."
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    httpCode,
-			Success:   false,
-			Message:   errorMsg,
-			ErrorCode: err.Error(),
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	var jobs []types.GetJobInfoResponse
-
-	for _, job := range res {
-		jobs = append(jobs, types.GetJobInfoResponse{
-			ID:       job.ID,
-			Priority: job.Priority,
-			Progress: job.Progress,
-			State:    job.State,
-		})
-	}
-
-	response := viewmodels.HTTPResponseVM{
-		Status:  http.StatusOK,
-		Success: true,
-		Message: "Successfully fetched jobs info.",
-		Data:    jobs,
-	}
-
-	response.JSON(w)
-}
-
 // FindLocalSOPInstance find local SOP instance
 func (controller *OrthancQueryController) FindLocalSOPInstance(w http.ResponseWriter, r *http.Request) {
 	sopInstanceUID := chi.URLParam(r, "sopInstanceUID")
@@ -227,6 +166,121 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 		Success: true,
 		Message: "Successfully fetched modality studies.",
 		Data:    modalityStudies,
+	}
+
+	response.JSON(w)
+}
+
+// GetJobsInfo get jobs information
+func (controller *OrthancQueryController) GetJobsInfo(w http.ResponseWriter, r *http.Request) {
+	jobIDs := r.URL.Query()["jobIds"]
+
+	if len(jobIDs) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid job IDs.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+	res, err := controller.OrthancQueryServiceInterface.GetJobsInfo(context.TODO(), jobIDs)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.OrthancError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Orthanc service encountered an error or timeout."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Server error."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var jobs []types.GetJobInfoResponse
+
+	for _, job := range res {
+		jobs = append(jobs, types.GetJobInfoResponse{
+			ID:       job.ID,
+			Priority: job.Priority,
+			Progress: job.Progress,
+			State:    job.State,
+		})
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully fetched jobs info.",
+		Data:    jobs,
+	}
+
+	response.JSON(w)
+}
+
+// GetLinkedDICOMModalityWithEnabledCStore get linked DICOM modality with enabled C-Store
+func (controller *OrthancQueryController) GetLinkedDICOMModalityWithEnabledCStore(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	modalityID := chi.URLParam(r, "modalityID")
+
+	dicomModality, err := controller.OrthancQueryServiceInterface.GetLinkedDICOMModalityWithEnabledCStore(context.TODO(), tenantID, modalityID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Firestore error."
+		case apiError.OrthancError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Orthanc service encountered an error or timeout."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Server error."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully fetched linked DICOM modality with enabled C-Store.",
+		Data: &types.GetDICOMModalityResponse{
+			ID:            dicomModality.ID,
+			TenantID:      dicomModality.TenantID,
+			ModalityID:    dicomModality.ModalityID,
+			AET:           dicomModality.AET,
+			HostHash:      dicomModality.HostHash,
+			CFindEnabled:  dicomModality.CFindEnabled,
+			CMoveEnabled:  dicomModality.CMoveEnabled,
+			CStoreEnabled: dicomModality.CStoreEnabled,
+			CreatedAt:     dicomModality.CreatedAt,
+			UpdatedAt:     dicomModality.UpdatedAt,
+		},
 	}
 
 	response.JSON(w)
