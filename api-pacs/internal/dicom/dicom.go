@@ -110,6 +110,8 @@ func ConvertPDFToDICOM(pdfData []byte, studyInstanceUID, seriesInstanceUID, sopI
 	// create dataset
 	dataset := dicom.Dataset{Elements: elements}
 
+	log.Println("DICOM ELEMENT:", dataset.String())
+
 	// write to buffer
 	var buf bytes.Buffer
 	if err := dicom.Write(&buf, dataset, nil); err != nil {
