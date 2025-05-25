@@ -508,6 +508,8 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 		ModalityID:         modalityID,
 		StudyInstanceUID:   studyInstanceUID,
 		SeriesInstanceUIDs: seriesInstanceUIDs,
+		PatientID:          patientID,
+		PatientName:        patientName,
 		ModelName:          modelName,
 		ModelVersion:       modelVersion,
 		FileBody:           []byte(fileBody),
