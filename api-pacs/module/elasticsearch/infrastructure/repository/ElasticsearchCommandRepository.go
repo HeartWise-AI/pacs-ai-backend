@@ -93,6 +93,9 @@ func (repository *ElasticsearchCommandRepository) InsertPredictInferenceModelLog
 	predictInferenceModel := entity.PredictInferenceModel{
 		TenantID:           data.TenantID,
 		TenantName:         data.TenantName,
+		UserID:             data.UserID,
+		Email:              data.Email,
+		Name:               data.Name,
 		ContainerID:        data.ContainerID,
 		ContainerName:      data.ContainerName,
 		InferenceModelID:   data.InferenceModelID,
@@ -127,6 +130,34 @@ func (repository *ElasticsearchCommandRepository) InsertRetrieveStudyLog(ctx con
 	}
 
 	res, err := repository.ElasticsearchDBHandlerInterface.IndexDocument(ctx, study.GetModelName(), study)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.DatabaseError)
+	}
+
+	return res, nil
+}
+
+// InsertStoredCustomSeriesLog insert stored custom series log
+func (repository *ElasticsearchCommandRepository) InsertStoredCustomSeriesLog(ctx context.Context, data repositoryTypes.CreateStoredCustomSeriesLog) (*index.Response, error) {
+	storedCustomSeries := entity.StoredCustomSeries{
+		TenantID:                data.TenantID,
+		TenantName:              data.TenantName,
+		UserID:                  data.UserID,
+		Email:                   data.Email,
+		Name:                    data.Name,
+		ModalityID:              data.ModalityID,
+		StudyInstanceUID:        data.StudyInstanceUID,
+		SeriesInstanceUIDs:      data.SeriesInstanceUIDs,
+		PatientID:               data.PatientID,
+		ModelName:               data.ModelName,
+		ModelVersion:            data.ModelVersion,
+		CustomSeriesInstanceUID: data.CustomSeriesInstanceUID,
+		CustomSOPInstanceUID:    data.CustomSOPInstanceUID,
+		Timestamp:               uint(time.Now().Unix()),
+	}
+
+	res, err := repository.ElasticsearchDBHandlerInterface.IndexDocument(ctx, storedCustomSeries.GetModelName(), storedCustomSeries)
 	if err != nil {
 		log.Println(err)
 		return nil, errors.New(apiError.DatabaseError)

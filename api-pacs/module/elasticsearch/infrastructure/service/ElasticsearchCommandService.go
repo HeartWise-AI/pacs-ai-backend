@@ -105,6 +105,9 @@ func (service *ElasticsearchCommandService) CreatePredictInferenceModelLog(ctx c
 	res, err := service.ElasticsearchCommandRepositoryInterface.InsertPredictInferenceModelLog(ctx, repositoryTypes.CreatePredictInferenceModelLog{
 		TenantID:           data.TenantID,
 		TenantName:         data.TenantName,
+		UserID:             data.UserID,
+		Email:              data.Email,
+		Name:               data.Name,
 		ContainerID:        data.ContainerID,
 		ContainerName:      data.ContainerName,
 		InferenceModelID:   data.InferenceModelID,
@@ -131,6 +134,30 @@ func (service *ElasticsearchCommandService) CreateRetrieveStudyLog(ctx context.C
 		Email:            data.Email,
 		Name:             data.Name,
 		StudyInstanceUID: data.StudyInstanceUID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+// CreateStoredCustomSeriesLog add a stored custom series log
+func (service *ElasticsearchCommandService) CreateStoredCustomSeriesLog(ctx context.Context, data types.CreateStoredCustomSeriesLog) (*index.Response, error) {
+	res, err := service.ElasticsearchCommandRepositoryInterface.InsertStoredCustomSeriesLog(ctx, repositoryTypes.CreateStoredCustomSeriesLog{
+		TenantID:                data.TenantID,
+		TenantName:              data.TenantName,
+		UserID:                  data.UserID,
+		Email:                   data.Email,
+		Name:                    data.Name,
+		ModalityID:              data.ModalityID,
+		StudyInstanceUID:        data.StudyInstanceUID,
+		SeriesInstanceUIDs:      data.SeriesInstanceUIDs,
+		PatientID:               data.PatientID,
+		ModelName:               data.ModelName,
+		ModelVersion:            data.ModelVersion,
+		CustomSeriesInstanceUID: data.CustomSeriesInstanceUID,
+		CustomSOPInstanceUID:    data.CustomSOPInstanceUID,
 	})
 	if err != nil {
 		return nil, err

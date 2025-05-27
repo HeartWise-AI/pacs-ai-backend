@@ -1,12 +1,21 @@
 package types
 
+type JobStatus string
+type UploadDICOMStatus string
+
 const (
-	JobPending string = "Pending"
-	JobRunning string = "Running"
-	JobSuccess string = "Success"
-	JobFailure string = "Failure"
-	JobPaused  string = "Paused"
-	JobRetry   string = "Retry"
+	// job status
+	JobPending JobStatus = "Pending"
+	JobRunning JobStatus = "Running"
+	JobSuccess JobStatus = "Success"
+	JobFailure JobStatus = "Failure"
+	JobPaused  JobStatus = "Paused"
+	JobRetry   JobStatus = "Retry"
+	// upload dicom status
+	UploadDICOMStatusSuccess       UploadDICOMStatus = "Success"
+	UploadDICOMStatusAlreadyStored UploadDICOMStatus = "AlreadyStored"
+	UploadDICOMStatusFailure       UploadDICOMStatus = "Failure"
+	UploadDICOMStatusFilteredOut   UploadDICOMStatus = "FilteredOut"
 )
 
 type DeleteLocalResourcesRequest struct {
@@ -125,6 +134,20 @@ type QueryModalitySeriesAnswersResponse struct {
 	SeriesInstanceUID    string `json:"SeriesInstanceUID"`
 	SpecificCharacterSet string `json:"SpecificCharacterSet"`
 	StudyInstanceUID     string `json:"StudyInstanceUID"`
+}
+
+type StraightDICOMStoreSCUResponse struct {
+	SOPClassUID    string `json:"SOPClassUID"`
+	SOPInstanceUID string `json:"SOPInstanceUID"`
+}
+
+type UploadDICOMInstancesResponse struct {
+	ID            string            `json:"ID"`
+	ParentPatient string            `json:"ParentPatient"`
+	ParentSeries  string            `json:"ParentSeries"`
+	ParentStudy   string            `json:"ParentStudy"`
+	Path          string            `json:"Path"`
+	Status        UploadDICOMStatus `json:"Status"`
 }
 
 type QueryStudy struct {

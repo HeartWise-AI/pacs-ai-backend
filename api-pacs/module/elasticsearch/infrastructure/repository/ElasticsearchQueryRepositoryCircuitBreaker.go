@@ -177,3 +177,30 @@ func (repository *ElasticsearchQueryRepositoryCircuitBreaker) SearchRetrievedStu
 		return nil, err
 	}
 }
+
+// SearchStoredCustomSeriesLogs decorator pattern to search stored custom series logs
+func (repository *ElasticsearchQueryRepositoryCircuitBreaker) SearchStoredCustomSeriesLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error) {
+	output := make(chan *search.Response, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("search_stored_custom_series_logs", config.Settings())
+	errors := hystrix.Go("search_stored_custom_series_logs", func() error {
+		storedCustomSeries, err := repository.ElasticsearchQueryRepositoryInterface.SearchStoredCustomSeriesLogs(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- storedCustomSeries
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errChan:
+		return nil, err
+	case err := <-errors:
+		return nil, err
+	}
+}

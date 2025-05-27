@@ -12,6 +12,7 @@ import (
 	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	"api-pacs/module/orthanc/domain/entity"
 	"api-pacs/module/orthanc/domain/repository"
 	"api-pacs/module/orthanc/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
@@ -133,6 +134,25 @@ func (service *OrthancQueryService) GetJobsInfo(ctx context.Context, jobIDs []st
 	}
 
 	return results, nil
+}
+
+// GetLinkedDICOMModalityWithEnabledCStore get linked DICOM modality with enabled C-Store
+func (service *OrthancQueryService) GetLinkedDICOMModalityWithEnabledCStore(ctx context.Context, tenantID, modalityID string) (entity.DICOMModality, error) {
+	// get host hash
+	dicomModality, err := service.OrthancQueryRepositoryInterface.SelectDICOMModalityByModalityID(ctx, tenantID, modalityID)
+	if err != nil {
+		log.Println(err)
+		return entity.DICOMModality{}, err
+	}
+
+	// get linked dicom modality with c-store enabled
+	linkedDICOMModality, err := service.OrthancQueryRepositoryInterface.SelectLinkedDICOMModalityWithEnabledCStore(ctx, tenantID, dicomModality.HostHash)
+	if err != nil {
+		log.Println(err)
+		return entity.DICOMModality{}, err
+	}
+
+	return linkedDICOMModality, nil
 }
 
 // ListDICOMModalities list dicom modalities

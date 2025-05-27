@@ -74,7 +74,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.19.0-beta",
+				"version": "v0.20.1-beta",
 			},
 		}
 
@@ -172,8 +172,10 @@ func (router *router) InitRouter() *chi.Mux {
 
 					r.Post("/modality/studies", orthancQueryController.FindModalityStudies)
 					r.Post("/modality/retrieve", orthancCommandController.RetrieveModalityStudy)
+					r.Post("/modality/{modalityID}/study/{studyInstanceUID}/series/store", orthancCommandController.StoreStudyCustomSeries)
 					r.Get("/jobs", orthancQueryController.GetJobsInfo)
 					r.Get("/modalities/list", orthancQueryController.ListDICOMModalities)
+					r.Get("/modality/{modalityID}/linked/storage/enabled", orthancQueryController.GetLinkedDICOMModalityWithEnabledCStore)
 					r.Get("/sop-instance/{sopInstanceUID}/find", orthancQueryController.FindLocalSOPInstance)
 
 					// admin or owner only

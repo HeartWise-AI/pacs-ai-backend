@@ -144,3 +144,26 @@ func (repository *ElasticsearchQueryRepository) SearchRetrievedStudyLogs(ctx con
 
 	return res, nil
 }
+
+// SearchStoredCustomSeriesLogs searches stored custom series logs
+func (repository *ElasticsearchQueryRepository) SearchStoredCustomSeriesLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error) {
+	var storedCustomSeries entity.StoredCustomSeries
+
+	res, err := repository.ElasticsearchDBHandlerInterface.SearchDocuments(ctx, types.SearchDocument{
+		Index:     storedCustomSeries.GetModelName(),
+		TenantID:  data.TenantID,
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+
+	if len(res.Hits.Hits) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return res, nil
+}
