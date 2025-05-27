@@ -181,6 +181,9 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 
 // StoreStudyCustomSeries store study custom series
 func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context, data types.StoreStudyCustomSeries) error {
+	var customSeriesInstanceUID string
+	var customSOPInstanceUID string
+
 	/// check mime type
 	if data.FileMimeType == "application/pdf" {
 		// convert pdf to dicom
@@ -195,12 +198,12 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 		// first: use standard prefix: 1.2.826.0.1.3680043.10.511.
 		// second: crc32 digit hash of <tenant_id>:<orderedSeriesInstanceUIDsFormat>:<model_name>_<model_version>
 		uniqueSeriesID := hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSeriesInstanceUIDHashFormat, data.TenantID, orderedSeriesInstanceUIDsFormat, strings.ToLower(data.ModelName+"_"+data.ModelVersion)))
-		customSeriesInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", uniqueSeriesID)
+		customSeriesInstanceUID = fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", uniqueSeriesID)
 
 		// first: use standard prefix: 1.2.826.0.1.3680043.10.511.
 		// second: crc32 digit hash of <tenant_id>:<custom_series_instance_uid>
 		uniqueInstanceID := hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSOPInstanceUIDHashFormat, data.TenantID, customSeriesInstanceUID))
-		customSOPInstanceUID := fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", uniqueInstanceID)
+		customSOPInstanceUID = fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", uniqueInstanceID)
 
 		// e.g: cathef-v1.0.0 Report
 		seriesDescription := fmt.Sprintf("%s-%s Report", data.ModelName, data.ModelVersion)
@@ -254,7 +257,38 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 	log.Println("store SOPClassUID:", storeRes.SOPClassUID)
 	log.Println("store SOPInstanceUID:", storeRes.SOPInstanceUID)
 
-	// TODO: elasticsearch logs
+	// log to elasticsearch
+	go func() {
+		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, data.UserID)
+		if err != nil {
+			return
+		}
+
+		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
+		if err != nil {
+			return
+		}
+
+		_, err = service.ElasticsearchCommandServiceInterface.CreateStoredCustomSeriesLog(ctx, elasticsearchTypes.CreateStoredCustomSeriesLog{
+			TenantID:                data.TenantID,
+			TenantName:              tenant.Name,
+			ModalityID:              data.ModalityID,
+			UserID:                  data.UserID,
+			Email:                   user.Email,
+			Name:                    user.Name,
+			StudyInstanceUID:        data.StudyInstanceUID,
+			SeriesInstanceUIDs:      data.SeriesInstanceUIDs,
+			PatientID:               data.PatientID,
+			ModelName:               data.ModelName,
+			ModelVersion:            data.ModelVersion,
+			CustomSeriesInstanceUID: customSeriesInstanceUID,
+			CustomSOPInstanceUID:    customSOPInstanceUID,
+		})
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	}()
 
 	return nil
 }

@@ -70,6 +70,9 @@ type ModalityStudyLogResponse struct {
 type PredictInferenceModelLogResponse struct {
 	TenantID           string                 `json:"tenantId" csv:"tenant_id"`
 	TenantName         string                 `json:"tenantName" csv:"tenant_name"`
+	UserID             string                 `json:"userId" csv:"user_id"`
+	Email              string                 `json:"email" csv:"email"`
+	Name               string                 `json:"name" csv:"name"`
 	ContainerID        string                 `json:"containerId" csv:"container_id"`
 	ContainerName      string                 `json:"containerName" csv:"container_name"`
 	InferenceModelID   string                 `json:"inferenceModelId" csv:"inference_model_id"`
@@ -91,6 +94,23 @@ type RetrievedStudyLogResponse struct {
 	QueryID          string `json:"queryId" csv:"query_id"`
 	AnswerIndex      uint   `json:"answerIndex" csv:"answer_index"`
 	Timestamp        uint   `json:"timestamp" csv:"timestamp"`
+}
+
+type StoredCustomSeriesLogResponse struct {
+	TenantID                string   `json:"tenantId" csv:"tenant_id"`
+	TenantName              string   `json:"tenantName" csv:"tenant_name"`
+	UserID                  string   `json:"userId" csv:"user_id"`
+	Email                   string   `json:"email" csv:"email"`
+	Name                    string   `json:"name" csv:"name"`
+	ModalityID              string   `json:"modalityId" csv:"modality_id"`
+	StudyInstanceUID        string   `json:"studyInstanceUID" csv:"study_instance_uid"`
+	SeriesInstanceUIDs      []string `json:"seriesInstanceUIDs" csv:"series_instance_uids"`
+	PatientID               string   `json:"patientId" csv:"patient_id"`
+	ModelName               string   `json:"modelName" csv:"model_name"`
+	ModelVersion            string   `json:"modelVersion" csv:"model_version"`
+	CustomSeriesInstanceUID string   `json:"customSeriesInstanceUID" csv:"custom_series_instance_uid"`
+	CustomSOPInstanceUID    string   `json:"customSOPInstanceUID" csv:"custom_sop_instance_uid"`
+	Timestamp               uint     `json:"timestamp" csv:"timestamp"`
 }
 
 type LoginTenantUserResponse struct {

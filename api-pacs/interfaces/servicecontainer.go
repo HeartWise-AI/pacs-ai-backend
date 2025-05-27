@@ -378,6 +378,7 @@ func (k *kernel) inferenceCommandServiceContainer() *inferenceService.InferenceC
 		},
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		UserQueryServiceInterface:            k.userQueryServiceContainer(),
 		DockerSDKInterface:                   dockerSDK,
 		OrthancAPIInterface:                  orthancAPI,
 		DockerInferenceAPIInterface:          dockerInferenceAPI,

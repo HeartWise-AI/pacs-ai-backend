@@ -4,6 +4,9 @@ package entity
 type PredictInferenceModel struct {
 	TenantID           string                 `json:"tenant_id"`
 	TenantName         string                 `json:"tenant_name"`
+	UserID             string                 `json:"user_id"`
+	Email              string                 `json:"email"`
+	Name               string                 `json:"name"`
 	ContainerID        string                 `json:"container_id"`
 	ContainerName      string                 `json:"container_name"`
 	InferenceModelID   string                 `json:"inference_model_id"`
