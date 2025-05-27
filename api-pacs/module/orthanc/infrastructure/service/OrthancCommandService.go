@@ -181,6 +181,7 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 
 // StoreStudyCustomSeries store study custom series
 func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context, data types.StoreStudyCustomSeries) error {
+	// TODO: handle direct dicom image
 	var customSeriesInstanceUID string
 	var customSOPInstanceUID string
 

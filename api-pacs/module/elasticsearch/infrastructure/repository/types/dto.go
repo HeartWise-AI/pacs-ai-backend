@@ -12,22 +12,6 @@ type CreateAdminMemberLog struct {
 	Action     string
 }
 
-type CreateStoredCustomSeriesLog struct {
-	TenantID                string
-	TenantName              string
-	UserID                  string
-	Email                   string
-	Name                    string
-	ModalityID              string
-	StudyInstanceUID        string
-	SeriesInstanceUIDs      []string
-	PatientID               string
-	ModelName               string
-	ModelVersion            string
-	CustomSeriesInstanceUID string
-	CustomSOPInstanceUID    string
-}
-
 type CreateLoginLog struct {
 	SessionID  string
 	TenantID   string
@@ -73,6 +57,22 @@ type CreateRetrieveStudyLog struct {
 	Email            string
 	Name             string
 	StudyInstanceUID string
+}
+
+type CreateStoredCustomSeriesLog struct {
+	TenantID                string
+	TenantName              string
+	UserID                  string
+	Email                   string
+	Name                    string
+	ModalityID              string
+	StudyInstanceUID        string
+	SeriesInstanceUIDs      []string
+	PatientID               string
+	ModelName               string
+	ModelVersion            string
+	CustomSeriesInstanceUID string
+	CustomSOPInstanceUID    string
 }
 
 type SearchDocument struct {

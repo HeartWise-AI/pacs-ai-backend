@@ -31,8 +31,8 @@ type InferenceCommandService struct {
 	repository.InferenceCommandRepositoryInterface
 	repository.InferenceQueryRepositoryInterface
 	tenantApplication.TenantQueryServiceInterface
-	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	userApplication.UserQueryServiceInterface
+	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	dockerTypes.DockerSDKInterface
 	orthancAPITypes.OrthancAPIInterface
 	dockerInferenceTypes.DockerInferenceAPIInterface
