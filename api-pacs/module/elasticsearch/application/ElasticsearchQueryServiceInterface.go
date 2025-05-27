@@ -19,4 +19,6 @@ type ElasticsearchQueryServiceInterface interface {
 	SearchPredictInferenceModelLogs(ctx context.Context, data types.SearchDocument) ([]entity.PredictInferenceModel, error)
 	// SearchRetrievedStudyLogs search retrieved study logs
 	SearchRetrievedStudyLogs(ctx context.Context, data types.SearchDocument) ([]entity.RetrievedStudy, error)
+	// SearchStoredCustomSeriesLogs search stored custom series logs
+	SearchStoredCustomSeriesLogs(ctx context.Context, data types.SearchDocument) ([]entity.StoredCustomSeries, error)
 }

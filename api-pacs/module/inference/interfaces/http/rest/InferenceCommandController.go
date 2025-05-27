@@ -168,6 +168,7 @@ func (controller *InferenceCommandController) DeleteInferenceModel(w http.Respon
 // PredictInferenceModel predicts an inference model
 func (controller *InferenceCommandController) PredictInferenceModel(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
 	containerID := chi.URLParam(r, "containerID")
 	if len(containerID) == 0 {
@@ -252,7 +253,7 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 		return lastPartI < lastPartJ
 	})
 
-	predictionResult, err := controller.InferenceCommandServiceInterface.PredictInferenceModel(context.TODO(), tenantID, containerID, serviceTypes.PredictInferenceModel{
+	predictionResult, err := controller.InferenceCommandServiceInterface.PredictInferenceModel(context.TODO(), tenantID, userID, containerID, serviceTypes.PredictInferenceModel{
 		StudyInstanceUID:   request.StudyInstanceUID,
 		SeriesInstanceUIDs: request.SeriesInstanceUIDs,
 		AdditionalMetadata: request.AdditionalMetadata,

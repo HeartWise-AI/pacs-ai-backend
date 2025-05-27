@@ -23,6 +23,7 @@ import (
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
+	userApplication "api-pacs/module/user/application"
 )
 
 // InferenceCommandService handles the Inference command service logic
@@ -30,6 +31,7 @@ type InferenceCommandService struct {
 	repository.InferenceCommandRepositoryInterface
 	repository.InferenceQueryRepositoryInterface
 	tenantApplication.TenantQueryServiceInterface
+	userApplication.UserQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	dockerTypes.DockerSDKInterface
 	orthancAPITypes.OrthancAPIInterface
@@ -106,7 +108,7 @@ func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context
 }
 
 // PredictInferenceModel predicts an inference model
-func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
+func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, tenantID, userID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
 	// get inference model
 	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
 	if err != nil {
@@ -389,6 +391,11 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 
 	// log to elasticsearch
 	go func() {
+		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, userID)
+		if err != nil {
+			return
+		}
+
 		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
 		if err != nil {
 			return
@@ -397,6 +404,9 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 		_, err = service.ElasticsearchCommandServiceInterface.CreatePredictInferenceModelLog(ctx, elasticsearchTypes.CreatePredictInferenceModelLog{
 			TenantID:           tenant.ID,
 			TenantName:         tenant.Name,
+			UserID:             user.ID,
+			Email:              user.Email,
+			Name:               user.Name,
 			ContainerID:        containerID,
 			ContainerName:      containerName,
 			InferenceModelID:   inferenceModel.ID,

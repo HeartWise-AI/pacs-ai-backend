@@ -22,4 +22,6 @@ type ElasticsearchQueryRepositoryInterface interface {
 	SearchPredictInferenceModelLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error)
 	// SearchRetrievedStudyLogs searches retrieved study logs
 	SearchRetrievedStudyLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error)
+	// SearchStoredCustomSeriesLogs searches stored custom series logs
+	SearchStoredCustomSeriesLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error)
 }
