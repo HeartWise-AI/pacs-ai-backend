@@ -335,10 +335,6 @@ class HTMLParser:
                             <div class="stat-number">{len(binary_predictions)}</div>
                             <div class="stat-label">Total Analyzed</div>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-number">{(len(blocked_arteries)/len(binary_predictions)*100):.1f}%</div>
-                            <div class="stat-label">Stenosis Rate</div>
-                        </div>
                     </div>
                 </div>
         """
