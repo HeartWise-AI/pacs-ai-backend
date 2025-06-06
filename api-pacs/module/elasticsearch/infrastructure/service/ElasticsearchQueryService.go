@@ -174,3 +174,34 @@ func (service *ElasticsearchQueryService) SearchRetrievedStudyLogs(ctx context.C
 
 	return retrievedStudies, nil
 }
+
+// SearchStoredCustomSeriesLogs search stored custom series logs
+func (service *ElasticsearchQueryService) SearchStoredCustomSeriesLogs(ctx context.Context, data types.SearchDocument) ([]entity.StoredCustomSeries, error) {
+	res, err := service.ElasticsearchQueryRepositoryInterface.SearchStoredCustomSeriesLogs(ctx, repositoryTypes.SearchDocument{
+		TenantID:  data.TenantID,
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var storedCustomSeries []entity.StoredCustomSeries
+
+	for count := range res.Hits.Hits {
+		jsonData, err := json.Marshal(res.Hits.Hits[count].Source_)
+		if err != nil {
+			return nil, err
+		}
+
+		var customSeries entity.StoredCustomSeries
+		err = json.Unmarshal([]byte(jsonData), &customSeries)
+		if err != nil {
+			return nil, err
+		}
+		storedCustomSeries = append(storedCustomSeries, customSeries)
+	}
+
+	return storedCustomSeries, nil
+}

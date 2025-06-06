@@ -94,6 +94,7 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 	var modalityStudy entity.ModalityStudy
 	var predictInferenceModel entity.PredictInferenceModel
 	var retrievedStudy entity.RetrievedStudy
+	var storedCustomSeries entity.StoredCustomSeries
 
 	searchDocument := serviceTypes.SearchDocument{
 		TenantID:  tenantID,
@@ -273,6 +274,9 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 			predictInferenceModels = append(predictInferenceModels, types.PredictInferenceModelLogResponse{
 				TenantID:           predictInferenceModel.TenantID,
 				TenantName:         predictInferenceModel.TenantName,
+				UserID:             predictInferenceModel.UserID,
+				Email:              predictInferenceModel.Email,
+				Name:               predictInferenceModel.Name,
 				ContainerID:        predictInferenceModel.ContainerID,
 				ContainerName:      predictInferenceModel.ContainerName,
 				InferenceModelID:   predictInferenceModel.InferenceModelID,
@@ -331,6 +335,53 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		logs = retrievedStudies
 		message = "Successfully fetched search results for retrieved study logs."
 		indexName = retrievedStudy.GetModelName()
+	case storedCustomSeries.GetModelName():
+		res, err := controller.ElasticsearchQueryServiceInterface.SearchStoredCustomSeriesLogs(context.TODO(), searchDocument)
+		if err != nil && err.Error() != errors.MissingRecord {
+			var httpCode int
+			var errorMsg string
+			switch err.Error() {
+			case errors.DatabaseError:
+				httpCode = http.StatusInternalServerError
+				errorMsg = "Database error."
+			default:
+				httpCode = http.StatusInternalServerError
+				errorMsg = "Database error."
+			}
+
+			response := viewmodels.HTTPResponseVM{
+				Status:    httpCode,
+				Success:   false,
+				Message:   errorMsg,
+				ErrorCode: err.Error(),
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		storedCustomSeriesLogs := []types.StoredCustomSeriesLogResponse{}
+		for _, storedCustomSeries := range res {
+			storedCustomSeriesLogs = append(storedCustomSeriesLogs, types.StoredCustomSeriesLogResponse{
+				TenantID:                storedCustomSeries.TenantID,
+				TenantName:              storedCustomSeries.TenantName,
+				UserID:                  storedCustomSeries.UserID,
+				Email:                   storedCustomSeries.Email,
+				Name:                    storedCustomSeries.Name,
+				ModalityID:              storedCustomSeries.ModalityID,
+				StudyInstanceUID:        storedCustomSeries.StudyInstanceUID,
+				SeriesInstanceUIDs:      storedCustomSeries.SeriesInstanceUIDs,
+				PatientID:               storedCustomSeries.PatientID,
+				ModelName:               storedCustomSeries.ModelName,
+				ModelVersion:            storedCustomSeries.ModelVersion,
+				CustomSeriesInstanceUID: storedCustomSeries.CustomSeriesInstanceUID,
+				CustomSOPInstanceUID:    storedCustomSeries.CustomSOPInstanceUID,
+				Timestamp:               storedCustomSeries.Timestamp,
+			})
+		}
+		logs = storedCustomSeriesLogs
+		message = "Successfully fetched search results for stored custom series logs."
+		indexName = storedCustomSeries.GetModelName()
 	default:
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusNotFound,

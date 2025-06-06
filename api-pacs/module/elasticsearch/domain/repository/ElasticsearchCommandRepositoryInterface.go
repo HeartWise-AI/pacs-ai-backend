@@ -19,4 +19,6 @@ type ElasticsearchCommandRepositoryInterface interface {
 	InsertPredictInferenceModelLog(ctx context.Context, data repositoryTypes.CreatePredictInferenceModelLog) (*index.Response, error)
 	// InsertRetrieveStudyLog insert retrieved study log
 	InsertRetrieveStudyLog(ctx context.Context, data repositoryTypes.CreateRetrieveStudyLog) (*index.Response, error)
+	// InsertStoredCustomSeriesLog insert stored custom series log
+	InsertStoredCustomSeriesLog(ctx context.Context, data repositoryTypes.CreateStoredCustomSeriesLog) (*index.Response, error)
 }

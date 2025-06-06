@@ -20,6 +20,8 @@ type ElasticsearchCommandServiceInterface interface {
 	CreatePredictInferenceModelLog(ctx context.Context, data types.CreatePredictInferenceModelLog) (*index.Response, error)
 	// CreateRetrievedStudyLog add a retrieved study log
 	CreateRetrieveStudyLog(ctx context.Context, data types.CreateRetrieveStudyLog) (*index.Response, error)
+	// CreateStoredCustomSeriesLog add a stored custom series log
+	CreateStoredCustomSeriesLog(ctx context.Context, data types.CreateStoredCustomSeriesLog) (*index.Response, error)
 	// SyncKibanaIndices sync kibana indices
 	SyncKibanaIndices(ctx context.Context) error
 }
