@@ -29,40 +29,110 @@ class HTMLParser:
         regression_predictions = {k: v for k, v in probability_dict.items() if '_binary' not in k}
         
         # Find blocked arteries (above threshold)
-        blocked_arteries = []
-        normal_arteries = []
-        
-        for head, prob in binary_predictions.items():
-            # Assume threshold of 0.5 for binary classification
-            if prob > 0.5:
-                blocked_arteries.append((head, prob))
-            else:
-                normal_arteries.append((head, prob))
-        
-        # Determine overall status
-        has_stenosis = len(blocked_arteries) > 0
-        status_color = "#ff6b6b" if has_stenosis else "#4ecdc4"
-        overall_status = "Coronary Stenosis Detected" if has_stenosis else "No Significant Stenosis"
+        blocked_arteries = {
+            'LCA': [],
+            'RCA': []
+        }
+        normal_arteries = {
+            'LCA': [],
+            'RCA': []
+        }
         
         # Artery display names
         artery_names = {
-            "leftmain_stenosis_binary": "Left Main",
-            "lad_stenosis_binary": "LAD (Left Anterior Descending)",
-            "mid_lad_stenosis_binary": "Mid LAD",
-            "dist_lad_stenosis_binary": "Distal LAD",
-            "diagonal_stenosis_binary": "Diagonal Branch",
-            "D2_stenosis_binary": "D2 Branch",
-            "lcx_stenosis_binary": "LCX (Left Circumflex)",
-            "dist_lcx_stenosis_binary": "Distal LCX",
-            "om1_stenosis_binary": "OM1 (Obtuse Marginal 1)",
-            "om2_stenosis_binary": "OM2 (Obtuse Marginal 2)",
-            "bx_stenosis_binary": "Branch Vessel",
-            "prox_rca_stenosis_binary": "Proximal RCA",
-            "mid_rca_stenosis_binary": "Mid RCA",
-            "dist_rca_stenosis_binary": "Distal RCA",
-            "pda_stenosis_binary": "PDA (Posterior Descending)",
-            "posterolateral_stenosis_binary": "Posterolateral Branch"
+            "LCA": {
+                "leftmain_stenosis_binary": "Left Main",
+                "lad_stenosis_binary": "LAD (Left Anterior Descending)",
+                "mid_lad_stenosis_binary": "Mid LAD",
+                "dist_lad_stenosis_binary": "Distal LAD",
+                "diagonal_stenosis_binary": "D1 Branch",
+                "D2_stenosis_binary": "D2 Branch",
+                "lcx_stenosis_binary": "LCX (Left Circumflex)",
+                "dist_lcx_stenosis_binary": "Distal LCX",
+                "om1_stenosis_binary": "OM1 (Obtuse Marginal 1)",
+                "om2_stenosis_binary": "OM2 (Obtuse Marginal 2)",
+                "bx_stenosis_binary": "Branch Vessel"
+            },
+            "RCA": {
+                "prox_rca_stenosis_binary": "Proximal RCA",
+                "mid_rca_stenosis_binary": "Mid RCA",
+                "dist_rca_stenosis_binary": "Distal RCA",
+                "pda_stenosis_binary": "PDA (Posterior Descending)",
+                "posterolateral_stenosis_binary": "Posterolateral Branch"
+            }
         }
+        
+        # Categorize arteries by LCA/RCA
+        def categorize_artery(artery_name):
+            if artery_name in artery_names['LCA']:
+                return 'LCA'
+            elif artery_name in artery_names['RCA']:
+                return 'RCA'
+            return None
+
+        # Define artery priority order to ensure D1 comes before D2
+        def get_artery_priority(artery_key):
+            """Return priority order for arteries to ensure anatomical ordering"""
+            priority_order = {
+                # LCA system - anatomical order
+                "leftmain_stenosis_binary": 1,
+                "lad_stenosis_binary": 2,
+                "mid_lad_stenosis_binary": 3,
+                "dist_lad_stenosis_binary": 4,
+                "diagonal_stenosis_binary": 5,  # D1
+                "D2_stenosis_binary": 6,        # D2
+                "lcx_stenosis_binary": 7,
+                "dist_lcx_stenosis_binary": 8,
+                "om1_stenosis_binary": 9,
+                "om2_stenosis_binary": 10,
+                "bx_stenosis_binary": 11,
+                # RCA system - anatomical order
+                "prox_rca_stenosis_binary": 12,
+                "mid_rca_stenosis_binary": 13,
+                "dist_rca_stenosis_binary": 14,
+                "pda_stenosis_binary": 15,
+                "posterolateral_stenosis_binary": 16,
+            }
+            return priority_order.get(artery_key, 999)  # Default high value for unknown arteries
+
+        # Custom sorting function for binary predictions
+        def sort_binary_arteries(artery_tuple, reverse_prob=False):
+            """Sort arteries by anatomical priority first, then by probability"""
+            artery_key, prob = artery_tuple
+            priority = get_artery_priority(artery_key)
+            # Return tuple: (priority, probability) for sorting
+            # For blocked arteries, we want high probability first within same priority
+            # For normal arteries, we want low probability first within same priority
+            if reverse_prob:
+                return (priority, -prob)  # Negative prob for descending order
+            else:
+                return (priority, prob)   # Positive prob for ascending order
+
+        # Custom sorting function for regression predictions
+        def sort_regression_arteries(artery_tuple, reverse_value=False):
+            """Sort arteries by anatomical priority first, then by stenosis value"""
+            regression_key, value, binary_key = artery_tuple
+            priority = get_artery_priority(binary_key)
+            # Return tuple: (priority, value) for sorting
+            if reverse_value:
+                return (priority, -value)  # Negative value for descending order
+            else:
+                return (priority, value)   # Positive value for ascending order
+
+        for head, prob in binary_predictions.items():
+            category = categorize_artery(head)
+            if category:
+                # Assume threshold of 0.5 for binary classification
+                if prob > 0.5:
+                    blocked_arteries[category].append((head, prob))
+                else:
+                    normal_arteries[category].append((head, prob))
+
+        # Determine overall status
+        total_blocked = len(blocked_arteries['LCA']) + len(blocked_arteries['RCA'])
+        has_stenosis = total_blocked > 0
+        status_color = "#ff6b6b" if has_stenosis else "#4ecdc4"
+        overall_status = "Coronary Stenosis Detected" if has_stenosis else "No Significant Stenosis"
         
         html_content = f"""
         <!DOCTYPE html>
@@ -316,7 +386,7 @@ class HTMLParser:
                 <div class="overall-status">
                     <p class="status-text">{overall_status}</p>
                     <p class="status-summary">
-                        {len(blocked_arteries)} vessel(s) with significant stenosis detected out of {len(binary_predictions)} analyzed
+                        {total_blocked} vessel(s) with significant stenosis detected out of {len(binary_predictions)} analyzed
                     </p>
                 </div>
 
@@ -324,11 +394,11 @@ class HTMLParser:
                     <h2>Summary Statistics</h2>
                     <div class="summary-stats">
                         <div class="stat-card">
-                            <div class="stat-number">{len(blocked_arteries)}</div>
+                            <div class="stat-number">{total_blocked}</div>
                             <div class="stat-label">Blocked Vessels</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-number">{len(normal_arteries)}</div>
+                            <div class="stat-number">{len(normal_arteries['LCA']) + len(normal_arteries['RCA'])}</div>
                             <div class="stat-label">Normal Vessels</div>
                         </div>
                         <div class="stat-card">
@@ -347,77 +417,235 @@ class HTMLParser:
             """
             
             # Show blocked arteries first
-            if blocked_arteries:
+            if blocked_arteries['LCA'] or blocked_arteries['RCA']:
                 html_content += "<h3 style='color: var(--warning-color); margin-bottom: 15px;'>⚠️ Vessels with Significant Stenosis</h3>"
-                html_content += '<div class="arteries-grid">'
                 
-                for head, prob in sorted(blocked_arteries, key=lambda x: x[1], reverse=True):
-                    artery_name = artery_names.get(head, head.replace('_stenosis_binary', '').replace('_', ' ').title())
-                    diagnosis_text = diagnosis_dict.get(head, 'blocked')
+                # LCA Section
+                if blocked_arteries['LCA']:
+                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Left Coronary Artery (LCA) System</h4>"
+                    html_content += '<div class="arteries-grid">'
                     
-                    html_content += f"""
-                        <div class="artery-card blocked">
-                            <div class="artery-name">{artery_name}</div>
-                            <div class="artery-probability">Probability: {prob:.3f}</div>
-                            <div class="probability-bar">
-                                <div class="probability-fill" style="width: {prob * 100}%;"></div>
+                    for head, prob in sorted(blocked_arteries['LCA'], key=lambda x: x[1], reverse=True):
+                        artery_name = artery_names['LCA'].get(head, head.replace('_stenosis_binary', '').replace('_', ' ').title())
+                        diagnosis_text = diagnosis_dict.get(head, 'blocked')
+                        
+                        html_content += f"""
+                            <div class="artery-card blocked">
+                                <div class="artery-name">{artery_name}</div>
+                                <div class="artery-probability">Probability: {prob:.3f}</div>
+                                <div class="probability-bar">
+                                    <div class="probability-fill" style="width: {prob * 100}%;"></div>
+                                </div>
+                                <div class="artery-status blocked">Status: {diagnosis_text.upper()}</div>
                             </div>
-                            <div class="artery-status blocked">Status: {diagnosis_text.upper()}</div>
-                        </div>
-                    """
+                        """
+                    
+                    html_content += '</div>'
                 
-                html_content += '</div>'
+                # RCA Section
+                if blocked_arteries['RCA']:
+                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Right Coronary Artery (RCA) System</h4>"
+                    html_content += '<div class="arteries-grid">'
+                    
+                    for head, prob in sorted(blocked_arteries['RCA'], key=lambda x: x[1], reverse=True):
+                        artery_name = artery_names['RCA'].get(head, head.replace('_stenosis_binary', '').replace('_', ' ').title())
+                        diagnosis_text = diagnosis_dict.get(head, 'blocked')
+                        
+                        html_content += f"""
+                            <div class="artery-card blocked">
+                                <div class="artery-name">{artery_name}</div>
+                                <div class="artery-probability">Probability: {prob:.3f}</div>
+                                <div class="probability-bar">
+                                    <div class="probability-fill" style="width: {prob * 100}%;"></div>
+                                </div>
+                                <div class="artery-status blocked">Status: {diagnosis_text.upper()}</div>
+                            </div>
+                        """
+                    
+                    html_content += '</div>'
             
             # Show normal arteries
-            if normal_arteries:
+            if normal_arteries['LCA'] or normal_arteries['RCA']:
                 html_content += "<h3 style='color: var(--normal-color); margin-top: 30px; margin-bottom: 15px;'>✅ Normal Vessels</h3>"
-                html_content += '<div class="arteries-grid">'
                 
-                for head, prob in sorted(normal_arteries, key=lambda x: x[1]):
-                    artery_name = artery_names.get(head, head.replace('_stenosis_binary', '').replace('_', ' ').title())
-                    diagnosis_text = diagnosis_dict.get(head, 'normal')
+                # LCA Normal Section
+                if normal_arteries['LCA']:
+                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Left Coronary Artery (LCA) System</h4>"
+                    html_content += '<div class="arteries-grid">'
                     
-                    html_content += f"""
-                        <div class="artery-card normal">
-                            <div class="artery-name">{artery_name}</div>
-                            <div class="artery-probability">Probability: {prob:.3f}</div>
-                            <div class="probability-bar">
-                                <div class="probability-fill" style="width: {prob * 100}%;"></div>
+                    for head, prob in sorted(normal_arteries['LCA'], key=lambda x: x[1], reverse=True):
+                        artery_name = artery_names['LCA'].get(head, head.replace('_stenosis_binary', '').replace('_', ' ').title())
+                        diagnosis_text = diagnosis_dict.get(head, 'normal')
+                        
+                        html_content += f"""
+                            <div class="artery-card normal">
+                                <div class="artery-name">{artery_name}</div>
+                                <div class="artery-probability">Probability: {prob:.3f}</div>
+                                <div class="probability-bar">
+                                    <div class="probability-fill" style="width: {prob * 100}%;"></div>
+                                </div>
+                                <div class="artery-status normal">Status: {diagnosis_text.upper()}</div>
                             </div>
-                            <div class="artery-status normal">Status: {diagnosis_text.upper()}</div>
-                        </div>
-                    """
+                        """
+                    
+                    html_content += '</div>'
                 
-                html_content += '</div>'
+                # RCA Normal Section
+                if normal_arteries['RCA']:
+                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Right Coronary Artery (RCA) System</h4>"
+                    html_content += '<div class="arteries-grid">'
+                    
+                    for head, prob in sorted(normal_arteries['RCA'], key=lambda x: x[1], reverse=True):
+                        artery_name = artery_names['RCA'].get(head, head.replace('_stenosis_binary', '').replace('_', ' ').title())
+                        diagnosis_text = diagnosis_dict.get(head, 'normal')
+                        
+                        html_content += f"""
+                            <div class="artery-card normal">
+                                <div class="artery-name">{artery_name}</div>
+                                <div class="artery-probability">Probability: {prob:.3f}</div>
+                                <div class="probability-bar">
+                                    <div class="probability-fill" style="width: {prob * 100}%;"></div>
+                                </div>
+                                <div class="artery-status normal">Status: {diagnosis_text.upper()}</div>
+                            </div>
+                        """
+                    
+                    html_content += '</div>'
             
             html_content += "</div>"
 
         # Add regression results if available
         if regression_predictions:
+            # Categorize regression predictions by LCA/RCA
+            regression_blocked = {
+                'LCA': [],
+                'RCA': []
+            }
+            regression_normal = {
+                'LCA': [],
+                'RCA': []
+            }
+            
+            # Map regression keys to binary keys for categorization
+            regression_to_binary_map = {
+                k.replace('_stenosis', '_stenosis_binary'): k for k in regression_predictions.keys()
+            }
+            
+            for binary_key, regression_key in regression_to_binary_map.items():
+                value = regression_predictions[regression_key]
+                category = categorize_artery(binary_key)
+                if category:
+                    if value > 50:  # Threshold for significant stenosis
+                        regression_blocked[category].append((regression_key, value, binary_key))
+                    else:
+                        regression_normal[category].append((regression_key, value, binary_key))
+            
             html_content += """
                 <div class="section">
                     <h2>Quantitative Stenosis Assessment</h2>
-                    <div class="arteries-grid">
             """
             
-            for head, value in regression_predictions.items():
-                artery_name = artery_names.get(head + '_binary', head.replace('_stenosis', '').replace('_', ' ').title())
+            # Show blocked arteries first
+            if regression_blocked['LCA'] or regression_blocked['RCA']:
+                html_content += "<h3 style='color: var(--warning-color); margin-bottom: 15px;'>⚠️ Vessels with Significant Stenosis (>50%)</h3>"
                 
-                html_content += f"""
-                    <div class="artery-card {'blocked' if value > 70 else 'normal'}">
-                        <div class="artery-name">{artery_name}</div>
-                        <div class="artery-probability">Stenosis Percentage: {value:.1f}%</div>
-                        <div class="probability-bar">
-                            <div class="probability-fill" style="width: {min(value, 100)}%;"></div>
-                        </div>
-                        <div class="artery-status {'blocked' if value > 70 else 'normal'}">
-                            {'Severe' if value > 70 else 'Moderate' if value > 50 else 'Mild' if value > 30 else 'Minimal'}
-                        </div>
-                    </div>
-                """
+                # LCA Section
+                if regression_blocked['LCA']:
+                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Left Coronary Artery (LCA) System</h4>"
+                    html_content += '<div class="arteries-grid">'
+                    
+                    for regression_key, value, binary_key in sorted(regression_blocked['LCA'], key=lambda x: x[1], reverse=True):
+                        artery_name = artery_names['LCA'].get(binary_key, regression_key.replace('_stenosis', '').replace('_', ' ').title())
+                        
+                        html_content += f"""
+                            <div class="artery-card blocked">
+                                <div class="artery-name">{artery_name}</div>
+                                <div class="artery-probability">Stenosis Percentage: {value:.1f}%</div>
+                                <div class="probability-bar">
+                                    <div class="probability-fill" style="width: {min(value, 100)}%;"></div>
+                                </div>
+                                <div class="artery-status blocked">
+                                    {'Severe' if value > 70 else 'Moderate' if value > 50 else 'Mild' if value > 30 else 'Minimal'}
+                                </div>
+                            </div>
+                        """
+                    
+                    html_content += '</div>'
+                
+                # RCA Section
+                if regression_blocked['RCA']:
+                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Right Coronary Artery (RCA) System</h4>"
+                    html_content += '<div class="arteries-grid">'
+                    
+                    for regression_key, value, binary_key in sorted(regression_blocked['RCA'], key=lambda x: x[1], reverse=True):
+                        artery_name = artery_names['RCA'].get(binary_key, regression_key.replace('_stenosis', '').replace('_', ' ').title())
+                        
+                        html_content += f"""
+                            <div class="artery-card blocked">
+                                <div class="artery-name">{artery_name}</div>
+                                <div class="artery-probability">Stenosis Percentage: {value:.1f}%</div>
+                                <div class="probability-bar">
+                                    <div class="probability-fill" style="width: {min(value, 100)}%;"></div>
+                                </div>
+                                <div class="artery-status blocked">
+                                    {'Severe' if value > 70 else 'Moderate' if value > 50 else 'Mild' if value > 30 else 'Minimal'}
+                                </div>
+                            </div>
+                        """
+                    
+                    html_content += '</div>'
+            
+            # Show normal/minimal stenosis arteries
+            if regression_normal['LCA'] or regression_normal['RCA']:
+                html_content += "<h3 style='color: var(--normal-color); margin-top: 30px; margin-bottom: 15px;'>✅ Vessels with Minimal Stenosis (≤50%)</h3>"
+                
+                # LCA Normal Section
+                if regression_normal['LCA']:
+                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Left Coronary Artery (LCA) System</h4>"
+                    html_content += '<div class="arteries-grid">'
+                    
+                    for regression_key, value, binary_key in sorted(regression_normal['LCA'], key=lambda x: x[1], reverse=True):
+                        artery_name = artery_names['LCA'].get(binary_key, regression_key.replace('_stenosis', '').replace('_', ' ').title())
+                        
+                        html_content += f"""
+                            <div class="artery-card normal">
+                                <div class="artery-name">{artery_name}</div>
+                                <div class="artery-probability">Stenosis Percentage: {value:.1f}%</div>
+                                <div class="probability-bar">
+                                    <div class="probability-fill" style="width: {min(value, 100)}%;"></div>
+                                </div>
+                                <div class="artery-status normal">
+                                    {'Severe' if value > 70 else 'Moderate' if value > 50 else 'Mild' if value > 30 else 'Minimal'}
+                                </div>
+                            </div>
+                        """
+                    
+                    html_content += '</div>'
+                
+                # RCA Normal Section
+                if regression_normal['RCA']:
+                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Right Coronary Artery (RCA) System</h4>"
+                    html_content += '<div class="arteries-grid">'
+                    
+                    for regression_key, value, binary_key in sorted(regression_normal['RCA'], key=lambda x: x[1], reverse=True):
+                        artery_name = artery_names['RCA'].get(binary_key, regression_key.replace('_stenosis', '').replace('_', ' ').title())
+                        
+                        html_content += f"""
+                            <div class="artery-card normal">
+                                <div class="artery-name">{artery_name}</div>
+                                <div class="artery-probability">Stenosis Percentage: {value:.1f}%</div>
+                                <div class="probability-bar">
+                                    <div class="probability-fill" style="width: {min(value, 100)}%;"></div>
+                                </div>
+                                <div class="artery-status normal">
+                                    {'Severe' if value > 70 else 'Moderate' if value > 50 else 'Mild' if value > 30 else 'Minimal'}
+                                </div>
+                            </div>
+                        """
+                    
+                    html_content += '</div>'
             
             html_content += """
-                    </div>
                 </div>
             """
 
