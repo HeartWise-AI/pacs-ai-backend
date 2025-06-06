@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -165,6 +168,7 @@ func (controller *InferenceCommandController) DeleteInferenceModel(w http.Respon
 // PredictInferenceModel predicts an inference model
 func (controller *InferenceCommandController) PredictInferenceModel(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
 	containerID := chi.URLParam(r, "containerID")
 	if len(containerID) == 0 {
@@ -219,7 +223,37 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 		return
 	}
 
-	predictionResult, err := controller.InferenceCommandServiceInterface.PredictInferenceModel(context.TODO(), tenantID, containerID, serviceTypes.PredictInferenceModel{
+	// check if empty
+	if len(request.SeriesInstanceUIDs) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Series instance UIDs is empty.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// sort series instance by last part asc
+	sort.Slice(request.SeriesInstanceUIDs, func(i, j int) bool {
+		partsI := strings.Split(request.SeriesInstanceUIDs[i], ".")
+		lastPartI, err := strconv.ParseInt(partsI[len(partsI)-1], 10, 64)
+		if err != nil {
+			return false
+		}
+
+		partsJ := strings.Split(request.SeriesInstanceUIDs[j], ".")
+		lastPartJ, err := strconv.ParseInt(partsJ[len(partsJ)-1], 10, 64)
+		if err != nil {
+			return false
+		}
+
+		return lastPartI < lastPartJ
+	})
+
+	predictionResult, err := controller.InferenceCommandServiceInterface.PredictInferenceModel(context.TODO(), tenantID, userID, containerID, serviceTypes.PredictInferenceModel{
 		StudyInstanceUID:   request.StudyInstanceUID,
 		SeriesInstanceUIDs: request.SeriesInstanceUIDs,
 		AdditionalMetadata: request.AdditionalMetadata,

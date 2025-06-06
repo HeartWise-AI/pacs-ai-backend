@@ -222,6 +222,8 @@ Update `api-pacs/.env` with the following variables:
 | `API_NAME`                  | Should be set to `api-pacs` (do not change)                                                                               |
 | `API_URL_REST_PORT`         | Should be set to `8000` (do not change)                                                                                   |
 | `APP_URL`                   | Should be set to `http://localhost:3000`                                                                                  |
+| `CLOUDFLARE_SECRET_KEY`    | Your Cloudflare secret key                                                                                                 |
+| `CLOUDFLARE_TURNSTILE_BASE_URL` | Should be set to `https://challenges.cloudflare.com/turnstile/v0`                                                |
 | `DOCKER_USERNAME`           | Your DockerHub username                                                                                                   |
 | `DOCKER_PASSWORD`           | Your DockerHub password                                                                                                   |
 | `DOCKER_NETWORK`            | Should be set to `pacs-net`                                                                                               |
@@ -230,6 +232,9 @@ Update `api-pacs/.env` with the following variables:
 | `FIREBASE_PROJECT_ID`       | Your Firebase project ID (same as in `PACS-AI/platform/app/.env`)                                                         |
 | `FIREBASE_SUPERUSER_KEY`    | Strong password for super user access (used for first user creation and API access)                                       |
 | `KIBANA_BASE_URL`           | Should be set to `http://localhost:5601`                                                                                  |
+| `MAILCHIMP_API_KEY`         | Your Mailchimp API key                                                                                                    |
+| `MAILCHIMP_BASE_URL`        | Should be set to `https://us14.api.mailchimp.com`                                                                         |
+| `MAILCHIMP_LIST_ID`         | Your Mailchimp list ID                                                                                                    |
 | `MAILGUN_API_KEY`           | Your Mailgun API key                                                                                                      |
 | `MAILGUN_DOMAIN`            | Your Mailgun domain                                                                                                       |
 | `MAILGUN_SENDER_EMAIL`      | Your sender email (e.g., `no-reply@MyDomain.com`)                                                                         |

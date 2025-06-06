@@ -207,7 +207,7 @@ def main():
 
     parser.add_argument(
         '--url',
-        default='http://localhost:8001/inference/predict',
+        default='http://localhost:8000/inference/predict',
         help='Server URL (default: http://localhost:8000/inference/predict)'
     )
 

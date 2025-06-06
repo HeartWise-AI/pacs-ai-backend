@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"log"
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/cat/indices"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
@@ -22,6 +23,7 @@ type ElasticsearchQueryRepository struct {
 func (repository *ElasticsearchQueryRepository) GetAllIndices() (indices.Response, error) {
 	res, err := repository.ElasticsearchDBHandlerInterface.GetAllIndices()
 	if err != nil {
+		log.Println(err)
 		return nil, err
 	}
 
@@ -40,6 +42,7 @@ func (repository *ElasticsearchQueryRepository) SearchAdminMemberLogs(ctx contex
 		EndDate:   data.EndDate,
 	})
 	if err != nil {
+		log.Println(err)
 		return nil, err
 	}
 
@@ -62,6 +65,7 @@ func (repository *ElasticsearchQueryRepository) SearchLoginLogs(ctx context.Cont
 		EndDate:   data.EndDate,
 	})
 	if err != nil {
+		log.Println(err)
 		return nil, err
 	}
 
@@ -84,6 +88,30 @@ func (repository *ElasticsearchQueryRepository) SearchModalityStudyLogs(ctx cont
 		EndDate:   data.EndDate,
 	})
 	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+
+	if len(res.Hits.Hits) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return res, nil
+}
+
+// SearchPredictInferenceModelLogs searches predict inference model logs
+func (repository *ElasticsearchQueryRepository) SearchPredictInferenceModelLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error) {
+	var predictInferenceModel entity.PredictInferenceModel
+
+	res, err := repository.ElasticsearchDBHandlerInterface.SearchDocuments(ctx, types.SearchDocument{
+		Index:     predictInferenceModel.GetModelName(),
+		TenantID:  data.TenantID,
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
+	if err != nil {
+		log.Println(err)
 		return nil, err
 	}
 
@@ -106,6 +134,30 @@ func (repository *ElasticsearchQueryRepository) SearchRetrievedStudyLogs(ctx con
 		EndDate:   data.EndDate,
 	})
 	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+
+	if len(res.Hits.Hits) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return res, nil
+}
+
+// SearchStoredCustomSeriesLogs searches stored custom series logs
+func (repository *ElasticsearchQueryRepository) SearchStoredCustomSeriesLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error) {
+	var storedCustomSeries entity.StoredCustomSeries
+
+	res, err := repository.ElasticsearchDBHandlerInterface.SearchDocuments(ctx, types.SearchDocument{
+		Index:     storedCustomSeries.GetModelName(),
+		TenantID:  data.TenantID,
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
+	if err != nil {
+		log.Println(err)
 		return nil, err
 	}
 

@@ -3,15 +3,21 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	"api-pacs/internal/assert"
+	dicomUtils "api-pacs/internal/dicom"
 	apiError "api-pacs/internal/errors"
+	hashUtils "api-pacs/internal/hash"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	"api-pacs/module/orthanc/domain/repository"
+	repositoryTypes "api-pacs/module/orthanc/infrastructure/repository/types"
 	"api-pacs/module/orthanc/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
 	userApplication "api-pacs/module/user/application"
@@ -19,11 +25,17 @@ import (
 
 // OrthancCommandService handles the Orthanc command service logic
 type OrthancCommandService struct {
+	repository.OrthancCommandRepositoryInterface
 	orthancAPITypes.OrthancAPIInterface
 	tenantApplication.TenantQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	userApplication.UserQueryServiceInterface
 }
+
+const (
+	customSeriesInstanceUIDHashFormat string = "%s:%s:%s" // <tenant_id>:<series_instance_uids_asc_order>:<model_name>_<model_version>
+	customSOPInstanceUIDHashFormat    string = "%s:%s"    // <tenant_id>:<derived_series_instance_uid>
+)
 
 // ClearLocalStudiesCache clear local studies cache
 func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context) error {
@@ -71,8 +83,15 @@ func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context
 }
 
 // RemoveDICOMModality remove dicom modality
-func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, modalityID string) error {
+func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, tenantID string, modalityID string) error {
 	err := service.OrthancAPIInterface.DeleteDICOMModality(ctx, modalityID)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	// delete dicom modality in database
+	err = service.OrthancCommandRepositoryInterface.DeleteDICOMModality(ctx, tenantID, modalityID)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -160,6 +179,121 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 	return res, nil
 }
 
+// StoreStudyCustomSeries store study custom series
+func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context, data types.StoreStudyCustomSeries) error {
+	// TODO: handle direct dicom image
+	var customSeriesInstanceUID string
+	var customSOPInstanceUID string
+
+	/// check mime type
+	if data.FileMimeType == "application/pdf" {
+		// convert pdf to dicom
+		// form the series instance uids. It should already be in ascending order (timestamp)
+		var orderedSeriesInstanceUIDsFormat string
+		if len(data.SeriesInstanceUIDs) == 1 {
+			orderedSeriesInstanceUIDsFormat = data.SeriesInstanceUIDs[0]
+		} else {
+			orderedSeriesInstanceUIDsFormat = strings.Join(data.SeriesInstanceUIDs, ":")
+		}
+
+		// first: use standard prefix: 1.2.826.0.1.3680043.10.511.
+		// second: crc32 digit hash of <tenant_id>:<orderedSeriesInstanceUIDsFormat>:<model_name>_<model_version>
+		uniqueSeriesID := hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSeriesInstanceUIDHashFormat, data.TenantID, orderedSeriesInstanceUIDsFormat, strings.ToLower(data.ModelName+"_"+data.ModelVersion)))
+		customSeriesInstanceUID = fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", uniqueSeriesID)
+
+		// first: use standard prefix: 1.2.826.0.1.3680043.10.511.
+		// second: crc32 digit hash of <tenant_id>:<custom_series_instance_uid>
+		uniqueInstanceID := hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSOPInstanceUIDHashFormat, data.TenantID, customSeriesInstanceUID))
+		customSOPInstanceUID = fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", uniqueInstanceID)
+
+		// e.g: cathef-v1.0.0 Report
+		seriesDescription := fmt.Sprintf("%s-%s Report", data.ModelName, data.ModelVersion)
+
+		log.Println("customSeriesInstanceUIDHash:", customSeriesInstanceUID)
+		log.Println("customSOPInstanceUID:", customSOPInstanceUID)
+		log.Println("seriesDescription:", seriesDescription)
+
+		dicomInstancesBytes, err := dicomUtils.ConvertPDFToDICOM(data.FileBody, data.StudyInstanceUID, customSeriesInstanceUID, customSOPInstanceUID, seriesDescription, data.PatientID, data.PatientName)
+		if err != nil {
+			log.Println("[dicom] error converting pdf to dicom:", err)
+			return errors.New(apiError.DICOMParseError)
+		}
+
+		data.FileBody = dicomInstancesBytes
+	}
+
+	/// upload to local orthanc
+	uploadDICOMInstancesResponse, err := service.OrthancAPIInterface.UploadDICOMInstances(ctx, data.FileBody)
+	if err != nil {
+		log.Println("[orthanc] error uploading DICOM instances:", err)
+		return errors.New(apiError.OrthancError)
+	}
+
+	if uploadDICOMInstancesResponse.Status != orthancAPITypes.UploadDICOMStatusSuccess && uploadDICOMInstancesResponse.Status != orthancAPITypes.UploadDICOMStatusAlreadyStored {
+		log.Println("[orthanc] error uploading DICOM instances:", uploadDICOMInstancesResponse.Status)
+		return errors.New(apiError.OrthancError)
+	}
+
+	// if already exist, return duplicate error
+	if uploadDICOMInstancesResponse.Status == orthancAPITypes.UploadDICOMStatusAlreadyStored {
+		return errors.New(apiError.DuplicateRecord)
+	}
+
+	/// forward to target dicom modality
+	storeRes, err := service.OrthancAPIInterface.StraightDICOMStoreSCU(ctx, data.ModalityID, data.FileBody)
+	if err != nil {
+		log.Println("[orthanc] error straight DICOM store SCU:", err)
+
+		// delete already uploaded local resource
+		err = service.OrthancAPIInterface.DeleteLocalResources(ctx, orthancAPITypes.DeleteLocalResourcesRequest{
+			Resources: []string{uploadDICOMInstancesResponse.ID},
+		})
+		if err != nil {
+			log.Println("[orthanc] error deleting local resource:", err)
+		}
+
+		return errors.New(apiError.OrthancError)
+	}
+
+	log.Println("store SOPClassUID:", storeRes.SOPClassUID)
+	log.Println("store SOPInstanceUID:", storeRes.SOPInstanceUID)
+
+	// log to elasticsearch
+	go func() {
+		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, data.UserID)
+		if err != nil {
+			return
+		}
+
+		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
+		if err != nil {
+			return
+		}
+
+		_, err = service.ElasticsearchCommandServiceInterface.CreateStoredCustomSeriesLog(ctx, elasticsearchTypes.CreateStoredCustomSeriesLog{
+			TenantID:                data.TenantID,
+			TenantName:              tenant.Name,
+			ModalityID:              data.ModalityID,
+			UserID:                  data.UserID,
+			Email:                   user.Email,
+			Name:                    user.Name,
+			StudyInstanceUID:        data.StudyInstanceUID,
+			SeriesInstanceUIDs:      data.SeriesInstanceUIDs,
+			PatientID:               data.PatientID,
+			ModelName:               data.ModelName,
+			ModelVersion:            data.ModelVersion,
+			CustomSeriesInstanceUID: customSeriesInstanceUID,
+			CustomSOPInstanceUID:    customSOPInstanceUID,
+		})
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	}()
+
+	return nil
+}
+
 // TriggerDICOMEchoSCU trigger dicom echo scu
 func (service *OrthancCommandService) TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error {
 	err := service.OrthancAPIInterface.TriggerDICOMEchoSCU(ctx, modalityID)
@@ -186,6 +320,21 @@ func (service *OrthancCommandService) UpdateDICOMModality(ctx context.Context, d
 		Host:                   data.Host,
 		Port:                   data.Port,
 		UseDicomTLS:            data.UseDicomTLS,
+	})
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	// perform upsert
+	err = service.OrthancCommandRepositoryInterface.UpsertDICOMModality(ctx, repositoryTypes.UpsertDICOMModality{
+		TenantID:      data.TenantID,
+		ModalityID:    data.ModalityID,
+		AET:           data.AET,
+		HostHash:      hashUtils.GetMD5Hash(data.Host), // hash host using md5
+		CFindEnabled:  data.CFindEnabled,
+		CMoveEnabled:  data.CMoveEnabled,
+		CStoreEnabled: data.CStoreEnabled,
 	})
 	if err != nil {
 		log.Println(err)

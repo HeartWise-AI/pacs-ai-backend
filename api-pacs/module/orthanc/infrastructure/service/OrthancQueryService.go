@@ -12,6 +12,8 @@ import (
 	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	"api-pacs/module/orthanc/domain/entity"
+	"api-pacs/module/orthanc/domain/repository"
 	"api-pacs/module/orthanc/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
 	userApplication "api-pacs/module/user/application"
@@ -19,6 +21,7 @@ import (
 
 // OrthancQueryService handles the Orthanc query service logic
 type OrthancQueryService struct {
+	repository.OrthancQueryRepositoryInterface
 	orthancAPITypes.OrthancAPIInterface
 	tenantApplication.TenantQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
@@ -133,13 +136,81 @@ func (service *OrthancQueryService) GetJobsInfo(ctx context.Context, jobIDs []st
 	return results, nil
 }
 
+// GetLinkedDICOMModalityWithEnabledCStore get linked DICOM modality with enabled C-Store
+func (service *OrthancQueryService) GetLinkedDICOMModalityWithEnabledCStore(ctx context.Context, tenantID, modalityID string) (entity.DICOMModality, error) {
+	// get host hash
+	dicomModality, err := service.OrthancQueryRepositoryInterface.SelectDICOMModalityByModalityID(ctx, tenantID, modalityID)
+	if err != nil {
+		log.Println(err)
+		return entity.DICOMModality{}, err
+	}
+
+	// get linked dicom modality with c-store enabled
+	linkedDICOMModality, err := service.OrthancQueryRepositoryInterface.SelectLinkedDICOMModalityWithEnabledCStore(ctx, tenantID, dicomModality.HostHash)
+	if err != nil {
+		log.Println(err)
+		return entity.DICOMModality{}, err
+	}
+
+	return linkedDICOMModality, nil
+}
+
 // ListDICOMModalities list dicom modalities
-func (service *OrthancQueryService) ListDICOMModalities(ctx context.Context) (map[string]orthancAPITypes.ListDICOMModalitiesResponse, error) {
+func (service *OrthancQueryService) ListDICOMModalities(ctx context.Context, tenantID string) (map[string]types.ListDICOMModalityResult, error) {
 	res, err := service.OrthancAPIInterface.ListDICOMModalities(ctx)
 	if err != nil {
 		log.Println(err)
 		return nil, err
 	}
 
-	return res, nil
+	var m = sync.Mutex{}
+	eg, egCtx := errgroup.WithContext(ctx)
+
+	// set limit
+	eg.SetLimit(len(res))
+
+	results := map[string]types.ListDICOMModalityResult{}
+
+	for dicomModalityID, dicomModality := range res {
+		func(dicomModalityID string, dicomModality orthancAPITypes.ListDICOMModalitiesResponse) {
+			eg.Go(func() error {
+				m.Lock()
+				defer m.Unlock()
+
+				// get dicom modality from database
+				dbDicomModality, err := service.OrthancQueryRepositoryInterface.SelectDICOMModalityByModalityID(egCtx, tenantID, dicomModalityID)
+				if err != nil {
+					log.Println(err) // silently ignore error
+				}
+
+				results[dicomModalityID] = types.ListDICOMModalityResult{
+					AET:                 dicomModality.AET,
+					AllowEcho:           dicomModality.AllowEcho,
+					AllowFind:           dicomModality.AllowFind,
+					AllowFindWorklist:   dicomModality.AllowFindWorklist,
+					AllowGet:            dicomModality.AllowGet,
+					AllowMove:           dicomModality.AllowMove,
+					AllowStore:          dicomModality.AllowStore,
+					AllowTranscoding:    dicomModality.AllowTranscoding,
+					Host:                dicomModality.Host,
+					Port:                dicomModality.Port,
+					Timeout:             dicomModality.Timeout,
+					UseDicomTLS:         dicomModality.UseDicomTLS,
+					TargetCFindEnabled:  dbDicomModality.CFindEnabled,
+					TargetCMoveEnabled:  dbDicomModality.CMoveEnabled,
+					TargetCStoreEnabled: dbDicomModality.CStoreEnabled,
+				}
+
+				return nil
+			})
+		}(dicomModalityID, dicomModality)
+	}
+
+	// wait for all goroutines to finish
+	if err := eg.Wait(); err != nil {
+		log.Println(err)
+		return nil, err
+	}
+
+	return results, nil
 }

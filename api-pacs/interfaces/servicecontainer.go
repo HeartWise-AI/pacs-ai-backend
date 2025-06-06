@@ -20,8 +20,11 @@ import (
 	"api-pacs/infrastructures/database/elasticsearch"
 	elasticsearchTypes "api-pacs/infrastructures/database/elasticsearch/types"
 	"api-pacs/infrastructures/database/redis"
+	cloudflare "api-pacs/infrastructures/providers/api/cloudflare"
 	"api-pacs/infrastructures/providers/api/dockerinference"
 	"api-pacs/infrastructures/providers/api/kibana"
+	"api-pacs/infrastructures/providers/api/mailchimp"
+	mailchimpTypes "api-pacs/infrastructures/providers/api/mailchimp/types"
 	"api-pacs/infrastructures/providers/api/orthanc"
 	"api-pacs/infrastructures/providers/sdk/docker"
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
@@ -40,6 +43,9 @@ import (
 	inferenceRepository "api-pacs/module/inference/infrastructure/repository"
 	inferenceService "api-pacs/module/inference/infrastructure/service"
 	inferenceREST "api-pacs/module/inference/interfaces/http/rest"
+	leadService "api-pacs/module/lead/infrastructure/service"
+	leadREST "api-pacs/module/lead/interfaces/http/rest"
+	orthancRepository "api-pacs/module/orthanc/infrastructure/repository"
 	orthancService "api-pacs/module/orthanc/infrastructure/service"
 	orthancREST "api-pacs/module/orthanc/interfaces/http/rest"
 	tenantRepository "api-pacs/module/tenant/infrastructure/repository"
@@ -63,6 +69,7 @@ type ServiceContainerInterface interface {
 	RegisterIAMRESTCommandController() iamREST.IAMCommandController
 	RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController
 	RegisterInferenceRESTQueryController() inferenceREST.InferenceQueryController
+	RegisterLeadRESTCommandController() leadREST.LeadCommandController
 	RegisterOrthancRESTCommandController() orthancREST.OrthancCommandController
 	RegisterOrthancRESTQueryController() orthancREST.OrthancQueryController
 	RegisterTenantRESTCommandController() tenantREST.TenantCommandController
@@ -82,6 +89,8 @@ var (
 	firebaseAdminSDK       *firebaseadmin.FirebaseAdminSDK
 	orthancAPI             *orthanc.OrthancAPI
 	kibanaAPI              *kibana.KibanaAPI
+	mailchimpAPI           *mailchimp.MailchimpAPI
+	cloudflareAPI          *cloudflare.CloudflareAPI
 	mailgunSDK             *mailgun.MailgunSDK
 	dockerSDK              *docker.DockerSDK
 	dockerInferenceAPI     *dockerinference.DockerInferenceAPI
@@ -97,6 +106,17 @@ func (k *kernel) RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware {
 	}
 
 	return middleware
+}
+
+// RegisterLeadRESTCommandController performs dependency injection to the RegisterLeadRESTCommandController
+func (k *kernel) RegisterLeadRESTCommandController() leadREST.LeadCommandController {
+	service := k.leadCommandServiceContainer()
+
+	controller := leadREST.LeadCommandController{
+		LeadCommandServiceInterface: service,
+	}
+
+	return controller
 }
 
 // Proxies
@@ -239,7 +259,14 @@ func OrthancCommandServiceDI() *orthancService.OrthancCommandService {
 	m.Lock()
 	defer m.Unlock()
 
+	repository := &orthancRepository.OrthancCommandRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
 	service := &orthancService.OrthancCommandService{
+		OrthancCommandRepositoryInterface: &orthancRepository.OrthancCommandRepositoryCircuitBreaker{
+			OrthancCommandRepositoryInterface: repository,
+		},
 		OrthancAPIInterface:                  orthancAPI,
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
@@ -318,6 +345,21 @@ func (k *kernel) iamQueryServiceContainer() *iamService.IAMQueryService {
 	return service
 }
 
+func (k *kernel) leadCommandServiceContainer() *leadService.LeadCommandService {
+	service := &leadService.LeadCommandService{
+		MailchimpAPIInterface:  mailchimpAPI,
+		CloudflareAPIInterface: cloudflareAPI,
+	}
+
+	return service
+}
+
+func (k *kernel) leadQueryServiceContainer() *leadService.LeadQueryService {
+	service := &leadService.LeadQueryService{}
+
+	return service
+}
+
 func (k *kernel) inferenceCommandServiceContainer() *inferenceService.InferenceCommandService {
 	commandRepository := &inferenceRepository.InferenceCommandRepository{
 		FirebaseAdminSDK: firebaseAdminSDK,
@@ -334,9 +376,12 @@ func (k *kernel) inferenceCommandServiceContainer() *inferenceService.InferenceC
 		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
 			InferenceQueryRepositoryInterface: queryRepository,
 		},
-		DockerSDKInterface:          dockerSDK,
-		OrthancAPIInterface:         orthancAPI,
-		DockerInferenceAPIInterface: dockerInferenceAPI,
+		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
+		UserQueryServiceInterface:            k.userQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		DockerSDKInterface:                   dockerSDK,
+		OrthancAPIInterface:                  orthancAPI,
+		DockerInferenceAPIInterface:          dockerInferenceAPI,
 	}
 
 	return service
@@ -363,7 +408,14 @@ func (k *kernel) orthancCommandServiceContainer() *orthancService.OrthancCommand
 }
 
 func (k *kernel) orthancQueryServiceContainer() *orthancService.OrthancQueryService {
+	repository := &orthancRepository.OrthancQueryRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
 	service := &orthancService.OrthancQueryService{
+		OrthancQueryRepositoryInterface: &orthancRepository.OrthancQueryRepositoryCircuitBreaker{
+			OrthancQueryRepositoryInterface: repository,
+		},
 		OrthancAPIInterface:                  orthancAPI,
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
@@ -461,6 +513,16 @@ func registerHandlers() {
 
 	// init kibana connection
 	kibanaAPI = kibana.Init(os.Getenv("KIBANA_BASE_URL"))
+
+	// init mailchimp API
+	mailchimpAPI = mailchimp.Init(mailchimpTypes.Config{
+		BaseURL: os.Getenv("MAILCHIMP_BASE_URL"),
+		APIKey:  os.Getenv("MAILCHIMP_API_KEY"),
+		ListID:  os.Getenv("MAILCHIMP_LIST_ID"),
+	})
+
+	// init cloudflare API
+	cloudflareAPI = cloudflare.Init(os.Getenv("CLOUDFLARE_SECRET_KEY"))
 
 	// init mailgun sdk
 	mailgunSDK, err = mailgun.NewMailgun(mailgunTypes.Config{

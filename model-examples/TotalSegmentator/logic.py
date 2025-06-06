@@ -4,38 +4,20 @@ from utils.genericLogic import BasePredictionService
 from utils.http_utils import Config, PredictRequest
 
 import base64
-import enum
-import nibabel as nib
 import numpy as np
 import pydicom, pydicom.pixels
-import typing
 import json
 import os
 import torch
+import math
 
+import dicom2nifti
+import dicom2nifti.settings as settings
 
-class MedicalImage(typing.NamedTuple):
-
-    image: np.ndarray
-    affine: np.ndarray
-
-
-class Direction(enum.IntEnum):
-
-    SAGITTAL = 0
-    CORONAL = 1
-    AXIAL = 2
-    ORIGIN = 3
-
-
-def sorting_direction(direction: Direction) -> typing.Callable[[np.ndarray], float]:
-    """A function that computes the distance to the origin along a direction."""
-    def distance_fn(medical: MedicalImage) -> float:
-        """Distance along an orthonormal direction."""
-        return np.inner(
-                medical.affine[:3, Direction.ORIGIN.value],
-                medical.affine[:3, direction.value])
-    return distance_fn
+settings.disable_validate_slice_increment()
+settings.enable_resampling()
+settings.set_resample_spline_interpolation_order(1)
+settings.set_resample_padding(-1000)
 
 
 class CustomPredictionService(BasePredictionService):
@@ -54,10 +36,46 @@ class CustomPredictionService(BasePredictionService):
         for instanceUID, instance in series.items():
             dicoms.append(base64.b64decode(instance))
         
-        response = self.handler(dicoms)
+        response = self._handle_ohif(dicoms)
         return response  # Return the dictionary directly
 
-    def handler(self, dicoms: dict[int, dict[int, dict]]) -> dict:
+    def _get_orientation_type(self, orientation):
+        """
+        Determine image orientation based on ImageOrientationPatient
+        
+        Returns:
+            str: 'AXIAL', 'SAGITTAL', or 'CORONAL'
+        """
+        # Extract direction cosines
+        row_x, row_y, row_z, col_x, col_y, col_z = orientation
+        
+        # Calculate normal vector (cross product of row and column)
+        normal_x = row_y * col_z - row_z * col_y
+        normal_y = row_z * col_x - row_x * col_z
+        normal_z = row_x * col_y - row_y * col_x
+        
+        # Normalize the vector
+        magnitude = math.sqrt(normal_x**2 + normal_y**2 + normal_z**2)
+        if magnitude == 0:
+            return 'UNKNOWN'
+            
+        normal_x /= magnitude
+        normal_y /= magnitude
+        normal_z /= magnitude
+        
+        # Determine orientation by checking which axis the normal vector is most aligned with
+        abs_x, abs_y, abs_z = abs(normal_x), abs(normal_y), abs(normal_z)
+        
+        if abs_z > abs_x and abs_z > abs_y:
+            return 'AXIAL'  # Normal is along Z axis
+        elif abs_x > abs_y and abs_x > abs_z:
+            return 'SAGITTAL'  # Normal is along X axis
+        elif abs_y > abs_x and abs_y > abs_z:
+            return 'CORONAL'  # Normal is along Y axis
+        else:
+            return 'UNKNOWN'
+
+    def _handle_ohif(self, dicoms: dict[int, dict[int, dict]]) -> dict:
         """Parse DICOM instances into Nifti volumetric images and segment.
 
         Args:
@@ -69,46 +87,47 @@ class CustomPredictionService(BasePredictionService):
             label information and segment definitions.
         """
         try:
-            # Parse volumetric DICOM instances into a Nifti Image
             instances = []
             for instance in dicoms:
                 ds = pydicom.dcmread(BytesIO(instance), force=True)
-                # Ensure proper pixel units for modalities like CT (Hounsfield unit)
-                image = pydicom.pixels.apply_modality_lut(ds.pixel_array, ds)
-                # Reorder slice dimensions as an eventual channel-first 3D
-                # volume to support both volumetric and RGB images.
-                # TODO: are 3D JPEG possible in medical imaging?
-                match (getattr(ds, "NumberOfFrame", 1),
-                       getattr(ds, "SamplesPerPixel", 1)):
-                    case 1, 1: image = np.expand_dims(image, (0, -1))
-                    case 1, 3: image = np.expand_dims(np.moveaxis(image, 2, 0), 3)
-                    case _, 1: image = np.expand_dims(np.moveaxis(image, 0, 2), 0)
-                    case _, 3: image = np.moveaxis(image, [0, 3], [3, 0])
-                assert image.ndim == 4
-                assert image.dtype == np.float64
-                orientation = np.reshape(ds.ImageOrientationPatient, [2, 3])
-                orientation = np.flipud(orientation)
-                inplane = orientation.T * ds.PixelSpacing
-                cosine = np.cross(inplane[:, 0], inplane[:, 1])
-                affine = np.column_stack([inplane, cosine, ds.ImagePositionPatient])
-                affine = np.vstack([affine, [0, 0, 0, 1]])
-                instances.append(MedicalImage(image, affine))
-            # Sort direction slices using their relative affine-encoded position
-            # TODO: don't assume axial acquisitions, parse from DICOM metadata
-            slices = sorted(instances, key=sorting_direction(Direction.AXIAL))
-            affine = slices[0].affine  # construct whole volume affine from first slice
-            cosine = slices[-1].affine[:3, 3] - affine[:3, 3]
-            if len(slices) > 1:
-                cosine /= len(slices) - 1
-            affine[:3, 2] = cosine
-            volume = np.concatenate([slice for slice, _ in slices], axis=3)
-            volume_squeezed = volume.squeeze(0)  # remove channel dim for Nifti-based pipelines
-            scan = nib.Nifti1Image(volume_squeezed, affine)
-            # If you change the task/fast/fastest, you need to change the weights in utils/download_pretrained_weights.py
-            pred = CustomPredictionService.models['totalsegmentator'](scan, device="gpu", fastest=True, task="total") 
+                instances.append(ds)
             
-            # Get the labelmap data and encode it
-            labelmap_data = pred.get_fdata().transpose(2, 0, 1)
+            # Sort instances by InstanceNumber before processing
+            instances.sort(key=lambda x: x.InstanceNumber)
+                
+            # Get orientation information from first instance
+            orientation = instances[0].ImageOrientationPatient
+            orientation_type = self._get_orientation_type(orientation)
+            
+            scan = dicom2nifti.convert_dicom.dicom_array_to_nifti(instances, 'ct.nii.gz', reorient_nifti=True)
+            pred = CustomPredictionService.models['totalsegmentator'](scan['NII'], device="gpu", fastest=True, task="total") 
+
+            print(f"Orientation: {orientation_type}")
+            
+            # Apply orientation-specific transformations
+            data = pred.get_fdata()
+            
+            if orientation_type == 'AXIAL':
+                # For axial, transpose (2, 1, 0) to get z,y,x
+                labelmap_data = np.fliplr(data.transpose(2, 1, 0))
+            elif orientation_type == 'SAGITTAL':
+                # For sagittal, different transposing pattern needed
+                labelmap_data = np.flip(data.transpose(0, 2, 1), axis=(1,2))
+            elif orientation_type == 'CORONAL':
+                # For coronal, different transposing pattern needed
+                labelmap_data = np.flip(data.transpose(1, 2, 0), axis=(0,1))
+            else:
+                # Fallback to axial-like processing
+                labelmap_data = np.fliplr(data.transpose(2, 1, 0))
+            
+            if orientation_type == 'AXIAL' and instances[0].ImagePositionPatient[2] > instances[1].ImagePositionPatient[2]:
+                print("Flipping axial")
+                labelmap_data = np.flipud(labelmap_data)
+
+            #TODO: Might need to flipud the orientation if the orientation is not axial
+            
+            print(f"Output shape (z,y,x): {labelmap_data.shape}")
+            
             labelmap_uint8 = labelmap_data.astype(np.uint8)
             encoded_data = base64.b64encode(labelmap_uint8.tobytes()).decode('utf-8')
                 
@@ -132,7 +151,7 @@ class CustomPredictionService(BasePredictionService):
                 # Clear any cached tensors
                 torch.cuda.empty_cache()
                 # Delete large objects explicitly
-                del pred, labelmap_data, scan, volume, volume_squeezed
+                del pred, labelmap_data, scan
                 torch.cuda.empty_cache()  # Second empty_cache after deletions
 
             return response_data

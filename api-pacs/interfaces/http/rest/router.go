@@ -49,6 +49,7 @@ func (router *router) InitRouter() *chi.Mux {
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
 	inferenceCommandController := interfaces.ServiceContainer().RegisterInferenceRESTCommandController()
 	inferenceQueryController := interfaces.ServiceContainer().RegisterInferenceRESTQueryController()
+	leadCommandController := interfaces.ServiceContainer().RegisterLeadRESTCommandController()
 	orthancProxy := interfaces.ServiceContainer().RegisterOrthancProxy()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
 	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
@@ -73,7 +74,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.17.1-beta",
+				"version": "v0.20.1-beta",
 			},
 		}
 
@@ -158,6 +159,12 @@ func (router *router) InitRouter() *chi.Mux {
 				})
 			})
 
+			// lead module
+			r.Route("/lead", func(r chi.Router) {
+				r.Post("/contact-form", leadCommandController.AddContactForm)
+				r.Post("/subscribe", leadCommandController.Subscribe)
+			})
+
 			// orthanc module
 			r.Route("/orthanc", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
@@ -165,8 +172,10 @@ func (router *router) InitRouter() *chi.Mux {
 
 					r.Post("/modality/studies", orthancQueryController.FindModalityStudies)
 					r.Post("/modality/retrieve", orthancCommandController.RetrieveModalityStudy)
+					r.Post("/modality/{modalityID}/study/{studyInstanceUID}/series/store", orthancCommandController.StoreStudyCustomSeries)
 					r.Get("/jobs", orthancQueryController.GetJobsInfo)
 					r.Get("/modalities/list", orthancQueryController.ListDICOMModalities)
+					r.Get("/modality/{modalityID}/linked/storage/enabled", orthancQueryController.GetLinkedDICOMModalityWithEnabledCStore)
 					r.Get("/sop-instance/{sopInstanceUID}/find", orthancQueryController.FindLocalSOPInstance)
 
 					// admin or owner only

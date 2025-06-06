@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "0.3.0"
+    "version": "0.20.1-beta"
   },
   "servers": [
     {
@@ -20,7 +20,7 @@
       "description": "Production MHI"
     },
     {
-      "url": "http://198.168.189.123/api/v1",
+      "url": "http://198.168.188.204/api/v1",
       "description": "Staging"
     },
     {
@@ -44,6 +44,10 @@
     {
       "name": "inference",
       "description": "Inference service"
+    },
+    {
+      "name": "lead",
+      "description": "Lead service"
     },
     {
       "name": "orthanc",
@@ -81,6 +85,7 @@
                 "logins",
                 "admin_members",
                 "find_modality_studies",
+                "predict_inference_models",
                 "retrieved_studies"
               ]
             }
@@ -651,6 +656,62 @@
         }
       }
     },
+    "/lead/contact-form": {
+      "post": {
+        "tags": ["lead"],
+        "summary": "Add Contact Form",
+        "description": "Add contact form.",
+        "requestBody": {
+          "description": "Add contact form request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddContactFormRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/lead/subscribe": {
+      "post": {
+        "tags": ["lead"],
+        "summary": "Subscribe to Newsletter",
+        "description": "Subscribe to newsletter.",
+        "requestBody": {
+          "description": "Subscribe request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscribeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/tenant": {
       "get": {
         "tags": ["tenant"],
@@ -776,6 +837,90 @@
         }
       }
     },
+    "/orthanc/modality/{modalityID}/study/{studyInstanceUID}/series/store": {
+      "post": {
+        "tags": ["orthanc"],
+        "summary": "Store Study Custom Series",
+        "description": "Store study custom series and write to PACS.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modalityID",
+            "in": "path",
+            "description": "Modality ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "studyInstanceUID",
+            "in": "path",
+            "description": "Study Instance UID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Store study custom series request",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "seriesInstanceUIDs": {
+                    "type": "string",
+                    "description": "JSON stringified array of series instance UIDs"
+                  },
+                  "patientID": {
+                    "type": "string"
+                  },
+                  "patientName": {
+                    "type": "string"
+                  },
+                  "modelName": {
+                    "type": "string"
+                  },
+                  "modelVersion": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file",
+                  "seriesInstanceUIDs",
+                  "patientID",
+                  "patientName",
+                  "modelName",
+                  "modelVersion"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/orthanc/jobs": {
       "get": {
         "tags": ["orthanc"],
@@ -821,6 +966,40 @@
         "security": [
           {
             "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/orthanc/modality/{modalityID}/linked/storage/enabled": {
+      "get": {
+        "tags": ["orthanc"],
+        "summary": "Get Linked DICOM Modality With Enabled C-Store",
+        "description": "Get linked DICOM modality with enabled C-Store.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modalityID",
+            "in": "path",
+            "description": "Modality ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1236,6 +1415,36 @@
           }
         }
       },
+      "AddContactFormRequest": {
+        "required": ["token", "name", "email", "message"],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "SubscribeRequest": {
+        "required": ["token", "email"],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        }
+      },
       "CreateTenantOwnerRequest": {
         "required": [
           "tenantId",
@@ -1408,6 +1617,30 @@
           }
         }
       },
+      "StoreStudyCustomSeriesRequest": {
+        "required": [
+          "modelName",
+          "modelVersion",
+          "encodedData",
+          "inputSeriesFileType"
+        ],
+        "type": "object",
+        "properties": {
+          "modelName": {
+            "type": "string"
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "encodedData": {
+            "type": "string"
+          },
+          "inputSeriesFileType": {
+            "type": "string",
+            "enum": ["PDF", "DCM"]
+          }
+        }
+      },
       "UpdateTenantUserRequest": {
         "required": ["id", "role", "name", "licenseNo", "specialty"],
         "type": "object",
@@ -1474,6 +1707,15 @@
           "outputMode": {
             "type": "string",
             "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
+          }
+        }
+      },
+      "ValidateTurnstileTokenRequest": {
+        "required": ["token"],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
           }
         }
       },
