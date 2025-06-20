@@ -177,7 +177,8 @@ class APIHandler:
         if thread_id not in self.thread_data:
             self.thread_data[thread_id] = {
                 "dicom_payload": None,
-                "last_accessed": datetime.now()
+                "last_accessed": datetime.now(),
+                "context_messages": []
             }
         else:
             # Update the last accessed timestamp
@@ -187,7 +188,7 @@ class APIHandler:
 
     def handle_dicom_payload(self, payload: Dict[str, Any], thread_id: str) -> Dict[str, Any]:
         """
-        Store DICOM payload for a specific thread
+        Store DICOM payload for a specific thread and add context message
         
         Args:
             payload (Dict[str, Any]): The DICOM payload to store
@@ -202,6 +203,16 @@ class APIHandler:
         
         # Store the DICOM payload in thread data
         thread_data["dicom_payload"] = payload
+        
+        # Add context message to inform the LLM that DICOM data is now available
+        context_message = {
+            "role": "system",
+            "content": [{"type": "text", "text": "DICOM data has been uploaded and is now available for analysis. You can use the available tools to analyze the medical imaging data when you think it's appropriate."}]
+        }
+        
+        # Add the context message to the thread's context messages
+        thread_data["context_messages"].append(context_message)
+        logger.info(f"Added DICOM context message to thread {thread_id}")
         
         return {
             "status": "success",
@@ -272,14 +283,23 @@ class APIHandler:
         # Get thread data and DICOM payload
         thread_data = self.get_thread_data(thread_id)
         dicom_payload = thread_data.get("dicom_payload")
+        context_messages = thread_data.get("context_messages", [])
         
         logger.info(f"Processing message for thread {thread_id}")
         
         if dicom_payload is not None:
             logger.debug(f"Thread has DICOM payload of type {type(dicom_payload)}")
         
+        if context_messages:
+            logger.info(f"Including {len(context_messages)} context message(s) for thread {thread_id}")
+        
         # Prepare messages for the agent
         messages = []
+        
+        # Add context messages first (if any)
+        messages.extend(context_messages)
+        
+        # Add the user message
         if message is not None:
             messages.append({"role": "user", "content": [{"type": "text", "text": message}]})
 
@@ -527,7 +547,8 @@ async def get_thread_info(thread_id: str):
         
         return JSONResponse({
             "thread_id": thread_id,
-            "has_dicom_payload": thread_data.get("dicom_payload") is not None
+            "has_dicom_payload": thread_data.get("dicom_payload") is not None,
+            "context_messages_count": len(thread_data.get("context_messages", []))
         })
     except Exception as e:
         logger.error(f"Error getting thread info: {str(e)}")
