@@ -9,4 +9,4 @@ include:
   - elasticsearch/docker-compose.yml
   - api-pacs/docker-compose.yml
   - ../PACS-AI/docker-compose.yml
-  - nginx/docker-compose.yml
+  # - nginx/docker-compose.yml

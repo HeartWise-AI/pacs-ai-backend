@@ -24,7 +24,7 @@ Before running this repository, ensure you have:
    ```bash
    # Create project directory and clone repository
    mkdir pacs-ai
-   cd pasc-ai
+   cd pacs-ai
    git clone https://github.com/HeartWise-AI/pacs-ai-backend.git
    git clone https://github.com/HeartWise-AI/PACS-AI.git
 

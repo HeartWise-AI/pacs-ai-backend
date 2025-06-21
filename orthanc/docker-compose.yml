@@ -31,7 +31,7 @@ services:
         {
           "Host": "orthanc-index"
         }
-      ORTHANC__CONCURRENT_JOBS: 20
+      ORTHANC__CONCURRENT_JOBS: 2
       ORTHANC__JOBS_HISTORY_SIZE: 300
       ORTHANC__STORAGE_COMPRESSION: "false"
       ORTHANC__LIMIT_FIND_RESULTS: 100

@@ -67,28 +67,6 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 		ShmSize: 2 * 1024 * 1024 * 1024, // 2GB in bytes
 	}
 
-	// try to use NVIDIA runtime if available
-	isNvidiaSupported, err := d.checkNvidiaRuntime(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	if isNvidiaSupported {
-		hostConfig.Runtime = "nvidia"
-		// use all GPUs
-		hostConfig.Resources = container.Resources{
-			DeviceRequests: []container.DeviceRequest{
-				{
-					Driver:       "nvidia",
-					Count:        -1, // Use all available GPUs
-					Capabilities: [][]string{{"gpu"}},
-				},
-			},
-		}
-	} else {
-		log.Println("[docker] NVIDIA runtime not available")
-	}
-
 	// define network config
 	networkConfig := &network.NetworkingConfig{
 		EndpointsConfig: map[string]*network.EndpointSettings{
