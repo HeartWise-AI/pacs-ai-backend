@@ -169,7 +169,7 @@ func (router *router) InitRouter() *chi.Mux {
 			// orchestrator module
 			r.Route("/orchestrator", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
-					// r.Use(iamMiddleware.TokenSessionAuthGuard)
+					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
 					// Thread management
 					r.Post("/threads", orchestratorController.CreateThread)
