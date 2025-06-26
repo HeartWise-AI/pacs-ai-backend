@@ -266,11 +266,11 @@ class Agent:
         logger.info(f"Executing tool: {tool_name}")
 
         try:
-            # Get the arguments the LLM wanted to pass to the tool
             tool_args = call.get("args", {})
-            # Add the dicom_payload to those arguments 
-            tool_args["dicom_payload"] = dicom_payload
-            # Invoke with the combined arguments
+            # Only add dicom_payload if the tool expects it
+            if hasattr(tool, "args_schema") and hasattr(tool.args_schema, "model_fields"):
+                if "dicom_payload" in tool.args_schema.model_fields:
+                    tool_args["dicom_payload"] = dicom_payload
             result = tool.invoke(tool_args)
             logger.info(f"Tool {tool_name} execution successful")
             return result

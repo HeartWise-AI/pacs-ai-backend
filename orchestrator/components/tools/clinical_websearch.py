@@ -119,6 +119,8 @@ class ClinicalWebSearchTool(BaseTool):
             Dict[str, Any]: Search results with clinical information
         """
         try:
+            # Debug log to verify the query argument
+            logger.debug(f"ClinicalWebSearchTool._run received query: {query}")
             # Validate that we have a query
             if not query:
                 return self._create_error_response(
