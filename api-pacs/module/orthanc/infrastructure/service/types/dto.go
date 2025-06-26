@@ -44,6 +44,7 @@ type RetrieveModalityStudyBySeries struct {
 	UserID           string
 	ModalityID       string
 	StudyInstanceUID string
+	ModalityType     string
 }
 
 type StoreStudyCustomSeries struct {
