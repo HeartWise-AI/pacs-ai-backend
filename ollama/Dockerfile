@@ -8,4 +8,4 @@ RUN sed -i 's/\r$//' /start.sh && \
     chmod +x /start.sh
 
 # Set the script as the entrypoint using shell form
-ENTRYPOINT ["/bin/bash", "/start.sh"] 
+ENTRYPOINT ["/bin/bash", "/start.sh"]

@@ -2,12 +2,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class TransformerBlock(nn.Module):
     """
     A single Transformer-style block with:
       - LayerNorm -> Multihead Attn -> Dropout -> Residual
       - LayerNorm -> MLP -> Dropout -> Residual
     """
+
     def __init__(self, embedding_dim, num_heads, dropout):
         super().__init__()
         self.norm1 = nn.LayerNorm(embedding_dim)
@@ -39,8 +41,7 @@ class TransformerBlock(nn.Module):
         residual = x
         x = self.norm2(x)
         x = self.mlp(x)
-        x = residual + self.dropout2(x)
-        return x
+        return residual + self.dropout2(x)
 
 
 class EnhancedVideoAggregator(nn.Module):
@@ -55,6 +56,7 @@ class EnhancedVideoAggregator(nn.Module):
     Output:
       - [B, D]: aggregated embedding per sample in the batch.
     """
+
     def __init__(
         self,
         embedding_dim: int,
@@ -62,7 +64,7 @@ class EnhancedVideoAggregator(nn.Module):
         dropout: float = 0.1,
         use_positional_encoding: bool = True,
         aggregator_depth: int = 2,
-        max_segments: int = 1024
+        max_segments: int = 1024,
     ):
         super().__init__()
         self.embedding_dim = embedding_dim
@@ -79,10 +81,9 @@ class EnhancedVideoAggregator(nn.Module):
             self.pos_encoding = None
 
         # Stacked Transformer blocks
-        self.blocks = nn.ModuleList([
-            TransformerBlock(embedding_dim, num_heads, dropout)
-            for _ in range(aggregator_depth)
-        ])
+        self.blocks = nn.ModuleList(
+            [TransformerBlock(embedding_dim, num_heads, dropout) for _ in range(aggregator_depth)]
+        )
 
         # Final LayerNorm
         self.final_ln = nn.LayerNorm(embedding_dim)
@@ -112,12 +113,11 @@ class EnhancedVideoAggregator(nn.Module):
 
         # Learnable query-based attention
         # attn_query: [1, 1, D] => expand to [B, 1, D]
-        query = self.attn_query.expand(B, -1, -1)         # shape: [B, 1, D]
+        query = self.attn_query.expand(B, -1, -1)  # shape: [B, 1, D]
         # Dot-product => [B, 1, N]
         attn_scores = torch.matmul(query, x.transpose(1, 2))
         # Normalize to get attention weights
-        attn_weights = F.softmax(attn_scores, dim=-1)     # shape: [B, 1, N]
+        attn_weights = F.softmax(attn_scores, dim=-1)  # shape: [B, 1, N]
 
         # Weighted sum of segments => [B, 1, D] => [B, D]
-        out = torch.bmm(attn_weights, x).squeeze(1)       # shape: [B, D]
-        return out
+        return torch.bmm(attn_weights, x).squeeze(1)  # shape: [B, D]

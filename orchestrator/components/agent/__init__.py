@@ -1,1 +1,1 @@
-from .agent import AgentState, Agent
+from .agent import Agent, AgentState

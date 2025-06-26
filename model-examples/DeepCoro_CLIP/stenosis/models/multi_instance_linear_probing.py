@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, Optional, Union
 
 
 class MultiInstanceLinearProbing(nn.Module):
@@ -21,7 +20,7 @@ class MultiInstanceLinearProbing(nn.Module):
     def __init__(
         self,
         embedding_dim: int,
-        head_structure: Dict[str, int],
+        head_structure: dict[str, int],
         pooling_mode: str = "mean",
         attention_hidden: int = 128,
         dropout: float = 0.0,
@@ -29,9 +28,7 @@ class MultiInstanceLinearProbing(nn.Module):
         super().__init__()
 
         if pooling_mode not in {"mean", "max", "attention"}:
-            raise ValueError(
-                "pooling_mode must be one of 'mean', 'max', or 'attention'"
-            )
+            raise ValueError("pooling_mode must be one of 'mean', 'max', or 'attention'")
         if not head_structure:
             raise ValueError("head_structure cannot be empty")
 
@@ -60,8 +57,8 @@ class MultiInstanceLinearProbing(nn.Module):
     # Public API
     # ---------------------------------------------------------------------
     def forward(
-        self, x: torch.Tensor, mask: Union[torch.Tensor, None] = None
-    ) -> Dict[str, torch.Tensor]:
+        self, x: torch.Tensor, mask: torch.Tensor | None = None
+    ) -> dict[str, torch.Tensor]:
         """Forward pass.
 
         Args
@@ -79,28 +76,24 @@ class MultiInstanceLinearProbing(nn.Module):
         """
         if x.ndim == 4:  # [B, N, L, D]
             B, N, L, D = x.shape  # noqa: N806
-            if D != self.embedding_dim:
-                raise ValueError(
-                    f"Expected embedding_dim={self.embedding_dim} but got {D}"
-                )
+            if self.embedding_dim != D:
+                raise ValueError(f"Expected embedding_dim={self.embedding_dim} but got {D}")
             if self.pooling_mode in {"mean", "max"}:
                 import warnings
+
                 warnings.warn(
                     f"[MultiInstanceLinearProbing] Received 4D input [B, N, L, D] with pooling_mode='{self.pooling_mode}'. "
                     "Automatically mean-pooling over patch tokens (L) to produce [B, N, D]. "
-                    "If you want patch-level attention, use pooling_mode='attention'."
+                    "If you want patch-level attention, use pooling_mode='attention'.",
+                    stacklevel=2,
                 )
                 x = x.mean(dim=2)  # [B, N, D]
         elif x.ndim == 3:  # [B, N, D]
             B, N, D = x.shape  # noqa: N806
-            if D != self.embedding_dim:
-                raise ValueError(
-                    f"Expected embedding_dim={self.embedding_dim} but got {D}"
-                )
+            if self.embedding_dim != D:
+                raise ValueError(f"Expected embedding_dim={self.embedding_dim} but got {D}")
         else:
-            raise ValueError(
-                f"Unsupported input shape {x.shape}; expected 3-D or 4-D tensor."
-            )
+            raise ValueError(f"Unsupported input shape {x.shape}; expected 3-D or 4-D tensor.")
 
         pooled = self._pool_instances(x, mask)  # [B, D]
         return {name: head(pooled) for name, head in self.heads.items()}
@@ -108,52 +101,44 @@ class MultiInstanceLinearProbing(nn.Module):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-    def _pool_instances(
-        self, x: torch.Tensor, mask: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    def _pool_instances(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
         """Aggregate over the *instance* dimension using the configured rule.
-        
+
         Args:
             x: Input tensor of shape [B, N, D] where N is the number of instances
             mask: Optional boolean mask of shape [B, N] indicating valid instances
-            
+
         Returns:
             Tensor of shape [B, D] containing aggregated features
         """
         if mask is None:
             # If no mask provided, treat all instances as valid
             mask = torch.ones(x.shape[0], x.shape[1], dtype=torch.bool, device=x.device)
-        
+
         # Ensure mask has correct shape and type
         if mask.shape != x.shape[:2]:
-            raise ValueError(
-                f"Mask shape {mask.shape} does not match input shape {x.shape[:2]}"
-            )
+            raise ValueError(f"Mask shape {mask.shape} does not match input shape {x.shape[:2]}")
         if mask.dtype != torch.bool:
             mask = mask.bool()
-            
+
         # Handle empty sequences (no valid instances)
         if not mask.any():
-            return torch.zeros(
-                x.shape[0], x.shape[2], 
-                dtype=x.dtype, 
-                device=x.device
-            )
-            
+            return torch.zeros(x.shape[0], x.shape[2], dtype=x.dtype, device=x.device)
+
         if self.pooling_mode == "mean":
             # Masked mean pooling
             mask_f = mask.unsqueeze(-1).float()  # [B, N, 1]
             sum_x = (x * mask_f).sum(dim=1)  # [B, D]
             count = mask_f.sum(dim=1).clamp(min=1.0)  # [B, 1]
             return sum_x / count
-            
-        elif self.pooling_mode == "max":
+
+        if self.pooling_mode == "max":
             # Masked max pooling
             x_masked = x.clone()
-            x_masked[~mask] = float('-inf')
+            x_masked[~mask] = float("-inf")
             return x_masked.max(dim=1)[0]  # [B, D]
-            
-        elif self.pooling_mode == "attention":
+
+        if self.pooling_mode == "attention":
             # --------------------------------------------------------------
             # If *hierarchical* inputs ([B, N, L, D]) are supplied we first
             # compute attention over the patch dimension (L) in each video and
@@ -192,20 +177,20 @@ class MultiInstanceLinearProbing(nn.Module):
                 A = self.attn_dropout(A)
 
                 return (A * video_emb).sum(dim=1)  # [B, D]
-            
+
             ## Level 2: Video attention computes which videos (segments) matter most for a prediction.
             A_V = torch.tanh(self.attention_V(x))  # [B, N, H]  w
             A_U = torch.sigmoid(self.attention_U(x))  # [B, N, H]
-            A = self.attention_w(A_V * A_U)  # [B, N, 1] 
-            
+            A = self.attention_w(A_V * A_U)  # [B, N, 1]
+
             # Apply mask to attention scores
-            A = A.masked_fill(~mask.unsqueeze(-1), float('-inf'))
+            A = A.masked_fill(~mask.unsqueeze(-1), float("-inf"))
             A = F.softmax(A, dim=1)  # [B, N, 1]
             A = self.attn_dropout(A)
-            
+
             # Apply attention weights
             return (A * x).sum(dim=1)  # [B, D]
-            
+
         raise RuntimeError("Invalid pooling_mode – this should never happen")
 
     def _reset_parameters(self):

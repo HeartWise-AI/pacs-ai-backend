@@ -1,9 +1,8 @@
-import os
 import json
-from typing import Dict, List
+import os
 
 
-def load_prompts_from_file(file_path: str) -> Dict[str, str]:
+def load_prompts_from_file(file_path: str) -> dict[str, str]:
     """
     Load multiple prompts from a file.
 
@@ -23,7 +22,7 @@ def load_prompts_from_file(file_path: str) -> Dict[str, str]:
     current_prompt = None
     current_content = []
 
-    with open(file_path, "r") as file:
+    with open(file_path) as file:
         for line in file:
             line = line.strip()
             if line.startswith("[") and line.endswith("]"):
@@ -40,7 +39,7 @@ def load_prompts_from_file(file_path: str) -> Dict[str, str]:
     return prompts
 
 
-def load_tool_prompts(tools: List[str], tools_json_path: str) -> str:
+def load_tool_prompts(tools: list[str], tools_json_path: str) -> str:
     """
     Load prompts for specified tools from the tools.json file.
 
@@ -57,7 +56,7 @@ def load_tool_prompts(tools: List[str], tools_json_path: str) -> str:
     if not os.path.exists(tools_json_path):
         raise FileNotFoundError(f"Tools JSON file not found: {tools_json_path}")
 
-    with open(tools_json_path, "r") as file:
+    with open(tools_json_path) as file:
         tools_data = json.load(file)
 
     tool_prompts = []

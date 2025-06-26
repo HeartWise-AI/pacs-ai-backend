@@ -24,4 +24,4 @@ ollama run qwen3:8b --nowordwrap --verbose 2>&1 &
 CLIENT_PID=$!
 
 # Wait for any process to exit
-wait $SERVER_PID $CLIENT_PID 
+wait $SERVER_PID $CLIENT_PID

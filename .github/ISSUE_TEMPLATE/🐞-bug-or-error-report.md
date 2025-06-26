@@ -7,7 +7,7 @@ assignees: ''
 
 ---
 
-name: 
+name:
 description: Report an anomaly or unexpected behavior with a sample from this repository.
 labels: ['Needs: Triage :mag:', 'type:bug-suspected']
 
@@ -17,8 +17,8 @@ body:
     value: |
       - [x] Bug
 
-      Thank you for reporting a bug! Use the sections below to submit a bug **only** if it's related to samples in this repo. 
-      
+      Thank you for reporting a bug! Use the sections below to submit a bug **only** if it's related to samples in this repo.
+
       - Follow our guidance on [How To Create Good Issues](https://github.com/pnp/powerfx-samples/wiki/How-to-Create-Good-Issues).
       - All bug reports are welcome - we want to fix them!
       - This repo is maintained by volunteers. Please be courteous and patient. 🙂
@@ -36,7 +36,7 @@ body:
     label: Sample
     description: |
         Which sample are you having troubles with?
-        
+
         Use the sample name or URL. We don't want to be spend all this time diagnosing issues about the wrong sample, do we?
 
 - type: input
@@ -47,20 +47,20 @@ body:
     label: Author(s)
     description: |
         Who wrote the sample?
-        
-        Because of the way this repository is configured, samples authors do not get a notification when you create an issue. 
-        
-        For the section above **@mention any author of the sample**. Authors' GitHub handle can be found on the main sample documentation page, under the "Solution" section. 
-        
+
+        Because of the way this repository is configured, samples authors do not get a notification when you create an issue.
+
+        For the section above **@mention any author of the sample**. Authors' GitHub handle can be found on the main sample documentation page, under the "Solution" section.
+
         Issues without an @mention will be closed automatically, as authors won't get notified.
-        
+
         **NOTE:** Don't @mention the repo maintainers, they already get notified.
 
 - type: markdown
   attributes:
     value: |
-      Provide a clear & concise description of what the bug is. Please follow our guidance on [How To Create Good Issues](https://github.com/pnp/powerfx-samples/wiki/How-to-Create-Good-Issues) which explains how to apply formatting, adding references & resources, screenshots, etc. 
-      
+      Provide a clear & concise description of what the bug is. Please follow our guidance on [How To Create Good Issues](https://github.com/pnp/powerfx-samples/wiki/How-to-Create-Good-Issues) which explains how to apply formatting, adding references & resources, screenshots, etc.
+
       **Do not attach ZIP files** of your code or compiled projects - instead, please publish your code to a public GitHub repo & post a link to it.
 
 - type: textarea

@@ -1,6 +1,6 @@
-from fastapi.responses import JSONResponse
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 
@@ -10,18 +10,19 @@ class Config(BaseModel):
         weightsFile: str
         workers: int = Field(gt=0)
         batchSize: int = Field(gt=0)
-    
+
     modelDirectory: str
-    models: Dict[str, ModelConfig]
+    models: dict[str, ModelConfig]
+
 
 class HTTPResponse:
     def __init__(
-        self, 
-        status: int, 
-        success: bool, 
-        message: str, 
-        data: Optional[Any] = None, 
-        error_code: Optional[Any] = None
+        self,
+        status: int,
+        success: bool,
+        message: str,
+        data: Any | None = None,
+        error_code: Any | None = None,
     ):
         self.status = status
         self.success = success
@@ -32,9 +33,9 @@ class HTTPResponse:
     def _convert_to_dict(self, obj):
         if isinstance(obj, BaseModel):
             return obj.model_dump()  # Using model_dump() instead of dict()
-        elif isinstance(obj, dict):
+        if isinstance(obj, dict):
             return {k: self._convert_to_dict(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
+        if isinstance(obj, list):
             return [self._convert_to_dict(item) for item in obj]
         return obj
 
@@ -42,50 +43,62 @@ class HTTPResponse:
         response_data = {
             "success": self.success,
             "message": self.message,
-            "data": self._convert_to_dict(self.data)
+            "data": self._convert_to_dict(self.data),
         }
-        
+
         if self.error_code is not None:
             response_data["errorCode"] = self.error_code
 
-        return JSONResponse(
-            content=response_data,
-            status_code=self.status
-        )
+        return JSONResponse(content=response_data, status_code=self.status)
+
 
 class PredictRequest(BaseModel):
-    seriesInstanceImages: Optional[Dict[int, Dict[int, str]]] = None
-    seriesInstanceMetadata: Optional[Dict[str, Any]] = None
-    additionalMetadata: Optional[Dict[str, Any]] = None
+    seriesInstanceImages: dict[int, dict[int, str]] | None = None
+    seriesInstanceMetadata: dict[str, Any] | None = None
+    additionalMetadata: dict[str, Any] | None = None
     outputMode: str
 
 
 class JsonPredictionResponse(BaseModel):
     class ModelRecommendations(BaseModel):
-        en: Optional[str] = None
-        fr: Optional[str] = None
-        presentable: Optional[bool] = None
+        en: str | None = None
+        fr: str | None = None
+        presentable: bool | None = None
 
-    diagnosis: Optional[str] = None
+    diagnosis: str | None = None
     predictions: Any
-    modelRecommendations: Optional[ModelRecommendations]
+    modelRecommendations: ModelRecommendations | None
+
 
 class OHIFPredictionResponse(BaseModel):
     class Segmentation(BaseModel):
         labelmap: str
-        dimensions: List[int]
+        dimensions: list[int]
         label: str
-        segments: Dict[str, int]
+        segments: dict[str, int]
 
     segmentation: Segmentation
-    measurements: List[Any] = Field(default_factory=list)
+    measurements: list[Any] = Field(default_factory=list)
+
 
 class HTMLPredictionResponse(BaseModel):
-    htmlBase64: str = Field(..., title="Base64 Encoded HTML", description="A base64 encoded HTML string.")
+    htmlBase64: str = Field(
+        ..., title="Base64 Encoded HTML", description="A base64 encoded HTML string."
+    )
+
 
 class WebAppPredictionResponse(BaseModel):
-    webappPath: str = Field(..., title="Web Application Path", description="The path to the web application viewer.")
-    webappDataBase64: str = Field(..., title="Base64 Encoded Webapp Data", description="Base64 encoded data for the web application.")
+    webappPath: str = Field(
+        ..., title="Web Application Path", description="The path to the web application viewer."
+    )
+    webappDataBase64: str = Field(
+        ...,
+        title="Base64 Encoded Webapp Data",
+        description="Base64 encoded data for the web application.",
+    )
+
 
 class PDFPredictionResponse(BaseModel):
-    pdfBase64: str = Field(..., title="Base64 Encoded PDF", description="A base64 encoded string of the PDF.")
+    pdfBase64: str = Field(
+        ..., title="Base64 Encoded PDF", description="A base64 encoded string of the PDF."
+    )

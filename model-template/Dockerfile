@@ -43,4 +43,3 @@ EXPOSE 80
 
 # Start supervisor
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
-

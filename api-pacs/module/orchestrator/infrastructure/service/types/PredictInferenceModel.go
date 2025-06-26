@@ -14,4 +14,4 @@ type DicomPayloadAnalysis struct {
 	SeriesInstanceUIDs []string
 	ContainerID        string
 	AdditionalMetadata map[string]interface{}
-} 
+}

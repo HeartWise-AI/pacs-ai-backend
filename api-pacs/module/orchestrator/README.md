@@ -71,4 +71,4 @@ The service currently stores threads and messages in memory. In a production env
 
 ## Integration with Python Script
 
-This implementation mimics the functionality of the Python script in `orchestrator/test_dicom_api.py` while respecting the Go API structure. 
+This implementation mimics the functionality of the Python script in `orchestrator/test_dicom_api.py` while respecting the Go API structure.

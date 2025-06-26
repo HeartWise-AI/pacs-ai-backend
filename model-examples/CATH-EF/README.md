@@ -19,4 +19,3 @@ To run the docker image locally for debugging with the pacs network, run the fol
 ```
 docker run -it --network pacs-net --gpus all --entrypoint /bin/bash cacoool/cath-ef:1.6
 ```
-

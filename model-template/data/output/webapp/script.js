@@ -42,4 +42,4 @@ function renderTable(data) {
   } catch (error) {
     populationTable.innerHTML = `<p>Invalid or corrupted data</p>`;
   }
-} 
+}

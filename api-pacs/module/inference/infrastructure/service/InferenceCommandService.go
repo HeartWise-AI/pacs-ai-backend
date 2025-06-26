@@ -370,7 +370,7 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 			return dockerInferenceTypes.PredictRequest{}, "", errors.New(apiError.InferenceError)
 		}
 	}
-	
+
 	// Generate the request payload
 	predictRequest := dockerInferenceTypes.PredictRequest{
 		SeriesInstanceImages:   seriesInstanceImages,
@@ -386,7 +386,7 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, tenantID, userID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
 	// TODO: remove this
 	predictionStartTime := time.Now()
-	
+
 	// Generate the request payload
 	predictRequest, containerName, err := service.GenerateInferenceModelPredictRequest(ctx, tenantID, containerID, data)
 	if err != nil {

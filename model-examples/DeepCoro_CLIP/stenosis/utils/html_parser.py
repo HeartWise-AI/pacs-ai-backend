@@ -1,43 +1,40 @@
 import json
 
+
 class HTMLParser:
     @staticmethod
     def generate_detection_results(results):
         """Generate HTML output with coronary stenosis detection results.
-        
+
         Args:
             results: Dictionary containing:
                     'probability': dict with prediction values for each artery
                     'diagnosis': JSON string with diagnosis for each head
                     'recommendations': dict with 'en' and 'fr' recommendations
-        
+
         Returns:
             str: HTML formatted string containing the classification result
         """
-        probability_dict = results['probability']
-        diagnosis_json = results.get('diagnosis', '{}')
-        recommendations = results.get('recommendations', {})
-        
+        probability_dict = results["probability"]
+        diagnosis_json = results.get("diagnosis", "{}")
+        recommendations = results.get("recommendations", {})
+
         # Parse diagnosis JSON string
         try:
-            diagnosis_dict = json.loads(diagnosis_json) if isinstance(diagnosis_json, str) else diagnosis_json
+            diagnosis_dict = (
+                json.loads(diagnosis_json) if isinstance(diagnosis_json, str) else diagnosis_json
+            )
         except:
             diagnosis_dict = {}
-        
+
         # Separate binary and regression predictions
-        binary_predictions = {k: v for k, v in probability_dict.items() if '_binary' in k}
-        regression_predictions = {k: v for k, v in probability_dict.items() if '_binary' not in k}
-        
+        binary_predictions = {k: v for k, v in probability_dict.items() if "_binary" in k}
+        regression_predictions = {k: v for k, v in probability_dict.items() if "_binary" not in k}
+
         # Find blocked arteries (above threshold)
-        blocked_arteries = {
-            'LCA': [],
-            'RCA': []
-        }
-        normal_arteries = {
-            'LCA': [],
-            'RCA': []
-        }
-        
+        blocked_arteries = {"LCA": [], "RCA": []}
+        normal_arteries = {"LCA": [], "RCA": []}
+
         # Artery display names
         artery_names = {
             "LCA": {
@@ -51,23 +48,23 @@ class HTMLParser:
                 "dist_lcx_stenosis_binary": "Distal LCX",
                 "om1_stenosis_binary": "OM1 (Obtuse Marginal 1)",
                 "om2_stenosis_binary": "OM2 (Obtuse Marginal 2)",
-                "bx_stenosis_binary": "Branch Vessel"
+                "bx_stenosis_binary": "Branch Vessel",
             },
             "RCA": {
                 "prox_rca_stenosis_binary": "Proximal RCA",
                 "mid_rca_stenosis_binary": "Mid RCA",
                 "dist_rca_stenosis_binary": "Distal RCA",
                 "pda_stenosis_binary": "PDA (Posterior Descending)",
-                "posterolateral_stenosis_binary": "Posterolateral Branch"
-            }
+                "posterolateral_stenosis_binary": "Posterolateral Branch",
+            },
         }
-        
+
         # Categorize arteries by LCA/RCA
         def categorize_artery(artery_name):
-            if artery_name in artery_names['LCA']:
-                return 'LCA'
-            elif artery_name in artery_names['RCA']:
-                return 'RCA'
+            if artery_name in artery_names["LCA"]:
+                return "LCA"
+            if artery_name in artery_names["RCA"]:
+                return "RCA"
             return None
 
         # Define artery priority order to ensure D1 comes before D2
@@ -80,7 +77,7 @@ class HTMLParser:
                 "mid_lad_stenosis_binary": 3,
                 "dist_lad_stenosis_binary": 4,
                 "diagonal_stenosis_binary": 5,  # D1
-                "D2_stenosis_binary": 6,        # D2
+                "D2_stenosis_binary": 6,  # D2
                 "lcx_stenosis_binary": 7,
                 "dist_lcx_stenosis_binary": 8,
                 "om1_stenosis_binary": 9,
@@ -105,8 +102,7 @@ class HTMLParser:
             # For normal arteries, we want low probability first within same priority
             if reverse_prob:
                 return (priority, -prob)  # Negative prob for descending order
-            else:
-                return (priority, prob)   # Positive prob for ascending order
+            return (priority, prob)  # Positive prob for ascending order
 
         # Custom sorting function for regression predictions
         def sort_regression_arteries(artery_tuple, reverse_value=False):
@@ -116,8 +112,7 @@ class HTMLParser:
             # Return tuple: (priority, value) for sorting
             if reverse_value:
                 return (priority, -value)  # Negative value for descending order
-            else:
-                return (priority, value)   # Positive value for ascending order
+            return (priority, value)  # Positive value for ascending order
 
         for head, prob in binary_predictions.items():
             category = categorize_artery(head)
@@ -129,11 +124,13 @@ class HTMLParser:
                     normal_arteries[category].append((head, prob))
 
         # Determine overall status
-        total_blocked = len(blocked_arteries['LCA']) + len(blocked_arteries['RCA'])
+        total_blocked = len(blocked_arteries["LCA"]) + len(blocked_arteries["RCA"])
         has_stenosis = total_blocked > 0
         status_color = "#ff6b6b" if has_stenosis else "#4ecdc4"
-        overall_status = "Coronary Stenosis Detected" if has_stenosis else "No Significant Stenosis"
-        
+        overall_status = (
+            "Coronary Stenosis Detected" if has_stenosis else "No Significant Stenosis"
+        )
+
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -398,7 +395,7 @@ class HTMLParser:
                             <div class="stat-label">Blocked Vessels</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-number">{len(normal_arteries['LCA']) + len(normal_arteries['RCA'])}</div>
+                            <div class="stat-number">{len(normal_arteries["LCA"]) + len(normal_arteries["RCA"])}</div>
                             <div class="stat-label">Normal Vessels</div>
                         </div>
                         <div class="stat-card">
@@ -415,20 +412,24 @@ class HTMLParser:
                 <div class="section">
                     <h2>Detailed Vessel Analysis</h2>
             """
-            
+
             # Show blocked arteries first
-            if blocked_arteries['LCA'] or blocked_arteries['RCA']:
+            if blocked_arteries["LCA"] or blocked_arteries["RCA"]:
                 html_content += "<h3 style='color: var(--warning-color); margin-bottom: 15px;'>⚠️ Vessels with Significant Stenosis</h3>"
-                
+
                 # LCA Section
-                if blocked_arteries['LCA']:
+                if blocked_arteries["LCA"]:
                     html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Left Coronary Artery (LCA) System</h4>"
                     html_content += '<div class="arteries-grid">'
-                    
-                    for head, prob in sorted(blocked_arteries['LCA'], key=lambda x: x[1], reverse=True):
-                        artery_name = artery_names['LCA'].get(head, head.replace('_stenosis_binary', '').replace('_', ' ').title())
-                        diagnosis_text = diagnosis_dict.get(head, 'blocked')
-                        
+
+                    for head, prob in sorted(
+                        blocked_arteries["LCA"], key=lambda x: x[1], reverse=True
+                    ):
+                        artery_name = artery_names["LCA"].get(
+                            head, head.replace("_stenosis_binary", "").replace("_", " ").title()
+                        )
+                        diagnosis_text = diagnosis_dict.get(head, "blocked")
+
                         html_content += f"""
                             <div class="artery-card blocked">
                                 <div class="artery-name">{artery_name}</div>
@@ -439,18 +440,22 @@ class HTMLParser:
                                 <div class="artery-status blocked">Status: {diagnosis_text.upper()}</div>
                             </div>
                         """
-                    
-                    html_content += '</div>'
-                
+
+                    html_content += "</div>"
+
                 # RCA Section
-                if blocked_arteries['RCA']:
+                if blocked_arteries["RCA"]:
                     html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Right Coronary Artery (RCA) System</h4>"
                     html_content += '<div class="arteries-grid">'
-                    
-                    for head, prob in sorted(blocked_arteries['RCA'], key=lambda x: x[1], reverse=True):
-                        artery_name = artery_names['RCA'].get(head, head.replace('_stenosis_binary', '').replace('_', ' ').title())
-                        diagnosis_text = diagnosis_dict.get(head, 'blocked')
-                        
+
+                    for head, prob in sorted(
+                        blocked_arteries["RCA"], key=lambda x: x[1], reverse=True
+                    ):
+                        artery_name = artery_names["RCA"].get(
+                            head, head.replace("_stenosis_binary", "").replace("_", " ").title()
+                        )
+                        diagnosis_text = diagnosis_dict.get(head, "blocked")
+
                         html_content += f"""
                             <div class="artery-card blocked">
                                 <div class="artery-name">{artery_name}</div>
@@ -461,22 +466,26 @@ class HTMLParser:
                                 <div class="artery-status blocked">Status: {diagnosis_text.upper()}</div>
                             </div>
                         """
-                    
-                    html_content += '</div>'
-            
+
+                    html_content += "</div>"
+
             # Show normal arteries
-            if normal_arteries['LCA'] or normal_arteries['RCA']:
+            if normal_arteries["LCA"] or normal_arteries["RCA"]:
                 html_content += "<h3 style='color: var(--normal-color); margin-top: 30px; margin-bottom: 15px;'>✅ Normal Vessels</h3>"
-                
+
                 # LCA Normal Section
-                if normal_arteries['LCA']:
+                if normal_arteries["LCA"]:
                     html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Left Coronary Artery (LCA) System</h4>"
                     html_content += '<div class="arteries-grid">'
-                    
-                    for head, prob in sorted(normal_arteries['LCA'], key=lambda x: x[1], reverse=True):
-                        artery_name = artery_names['LCA'].get(head, head.replace('_stenosis_binary', '').replace('_', ' ').title())
-                        diagnosis_text = diagnosis_dict.get(head, 'normal')
-                        
+
+                    for head, prob in sorted(
+                        normal_arteries["LCA"], key=lambda x: x[1], reverse=True
+                    ):
+                        artery_name = artery_names["LCA"].get(
+                            head, head.replace("_stenosis_binary", "").replace("_", " ").title()
+                        )
+                        diagnosis_text = diagnosis_dict.get(head, "normal")
+
                         html_content += f"""
                             <div class="artery-card normal">
                                 <div class="artery-name">{artery_name}</div>
@@ -487,18 +496,22 @@ class HTMLParser:
                                 <div class="artery-status normal">Status: {diagnosis_text.upper()}</div>
                             </div>
                         """
-                    
-                    html_content += '</div>'
-                
+
+                    html_content += "</div>"
+
                 # RCA Normal Section
-                if normal_arteries['RCA']:
+                if normal_arteries["RCA"]:
                     html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Right Coronary Artery (RCA) System</h4>"
                     html_content += '<div class="arteries-grid">'
-                    
-                    for head, prob in sorted(normal_arteries['RCA'], key=lambda x: x[1], reverse=True):
-                        artery_name = artery_names['RCA'].get(head, head.replace('_stenosis_binary', '').replace('_', ' ').title())
-                        diagnosis_text = diagnosis_dict.get(head, 'normal')
-                        
+
+                    for head, prob in sorted(
+                        normal_arteries["RCA"], key=lambda x: x[1], reverse=True
+                    ):
+                        artery_name = artery_names["RCA"].get(
+                            head, head.replace("_stenosis_binary", "").replace("_", " ").title()
+                        )
+                        diagnosis_text = diagnosis_dict.get(head, "normal")
+
                         html_content += f"""
                             <div class="artery-card normal">
                                 <div class="artery-name">{artery_name}</div>
@@ -509,28 +522,22 @@ class HTMLParser:
                                 <div class="artery-status normal">Status: {diagnosis_text.upper()}</div>
                             </div>
                         """
-                    
-                    html_content += '</div>'
-            
+
+                    html_content += "</div>"
+
             html_content += "</div>"
 
         # Add regression results if available
         if regression_predictions:
             # Categorize regression predictions by LCA/RCA
-            regression_blocked = {
-                'LCA': [],
-                'RCA': []
-            }
-            regression_normal = {
-                'LCA': [],
-                'RCA': []
-            }
-            
+            regression_blocked = {"LCA": [], "RCA": []}
+            regression_normal = {"LCA": [], "RCA": []}
+
             # Map regression keys to binary keys for categorization
             regression_to_binary_map = {
-                k.replace('_stenosis', '_stenosis_binary'): k for k in regression_predictions.keys()
+                k.replace("_stenosis", "_stenosis_binary"): k for k in regression_predictions
             }
-            
+
             for binary_key, regression_key in regression_to_binary_map.items():
                 value = regression_predictions[regression_key]
                 category = categorize_artery(binary_key)
@@ -539,24 +546,29 @@ class HTMLParser:
                         regression_blocked[category].append((regression_key, value, binary_key))
                     else:
                         regression_normal[category].append((regression_key, value, binary_key))
-            
+
             html_content += """
                 <div class="section">
                     <h2>Quantitative Stenosis Assessment</h2>
             """
-            
+
             # Show blocked arteries first
-            if regression_blocked['LCA'] or regression_blocked['RCA']:
+            if regression_blocked["LCA"] or regression_blocked["RCA"]:
                 html_content += "<h3 style='color: var(--warning-color); margin-bottom: 15px;'>⚠️ Vessels with Significant Stenosis (>50%)</h3>"
-                
+
                 # LCA Section
-                if regression_blocked['LCA']:
+                if regression_blocked["LCA"]:
                     html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Left Coronary Artery (LCA) System</h4>"
                     html_content += '<div class="arteries-grid">'
-                    
-                    for regression_key, value, binary_key in sorted(regression_blocked['LCA'], key=lambda x: x[1], reverse=True):
-                        artery_name = artery_names['LCA'].get(binary_key, regression_key.replace('_stenosis', '').replace('_', ' ').title())
-                        
+
+                    for regression_key, value, binary_key in sorted(
+                        regression_blocked["LCA"], key=lambda x: x[1], reverse=True
+                    ):
+                        artery_name = artery_names["LCA"].get(
+                            binary_key,
+                            regression_key.replace("_stenosis", "").replace("_", " ").title(),
+                        )
+
                         html_content += f"""
                             <div class="artery-card blocked">
                                 <div class="artery-name">{artery_name}</div>
@@ -565,21 +577,26 @@ class HTMLParser:
                                     <div class="probability-fill" style="width: {min(value, 100)}%;"></div>
                                 </div>
                                 <div class="artery-status blocked">
-                                    {'Severe' if value > 70 else 'Moderate' if value > 50 else 'Mild' if value > 30 else 'Minimal'}
+                                    {"Severe" if value > 70 else "Moderate" if value > 50 else "Mild" if value > 30 else "Minimal"}
                                 </div>
                             </div>
                         """
-                    
-                    html_content += '</div>'
-                
+
+                    html_content += "</div>"
+
                 # RCA Section
-                if regression_blocked['RCA']:
+                if regression_blocked["RCA"]:
                     html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Right Coronary Artery (RCA) System</h4>"
                     html_content += '<div class="arteries-grid">'
-                    
-                    for regression_key, value, binary_key in sorted(regression_blocked['RCA'], key=lambda x: x[1], reverse=True):
-                        artery_name = artery_names['RCA'].get(binary_key, regression_key.replace('_stenosis', '').replace('_', ' ').title())
-                        
+
+                    for regression_key, value, binary_key in sorted(
+                        regression_blocked["RCA"], key=lambda x: x[1], reverse=True
+                    ):
+                        artery_name = artery_names["RCA"].get(
+                            binary_key,
+                            regression_key.replace("_stenosis", "").replace("_", " ").title(),
+                        )
+
                         html_content += f"""
                             <div class="artery-card blocked">
                                 <div class="artery-name">{artery_name}</div>
@@ -588,25 +605,30 @@ class HTMLParser:
                                     <div class="probability-fill" style="width: {min(value, 100)}%;"></div>
                                 </div>
                                 <div class="artery-status blocked">
-                                    {'Severe' if value > 70 else 'Moderate' if value > 50 else 'Mild' if value > 30 else 'Minimal'}
+                                    {"Severe" if value > 70 else "Moderate" if value > 50 else "Mild" if value > 30 else "Minimal"}
                                 </div>
                             </div>
                         """
-                    
-                    html_content += '</div>'
-            
+
+                    html_content += "</div>"
+
             # Show normal/minimal stenosis arteries
-            if regression_normal['LCA'] or regression_normal['RCA']:
+            if regression_normal["LCA"] or regression_normal["RCA"]:
                 html_content += "<h3 style='color: var(--normal-color); margin-top: 30px; margin-bottom: 15px;'>✅ Vessels with Minimal Stenosis (≤50%)</h3>"
-                
+
                 # LCA Normal Section
-                if regression_normal['LCA']:
+                if regression_normal["LCA"]:
                     html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Left Coronary Artery (LCA) System</h4>"
                     html_content += '<div class="arteries-grid">'
-                    
-                    for regression_key, value, binary_key in sorted(regression_normal['LCA'], key=lambda x: x[1], reverse=True):
-                        artery_name = artery_names['LCA'].get(binary_key, regression_key.replace('_stenosis', '').replace('_', ' ').title())
-                        
+
+                    for regression_key, value, binary_key in sorted(
+                        regression_normal["LCA"], key=lambda x: x[1], reverse=True
+                    ):
+                        artery_name = artery_names["LCA"].get(
+                            binary_key,
+                            regression_key.replace("_stenosis", "").replace("_", " ").title(),
+                        )
+
                         html_content += f"""
                             <div class="artery-card normal">
                                 <div class="artery-name">{artery_name}</div>
@@ -615,21 +637,26 @@ class HTMLParser:
                                     <div class="probability-fill" style="width: {min(value, 100)}%;"></div>
                                 </div>
                                 <div class="artery-status normal">
-                                    {'Severe' if value > 70 else 'Moderate' if value > 50 else 'Mild' if value > 30 else 'Minimal'}
+                                    {"Severe" if value > 70 else "Moderate" if value > 50 else "Mild" if value > 30 else "Minimal"}
                                 </div>
                             </div>
                         """
-                    
-                    html_content += '</div>'
-                
+
+                    html_content += "</div>"
+
                 # RCA Normal Section
-                if regression_normal['RCA']:
+                if regression_normal["RCA"]:
                     html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Right Coronary Artery (RCA) System</h4>"
                     html_content += '<div class="arteries-grid">'
-                    
-                    for regression_key, value, binary_key in sorted(regression_normal['RCA'], key=lambda x: x[1], reverse=True):
-                        artery_name = artery_names['RCA'].get(binary_key, regression_key.replace('_stenosis', '').replace('_', ' ').title())
-                        
+
+                    for regression_key, value, binary_key in sorted(
+                        regression_normal["RCA"], key=lambda x: x[1], reverse=True
+                    ):
+                        artery_name = artery_names["RCA"].get(
+                            binary_key,
+                            regression_key.replace("_stenosis", "").replace("_", " ").title(),
+                        )
+
                         html_content += f"""
                             <div class="artery-card normal">
                                 <div class="artery-name">{artery_name}</div>
@@ -638,13 +665,13 @@ class HTMLParser:
                                     <div class="probability-fill" style="width: {min(value, 100)}%;"></div>
                                 </div>
                                 <div class="artery-status normal">
-                                    {'Severe' if value > 70 else 'Moderate' if value > 50 else 'Mild' if value > 30 else 'Minimal'}
+                                    {"Severe" if value > 70 else "Moderate" if value > 50 else "Mild" if value > 30 else "Minimal"}
                                 </div>
                             </div>
                         """
-                    
-                    html_content += '</div>'
-            
+
+                    html_content += "</div>"
+
             html_content += """
                 </div>
             """
@@ -655,29 +682,29 @@ class HTMLParser:
                 <div class="section">
                     <h2>Clinical Recommendations</h2>
             """
-            
-            if 'en' in recommendations:
+
+            if "en" in recommendations:
                 html_content += f"""
                     <div class="recommendations">
                         <span class="language-label">English</span>
-                        <div class="recommendation-text">{recommendations['en']}</div>
+                        <div class="recommendation-text">{recommendations["en"]}</div>
                     </div>
                 """
-            
-            if 'fr' in recommendations:
+
+            if "fr" in recommendations:
                 html_content += f"""
                     <div class="recommendations">
                         <span class="language-label">Français</span>
-                        <div class="recommendation-text">{recommendations['fr']}</div>
+                        <div class="recommendation-text">{recommendations["fr"]}</div>
                     </div>
                 """
-            
+
             html_content += "</div>"
 
         # Add important note
         html_content += """
             <div class="highlight">
-                <strong>Important:</strong> This AI analysis is for screening purposes only and should be interpreted by a qualified cardiologist. 
+                <strong>Important:</strong> This AI analysis is for screening purposes only and should be interpreted by a qualified cardiologist.
                 Clinical correlation with patient symptoms, risk factors, and additional imaging may be necessary for definitive diagnosis and treatment planning.
             </div>
         """
@@ -685,7 +712,7 @@ class HTMLParser:
         # Add timestamp and close
         html_content += f"""
                 <div class="timestamp">
-                    Report generated on {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
+                    Report generated on {__import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")}
                 </div>
             </div>
         </body>
@@ -693,38 +720,38 @@ class HTMLParser:
         """
         return html_content
 
+
 # Example usage with test data
 if __name__ == "__main__":
-    import webbrowser
-    import tempfile
     import os
+    import tempfile
+    import webbrowser
 
     # Create test data for coronary stenosis
     test_results = {
-        'probability': {
-            'leftmain_stenosis_binary': 0.85,
-            'lad_stenosis_binary': 0.65,
-            'lcx_stenosis_binary': 0.25,
-            'prox_rca_stenosis_binary': 0.15,
-            'lad_stenosis': 75.2,
-            'lcx_stenosis': 35.1,
-            'prox_rca_stenosis': 20.3
+        "probability": {
+            "leftmain_stenosis_binary": 0.85,
+            "lad_stenosis_binary": 0.65,
+            "lcx_stenosis_binary": 0.25,
+            "prox_rca_stenosis_binary": 0.15,
+            "lad_stenosis": 75.2,
+            "lcx_stenosis": 35.1,
+            "prox_rca_stenosis": 20.3,
         },
-        'diagnosis': '{"leftmain_stenosis_binary": "blocked", "lad_stenosis_binary": "blocked", "lcx_stenosis_binary": "normal", "prox_rca_stenosis_binary": "normal"}',
-        'recommendations': {
-            'en': 'Significant stenosis detected in left main and LAD arteries. Urgent cardiology consultation recommended for revascularization evaluation.',
-            'fr': 'Sténose significative détectée dans le tronc commun gauche et l\'artère IVA. Consultation cardiologique urgente recommandée pour évaluation de revascularisation.'
-        }
+        "diagnosis": '{"leftmain_stenosis_binary": "blocked", "lad_stenosis_binary": "blocked", "lcx_stenosis_binary": "normal", "prox_rca_stenosis_binary": "normal"}',
+        "recommendations": {
+            "en": "Significant stenosis detected in left main and LAD arteries. Urgent cardiology consultation recommended for revascularization evaluation.",
+            "fr": "Sténose significative détectée dans le tronc commun gauche et l'artère IVA. Consultation cardiologique urgente recommandée pour évaluation de revascularisation.",
+        },
     }
 
     # Generate HTML
     html_content = HTMLParser.generate_detection_results(test_results)
 
     # Save and display in browser
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
-    try:
-        with open(temp_file.name, 'w', encoding='utf-8') as f:
+    with tempfile.NamedTemporaryFile(
+        delete=False, suffix=".html", mode="w", encoding="utf-8"
+    ) as temp_file:
+        with open(temp_file.name, "w", encoding="utf-8") as f:
             f.write(html_content)
-        webbrowser.open('file://' + os.path.realpath(temp_file.name))
-    finally:
-        temp_file.close()
+        webbrowser.open("file://" + os.path.realpath(temp_file.name))
