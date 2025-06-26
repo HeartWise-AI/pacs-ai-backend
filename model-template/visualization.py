@@ -1,10 +1,8 @@
 import base64
 import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 import plotly.graph_objects as go
-from typing import Dict, List, Union
-import io
+from plotly.colors import qualitative
+from typing import Dict, List
 
 def decode_labelmap(encoded_data: str, dimensions: List[int]) -> np.ndarray:
     """
@@ -21,64 +19,86 @@ def decode_labelmap(encoded_data: str, dimensions: List[int]) -> np.ndarray:
     labelmap = np.frombuffer(decoded_data, dtype=np.uint8)
     return labelmap.reshape(dimensions)
 
-def create_colormap(segments: Dict[str, int]) -> Dict[int, tuple]:
+def create_colormap(segments: Dict[str, int]) -> Dict[int, str]:
     """
-    Create a colormap for different segments.
+    Create a colormap for different segments using plotly colors.
     
     Args:
         segments: Dictionary mapping segment names to their numeric labels
         
     Returns:
-        Dictionary mapping numeric labels to RGB colors
+        Dictionary mapping numeric labels to color strings
     """
-    # Generate distinct colors for each segment
-    num_segments = len(segments)
-    colors = plt.cm.rainbow(np.linspace(0, 1, num_segments))
-    return {label: tuple(color[:3]) for label, color in zip(segments.values(), colors)}
+    # Use plotly's qualitative color palette
+    colors = qualitative.Plotly[:len(segments)]
+    if len(segments) > len(colors):
+        # If we need more colors, cycle through the palette
+        colors = colors * (len(segments) // len(colors) + 1)
+    
+    return {label: colors[i] for i, label in enumerate(segments.values())}
 
-def visualize_2d_segmentation(labelmap: np.ndarray, segments: Dict[str, int], output_path: str = None) -> None:
+def visualize_2d_segmentation(labelmap: np.ndarray, segments: Dict[str, int], output_path: str = "segmentation_2d.html") -> None:
     """
-    Visualize 2D segmentation with colored overlay.
+    Visualize 2D segmentation with colored overlay using plotly.
     
     Args:
         labelmap: 2D numpy array of segmentation labels
         segments: Dictionary mapping segment names to their numeric labels
-        output_path: Optional path to save the visualization
+        output_path: Path to save the visualization (default: segmentation_2d.html)
     """
-    plt.figure(figsize=(10, 10))
-    
-    # Create a color overlay
     colormap = create_colormap(segments)
-    overlay = np.zeros((*labelmap.shape, 3))
     
-    # Add each segment with its color
+    # Create figure
+    fig = go.Figure()
+    
+    # Add each segment as a separate trace
     for name, label in segments.items():
         mask = labelmap == label
-        for i in range(3):
-            overlay[mask, i] = colormap[label][i]
+        if not np.any(mask):
+            continue
+            
+        # Get coordinates where this segment exists
+        y_coords, x_coords = np.where(mask)
+        
+        fig.add_trace(go.Scatter(
+            x=x_coords,
+            y=y_coords,
+            mode='markers',
+            marker=dict(
+                color=colormap[label],
+                size=3,
+                opacity=0.7
+            ),
+            name=name
+        ))
     
-    plt.imshow(overlay)
+    fig.update_layout(
+        title="2D Segmentation Visualization",
+        xaxis_title="X",
+        yaxis_title="Y",
+        showlegend=True,
+        width=800,
+        height=800
+    )
     
-    # Add legend
-    patches = [plt.Rectangle((0, 0), 1, 1, fc=colormap[label]) for label in segments.values()]
-    plt.legend(patches, segments.keys(), loc='center left', bbox_to_anchor=(1, 0.5))
+    # Invert y-axis to match image coordinates
+    fig.update_yaxis(autorange="reversed")
     
-    if output_path:
-        plt.savefig(output_path, bbox_inches='tight')
-    plt.show()
+    fig.write_html(output_path)
 
-def visualize_3d_segmentation(labelmap: np.ndarray, segments: Dict[str, int], output_path: str = None) -> None:
+def visualize_3d_segmentation(labelmap: np.ndarray, segments: Dict[str, int], output_path: str = "segmentation_3d.html") -> None:
     """
-    Create 3D visualization of segmentation using matplotlib.
+    Create 3D visualization of segmentation using plotly.
     
     Args:
         labelmap: 3D numpy array of segmentation labels
         segments: Dictionary mapping segment names to their numeric labels
-        output_path: Optional path to save the visualization
+        output_path: Path to save the visualization (default: segmentation_3d.html)
     """
-    fig = plt.figure(figsize=(10, 10))
-    ax = fig.add_subplot(111, projection='3d')
     colormap = create_colormap(segments)
+    
+    # Create figure
+    fig = go.Figure()
     
     # Downsample factor to improve performance
     downsample = 4
@@ -94,18 +114,32 @@ def visualize_3d_segmentation(labelmap: np.ndarray, segments: Dict[str, int], ou
         if len(points) == 0:
             continue
             
-        color = colormap[label]
-        ax.scatter(points[:, 0], points[:, 1], points[:, 2], 
-                  c=[color], label=name, alpha=0.6, s=1)
+        fig.add_trace(go.Scatter3d(
+            x=points[:, 0],
+            y=points[:, 1],
+            z=points[:, 2],
+            mode='markers',
+            marker=dict(
+                color=colormap[label],
+                size=2,
+                opacity=0.6
+            ),
+            name=name
+        ))
     
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    ax.legend()
+    fig.update_layout(
+        title="3D Segmentation Visualization",
+        scene=dict(
+            xaxis_title="X",
+            yaxis_title="Y",
+            zaxis_title="Z"
+        ),
+        showlegend=True,
+        width=900,
+        height=700
+    )
     
-    if output_path:
-        plt.savefig(output_path, bbox_inches='tight')
-    plt.show()
+    fig.write_html(output_path)
 
 def visualize_segmentation(encoded_data: str, dimensions: List[int], segments: Dict[str, int], 
                          output_path: str = None) -> None:
@@ -124,7 +158,11 @@ def visualize_segmentation(encoded_data: str, dimensions: List[int], segments: D
     # Determine visualization type based on dimensions
     if dimensions[0] == 1:
         # 2D visualization
-        visualize_2d_segmentation(labelmap[0], segments, output_path)
+        default_path = "segmentation_2d.html"
+        save_path = output_path if output_path else default_path
+        visualize_2d_segmentation(labelmap[0], segments, save_path)
     else:
         # 3D visualization
-        visualize_3d_segmentation(labelmap, segments, output_path) 
+        default_path = "segmentation_3d.html"
+        save_path = output_path if output_path else default_path
+        visualize_3d_segmentation(labelmap, segments, save_path) 

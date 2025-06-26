@@ -35,7 +35,8 @@ class CustomPredictionService(BasePredictionService):
         pred = CustomPredictionService.models['totalsegmentator'](series_list_nifti[0], device="gpu", fast=True, task="total") 
 
         # Reorient Predictions for OHIF display (only accepts 1 pydicom series)
-        labelmap_data = self.reorient_labelmap(pred, serie)
+        pred_np = pred.get_fdata()
+        labelmap_data = self.reorient_labelmap(pred_np, serie)
 
         encoded_data, segments = self.encode_labelmap_and_segments(labelmap_data, self.class_mapping)
         

@@ -200,15 +200,15 @@ def main():
 
     parser.add_argument(
         'dicom_paths',
-        default=['/home/denis/Documents/GitHub/pacs-ai-backend/model-template/sample_data/CT_Study'],
+        default=['/home/pacs-ai/pacs-ai-backend/model-template/sample_data/Hemo_Study/'],
         nargs='*',
         help='Path(s) to DICOM file(s) or directories containing DICOM files.'
     )
 
     parser.add_argument(
         '--url',
-        default='http://localhost:8000/inference/predict',
-        help='Server URL (default: http://localhost:8000/inference/predict)'
+        default='http://localhost:8002/inference/predict',
+        help='Server URL (default: http://localhost:8002/inference/predict)'
     )
 
     parser.add_argument(
