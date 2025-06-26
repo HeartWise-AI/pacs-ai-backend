@@ -1,8 +1,7 @@
-import re
 from typing import Any
 from urllib.parse import urlparse
 
-from langchain_community.tools import DuckDuckGoSearchRun
+from langchain_community.tools import DuckDuckGoSearchResults
 from langchain_core.callbacks import AsyncCallbackManagerForToolRun, CallbackManagerForToolRun
 from langchain_core.tools import BaseTool
 from logger import logger
@@ -43,8 +42,8 @@ class ClinicalWebSearchTool(BaseTool):
         """Initialize the ClinicalWebSearchTool."""
         super().__init__(**kwargs)
 
-        # Initialize DuckDuckGo search tool
-        self._ddg_search = DuckDuckGoSearchRun()
+        # Initialize DuckDuckGo search tool with structured output
+        self._ddg_search = DuckDuckGoSearchResults(output_format="list")
 
         # Define trusted medical domains for filtering and scoring
         self._medical_domains = {
@@ -132,13 +131,10 @@ class ClinicalWebSearchTool(BaseTool):
             enhanced_query = self._enhance_medical_query(query, source_filter)
 
             # Perform the DuckDuckGo search
-            raw_results = self._perform_ddg_search(enhanced_query)
+            structured_results = self._perform_ddg_search(enhanced_query)
 
-            if not raw_results:
+            if not structured_results:
                 return self._create_error_response("No search results found")
-
-            # Parse and structure the results
-            structured_results = self._parse_ddg_results(raw_results)
 
             # Filter and score results based on medical relevance
             filtered_results = self._filter_and_score_results(structured_results, source_filter)
@@ -210,14 +206,23 @@ class ClinicalWebSearchTool(BaseTool):
 
         return " ".join(enhanced_parts)
 
-    def _perform_ddg_search(self, query: str) -> str:
-        """Perform DuckDuckGo search and return raw results."""
+    def _perform_ddg_search(self, query: str) -> list[dict[str, Any]]:
+        """Perform DuckDuckGo search and return structured results."""
         logger.info(f"Performing DuckDuckGo search for: {query}")
 
         try:
-            # Use DuckDuckGo search tool
+            # Use DuckDuckGo search tool - returns list of dicts
             results = self._ddg_search.run(query)
-            return results
+            # Convert to our expected format with source domain extraction
+            structured_results = []
+            for result in results:
+                structured_results.append({
+                    "title": result.get("title", ""),
+                    "url": result.get("link", ""),
+                    "source": self._extract_domain(result.get("link", "")),
+                    "snippet": result.get("snippet", "")
+                })
+            return structured_results
         except Exception as e:
             error_msg = str(e)
             logger.error(f"DuckDuckGo search failed: {error_msg}")
@@ -229,77 +234,29 @@ class ClinicalWebSearchTool(BaseTool):
 
             raise
 
-    def _get_fallback_results(self, query: str) -> str:
+    def _get_fallback_results(self, query: str) -> list[dict[str, Any]]:
         """Get fallback mock results when real search fails."""
-        return f"""Clinical Guidelines for {query} - https://www.uptodate.com/contents/clinical-guidelines
-Evidence-based clinical guidelines and recommendations for {query} management and treatment protocols.
+        return [
+            {
+                "title": f"Clinical Guidelines for {query}",
+                "url": "https://www.uptodate.com/contents/clinical-guidelines",
+                "source": "www.uptodate.com",
+                "snippet": f"Evidence-based clinical guidelines and recommendations for {query} management and treatment protocols."
+            },
+            {
+                "title": f"PubMed Research on {query}",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/search",
+                "source": "pubmed.ncbi.nlm.nih.gov", 
+                "snippet": f"Recent research and systematic reviews related to {query} from peer-reviewed medical literature."
+            },
+            {
+                "title": f"WHO Guidelines: {query}",
+                "url": "https://www.who.int/publications/guidelines",
+                "source": "www.who.int",
+                "snippet": f"World Health Organization guidelines and recommendations for {query} prevention and treatment."
+            }
+        ]
 
-PubMed Research on {query} - https://pubmed.ncbi.nlm.nih.gov/search
-Recent research and systematic reviews related to {query} from peer-reviewed medical literature.
-
-WHO Guidelines: {query} - https://www.who.int/publications/guidelines
-World Health Organization guidelines and recommendations for {query} prevention and treatment."""
-
-    def _parse_ddg_results(self, raw_results: str) -> list[dict[str, Any]]:
-        """Parse DuckDuckGo raw results into structured format."""
-        results = []
-
-        # DuckDuckGo results are returned as a string with entries separated by newlines
-        # Each entry typically has: "Title - URL\nSnippet\n"
-        lines = raw_results.strip().split("\n")
-
-        current_entry = {}
-        for line in lines:
-            line = line.strip()
-            if not line:
-                # Empty line indicates end of current entry
-                if current_entry:
-                    results.append(current_entry)
-                    current_entry = {}
-                continue
-
-            # Check if line contains URL (likely title line)
-            if "http" in line and " - " in line:
-                # Parse title and URL
-                parts = line.split(" - ", 1)
-                if len(parts) == 2:
-                    title = parts[0].strip()
-                    url = parts[1].strip()
-                    current_entry = {
-                        "title": title,
-                        "url": url,
-                        "source": self._extract_domain(url),
-                        "snippet": "",
-                    }
-            elif current_entry and not current_entry.get("snippet"):
-                # This is likely the snippet
-                current_entry["snippet"] = line
-
-        # Add the last entry if it exists
-        if current_entry:
-            results.append(current_entry)
-
-        # If parsing failed, try a different approach
-        if not results:
-            # Fallback: treat each line as a separate result
-            for line in lines:
-                if "http" in line:
-                    results.append(
-                        {
-                            "title": line[:100] if len(line) > 100 else line,
-                            "url": self._extract_url_from_line(line),
-                            "source": self._extract_domain(self._extract_url_from_line(line)),
-                            "snippet": line,
-                        }
-                    )
-
-        return results
-
-    def _extract_url_from_line(self, line: str) -> str:
-        """Extract URL from a line of text."""
-        url_pattern = r"https?://[^\s]+"
-        match = re.search(url_pattern, line)
-        return match.group(0) if match else line
 
     def _filter_and_score_results(
         self, results: list[dict[str, Any]], source_filter: str

@@ -266,7 +266,12 @@ class Agent:
         logger.info(f"Executing tool: {tool_name}")
 
         try:
-            result = tool.invoke({"dicom_payload": dicom_payload})
+            # Get the arguments the LLM wanted to pass to the tool
+            tool_args = call.get("args", {})
+            # Add the dicom_payload to those arguments 
+            tool_args["dicom_payload"] = dicom_payload
+            # Invoke with the combined arguments
+            result = tool.invoke(tool_args)
             logger.info(f"Tool {tool_name} execution successful")
             return result
         except Exception as e:
