@@ -350,16 +350,16 @@ def create_static_tools() -> dict[str, BaseTool]:
         Dict[str, BaseTool]: Dictionary of static tool instances keyed by tool name
     """
     static_tools = {}
-    
+
     try:
         # Create clinical web search tool
         clinical_search_tool = ClinicalWebSearchTool()
         static_tools[clinical_search_tool.name] = clinical_search_tool
         logger.info(f"Created static tool: {clinical_search_tool.name}")
-        
+
     except Exception as e:
         logger.error(f"Failed to create static tools: {str(e)}")
-    
+
     return static_tools
 
 
@@ -396,5 +396,7 @@ def discover_and_create_tools(network_name: str = "pacs-net") -> dict[str, BaseT
                 logger.info(f"Created tool '{tool.name}' for container '{container_name}'")
                 tools_dict[tool.name] = tool
 
-    logger.info(f"Total tools created: {len(tools_dict)} ({len(static_tools)} static, {len(tools_dict) - len(static_tools)} dynamic)")
+    logger.info(
+        f"Total tools created: {len(tools_dict)} ({len(static_tools)} static, {len(tools_dict) - len(static_tools)} dynamic)"
+    )
     return tools_dict
