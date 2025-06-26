@@ -10,6 +10,9 @@ from langchain_core.tools import BaseTool
 from logger import logger
 from pydantic import BaseModel, Field
 
+# Import static tools
+from .clinical_websearch import ClinicalWebSearchTool
+
 # Global mapping to store tool name -> container IP and port
 TOOL_CONTAINER_MAPPING: dict[str, tuple[str, int]] = {}
 
@@ -339,9 +342,31 @@ def create_tool_for_container(container: dict[str, Any]) -> BaseTool | None:
     return None
 
 
+def create_static_tools() -> dict[str, BaseTool]:
+    """
+    Create static tools that don't depend on Docker containers.
+
+    Returns:
+        Dict[str, BaseTool]: Dictionary of static tool instances keyed by tool name
+    """
+    static_tools = {}
+    
+    try:
+        # Create clinical web search tool
+        clinical_search_tool = ClinicalWebSearchTool()
+        static_tools[clinical_search_tool.name] = clinical_search_tool
+        logger.info(f"Created static tool: {clinical_search_tool.name}")
+        
+    except Exception as e:
+        logger.error(f"Failed to create static tools: {str(e)}")
+    
+    return static_tools
+
+
 def discover_and_create_tools(network_name: str = "pacs-net") -> dict[str, BaseTool]:
     """
-    Discover containers on the specified network and create corresponding tools.
+    Discover containers on the specified network and create corresponding tools,
+    plus add static tools that don't depend on containers.
 
     Args:
         network_name (str): Docker network name. Defaults to "pacs-net".
@@ -351,20 +376,25 @@ def discover_and_create_tools(network_name: str = "pacs-net") -> dict[str, BaseT
     """
     tools_dict = {}
 
+    # Add static tools first
+    static_tools = create_static_tools()
+    tools_dict.update(static_tools)
+    logger.info(f"Added {len(static_tools)} static tools")
+
     # Get containers on the network
     containers = get_containers_on_network(network_name)
 
     if not containers:
         logger.warning(f"No containers found on network: {network_name}")
-        return tools_dict
+    else:
+        # Create tools for each container
+        for container in containers:
+            container_name = container.get("name", "").replace("/", "")
+            tool = create_tool_for_container(container)
 
-    # Create tools for each container
-    for container in containers:
-        container_name = container.get("name", "").replace("/", "")
-        tool = create_tool_for_container(container)
+            if tool:
+                logger.info(f"Created tool '{tool.name}' for container '{container_name}'")
+                tools_dict[tool.name] = tool
 
-        if tool:
-            logger.info(f"Created tool '{tool.name}' for container '{container_name}'")
-            tools_dict[tool.name] = tool
-
+    logger.info(f"Total tools created: {len(tools_dict)} ({len(static_tools)} static, {len(tools_dict) - len(static_tools)} dynamic)")
     return tools_dict
