@@ -12,6 +12,7 @@ from logger import logger
 
 def initialize_agent(
     prompt_file: str,
+    checkpointer: MemorySaver,
     model: str = "qwen3:8b",
     temperature: float = 0.7,
     top_p: float = 0.95,
@@ -73,7 +74,6 @@ def initialize_agent(
     config["base_url"] = base_url
 
     # Initialize the model and agent
-    checkpointer = MemorySaver()
     model_instance = ChatOllama(
         model=model, 
         temperature=temperature, 

@@ -14,6 +14,11 @@ from logger import logger
 
 _ = load_dotenv()
 
+# Token counting and context management
+MAX_CONTEXT_TOKENS = 32_000  # Conservative limit for most models
+SYSTEM_PROMPT_RESERVE = 500  # Reserve tokens for system prompt
+RESPONSE_BUFFER = 1_000  # Reserve tokens for response generation
+
 
 class ToolCallLog(TypedDict):
     """
@@ -43,10 +48,13 @@ class AgentState(TypedDict):
             representing the conversation history. The operator.add annotation
             indicates that new messages should be appended to this list.
         dicom_payload (Optional[Dict[str, Any]]): The DICOM payload data, if available.
+        last_tool_call (Optional[ToolCallLog]): The last tool call log, used to
+            repopulate the dicom_payload when the agent is re-initialized.
     """
 
     messages: Annotated[List[AnyMessage], operator.add]
     dicom_payload: Any = None
+    last_tool_call: Optional[ToolCallLog] = None
 
 
 class Agent:
@@ -108,10 +116,99 @@ class Agent:
         workflow.set_entry_point("process")
         
         return workflow.compile(checkpointer=checkpointer)
+    
+    def get_conversation_state(self, thread_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve the conversation state for a given thread.
+        
+        Args:
+            thread_id (str): The thread identifier
+            
+        Returns:
+            Optional[Dict[str, Any]]: The conversation state or None if not found
+        """
+        try:
+            config = {"configurable": {"thread_id": thread_id}}
+            state = self.workflow.get_state(config)
+            return state.values if state else None
+        except Exception as e:
+            logger.error(f"Error retrieving conversation state for thread {thread_id}: {e}")
+            return None
+    
+    def update_conversation_state(self, thread_id: str, state_update: Dict[str, Any]) -> bool:
+        """
+        Update the conversation state for a given thread.
+        
+        Args:
+            thread_id (str): The thread identifier
+            state_update (Dict[str, Any]): The state updates to apply
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            config = {"configurable": {"thread_id": thread_id}}
+            self.workflow.update_state(config, state_update)
+            return True
+        except Exception as e:
+            logger.error(f"Error updating conversation state for thread {thread_id}: {e}")
+            return False
+
+    def _estimate_tokens(self, text: str) -> int:
+        """Rough token estimation (1 token ≈ 4 chars for most models)."""
+        return len(text) // 4
+    
+    def _get_message_tokens(self, message: AnyMessage) -> int:
+        """Estimate tokens for a message."""
+        if hasattr(message, 'content') and message.content:
+            if isinstance(message.content, str):
+                return self._estimate_tokens(message.content)
+            elif isinstance(message.content, list):
+                total = 0
+                for item in message.content:
+                    if isinstance(item, dict) and 'text' in item:
+                        total += self._estimate_tokens(item['text'])
+                return total
+        return 0
+    
+    def _truncate_messages(self, messages: List[AnyMessage]) -> List[AnyMessage]:
+        """Truncate messages to fit within context window while preserving recent context."""
+        if not messages:
+            return messages
+            
+        # Always keep system message if present
+        system_msgs = [msg for msg in messages if isinstance(msg, SystemMessage)]
+        other_msgs = [msg for msg in messages if not isinstance(msg, SystemMessage)]
+        
+        # Calculate system prompt tokens
+        system_tokens = sum(self._get_message_tokens(msg) for msg in system_msgs)
+        available_tokens = MAX_CONTEXT_TOKENS - system_tokens - RESPONSE_BUFFER
+        
+        if available_tokens <= 0:
+            logger.warning("System prompt too long, truncating other messages severely")
+            return system_msgs + other_msgs[-1:] if other_msgs else system_msgs
+        
+        # Keep recent messages that fit in available context
+        truncated_msgs = []
+        current_tokens = 0
+        
+        # Process messages in reverse order to keep most recent
+        for msg in reversed(other_msgs):
+            msg_tokens = self._get_message_tokens(msg)
+            if current_tokens + msg_tokens <= available_tokens:
+                truncated_msgs.insert(0, msg)
+                current_tokens += msg_tokens
+            else:
+                break
+        
+        if len(truncated_msgs) < len(other_msgs):
+            logger.info(f"Truncated {len(other_msgs) - len(truncated_msgs)} older messages to fit context window")
+        
+        return system_msgs + truncated_msgs
 
     def process_request(self, state: AgentState) -> Dict[str, List[AnyMessage]]:
         """
-        Process the request using the language model.
+        Process the request using the language model with proper context management.
 
         Args:
             state (AgentState): The current state of the agent.
@@ -119,10 +216,26 @@ class Agent:
         Returns:
             Dict[str, List[AnyMessage]]: A dictionary containing the model's response.
         """
+        # Repopulate dicom_payload from last_tool_call if it's missing
+        if state.get("dicom_payload") is None and state.get("last_tool_call"):
+            last_tool_call = state["last_tool_call"]
+            if last_tool_call and "content" in last_tool_call:
+                state["dicom_payload"] = last_tool_call["content"]
+                logger.info("Repopulated dicom_payload from last tool call")
+
         messages = state["messages"]
         
-        if self.system_prompt:
+        # Add system prompt only if not already present
+        has_system_prompt = any(isinstance(msg, SystemMessage) for msg in messages)
+        if self.system_prompt and not has_system_prompt:
             messages = [SystemMessage(content=self.system_prompt)] + messages
+        
+        # Truncate messages to fit context window
+        messages = self._truncate_messages(messages)
+        
+        # Log context info
+        total_tokens = sum(self._get_message_tokens(msg) for msg in messages)
+        logger.debug(f"Processing request with {len(messages)} messages, ~{total_tokens} tokens")
         
         response = self.model.invoke(messages)
         return {"messages": [response]}
@@ -180,6 +293,18 @@ class Agent:
         for call in tool_calls:
             logger.info(f"Processing tool call: {call['name']}")
             result = self._execute_single_tool(call, dicom_payload)
+
+            # Create a log entry for the tool call
+            tool_call_log: ToolCallLog = {
+                "timestamp": datetime.now().isoformat(),
+                "tool_call_id": call["id"],
+                "name": call["name"],
+                "args": call["args"],
+                "content": result,
+            }
+
+            # Update the last_tool_call in the state
+            state["last_tool_call"] = tool_call_log
             
             results.append(
                 ToolMessage(
@@ -194,7 +319,7 @@ class Agent:
             self._save_tool_calls(results)
             
         logger.info("Tool execution complete, returning to model processing")
-        return {"messages": results}
+        return {"messages": results, "last_tool_call": state["last_tool_call"]}
 
     def _save_tool_calls(self, tool_calls: List[ToolMessage]) -> None:
         """

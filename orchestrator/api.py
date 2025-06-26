@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Any, AsyncIterator
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from langgraph.checkpoint.memory import MemorySaver
 from pydantic import BaseModel
 import uuid
 from datetime import datetime, timedelta
@@ -65,6 +66,7 @@ class APIHandler:
 
     def __init__(self):
         """Initialize the API handler with necessary directories and the agent."""
+        self.checkpointer = MemorySaver()  # Use a single checkpointer instance
         self._initialize_agent()
         self.thread_data = {}  # Store thread-specific data
         self.current_thread_id = None
@@ -80,6 +82,7 @@ class APIHandler:
         
         return initialize_agent(
             "components/docs/system_prompts.txt",
+            checkpointer=self.checkpointer,  # Pass the existing checkpointer
             model=model,
             temperature=0,
             top_p=0.95,
