@@ -15,17 +15,24 @@ import (
 	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
-	dicomUtils "api-pacs/internal/dicoms"
+	dicomUtils "api-pacs/internal/dicom"
 	apiError "api-pacs/internal/errors"
+	elasticsearchApplication "api-pacs/module/elasticsearch/application"
+	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	"api-pacs/module/inference/domain/repository"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
+	tenantApplication "api-pacs/module/tenant/application"
+	userApplication "api-pacs/module/user/application"
 )
 
 // InferenceCommandService handles the Inference command service logic
 type InferenceCommandService struct {
 	repository.InferenceCommandRepositoryInterface
 	repository.InferenceQueryRepositoryInterface
+	tenantApplication.TenantQueryServiceInterface
+	userApplication.UserQueryServiceInterface
+	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	dockerTypes.DockerSDKInterface
 	orthancAPITypes.OrthancAPIInterface
 	dockerInferenceTypes.DockerInferenceAPIInterface
@@ -241,7 +248,7 @@ func (service *InferenceCommandService) processSeriesInstances(
 }
 
 // PredictInferenceModel predicts an inference model
-func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
+func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, tenantID, userID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
 	// get inference model
 	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
 	if err != nil {
@@ -391,6 +398,43 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
+
+	// TODO: remove this
+	predictionEndTime := time.Since(predictionStartTime)
+	log.Printf("[prediction] predict call took %f seconds", predictionEndTime.Seconds())
+
+	// log to elasticsearch
+	go func() {
+		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, userID)
+		if err != nil {
+			return
+		}
+
+		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			return
+		}
+
+		_, err = service.ElasticsearchCommandServiceInterface.CreatePredictInferenceModelLog(ctx, elasticsearchTypes.CreatePredictInferenceModelLog{
+			TenantID:           tenant.ID,
+			TenantName:         tenant.Name,
+			UserID:             user.ID,
+			Email:              user.Email,
+			Name:               user.Name,
+			ContainerID:        containerID,
+			ContainerName:      containerName,
+			InferenceModelID:   inferenceModel.ID,
+			InferenceModelName: inferenceModel.Name,
+			DockerImage:        inferenceModel.DockerImage,
+			StudyInstanceUID:   data.StudyInstanceUID,
+			SeriesInstanceUIDs: data.SeriesInstanceUIDs,
+			AdditionalMetadata: data.AdditionalMetadata,
+		})
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	}()
 
 	return predictionResult, nil
 }

@@ -42,10 +42,13 @@ type RetrieveModalityStudyRequest struct {
 }
 
 type UpdateDICOMModalityRequest struct {
-	AET         string `json:"aet" validate:"required"`
-	Host        string `json:"host" validate:"required"`
-	Port        uint   `json:"port" validate:"required"`
-	UseDicomTLS bool   `json:"useDicomTLS"`
+	AET           string `json:"aet" validate:"required"`
+	Host          string `json:"host" validate:"required"`
+	Port          uint   `json:"port" validate:"required"`
+	UseDicomTLS   bool   `json:"useDicomTLS"`
+	CFindEnabled  bool   `json:"cFindEnabled"`
+	CMoveEnabled  bool   `json:"cMoveEnabled"`
+	CStoreEnabled bool   `json:"cStoreEnabled"`
 }
 
 type FindLocalSOPInstanceResponse struct {
@@ -64,6 +67,19 @@ type GetJobInfoResponse struct {
 	State    string `json:"state"`
 }
 
+type GetDICOMModalityResponse struct {
+	ID            string `json:"id"`
+	TenantID      string `json:"tenantId"`
+	ModalityID    string `json:"modalityId"`
+	AET           string `json:"aet"`
+	HostHash      string `json:"hostHash"`
+	CFindEnabled  bool   `json:"cFindEnabled"`
+	CMoveEnabled  bool   `json:"cMoveEnabled"`
+	CStoreEnabled bool   `json:"cStoreEnabled"`
+	CreatedAt     int    `json:"createdAt"`
+	UpdatedAt     int    `json:"updatedAt"`
+}
+
 type ListDICOMModalitiesResponse struct {
 	Modalities map[string]ListDICOMModality `json:"modalities"`
 }
@@ -74,18 +90,23 @@ type RetrieveQueryModalityAnswerResponse struct {
 }
 
 type ListDICOMModality struct {
-	AET               string `json:"aet"`
-	AllowEcho         bool   `json:"allowEcho"`
-	AllowFind         bool   `json:"allowFind"`
-	AllowFindWorklist bool   `json:"allowFindWorklist"`
-	AllowGet          bool   `json:"allowGet"`
-	AllowMove         bool   `json:"allowMove"`
-	AllowStore        bool   `json:"allowStore"`
-	AllowTranscoding  bool   `json:"allowTranscoding"`
-	Host              string `json:"host"`
-	Port              uint   `json:"port"`
-	Timeout           uint   `json:"timeout"`
-	UseDicomTLS       bool   `json:"useDicomTLS"`
+	TenantID            string `json:"tenantId"`
+	ModalityID          string `json:"modalityId"`
+	AET                 string `json:"aet"`
+	AllowEcho           bool   `json:"allowEcho"`
+	AllowFind           bool   `json:"allowFind"`
+	AllowFindWorklist   bool   `json:"allowFindWorklist"`
+	AllowGet            bool   `json:"allowGet"`
+	AllowMove           bool   `json:"allowMove"`
+	AllowStore          bool   `json:"allowStore"`
+	AllowTranscoding    bool   `json:"allowTranscoding"`
+	Host                string `json:"host"`
+	Port                uint   `json:"port"`
+	Timeout             uint   `json:"timeout"`
+	UseDicomTLS         bool   `json:"useDicomTLS"`
+	TargetCFindEnabled  bool   `json:"targetCFindEnabled"`
+	TargetCMoveEnabled  bool   `json:"targetCMoveEnabled"`
+	TargetCStoreEnabled bool   `json:"targetCStoreEnabled"`
 }
 
 type Study struct {

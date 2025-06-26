@@ -67,17 +67,50 @@ type ModalityStudyLogResponse struct {
 	Timestamp  uint   `json:"timestamp" csv:"timestamp"`
 }
 
+type PredictInferenceModelLogResponse struct {
+	TenantID           string                 `json:"tenantId" csv:"tenant_id"`
+	TenantName         string                 `json:"tenantName" csv:"tenant_name"`
+	UserID             string                 `json:"userId" csv:"user_id"`
+	Email              string                 `json:"email" csv:"email"`
+	Name               string                 `json:"name" csv:"name"`
+	ContainerID        string                 `json:"containerId" csv:"container_id"`
+	ContainerName      string                 `json:"containerName" csv:"container_name"`
+	InferenceModelID   string                 `json:"inferenceModelId" csv:"inference_model_id"`
+	InferenceModelName string                 `json:"inferenceModelName" csv:"inference_model_name"`
+	StudyInstanceUID   string                 `json:"studyInstanceUID" csv:"study_instance_uid"`
+	SeriesInstanceUIDs []string               `json:"seriesInstanceUIDs" csv:"series_instance_uids"`
+	AdditionalMetadata map[string]interface{} `json:"additionalMetadata" csv:"additional_metadata"`
+	Timestamp          uint                   `json:"timestamp" csv:"timestamp"`
+}
+
 type RetrievedStudyLogResponse struct {
 	TenantID         string `json:"tenantId" csv:"tenant_id"`
 	TenantName       string `json:"tenantName"  csv:"tenant_name"`
 	ModalityID       string `json:"modalityId" csv:"modality_id"`
-	UserID           string `json:"userId" "user_id"`
+	UserID           string `json:"userId" csv:"user_id"`
 	Email            string `json:"email" csv:"email"`
 	Name             string `json:"name" csv:"name"`
 	StudyInstanceUID string `json:"studyInstanceUID" csv:"study_instance_uid"`
 	QueryID          string `json:"queryId" csv:"query_id"`
 	AnswerIndex      uint   `json:"answerIndex" csv:"answer_index"`
 	Timestamp        uint   `json:"timestamp" csv:"timestamp"`
+}
+
+type StoredCustomSeriesLogResponse struct {
+	TenantID                string   `json:"tenantId" csv:"tenant_id"`
+	TenantName              string   `json:"tenantName" csv:"tenant_name"`
+	UserID                  string   `json:"userId" csv:"user_id"`
+	Email                   string   `json:"email" csv:"email"`
+	Name                    string   `json:"name" csv:"name"`
+	ModalityID              string   `json:"modalityId" csv:"modality_id"`
+	StudyInstanceUID        string   `json:"studyInstanceUID" csv:"study_instance_uid"`
+	SeriesInstanceUIDs      []string `json:"seriesInstanceUIDs" csv:"series_instance_uids"`
+	PatientID               string   `json:"patientId" csv:"patient_id"`
+	ModelName               string   `json:"modelName" csv:"model_name"`
+	ModelVersion            string   `json:"modelVersion" csv:"model_version"`
+	CustomSeriesInstanceUID string   `json:"customSeriesInstanceUID" csv:"custom_series_instance_uid"`
+	CustomSOPInstanceUID    string   `json:"customSOPInstanceUID" csv:"custom_sop_instance_uid"`
+	Timestamp               uint     `json:"timestamp" csv:"timestamp"`
 }
 
 type LoginTenantUserResponse struct {

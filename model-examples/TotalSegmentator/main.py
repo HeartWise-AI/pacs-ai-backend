@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 import signal
 import asyncio
+import contextlib
 
 from utils.http_utils import Config, HTMLPredictionResponse, OHIFPredictionResponse, HTTPResponse, PDFPredictionResponse, PredictRequest, JsonPredictionResponse, WebAppPredictionResponse
 from logic import CustomPredictionService
@@ -17,24 +18,9 @@ with open(os.path.join(root_path, 'config.json'), 'r') as f:
 
 config = Config(**config_dict)
 
-app = FastAPI(
-    title="PACS.AI Inference Model API",
-    description="API Documentation of PACS.AI Model Inference",
-    version="1.0.0",
-    docs_url=None,  # Disable default docs
-    redoc_url=None  # Disable default redoc
-)
-
 PredictionService = CustomPredictionService()
 
-# Mount static files for documentation
-app.mount("/docs", StaticFiles(directory=os.path.join(root_path, "docs"), html=True), name="docs")
-
 last_request_time = datetime.now()
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(check_inactivity())
 
 async def check_inactivity():
     global last_request_time
@@ -50,6 +36,25 @@ async def check_inactivity():
                 os.kill(os.getpid(), signal.SIGTERM)
             else:
                 last_request_time = datetime.now()
+
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    asyncio.create_task(check_inactivity())
+    yield
+    # Shutdown (if needed)
+
+app = FastAPI(
+    title="PACS.AI Inference Model API",
+    description="API Documentation of PACS.AI Model Inference",
+    version="1.0.0",
+    docs_url=None,  # Disable default docs
+    redoc_url=None,  # Disable default redoc
+    lifespan=lifespan
+)
+
+# Mount static files for documentation
+app.mount("/docs", StaticFiles(directory=os.path.join(root_path, "docs"), html=True), name="docs")
 
 @app.middleware("http")
 async def update_last_request_time(request: Request, call_next):
