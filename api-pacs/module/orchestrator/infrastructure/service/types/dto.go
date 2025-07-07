@@ -16,9 +16,11 @@ type CreateThreadResponse struct {
 
 // CreateMessageRequest represents a request to create a message
 type CreateMessageRequest struct {
-	ThreadID string                 `json:"thread_id"`
-	Content  string                 `json:"content"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	ThreadID   string                 `json:"thread_id"`
+	Content    string                 `json:"content"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+	ImageData  string                 `json:"image_data,omitempty"`
+	ImageType  string                 `json:"image_type,omitempty"`
 }
 
 // CreateMessageResponse represents a response from creating a message
@@ -80,12 +82,20 @@ type MessageRequest struct {
 	ThreadID string `json:"thread_id,omitempty"`
 }
 
-type DicomPayloadRequest struct {
+// StudyData represents a DICOM study data structure
+type StudyData struct {
 	StudyInstanceUID   string                 `json:"studyInstanceUID"`
+	AdditionalMetadata map[string]interface{} `json:"additionalMetadata"`
 	SeriesInstanceUIDs []string               `json:"seriesInstanceUIDs"`
-	AdditionalMetadata map[string]interface{} `json:"additionalMetadata,omitempty"`
-	ThreadID           string                 `json:"thread_id,omitempty"`
-	ContainerID        string                 `json:"containerId,omitempty"`
+	Modality           *string                `json:"modality,omitempty"`
+	PreviewImageBase64 *string                `json:"previewImageBase64,omitempty"`
+}
+
+type DicomPayloadRequest struct {
+	Payload     []StudyData `json:"payload"`
+	ThreadID    *string     `json:"thread_id,omitempty"`
+	BearerToken *string     `json:"bearer_token,omitempty"`
+	APIBaseURL  *string     `json:"api_base_url,omitempty"`
 }
 
 // UploadDicomPayloadResponse represents a response from uploading a DICOM payload

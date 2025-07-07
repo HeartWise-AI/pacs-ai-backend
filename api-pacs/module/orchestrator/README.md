@@ -18,7 +18,6 @@ All endpoints require authentication via a JWT token in the Authorization header
 The Orchestrator service can be configured using the following environment variables:
 
 - `ORCHESTRATOR_API_URL` - URL for the external orchestrator API (default: "http://localhost:8585")
-- `DEFAULT_CONTAINER_ID` - Default container ID to use for inference when not provided in the payload
 
 ## Testing
 

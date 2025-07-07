@@ -502,20 +502,13 @@ func (k *kernel) userQueryServiceContainer() *userService.UserQueryService {
 
 // orchestratorServiceContainer returns the orchestrator service with dependencies
 func (k *kernel) orchestratorServiceContainer() *orchestratorService.OrchestratorService {
-	inferenceCommandService := k.inferenceCommandServiceContainer()
-
 	// Configure orchestrator service
 	orchestratorAPIURL := os.Getenv("ORCHESTRATOR_API_URL")
-	defaultContainerID := os.Getenv("DEFAULT_CONTAINER_ID") // TODO: remove this and override it so it returns the full dicoms in the paylaod
-	tenantID := os.Getenv("TENANT_ID")
 
 	service := &orchestratorService.OrchestratorService{
-		InferenceCommandServiceInterface: inferenceCommandService,
-		OrchestratorAPIURL:               orchestratorAPIURL,
-		DefaultContainerID:               defaultContainerID,
-		OrchestratorClient:               &http.Client{Timeout: 5 * time.Minute},
-		ThreadsByID:                      make(map[string]*entity.Thread),
-		TenantID:                         tenantID,
+		OrchestratorAPIURL:     orchestratorAPIURL,
+		OrchestratorClient:     &http.Client{Timeout: 5 * time.Minute},
+		ThreadsByID:            make(map[string]*entity.Thread)
 	}
 
 	return service

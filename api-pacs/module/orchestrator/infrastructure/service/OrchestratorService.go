@@ -11,22 +11,16 @@ import (
 
 	"github.com/segmentio/ksuid"
 
-	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
-	inferenceApplication "api-pacs/module/inference/application"
-	inferenceTypes "api-pacs/module/inference/infrastructure/service/types"
 	"api-pacs/module/orchestrator/domain/entity"
 	"api-pacs/module/orchestrator/infrastructure/service/types"
 )
 
 // OrchestratorService implements the orchestrator service
 type OrchestratorService struct {
-	InferenceCommandServiceInterface inferenceApplication.InferenceCommandServiceInterface
-	OrchestratorAPIURL               string
-	DefaultContainerID               string
-	OrchestratorClient               *http.Client
-	ThreadsByID                      map[string]*entity.Thread
-	TenantID                         string
+	OrchestratorAPIURL     string
+	OrchestratorClient     *http.Client
+	ThreadsByID            map[string]*entity.Thread
 }
 
 // extractBearerTokenFromContext extracts the bearer token from context
@@ -104,11 +98,15 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 	requestPayload := struct {
 		Message     string `json:"message"`
 		ThreadID    string `json:"thread_id"`
+		ImageData   string `json:"image_data,omitempty"`
+		ImageType   string `json:"image_type,omitempty"`
 		BearerToken string `json:"bearer_token,omitempty"`
 		APIBaseURL  string `json:"api_base_url,omitempty"`
 	}{
 		Message:     request.Content,
 		ThreadID:    request.ThreadID,
+		ImageData:   request.ImageData,
+		ImageType:   request.ImageType,
 		BearerToken: bearerToken,
 		APIBaseURL:  os.Getenv("API_BASE_URL"),
 	}
@@ -226,41 +224,13 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 	// Extract bearer token from context
 	bearerToken := service.extractBearerTokenFromContext(ctx)
 	
-	// Get the container ID from request or use default
-	containerID := service.DefaultContainerID
-	tenantID := service.TenantID
-
-	// Create the inferenceData object from the request fields
-	inferenceData := inferenceTypes.PredictInferenceModel{
-		StudyInstanceUID:   request.StudyInstanceUID,
-		SeriesInstanceUIDs: request.SeriesInstanceUIDs,
-		AdditionalMetadata: request.AdditionalMetadata,
-	}
-
-	// Use PredictInferenceModel input to generate a PredictRequest
-	predictRequest, _, err := service.InferenceCommandServiceInterface.GenerateInferenceModelPredictRequest(
-		ctx,
-		tenantID,
-		containerID,
-		inferenceData,
-	)
-	if err != nil {
-		return types.UploadDicomPayloadResponse{}, err
-	}
-
-	// Create the request payload for the Python server including bearer token
 	requestPayload := struct {
-		Payload     dockerInferenceTypes.PredictRequest `json:"payload"`
-		ThreadID    string                              `json:"thread_id,omitempty"`
-		BearerToken string                              `json:"bearer_token,omitempty"`
-		APIBaseURL  string                              `json:"api_base_url,omitempty"`
+		Payload     []types.StudyData `json:"payload"`
+		ThreadID    *string           `json:"thread_id,omitempty"`
+		BearerToken string            `json:"bearer_token"`
+		APIBaseURL  string            `json:"api_base_url"`
 	}{
-		Payload: dockerInferenceTypes.PredictRequest{
-			SeriesInstanceImages:   predictRequest.SeriesInstanceImages,
-			SeriesInstanceMetadata: predictRequest.SeriesInstanceMetadata,
-			AdditionalMetadata:     predictRequest.AdditionalMetadata,
-			OutputMode:             dockerInferenceTypes.OutputModeJSON, // TODO: Make this configurable
-		},
+		Payload:     request.Payload,
 		ThreadID:    request.ThreadID,
 		BearerToken: bearerToken,
 		APIBaseURL:  os.Getenv("API_BASE_URL"),
@@ -271,9 +241,15 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 		return nil, err
 	}
 
+	// Determine the thread ID for the URL
+	var threadID string
+	if request.ThreadID != nil {
+		threadID = *request.ThreadID
+	}
+
 	// Make HTTP request to external Python orchestrator API
 	resp, err := service.OrchestratorClient.Post(
-		fmt.Sprintf("%s/dicom/%s", service.OrchestratorAPIURL, request.ThreadID),
+		fmt.Sprintf("%s/dicom/%s", service.OrchestratorAPIURL, threadID),
 		"application/json",
 		bytes.NewBuffer(requestBytes),
 	)
@@ -304,33 +280,30 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 	}
 
 	// Update local thread cache if it exists
-	if thread, exists := service.ThreadsByID[request.ThreadID]; exists {
-		if thread.Metadata == nil {
-			thread.Metadata = make(map[string]interface{})
-		}
-
-		// Update metadata with DICOM information
-		thread.Metadata["studyInstanceUID"] = request.StudyInstanceUID
-		thread.Metadata["seriesInstanceUIDs"] = request.SeriesInstanceUIDs
-		thread.Metadata["dicomPayloadTimestamp"] = time.Now().Unix()
-		thread.Metadata["containerID"] = containerID
-
-		// Include additional metadata if provided
-		if request.AdditionalMetadata != nil {
-			for key, value := range request.AdditionalMetadata {
-				thread.Metadata[key] = value
+	if request.ThreadID != nil {
+		if thread, exists := service.ThreadsByID[*request.ThreadID]; exists {
+			if thread.Metadata == nil {
+				thread.Metadata = make(map[string]interface{})
 			}
-		}
 
-		// If the payload has its own AdditionalMetadata, also include it
-		if request.AdditionalMetadata != nil {
-			for key, value := range request.AdditionalMetadata {
-				thread.Metadata[key] = value
+			// Update metadata with DICOM information from the first study for backward compatibility
+			if len(request.Payload) > 0 {
+				firstStudy := request.Payload[0]
+				thread.Metadata["studyInstanceUID"] = firstStudy.StudyInstanceUID
+				thread.Metadata["seriesInstanceUIDs"] = firstStudy.SeriesInstanceUIDs
+				thread.Metadata["dicomPayloadTimestamp"] = time.Now().Unix()
+
+				// Include additional metadata if provided
+				if firstStudy.AdditionalMetadata != nil {
+					for key, value := range firstStudy.AdditionalMetadata {
+						thread.Metadata[key] = value
+					}
+				}
 			}
-		}
 
-		// Update thread
-		thread.UpdatedAt = time.Now()
+			// Update thread
+			thread.UpdatedAt = time.Now()
+		}
 	}
 
 	// Return response with new fields

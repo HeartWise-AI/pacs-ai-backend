@@ -111,9 +111,11 @@ func (controller *OrchestratorController) CreateMessage(w http.ResponseWriter, r
 
 	// Set the threadID from URL parameter
 	serviceRequest := types.CreateMessageRequest{
-		ThreadID: threadID,
-		Content:  request.Message,
-		Metadata: request.Metadata,
+		ThreadID:   threadID,
+		Content:    request.Message,
+		Metadata:   request.Metadata,
+		ImageData:  request.ImageData,
+		ImageType:  request.ImageType,
 	}
 
 	// Create the message (bearer token is extracted from context in the service)
@@ -173,11 +175,11 @@ func (controller *OrchestratorController) UploadDicomPayload(w http.ResponseWrit
 	}
 
 	// Validate required fields
-	if request.StudyInstanceUID == "" {
+	if len(request.Payload) == 0 {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
-			Message:   "Study Instance UID is required.",
+			Message:   "Payload is required.",
 			ErrorCode: apiError.InvalidPayload,
 		}
 
@@ -185,25 +187,49 @@ func (controller *OrchestratorController) UploadDicomPayload(w http.ResponseWrit
 		return
 	}
 
-	if len(request.SeriesInstanceUIDs) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Series Instance UIDs are required.",
-			ErrorCode: apiError.InvalidPayload,
+	// Validate each study in the payload
+	for i, study := range request.Payload {
+		if study.StudyInstanceUID == "" {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   fmt.Sprintf("Study Instance UID is required for study at index %d.", i),
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
 		}
 
-		response.JSON(w)
-		return
+		if len(study.SeriesInstanceUIDs) == 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   fmt.Sprintf("Series Instance UIDs are required for study at index %d.", i),
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+	}
+
+	// Convert HTTP request to service request
+	serviceStudies := make([]types.StudyData, len(request.Payload))
+	for i, study := range request.Payload {
+		serviceStudies[i] = types.StudyData{
+			StudyInstanceUID:   study.StudyInstanceUID,
+			AdditionalMetadata: study.AdditionalMetadata,
+			SeriesInstanceUIDs: study.SeriesInstanceUIDs,
+			Modality:           study.Modality,
+			PreviewImageBase64: study.PreviewImageBase64,
+		}
 	}
 
 	// Create the service request
 	serviceRequest := types.DicomPayloadRequest{
-		ThreadID:           threadID,
-		StudyInstanceUID:   request.StudyInstanceUID,
-		SeriesInstanceUIDs: request.SeriesInstanceUIDs,
-		AdditionalMetadata: request.AdditionalMetadata,
-		ContainerID:        request.ContainerID,
+		Payload:  serviceStudies,
+		ThreadID: &threadID,
 	}
 
 	// Upload the DICOM payload (bearer token is extracted from context in the service)
