@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import requests
 import threading
 import time
 import uuid
@@ -23,6 +24,8 @@ class MessageRequest(BaseModel):
     thread_id: str | None = None
     image_data: str | None = None
     image_type: str | None = None
+    bearer_token: str | None = None
+    api_base_url: str | None = None
 
 
 class StudyData(BaseModel):
@@ -36,6 +39,19 @@ class StudyData(BaseModel):
 class DicomPayloadRequest(BaseModel):
     payload: list[StudyData]
     thread_id: str | None = None
+    bearer_token: str | None = None
+    api_base_url: str | None = None
+
+
+class ThreadCreateRequest(BaseModel):
+    metadata: dict[str, Any] | None = None
+    bearer_token: str | None = None
+    api_base_url: str | None = None
+
+
+class ThreadGetRequest(BaseModel):
+    bearer_token: str | None = None
+    api_base_url: str | None = None
 
 
 class ToolResultResponse(BaseModel):
@@ -159,132 +175,147 @@ class APIHandler:
         cleanup_thread.start()
         logger.info("Started thread cleanup background thread (runs every minute)")
 
-    def _cleanup_inactive_threads(self):
-        """Remove threads that haven't been accessed in the last 5 minutes."""
-        try:
-            current_time = datetime.now(tz=timezone.utc)
-            inactive_threshold = current_time - timedelta(minutes=5)
-
-            # Identify inactive threads
-            inactive_threads = [
-                thread_id
-                for thread_id, data in self.thread_data.items()
-                if data.get("last_accessed", datetime.min.replace(tzinfo=timezone.utc))
-                < inactive_threshold
-            ]
-
-            # Remove inactive threads
-            for thread_id in inactive_threads:
-                del self.thread_data[thread_id]
-
-            if inactive_threads:
-                logger.info(f"Cleaned up {len(inactive_threads)} inactive threads")
-        except Exception as e:
-            logger.error(f"Error cleaning up inactive threads: {str(e)}")
-
     def get_thread_data(self, thread_id: str) -> dict:
-        """
-        Get thread-specific data or initialize if it doesn't exist
-
-        Args:
-            thread_id (str): The ID of the thread
-
-        Returns:
-            Dict: Thread-specific data dictionary
-        """
+        """Get or create thread data for a specific thread."""
         if thread_id not in self.thread_data:
             self.thread_data[thread_id] = {
                 "studies": [],  # Track studies objects for this thread
-                "last_accessed": datetime.now(tz=timezone.utc),
+                "has_dicom_payload": False,
+                "created_at": datetime.now(timezone.utc),
+                "last_activity": datetime.now(timezone.utc),
                 "context_messages": [],
+                "bearer_token": None,
+                "api_base_url": None,
             }
         else:
-            # Update the last accessed timestamp
-            self.thread_data[thread_id]["last_accessed"] = datetime.now(tz=timezone.utc)
-
+            # Update the last activity timestamp
+            self.thread_data[thread_id]["last_activity"] = datetime.now(timezone.utc)
+            
         return self.thread_data[thread_id]
+
+    def set_thread_auth(self, thread_id: str, bearer_token: str = None, api_base_url: str = None):
+        """Set authentication details for a thread."""
+        thread_data = self.get_thread_data(thread_id)
+        if bearer_token:
+            thread_data["bearer_token"] = bearer_token
+        if api_base_url:
+            thread_data["api_base_url"] = api_base_url
+        thread_data["last_activity"] = datetime.now(timezone.utc)
+
+    def get_thread_auth(self, thread_id: str) -> tuple[str, str]:
+        """Get authentication details for a thread."""
+        thread_data = self.get_thread_data(thread_id)
+        return thread_data.get("bearer_token"), thread_data.get("api_base_url")
+
+    def make_authenticated_request(self, thread_id: str, method: str, endpoint: str, data: dict = None) -> dict:
+        """Make an authenticated request to the Go API server."""
+        bearer_token, api_base_url = self.get_thread_auth(thread_id)
+        
+        if not bearer_token or not api_base_url:
+            logger.warning(f"Missing authentication details for thread {thread_id}")
+            return {"error": "Missing authentication details"}
+        
+        headers = {
+            "Authorization": f"Bearer {bearer_token}",
+            "Content-Type": "application/json"
+        }
+        
+        url = f"{api_base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+        
+        try:
+            
+            if method.upper() == "GET":
+                response = requests.get(url, headers=headers, params=data)
+            elif method.upper() == "POST":
+                response = requests.post(url, headers=headers, json=data)
+            elif method.upper() == "PUT":
+                response = requests.put(url, headers=headers, json=data)
+            elif method.upper() == "DELETE":
+                response = requests.delete(url, headers=headers)
+            else:
+                return {"error": f"Unsupported HTTP method: {method}"}
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"API request failed with status {response.status_code}: {response.text}")
+                return {"error": f"API request failed with status {response.status_code}"}
+                
+        except Exception as e:
+            logger.error(f"Error making authenticated request: {str(e)}")
+            return {"error": f"Request failed: {str(e)}"}
+
+    def _cleanup_inactive_threads(self):
+        """Clean up threads that have been inactive for more than 1 hour."""
+        try:
+            current_time = datetime.now(timezone.utc)
+            inactive_threads = []
+            
+            for thread_id, data in self.thread_data.items():
+                last_activity = data.get("last_activity")
+                if last_activity and (current_time - last_activity) > timedelta(hours=1):
+                    inactive_threads.append(thread_id)
+            
+            # Remove inactive threads
+            for thread_id in inactive_threads:
+                del self.thread_data[thread_id]
+                logger.info(f"Cleaned up inactive thread: {thread_id}")
+                
+        except Exception as e:
+            logger.error(f"Error during thread cleanup: {str(e)}")
 
     def handle_studies_payload(self, payload: list[StudyData], thread_id: str) -> dict[str, Any]:
         """
-        Store studies payload for a specific thread and add context message
+        Handle studies payload for a specific thread
 
         Args:
-            payload (List[StudyData]): List of StudyData objects containing DICOM study information
-            thread_id (str): The ID of the thread
+            payload (list[StudyData]): List of study data objects
+            thread_id (str): Thread ID
 
         Returns:
-            Dict[str, Any]: Response indicating success or failure
+            dict[str, Any]: Result of processing the studies payload
         """
+        # Get or create thread data
         thread_data = self.get_thread_data(thread_id)
 
-        logger.info(f"Handling studies payload for thread {thread_id} with {len(payload)} studies")
-
-        # Convert StudyData objects to dictionaries for storage
+        # Convert payload to dictionary format
         payload_dict = [study.model_dump() for study in payload]
-        
+
         # Store the studies payload in thread data
         thread_data["studies"] = payload_dict
+        thread_data["has_dicom_payload"] = True
+        thread_data["last_activity"] = datetime.now(timezone.utc)
 
         # Create a summary of the studies for the context message
         studies_summary = []
-        studies_details = []
-        
-        for i, study in enumerate(payload, 1):
-            # Brief summary for context message
-            study_info = f"Study {i}: {study.studyInstanceUID} with {len(study.seriesInstanceUIDs)} series"
-            if study.modality:
-                study_info += f" (Modality: {study.modality})"
-            if study.previewImageBase64:
-                study_info += " [Preview image available]"
-            studies_summary.append(study_info)
-            
-            # Detailed study information for context
-            study_detail = {
-                "studyNumber": i,
-                "studyInstanceUID": study.studyInstanceUID,
-                "modality": study.modality,
-                "seriesCount": len(study.seriesInstanceUIDs),
-                "seriesInstanceUIDs": study.seriesInstanceUIDs,
-                "hasPreviewImage": study.previewImageBase64 is not None,
-                "additionalMetadata": study.additionalMetadata
-            }
-            studies_details.append(study_detail)
+        for study in payload_dict:
+            study_uid = study.get("studyInstanceUID", "Unknown")
+            modality = study.get("modality", "Unknown")
+            series_count = len(study.get("seriesInstanceUIDs", []))
+            studies_summary.append(f"Study {study_uid[:8]}... ({modality}, {series_count} series)")
 
-        # Add context message to inform the LLM that studies data is now available
-        context_content = [
-            {
-                "type": "text",
-                "text": f"Studies data has been uploaded and is now available for analysis. {len(payload)} studies have been provided:\n\n" +
-                       "\n".join(studies_summary) +
-                       f"\n\nStudies details: {json.dumps(studies_details, indent=2)}" +
-                       "\n\nYou can use the available tools to analyze the medical imaging data when you think it's appropriate. " +
-                       "The studies are tracked in this thread's context for reference.",
-            }
-        ]
-        
-        # Add preview images to the context message
-        for i, study in enumerate(payload, 1):
-            if study.previewImageBase64:
-                context_content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{study.previewImageBase64}"
-                    }
-                })
-                logger.info(f"Added preview image for study {i} ({study.studyInstanceUID}) to context")
+        # Create context message
+        context_message = (
+            f"DICOM Studies uploaded:\n"
+            f"- Number of studies: {len(payload_dict)}\n"
+            f"- Studies: {', '.join(studies_summary)}\n"
+            f"These studies are now available for analysis."
+        )
 
-        context_message = {
-            "role": "user",  # Changed from "system" to "user" to support images
-            "content": context_content,
-        }
+        # Store context message
+        thread_data["context_messages"].append({
+            "role": "system",
+            "content": context_message,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
 
-        # Add the context message to the thread's context messages
-        thread_data["context_messages"].append(context_message)
-        logger.info(f"Added studies context message to thread {thread_id} with {len(payload)} studies tracked")
+        logger.info(f"Stored {len(payload_dict)} studies for thread {thread_id}")
 
         return {
+            "thread_id": thread_id,
             "status": "success",
-            "message": f"Studies payload received and stored successfully. {len(payload)} studies processed and tracked in thread context.",
+            "message": f"Successfully processed {len(payload_dict)} studies",
+            "studies_count": len(payload_dict)
         }
 
     def _parse_tool_result(self, content: str) -> Any:
@@ -352,6 +383,9 @@ class APIHandler:
         thread_data = self.get_thread_data(thread_id)
         studies = thread_data.get("studies", [])
         context_messages = thread_data.get("context_messages", [])
+        
+        # Get API base URL from thread data
+        bearer_token, api_base_url = self.get_thread_auth(thread_id)
 
         logger.info(f"Processing message for thread {thread_id}")
 
@@ -389,6 +423,10 @@ class APIHandler:
         initial_state = {"messages": messages}
         if studies:
             initial_state["studies"] = studies  # Include studies separately for easy access
+        if api_base_url:
+            initial_state["api_base_url"] = api_base_url  # Include API base URL for tools
+        if bearer_token:
+            initial_state["bearer_token"] = bearer_token  # Include bearer token for authentication
 
         config = {"configurable": {"thread_id": self.current_thread_id}}
 
@@ -526,92 +564,8 @@ Based on these tool results, please provide a clear, helpful response for the us
 api_handler = APIHandler()
 
 
-@app.post("/dicom/{thread_id}")
-async def upload_studies_payload(thread_id: str, request: DicomPayloadRequest):
-    """
-    Upload a studies payload for a specific thread
-
-    Args:
-        thread_id (str): Thread ID
-        request (DicomPayloadRequest): Studies payload request
-
-    Returns:
-        JSONResponse: Response indicating success or failure
-    """
-    if not thread_id:
-        thread_id = str(uuid.uuid4())
-
-    try:
-        # Process the studies payload
-        api_handler.handle_studies_payload(request.payload, thread_id)
-
-        return JSONResponse(
-            {
-                "thread_id": thread_id,
-                "status": "success",
-                "message": "Studies payload stored successfully",
-            }
-        )
-    except Exception as e:
-        logger.error(f"Error handling studies payload: {str(e)}")
-        return JSONResponse(
-            {
-                "thread_id": thread_id,
-                "status": "error",
-                "message": f"Error processing studies payload: {str(e)}",
-            },
-            status_code=500,
-        )
-
-
-@app.post("/chat/{thread_id}")
-async def chat(thread_id: str, request: MessageRequest):
-    """
-    Send a message to the agent and get a response
-
-    Args:
-        thread_id (str): Thread ID
-        request (MessageRequest): Message request
-
-    Returns:
-        ChatResponse: Response from the agent
-    """
-    # Generate a thread ID if not provided
-    if not thread_id:
-        thread_id = str(uuid.uuid4())
-
-    try:
-        # Get the first yielded response from the generator
-        async for response_chunk in api_handler.process_message(
-            request.message, thread_id, request.image_data, request.image_type
-        ):
-            # Return the first meaningful response
-            if response_chunk[0]:
-                return ChatResponse(
-                    thread_id=thread_id, message=response_chunk[0][0], status="success"
-                )
-
-        # If no meaningful response was generated
-        return ChatResponse(
-            thread_id=thread_id,
-            message=MessageResponse(role="assistant", content="No response generated"),
-            status="success",
-        )
-
-    except Exception as e:
-        logger.error(f"Error in chat endpoint: {str(e)}")
-        return ChatResponse(
-            thread_id=thread_id,
-            message=MessageResponse(
-                role="assistant", content=f"Error processing your message: {str(e)}"
-            ),
-            status="error",
-            error=str(e),
-        )
-
-
 @app.post("/new_thread")
-async def new_thread():
+async def new_thread(request: ThreadCreateRequest = None):
     """
     Create a new chat thread
 
@@ -619,49 +573,153 @@ async def new_thread():
         JSONResponse: Response with the new thread ID
     """
     thread_id = str(uuid.uuid4())
+    
     # Initialize thread data
-    api_handler.get_thread_data(thread_id)
+    thread_data = api_handler.get_thread_data(thread_id)
+    
+    # Set authentication details if provided
+    if request and request.bearer_token:
+        api_handler.set_thread_auth(thread_id, request.bearer_token, request.api_base_url)
+    
+    # Set metadata if provided
+    if request and request.metadata:
+        thread_data["metadata"] = request.metadata
 
     return JSONResponse({"thread_id": thread_id})
 
 
+@app.post("/chat/{thread_id}")
+async def chat_with_thread(thread_id: str, request: MessageRequest):
+    """
+    Chat with a specific thread
+
+    Args:
+        thread_id (str): The thread ID to chat with
+        request (MessageRequest): The message request containing the message and optional image data
+
+    Returns:
+        JSONResponse: Response with the chat result
+    """
+    # Set authentication details if provided
+    if request.bearer_token:
+        api_handler.set_thread_auth(thread_id, request.bearer_token, request.api_base_url)
+    
+    # Update thread activity
+    thread_data = api_handler.get_thread_data(thread_id)
+    thread_data["last_activity"] = datetime.now(timezone.utc)
+    
+    try:
+        # Process the message using the existing process_message method
+        async for response_chunk in api_handler.process_message(
+            request.message, thread_id, request.image_data, request.image_type
+        ):
+            # Return the first meaningful response
+            if response_chunk[0]:
+                return JSONResponse({
+                    "thread_id": thread_id,
+                    "message": {
+                        "role": response_chunk[0][0].role,
+                        "content": response_chunk[0][0].content
+                    },
+                    "status": "success"
+                })
+
+        # If no meaningful response was generated
+        return JSONResponse({
+            "thread_id": thread_id,
+            "message": {
+                "role": "assistant",
+                "content": "No response generated"
+            },
+            "status": "success"
+        })
+
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {str(e)}")
+        return JSONResponse({
+            "thread_id": thread_id,
+            "message": {
+                "role": "assistant",
+                "content": f"Error processing your message: {str(e)}"
+            },
+            "status": "error",
+            "error": str(e)
+        })
+
+
+@app.post("/dicom/{thread_id}")
+async def upload_dicom_payload(thread_id: str, request: DicomPayloadRequest):
+    """
+    Upload a DICOM payload to a specific thread
+
+    Args:
+        thread_id (str): The thread ID to upload the payload to
+        request (DicomPayloadRequest): The DICOM payload request
+
+    Returns:
+        JSONResponse: Response with the upload result
+    """
+    # Set authentication details if provided
+    if request.bearer_token:
+        api_handler.set_thread_auth(thread_id, request.bearer_token, request.api_base_url)
+    
+    # Update thread activity
+    thread_data = api_handler.get_thread_data(thread_id)
+    thread_data["last_activity"] = datetime.now(timezone.utc)
+    
+    try:
+        # Handle the DICOM payload using the existing handle_studies_payload method
+        result = api_handler.handle_studies_payload(request.payload, thread_id)
+        
+        return JSONResponse({
+            "thread_id": thread_id,
+            "status": "success",
+            "message": "DICOM payload uploaded successfully"
+        })
+    
+    except Exception as e:
+        logger.error(f"Error handling DICOM payload: {str(e)}")
+        return JSONResponse({
+            "thread_id": thread_id,
+            "status": "error",
+            "message": f"Error processing DICOM payload: {str(e)}"
+        }, status_code=500)
+
+
 @app.get("/threads/{thread_id}")
-async def get_thread_info(thread_id: str):
+async def get_thread_info(thread_id: str, bearer_token: str = None, api_base_url: str = None):
     """
     Get information about a specific thread
 
     Args:
-        thread_id (str): Thread ID
+        thread_id (str): The thread ID to get information about
+        bearer_token (str, optional): Bearer token for authentication
+        api_base_url (str, optional): API base URL for callbacks
 
     Returns:
-        JSONResponse: Thread information
+        JSONResponse: Response with thread information
     """
-    try:
-        thread_data = api_handler.get_thread_data(thread_id)
-        studies = thread_data.get("studies", [])
-
-        return JSONResponse(
-            {
-                "thread_id": thread_id,
-                "has_studies": len(studies) > 0,
-                "studies_count": len(studies),
-                "studies": [
-                    {
-                        "studyInstanceUID": study.get("studyInstanceUID"),
-                        "modality": study.get("modality"),
-                        "seriesCount": len(study.get("seriesInstanceUIDs", [])),
-                        "hasPreviewImage": study.get("previewImageBase64") is not None,
-                    }
-                    for study in studies
-                ],
-                "context_messages_count": len(thread_data.get("context_messages", [])),
-            }
-        )
-    except Exception as e:
-        logger.error(f"Error getting thread info: {str(e)}")
-        return JSONResponse(
-            {"thread_id": thread_id, "status": "error", "error": str(e)}, status_code=500
-        )
+    # Set authentication details if provided
+    if bearer_token:
+        api_handler.set_thread_auth(thread_id, bearer_token, api_base_url)
+    
+    # Get thread data
+    thread_data = api_handler.get_thread_data(thread_id)
+    thread_data["last_activity"] = datetime.now(timezone.utc)
+    
+    # Convert datetime objects to ISO format strings for JSON serialization
+    created_at = thread_data.get("created_at")
+    last_activity = thread_data.get("last_activity")
+    
+    return JSONResponse({
+        "thread_id": thread_id,
+        "has_dicom_payload": thread_data.get("has_dicom_payload", False),
+        "studies_count": len(thread_data.get("studies", [])),
+        "studies": thread_data.get("studies", []),
+        "created_at": created_at.isoformat() if created_at else None,
+        "last_activity": last_activity.isoformat() if last_activity else None,
+        "status": "success"
+    })
 
 
 @app.post("/refresh_tools")

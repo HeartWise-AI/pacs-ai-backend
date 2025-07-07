@@ -13,8 +13,8 @@ from pydantic import BaseModel, Field
 # Import static tools
 from .clinical_websearch import ClinicalWebSearchTool
 
-# Global mapping to store tool name -> container IP and port
-TOOL_CONTAINER_MAPPING: dict[str, tuple[str, int]] = {}
+# Global mapping to store tool name -> container ID
+TOOL_CONTAINER_MAPPING: dict[str, str] = {}
 
 # Global mapping to store tool name -> supported modalities
 TOOL_MODALITY_MAPPING: dict[str, list[str]] = {}
@@ -34,6 +34,14 @@ class StudiesInput(BaseModel):
     studies: list[dict[str, Any]] = Field(
         ...,
         description="List of studies data containing series instance metadata and other relevant data",
+    )
+    api_base_url: str | None = Field(
+        None,
+        description="Base URL for API requests",
+    )
+    bearer_token: str | None = Field(
+        None,
+        description="Bearer token for authentication",
     )
 
 
@@ -79,6 +87,8 @@ class DynamicContainerTool(BaseTool):
     def _run(
         self,
         studies: list[dict[str, Any]],
+        api_base_url: str | None = None,
+        bearer_token: str | None = None,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> dict[str, Any]:
         """
@@ -86,6 +96,8 @@ class DynamicContainerTool(BaseTool):
 
         Args:
             studies (Dict[str, Any]): The studies data to analyze
+            api_base_url (Optional[str]): Base URL for API requests
+            bearer_token (Optional[str]): Bearer token for authentication
             run_manager (Optional[CallbackManagerForToolRun]): Callback manager
 
         Returns:
@@ -105,19 +117,24 @@ class DynamicContainerTool(BaseTool):
                 f"No studies found matching tool's supported modalities: {', '.join(supported_modalities)}"
             )
 
-        # Get container IP and port from global mapping using tool name
+        # Get container ID from global mapping using tool name
         if self.name not in TOOL_CONTAINER_MAPPING:
             return self._create_error_response(
                 f"No container information found for tool {self.name}"
             )
 
-        container_ip, port = TOOL_CONTAINER_MAPPING[self.name]
+        container_id = TOOL_CONTAINER_MAPPING[self.name]
 
-        # Send request to the container endpoint with filtered studies
-        url = f"http://{container_ip}:{port}/api/inference/predict"
+        # Use provided base URL or fall back to default
+        if not api_base_url:
+            api_base_url = "http://localhost:8000"
+            logger.warning(f"No api_base_url provided for tool {self.name}, using default: {api_base_url}")
+        
+        # Construct URL using the new format with container ID
+        url = f"{api_base_url}/v1/inference/model/proxy/container/{container_id}/predict"
         logger.info(f"Sending request to {url} with {len(filtered_studies)} studies")
 
-        return self._send_request(url, filtered_studies)
+        return self._send_request(url, filtered_studies, bearer_token)
 
     def _is_invalid_payload(self, payload: Any) -> bool:
         """Check if the payload is invalid."""
@@ -126,7 +143,7 @@ class DynamicContainerTool(BaseTool):
 
         return bool(isinstance(payload, str) and payload.startswith("{'__arg"))
 
-    def _send_request(self, url: str, payload: list[dict[str, Any]]) -> dict[str, Any]:
+    def _send_request(self, url: str, payload: list[dict[str, Any]], bearer_token: str | None = None) -> dict[str, Any]:
         """Send a request to the container endpoint."""
         try:
             # Clean the payload by removing unwanted fields
@@ -135,11 +152,15 @@ class DynamicContainerTool(BaseTool):
                 # Create a copy of the study dict and remove unwanted fields
                 cleaned_study = study.copy()
                 cleaned_study.pop('modality', None)
-                cleaned_study.pop('previewBaseImage64', None)
+                cleaned_study.pop('previewImageBase64', None)
                 cleaned_payload.append(cleaned_study)
-            # url = "http://localhost:8000/v1/inference/model/proxy/container/1b8202202ce40a30163a59d755db3fc1554de6666235974d505ffe79a09b0d14/predict"
-            # cleaned_payload = {"studyInstanceUID":"2.16.124.113611.1.118.1.1.7162550","seriesInstanceUIDs":["1.3.46.670589.29.1877192777354251339637786612934242","1.3.46.670589.29.1877192777354251339637785287592012","1.3.46.670589.29.1877192777354251339637786800967842"],"additionalMetadata":{}}
-            response = requests.post(url, json=cleaned_payload, timeout=30)
+
+            # Prepare headers
+            headers = {}
+            if bearer_token:
+                headers["Authorization"] = f"Bearer {bearer_token}"
+
+            response = requests.post(url, json=cleaned_payload[0], timeout=500, headers=headers) # TODO: Only taking the first study for now, but should be able to handle multiple studies to comparare multiple timepoints
             response.raise_for_status()
 
             result = response.json()
@@ -177,6 +198,8 @@ class DynamicContainerTool(BaseTool):
     async def _arun(
         self,
         studies: list[dict[str, Any]],
+        api_base_url: str | None = None,
+        bearer_token: str | None = None,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> dict[str, Any]:
         """
@@ -184,13 +207,15 @@ class DynamicContainerTool(BaseTool):
 
         Args:
             studies (List[Dict[str, Any]]): The studies data to analyze
+            api_base_url (Optional[str]): Base URL for API requests
+            bearer_token (Optional[str]): Bearer token for authentication
             run_manager (Optional[AsyncCallbackManagerForToolRun]): Async callback manager
 
         Returns:
             Dict[str, Any]: The API response or error information
         """
         # This method simply calls the synchronous version for now
-        return self._run(studies)
+        return self._run(studies, api_base_url, bearer_token)
 
 
 def get_containers_on_network(network_name: str) -> list[dict[str, Any]]:
@@ -289,8 +314,6 @@ def fetch_tool_info_from_endpoint(container_ip: str, port: int = 80) -> dict[str
             "supported_dicom_modalities": model_info["data"]["supportedDicomModalities"],
         }
 
-        # Store the container IP and port in the global mapping
-        # The actual tool name (post-sanitization) will be added later in create_dynamic_tool
     except requests.RequestException as e:
         logger.debug(f"Failed to fetch tool info from {url}: {str(e)}")
         return None
@@ -306,15 +329,14 @@ def fetch_tool_info_from_endpoint(container_ip: str, port: int = 80) -> dict[str
 
 
 def create_dynamic_tool(
-    tool_info: dict[str, Any], container_ip: str, port: int = 80
+    tool_info: dict[str, Any], container_id: str
 ) -> BaseTool | None:
     """
     Create a dynamically defined tool based on container information.
 
     Args:
         tool_info (Dict[str, Any]): Tool information from the model-facts endpoint
-        container_ip (str): IP address of the container
-        port (int): Port number for the service
+        container_id (str): The container ID
 
     Returns:
         Optional[BaseTool]: A dynamically created tool based on container info
@@ -349,10 +371,10 @@ def create_dynamic_tool(
 
     try:
         # Add to global mappings
-        TOOL_CONTAINER_MAPPING[sanitized_name] = (container_ip, port)
+        TOOL_CONTAINER_MAPPING[sanitized_name] = container_id
         TOOL_MODALITY_MAPPING[sanitized_name] = supported_modalities
         
-        logger.info(f"Added mapping for tool {sanitized_name} -> {container_ip}:{port}")
+        logger.info(f"Added mapping for tool {sanitized_name} -> container {container_id}")
         logger.info(f"Tool {sanitized_name} supports modalities: {', '.join(supported_modalities) if supported_modalities else 'all'}")
 
         return DynamicContainerTool(name=sanitized_name, description=description)
@@ -372,7 +394,12 @@ def create_tool_for_container(container: dict[str, Any]) -> BaseTool | None:
         Optional[BaseTool]: A tool instance or None if no matching tool
     """
     container_name = container.get("name", "").lower()
+    container_id = container.get("id", "")
     ip_address = container.get("ipv4_address", "")
+
+    if not container_id:
+        logger.warning(f"No container ID found for container: {container_name}")
+        return None
 
     if not ip_address:
         logger.warning(f"No IP address found for container: {container_name}")
@@ -388,7 +415,7 @@ def create_tool_for_container(container: dict[str, Any]) -> BaseTool | None:
         logger.info(
             f"Retrieved tool info from {container_name}: {tool_info.get('name', 'unknown')}"
         )
-        return create_dynamic_tool(tool_info, ip_address, port)
+        return create_dynamic_tool(tool_info, container_id)
 
     logger.info(f"No tool info available for container: {container_name}")
     return None

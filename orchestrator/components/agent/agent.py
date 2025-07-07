@@ -49,11 +49,15 @@ class AgentState(TypedDict):
         studies (Optional[Dict[str, Any]]): The studies data, if available.
         last_tool_call (Optional[ToolCallLog]): The last tool call log, used to
             repopulate the studies when the agent is re-initialized.
+        api_base_url (Optional[str]): The base URL for API requests, if available.
+        bearer_token (Optional[str]): The bearer token for authentication, if available.
     """
 
     messages: Annotated[list[AnyMessage], operator.add]
     studies: Any = None
     last_tool_call: ToolCallLog | None = None
+    api_base_url: str | None = None
+    bearer_token: str | None = None
 
 
 class Agent:
@@ -254,7 +258,7 @@ class Agent:
         response = state["messages"][-1]
         return len(response.tool_calls) > 0
 
-    def _execute_single_tool(self, call, studies):
+    def _execute_single_tool(self, call, studies, api_base_url=None, bearer_token=None):
         """Execute a single tool and return the result."""
         tool_name = call["name"]
 
@@ -295,6 +299,12 @@ class Agent:
             if hasattr(tool, "args_schema") and hasattr(tool.args_schema, "model_fields"):
                 if "studies" in tool.args_schema.model_fields:
                     tool_args["studies"] = studies
+                # Add api_base_url if the tool expects it
+                if "api_base_url" in tool.args_schema.model_fields and api_base_url:
+                    tool_args["api_base_url"] = api_base_url
+                # Add bearer_token if the tool expects it
+                if "bearer_token" in tool.args_schema.model_fields and bearer_token:
+                    tool_args["bearer_token"] = bearer_token
             result = tool.invoke(tool_args)
             logger.info(f"Tool {tool_name} execution successful")
             return result
@@ -315,6 +325,8 @@ class Agent:
         tool_calls = state["messages"][-1].tool_calls
         results = []
         studies = state.get("studies")
+        api_base_url = state.get("api_base_url")
+        bearer_token = state.get("bearer_token")
 
         logger.debug(f"Studies type: {type(studies)}")
         if studies is not None and hasattr(studies, "keys"):
@@ -322,7 +334,7 @@ class Agent:
 
         for call in tool_calls:
             logger.info(f"Processing tool call: {call['name']}")
-            result = self._execute_single_tool(call, studies)
+            result = self._execute_single_tool(call, studies, api_base_url, bearer_token)
 
             # Create a log entry for the tool call
             tool_call_log: ToolCallLog = {
