@@ -508,7 +508,7 @@ func (k *kernel) orchestratorServiceContainer() *orchestratorService.Orchestrato
 	service := &orchestratorService.OrchestratorService{
 		OrchestratorAPIURL:     orchestratorAPIURL,
 		OrchestratorClient:     &http.Client{Timeout: 5 * time.Minute},
-		ThreadsByID:            make(map[string]*entity.Thread)
+		ThreadsByID:            make(map[string]*entity.Thread),
 	}
 
 	return service

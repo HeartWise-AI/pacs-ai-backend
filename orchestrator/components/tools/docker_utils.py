@@ -131,7 +131,7 @@ class DynamicContainerTool(BaseTool):
             logger.warning(f"No api_base_url provided for tool {self.name}, using default: {api_base_url}")
         
         # Construct URL using the new format with container ID
-        url = f"{api_base_url}/v1/inference/model/proxy/container/{container_id}/predict"
+        url = f"{api_base_url}/inference/model/proxy/container/{container_id}/predict"
         
         # Log the request with sanitized data
         sanitized_studies = sanitize_for_logging(filtered_studies)
