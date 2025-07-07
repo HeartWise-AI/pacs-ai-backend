@@ -275,15 +275,9 @@ def create_dynamic_tool(
         logger.warning("Missing required tool information (name or description)")
         return None
 
-    # TODO Support more modalities and different level of dicom tags
-    if "XA" not in tool_info.get("supported_dicom_modalities", []):
-        logger.warning(f"Tool {tool_name} does not support XA modality")
-        return None
+    # Needs to support JSON output mode for LLM handling
     if "JSON" not in tool_info.get("supported_output_modes", []):
         logger.warning(f"Tool {tool_name} does not support JSON output mode")
-        return None
-    if "*" not in tool_info.get("supported_dicom_tags", []):
-        logger.warning(f"Tool {tool_name} does not support all DICOM tags")
         return None
 
     # Sanitize tool name to match OpenAI's pattern requirement (^[a-zA-Z0-9_-]+$)

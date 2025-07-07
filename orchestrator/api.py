@@ -21,6 +21,8 @@ from pydantic import BaseModel
 class MessageRequest(BaseModel):
     message: str | None = None
     thread_id: str | None = None
+    image_data: str | None = None  # Base64 encoded image data
+    image_type: str | None = None  # Image MIME type (e.g., 'image/jpeg', 'image/png')
 
 
 class DicomPayloadRequest(BaseModel):
@@ -87,7 +89,7 @@ class APIHandler:
             "components/docs/system_prompts.txt",
             checkpointer=self.checkpointer,  # Pass the existing checkpointer
             model=model,
-            temperature=0,
+            # temperature=0,
             top_p=0.95,
             base_url=base_url,
             network_name=docker_network,
@@ -275,13 +277,15 @@ class APIHandler:
 
         return content
 
-    async def process_message(self, message: str | None, thread_id: str) -> AsyncIterator[tuple]:
+    async def process_message(self, message: str | None, thread_id: str, image_data: str | None = None, image_type: str | None = None) -> AsyncIterator[tuple]:
         """
         Process a message and generate responses.
 
         Args:
             message (Optional[str]): User message to process
             thread_id (str): ID of the current thread
+            image_data (Optional[str]): Base64 encoded image data
+            image_type (Optional[str]): Image MIME type
 
         Yields:
             Tuple[List[MessageResponse], Optional[str], str]: Updated message history, display path, and empty string
@@ -312,9 +316,23 @@ class APIHandler:
         # Add context messages first (if any)
         messages.extend(context_messages)
 
-        # Add the user message
-        if message is not None:
-            messages.append({"role": "user", "content": [{"type": "text", "text": message}]})
+        # Add the user message with optional image
+        if message is not None or image_data is not None:
+            content = []
+            
+            # Add text content if message is provided
+            if message is not None:
+                content.append({"type": "text", "text": message})
+            
+            # Add image content if image_data is provided
+            if image_data is not None:
+                image_url = f"data:{image_type or 'image/jpeg'};base64,{image_data}"
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": image_url}
+                })
+            
+            messages.append({"role": "user", "content": content})
 
         # Create the initial state and configuration
         initial_state = {"messages": messages}
@@ -513,7 +531,7 @@ async def chat(thread_id: str, request: MessageRequest):
 
     try:
         # Get the first yielded response from the generator
-        async for response_chunk in api_handler.process_message(request.message, thread_id):
+        async for response_chunk in api_handler.process_message(request.message, thread_id, request.image_data, request.image_type):
             # Return the first meaningful response
             if response_chunk[0]:
                 return ChatResponse(
