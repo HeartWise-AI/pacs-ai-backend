@@ -9,7 +9,8 @@ from langchain_core.language_models import BaseLanguageModel
 from langchain_core.messages import AnyMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, StateGraph
-from logger import logger
+from langgraph.prebuilt import ToolNode
+from logger import logger, sanitize_for_logging
 
 _ = load_dotenv()
 
@@ -330,7 +331,9 @@ class Agent:
 
         logger.debug(f"Studies type: {type(studies)}")
         if studies is not None and hasattr(studies, "keys"):
-            logger.debug(f"Studies keys: {studies.keys()}")
+            # Sanitize studies before logging keys
+            sanitized_studies = sanitize_for_logging(studies)
+            logger.debug(f"Studies keys: {list(sanitized_studies.keys()) if hasattr(sanitized_studies, 'keys') else 'N/A'}")
 
         for call in tool_calls:
             logger.info(f"Processing tool call: {call['name']}")
@@ -385,11 +388,13 @@ class Agent:
                 "content": call.content,
                 "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             }
-            logs.append(log_entry)
+            # Sanitize the log entry before adding to logs
+            sanitized_log_entry = sanitize_for_logging(log_entry)
+            logs.append(sanitized_log_entry)
 
         try:
             with open(filename, "w") as f:
                 json.dump(logs, f, indent=4)
-            logger.info(f"Tool calls logged to {filename}")
+            logger.info(f"Tool calls logged to {filename} (sanitized)")
         except Exception as e:
             logger.error(f"Failed to save tool call logs: {str(e)}")

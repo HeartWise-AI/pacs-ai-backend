@@ -7,7 +7,7 @@ import requests
 from docker.errors import DockerException, NotFound
 from langchain_core.callbacks import AsyncCallbackManagerForToolRun, CallbackManagerForToolRun
 from langchain_core.tools import BaseTool
-from logger import logger
+from logger import logger, sanitize_for_logging
 from pydantic import BaseModel, Field
 
 # Import static tools
@@ -132,7 +132,10 @@ class DynamicContainerTool(BaseTool):
         
         # Construct URL using the new format with container ID
         url = f"{api_base_url}/v1/inference/model/proxy/container/{container_id}/predict"
-        logger.info(f"Sending request to {url} with {len(filtered_studies)} studies")
+        
+        # Log the request with sanitized data
+        sanitized_studies = sanitize_for_logging(filtered_studies)
+        logger.info(f"Sending request to {url} with {len(filtered_studies)} studies: {json.dumps(sanitized_studies, ensure_ascii=False)}")
 
         return self._send_request(url, filtered_studies, bearer_token)
 
@@ -153,7 +156,11 @@ class DynamicContainerTool(BaseTool):
                 cleaned_study = study.copy()
                 cleaned_study.pop('modality', None)
                 cleaned_study.pop('previewImageBase64', None)
+                cleaned_study['ForceJSON'] = True
                 cleaned_payload.append(cleaned_study)
+
+            # Log the cleaned payload (already sanitized since we removed previewImageBase64)
+            logger.info(f"Cleaned payload for {self.name}: {json.dumps(cleaned_payload[0], ensure_ascii=False)}")
 
             # Prepare headers
             headers = {}
@@ -164,6 +171,11 @@ class DynamicContainerTool(BaseTool):
             response.raise_for_status()
 
             result = response.json()
+            
+            # Log the response with sanitization
+            sanitized_result = sanitize_for_logging(result)
+            logger.info(f"Response from {self.name}: {json.dumps(sanitized_result, ensure_ascii=False)}")
+            
             return self._format_result(result)
 
         except Exception as e:
@@ -466,6 +478,10 @@ def discover_and_create_tools(network_name: str = "pacs-net") -> dict[str, BaseT
     if not containers:
         logger.warning(f"No containers found on network: {network_name}")
     else:
+        # Log discovered containers with sanitization
+        sanitized_containers = sanitize_for_logging(containers)
+        logger.info(f"Discovered containers: {json.dumps(sanitized_containers, ensure_ascii=False)}")
+        
         # Create tools for each container
         for container in containers:
             container_name = container.get("name", "").replace("/", "")

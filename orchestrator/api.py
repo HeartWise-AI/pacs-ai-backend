@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from langgraph.checkpoint.memory import MemorySaver
-from logger import logger
+from logger import logger, chat_logger, sanitize_for_logging
 from pydantic import BaseModel
 
 
@@ -281,6 +281,9 @@ class APIHandler:
         # Convert payload to dictionary format
         payload_dict = [study.model_dump() for study in payload]
 
+        # Log the studies payload using the chat logger
+        chat_logger.log_studies_payload(thread_id, payload_dict)
+
         # Store the studies payload in thread data
         thread_data["studies"] = payload_dict
         thread_data["has_dicom_payload"] = True
@@ -308,6 +311,9 @@ class APIHandler:
             "content": context_message,
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
+
+        # Log the context message
+        chat_logger.log_chat_message(thread_id, "system", context_message, "system")
 
         logger.info(f"Stored {len(payload_dict)} studies for thread {thread_id}")
 
@@ -417,7 +423,11 @@ class APIHandler:
                 })
                 logger.info(f"Added image to user message (type: {image_type})")
             
-            messages.append({"role": "user", "content": user_content})
+            user_message = {"role": "user", "content": user_content}
+            messages.append(user_message)
+            
+            # Log the user message using chat logger
+            chat_logger.log_chat_message(thread_id, "user", user_message["content"], "chat")
 
         # Create the initial state and configuration
         initial_state = {"messages": messages}
@@ -437,20 +447,21 @@ class APIHandler:
                     continue
 
                 if "process" in event:
-                    for result in self._handle_process_event(event, message_history):
+                    for result in self._handle_process_event(event, message_history, thread_id):
                         yield result
 
                 elif "execute" in event:
-                    for result in self._handle_execute_event(event, message_history):
+                    for result in self._handle_execute_event(event, message_history, thread_id):
                         yield result
 
         except Exception as e:
-            logger.error(f"Error processing message: {str(e)}")
             error_message = f"❌ Error: {str(e)}"
+            logger.error(f"Error processing message: {str(e)}")
+            chat_logger.log_chat_message(thread_id, "assistant", error_message, "error")
             message_history.append(MessageResponse(role="assistant", content=error_message))
             yield message_history, self.display_file_path, ""
 
-    def _handle_process_event(self, event, message_history):
+    def _handle_process_event(self, event, message_history, thread_id):
         """Handle a 'process' event from the agent workflow."""
         content = event["process"]["messages"][-1].content
         if content:
@@ -458,10 +469,14 @@ class APIHandler:
             content = re.sub(r"temp/[^\s]*", "", content)
             # Remove think tags and their contents
             content = self._remove_think_tags(content)
+            
+            # Log the assistant message
+            chat_logger.log_chat_message(thread_id, "assistant", content, "chat")
+            
             message_history.append(MessageResponse(role="assistant", content=content))
             yield message_history, self.display_file_path, ""
 
-    def _handle_execute_event(self, event, message_history):
+    def _handle_execute_event(self, event, message_history, thread_id):
         """Handle an 'execute' event from the agent workflow."""
         tool_results = []
 
@@ -479,6 +494,9 @@ class APIHandler:
             ).strip()
 
             tool_results.append({"tool_name": tool_name, "result": formatted_result})
+
+            # Log tool execution using chat logger
+            chat_logger.log_tool_execution(thread_id, tool_name, message.tool_calls if hasattr(message, 'tool_calls') else {}, tool_result)
 
             # Special handling for image_visualizer tool
             if (
@@ -519,6 +537,9 @@ Based on these tool results, please provide a clear, helpful response for the us
                 # Remove any think tags from the interpreted content
                 interpreted_content = self._remove_think_tags(interpreted_content)
 
+                # Log the interpreted response
+                chat_logger.log_chat_message(thread_id, "assistant", interpreted_content, "tool_response")
+
                 # Add the formulated response to the message history
                 message_history.append(
                     MessageResponse(
@@ -536,6 +557,7 @@ Based on these tool results, please provide a clear, helpful response for the us
                 logger.error(f"Error formatting tool results into response: {str(e)}")
                 # Fallback: Add raw tool results if response formatting fails
                 for result in tool_results:
+                    chat_logger.log_chat_message(thread_id, "assistant", result["result"], "tool_fallback")
                     message_history.append(
                         MessageResponse(
                             role="assistant",
@@ -550,10 +572,12 @@ Based on these tool results, please provide a clear, helpful response for the us
 
             # Handle special image visualizer case
             if self.display_file_path:
+                display_content = {"path": self.display_file_path}
+                chat_logger.log_chat_message(thread_id, "assistant", display_content, "image_display")
                 message_history.append(
                     MessageResponse(
                         role="assistant",
-                        content={"path": self.display_file_path},
+                        content=display_content,
                     )
                 )
 
@@ -608,6 +632,10 @@ async def chat_with_thread(thread_id: str, request: MessageRequest):
     thread_data = api_handler.get_thread_data(thread_id)
     thread_data["last_activity"] = datetime.now(timezone.utc)
     
+    # Log the incoming request (sanitized)
+    sanitized_request = sanitize_for_logging(request.model_dump())
+    chat_logger.log_chat_message(thread_id, "user", sanitized_request, "api_request")
+    
     try:
         # Process the message using the existing process_message method
         async for response_chunk in api_handler.process_message(
@@ -615,28 +643,35 @@ async def chat_with_thread(thread_id: str, request: MessageRequest):
         ):
             # Return the first meaningful response
             if response_chunk[0]:
-                return JSONResponse({
+                response_data = {
                     "thread_id": thread_id,
                     "message": {
                         "role": response_chunk[0][0].role,
                         "content": response_chunk[0][0].content
                     },
                     "status": "success"
-                })
+                }
+                
+                # Log the API response
+                chat_logger.log_chat_message(thread_id, "assistant", response_data, "api_response")
+                
+                return JSONResponse(response_data)
 
         # If no meaningful response was generated
-        return JSONResponse({
+        no_response_data = {
             "thread_id": thread_id,
             "message": {
                 "role": "assistant",
                 "content": "No response generated"
             },
             "status": "success"
-        })
+        }
+        
+        chat_logger.log_chat_message(thread_id, "assistant", no_response_data, "api_response")
+        return JSONResponse(no_response_data)
 
     except Exception as e:
-        logger.error(f"Error in chat endpoint: {str(e)}")
-        return JSONResponse({
+        error_response = {
             "thread_id": thread_id,
             "message": {
                 "role": "assistant",
@@ -644,7 +679,12 @@ async def chat_with_thread(thread_id: str, request: MessageRequest):
             },
             "status": "error",
             "error": str(e)
-        })
+        }
+        
+        logger.error(f"Error in chat endpoint: {str(e)}")
+        chat_logger.log_chat_message(thread_id, "assistant", error_response, "api_error")
+        
+        return JSONResponse(error_response)
 
 
 @app.post("/dicom/{thread_id}")
@@ -667,22 +707,115 @@ async def upload_dicom_payload(thread_id: str, request: DicomPayloadRequest):
     thread_data = api_handler.get_thread_data(thread_id)
     thread_data["last_activity"] = datetime.now(timezone.utc)
     
+    # Log the incoming DICOM payload (sanitized)
+    sanitized_request = sanitize_for_logging(request.model_dump())
+    chat_logger.log_chat_message(thread_id, "user", sanitized_request, "dicom_upload")
+    
     try:
         # Handle the DICOM payload using the existing handle_studies_payload method
         result = api_handler.handle_studies_payload(request.payload, thread_id)
         
-        return JSONResponse({
+        response_data = {
             "thread_id": thread_id,
             "status": "success",
             "message": "DICOM payload uploaded successfully"
-        })
+        }
+        
+        chat_logger.log_chat_message(thread_id, "assistant", response_data, "dicom_response")
+        
+        return JSONResponse(response_data)
     
     except Exception as e:
-        logger.error(f"Error handling DICOM payload: {str(e)}")
-        return JSONResponse({
+        error_response = {
             "thread_id": thread_id,
             "status": "error",
             "message": f"Error processing DICOM payload: {str(e)}"
+        }
+        
+        logger.error(f"Error handling DICOM payload: {str(e)}")
+        chat_logger.log_chat_message(thread_id, "assistant", error_response, "dicom_error")
+        
+        return JSONResponse(error_response, status_code=500)
+
+
+@app.get("/threads/{thread_id}/chat_history")
+async def get_chat_history(thread_id: str, bearer_token: str = None, api_base_url: str = None):
+    """
+    Get the chat history for a specific thread
+
+    Args:
+        thread_id (str): The thread ID to get chat history for
+        bearer_token (str, optional): Bearer token for authentication
+        api_base_url (str, optional): API base URL for callbacks
+
+    Returns:
+        JSONResponse: Response with chat history
+    """
+    # Set authentication details if provided
+    if bearer_token:
+        api_handler.set_thread_auth(thread_id, bearer_token, api_base_url)
+    
+    # Update thread activity
+    thread_data = api_handler.get_thread_data(thread_id)
+    thread_data["last_activity"] = datetime.now(timezone.utc)
+    
+    try:
+        # Get chat history from the chat logger
+        chat_history = chat_logger.get_chat_history(thread_id)
+        
+        return JSONResponse({
+            "thread_id": thread_id,
+            "chat_history": chat_history,
+            "history_length": len(chat_history),
+            "status": "success"
+        })
+    
+    except Exception as e:
+        logger.error(f"Error retrieving chat history for thread {thread_id}: {str(e)}")
+        return JSONResponse({
+            "thread_id": thread_id,
+            "status": "error",
+            "error": str(e)
+        }, status_code=500)
+
+
+@app.delete("/threads/{thread_id}/chat_history")
+async def clear_chat_history(thread_id: str, bearer_token: str = None, api_base_url: str = None):
+    """
+    Clear the chat history for a specific thread
+
+    Args:
+        thread_id (str): The thread ID to clear chat history for
+        bearer_token (str, optional): Bearer token for authentication
+        api_base_url (str, optional): API base URL for callbacks
+
+    Returns:
+        JSONResponse: Response indicating success or failure
+    """
+    # Set authentication details if provided
+    if bearer_token:
+        api_handler.set_thread_auth(thread_id, bearer_token, api_base_url)
+    
+    # Update thread activity
+    thread_data = api_handler.get_thread_data(thread_id)
+    thread_data["last_activity"] = datetime.now(timezone.utc)
+    
+    try:
+        # Clear chat history using the chat logger
+        chat_logger.clear_chat_history(thread_id)
+        
+        return JSONResponse({
+            "thread_id": thread_id,
+            "status": "success",
+            "message": "Chat history cleared successfully"
+        })
+    
+    except Exception as e:
+        logger.error(f"Error clearing chat history for thread {thread_id}: {str(e)}")
+        return JSONResponse({
+            "thread_id": thread_id,
+            "status": "error",
+            "error": str(e)
         }, status_code=500)
 
 
@@ -711,6 +844,9 @@ async def get_thread_info(thread_id: str, bearer_token: str = None, api_base_url
     created_at = thread_data.get("created_at")
     last_activity = thread_data.get("last_activity")
     
+    # Get chat history length
+    chat_history_length = len(chat_logger.get_chat_history(thread_id))
+    
     return JSONResponse({
         "thread_id": thread_id,
         "has_dicom_payload": thread_data.get("has_dicom_payload", False),
@@ -718,6 +854,7 @@ async def get_thread_info(thread_id: str, bearer_token: str = None, api_base_url
         "studies": thread_data.get("studies", []),
         "created_at": created_at.isoformat() if created_at else None,
         "last_activity": last_activity.isoformat() if last_activity else None,
+        "chat_history_length": chat_history_length,
         "status": "success"
     })
 

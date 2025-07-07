@@ -180,7 +180,6 @@ def get_thread_info(thread_id, bearer_token=None, api_base_url=None):
         params["api_base_url"] = api_base_url
 
     response = requests.get(f"{BASE_URL}/threads/{thread_id}", params=params, timeout=10)
-    print_response(response, "Thread Info Response")
 
     return response.json() if response.status_code == 200 else None
 
