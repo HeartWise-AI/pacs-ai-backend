@@ -16,6 +16,9 @@ from .clinical_websearch import ClinicalWebSearchTool
 # Global mapping to store tool name -> container IP and port
 TOOL_CONTAINER_MAPPING: dict[str, tuple[str, int]] = {}
 
+# Global mapping to store tool name -> supported modalities
+TOOL_MODALITY_MAPPING: dict[str, list[str]] = {}
+
 # Initialize Docker client
 try:
     docker_client = docker.from_env()
@@ -25,12 +28,12 @@ except DockerException as e:
     docker_client = None
 
 
-class DicomPayloadInput(BaseModel):
-    """Input schema for DICOM payload-based tools."""
+class StudiesInput(BaseModel):
+    """Input schema for studies-based tools."""
 
-    dicom_payload: dict[str, Any] = Field(
+    studies: list[dict[str, Any]] = Field(
         ...,
-        description="DICOM payload containing series instance metadata and other relevant data",
+        description="List of studies data containing series instance metadata and other relevant data",
     )
 
 
@@ -38,28 +41,69 @@ class DynamicContainerTool(BaseTool):
     """A tool that communicates with a Docker container service endpoint."""
 
     def __init__(
-        self, name: str, description: str, args_schema: type[BaseModel] = DicomPayloadInput
+        self, name: str, description: str, args_schema: type[BaseModel] = StudiesInput
     ):
         super().__init__(name=name, description=description, args_schema=args_schema)
 
+    def _filter_studies_by_modality(self, studies: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """
+        Filter studies to only include those matching the tool's supported modalities.
+        
+        Args:
+            studies: List of study dictionaries to filter
+            
+        Returns:
+            Filtered list of studies containing only matching modalities
+        """
+        # Get supported modalities for this tool
+        supported_modalities = TOOL_MODALITY_MAPPING.get(self.name, [])
+        
+        # If no modality restrictions, return all studies
+        if not supported_modalities:
+            logger.info(f"Tool {self.name} has no modality restrictions, passing all studies")
+            return studies
+            
+        # Filter studies based on modality
+        filtered_studies = []
+        for study in studies:
+            study_modality = study.get("modality")
+            if study_modality and study_modality in supported_modalities:
+                filtered_studies.append(study)
+                logger.info(f"Including study {study.get('studyInstanceUID', 'unknown')} with modality {study_modality} for tool {self.name}")
+            else:
+                logger.info(f"Excluding study {study.get('studyInstanceUID', 'unknown')} with modality {study_modality} for tool {self.name}")
+        
+        logger.info(f"Filtered {len(studies)} studies to {len(filtered_studies)} studies for tool {self.name}")
+        return filtered_studies
+
     def _run(
         self,
-        dicom_payload: dict[str, Any],
+        studies: list[dict[str, Any]],
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> dict[str, Any]:
         """
         Execute the tool by sending a request to the container's API endpoint.
 
         Args:
-            dicom_payload (Dict[str, Any]): The DICOM payload to analyze
+            studies (Dict[str, Any]): The studies data to analyze
             run_manager (Optional[CallbackManagerForToolRun]): Callback manager
 
         Returns:
             Dict[str, Any]: The API response or error information
         """
         # Validate payload
-        if self._is_invalid_payload(dicom_payload):
-            return self._create_error_response("No valid DICOM payload provided")
+        if self._is_invalid_payload(studies):
+            return self._create_error_response("No valid studies data provided")
+
+        # Filter studies by modality
+        filtered_studies = self._filter_studies_by_modality(studies)
+        
+        # Check if any studies remain after filtering
+        if len(filtered_studies) == 0:
+            supported_modalities = TOOL_MODALITY_MAPPING.get(self.name, [])
+            return self._create_error_response(
+                f"No studies found matching tool's supported modalities: {', '.join(supported_modalities)}"
+            )
 
         # Get container IP and port from global mapping using tool name
         if self.name not in TOOL_CONTAINER_MAPPING:
@@ -69,11 +113,11 @@ class DynamicContainerTool(BaseTool):
 
         container_ip, port = TOOL_CONTAINER_MAPPING[self.name]
 
-        # Send request to the container endpoint
+        # Send request to the container endpoint with filtered studies
         url = f"http://{container_ip}:{port}/api/inference/predict"
-        logger.info(f"Sending request to {url}")
+        logger.info(f"Sending request to {url} with {len(filtered_studies)} studies")
 
-        return self._send_request(url, dicom_payload)
+        return self._send_request(url, filtered_studies)
 
     def _is_invalid_payload(self, payload: Any) -> bool:
         """Check if the payload is invalid."""
@@ -82,10 +126,20 @@ class DynamicContainerTool(BaseTool):
 
         return bool(isinstance(payload, str) and payload.startswith("{'__arg"))
 
-    def _send_request(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def _send_request(self, url: str, payload: list[dict[str, Any]]) -> dict[str, Any]:
         """Send a request to the container endpoint."""
         try:
-            response = requests.post(url, json=payload, timeout=30)
+            # Clean the payload by removing unwanted fields
+            cleaned_payload = []
+            for study in payload:
+                # Create a copy of the study dict and remove unwanted fields
+                cleaned_study = study.copy()
+                cleaned_study.pop('modality', None)
+                cleaned_study.pop('previewBaseImage64', None)
+                cleaned_payload.append(cleaned_study)
+            # url = "http://localhost:8000/v1/inference/model/proxy/container/1b8202202ce40a30163a59d755db3fc1554de6666235974d505ffe79a09b0d14/predict"
+            # cleaned_payload = {"studyInstanceUID":"2.16.124.113611.1.118.1.1.7162550","seriesInstanceUIDs":["1.3.46.670589.29.1877192777354251339637786612934242","1.3.46.670589.29.1877192777354251339637785287592012","1.3.46.670589.29.1877192777354251339637786800967842"],"additionalMetadata":{}}
+            response = requests.post(url, json=cleaned_payload, timeout=30)
             response.raise_for_status()
 
             result = response.json()
@@ -122,21 +176,21 @@ class DynamicContainerTool(BaseTool):
 
     async def _arun(
         self,
-        dicom_payload: dict[str, Any],
+        studies: list[dict[str, Any]],
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> dict[str, Any]:
         """
         Asynchronously execute the tool. Currently calls the synchronous version.
 
         Args:
-            dicom_payload (Dict[str, Any]): The DICOM payload to analyze
+            studies (List[Dict[str, Any]]): The studies data to analyze
             run_manager (Optional[AsyncCallbackManagerForToolRun]): Async callback manager
 
         Returns:
             Dict[str, Any]: The API response or error information
         """
         # This method simply calls the synchronous version for now
-        return self._run(dicom_payload)
+        return self._run(studies)
 
 
 def get_containers_on_network(network_name: str) -> list[dict[str, Any]]:
@@ -270,6 +324,7 @@ def create_dynamic_tool(
 
     tool_name = tool_info.get("name")
     description = tool_info.get("description")
+    supported_modalities = tool_info.get("supported_dicom_modalities", [])
 
     if not tool_name or not description:
         logger.warning("Missing required tool information (name or description)")
@@ -293,9 +348,12 @@ def create_dynamic_tool(
         logger.info(f"Tool name sanitized: '{tool_name}' -> '{sanitized_name}'")
 
     try:
-        # Add to global mapping
+        # Add to global mappings
         TOOL_CONTAINER_MAPPING[sanitized_name] = (container_ip, port)
+        TOOL_MODALITY_MAPPING[sanitized_name] = supported_modalities
+        
         logger.info(f"Added mapping for tool {sanitized_name} -> {container_ip}:{port}")
+        logger.info(f"Tool {sanitized_name} supports modalities: {', '.join(supported_modalities) if supported_modalities else 'all'}")
 
         return DynamicContainerTool(name=sanitized_name, description=description)
     except Exception as e:

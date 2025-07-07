@@ -21,12 +21,20 @@ from pydantic import BaseModel
 class MessageRequest(BaseModel):
     message: str | None = None
     thread_id: str | None = None
-    image_data: str | None = None  # Base64 encoded image data
-    image_type: str | None = None  # Image MIME type (e.g., 'image/jpeg', 'image/png')
+    image_data: str | None = None
+    image_type: str | None = None
+
+
+class StudyData(BaseModel):
+    studyInstanceUID: str
+    additionalMetadata: dict[str, Any] = {}
+    seriesInstanceUIDs: list[str] = []
+    modality: str | None = None
+    previewImageBase64: str | None = None
 
 
 class DicomPayloadRequest(BaseModel):
-    payload: dict[str, Any]
+    payload: list[StudyData]
     thread_id: str | None = None
 
 
@@ -89,7 +97,7 @@ class APIHandler:
             "components/docs/system_prompts.txt",
             checkpointer=self.checkpointer,  # Pass the existing checkpointer
             model=model,
-            # temperature=0,
+            temperature=0,
             top_p=0.95,
             base_url=base_url,
             network_name=docker_network,
@@ -186,7 +194,7 @@ class APIHandler:
         """
         if thread_id not in self.thread_data:
             self.thread_data[thread_id] = {
-                "dicom_payload": None,
+                "studies": [],  # Track studies objects for this thread
                 "last_accessed": datetime.now(tz=timezone.utc),
                 "context_messages": [],
             }
@@ -196,12 +204,12 @@ class APIHandler:
 
         return self.thread_data[thread_id]
 
-    def handle_dicom_payload(self, payload: dict[str, Any], thread_id: str) -> dict[str, Any]:
+    def handle_studies_payload(self, payload: list[StudyData], thread_id: str) -> dict[str, Any]:
         """
-        Store DICOM payload for a specific thread and add context message
+        Store studies payload for a specific thread and add context message
 
         Args:
-            payload (Dict[str, Any]): The DICOM payload to store
+            payload (List[StudyData]): List of StudyData objects containing DICOM study information
             thread_id (str): The ID of the thread
 
         Returns:
@@ -209,29 +217,74 @@ class APIHandler:
         """
         thread_data = self.get_thread_data(thread_id)
 
-        logger.info(f"Handling DICOM payload for thread {thread_id}")
+        logger.info(f"Handling studies payload for thread {thread_id} with {len(payload)} studies")
 
-        # Store the DICOM payload in thread data
-        thread_data["dicom_payload"] = payload
+        # Convert StudyData objects to dictionaries for storage
+        payload_dict = [study.model_dump() for study in payload]
+        
+        # Store the studies payload in thread data
+        thread_data["studies"] = payload_dict
 
-        # Add context message to inform the LLM that DICOM data is now available
+        # Create a summary of the studies for the context message
+        studies_summary = []
+        studies_details = []
+        
+        for i, study in enumerate(payload, 1):
+            # Brief summary for context message
+            study_info = f"Study {i}: {study.studyInstanceUID} with {len(study.seriesInstanceUIDs)} series"
+            if study.modality:
+                study_info += f" (Modality: {study.modality})"
+            if study.previewImageBase64:
+                study_info += " [Preview image available]"
+            studies_summary.append(study_info)
+            
+            # Detailed study information for context
+            study_detail = {
+                "studyNumber": i,
+                "studyInstanceUID": study.studyInstanceUID,
+                "modality": study.modality,
+                "seriesCount": len(study.seriesInstanceUIDs),
+                "seriesInstanceUIDs": study.seriesInstanceUIDs,
+                "hasPreviewImage": study.previewImageBase64 is not None,
+                "additionalMetadata": study.additionalMetadata
+            }
+            studies_details.append(study_detail)
+
+        # Add context message to inform the LLM that studies data is now available
+        context_content = [
+            {
+                "type": "text",
+                "text": f"Studies data has been uploaded and is now available for analysis. {len(payload)} studies have been provided:\n\n" +
+                       "\n".join(studies_summary) +
+                       f"\n\nStudies details: {json.dumps(studies_details, indent=2)}" +
+                       "\n\nYou can use the available tools to analyze the medical imaging data when you think it's appropriate. " +
+                       "The studies are tracked in this thread's context for reference.",
+            }
+        ]
+        
+        # Add preview images to the context message
+        for i, study in enumerate(payload, 1):
+            if study.previewImageBase64:
+                context_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{study.previewImageBase64}"
+                    }
+                })
+                logger.info(f"Added preview image for study {i} ({study.studyInstanceUID}) to context")
+
         context_message = {
-            "role": "system",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "DICOM data has been uploaded and is now available for analysis. You can use the available tools to analyze the medical imaging data when you think it's appropriate.",
-                }
-            ],
+            "role": "user",  # Changed from "system" to "user" to support images
+            "content": context_content,
         }
 
         # Add the context message to the thread's context messages
         thread_data["context_messages"].append(context_message)
-        logger.info(f"Added DICOM context message to thread {thread_id}")
+        logger.info(f"Added studies context message to thread {thread_id} with {len(payload)} studies tracked")
 
         return {
             "status": "success",
-            "message": "DICOM payload received and stored successfully",
+            "message": f"Studies payload received and stored successfully. {len(payload)} studies processed and tracked in thread context.",
         }
 
     def _parse_tool_result(self, content: str) -> Any:
@@ -277,15 +330,15 @@ class APIHandler:
 
         return content
 
-    async def process_message(self, message: str | None, thread_id: str, image_data: str | None = None, image_type: str | None = None) -> AsyncIterator[tuple]:
+    async def process_message(self, message: str | None, thread_id: str, image_data: str | None, image_type: str | None) -> AsyncIterator[tuple]:
         """
         Process a message and generate responses.
 
         Args:
             message (Optional[str]): User message to process
             thread_id (str): ID of the current thread
-            image_data (Optional[str]): Base64 encoded image data
-            image_type (Optional[str]): Image MIME type
+            image_data (Optional[str]): Image data to include in the user message
+            image_type (Optional[str]): Image type to include in the user message
 
         Yields:
             Tuple[List[MessageResponse], Optional[str], str]: Updated message history, display path, and empty string
@@ -295,15 +348,15 @@ class APIHandler:
         self.current_thread_id = thread_id
         self.display_file_path = None
 
-        # Get thread data and DICOM payload
+        # Get thread data and studies payload
         thread_data = self.get_thread_data(thread_id)
-        dicom_payload = thread_data.get("dicom_payload")
+        studies = thread_data.get("studies", [])
         context_messages = thread_data.get("context_messages", [])
 
         logger.info(f"Processing message for thread {thread_id}")
 
-        if dicom_payload is not None:
-            logger.debug(f"Thread has DICOM payload of type {type(dicom_payload)}")
+        if studies:
+            logger.info(f"Thread has {len(studies)} studies tracked in context")
 
         if context_messages:
             logger.info(
@@ -316,28 +369,26 @@ class APIHandler:
         # Add context messages first (if any)
         messages.extend(context_messages)
 
-        # Add the user message with optional image
-        if message is not None or image_data is not None:
-            content = []
+        # Add the user message
+        if message is not None:
+            user_content = [{"type": "text", "text": message}]
             
-            # Add text content if message is provided
-            if message is not None:
-                content.append({"type": "text", "text": message})
-            
-            # Add image content if image_data is provided
-            if image_data is not None:
-                image_url = f"data:{image_type or 'image/jpeg'};base64,{image_data}"
-                content.append({
+            # Add image data to the same user message if provided
+            if image_data and image_type:
+                user_content.append({
                     "type": "image_url",
-                    "image_url": {"url": image_url}
+                    "image_url": {
+                        "url": f"data:{image_type};base64,{image_data}"
+                    }
                 })
+                logger.info(f"Added image to user message (type: {image_type})")
             
-            messages.append({"role": "user", "content": content})
+            messages.append({"role": "user", "content": user_content})
 
         # Create the initial state and configuration
         initial_state = {"messages": messages}
-        if dicom_payload is not None:
-            initial_state["dicom_payload"] = dicom_payload
+        if studies:
+            initial_state["studies"] = studies  # Include studies separately for easy access
 
         config = {"configurable": {"thread_id": self.current_thread_id}}
 
@@ -476,13 +527,13 @@ api_handler = APIHandler()
 
 
 @app.post("/dicom/{thread_id}")
-async def upload_dicom_payload(thread_id: str, request: DicomPayloadRequest):
+async def upload_studies_payload(thread_id: str, request: DicomPayloadRequest):
     """
-    Upload a DICOM payload for a specific thread
+    Upload a studies payload for a specific thread
 
     Args:
         thread_id (str): Thread ID
-        request (DicomPayloadRequest): DICOM payload request
+        request (DicomPayloadRequest): Studies payload request
 
     Returns:
         JSONResponse: Response indicating success or failure
@@ -491,23 +542,23 @@ async def upload_dicom_payload(thread_id: str, request: DicomPayloadRequest):
         thread_id = str(uuid.uuid4())
 
     try:
-        # Process the DICOM payload
-        api_handler.handle_dicom_payload(request.payload, thread_id)
+        # Process the studies payload
+        api_handler.handle_studies_payload(request.payload, thread_id)
 
         return JSONResponse(
             {
                 "thread_id": thread_id,
                 "status": "success",
-                "message": "DICOM payload stored successfully",
+                "message": "Studies payload stored successfully",
             }
         )
     except Exception as e:
-        logger.error(f"Error handling DICOM payload: {str(e)}")
+        logger.error(f"Error handling studies payload: {str(e)}")
         return JSONResponse(
             {
                 "thread_id": thread_id,
                 "status": "error",
-                "message": f"Error processing DICOM payload: {str(e)}",
+                "message": f"Error processing studies payload: {str(e)}",
             },
             status_code=500,
         )
@@ -531,7 +582,9 @@ async def chat(thread_id: str, request: MessageRequest):
 
     try:
         # Get the first yielded response from the generator
-        async for response_chunk in api_handler.process_message(request.message, thread_id, request.image_data, request.image_type):
+        async for response_chunk in api_handler.process_message(
+            request.message, thread_id, request.image_data, request.image_type
+        ):
             # Return the first meaningful response
             if response_chunk[0]:
                 return ChatResponse(
@@ -585,11 +638,22 @@ async def get_thread_info(thread_id: str):
     """
     try:
         thread_data = api_handler.get_thread_data(thread_id)
+        studies = thread_data.get("studies", [])
 
         return JSONResponse(
             {
                 "thread_id": thread_id,
-                "has_dicom_payload": thread_data.get("dicom_payload") is not None,
+                "has_studies": len(studies) > 0,
+                "studies_count": len(studies),
+                "studies": [
+                    {
+                        "studyInstanceUID": study.get("studyInstanceUID"),
+                        "modality": study.get("modality"),
+                        "seriesCount": len(study.get("seriesInstanceUIDs", [])),
+                        "hasPreviewImage": study.get("previewImageBase64") is not None,
+                    }
+                    for study in studies
+                ],
                 "context_messages_count": len(thread_data.get("context_messages", [])),
             }
         )

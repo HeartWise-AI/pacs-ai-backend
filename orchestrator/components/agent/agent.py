@@ -46,13 +46,13 @@ class AgentState(TypedDict):
         messages (Annotated[List[AnyMessage], operator.add]): A list of messages
             representing the conversation history. The operator.add annotation
             indicates that new messages should be appended to this list.
-        dicom_payload (Optional[Dict[str, Any]]): The DICOM payload data, if available.
+        studies (Optional[Dict[str, Any]]): The studies data, if available.
         last_tool_call (Optional[ToolCallLog]): The last tool call log, used to
-            repopulate the dicom_payload when the agent is re-initialized.
+            repopulate the studies when the agent is re-initialized.
     """
 
     messages: Annotated[list[AnyMessage], operator.add]
-    dicom_payload: Any = None
+    studies: Any = None
     last_tool_call: ToolCallLog | None = None
 
 
@@ -217,12 +217,12 @@ class Agent:
         Returns:
             Dict[str, List[AnyMessage]]: A dictionary containing the model's response.
         """
-        # Repopulate dicom_payload from last_tool_call if it's missing
-        if state.get("dicom_payload") is None and state.get("last_tool_call"):
+        # Repopulate studies from last_tool_call if it's missing
+        if state.get("studies") is None and state.get("last_tool_call"):
             last_tool_call = state["last_tool_call"]
             if last_tool_call and "content" in last_tool_call:
-                state["dicom_payload"] = last_tool_call["content"]
-                logger.info("Repopulated dicom_payload from last tool call")
+                state["studies"] = last_tool_call["content"]
+                logger.info("Repopulated studies from last tool call")
 
         messages = state["messages"]
 
@@ -254,7 +254,7 @@ class Agent:
         response = state["messages"][-1]
         return len(response.tool_calls) > 0
 
-    def _execute_single_tool(self, call, dicom_payload):
+    def _execute_single_tool(self, call, studies):
         """Execute a single tool and return the result."""
         tool_name = call["name"]
 
@@ -263,14 +263,38 @@ class Agent:
             return "Invalid tool requested, please try again with a valid tool."
 
         tool = self.tools[tool_name]
+        
+        # Check if tool has modality requirements and if there are matching studies
+        from components.tools.docker_utils import TOOL_MODALITY_MAPPING
+        
+        supported_modalities = TOOL_MODALITY_MAPPING.get(tool_name, [])
+        
+        # If tool has modality requirements, check if we have matching studies
+        if supported_modalities and isinstance(studies, list):
+            matching_studies = []
+            for study in studies:
+                study_modality = study.get("modality")
+                if study_modality and study_modality in supported_modalities:
+                    matching_studies.append(study)
+            
+            if not matching_studies:
+                logger.warning(f"Tool {tool_name} requires modalities {supported_modalities} but no matching studies found")
+                return f"Tool {tool_name} requires studies with modalities {', '.join(supported_modalities)}, but no matching studies are available. Available study modalities: {', '.join(set(study.get('modality', 'unknown') for study in studies))}"
+            
+            logger.info(f"Tool {tool_name} will process {len(matching_studies)} studies matching modalities: {', '.join(supported_modalities)}")
+        elif supported_modalities:
+            logger.info(f"Tool {tool_name} supports modalities {supported_modalities}, but studies format is not a list - will be filtered by tool")
+        else:
+            logger.info(f"Tool {tool_name} has no modality restrictions")
+
         logger.info(f"Executing tool: {tool_name}")
 
         try:
             tool_args = call.get("args", {})
-            # Only add dicom_payload if the tool expects it
+            # Only add studies if the tool expects it
             if hasattr(tool, "args_schema") and hasattr(tool.args_schema, "model_fields"):
-                if "dicom_payload" in tool.args_schema.model_fields:
-                    tool_args["dicom_payload"] = dicom_payload
+                if "studies" in tool.args_schema.model_fields:
+                    tool_args["studies"] = studies
             result = tool.invoke(tool_args)
             logger.info(f"Tool {tool_name} execution successful")
             return result
@@ -290,15 +314,15 @@ class Agent:
         """
         tool_calls = state["messages"][-1].tool_calls
         results = []
-        dicom_payload = state.get("dicom_payload")
+        studies = state.get("studies")
 
-        logger.debug(f"DICOM Payload type: {type(dicom_payload)}")
-        if dicom_payload is not None and hasattr(dicom_payload, "keys"):
-            logger.debug(f"DICOM Payload keys: {dicom_payload.keys()}")
+        logger.debug(f"Studies type: {type(studies)}")
+        if studies is not None and hasattr(studies, "keys"):
+            logger.debug(f"Studies keys: {studies.keys()}")
 
         for call in tool_calls:
             logger.info(f"Processing tool call: {call['name']}")
-            result = self._execute_single_tool(call, dicom_payload)
+            result = self._execute_single_tool(call, studies)
 
             # Create a log entry for the tool call
             tool_call_log: ToolCallLog = {
