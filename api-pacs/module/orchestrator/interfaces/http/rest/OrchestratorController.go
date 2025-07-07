@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -29,7 +28,6 @@ func NewOrchestratorController(orchestratorService application.OrchestratorServi
 
 // CreateThread creates a new thread
 func (controller *OrchestratorController) CreateThread(w http.ResponseWriter, r *http.Request) {
-
 	var request types.CreateThreadRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		response := viewmodels.HTTPResponseVM{
@@ -45,8 +43,8 @@ func (controller *OrchestratorController) CreateThread(w http.ResponseWriter, r 
 		return
 	}
 
-	// Create the thread
-	result, err := controller.OrchestratorServiceInterface.CreateThread(context.TODO(), request)
+	// Create the thread (bearer token is extracted from context in the service)
+	result, err := controller.OrchestratorServiceInterface.CreateThread(r.Context(), request)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -118,8 +116,8 @@ func (controller *OrchestratorController) CreateMessage(w http.ResponseWriter, r
 		Metadata: request.Metadata,
 	}
 
-	// Create the message
-	result, err := controller.OrchestratorServiceInterface.CreateMessage(context.TODO(), serviceRequest)
+	// Create the message (bearer token is extracted from context in the service)
+	result, err := controller.OrchestratorServiceInterface.CreateMessage(r.Context(), serviceRequest)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -208,8 +206,8 @@ func (controller *OrchestratorController) UploadDicomPayload(w http.ResponseWrit
 		ContainerID:        request.ContainerID,
 	}
 
-	// Upload the DICOM payload
-	result, err := controller.OrchestratorServiceInterface.UploadDicomPayload(context.TODO(), serviceRequest)
+	// Upload the DICOM payload (bearer token is extracted from context in the service)
+	result, err := controller.OrchestratorServiceInterface.UploadDicomPayload(r.Context(), serviceRequest)
 	if err != nil {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusInternalServerError,
@@ -248,8 +246,8 @@ func (controller *OrchestratorController) GetThread(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// Get the thread
-	result, err := controller.OrchestratorServiceInterface.GetThread(context.TODO(), threadID)
+	// Get the thread (bearer token is extracted from context in the service)
+	result, err := controller.OrchestratorServiceInterface.GetThread(r.Context(), threadID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string

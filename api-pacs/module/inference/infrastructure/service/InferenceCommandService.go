@@ -379,6 +379,11 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 		OutputMode:             dockerInferenceTypes.OutputMode(inferenceModel.OutputMode),
 	}
 
+	// Override OutputMode to JSON if ForceJSON is true
+	if data.ForceJSON != nil && *data.ForceJSON {
+		predictRequest.OutputMode = dockerInferenceTypes.OutputModeJSON
+	}
+
 	return predictRequest, containerName, nil
 }
 

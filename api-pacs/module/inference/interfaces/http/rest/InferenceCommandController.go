@@ -257,6 +257,7 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 		StudyInstanceUID:   request.StudyInstanceUID,
 		SeriesInstanceUIDs: request.SeriesInstanceUIDs,
 		AdditionalMetadata: request.AdditionalMetadata,
+		ForceJSON:          request.ForceJSON,
 	})
 	if err != nil {
 		var httpCode int

@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/segmentio/ksuid"
 
 	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
+	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	inferenceApplication "api-pacs/module/inference/application"
 	inferenceTypes "api-pacs/module/inference/infrastructure/service/types"
 	"api-pacs/module/orchestrator/domain/entity"
@@ -27,13 +29,40 @@ type OrchestratorService struct {
 	TenantID                         string
 }
 
+// extractBearerTokenFromContext extracts the bearer token from context
+func (service *OrchestratorService) extractBearerTokenFromContext(ctx context.Context) string {
+	if bearerToken := ctx.Value(iamTypes.BearerTokenCtx); bearerToken != nil {
+		return bearerToken.(string)
+	}
+	return ""
+}
+
 // CreateThread creates a new thread
 func (service *OrchestratorService) CreateThread(ctx context.Context, request types.CreateThreadRequest) (types.CreateThreadResponse, error) {
+	// Extract bearer token from context
+	bearerToken := service.extractBearerTokenFromContext(ctx)
+	
+	// Create request payload including bearer token for the orchestrator service
+	requestPayload := struct {
+		Metadata    map[string]interface{} `json:"metadata,omitempty"`
+		BearerToken string                 `json:"bearer_token,omitempty"`
+		APIBaseURL  string                 `json:"api_base_url,omitempty"`
+	}{
+		Metadata:    request.Metadata,
+		BearerToken: bearerToken,
+		APIBaseURL:  os.Getenv("API_BASE_URL"), // Allow orchestrator to know where to callback
+	}
+
+	requestBytes, err := json.Marshal(requestPayload)
+	if err != nil {
+		return types.CreateThreadResponse{}, err
+	}
+
 	// Make HTTP request to external python orchestrator API
 	resp, err := service.OrchestratorClient.Post(
 		fmt.Sprintf("%s/new_thread", service.OrchestratorAPIURL),
 		"application/json",
-		nil, // or bytes.NewBuffer(requestJSON) if you need to send data
+		bytes.NewBuffer(requestBytes),
 	)
 	if err != nil {
 		return types.CreateThreadResponse{}, err
@@ -68,13 +97,20 @@ func (service *OrchestratorService) CreateThread(ctx context.Context, request ty
 
 // CreateMessage creates a new message in a thread
 func (service *OrchestratorService) CreateMessage(ctx context.Context, request types.CreateMessageRequest) (types.CreateMessageResponse, error) {
-	// Create the request payload for the Python server
+	// Extract bearer token from context
+	bearerToken := service.extractBearerTokenFromContext(ctx)
+	
+	// Create the request payload for the Python server including bearer token
 	requestPayload := struct {
-		Message  string `json:"message"`
-		ThreadID string `json:"thread_id"`
+		Message     string `json:"message"`
+		ThreadID    string `json:"thread_id"`
+		BearerToken string `json:"bearer_token,omitempty"`
+		APIBaseURL  string `json:"api_base_url,omitempty"`
 	}{
-		Message:  request.Content,
-		ThreadID: request.ThreadID,
+		Message:     request.Content,
+		ThreadID:    request.ThreadID,
+		BearerToken: bearerToken,
+		APIBaseURL:  os.Getenv("API_BASE_URL"),
 	}
 
 	requestBytes, err := json.Marshal(requestPayload)
@@ -187,6 +223,9 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 
 // UploadDicomPayload uploads a DICOM payload to a thread
 func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, request types.DicomPayloadRequest) (any, error) {
+	// Extract bearer token from context
+	bearerToken := service.extractBearerTokenFromContext(ctx)
+	
 	// Get the container ID from request or use default
 	containerID := service.DefaultContainerID
 	tenantID := service.TenantID
@@ -209,10 +248,12 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 		return types.UploadDicomPayloadResponse{}, err
 	}
 
-	// Create the request payload for the Python server
+	// Create the request payload for the Python server including bearer token
 	requestPayload := struct {
-		Payload  dockerInferenceTypes.PredictRequest `json:"payload"`
-		ThreadID string                              `json:"thread_id,omitempty"`
+		Payload     dockerInferenceTypes.PredictRequest `json:"payload"`
+		ThreadID    string                              `json:"thread_id,omitempty"`
+		BearerToken string                              `json:"bearer_token,omitempty"`
+		APIBaseURL  string                              `json:"api_base_url,omitempty"`
 	}{
 		Payload: dockerInferenceTypes.PredictRequest{
 			SeriesInstanceImages:   predictRequest.SeriesInstanceImages,
@@ -220,7 +261,9 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 			AdditionalMetadata:     predictRequest.AdditionalMetadata,
 			OutputMode:             dockerInferenceTypes.OutputModeJSON, // TODO: Make this configurable
 		},
-		ThreadID: request.ThreadID,
+		ThreadID:    request.ThreadID,
+		BearerToken: bearerToken,
+		APIBaseURL:  os.Getenv("API_BASE_URL"),
 	}
 
 	requestBytes, err := json.Marshal(requestPayload)
@@ -301,10 +344,25 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 
 // GetThread gets thread information
 func (service *OrchestratorService) GetThread(ctx context.Context, threadID string) (types.GetThreadResponse, error) {
+	// Extract bearer token from context
+	bearerToken := service.extractBearerTokenFromContext(ctx)
+	
+	// Create request with bearer token
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/threads/%s", service.OrchestratorAPIURL, threadID), nil)
+	if err != nil {
+		return types.GetThreadResponse{}, err
+	}
+
+	// Add query parameters for authentication
+	q := req.URL.Query()
+	q.Add("bearer_token", bearerToken)
+	if apiBaseURL := os.Getenv("API_BASE_URL"); apiBaseURL != "" {
+		q.Add("api_base_url", apiBaseURL)
+	}
+	req.URL.RawQuery = q.Encode()
+
 	// Make HTTP request to external Python orchestrator API
-	resp, err := service.OrchestratorClient.Get(
-		fmt.Sprintf("%s/threads/%s", service.OrchestratorAPIURL, threadID),
-	)
+	resp, err := service.OrchestratorClient.Do(req)
 	if err != nil {
 		return types.GetThreadResponse{}, err
 	}
