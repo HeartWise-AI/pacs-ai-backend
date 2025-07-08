@@ -131,6 +131,7 @@ func (controller *OrthancCommandController) RetrieveModalityStudy(w http.Respons
 		UserID:           userID,
 		ModalityID:       request.ModalityID,
 		StudyInstanceUID: request.StudyInstanceUID,
+		ModalityType:     request.ModalityType,
 	})
 	if err != nil {
 		var httpCode int
