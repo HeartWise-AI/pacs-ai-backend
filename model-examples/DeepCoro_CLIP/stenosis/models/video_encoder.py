@@ -1,21 +1,20 @@
 import torch
 import torch.nn as nn
-from torchvision.models.video import mvit_v2_s, r3d_18
-from torch.amp.autocast_mode import autocast
-
 from models.video_aggregator import EnhancedVideoAggregator
+from torch.amp.autocast_mode import autocast
+from torchvision.models.video import mvit_v2_s, r3d_18
 
 
 class VideoEncoder(nn.Module):
     """Video encoder model based on specified backbone."""
 
     def __init__(
-        self, 
-        backbone: str = "mvit", 
-        input_channels: int = 3, 
-        num_frames: int = 16, 
-        pretrained: bool = True, 
-        output_dim: int = 512, 
+        self,
+        backbone: str = "mvit",
+        input_channels: int = 3,
+        num_frames: int = 16,
+        pretrained: bool = True,
+        output_dim: int = 512,
         dropout: float = 0.2,
         num_heads: int = 4,
         freeze_ratio: float = 0.8,
@@ -65,45 +64,49 @@ class VideoEncoder(nn.Module):
             # full token sequence produced **after** the transformer blocks
             # but **before** the classification logic.
             self.model.head = nn.Identity()  # type: ignore[assignment]
-        
+
         elif backbone == "r3d":
             self.model: nn.Module = r3d_18(pretrained=pretrained)
             in_features: int = self.model.fc.in_features
             # Replace the classifier with identity. Annotate with *ignore* for
             # static type checkers that assume ``fc`` is always ``nn.Linear``.
             self.model.fc = nn.Identity()  # type: ignore[assignment]
-            
+
         elif backbone in ["x3d_s", "x3d_m"]:
             # Load X3D model from torch.hub
-            self.model = torch.hub.load('facebookresearch/pytorchvideo', backbone, pretrained=pretrained)
+            self.model = torch.hub.load(
+                "facebookresearch/pytorchvideo", backbone, pretrained=pretrained
+            )
             # Get feature dimension from the head
             in_features = self.model.blocks[5].proj.in_features
             # Replace classification head with Identity
             self.model.blocks[5].proj = nn.Identity()
             self.model.blocks[5].activation = nn.Identity()
-            
+
         else:
             raise ValueError(f"Unsupported backbone: {backbone}")
-                
+
         # 2) Projection (use GELU instead of ReLU)
         self.proj = nn.Sequential(
             nn.Dropout(self.dropout),
             nn.Linear(in_features, output_dim),
             nn.GELU(),
             nn.Dropout(self.dropout),
-        )                
+        )
         # Check if output_dim is divisible by num_heads
         if output_dim % num_heads != 0:
-            raise ValueError(f"Output dimension ({output_dim}) must be divisible by number of heads ({num_heads})")
+            raise ValueError(
+                f"Output dimension ({output_dim}) must be divisible by number of heads ({num_heads})"
+            )
         # 3) Enhanced aggregator (can be optionally disabled)
         self.aggregator = EnhancedVideoAggregator(
             embedding_dim=output_dim,
             num_heads=num_heads,
             dropout=self.dropout,
             use_positional_encoding=True,
-            aggregator_depth=aggregator_depth
+            aggregator_depth=aggregator_depth,
         )
-                
+
         # 4) Freeze partial layers
         self._freeze_partial_layers()
 
@@ -117,6 +120,7 @@ class VideoEncoder(nn.Module):
         # the internal steps from its `forward()` implementation.
         # ------------------------------------------------------------------
         from types import MethodType
+
         from torchvision.models.video.mvit import _unsqueeze  # type: ignore
 
         def _forward_features_mvit(self_mvit, x: torch.Tensor) -> torch.Tensor:  # noqa: D401
@@ -136,8 +140,7 @@ class VideoEncoder(nn.Module):
                 x, thw = blk(x, thw)
 
             # ➄ Final layer norm; *no* class-token selection / pooling
-            x = self_mvit.norm(x)  # [B, L, C_final]
-            return x
+            return self_mvit.norm(x)  # [B, L, C_final]
 
         # Attach to the specific instance so it does not affect other MViT objects.
         self.model.forward_features = MethodType(_forward_features_mvit, self.model)  # type: ignore[attr-defined]
@@ -160,11 +163,12 @@ class VideoEncoder(nn.Module):
     def embedding_dim(self) -> int:
         """Get the embedding dimension."""
         return self._embedding_dim
+
     def get_tokens(self, x: torch.Tensor, mode: str = "patch"):
         self._apply_aggregator = False
-        self._per_video_pool = (mode == "video")
+        self._per_video_pool = mode == "video"
         return self.forward(x)
-    
+
     def _extract_backbone_features(self, x: torch.Tensor) -> torch.Tensor:
         """Return token-level features from the underlying video backbone.
 
@@ -230,14 +234,14 @@ class VideoEncoder(nn.Module):
             s = x.shape
             x = x.view(s[0], s[1] * s[2], s[3], s[4], s[5], s[6])
             # Now x should be 6D: [B, N_combined, T, H, W, C]
-        
+
         # Reorder last dimensio n (C) to after N => [B, N, C, T, H, W]
         x = x.permute(0, 1, 5, 2, 3, 4)  # Now shape: [B, N, 3, T, H, W]
 
         B, N, C, T, H, W = x.shape
 
         # Flatten => [B*N, 3, T, H, W]
-        x = x.view(B*N, C, T, H, W)
+        x = x.view(B * N, C, T, H, W)
 
         # ------------------------------------------------------------------
         # 1) Backbone ⇨ token sequences (before projection)
@@ -258,7 +262,7 @@ class VideoEncoder(nn.Module):
         BNL, L, D_out = token_feats.shape  # BNL = B * N
         token_feats = token_feats.view(B, N, L, D_out)
 
-#       print(f"token_feats.shape: {token_feats.shape}")
+        #       print(f"token_feats.shape: {token_feats.shape}")
         if self._apply_aggregator:
             # Before passing to aggregator, convert to exactly N tokens. This
             # preserves backward-compatibility with existing training code &
@@ -267,19 +271,19 @@ class VideoEncoder(nn.Module):
             feats = token_feats.mean(dim=2)  # [B, N, D_out]
 
             orig_dtype = feats.dtype
-            with autocast('cuda', enabled=False):
+            with autocast("cuda", enabled=False):
                 out = self.aggregator(feats.float())
             return out.to(orig_dtype)
 
         # Aggregator disabled → return either per-video or per-patch tokens
         if self._per_video_pool:
-            #print("Per-video pooling") 
-            #print(f"token_feats.shape: {token_feats.shape}")
+            # print("Per-video pooling")
+            # print(f"token_feats.shape: {token_feats.shape}")
             feats = token_feats.mean(dim=2)  # [B, N, D_out]
-            #print(f"feats.shape: {feats.shape}")
+            # print(f"feats.shape: {feats.shape}")
         else:
-            #print("Per-patch pooling")
+            # print("Per-patch pooling")
             feats = token_feats.reshape(B, N * L, D_out)  # [B, N_tokens, D]
-            #print(f"feats.shape: {feats.shape}")
+            # print(f"feats.shape: {feats.shape}")
 
         return feats

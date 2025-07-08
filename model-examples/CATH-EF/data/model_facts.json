@@ -2,7 +2,7 @@
   "en": {
     "Summary": {
       "Name": "CathEF",
-      "Description": "CathEF is a video-based deep neural network (DNN) designed to predict left ventricular ejection fraction (LVEF) from left coronary angiograms.",
+      "Description": "Assesses left ventricular ejection fraction (LVEF) from coronary angiogram (XA) dicoms. Useful to access global cardiac function during coronary angiography",
       "Developed_by": "Dr. Avram, Dr. Tison and Dr. Olgin",
       "Development_period": "2020-01-01 to 2023-04-17",
       "Licensed_to": "Montreal Heart Institute",

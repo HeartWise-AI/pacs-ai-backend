@@ -25,6 +25,7 @@ type PredictInferenceModel struct {
 	StudyInstanceUID   string
 	SeriesInstanceUIDs []string
 	AdditionalMetadata map[string]interface{}
+	ForceJSON          *bool
 }
 
 type GetContainerInfoResult struct {

@@ -1,0 +1,29 @@
+services:
+  ollama:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ollama
+    networks:
+      - pacs-net
+    expose:
+      - "11434"
+    volumes:
+      - ollama:/root/.ollama
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+    restart: unless-stopped
+
+networks:
+  pacs-net:
+    external: true
+
+volumes:
+  ollama:
+    name: ollama

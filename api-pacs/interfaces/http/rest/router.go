@@ -50,6 +50,7 @@ func (router *router) InitRouter() *chi.Mux {
 	inferenceCommandController := interfaces.ServiceContainer().RegisterInferenceRESTCommandController()
 	inferenceQueryController := interfaces.ServiceContainer().RegisterInferenceRESTQueryController()
 	leadCommandController := interfaces.ServiceContainer().RegisterLeadRESTCommandController()
+	orchestratorController := interfaces.ServiceContainer().RegisterOrchestratorRESTController()
 	orthancProxy := interfaces.ServiceContainer().RegisterOrthancProxy()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
 	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
@@ -163,6 +164,21 @@ func (router *router) InitRouter() *chi.Mux {
 			r.Route("/lead", func(r chi.Router) {
 				r.Post("/contact-form", leadCommandController.AddContactForm)
 				r.Post("/subscribe", leadCommandController.Subscribe)
+			})
+
+			// orchestrator module
+			r.Route("/orchestrator", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.TokenSessionAuthGuard)
+
+					// Thread management
+					r.Post("/threads", orchestratorController.CreateThread)
+					r.Get("/threads/{threadID}", orchestratorController.GetThread)
+
+					// Message and payload management
+					r.Post("/threads/{threadID}/chat", orchestratorController.CreateMessage)
+					r.Post("/threads/{threadID}/dicom", orchestratorController.UploadDicomPayload)
+				})
 			})
 
 			// orthanc module

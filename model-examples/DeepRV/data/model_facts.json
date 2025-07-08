@@ -2,7 +2,7 @@
   "en": {
     "Summary": {
       "Name": "DeepRV",
-      "Description": "Classify right ventricle function as normal or abnormal from angiograms.",
+      "Description": "Assesses right ventricular function as normal or abnormal from coronary angiogram (XA) dicoms. Useful to access global cardiac function during coronary angiography",
       "Developed_by": "Heartwise",
       "Development_period": "2024-2025",
       "Version": "1.0.0"

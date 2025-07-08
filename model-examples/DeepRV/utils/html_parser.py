@@ -2,26 +2,38 @@ class HTMLParser:
     @staticmethod
     def generate_detection_results(results):
         """Generate HTML output with detection results.
-        
+
         Args:
             results: Dictionary containing with keys:
                     'probability': float between 0 and 1
                     'diagnosis': str (optional)
                     'confidence': str (optional)
                     'recommendations': dict (optional)
-        
+
         Returns:
             str: HTML formatted string containing the classification result
         """
-        probability = results['probability']
-        diagnosis = results.get('diagnosis', f"Reduced Right Ventricular Function" if probability > 0.1 else "Normal Right Ventricular Function")
-        confidence = results.get('confidence', 'high' if abs(probability - 0.1) > 0.3 else 'intermediate' if abs(probability - 0.1) > 0.15 else 'low')
-        recommendations = results.get('recommendations', {})
-        
+        probability = results["probability"]
+        diagnosis = results.get(
+            "diagnosis",
+            "Reduced Right Ventricular Function"
+            if probability > 0.1
+            else "Normal Right Ventricular Function",
+        )
+        confidence = results.get(
+            "confidence",
+            "high"
+            if abs(probability - 0.1) > 0.3
+            else "intermediate"
+            if abs(probability - 0.1) > 0.15
+            else "low",
+        )
+        recommendations = results.get("recommendations", {})
+
         # Determine status for styling
         is_reduced = probability > 0.1
         status_color = "#ff6b6b" if is_reduced else "#4ecdc4"
-        
+
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -159,8 +171,8 @@ class HTMLParser:
                     font-size: 12px;
                     font-weight: bold;
                     text-transform: uppercase;
-                    background-color: {'#28a745' if confidence == 'high' else '#ffc107' if confidence == 'intermediate' else '#dc3545'};
-                    color: {'#ffffff' if confidence != 'intermediate' else '#000000'};
+                    background-color: {"#28a745" if confidence == "high" else "#ffc107" if confidence == "intermediate" else "#dc3545"};
+                    color: {"#ffffff" if confidence != "intermediate" else "#000000"};
                 }}
 
                 .recommendations {{
@@ -231,7 +243,7 @@ class HTMLParser:
                         </div>
                         <div class="metric-item">
                             <span class="metric-label">Classification</span>
-                            <div class="metric-value">{'Reduced Function' if is_reduced else 'Normal Function'}</div>
+                            <div class="metric-value">{"Reduced Function" if is_reduced else "Normal Function"}</div>
                         </div>
                         <div class="metric-item">
                             <span class="metric-label">Model Threshold</span>
@@ -240,36 +252,36 @@ class HTMLParser:
                     </div>
                 </div>
         """
-        
+
         # Add recommendations section if available
         if recommendations:
             html_content += """
                 <div class="section">
                     <h2>Clinical Recommendations</h2>
             """
-            
-            if 'en' in recommendations:
+
+            if "en" in recommendations:
                 html_content += f"""
                     <div class="recommendations">
                         <div class="language-label">English</div>
-                        <div class="recommendation-text">{recommendations['en']}</div>
+                        <div class="recommendation-text">{recommendations["en"]}</div>
                     </div>
                 """
-            
-            if 'fr' in recommendations:
+
+            if "fr" in recommendations:
                 html_content += f"""
                     <div class="recommendations">
                         <div class="language-label">Français</div>
-                        <div class="recommendation-text">{recommendations['fr']}</div>
+                        <div class="recommendation-text">{recommendations["fr"]}</div>
                     </div>
                 """
-            
+
             html_content += "</div>"
-        
+
         # Add timestamp and close
         html_content += f"""
                 <div class="timestamp">
-                    Report generated on {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
+                    Report generated on {__import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")}
                 </div>
             </div>
         </body>
@@ -277,33 +289,31 @@ class HTMLParser:
         """
         return html_content
 
+
 # Example usage with test data
 if __name__ == "__main__":
-    import webbrowser
-    import tempfile
     import os
+    import tempfile
+    import webbrowser
 
     # Create test data
     test_results = {
-        'probability': 0.75,
-        'diagnosis': 'Reduced Right Ventricular Function',
-        'confidence': 'high',
-        'recommendations': {
-            'en': 'Reduced right ventricular function detected. Consider further cardiac evaluation and specialist consultation.',
-            'fr': 'Fonction réduite du ventricule droit détectée. Envisager une évaluation cardiaque plus approfondie et une consultation spécialisée.'
-        }
+        "probability": 0.75,
+        "diagnosis": "Reduced Right Ventricular Function",
+        "confidence": "high",
+        "recommendations": {
+            "en": "Reduced right ventricular function detected. Consider further cardiac evaluation and specialist consultation.",
+            "fr": "Fonction réduite du ventricule droit détectée. Envisager une évaluation cardiaque plus approfondie et une consultation spécialisée.",
+        },
     }
 
     # Generate HTML
-    html_content = HTMLParser.generate_detection_results(
-        results=test_results
-    )
+    html_content = HTMLParser.generate_detection_results(results=test_results)
 
     # Save and display in browser
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
-    try:
-        with open(temp_file.name, 'w', encoding='utf-8') as f:
+    with tempfile.NamedTemporaryFile(
+        delete=False, suffix=".html", mode="w", encoding="utf-8"
+    ) as temp_file:
+        with open(temp_file.name, "w", encoding="utf-8") as f:
             f.write(html_content)
-        webbrowser.open('file://' + os.path.realpath(temp_file.name))
-    finally:
-        temp_file.close()
+        webbrowser.open("file://" + os.path.realpath(temp_file.name))

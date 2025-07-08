@@ -37,6 +37,7 @@ type PredictInferenceModelRequest struct {
 	StudyInstanceUID   string                 `json:"studyInstanceUID" validate:"required"`
 	SeriesInstanceUIDs []string               `json:"seriesInstanceUIDs" validate:"required"`
 	AdditionalMetadata map[string]interface{} `json:"additionalMetadata"`
+	ForceJSON          *bool                  `json:"forceJSON,omitempty"`
 }
 
 type UpdateInferenceModelContainerRequest struct {

@@ -2,12 +2,12 @@ class HTMLParser:
     @staticmethod
     def generate_detection_results(patient_age, results=None):
         """Generate HTML output with detection results.
-        
+
         Args:
             patient_age: Age of the patient
             results: Dictionary containing device detection results with keys:
                     'device_info', 'confidence', 'image_quality', 'images'
-        
+
         Returns:
             str: HTML formatted string containing the detection results
         """
@@ -113,24 +113,24 @@ class HTMLParser:
                     <p><span class="value-label">Patient Age:</span> {age_text}</p>
                 </div>
         """
-        
+
         if results:
             html_content += "<div class='devices-container'>"
-            for i in range(len(results['device_info'])):
-                device = results['device_info'][i]
+            for i in range(len(results["device_info"])):
+                device = results["device_info"][i]
                 html_content += f"""
                 <div class='device-info'>
-                    <h4>{device['type_full']} <span class="device-type">({device['type_short']})</span></h4>
-                    <img src="data:image/png;base64,{results['images'][i]}" alt="Detected Device {i+1}" style="max-width: 300px;"/>
-                    <p><span class="value-label">Manufacturer:</span> {device['manufacturer']}</p>
-                    <p><span class="value-label">Confidence:</span> {results['confidence'][i]:.2%}</p>
-                    <p><span class="value-label">Image Quality:</span> {results['image_quality'][i]:.1f}/4.0</p>
+                    <h4>{device["type_full"]} <span class="device-type">({device["type_short"]})</span></h4>
+                    <img src="data:image/png;base64,{results["images"][i]}" alt="Detected Device {i + 1}" style="max-width: 300px;"/>
+                    <p><span class="value-label">Manufacturer:</span> {device["manufacturer"]}</p>
+                    <p><span class="value-label">Confidence:</span> {results["confidence"][i]:.2%}</p>
+                    <p><span class="value-label">Image Quality:</span> {results["image_quality"][i]:.1f}/4.0</p>
                 </div>
                 """
             html_content += "</div>"
         else:
             html_content += "<div class='no-devices'>No devices detected with confidence threshold of 0.95</div>"
-        
+
         html_content += """
             </div>
         </body>
@@ -138,76 +138,70 @@ class HTMLParser:
         """
         return html_content
 
+
 # Example usage with test data
 if __name__ == "__main__":
     import base64
-    from PIL import Image
-    import numpy as np
-    import webbrowser
-    import tempfile
     import os
+    import tempfile
+    import webbrowser
+
+    from PIL import Image
 
     # Create a dummy image for testing
     def create_dummy_image():
         # Create a 200x200 black image with a white rectangle
-        img = Image.new('L', (200, 200), 0)  # Black background
+        img = Image.new("L", (200, 200), 0)  # Black background
         for x in range(50, 150):
             for y in range(50, 150):
                 img.putpixel((x, y), 255)  # White rectangle
-        
+
         # Convert to base64
         import io
+
         buffered = io.BytesIO()
         img.save(buffered, format="PNG")
-        return base64.b64encode(buffered.getvalue()).decode('utf-8')
+        return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
     # Create test data
     test_results = {
-        'device_info': [
+        "device_info": [
             {
-                'raw_type': 'BIO_ICD',
-                'manufacturer': 'Biotronik',
-                'type_full': 'Implantable cardioverter-defibrillator',
-                'type_short': 'ICD'
+                "raw_type": "BIO_ICD",
+                "manufacturer": "Biotronik",
+                "type_full": "Implantable cardioverter-defibrillator",
+                "type_short": "ICD",
             },
             {
-                'raw_type': 'MED_PM',
-                'manufacturer': 'Medtronic',
-                'type_full': 'Pacemaker',
-                'type_short': 'Pacemaker'
-            }
+                "raw_type": "MED_PM",
+                "manufacturer": "Medtronic",
+                "type_full": "Pacemaker",
+                "type_short": "Pacemaker",
+            },
         ],
-        'confidence': [0.98, 0.95],
-        'image_quality': [3.8, 3.2],
-        'images': [create_dummy_image() for _ in range(2)]
+        "confidence": [0.98, 0.95],
+        "image_quality": [3.8, 3.2],
+        "images": [create_dummy_image() for _ in range(2)],
     }
 
     # Generate HTML
-    html_content = HTMLParser.generate_detection_results(
-        patient_age=65,
-        results=test_results
-    )
+    html_content = HTMLParser.generate_detection_results(patient_age=65, results=test_results)
 
     # Save and display in browser
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
-    try:
-        with open(temp_file.name, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-        webbrowser.open('file://' + os.path.realpath(temp_file.name))
-    finally:
-        temp_file.close()
+    with tempfile.NamedTemporaryFile(
+        delete=False, suffix=".html", mode="w", encoding="utf-8"
+    ) as temp_file:
+        temp_file.write(html_content)
+        temp_file_path = temp_file.name
+    webbrowser.open("file://" + os.path.realpath(temp_file_path))
 
     # Also test the case with no devices detected
-    html_content_no_devices = HTMLParser.generate_detection_results(
-        patient_age=45,
-        results=None
-    )
+    html_content_no_devices = HTMLParser.generate_detection_results(patient_age=45, results=None)
 
     # Save and display the no-devices case
-    temp_file_no_devices = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
-    try:
-        with open(temp_file_no_devices.name, 'w', encoding='utf-8') as f:
-            f.write(html_content_no_devices)
-        webbrowser.open('file://' + os.path.realpath(temp_file_no_devices.name))
-    finally:
-        temp_file_no_devices.close()
+    with tempfile.NamedTemporaryFile(
+        delete=False, suffix=".html", mode="w", encoding="utf-8"
+    ) as temp_file:
+        temp_file.write(html_content_no_devices)
+        temp_file_path = temp_file.name
+    webbrowser.open("file://" + os.path.realpath(temp_file_path))

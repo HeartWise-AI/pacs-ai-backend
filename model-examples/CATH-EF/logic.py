@@ -1,15 +1,20 @@
 import base64
-from typing import Any, List, OrderedDict, Dict
-from utils.genericLogic import BasePredictionService
-from utils.http_utils import Config, PredictRequest
-from utils.html_parser import generate_vessel_report
-import torch
 import importlib
 import os
-import numpy as np
-import torchvision
 import uuid
+from collections import OrderedDict
+from io import BytesIO
+from typing import Any
+
 import cv2 as cv
+import numpy as np
+import pydicom
+import torch
+import torchvision
+from utils.genericLogic import BasePredictionService
+from utils.html_parser import generate_vessel_report
+from utils.http_utils import Config, PredictRequest
+
 
 class CustomPredictionService(BasePredictionService):
     def load_model(self, config: Config):
@@ -28,7 +33,9 @@ class CustomPredictionService(BasePredictionService):
 
             try:
                 # Get the model architecture
-                architecturePath = os.path.join(workingDirectory, model_dir, value.architectureFile)
+                architecturePath = os.path.join(
+                    workingDirectory, model_dir, value.architectureFile
+                )
                 spec = importlib.util.spec_from_file_location(key, architecturePath)
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
@@ -36,8 +43,12 @@ class CustomPredictionService(BasePredictionService):
 
                 # Load the model weights
                 weightsPath = os.path.join(workingDirectory, model_dir, value.weightsFile)
-                checkpoint = torch.load(weightsPath, weights_only=False, map_location='cuda' if torch.cuda.is_available() else 'cpu')
-                state_dict = checkpoint['state_dict']
+                checkpoint = torch.load(
+                    weightsPath,
+                    weights_only=False,
+                    map_location="cuda" if torch.cuda.is_available() else "cpu",
+                )
+                state_dict = checkpoint["state_dict"]
                 new_state_dict = OrderedDict()
                 if key == "X3D_1":
                     for k, v in state_dict.items():
@@ -53,43 +64,43 @@ class CustomPredictionService(BasePredictionService):
                 model.eval()
 
                 # Send model to device
-                model.to('cuda' if torch.cuda.is_available() else 'cpu')
+                model.to("cuda" if torch.cuda.is_available() else "cpu")
 
                 # Store the model in the class dictionary
                 CustomPredictionService.models[key] = model
-    
+
             except Exception as e:
                 print(f"Error loading model {key}: {str(e)}")
                 raise
 
         CustomPredictionService.is_initialized = True
-    
+
     def _get_vessel_name(self, index: int) -> str:
         """
         Returns the vessel name based on the prediction index.
-        
+
         Args:
             index (int): The prediction index from the model
-            
+
         Returns:
             str: The corresponding vessel name
         """
         VESSEL_TYPES = {
-            0: 'Aorta',
-            1: 'Catheter',
-            2: 'Femoral',
-            3: 'Graft',
-            4: 'LV',
-            5: 'Left Coronary',
-            6: 'Other',
-            7: 'Pigtail',
-            8: 'Radial',
-            9: 'Right Coronary',
-            10: 'Stenting'
+            0: "Aorta",
+            1: "Catheter",
+            2: "Femoral",
+            3: "Graft",
+            4: "LV",
+            5: "Left Coronary",
+            6: "Other",
+            7: "Pigtail",
+            8: "Radial",
+            9: "Right Coronary",
+            10: "Stenting",
         }
-        
+
         return VESSEL_TYPES.get(index, "Unknown Vessel")
-    
+
     def videoShenanigans(self, video):
         # Use uuid.uuid4() to create a unique file name
         unique_filename = f"tmp_{uuid.uuid4()}.avi"
@@ -125,180 +136,206 @@ class CustomPredictionService(BasePredictionService):
                 os.remove(unique_filename)
 
         return np.asarray(compressedVideo).transpose(0, 3, 1, 2)
-    
-    def _common_preprocessing(self, series: Dict[str, Any], mean: List[float], std: List[float], framesToUse: int) -> torch.Tensor:
+
+    def _common_preprocessing(
+        self, series: list[pydicom.Dataset], mean: list[float], std: list[float], framesToUse: int
+    ) -> torch.Tensor:
         lvef_batch = []
-        
-        for seriesNumber, instances in series.items():
-            for instancesNumber, metadata in instances.items():
-                row = metadata['00280010']['Value'][0]
-                column = metadata['00280011']['Value'][0]
-                frames = metadata['00280008']['Value'][0]
-                data = metadata['7FE00010']['InlineBinary']
-                
-                # Decode base64 data into numpy array
-                data = np.frombuffer(base64.b64decode(data), dtype=np.int8)
-                data = data.reshape(frames, 1, row, column)
-                numpyData = np.array(data)
 
-                # Arrange data for model input
-                data = np.repeat(numpyData, 3, axis=1)
-                compressedVideo = self.videoShenanigans(np.transpose(data, (0, 2, 3, 1)).astype(np.uint8))
-                compressedVideo = compressedVideo.astype(np.float32)
+        for serie in series:
+            data = np.expand_dims(serie.pixel_array, axis=1).repeat(3, axis=1)
+            compressedVideo = self.videoShenanigans(
+                np.transpose(data, (0, 2, 3, 1)).astype(np.uint8)
+            )
+            compressedVideo = compressedVideo.astype(np.float32)
 
-                # Transform video to torch and resize
-                video = torch.from_numpy(compressedVideo)
-                resize_transform = torchvision.transforms.Resize((224, 224), antialias=False)
-                video = resize_transform(video)
+            # Transform video to torch and resize
+            video = torch.from_numpy(compressedVideo)
+            resize_transform = torchvision.transforms.Resize((224, 224), antialias=False)
+            video = resize_transform(video)
 
-                # Apply normalization
-                normalize_transform = torchvision.transforms.Normalize(mean, std)
-                video = normalize_transform(video)
-                video = video.permute(1, 0, 2, 3)
-                video = video.numpy()
+            # Apply normalization
+            normalize_transform = torchvision.transforms.Normalize(mean, std)
+            video = normalize_transform(video)
+            video = video.permute(1, 0, 2, 3)
+            video = video.numpy()
 
-                # Set number of frames
+            # Set number of frames
+            c, f, h, w = video.shape
+            length = framesToUse
+            if f < length:
+                video = np.concatenate(
+                    (video, np.zeros((c, length - f, h, w), video.dtype)), axis=1
+                )
                 c, f, h, w = video.shape
-                length = framesToUse
-                if f < length:
-                    video = np.concatenate((video, np.zeros((c, length - f, h, w), video.dtype)), axis=1)
-                    c, f, h, w = video.shape
-                start = np.array([0])
-                video = tuple(video[:, s + 1 * np.arange(length), :, :] for s in start)[0]
-                lvef_batch.append(torch.as_tensor(video).unsqueeze(0))
+            start = np.array([0])
+            video = tuple(video[:, s + 1 * np.arange(length), :, :] for s in start)[0]
+            lvef_batch.append(torch.as_tensor(video).unsqueeze(0))
 
-        return torch.cat(lvef_batch, dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
+        return torch.cat(lvef_batch, dim=0).to("cuda" if torch.cuda.is_available() else "cpu")
 
     # Optionally, redefine your specific preprocessing functions to use the common one
-    def _X3D_1_preprocessing(self, series: Dict[str, Any]) -> torch.Tensor:
+    def _X3D_1_preprocessing(self, series: list[pydicom.Dataset]) -> torch.Tensor:
         mean = [93.81117248535156, 93.81117248535156, 93.81117248535156]
         std = [59.551239013671875, 59.551239013671875, 59.551239013671875]
         return self._common_preprocessing(series, mean, std, framesToUse=48)
 
-    def _X3D_2_preprocessing(self, series: Dict[str, Any]) -> torch.Tensor:
+    def _X3D_2_preprocessing(self, series: list[pydicom.Dataset]) -> torch.Tensor:
         mean = [111.72716, 111.72716, 111.72716]
         std = [47.53218, 47.53218, 47.53218]
         return self._common_preprocessing(series, mean, std, framesToUse=72)
 
-    async def _handle_html_output(self, request: PredictRequest):
-        # Get the age from the first instance metdata from the first series
-        series_metadata = next(iter(request.seriesInstanceMetadata.values()), {})
-        first_instance = next(iter(series_metadata.values()), {})
-        age_dict = first_instance.get('00101010', {})
-        age_value = age_dict.get('Value', [None])[0]
-        patient_age = int(age_value[:-1]) if age_value else None
+    def _get_dicoms_from_payload(self, request: dict[str, Any]) -> list[pydicom.Dataset]:
+        return [
+            pydicom.dcmread(BytesIO(base64.b64decode(dicom_base64)))
+            for series in request.seriesInstanceImages.values()
+            for dicom_base64 in series.values()
+        ]
 
-        X3D_1_input = self._X3D_1_preprocessing(request.seriesInstanceMetadata)
-        X3D_1_outputs = self.inference(X3D_1_input, 'X3D_1')
-        
-        # Process vessels and collect data for the report
-        vessels_data = []
-        toDelete = []
-        
+    def _generate_clinical_recommendation(self, vessel_predictions: list[dict[str, Any]]) -> str:
+        # Implement your logic here to generate a clinical recommendation
+        # This is a placeholder implementation
+        return "Recommendation for the next model"
+
+    def _process_vessels_and_lvef(self, dicoms: list[pydicom.Dataset]):
+        """Common processing for vessels and LVEF predictions"""
+        X3D_1_input = self._X3D_1_preprocessing(dicoms)
+        X3D_1_outputs = self.inference(X3D_1_input, "X3D_1")
+
+        # Process vessels and collect data
+        vessel_predictions = []
+        left_coronary_dicoms = []
+
         for i, output in enumerate(X3D_1_outputs):
             prediction = output.numpy().argmax()
             vessel_name = self._get_vessel_name(prediction)
-            
-            if vessel_name is not None:
-                # Generate a unique series number for each vessel
-                seriesNumber = list(request.seriesInstanceMetadata.keys())[i]
-                vessels_data.append((f"Series {seriesNumber}", vessel_name, None))
 
-                if prediction != 5:
-                    toDelete.append(seriesNumber)
-        
-        for element in toDelete:
-            del request.seriesInstanceMetadata[element]
+            vessel_predictions.append(
+                {
+                    "seriesNumber": int(dicoms[i].SeriesNumber),
+                    "vessel": vessel_name,
+                    "prediction": prediction,
+                }
+            )
+
+            # Keep only left coronary vessels for LVEF processing
+            if prediction == 5:
+                left_coronary_dicoms.append(dicoms[i])
 
         # Process LVEF for left coronary vessels if any
-        if len(request.seriesInstanceMetadata):
-            X3D_2_input = self._X3D_2_preprocessing(request.seriesInstanceMetadata)
-            X3D_2_outputs = self.inference(X3D_2_input, 'X3D_2')
-            
-            # Update vessels_data with LVEF values
+        lvef_predictions = []
+        if left_coronary_dicoms:
+            X3D_2_input = self._X3D_2_preprocessing(left_coronary_dicoms)
+            X3D_2_outputs = self.inference(X3D_2_input, "X3D_2")
+
             for idx, output in enumerate(X3D_2_outputs):
-                lvef_value = float(output.numpy())
-                
-                # Replace the tuple at vessel_idx with updated LVEF
-                seriesNumber = list(request.seriesInstanceMetadata.keys())[idx]
-                index = next(i for i, item in enumerate(vessels_data) if item[0].split()[1] == seriesNumber)
-                old_tuple = vessels_data[index]
-                vessels_data[index] = (old_tuple[0], old_tuple[1], lvef_value)
+                lvef_value = round(float(output.numpy()), 2)
+                seriesNumber = int(left_coronary_dicoms[idx].SeriesNumber)
+
+                lvef_predictions.append({"seriesNumber": seriesNumber, "value": lvef_value})
+
+        return vessel_predictions, lvef_predictions, left_coronary_dicoms
+
+    def _generate_lvef_recommendation(
+        self, lvef_predictions: list[dict[str, Any]]
+    ) -> dict[str, str]:
+        """Generate clinical recommendation based on LVEF values"""
+        if not lvef_predictions:
+            return {
+                "en": "No LVEF values available for assessment.",
+                "fr": "Aucune valeur LVEF disponible pour l'évaluation.",
+            }
+
+        # Find minimum LVEF value
+        min_lvef = min(pred["value"] for pred in lvef_predictions)
+
+        if min_lvef < 50:
+            return {
+                "en": f"A value under 50% was detected (minimum LVEF: {min_lvef:.1f}%), hence further cardiac evaluation and management for potential heart failure is recommended. Order an echocardiogram of the heart.",
+                "fr": f"Une valeur inférieure à 50% a été détectée (LVEF minimum: {min_lvef:.1f}%), par conséquent une évaluation cardiaque supplémentaire et une gestion pour une insuffisance cardiaque potentielle est recommandée. Commandez un échocardiogramme du cœur.",
+            }
+        return {
+            "en": f"LVEF values are within normal range (minimum LVEF: {min_lvef:.1f}%). No further cardiac investigations are needed unless clinically mandated.",
+            "fr": f"Les valeurs LVEF sont dans la plage normale (LVEF minimum: {min_lvef:.1f}%). Aucune investigation cardiaque supplémentaire n'est nécessaire sauf si cliniquement mandatée.",
+        }
+
+    async def _handle_html_output(self, request: PredictRequest):
+        dicoms = self._get_dicoms_from_payload(request)
+        # Get the age from the first instance metdata from the first series
+        patient_birthdate = dicoms[0].get((0x0010, 0x0030), None)
+        patient_age = None
+        if patient_birthdate is not None:
+            from datetime import datetime, timezone
+
+            birthdate_str = patient_birthdate.value
+            # Parse DICOM date format (YYYYMMDD)
+            birthdate = datetime.strptime(birthdate_str, "%Y%m%d").replace(tzinfo=timezone.utc)
+            current_date = datetime.now(timezone.utc)
+            patient_age = current_date.year - birthdate.year
+            # Adjust if birthday hasn't occurred this year
+            if current_date.month < birthdate.month or (
+                current_date.month == birthdate.month and current_date.day < birthdate.day
+            ):
+                patient_age -= 1
+
+        vessel_predictions, lvef_predictions, _ = self._process_vessels_and_lvef(dicoms)
+
+        # Convert to format needed for HTML report
+        vessels_data = []
+        for vessel_pred in vessel_predictions:
+            vessel_name = vessel_pred["vessel"]
+            series_number = vessel_pred["seriesNumber"]
+
+            if vessel_name is not None:
+                # Find corresponding LVEF value if exists
+                lvef_value = None
+                for lvef_pred in lvef_predictions:
+                    if lvef_pred["seriesNumber"] == series_number:
+                        lvef_value = lvef_pred["value"]
+                        break
+
+                vessels_data.append((f"Series {series_number}", vessel_name, lvef_value))
 
         # Generate the HTML report
         try:
-            # Generate the report
             html_report = generate_vessel_report(
-                vessels=vessels_data,
-                patient_age=patient_age,
-                display=False  # Don't display in browser, just return the base64
+                vessels=vessels_data, patient_age=patient_age, display=False
             )
             return {"htmlBase64": html_report}
-            
+
         except Exception as e:
             print(f"Error generating vessel report: {str(e)}")
-            return {
-                "error": "Failed to generate vessel report",
-                "details": str(e)
-            }
+            return {"error": "Failed to generate vessel report", "details": str(e)}
 
     async def _handle_json_output(self, request: PredictRequest):
         # Get the age from the first instance metdata from the first series
-        X3D_1_input = self._X3D_1_preprocessing(request.seriesInstanceMetadata)
-        X3D_1_outputs = self.inference(X3D_1_input, 'X3D_1')
-        
-        # Process vessels and collect predictions
-        vessel_predictions = []
-        toDelete = []
-        
-        for i, output in enumerate(X3D_1_outputs):
-            prediction = output.numpy().argmax()
-            vessel_name = self._get_vessel_name(prediction)
-            
-            # Get the series number for this prediction
-            seriesNumber = list(request.seriesInstanceMetadata.keys())[i]
-            
-            vessel_predictions.append({
-                "seriesNumber": seriesNumber,
-                "vessel": vessel_name
-            })
-            
-            if prediction != 5:  # Not Left Coronary
-                toDelete.append(seriesNumber)
+        dicoms = self._get_dicoms_from_payload(request)
+        vessel_predictions, lvef_predictions, left_coronary_dicoms = (
+            self._process_vessels_and_lvef(dicoms)
+        )
 
-        for element in toDelete:
-            del request.seriesInstanceMetadata[element]
+        # Format vessel predictions for JSON response
+        formatted_vessel_predictions = [
+            {"seriesNumber": vessel_pred["seriesNumber"], "vessel": vessel_pred["vessel"]}
+            for vessel_pred in vessel_predictions
+        ]
+
+        # Generate LVEF-based recommendations
+        lvef_recommendations = self._generate_lvef_recommendation(lvef_predictions)
 
         response = {
             "predictions": {
-                "vessels": vessel_predictions,
+                "vessels": formatted_vessel_predictions,
             },
             "modelRecommendations": {
-                "en": "Recommendation for the next model",
-                "fr": "Recommandation pour le prochain modèle",
-                "presentable": len(request.seriesInstanceMetadata) > 0
-            }
+                "en": lvef_recommendations["en"],
+                "fr": lvef_recommendations["fr"],
+                "presentable": len(left_coronary_dicoms) > 0,
+            },
         }
 
-        # Only perform X3D_2 inference if there are Left Coronary predictions
-        if len(request.seriesInstanceMetadata) > 0:
-            X3D_2_input = self._X3D_2_preprocessing(request.seriesInstanceMetadata)
-            X3D_2_outputs = self.inference(X3D_2_input, 'X3D_2')
-            
-            # Process X3D_2 outputs
-            lvef_predictions = []
-            for idx, output in enumerate(X3D_2_outputs):
-                lvef_value = float(output.numpy())
-                seriesNumber = list(request.seriesInstanceMetadata.keys())[idx]
-                
-                lvef_predictions.append({
-                    "seriesNumber": seriesNumber,
-                    "value": lvef_value
-                })
-                
-            response["predictions"]["LVEF"] = {
-                "presentable": True,
-                "values": lvef_predictions
-            }
+        # Add LVEF predictions if any
+        if lvef_predictions:
+            response["predictions"]["LVEF"] = {"presentable": True, "values": lvef_predictions}
 
         return response
