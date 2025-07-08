@@ -32,7 +32,7 @@ def collect_dicom_files(paths: list[str]) -> list[str]:
         elif path_obj.is_dir():
             for file_path in path_obj.rglob("*"):
                 if file_path.is_file() and file_path.suffix.lower() in [".dcm", ".dicom"]:
-                    dicom_files.extend(str(file_path))
+                    dicom_files.append(str(file_path))
     return dicom_files
 
 
@@ -171,7 +171,7 @@ def send_dicom_data(
 
     # Send POST request
     try:
-        response = requests.post(server_url, json=payload, timeout=10)
+        response = requests.post(server_url, json=payload, timeout=500)
         response.raise_for_status()
         print(f"Request sent successfully. Status code: {response.status_code}")
         return response.json()
@@ -185,14 +185,14 @@ def main():
 
     parser.add_argument(
         "dicom_paths",
-        default=["sample_data/XA_1.dcm", "sample_data/XA_2.dcm"],
+        default=["/home/pacs-ai/pacs-ai-backend/model-template/sample_data/US_Study"],
         nargs="*",
         help="Path(s) to DICOM file(s) or directories containing DICOM files.",
     )
 
     parser.add_argument(
         "--url",
-        default="http://localhost:8000/inference/predict",
+        default="http://localhost:8001/inference/predict",
         help="Server URL (default: http://localhost:8001/inference/predict)",
     )
 
@@ -205,14 +205,14 @@ def main():
 
     parser.add_argument(
         "--metadata-only",
-        default=False,
+        default=True,
         action="store_true",
         help="Send only DICOM metadata without separate pixel data",
     )
 
     parser.add_argument(
         "--group-series",
-        default=False,
+        default=True,
         action="store_true",
         help="Treat all DICOM files as part of the same series",
     )

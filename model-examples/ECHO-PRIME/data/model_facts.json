@@ -4,7 +4,7 @@
           "Name": "EchoPrime",
           "Description": "EchoPrime is a multi-view, view-informed, video-based vision-language foundation model for comprehensive echocardiogram interpretation",
           "Developed_by": "Milos Vukadinovic, Xiu Tang, Neal Yuan, Paul Cheng, Debiao Li, Susan Cheng, Bryan He, David Ouyang",
-          "Version": "1.0.0"
+          "Version": "1.2.0"
       },
       "Mechanism": {
           "Outcome": "Comprehensive echocardiogram interpretation",

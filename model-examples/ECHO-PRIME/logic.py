@@ -109,7 +109,8 @@ class CustomPredictionService(BasePredictionService):
 
         return view_classifier
 
-    async def _handle_html_output(self, request: PredictRequest):
+    async def _process_study(self, request: PredictRequest):
+        """Common processing logic for both HTML and JSON output."""
         # Process DICOM files
         stack_of_videos = self.EchoPrimeInference.process_series_instance_metadata(
             request.seriesInstanceMetadata
@@ -129,13 +130,36 @@ class CustomPredictionService(BasePredictionService):
         report = self.EchoPrimeInference.generate_report(encoded_study)
         metrics = self.EchoPrimeInference.predict_metrics(encoded_study)
 
-        # Generate HTML report
-        html_report = generate_html_report(report, metrics, self.roc_thresholds_path)
-
         # Clean up GPU memory
         if torch.cuda.is_available():
             del stack_of_videos
             del encoded_study
             torch.cuda.empty_cache()
 
+        return report, metrics
+
+    async def _handle_html_output(self, request: PredictRequest):
+        result = await self._process_study(request)
+        if result is None:
+            return None
+        
+        report, metrics = result
+        # Generate HTML report
+        html_report = generate_html_report(report, metrics, self.roc_thresholds_path)
         return {"htmlBase64": html_report}
+
+    async def _handle_json_output(self, request: PredictRequest):
+        result = await self._process_study(request)
+        if result is None:
+            return None
+        
+        report, metrics = result
+        return {
+            "diagnosis": report,
+            "predictions": metrics,
+            "modelRecommendations": {
+                "en": None,
+                "fr": None,
+                "presentable": True
+            }
+        }
