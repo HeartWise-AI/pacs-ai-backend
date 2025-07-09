@@ -1,132 +1,77 @@
 #!/usr/bin/env python3
 """
-Test script for the Clinical Web Search Tool
+Test script for the Orchestrator API websearch tool.
+This script demonstrates sending a message to the agent and getting the response.
 """
 
-import os
-import sys
-from pathlib import Path
+import argparse
+import json
 
-# Add the project root to the Python path
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
+import requests
 
-from components.tools.clinical_websearch import ClinicalWebSearchTool
+# Base URL for API requests
+BASE_URL = "http://localhost:8585"
 
 
-def test_basic_functionality():
-    """Test basic tool functionality without API key (uses mock)."""
-    print("🔬 Testing Clinical Web Search Tool")
-    print("=" * 50)
-    
-    # Create the tool
-    tool = ClinicalWebSearchTool()
-    
-    print(f"Tool Name: {tool.name}")
-    print(f"Tool Description: {tool.description[:100]}...")
-    print()
-    
-    # Test with a clinical query
-    test_query = "hypertension treatment guidelines"
-    print(f"🔍 Testing search for: '{test_query}'")
-    print("-" * 30)
-    
-    # Run the search (should use mock results since no API key)
-    result = tool._run(query=test_query, max_results=3, source_filter="guidelines")
-    
-    print(f"Status: {result['status']}")
-    print(f"Query: {result['query']}")
-    print(f"Enhanced Query: {result.get('enhanced_query', 'N/A')}")
-    print(f"Results Count: {result['results_count']}")
-    print()
-    
-    # Display results
-    if result['results']:
-        print("📋 Search Results:")
-        for i, res in enumerate(result['results'], 1):
-            print(f"\n{i}. {res['title']}")
-            print(f"   URL: {res['url']}")
-            print(f"   Source: {res['source']} ({res['source_type']})")
-            print(f"   Medical Source: {res['is_medical_source']}")
-            print(f"   Relevance Score: {res['relevance_score']:.1f}")
-            print(f"   Snippet: {res['snippet'][:100]}...")
-    
-    print("\n" + "=" * 50)
-    print("✅ Basic functionality test completed")
+def print_response(response, label=None):
+    """Print a formatted API response"""
+    if label:
+        print(f"\n===== {label} =====")
+
+    status_code = response.status_code
+    print(f"Status Code: {status_code}")
+
+    try:
+        json_data = response.json()
+        print(json.dumps(json_data, indent=2))
+    except:
+        print("Response content:", response.text)
 
 
-def test_different_filters():
-    """Test different source filters."""
-    print("\n🔍 Testing Different Source Filters")
-    print("=" * 50)
+def create_new_thread():
+    """Create a new thread and return the thread ID"""
+    print("\n1. Creating a new thread...")
     
-    tool = ClinicalWebSearchTool()
-    test_query = "diabetes management"
-    
-    filters = ["medical", "guidelines", "research"]
-    
-    for filter_type in filters:
-        print(f"\n📊 Testing filter: {filter_type}")
-        print("-" * 20)
-        
-        result = tool._run(query=test_query, max_results=2, source_filter=filter_type)
-        
-        print(f"Enhanced Query: {result.get('enhanced_query', 'N/A')}")
-        print(f"Results: {result.get('results_count', 0)}")
-        
-        if result.get('results'):
-            for res in result['results']:
-                print(f"  - {res['title'][:50]}... (Score: {res['relevance_score']:.1f})")
+    response = requests.post(f"{BASE_URL}/new_thread", timeout=10)
+    print_response(response, "New Thread Response")
+
+    if response.status_code == 200:
+        thread_id = response.json().get("thread_id")
+        print(f"Thread ID: {thread_id}")
+        return thread_id
+    raise Exception(f"Failed to create thread: {response.status_code}")
 
 
-def test_error_handling():
-    """Test error handling scenarios."""
-    print("\n⚠️  Testing Error Handling")
-    print("=" * 50)
+def send_message(thread_id, message_text,):
+    """Send a message to the agent and get the response"""
+    print(f"\n1. Sending message: '{message_text}'...")
     
-    tool = ClinicalWebSearchTool()
-    
-    # Test with empty query
-    result = tool._run(query="", max_results=3)
-    print(f"Empty query result: {result['status']}")
-    
-    # Test with very long query
-    long_query = "clinical guidelines for the management of patients with " * 10
-    result = tool._run(query=long_query, max_results=3)
-    print(f"Long query result: {result['status']}")
-    
-    print("✅ Error handling test completed")
+    message_data = {"message": message_text}
+    response = requests.post(f"{BASE_URL}/chat/{thread_id}", json=message_data, timeout=60)
+    print_response(response, "Chat Response")
+
+    return response.json() if response.status_code == 200 else None
 
 
 def main():
-    """Run all tests."""
-    print("🧪 Clinical Web Search Tool Test Suite")
-    print("=" * 60)
-    
-    # Set up test environment (no API key for mock testing)
-    os.environ.pop("SEARCH_API_KEY", None)  # Remove API key to test mock functionality
-    
-    try:
-        test_basic_functionality()
-        test_different_filters()
-        test_error_handling()
-        
-        print("\n" + "=" * 60)
-        print("🎉 All tests completed successfully!")
-        print("\n📝 Next steps:")
-        print("   1. Set SEARCH_API_KEY environment variable for real searches")
-        print("   2. Choose SEARCH_ENGINE: 'serper' (default) or 'google'")
-        print("   3. For Google: also set GOOGLE_CSE_ID environment variable")
-        print("   4. Test with real API to verify functionality")
-        
-    except Exception as e:
-        print(f"\n❌ Test failed with error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return 1
-    
-    return 0
+    parser = argparse.ArgumentParser(
+        description="Test the Orchestrator API websearch tool"
+    )
+    parser.add_argument(
+        "--message",
+        help="Message to send to the agent",
+        default="What are the clinical guidelines for a LVEF of 35%?",
+    )
+    args = parser.parse_args()
+
+    thread_id = create_new_thread()
+    send_message(thread_id, args.message)
+
+    print("\n✅ API test completed successfully!")
+    print(f"\n📋 Usage example:")
+    print(f"python test_websearch_tool.py --message 'What are the clinical guidelines for a LVEF of 35%?'")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
+    # python test_websearch_tool.py

@@ -1,11 +1,18 @@
 from typing import Any
 from urllib.parse import urlparse
 
-from langchain_community.tools import DuckDuckGoSearchResults
 from langchain_core.callbacks import AsyncCallbackManagerForToolRun, CallbackManagerForToolRun
 from langchain_core.tools import BaseTool
 from logger import logger
 from pydantic import BaseModel, Field
+
+# Import Tavily Search instead of DuckDuckGo
+try:
+    from langchain_tavily import TavilySearch
+    TAVILY_AVAILABLE = True
+except ImportError:
+    TAVILY_AVAILABLE = False
+    logger.warning("langchain_tavily not available. Install with: pip install langchain-tavily")
 
 
 class ClinicalSearchInput(BaseModel):
@@ -26,7 +33,7 @@ class ClinicalSearchInput(BaseModel):
 
 
 class ClinicalWebSearchTool(BaseTool):
-    """Tool for searching clinical guidelines and medical information using DuckDuckGo with medical domain filtering."""
+    """Tool for searching clinical guidelines and medical information using Tavily Search with medical domain filtering."""
 
     name: str = "clinical_websearch_tool"
     description: str = (
@@ -42,8 +49,17 @@ class ClinicalWebSearchTool(BaseTool):
         """Initialize the ClinicalWebSearchTool."""
         super().__init__(**kwargs)
 
-        # Initialize DuckDuckGo search tool with structured output
-        self._ddg_search = DuckDuckGoSearchResults(output_format="list")
+        if not TAVILY_AVAILABLE:
+            raise ImportError("langchain_tavily is required for clinical web search. Install with: pip install langchain-tavily")
+
+        # Initialize Tavily search tool
+        self._tavily_search = TavilySearch(
+            max_results=10,  # We'll filter these down later
+            include_answer=False,
+            include_raw_content=False,
+            include_images=False,
+            search_depth="advanced",  # Use advanced search for better results
+        )
 
         # Define trusted medical domains for filtering and scoring
         self._medical_domains = {
@@ -105,7 +121,7 @@ class ClinicalWebSearchTool(BaseTool):
         **kwargs,
     ) -> dict[str, Any]:
         """
-        Execute the clinical web search using DuckDuckGo with medical filtering.
+        Execute the clinical web search using Tavily Search with medical filtering.
 
         Args:
             query (str): The search query
@@ -132,14 +148,24 @@ class ClinicalWebSearchTool(BaseTool):
             # Enhance query with medical terms for better relevance
             enhanced_query = self._enhance_medical_query(query, source_filter)
 
-            # Perform the DuckDuckGo search
-            structured_results = self._perform_ddg_search(enhanced_query)
+            # Perform the Tavily search
+            structured_results = self._perform_tavily_search(enhanced_query)
 
             if not structured_results:
-                return self._create_error_response("No search results found")
+                return self._create_error_response(
+                    f"No search results found for query: '{query}'. "
+                    f"Try using different keywords or a more general search term."
+                )
 
             # Filter and score results based on medical relevance
             filtered_results = self._filter_and_score_results(structured_results, source_filter)
+
+            # Check if any results remain after filtering
+            if not filtered_results:
+                return self._create_error_response(
+                    f"No relevant medical results found for query: '{query}' with source filter '{source_filter}'. "
+                    f"Try using 'all' as the source filter or different search terms."
+                )
 
             # Limit results to requested maximum
             final_results = filtered_results[:max_results]
@@ -154,7 +180,7 @@ class ClinicalWebSearchTool(BaseTool):
                     "tool_name": self.name,
                     "search_type": "clinical_web_search",
                     "source_filter": source_filter,
-                    "search_engine": "duckduckgo",
+                    "search_engine": "tavily",
                     "timestamp": self._get_timestamp(),
                 },
             }
@@ -166,13 +192,12 @@ class ClinicalWebSearchTool(BaseTool):
     def _enhance_medical_query(self, query: str, source_filter: str) -> str:
         """Enhance the search query with medical-specific terms and site restrictions."""
         medical_terms = []
-        site_searches = []
+        include_domains = []
 
         if source_filter == "guidelines":
             medical_terms = ["clinical guidelines", "practice guidelines", "treatment protocol"]
             # Target guideline-specific sites
-            priority_sites = ["www.nice.org.uk", "guidelines.gov", "www.cochrane.org"]
-            site_searches = [f"site:{site}" for site in priority_sites[:2]]
+            include_domains = ["www.nice.org.uk", "guidelines.gov", "www.cochrane.org"]
         elif source_filter == "research":
             medical_terms = [
                 "systematic review",
@@ -181,8 +206,7 @@ class ClinicalWebSearchTool(BaseTool):
                 "evidence-based",
             ]
             # Target research databases
-            priority_sites = ["pubmed.ncbi.nlm.nih.gov", "www.cochrane.org"]
-            site_searches = [f"site:{site}" for site in priority_sites]
+            include_domains = ["pubmed.ncbi.nlm.nih.gov", "www.cochrane.org"]
         elif source_filter == "medical":
             medical_terms = [
                 "clinical",
@@ -192,73 +216,61 @@ class ClinicalWebSearchTool(BaseTool):
                 "evidence-based medicine",
             ]
             # Target high-authority medical sites
-            priority_sites = ["pubmed.ncbi.nlm.nih.gov", "www.uptodate.com", "www.mayoclinic.org"]
-            site_searches = [f"site:{site}" for site in priority_sites[:2]]
+            include_domains = ["pubmed.ncbi.nlm.nih.gov", "www.uptodate.com", "www.mayoclinic.org"]
 
-        # Build enhanced query
+        # Build enhanced query with medical context
         enhanced_parts = [query]
-
-        # Add medical terms with OR logic
+        
+        # Add medical terms for context
         if medical_terms:
             enhanced_parts.append(f"({' OR '.join(medical_terms)})")
 
-        # Add site searches with OR logic
-        if site_searches:
-            enhanced_parts.append(f"({' OR '.join(site_searches)})")
+        # Update search tool with domain filtering for this query
+        if include_domains and hasattr(self._tavily_search, 'include_domains'):
+            self._tavily_search.include_domains = include_domains
 
         return " ".join(enhanced_parts)
 
-    def _perform_ddg_search(self, query: str) -> list[dict[str, Any]]:
-        """Perform DuckDuckGo search and return structured results."""
-        logger.info(f"Performing DuckDuckGo search for: {query}")
-
+    def _perform_tavily_search(self, query: str) -> list[dict[str, Any]]:
+        """Perform Tavily search and return structured results."""
+        logger.info(f"Performing Tavily search for: {query}")
+        
         try:
-            # Use DuckDuckGo search tool - returns list of dicts
-            results = self._ddg_search.run(query)
+            # Use Tavily search tool
+            response = self._tavily_search.invoke({"query": query})
+            
+            # Tavily returns a dict with 'results' key containing the actual results
+            if not response or not isinstance(response, dict):
+                logger.warning(f"Tavily search returned invalid response format for query: {query}")
+                return []
+            
+            results = response.get('results', [])
+            
+            # Check if we got valid results
+            if not results or not isinstance(results, list):
+                logger.warning(f"Tavily search returned no results for query: {query}")
+                return []
+            
             # Convert to our expected format with source domain extraction
             structured_results = []
             for result in results:
-                structured_results.append({
-                    "title": result.get("title", ""),
-                    "url": result.get("link", ""),
-                    "source": self._extract_domain(result.get("link", "")),
-                    "snippet": result.get("snippet", "")
-                })
+                if isinstance(result, dict):
+                    structured_results.append({
+                        "title": result.get("title", ""),
+                        "url": result.get("url", ""),
+                        "source": self._extract_domain(result.get("url", "")),
+                        "snippet": result.get("content", "")
+                    })
+                else:
+                    logger.warning(f"Unexpected result format: {type(result)}")
+            
+            logger.info(f"Successfully retrieved {len(structured_results)} search results")
             return structured_results
+            
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"DuckDuckGo search failed: {error_msg}")
-
-            # If rate limited or other API error, return fallback mock results
-            if "ratelimit" in error_msg.lower() or "202" in error_msg:
-                logger.info("Using fallback results due to rate limiting")
-                return self._get_fallback_results(query)
-
-            raise
-
-    def _get_fallback_results(self, query: str) -> list[dict[str, Any]]:
-        """Get fallback mock results when real search fails."""
-        return [
-            {
-                "title": f"Clinical Guidelines for {query}",
-                "url": "https://www.uptodate.com/contents/clinical-guidelines",
-                "source": "www.uptodate.com",
-                "snippet": f"Evidence-based clinical guidelines and recommendations for {query} management and treatment protocols."
-            },
-            {
-                "title": f"PubMed Research on {query}",
-                "url": "https://pubmed.ncbi.nlm.nih.gov/search",
-                "source": "pubmed.ncbi.nlm.nih.gov", 
-                "snippet": f"Recent research and systematic reviews related to {query} from peer-reviewed medical literature."
-            },
-            {
-                "title": f"WHO Guidelines: {query}",
-                "url": "https://www.who.int/publications/guidelines",
-                "source": "www.who.int",
-                "snippet": f"World Health Organization guidelines and recommendations for {query} prevention and treatment."
-            }
-        ]
-
+            logger.error(f"Tavily search failed: {error_msg}")
+            raise RuntimeError(f"Web search failed: {error_msg}")
 
     def _filter_and_score_results(
         self, results: list[dict[str, Any]], source_filter: str
@@ -407,7 +419,7 @@ class ClinicalWebSearchTool(BaseTool):
             "metadata": {
                 "tool_name": self.name,
                 "search_type": "clinical_web_search",
-                "search_engine": "duckduckgo",
+                "search_engine": "tavily",
                 "error": error_message,
                 "timestamp": self._get_timestamp(),
             },
