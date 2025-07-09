@@ -6,6 +6,7 @@ langgraph==0.4.5
 docker==7.1.0
 langchain-ollama==0.3.3
 langchain-openai==0.3.17
+langchain-tavily==0.2.7
 langchain-community==0.3.26
 duckduckgo-search==8.0.4
 openai==1.79.0
