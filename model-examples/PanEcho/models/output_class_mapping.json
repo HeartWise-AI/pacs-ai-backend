@@ -1,0 +1,211 @@
+{
+    "pericardial-effusion": {
+        "absent": 0,
+        "mild_mod_severe": 1,
+        "description": "Pericardial effusion"
+    },
+    "EF": {
+        "regression": 0,
+        "units": "percentage",
+        "description": "Left ventricular (LV) ejection fraction"
+    },
+    "GLS": {
+        "regression": 0,
+        "units": "percentage", 
+        "description": "Global longitudinal strain. Actual value is -1 times the model output"
+    },
+    "LVEDV": {
+        "regression": 0,
+        "units": "cm^3",
+        "description": "LV end-diastolic volume"
+    },
+    "LVESV": {
+        "regression": 0,
+        "units": "cm^3",
+        "description": "LV end-systolic volume"
+    },
+    "LVSV": {
+        "regression": 0,
+        "units": "cm^3",
+        "description": "LV stroke volume"
+    },
+    "LVSize": {
+        "Normal": 0,
+        "Mildly Increased": 1,
+        "Moderately|Severely Increased": 2,
+        "description": "LV size"
+    },
+    "LVWallThickness-increased-any": {
+        "normal": 0,
+        "Increased": 1,
+        "description": "Any level of LV hypertrophy (increased wall thickness)"
+    },
+    "LVWallThickness-increased-modsev": {
+        "normal": 0,
+        "Moderately|severely increased": 1,
+        "description": "Moderate or greater LV hypertrophy (increased wall thickness)"
+    },
+    "LVSystolicFunction": {
+        "Normal|Hyperdynamic": 0,
+        "Mildly Decreased": 1,
+        "Moderately|Severely Decreased": 2,
+        "description": "LV systolic function"
+    },
+    "LVWallMotionAbnormalities": {
+        "None": 0,
+        "Present": 1,
+        "description": "LV wall motion abnormalities"
+    },
+    "IVSd": {
+        "regression": 0,
+        "units": "cm",
+        "description": "LV intraventricular septum thickness at diastole"
+    },
+    "LVPWd": {
+        "regression": 0,
+        "units": "cm",
+        "description": "LV posterior wall thickness at diastole"
+    },
+    "LVIDs": {
+        "regression": 0,
+        "units": "cm",
+        "description": "LV internal diameter at systole"
+    },
+    "LVIDd": {
+        "regression": 0,
+        "units": "cm",
+        "description": "LV internal diameter at diastole"
+    },
+    "LVOTDiam": {
+        "regression": 0,
+        "units": "cm",
+        "description": "LV outflow tract diameter"
+    },
+    "LVDiastolicFunction": {
+        "Normal": 0,
+        "Mild|Indeterminate": 1,
+        "Moderate|Severe": 2,
+        "description": "LV diastolic function"
+    },
+    "E|EAvg": {
+        "regression": 0,
+        "units": "ratio",
+        "description": "E/e' ratio"
+    },
+    "RVSP": {
+        "regression": 0,
+        "units": "mmHg",
+        "description": "Right ventricular (RV) systolic pressure"
+    },
+    "RVSize": {
+        "Normal": 0,
+        "Mildly Increased": 1,
+        "Moderately|Severely Increased": 2,
+        "description": "RV size"
+    },
+    "RVSystolicFunction": {
+        "normal": 0,
+        "Decreased": 1,
+        "description": "RV systolic function"
+    },
+    "RVIDd": {
+        "regression": 0,
+        "units": "cm",
+        "description": "RV internal diameter at diastole"
+    },
+    "TAPSE": {
+        "regression": 0,
+        "units": "cm",
+        "description": "Tricuspid annular plane systolic excursion"
+    },
+    "RVSVel": {
+        "regression": 0,
+        "units": "cm/s",
+        "description": "RV systolic excursion velocity (RV S')"
+    },
+    "LASize": {
+        "Normal": 0,
+        "Mildly Dilated": 1,
+        "Moderately|Severely Dilated": 2,
+        "description": "Left atrial (LA) size"
+    },
+    "LAIDs2D": {
+        "regression": 0,
+        "units": "cm",
+        "description": "LA internal diameter at systole"
+    },
+    "LAVol": {
+        "regression": 0,
+        "units": "cm^3",
+        "description": "LA volume"
+    },
+    "RASize": {
+        "normal": 0,
+        "Dilated": 1,
+        "description": "Right atrial (RA) size"
+    },
+    "RADimensionM-L(cm)": {
+        "regression": 0,
+        "units": "cm",
+        "description": "RA major dimension"
+    },
+    "AVStructure": {
+        "normal": 0,
+        "Bicuspid": 1,
+        "description": "Bicuspid aortic valve"
+    },
+    "AVStenosis": {
+        "None": 0,
+        "Mild|Moderate": 1,
+        "Severe": 2,
+        "description": "Aortic valve stenosis"
+    },
+    "AVPkVel(m|s)": {
+        "regression": 0,
+        "units": "m/s",
+        "description": "Aortic valve peak velocity"
+    },
+    "AVRegurg": {
+        "None|Trace": 0,
+        "Mild": 1,
+        "Moderate|Severe": 2,
+        "description": "Aortic valve regurgitation"
+    },
+    "LVOT20mmHg": {
+        "absent": 0,
+        "Present": 1,
+        "description": "Elevated LV outflow tract pressure"
+    },
+    "MVStenosis": {
+        "normal": 0,
+        "Mild|Moderate|Severe": 1,
+        "description": "Mitral valve stenosis"
+    },
+    "MVRegurgitation": {
+        "None|Trace": 0,
+        "Mild": 1,
+        "Moderate|Severe": 2,
+        "description": "Mitral valve regurgitation"
+    },
+    "TVRegurgitation": {
+        "None|Trace": 0,
+        "Mild": 1,
+        "Moderate|Severe": 2,
+        "description": "Tricuspid valve regurgitation"
+    },
+    "TVPkGrad": {
+        "regression": 0,
+        "units": "mmHg",
+        "description": "Tricuspid valve peak gradient"
+    },
+    "RAP-8-or-higher": {
+        "absent": 0,
+        "Present": 1,
+        "description": "Elevated RA pressure"
+    },
+    "AORoot": {
+        "regression": 0,
+        "units": "cm",
+        "description": "Transverse aortic root diameter"
+    }
+}
