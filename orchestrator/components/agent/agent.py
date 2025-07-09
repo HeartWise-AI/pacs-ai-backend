@@ -15,7 +15,7 @@ from logger import logger, sanitize_for_logging
 _ = load_dotenv()
 
 # Token counting and context management
-MAX_CONTEXT_TOKENS = 32_000  # Conservative limit for most models
+MAX_CONTEXT_TOKENS = 64_000  # Conservative limit for most models
 SYSTEM_PROMPT_RESERVE = 500  # Reserve tokens for system prompt
 RESPONSE_BUFFER = 1_000  # Reserve tokens for response generation
 
