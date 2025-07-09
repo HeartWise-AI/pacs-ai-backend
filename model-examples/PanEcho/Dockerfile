@@ -27,7 +27,7 @@ COPY nginx.conf /etc/nginx/nginx.conf
 COPY supervisord.conf /etc/supervisord.conf
 
 # Expose port 80
-EXPOSE 8001
+EXPOSE 80
 
 # Override default entrypoint from tensorflow/serving
 ENTRYPOINT []

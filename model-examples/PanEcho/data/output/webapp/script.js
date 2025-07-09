@@ -5,8 +5,8 @@ window.addEventListener("message", (event) => {
 });
 
 function renderTable(data) {
+  const populationTable = document.getElementById("populationTable");
   try {
-    const populationTable = document.getElementById("populationTable");
     const parsedData = JSON.parse(atob(data));
     console.log("parsedData: ", parsedData);
     // Check if data is empty or invalid
@@ -38,7 +38,7 @@ function renderTable(data) {
     });
 
     tableHTML += `</tbody></table>`;
-    document.getElementById("populationTable").innerHTML = tableHTML;
+    populationTable.innerHTML = tableHTML;
   } catch (error) {
     populationTable.innerHTML = `<p>Invalid or corrupted data</p>`;
   }

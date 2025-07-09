@@ -163,12 +163,17 @@ class BasePredictionService:
             print(f"Error during inference: {str(e)}")
             raise
 
-    def _handle_unsupported_output(self):
+    def _handle_unsupported_output(self, output_mode: str, supported_modes: List[str]):
         return HTTPResponse(
             status=400,
             success=False,
-            message="Unsupported output mode",
-            error_code="UNSUPPORTED_OUTPUT_MODE"
+            message=f"Unsupported output mode '{output_mode}'",
+            error_code="UNSUPPORTED_OUTPUT_MODE",
+            data={
+                "requestedMode": output_mode,
+                "supportedModes": supported_modes,
+                "modelInfo": self.__class__.get_model_info()
+            }
         ).to_response()
     
     def _handle_uninitialized_models(self):
