@@ -1,0 +1,11 @@
+{
+  "modelName": "PanEcho",
+  "version": "1.0.0",
+  "dicomTargetLevel": "SERIES",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 5,
+  "supportedDicomModalities": ["US"],
+  "supportedDicomTags": ["*"],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": ["HTML", "JSON"]
+}
