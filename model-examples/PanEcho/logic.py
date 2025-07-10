@@ -141,7 +141,7 @@ class CustomPredictionService(BasePredictionService):
 
         return diagnoses, serializable_predictions
 
-    def _get_recommendations(self, predictions: Dict[str, Union[float, torch.Tensor]], language: str) -> str:
+    def _get_recommendations(self, diagnosis_dict: Dict[str, str], language: str) -> str:
         """Generate clinical recommendations based on echocardiographic findings.
         
         Args:
@@ -151,89 +151,95 @@ class CustomPredictionService(BasePredictionService):
         Returns:
             Clinical recommendation string
         """
-        
-        # Get diagnosis dictionary from postprocess_predictions
-        diagnosis_dict, _ = self.postprocess_predictions(predictions)
-        
+                
         # Analyze key findings
         findings = []
         urgent_findings = []
         
         # Check LV function and size
-        if "LVSystolicFunction" in diagnosis_dict:
-            lv_function = diagnosis_dict["LVSystolicFunction"]
+        if "LV systolic function" in diagnosis_dict:
+            lv_function = diagnosis_dict["LV systolic function"]
             if "Moderately" in lv_function or "Severely" in lv_function:
                 if "Decreased" in lv_function:
                     urgent_findings.append("LV systolic dysfunction")
         
-        if "LVSize" in diagnosis_dict:
-            lv_size = diagnosis_dict["LVSize"]
+        if "LV size" in diagnosis_dict:
+            lv_size = diagnosis_dict["LV size"]
             if "Moderately" in lv_size or "Severely" in lv_size:
                 if "Increased" in lv_size:
                     findings.append("LV enlargement")
         
         # Check diastolic function
-        if "LVDiastolicFunction" in diagnosis_dict:
-            diastolic = diagnosis_dict["LVDiastolicFunction"]
+        if "LV diastolic function" in diagnosis_dict:
+            diastolic = diagnosis_dict["LV diastolic function"]
             if "Moderate" in diastolic or "Severe" in diastolic:
                 findings.append("LV diastolic dysfunction")
         
         # Check RV
-        if "RVSize" in diagnosis_dict:
-            rv_size = diagnosis_dict["RVSize"]
+        if "RV size" in diagnosis_dict:
+            rv_size = diagnosis_dict["RV size"]
             if "Moderately" in rv_size or "Severely" in rv_size:
                 if "Increased" in rv_size:
                     findings.append("RV enlargement")
         
         # Check LA
-        if "LASize" in diagnosis_dict:
-            la_size = diagnosis_dict["LASize"]
+        if "Left atrial (LA) size" in diagnosis_dict:
+            la_size = diagnosis_dict["Left atrial (LA) size"]
             if "Moderately" in la_size or "Severely" in la_size:
                 if "Dilated" in la_size:
                     findings.append("LA enlargement")
         
         # Check valve diseases
         valve_issues = []
-        if "AVStenosis" in diagnosis_dict:
-            av_stenosis = diagnosis_dict["AVStenosis"]
+        if "Aortic valve stenosis" in diagnosis_dict:
+            av_stenosis = diagnosis_dict["Aortic valve stenosis"]
             if "Mild" in av_stenosis or "Moderate" in av_stenosis or "Severe" in av_stenosis:
                 valve_issues.append("aortic stenosis")
         
-        if "AVRegurg" in diagnosis_dict:
-            av_regurg = diagnosis_dict["AVRegurg"]
+        if "Aortic valve regurgitation" in diagnosis_dict:
+            av_regurg = diagnosis_dict["Aortic valve regurgitation"]
             if "Moderate" in av_regurg or "Severe" in av_regurg:
                 valve_issues.append("aortic regurgitation")
         
-        if "MVRegurgitation" in diagnosis_dict:
-            mv_regurg = diagnosis_dict["MVRegurgitation"]
+        if "Mitral valve regurgitation" in diagnosis_dict:
+            mv_regurg = diagnosis_dict["Mitral valve regurgitation"]
             if "Moderate" in mv_regurg or "Severe" in mv_regurg:
                 valve_issues.append("mitral regurgitation")
         
-        if "TVRegurgitation" in diagnosis_dict:
-            tv_regurg = diagnosis_dict["TVRegurgitation"]
+        if "Tricuspid valve regurgitation" in diagnosis_dict:
+            tv_regurg = diagnosis_dict["Tricuspid valve regurgitation"]
             if "Moderate" in tv_regurg or "Severe" in tv_regurg:
                 valve_issues.append("tricuspid regurgitation")
-        
+                
         # Generate recommendations
         if language == "fr":
             if urgent_findings:
                 recommendation = "URGENT: Dysfonction systolique du ventricule gauche détectée. "
                 recommendation += "Consultation cardiologique immédiate recommandée. "
-            else:
-                recommendation = "Anomalies échocardiographiques détectées. "
-            
-            if findings:
-                findings_text = ", ".join(findings)
-                recommendation += f"Principales anomalies: {findings_text}. "
-            
-            if valve_issues:
-                valve_text = ", ".join(valve_issues)
-                recommendation += f"Valvulopathies: {valve_text}. "
-            
-            if urgent_findings:
+                
+                if findings:
+                    findings_text = ", ".join(findings)
+                    recommendation += f"Principales anomalies: {findings_text}. "
+                
+                if valve_issues:
+                    valve_text = ", ".join(valve_issues)
+                    recommendation += f"Valvulopathies: {valve_text}. "
+                
                 recommendation += "Recommandations: 1) Consultation cardiologique en urgence, 2) Évaluation de la fonction cardiaque et traitement médical optimal, 3) Surveillance rapprochée."
+            
             elif findings or valve_issues:
+                recommendation = "Anomalies échocardiographiques détectées. "
+                
+                if findings:
+                    findings_text = ", ".join(findings)
+                    recommendation += f"Principales anomalies: {findings_text}. "
+                
+                if valve_issues:
+                    valve_text = ", ".join(valve_issues)
+                    recommendation += f"Valvulopathies: {valve_text}. "
+                
                 recommendation += "Recommandations: 1) Consultation cardiologique dans les 2-4 semaines, 2) Évaluation complète de la fonction cardiaque, 3) Optimisation du traitement médical si indiqué."
+            
             else:
                 recommendation = "Échocardiographie normale. Surveillance clinique de routine selon les protocoles établis."
         
@@ -241,21 +247,30 @@ class CustomPredictionService(BasePredictionService):
             if urgent_findings:
                 recommendation = "URGENT: Left ventricular systolic dysfunction detected. "
                 recommendation += "Immediate cardiology consultation recommended. "
-            else:
-                recommendation = "Echocardiographic abnormalities detected. "
-            
-            if findings:
-                findings_text = ", ".join(findings)
-                recommendation += f"Key findings: {findings_text}. "
-            
-            if valve_issues:
-                valve_text = ", ".join(valve_issues)
-                recommendation += f"Valve abnormalities: {valve_text}. "
-            
-            if urgent_findings:
+                
+                if findings:
+                    findings_text = ", ".join(findings)
+                    recommendation += f"Key findings: {findings_text}. "
+                
+                if valve_issues:
+                    valve_text = ", ".join(valve_issues)
+                    recommendation += f"Valve abnormalities: {valve_text}. "
+                
                 recommendation += "Recommendations: 1) Urgent cardiology consultation, 2) Comprehensive cardiac function assessment and optimal medical therapy, 3) Close monitoring."
+            
             elif findings or valve_issues:
+                recommendation = "Echocardiographic abnormalities detected. "
+                
+                if findings:
+                    findings_text = ", ".join(findings)
+                    recommendation += f"Key findings: {findings_text}. "
+                
+                if valve_issues:
+                    valve_text = ", ".join(valve_issues)
+                    recommendation += f"Valve abnormalities: {valve_text}. "
+                
                 recommendation += "Recommendations: 1) Cardiology consultation within 2-4 weeks, 2) Complete cardiac function evaluation, 3) Optimize medical therapy as indicated."
+            
             else:
                 recommendation = "Normal echocardiogram. Continue routine clinical monitoring per established protocols."
         
@@ -286,8 +301,8 @@ class CustomPredictionService(BasePredictionService):
         diagnosis = json.dumps(diagnosis_dict)
         
         # Generate recommendations based on stenosis analysis
-        recommendations_en = self._get_recommendations(probability, "en")
-        recommendations_fr = self._get_recommendations(probability, "fr")
+        recommendations_en = self._get_recommendations(diagnosis_dict, "en")
+        recommendations_fr = self._get_recommendations(diagnosis_dict, "fr")
 
         # Prepare comprehensive data for HTML parser
         html_data = {
@@ -325,15 +340,13 @@ class CustomPredictionService(BasePredictionService):
         
         # Obtain per-head diagnosis/interpretation
         diagnosis_dict, predictions_serializable = self.postprocess_predictions(probability)
-
-        diagnosis = json.dumps(diagnosis_dict)
         
         # Generate recommendations
-        recommendations_en = self._get_recommendations(probability, "en")
-        recommendations_fr = self._get_recommendations(probability, "fr")
+        recommendations_en = self._get_recommendations(diagnosis_dict, "en")
+        recommendations_fr = self._get_recommendations(diagnosis_dict, "fr")
         
         return {
-            'diagnosis': diagnosis,
+            'diagnosis': json.dumps(diagnosis_dict),
             'predictions': predictions_serializable,
             'modelRecommendations': {
                 'en': recommendations_en,
@@ -397,11 +410,14 @@ class CustomPredictionService(BasePredictionService):
         if normalization == 'imagenet':
             mean = np.array([0.485, 0.456, 0.406])
             std = np.array([0.229, 0.224, 0.225])
-            transform_list.append(v2.Normalize(mean=mean, std=std))
         elif normalization == 'kinetics':
             mean = np.array([0.43216, 0.394666, 0.37645])
             std = np.array([0.22803, 0.22145, 0.216989])
-            transform_list.append(v2.Normalize(mean=mean, std=std))
+        else:
+            mean = np.array([0.48145466, 0.4578275, 0.40821073])
+            std = np.array([0.26862954, 0.26130258, 0.27577711])
+        
+        transform_list.append(v2.Normalize(mean=mean, std=std))
         
         return v2.Compose(transform_list)
 
@@ -424,9 +440,7 @@ class CustomPredictionService(BasePredictionService):
                 if pixel_array.ndim < 3:
                     print(f"Skipping DICOM {i} with invalid dimensions: {pixel_array.shape}")
                     continue
-                
-                print(f"Processing DICOM {i} with shape: {pixel_array.shape}")
-                
+                                
                 # Load clip using improved method
                 clip = self._load_clip_from_dicom(
                     pixel_array, 
@@ -446,6 +460,8 @@ class CustomPredictionService(BasePredictionService):
                 # Move to device
                 device = 'cuda' if torch.cuda.is_available() else 'cpu'
                 clip_tensor = clip_tensor.to(device)
+                
+                print(f"Processing DICOM {i} with shape: {clip_tensor.shape}")
                 
                 # Run inference on single DICOM
                 with torch.no_grad():
