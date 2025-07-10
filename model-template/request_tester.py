@@ -5,6 +5,7 @@ import random
 import sys
 import tempfile
 import webbrowser
+from typing import Union
 from pathlib import Path
 
 import pydicom
@@ -76,7 +77,7 @@ def display_response(response_data, output_mode):
 
 
 def send_dicom_data(
-    dicom_paths: str | list[str],
+    dicom_paths: Union[str, list[str]],
     server_url: str,
     output_mode: str = "JSON",
     send_metadata_only: bool = False,
@@ -205,7 +206,7 @@ def main():
 
     parser.add_argument(
         "--metadata-only",
-        default=True,
+        default=False,
         action="store_true",
         help="Send only DICOM metadata without separate pixel data",
     )

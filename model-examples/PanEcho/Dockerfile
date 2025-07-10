@@ -33,7 +33,7 @@ COPY init_model.py .
 RUN python init_model.py
 
 # Expose port 80
-EXPOSE 80
+EXPOSE 8000
 
 # Override default entrypoint from tensorflow/serving
 ENTRYPOINT []

@@ -16,7 +16,6 @@ class HTMLParser:
         """
         probability_dict = results['probability']
         diagnosis_json = results.get('diagnosis', '{}')
-        print('diagnosis_json: ', diagnosis_json)
         recommendations = results.get('recommendations', {})
         
         # Parse diagnosis JSON string
@@ -125,9 +124,6 @@ class HTMLParser:
                 abnormal_findings.append(key)
             else:
                 normal_findings.append(key)
-        print(f'urgent_findings: {len(urgent_findings)}')
-        print(f'abnormal_findings: {len(abnormal_findings)}')
-        print(f'normal_findings: {len(normal_findings)}')
         
         # Determine overall status
         total_abnormal = len(abnormal_findings) + len(urgent_findings)
@@ -437,9 +433,7 @@ class HTMLParser:
                         x[0]
                     )
                 )
-                print(f'sorted_findings: {sorted_findings}')
                 for finding_key, finding_data in sorted_findings:
-                    print(f'finding_key: {finding_key}, finding_data: {finding_data}')
                     
                     # Determine card class
                     if finding_data['is_urgent']:
