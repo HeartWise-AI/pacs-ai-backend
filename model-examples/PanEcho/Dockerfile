@@ -26,6 +26,12 @@ COPY utils/ ./utils/
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY supervisord.conf /etc/supervisord.conf
 
+# Copy init_model.py
+COPY init_model.py .
+
+# Run init_model.py to download pretrained pytorch video weights
+RUN python init_model.py
+
 # Expose port 80
 EXPOSE 80
 
