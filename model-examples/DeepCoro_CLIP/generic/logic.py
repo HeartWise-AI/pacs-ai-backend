@@ -151,7 +151,7 @@ class CustomPredictionService(BasePredictionService):
             )
             print("Creating video MIL wrapper")
             CustomPredictionService.models["video_mil_wrapper"] = VideoMILWrapper(
-                video_encoder, mil_model, num_videos=4
+                video_encoder, mil_model, num_videos=10
             )
             print("Successfully created video MIL wrapper model directly from local package")
         except Exception as e2:
