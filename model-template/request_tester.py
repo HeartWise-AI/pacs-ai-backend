@@ -172,10 +172,12 @@ def send_dicom_data(
 
     # Send POST request
     try:
-        response = requests.post(server_url, json=payload, timeout=500)
-        
-        if not response:
-            raise Exception("No response from server")
+        response: requests.Response = requests.post(
+            server_url, 
+            json=payload, 
+            timeout=500,
+            headers={"Content-Type": "application/json"}
+        )
         
         return response
     
@@ -241,15 +243,11 @@ def main():
         group_series=args.group_series,
     )
 
-    if not response:
-        raise Exception("No response from server")
-
+    print("Server response received with status code: ", response)
     response_json = response.json()
-    
-    print("Server response received with status code: ", response_json.status_code)
-    if not response_json.success:
-        print("Server response failed with errorCode: ", response_json.errorCode)
-        print("Server response failed with errorMessage: ", response_json.message)
+    if not response_json['success']:
+        print("Server response failed with errorCode: ", response_json['errorCode'])
+        print("Server response failed with errorMessage: ", response_json['message'])
         return
 
     # Display content if it's HTML or PDF
