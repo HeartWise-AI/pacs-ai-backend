@@ -1,7 +1,7 @@
 {
   "en": {
     "Summary": {
-      "Name": "DeepCoro_CLIP stenosis",
+      "Name": "DeepCoro_CLIP generic",
       "Description": "Classify stenosis and predict severity of stenosis from angiograms.",
       "Developed_by": "Heartwise",
       "Development_period": "2024-2025",
@@ -17,18 +17,18 @@
     },
     "Model_Components": {
       "Model": {
-        "Purpose": "Classify stenosis and predict severity of stenosis",
-        "Output": "Probability of stenosis and severity of stenosis"
+        "Purpose": "Classify stenosis and predict severity of stenosis, calcification, CTO and thrombus",
+        "Output": "Probability of stenosis and severity of stenosis, calcification, CTO and thrombus"
       }
     },
     "Uses_and_directions": {
-      "General_use": "This model can be used to classify stenosis and predict severity of stenosis from angiograms.",
-      "Target_population_and_use_case": "This model is intended for use in the cardiac imaging field to assist in the diagnosis of stenosis and predict severity of stenosis.",
+      "General_use": "This model can be used to classify stenosis and predict severity of stenosis, calcification, CTO and thrombus from angiograms.",
+      "Target_population_and_use_case": "This model is intended for use in the cardiac imaging field to assist in the diagnosis of stenosis and predict severity of stenosis, calcification, CTO and thrombus.",
       "Before_using_this_model": "Before using this model, please ensure that the input data is in the correct format and that the model is trained on the appropriate data."
     },
     "Warnings_and_limitations": {
-      "Image_Quality": "The model requires high-quality angiograms with clear visualization of the coronary arteries.",
-      "Multiple_Devices": "The model is designed to classify multiple coronary arteries in multiple videos.",
+      "Image_Quality": "The model requires high-quality angiograms with clear visualization of the coronary arteries, calcification, CTO and thrombus.",
+      "Multiple_Devices": "The model is designed to classify multiple coronary arteries in multiple videos, calcification, CTO and thrombus.",
       "Confidence_Scores": "Current threshold applied on probability output for classification is defined in class_mapping.json"
     }
   }
