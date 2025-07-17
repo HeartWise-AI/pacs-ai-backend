@@ -118,6 +118,11 @@ class CustomPredictionService(BasePredictionService):
             print("Models already loaded, skipping initialization")
             return
 
+        # Load the class mapping from the local package
+        class_mapping_path = os.path.join("models", "class_mapping.json")
+        with open(class_mapping_path) as fp:
+            CustomPredictionService._class_mapping = json.load(fp)
+
         # Instead of downloading at runtime, use the model downloaded during the Docker build.
         CustomPredictionService.model_path = os.path.join("models", "cnw09vn8_01062025-140448", "best_model_epoch_3.pt")
         print(f"Model path: {CustomPredictionService.model_path}")
@@ -130,48 +135,19 @@ class CustomPredictionService(BasePredictionService):
                 freeze_ratio=1.0,
                 dropout=0.2,
                 num_heads=4,
-                aggregator_depth=2,
+                aggregator_depth=1,
                 aggregate_videos_tokens=True,
                 per_video_pool=False,
             )
+            
             print("Loading multi-instance linear probing")
+            head_structure = {head: value["head_dim"] for head, value in CustomPredictionService._class_mapping.items()}        
             mil_model = MultiInstanceLinearProbing(
                 embedding_dim=512,
-                head_structure={
-                    "leftmain_stenosis_binary": 1,
-                    "lad_stenosis_binary": 1,
-                    "mid_lad_stenosis_binary": 1,
-                    "dist_lad_stenosis_binary": 1,
-                    "diagonal_stenosis_binary": 1,
-                    "D2_stenosis_binary": 1,
-                    "lcx_stenosis_binary": 1,
-                    "dist_lcx_stenosis_binary": 1,
-                    "om1_stenosis_binary": 1,
-                    "om2_stenosis_binary": 1,
-                    "bx_stenosis_binary": 1,
-                    "lad_stenosis": 1,
-                    "mid_lad_stenosis": 1,
-                    "dist_lad_stenosis": 1,
-                    "diagonal_stenosis": 1,
-                    "D2_stenosis": 1,
-                    "lcx_stenosis": 1,
-                    "dist_lcx_stenosis": 1,
-                    "om1_stenosis": 1,
-                    "om2_stenosis": 1,
-                    "bx_stenosis": 1,
-                    "prox_rca_stenosis_binary": 1,
-                    "mid_rca_stenosis_binary": 1,
-                    "dist_rca_stenosis_binary": 1,
-                    "pda_stenosis_binary": 1,
-                    "posterolateral_stenosis_binary": 1,
-                    "prox_rca_stenosis": 1,
-                    "mid_rca_stenosis": 1,
-                    "dist_rca_stenosis": 1,
-                    "pda_stenosis": 1,
-                    "posterolateral_stenosis": 1,
-                },
-                pooling_mode="attention",
-                attention_hidden=128,
+                head_structure=head_structure,
+                pooling_mode="attention+cls_token",
+                attention_hidden=256,
+                use_cls_token=True,
             )
             print("Creating video MIL wrapper")
             CustomPredictionService.models["video_mil_wrapper"] = VideoMILWrapper(
