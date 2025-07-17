@@ -1,124 +1,506 @@
 {
-    "leftmain_stenosis_binary": {
+    "lvp_stenosis": {
+        "regression": 0,
+        "head_dim": 1
+    },
+    "lvp_stenosis_binary": {
         "normal": 0,
         "blocked": 1,
-        "threshold": 0.14
+        "threshold": 0.14,
+        "head_dim": 1
     },
-    "lad_stenosis_binary": {
-        "normal": 0,
-        "blocked": 1,
-        "threshold": 0.3
-    },
-    "mid_lad_stenosis_binary": {
-        "normal": 0,
-        "blocked": 1,
-        "threshold": 0.3
-    },
-    "dist_lad_stenosis_binary": {
-        "normal": 0,
-        "blocked": 1,
-        "threshold": 0.05
-    },
-    "diagonal_stenosis_binary": {
-        "normal": 0,
-        "blocked": 1,
-        "threshold": 0.2
-    },
-    "D2_stenosis_binary": {
-        "normal": 0,
-        "blocked": 1,
-        "threshold": 0.1
-    },
-    "lcx_stenosis_binary": {
-        "normal": 0,
-        "blocked": 1,
-        "threshold": 0.24
-    },
-    "dist_lcx_stenosis_binary": {
-        "normal": 0,
-        "blocked": 1,
-        "threshold": 0.15
-    },
-    "om1_stenosis_binary": {
-        "normal": 0,
-        "blocked": 1,
-        "threshold": 0.1
-    },
-    "om2_stenosis_binary": {
-        "normal": 0,
-        "blocked": 1,
-        "threshold": 0.12
-    },
-    "bx_stenosis_binary": {
-        "normal": 0,
-        "blocked": 1,
-        "threshold": 0.055
-    },
-    "lad_stenosis": {
-        "regression": 0
-    },
-    "mid_lad_stenosis": {
-        "regression": 0
-    },
-    "dist_lad_stenosis": {
-        "regression": 0
-    },
-    "diagonal_stenosis": {
-        "regression": 0
-    },
-    "D2_stenosis": {
-        "regression": 0
-    },
-    "lcx_stenosis": {
-        "regression": 0
-    },
-    "dist_lcx_stenosis": {
-        "regression": 0
-    },
-    "om2_stenosis": {
-        "regression": 0
-    },
-    "bx_stenosis": {
-        "regression": 0
+    "prox_rca_stenosis": {
+        "regression": 0,
+        "head_dim": 1
     },
     "prox_rca_stenosis_binary": {
         "normal": 0,
         "blocked": 1,
-        "threshold": 0.15
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "mid_rca_stenosis": {
+        "regression": 0,
+        "head_dim": 1
     },
     "mid_rca_stenosis_binary": {
         "normal": 0,
         "blocked": 1,
-        "threshold": 0.14
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "dist_rca_stenosis": {
+        "regression": 0,
+        "head_dim": 1
     },
     "dist_rca_stenosis_binary": {
-        "normal": 0,
+        "normal": 0,    
         "blocked": 1,
-        "threshold": 0.05
+        "threshold": 0.05,
+        "head_dim": 1
+    },
+    "pda_stenosis": {
+        "regression": 0,
+        "head_dim": 1
     },
     "pda_stenosis_binary": {
         "normal": 0,
         "blocked": 1,
-        "threshold": 0.07
+        "threshold": 0.07,
+        "head_dim": 1
+    },
+    "posterolateral_stenosis": {
+        "regression": 0,
+        "head_dim": 1
     },
     "posterolateral_stenosis_binary": {
         "normal": 0,
         "blocked": 1,
-        "threshold": 0.03
+        "threshold": 0.14,
+        "head_dim": 1
     },
-    "prox_rca_stenosis": {
-        "regression": 0
+    "left_main_stenosis": {
+        "regression": 0,
+        "head_dim": 1
     },
-    "mid_rca_stenosis": {
-        "regression": 0
+    "left_main_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.14,
+        "head_dim": 1
     },
-    "dist_rca_stenosis": {
-        "regression": 0
+    "prox_lad_stenosis": {
+        "regression": 0,
+        "head_dim": 1
     },
-    "pda_stenosis": {
-        "regression": 0
+    "prox_lad_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.14,
+        "head_dim": 1
     },
-    "posterolateral_stenosis": {
-        "regression": 0
+    "mid_lad_stenosis": {
+        "regression": 0,
+        "head_dim": 1
+    },
+    "mid_lad_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "dist_lad_stenosis": {
+        "regression": 0,
+        "head_dim": 1
+    },
+    "dist_lad_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "D1_stenosis": {
+        "regression": 0,
+        "head_dim": 1
+    },
+    "D1_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "D2_stenosis": {
+        "regression": 0,
+        "head_dim": 1
+    },
+    "D2_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "prox_lcx_stenosis": {
+        "regression": 0,
+        "head_dim": 1
+    },
+    "prox_lcx_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "mid_lcx_stenosis": {
+        "regression": 0,
+        "head_dim": 1
+    },
+    "mid_lcx_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "dist_lcx_stenosis": {
+        "regression": 0,
+        "head_dim": 1
+    },
+    "dist_lcx_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "om1_stenosis": {
+        "regression": 0,
+        "head_dim": 1
+    },
+    "om1_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "om2_stenosis": {
+        "regression": 0,
+        "head_dim": 1
+    },
+    "om2_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "bx_stenosis": {
+        "regression": 0,
+        "head_dim": 1
+    },
+    "bx_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "prox_rca_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "mid_rca_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "dist_rca_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "pda_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "posterolateral_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "left_main_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    }, 
+    "prox_lad_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "mid_lad_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "dist_lad_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "D1_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "D2_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "prox_lcx_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "mid_lcx_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "dist_lcx_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "om1_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "om2_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "bx_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "lvp_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "prox_rca_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "mid_rca_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "dist_rca_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "pda_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "posterolateral_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "left_main_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "prox_lad_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "mid_lad_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "dist_lad_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "D1_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "D2_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "prox_lcx_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "mid_lcx_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "dist_lcx_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "om1_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "om2_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "bx_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "lvp_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "prox_rca_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "mid_rca_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "dist_rca_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "pda_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "posterolateral_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "left_main_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "prox_lad_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "mid_lad_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "dist_lad_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "D1_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "D2_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "prox_lcx_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "mid_lcx_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "dist_lcx_thrombus": { 
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "om1_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "om2_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "bx_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
+    },
+    "lvp_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.14,
+        "head_dim": 1
     }
 }
