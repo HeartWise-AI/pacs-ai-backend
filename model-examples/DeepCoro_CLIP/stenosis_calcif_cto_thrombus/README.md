@@ -3,7 +3,7 @@ Important: Models are stored on huggingface, please refer to [pacs-ai-examples](
 To build the docker image and push it to the docker hub, run the following command:
 
 ```
-docker build--build-arg HF_API_KEY=API_KEY_HERE -t cacoool/pacs-ai-deepcoro-clip_stenosis:1.0.0 .
+docker build --build-arg HF_API_KEY=API_KEY_HERE -t cacoool/pacs-ai-deepcoro-clip_stenosis:1.0.0 .
 docker push cacoool/pacs-ai-deepcoro-clip_stenosis:1.0.0
 ```
 

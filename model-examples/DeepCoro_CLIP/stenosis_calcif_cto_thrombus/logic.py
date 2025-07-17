@@ -119,7 +119,7 @@ class CustomPredictionService(BasePredictionService):
             return
 
         # Instead of downloading at runtime, use the model downloaded during the Docker build.
-        CustomPredictionService.model_path = os.path.join("models", "best_model_epoch_3.pt")
+        CustomPredictionService.model_path = os.path.join("models", "cnw09vn8_01062025-140448", "best_model_epoch_3.pt")
         print(f"Model path: {CustomPredictionService.model_path}")
         try:
             print("Loading video encoder")
