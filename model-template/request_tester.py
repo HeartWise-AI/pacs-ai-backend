@@ -82,7 +82,7 @@ def send_dicom_data(
     output_mode: str = "JSON",
     send_metadata_only: bool = False,
     group_series: bool = False,
-):
+) -> requests.Response:
     """
     Read DICOM file(s), process the data, and send a POST request to the server.
 
@@ -173,9 +173,12 @@ def send_dicom_data(
     # Send POST request
     try:
         response = requests.post(server_url, json=payload, timeout=500)
-        response.raise_for_status()
-        print(f"Request sent successfully. Status code: {response.status_code}")
-        return response.json()
+        
+        if not response:
+            raise Exception("No response from server")
+        
+        return response
+    
     except requests.exceptions.RequestException as e:
         print(f"Error sending request: {str(e)}")
         return None
@@ -230,7 +233,7 @@ def main():
     print(f"Found {len(dicom_files)} DICOM files")
 
     # Send the request
-    result = send_dicom_data(
+    response: requests.Response = send_dicom_data(
         dicom_paths=dicom_files,
         server_url=args.url,
         output_mode=args.output_mode,
@@ -238,24 +241,31 @@ def main():
         group_series=args.group_series,
     )
 
-    if result:
-        print("Server response received")
+    if not response:
+        raise Exception("No response from server")
 
-        # Display content if it's HTML or PDF
-        if args.output_mode in ["HTML", "PDF"]:
-            display_response(result, args.output_mode)
-            return
+    response_json = response.json()
+    
+    print("Server response received with status code: ", response_json.status_code)
+    if not response_json.success:
+        print("Server response failed with errorCode: ", response_json.errorCode)
+        print("Server response failed with errorMessage: ", response_json.message)
+        return
 
-        if args.output_mode == "OHIF_ANNOTATIONS":
-            payload = result["data"]
-            visualize_segmentation(
-                encoded_data=payload["segmentation"]["labelmap"],
-                dimensions=payload["segmentation"]["dimensions"],
-                segments=payload["segmentation"]["segments"],
-            )
-            return
-        print(result)
-        # result will be an HTML string containing an interactive 3D visualization
+    # Display content if it's HTML or PDF
+    if args.output_mode in ["HTML", "PDF"]:
+        display_response(response_json, args.output_mode)
+        return
+
+    if args.output_mode == "OHIF_ANNOTATIONS":
+        payload = response_json["data"]
+        visualize_segmentation(
+            encoded_data=payload["segmentation"]["labelmap"],
+            dimensions=payload["segmentation"]["dimensions"],
+            segments=payload["segmentation"]["segments"],
+        )
+        return
+    # result will be an HTML string containing an interactive 3D visualization
 
 
 if __name__ == "__main__":
