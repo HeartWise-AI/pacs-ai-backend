@@ -60,18 +60,28 @@ def display_response(response_data, output_mode):
             print(f"Unsupported output mode for display: {output_mode}")
             return
 
-        # Create a temporary file
-        with tempfile.NamedTemporaryFile(
-            delete=False, suffix=file_extension, mode="wb"
-        ) as tmp_file:
-            if output_mode == "HTML":
-                tmp_file.write(content.encode("utf-8"))
-            else:  # PDF
+        # Save file in current directory
+        if output_mode == "HTML":
+            # Generate a unique filename for HTML
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"output_{timestamp}.html"
+            
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(content)
+            
+            file_path = os.path.abspath(filename)
+            print(f"HTML file saved as: {file_path}")
+        else:  # PDF
+            # For PDF, still use temporary file since we need binary mode
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=file_extension, mode="wb"
+            ) as tmp_file:
                 tmp_file.write(content)
-            temp_path = tmp_file.name
+                file_path = tmp_file.name
 
         # Open the file in the default web browser
-        webbrowser.open("file://" + os.path.realpath(temp_path))
+        webbrowser.open("file://" + os.path.realpath(file_path))
 
     except Exception as e:
         print(f"Error displaying content: {str(e)}")
