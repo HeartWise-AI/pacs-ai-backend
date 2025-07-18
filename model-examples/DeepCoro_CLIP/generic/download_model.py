@@ -1,6 +1,6 @@
 import os
 import argparse
-from huggingface_hub import hf_hub_download
+from huggingface_hub import snapshot_download
 
 
 def download_model(token):
@@ -11,22 +11,19 @@ def download_model(token):
         raise ValueError("HF_API_KEY environment variable is not set")
 
     repo_id = "heartwise/DeepCoro_CLIP_stenosis"
-    file_name = "best_model_epoch_3.pt"
     output_dir = "models"
-    subfolder = "cnw09vn8_01062025-140448"
     
     # Ensure the models directory exists
     os.makedirs(output_dir, exist_ok=True)
 
-    # Download the model file into the models directory
-    model_path = hf_hub_download(
+    # Download all files from the repository
+    local_dir = snapshot_download(
         repo_id=repo_id,
-        filename=file_name,
-        subfolder=subfolder,
         token=token,
-        local_dir=output_dir
+        local_dir=output_dir,
+        local_dir_use_symlinks=False  # Use actual files instead of symlinks
     )
-    print(f"Downloaded model weights to {model_path}")
+    print(f"Downloaded all files from repository to {local_dir}")
 
 
 if __name__ == "__main__":
