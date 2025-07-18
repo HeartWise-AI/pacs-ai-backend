@@ -7,6 +7,7 @@ import tempfile
 import webbrowser
 from typing import Union
 from pathlib import Path
+import pprint
 
 import pydicom
 import requests
@@ -218,7 +219,7 @@ def main():
 
     parser.add_argument(
         "--group-series",
-        default=True,
+        default=False,
         action="store_true",
         help="Treat all DICOM files as part of the same series",
     )
@@ -263,6 +264,9 @@ def main():
             segments=payload["segmentation"]["segments"],
         )
         return
+    
+    if args.output_mode == "JSON":
+        pprint.pprint(response_json)
     # result will be an HTML string containing an interactive 3D visualization
 
 
