@@ -123,52 +123,50 @@ class CustomPredictionService(BasePredictionService):
         with open(class_mapping_path) as fp:
             CustomPredictionService._class_mapping = json.load(fp)
 
-        # Instead of downloading at runtime, use the model downloaded during the Docker build.
-        CustomPredictionService.model_path = os.path.join("models", "cnw09vn8_01062025-140448", "best_model_epoch_3.pt")
-        print(f"Model path: {CustomPredictionService.model_path}")
+        # Load the HuggingFacemodel config 
+        with open(os.path.join("models", "config.json")) as fp:
+            CustomPredictionService.model_config = json.load(fp)
+            
+        # Create and load the model
+        print(f"Model path: {CustomPredictionService.model_config["ModelStateDict"]["model_path"]}")
         try:
             print("Loading video encoder")
             video_encoder = VideoEncoder(
-                backbone="mvit",
-                num_frames=16,
-                pretrained=False,
-                freeze_ratio=1.0,
-                dropout=0.2,
-                num_heads=4,
-                aggregator_depth=1,
-                aggregate_videos_tokens=True,
-                per_video_pool=False,
+                **CustomPredictionService.model_config["VideoEncoder"],
             )
             
             print("Loading multi-instance linear probing")
             head_structure = {head: value["head_dim"] for head, value in CustomPredictionService._class_mapping.items()}        
             mil_model = MultiInstanceLinearProbing(
-                embedding_dim=512,
+                **CustomPredictionService.model_config["MultiInstanceLinearProbing"],
                 head_structure=head_structure,
-                pooling_mode="attention+cls_token",
-                attention_hidden=256,
-                use_cls_token=True,
             )
             print("Creating video MIL wrapper")
             CustomPredictionService.models["video_mil_wrapper"] = VideoMILWrapper(
-                video_encoder, mil_model, num_videos=10
+                video_encoder, mil_model, num_videos=CustomPredictionService.model_config["VideoMILWrapper"]["num_videos"]
             )
             print("Successfully created video MIL wrapper model directly from local package")
+            
         except Exception as e2:
             # If both methods fail, raise a clear error
             raise RuntimeError(
                 f"Cannot initialize model: second attempt error: {str(e2)}"
             ) from e2
 
+        # Load the model state dict
         model_state_dict = torch.load(
-            CustomPredictionService.model_path,
+            os.path.join("models", CustomPredictionService.model_config["ModelStateDict"]["model_path"]),
             map_location=torch.device("cpu"),
             weights_only=True,
         )["linear_probing"]
+        # Remove the "module." prefix from the keys
         model_state_dict = {k.replace("module.", ""): v for k, v in model_state_dict.items()}
 
+        # Load the model state dict into the video MIL wrapper
         CustomPredictionService.models["video_mil_wrapper"].load_state_dict(model_state_dict)
         CustomPredictionService.models["video_mil_wrapper"].eval()
+
+        # Move the model to the GPU if available
         CustomPredictionService.models["video_mil_wrapper"].to(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
@@ -339,6 +337,17 @@ class CustomPredictionService(BasePredictionService):
 
         probability = self._run_inference(dicoms)
 
+        if not probability:
+            return {
+                "htmlBase64": base64.b64encode(b"<h1>No video could be extracted or processed from the current DICOM series</h1>").decode("utf-8"),
+                "diagnosis": "No video could be extracted or processed from the current DICOM series",
+                "probability": {},
+                "recommendations": {
+                    "en": "No video could be extracted or processed from the current DICOM series",
+                    "fr": "No video could be extracted or processed from the current DICOM series"
+                }
+            }
+            
         # Obtain per-head diagnosis/interpretation
         diagnosis_dict: dict[str, str] = self._get_diagnosis(probability)
 
@@ -376,7 +385,19 @@ class CustomPredictionService(BasePredictionService):
             for instance_number in request.seriesInstanceImages[series_number]:
                 dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
                 dicoms.append(pydicom.dcmread(BytesIO(base64.b64decode(dicom_base64))))
+                
         probability = self._run_inference(dicoms)
+
+        if not probability:
+            return {
+                "diagnosis": "No video could be extracted or processed from the current DICOM series",
+                "predictions": {},
+                "modelRecommendations": {
+                    "en": "No video could be extracted or processed from the current DICOM series",
+                    "fr": "No video could be extracted or processed from la série DICOM actuelle",
+                    "presentable": True,
+                }
+            }
 
         # Obtain per-head diagnosis/interpretation
         diagnosis_dict: dict[str, str] = self._get_diagnosis(probability)
@@ -445,11 +466,21 @@ class CustomPredictionService(BasePredictionService):
 
         return np.asarray(compressedVideo).transpose(0, 3, 1, 2)
 
-    def _run_inference(self, dicoms: list[pydicom.Dataset]) -> float:
+    def _run_inference(self, dicoms: list[pydicom.Dataset]) -> dict[str, float] | None:
         try:
             videos = []
+            max_videos = CustomPredictionService.model_config["VideoMILWrapper"]["num_videos"]
+            
+            print(f"nb_dicoms: {len(dicoms)} received, max_videos: {max_videos} expected")
+            
+            stop_pt = min(len(dicoms), max_videos)
+            dicom_ok = 0
             for dicom in dicoms:
+                if dicom_ok >= stop_pt:
+                    break
+
                 pixel_array: np.ndarray = dicom.pixel_array
+
                 if pixel_array.ndim == 1 or pixel_array.ndim == 2:
                     continue
 
@@ -485,13 +516,26 @@ class CustomPredictionService(BasePredictionService):
                 start = np.array([0])
                 video = tuple(video[:, s + 2 * np.arange(length), :, :] for s in start)[0]
                 videos.append(video)
+                dicom_ok += 1
 
             video_batch = torch.from_numpy(np.array(videos))
             video_batch = video_batch.permute(0, 2, 3, 4, 1)
-
+            
+            # Zero pad the video_batch if we have fewer videos than max_videos
+            if video_batch.shape[0] < max_videos:
+                print(f"Padding video_batch from {video_batch.shape[0]} to {max_videos} videos")
+                # Get the shape of a single video (after permute)
+                single_video_shape = video_batch.shape[1:]  # (C, H, W, T)
+                # Create zero tensor for padding
+                padding_shape = (max_videos - video_batch.shape[0],) + single_video_shape
+                zero_padding = torch.zeros(padding_shape, dtype=video_batch.dtype, device=video_batch.device)
+                # Concatenate the original videos with zero padding
+                video_batch = torch.cat([video_batch, zero_padding], dim=0)
+            
             video_batch = video_batch.unsqueeze(0).to(
                 "cuda" if torch.cuda.is_available() else "cpu"
             )
+
             with torch.no_grad():
                 output: torch.Tensor = CustomPredictionService.models["video_mil_wrapper"](
                     video_batch
@@ -510,4 +554,5 @@ class CustomPredictionService(BasePredictionService):
             # Make sure to clean GPU memory even if there's an error
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            raise
+            
+            return None
