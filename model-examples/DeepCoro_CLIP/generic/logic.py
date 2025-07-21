@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import pprint
 import uuid
 from io import BytesIO
 
@@ -184,15 +185,35 @@ class CustomPredictionService(BasePredictionService):
         For *regression* heads the raw value is returned as a percentage
         (0-100%).
         """
-        # ------------------------------------------------------------------
-        # 1) Lazy-load the class mapping file (only once per process)
-        # ------------------------------------------------------------------
-        if not hasattr(self.__class__, "_class_mapping"):
-            mapping_path = os.path.join("models", "class_mapping.json")
-            with open(mapping_path) as fp:
-                self.__class__._class_mapping = json.load(fp)
-        class_mapping = self.__class__._class_mapping
+        class_mapping = CustomPredictionService._class_mapping
+        print(f"predictions.keys(): {predictions.keys()}")
+        
+        reordered_predictions = {}
+        for key in predictions.keys():
+            new_key = class_mapping[key]['name']
 
+            if not new_key in reordered_predictions:
+                reordered_predictions[new_key] = {}
+            
+            if 'stenosis_binary' in key:
+                reordered_predictions[new_key]['stenosis_prob'] = predictions[key].item()
+                reordered_predictions[new_key]['diagnosis_stenosis'] = 'blocked' if predictions[key].item() > class_mapping[key]['threshold'] else 'normal'
+            elif 'stenosis' in key and not 'binary' in key:
+                reordered_predictions[new_key]['regression'] = predictions[key].item()
+            elif 'cto' in key:
+                reordered_predictions[new_key]['cto_prob'] = predictions[key].item()
+                reordered_predictions[new_key]['diagnosis_cto'] = 'cto' if predictions[key].item() > class_mapping[key]['threshold'] else 'normal'
+            elif 'thrombus' in key:
+                reordered_predictions[new_key]['thrombus_prob'] = predictions[key].item()
+                reordered_predictions[new_key]['diagnosis_thrombus'] = 'thrombus' if predictions[key].item() > class_mapping[key]['threshold'] else 'normal'
+            elif 'calcif' in key:
+                reordered_predictions[new_key]['calcif_prob'] = predictions[key].item()
+                reordered_predictions[new_key]['diagnosis_calcif'] = 'calcified' if predictions[key].item() > class_mapping[key]['threshold'] else 'normal'
+            else:
+                raise ValueError(f"Unknown key: {key}")
+            
+        pprint.pprint(f"reordered_predictions: {reordered_predictions}")
+        
         diagnoses: dict[str, str] = {}
         for head, value in predictions.items():
             # Convert potential Tensor to a python float
@@ -223,14 +244,8 @@ class CustomPredictionService(BasePredictionService):
         Returns:
             Clinical recommendation string
         """
-        # ------------------------------------------------------------------
-        # 1) Lazy-load the class mapping file (reuse cached version)
-        # ------------------------------------------------------------------
-        if not hasattr(self.__class__, "_class_mapping"):
-            mapping_path = os.path.join("models", "class_mapping.json")
-            with open(mapping_path) as fp:
-                self.__class__._class_mapping = json.load(fp)
-        class_mapping = self.__class__._class_mapping
+
+        class_mapping = CustomPredictionService._class_mapping
 
         # ------------------------------------------------------------------
         # 2) Mapping for human-readable artery names
@@ -543,7 +558,7 @@ class CustomPredictionService(BasePredictionService):
 
             # Normalize the output
             for key in output:
-                if "binary" in key:  # Compute probability output
+                if "binary" in key or "cto" in key or "thrombus" in key:  # Compute probability output
                     output[key] = torch.sigmoid(output[key])
                 else:  # Clamp output to 0-100
                     output[key] = torch.clamp(output[key], min=0, max=100)
