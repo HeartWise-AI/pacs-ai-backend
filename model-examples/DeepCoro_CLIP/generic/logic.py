@@ -175,15 +175,37 @@ class CustomPredictionService(BasePredictionService):
 
         print("Model loaded")
 
-    def _get_diagnosis(self, predictions: dict[str, float | torch.Tensor]) -> dict[str, str]:
-        """Generate diagnosis labels for each prediction head.
+    def _process_predictions(
+        self, 
+        predictions: dict[str, float | torch.Tensor]
+    ) -> dict[str, dict]:
+        """Process and structure raw model predictions into a structured format.
 
-        For *binary* heads the label is determined by comparing the predicted
-        probability against the class-specific threshold defined in
-        `models/class_mapping.json`.
+        This function transforms raw model outputs by:
+        1. Mapping model keys to human-readable artery names using class_mapping.json
+        2. Converting tensor values to Python floats
+        3. Applying thresholds to determine binary classifications (normal vs blocked/cto/thrombus/calcified)
+        4. Structuring the output into a nested dictionary format organized by artery
 
-        For *regression* heads the raw value is returned as a percentage
-        (0-100%).
+        Args:
+            predictions: Dictionary of raw model predictions with keys like 
+                       'leftmain_stenosis_binary', 'lad_stenosis_regression', etc.
+
+        Returns:
+            Nested dictionary with structure:
+            {
+                "artery_name": {
+                    "stenosis_prob": float,           # For binary stenosis heads
+                    "diagnosis_stenosis": str,        # 'normal' or 'blocked'
+                    "regression": float,              # For regression heads (0-100%)
+                    "cto_prob": float,                # For CTO heads
+                    "diagnosis_cto": str,             # 'normal' or 'cto'
+                    "thrombus_prob": float,           # For thrombus heads
+                    "diagnosis_thrombus": str,        # 'normal' or 'thrombus'
+                    "calcif_prob": float,             # For calcification heads
+                    "diagnosis_calcif": str           # 'normal' or 'calcified'
+                }
+            }
         """
         class_mapping = CustomPredictionService._class_mapping
         print(f"predictions.keys(): {predictions.keys()}")
@@ -212,136 +234,284 @@ class CustomPredictionService(BasePredictionService):
             else:
                 raise ValueError(f"Unknown key: {key}")
             
-        pprint.pprint(f"reordered_predictions: {reordered_predictions}")
-        
-        diagnoses: dict[str, str] = {}
-        for head, value in predictions.items():
-            # Convert potential Tensor to a python float
-            if isinstance(value, torch.Tensor):
-                value = value.item()
+        return reordered_predictions
 
-            head_cfg = class_mapping.get(head, {})
-
-            # Binary classification head → use threshold
-            if "threshold" in head_cfg:
-                threshold: float = head_cfg["threshold"]
-                diagnoses[head] = "blocked" if value > threshold else "normal"
-            else:
-                # Regression head → present as percentage with one decimal
-                diagnoses[head] = f"{value:.1f}%"
-
-        return diagnoses
-
-    def _get_recommendations(
-        self, predictions: dict[str, float | torch.Tensor], language: str
-    ) -> str:
-        """Generate recommendations based on stenosis predictions and language.
-
-        Args:
-            predictions: Dictionary of model predictions (binary and regression heads)
-            language: Language code ('en' or 'fr')
-
-        Returns:
-            Clinical recommendation string
+    def _get_diagnosis(self, predictions: dict) -> str:
         """
+        Generate diagnosis string in English
+        """
+        artery_names: dict[str, dict[str, str]] = {
+            'Right Coronary Artery (RCA) System': {
+                'Proximal RCA': 'Proximal RCA',
+                'Mid RCA': 'Mid RCA',
+                'Distal RCA': 'Distal RCA',
+                'Posterior Descending Artery': 'Posterior Descending Artery',
+                'Posterolateral Branch': 'Posterolateral Branch'
+            },
+            'Left Coronary Artery (LCA) System': {
+                'Left Main Branch': 'Left Main Branch',
+                'Proximal LAD': 'Proximal LAD',
+                'Mid LAD': 'Mid LAD',
+                'Distal LAD': 'Distal LAD',
+                'D1 Branch': 'D1 Branch',
+                'D2 Branch': 'D2 Branch',
+                'Proximal LCX': 'Proximal LCX',
+                'Distal LCX': 'Distal LCX',
+                'Mid LCX': 'Mid LCX',
+                'OM1 (Obtuse Marginal 1)': 'OM1 (Obtuse Marginal 1)',
+                'OM2 (Obtuse Marginal 2)': 'OM2 (Obtuse Marginal 2)',
+            },
+            'Other': {
+                'Branch Vessel': 'Branch Vessel',
+                'LVp': 'LVp'
+            }
+        }
+        
+        # Classify arteries by system
+        rca_arteries = {}
+        lca_arteries = {}
+        other_arteries = {}
+        
+        for artery_name, data in predictions.items():
+            if artery_name in artery_names['Right Coronary Artery (RCA) System']:
+                rca_arteries[artery_name] = data
+            elif artery_name in artery_names['Left Coronary Artery (LCA) System']:
+                lca_arteries[artery_name] = data
+            elif artery_name in artery_names['Other']:
+                other_arteries[artery_name] = data
+        
+        def get_artery_status(artery_data):
+            """Extract blocked, CTO, and thrombus status from artery data"""
+            status = []
+            if artery_data.get('diagnosis_stenosis') == 'blocked':
+                status.append('stenosis')
+                status.append(f"{artery_data.get('stenosis_prob')*100:.1f}%")       
+            if artery_data.get('diagnosis_cto') == 'cto':
+                status.append('cto')
+                status.append(f"{artery_data.get('cto_prob')*100:.1f}%")
+            if artery_data.get('diagnosis_thrombus') == 'thrombus':
+                status.append('thrombus')
+                status.append(f"{artery_data.get('thrombus_prob')*100:.1f}%")
+            return status
+        
+        def format_artery_list(arteries_dict, system_name):
+            """Format arteries with their conditions for a specific system"""
+            affected_arteries = []
+            
+            for artery_name, data in arteries_dict.items():
+                status = get_artery_status(data)
+                if status:
+                    # Get artery name
+                    display_name = artery_names[system_name].get(artery_name, artery_name)
+                    status_text = ', '.join(status)
+                    affected_arteries.append(f"{display_name} ({status_text})")
+            
+            if not affected_arteries:
+                return None
+                
+            return f"{system_name}: {', '.join(affected_arteries)}"
+        
+        # Generate paragraphs for each system
+        paragraphs = []
+        
+        # RCA System
+        rca_paragraph = format_artery_list(rca_arteries, 'Right Coronary Artery (RCA) System')
+        if rca_paragraph:
+            paragraphs.append(rca_paragraph)
+        
+        # LCA System  
+        lca_paragraph = format_artery_list(lca_arteries, 'Left Coronary Artery (LCA) System')
+        if lca_paragraph:
+            paragraphs.append(lca_paragraph)
+        
+        # Other arteries
+        other_paragraph = format_artery_list(other_arteries, 'Other')
+        if other_paragraph:
+            paragraphs.append(other_paragraph)
+        
+        if not paragraphs:
+            return "No significant coronary pathology detected."
+        
+        # Join paragraphs
+        return "Detected pathologies:\n" + "\n".join(paragraphs)
 
+    def _get_recommendations(self, predictions: dict, language: str = "en") -> str:
+        """
+        Generate recommendations based on predictions
+        """
         class_mapping = CustomPredictionService._class_mapping
 
-        # ------------------------------------------------------------------
         # 2) Mapping for human-readable artery names
         # ------------------------------------------------------------------
-        artery_names = {
-            "leftmain_stenosis_binary": {"en": "Left Main", "fr": "Tronc Commun Gauche"},
-            "lad_stenosis_binary": {
-                "en": "LAD (Left Anterior Descending)",
-                "fr": "IVA (Interventriculaire Antérieure)",
+        artery_names: dict[str, dict[str, str]] = {
+            'Right Coronary Artery (RCA) System': {
+                'fr': 'Tronc Coronarien Droit (TCD)',
+                'Proximal RCA': 'CD Proximale',
+                'Mid RCA': 'CD Moyenne',
+                'Distal RCA': 'CD Distale',
+                'Posterior Descending Artery': 'IVP Postérieure',
+                'Posterolateral Branch': 'Branche Postérolatérale'
             },
-            "mid_lad_stenosis_binary": {"en": "Mid LAD", "fr": "IVA Moyenne"},
-            "dist_lad_stenosis_binary": {"en": "Distal LAD", "fr": "IVA Distale"},
-            "diagonal_stenosis_binary": {"en": "Diagonal Branch", "fr": "Branche Diagonale"},
-            "D2_stenosis_binary": {"en": "D2 Branch", "fr": "Branche D2"},
-            "lcx_stenosis_binary": {"en": "LCX (Left Circumflex)", "fr": "Circonflexe Gauche"},
-            "dist_lcx_stenosis_binary": {"en": "Distal LCX", "fr": "Circonflexe Distale"},
-            "om1_stenosis_binary": {
-                "en": "OM1 (Obtuse Marginal 1)",
-                "fr": "OM1 (Marginale Obtuse 1)",
+            'Left Coronary Artery (LCA) System': {
+                'fr': 'Tronc Coronarien Gauche (TCG)',
+                'Left Main Branch': 'Tronc Commun Gauche',
+                'Proximal LAD': 'IVA Proximale',
+                'Mid LAD': 'IVA Moyenne',
+                'Distal LAD': 'IVA Distale',
+                'D1 Branch': 'Branche D1',
+                'D2 Branch': 'Branche D2',
+                'Proximal LCX': 'Circonflexe Gauche Proximal',
+                'Distal LCX': 'Circonflexe Gauche Distal',
+                'Mid LCX': 'Circonflexe Gauche Moyenne',
+                'OM1 (Obtuse Marginal 1)': 'MO1 Marginale Obtuse 1',
+                'OM2 (Obtuse Marginal 2)': 'MO2 Marginale Obtuse 2',
             },
-            "om2_stenosis_binary": {
-                "en": "OM2 (Obtuse Marginal 2)",
-                "fr": "OM2 (Marginale Obtuse 2)",
-            },
-            "bx_stenosis_binary": {"en": "Branch Vessel", "fr": "Branche Vasculaire"},
-            "prox_rca_stenosis_binary": {"en": "Proximal RCA", "fr": "CD Proximale"},
-            "mid_rca_stenosis_binary": {"en": "Mid RCA", "fr": "CD Moyenne"},
-            "dist_rca_stenosis_binary": {"en": "Distal RCA", "fr": "CD Distale"},
-            "pda_stenosis_binary": {
-                "en": "PDA (Posterior Descending)",
-                "fr": "IVP (Interventriculaire Postérieure)",
-            },
-            "posterolateral_stenosis_binary": {
-                "en": "Posterolateral Branch",
-                "fr": "Branche Postérolatérale",
-            },
+            'Other': {
+                'fr': 'Autre',
+                'Branch Vessel': 'Branche Vasculaire',
+                'LVp': 'LVp'
+            }
         }
-
+        
         # ------------------------------------------------------------------
         # 3) Check which arteries are above threshold
         # ------------------------------------------------------------------
         blocked_arteries = []
+        cto_arteries = []
+        thrombus_arteries = []
 
-        for head, value in predictions.items():
-            # Only process binary classification heads
-            if "_binary" not in head:
-                continue
-
-            # Convert tensor to float if needed
-            prob_value = value.item() if isinstance(value, torch.Tensor) else value
-
-            # Get threshold for this head
-            head_cfg = class_mapping.get(head, {})
-            threshold = head_cfg.get("threshold")
-
-            if threshold is not None and prob_value > threshold:
-                artery_name = artery_names.get(head, {}).get(language, head)
+        for artery_name, data in predictions.items():
+            # Check for blocked arteries (stenosis)
+            if data.get('diagnosis_stenosis') == 'blocked':
+                prob_value = data.get('stenosis_prob', 0)
+                if isinstance(prob_value, torch.Tensor):
+                    prob_value = prob_value.item()
                 percentage = prob_value * 100
-                blocked_arteries.append((artery_name, percentage))
+                localized_name = None
+                
+                # Find the artery in our mapping
+                for system_name, arteries in artery_names.items():
+                    if artery_name in arteries:
+                        localized_name = arteries.get(artery_name, artery_name)
+                        break
+                
+                if localized_name:
+                    blocked_arteries.append((localized_name, percentage))
+            
+            # Check for CTO
+            if data.get('diagnosis_cto') == 'cto':
+                prob_value = data.get('cto_prob', 0)
+                if isinstance(prob_value, torch.Tensor):
+                    prob_value = prob_value.item()
+                percentage = prob_value * 100
+                localized_name = None
+                
+                for system_name, arteries in artery_names.items():
+                    if artery_name in arteries:
+                        localized_name = arteries.get(artery_name, artery_name)
+                        break
+                
+                if localized_name:
+                    cto_arteries.append((localized_name, percentage))
+            
+            # Check for thrombus
+            if data.get('diagnosis_thrombus') == 'thrombus':
+                prob_value = data.get('thrombus_prob', 0)
+                if isinstance(prob_value, torch.Tensor):
+                    prob_value = prob_value.item()
+                percentage = prob_value * 100
+                localized_name = None
+                
+                for system_name, arteries in artery_names.items():
+                    if artery_name in arteries:
+                        localized_name = arteries.get(artery_name, artery_name)
+                        break
+                
+                if localized_name:
+                    thrombus_arteries.append((localized_name, percentage))
 
         # ------------------------------------------------------------------
-        # 4) Generate appropriate recommendation
+        # 4) Generate simplified clinical recommendations
         # ------------------------------------------------------------------
-        if blocked_arteries:
-            # Sort by severity (highest percentage first)
-            blocked_arteries.sort(key=lambda x: x[1], reverse=True)
-
+        recommendations = []
+        
+        # Count the most severe conditions for priority assessment
+        has_stenosis = len(blocked_arteries) > 0
+        has_cto = len(cto_arteries) > 0
+        has_thrombus = len(thrombus_arteries) > 0
+        
+        if has_thrombus:
+            # Thrombus is the highest priority - requires immediate attention
             if language == "fr":
-                arteries_text = ", ".join(
-                    [f"{name} ({perc:.1f}%)" for name, perc in blocked_arteries]
+                recommendations.append(
+                    "Thrombus coronarien détecté. ÉVALUATION URGENTE REQUISE. "
+                    "Consulter immédiatement un cardiologue interventionnel pour "
+                    "évaluation de thrombolyse ou thrombectomie selon la situation clinique."
                 )
+            else:
+                recommendations.append(
+                    "Coronary thrombus detected. URGENT EVALUATION REQUIRED. "
+                    "Immediately consult an interventional cardiologist for "
+                    "thrombolysis or thrombectomy evaluation based on clinical situation."
+                )
+        
+        elif has_cto:
+            # CTO requires specialized intervention
+            if language == "fr":
+                recommendations.append(
+                    "Occlusion chronique totale (CTO) détectée. "
+                    "Évaluation spécialisée recommandée pour techniques de revascularisation "
+                    "avancées (rétrograde, dissection subintimale)."
+                )
+            else:
+                recommendations.append(
+                    "Chronic Total Occlusion (CTO) detected. "
+                    "Specialized evaluation recommended for advanced revascularization "
+                    "techniques (retrograde, subintimal dissection)."
+                )
+        
+        elif has_stenosis:
+            # Stenosis requires standard PCI evaluation
+            if language == "fr":
+                recommendations.append(
+                    "Sténose coronarienne détectée. "
+                    "Consulter un cardiologue interventionnel pour "
+                    "évaluation d'une intervention coronarienne percutanée (ICP)."
+                )
+            else:
+                recommendations.append(
+                    "Coronary stenosis detected. "
+                    "Consult an interventional cardiologist for "
+                    "percutaneous coronary intervention (PCI) evaluation."
+                )
+        
+        else:
+            # No significant pathology detected
+            if language == "fr":
+                recommendations.append(
+                    "Aucune pathologie coronarienne significative détectée. "
+                    "Continuer la surveillance clinique de routine selon les protocoles établis."
+                )
+            else:
+                recommendations.append(
+                    "No significant coronary pathology detected. "
+                    "Continue routine clinical monitoring per established protocols."
+                )
+        
+        if not recommendations:
+            if language == "fr":
                 return (
-                    f"Sténose coronarienne détectée dans: {arteries_text}. "
-                    f"Recommandation: Consulter un cardiologue interventionnel pour "
-                    f"évaluation d'une intervention coronarienne percutanée (ICP)."
+                    "Aucune pathologie coronarienne significative détectée. "
+                    "Continuer la surveillance clinique de routine selon les protocoles établis."
                 )
-            # English
-            arteries_text = ", ".join(
-                [f"{name} ({perc:.1f}%)" for name, perc in blocked_arteries]
-            )
-            return (
-                f"Coronary stenosis detected in: {arteries_text}. "
-                f"Recommendation: Consult an interventional cardiologist for "
-                f"percutaneous coronary intervention (PCI) evaluation."
-            )
-        # No significant stenosis detected
-        if language == "fr":
-            return (
-                "Aucune sténose coronarienne significative détectée. "
-                "Continuer la surveillance clinique de routine selon les protocoles établis."
-            )
-        # English
-        return (
-            "No significant coronary stenosis detected. "
-            "Continue routine clinical monitoring per established protocols."
-        )
+            else:
+                return (
+                    "No significant coronary pathology detected. "
+                    "Continue routine clinical monitoring per established protocols."
+                )
+        
+        return "\n\n".join(recommendations)
+        
 
     async def _handle_html_output(self, request: PredictRequest):
         dicoms = []
@@ -364,7 +534,7 @@ class CustomPredictionService(BasePredictionService):
             }
             
         # Obtain per-head diagnosis/interpretation
-        diagnosis_dict: dict[str, str] = self._get_diagnosis(probability)
+        diagnosis_dict: dict[str, dict] = self._process_predictions(probability)
 
         # The API schema (`JsonPredictionResponse`) expects the *diagnosis* field
         # to be a **string**.  We therefore serialise the dictionary into a JSON
@@ -384,6 +554,9 @@ class CustomPredictionService(BasePredictionService):
         recommendations_en = self._get_recommendations(probability, "en")
         recommendations_fr = self._get_recommendations(probability, "fr")
 
+        print(f"recommendations_en: {recommendations_en}")
+        print(f"recommendations_fr: {recommendations_fr}")
+        
         # Prepare comprehensive data for HTML parser
         html_data = {
             "diagnosis": diagnosis,
@@ -415,29 +588,38 @@ class CustomPredictionService(BasePredictionService):
             }
 
         # Obtain per-head diagnosis/interpretation
-        diagnosis_dict: dict[str, str] = self._get_diagnosis(probability)
+        structured_predictions: dict[str, dict] = self._process_predictions(probability)
 
+        # Transform into a diagnosis string
+        try:    
+            diagnosis = self._get_diagnosis(structured_predictions)
+        except Exception as e:
+            print(f"Error in _get_diagnosis: {e}")
+            diagnosis = "Error in _get_diagnosis"
+        
         # The API schema (`JsonPredictionResponse`) expects the *diagnosis* field
         # to be a **string**.  We therefore serialise the dictionary into a JSON
         # string so that downstream consumers still get a single text field
         # while retaining full information.
-        diagnosis = json.dumps(diagnosis_dict)
+        try:    
+            structured_predictions_json = json.dumps(structured_predictions)
+        except Exception as e:
+            print(f"Error in json.dumps(structured_predictions): {e}")
+            structured_predictions_json = "Error in json.dumps(structured_predictions)"
 
-        # Convert all tensor values to Python floats for JSON serialization
-        predictions_serializable = {}
-        for key, value in probability.items():
-            if isinstance(value, torch.Tensor):
-                predictions_serializable[key] = value.item()
-            else:
-                predictions_serializable[key] = value
-
-        # Generate recommendations based on stenosis analysis
-        recommendations_en = self._get_recommendations(probability, "en")
-        recommendations_fr = self._get_recommendations(probability, "fr")
+        try:
+            # Generate recommendations based on stenosis analysis
+            recommendations_en = self._get_recommendations(structured_predictions, "en")
+            recommendations_fr = self._get_recommendations(structured_predictions, "fr")
+            
+        except Exception as e:
+            print(f"Error in _get_recommendations: {e}")
+            recommendations_en = "Error in _get_recommendations"
+            recommendations_fr = "Error in _get_recommendations"
 
         return {
             "diagnosis": diagnosis,
-            "predictions": predictions_serializable,
+            "predictions": structured_predictions_json,
             "modelRecommendations": {
                 "en": recommendations_en,
                 "fr": recommendations_fr,
