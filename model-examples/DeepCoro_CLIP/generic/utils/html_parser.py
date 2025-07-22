@@ -1,9 +1,452 @@
 import json
+import logging
+from datetime import datetime
+from typing import Dict, List, Tuple, Optional
 
 
 class HTMLParser:
+    # Constants
+    ARTERY_SYSTEMS = {
+        'Right Coronary Artery (RCA) System': {
+            'Proximal RCA': 'Proximal RCA',
+            'Mid RCA': 'Mid RCA',
+            'Distal RCA': 'Distal RCA',
+            'Posterior Descending Artery': 'Posterior Descending Artery',
+            'Posterolateral Branch': 'Posterolateral Branch'
+        },
+        'Left Coronary Artery (LCA) System': {
+            'Left Main Branch': 'Left Main Branch',
+            'Proximal LAD': 'Proximal LAD',
+            'Mid LAD': 'Mid LAD',
+            'Distal LAD': 'Distal LAD',
+            'D1 Branch': 'D1 Branch',
+            'D2 Branch': 'D2 Branch',
+            'Proximal LCX': 'Proximal LCX',
+            'Distal LCX': 'Distal LCX',
+            'Mid LCX': 'Mid LCX',
+            'OM1 (Obtuse Marginal 1)': 'OM1 (Obtuse Marginal 1)',
+            'OM2 (Obtuse Marginal 2)': 'OM2 (Obtuse Marginal 2)',
+        },
+        'Other': {
+            'Branch Vessel': 'Branch Vessel',
+            'LVp': 'LVp'
+        }
+    }
+    
+    DIAGNOSIS_TYPES = ['stenosis', 'cto', 'calcif', 'thrombus']
+    DIAGNOSIS_VALUES = {
+        'stenosis': 'blocked',
+        'cto': 'cto', 
+        'calcif': 'calcified',
+        'thrombus': 'thrombus'
+    }
+    
+    # System colors for detailed analysis
+    SYSTEM_COLORS = {
+        'rca': '#e67e22',  # Orange
+        'lca': '#3498db',  # Blue
+        'other': '#9b59b6'  # Purple
+    }
+
     @staticmethod
-    def generate_detection_results(results):
+    def _validate_input(results: Dict) -> bool:
+        """Validate input data structure."""
+        if not isinstance(results, dict):
+            logging.error("Input results must be a dictionary")
+            return False
+        
+        required_keys = ['probability']
+        for key in required_keys:
+            if key not in results:
+                logging.error(f"Missing required key: {key}")
+                return False
+        
+        if not isinstance(results['probability'], dict):
+            logging.error("Probability data must be a dictionary")
+            return False
+        
+        return True
+
+    @staticmethod
+    def _classify_arteries(results: Dict) -> Dict[str, Dict]:
+        """Classify arteries by system (RCA, LCA, Other)."""
+        try:
+            classified = {
+                'rca': {},
+                'lca': {},
+                'other': {}
+            }
+            
+            for artery_name, data in results['probability'].items():
+                if artery_name in HTMLParser.ARTERY_SYSTEMS['Right Coronary Artery (RCA) System']:
+                    classified['rca'][artery_name] = data
+                elif artery_name in HTMLParser.ARTERY_SYSTEMS['Left Coronary Artery (LCA) System']:
+                    classified['lca'][artery_name] = data
+                elif artery_name in HTMLParser.ARTERY_SYSTEMS['Other']:
+                    classified['other'][artery_name] = data
+                else:
+                    logging.warning(f"Unknown artery: {artery_name}")
+            
+            logging.info(f"Classified arteries - RCA: {len(classified['rca'])}, LCA: {len(classified['lca'])}, Other: {len(classified['other'])}")
+            return classified
+            
+        except Exception as e:
+            logging.error(f"Error classifying arteries: {e}")
+            return {'rca': {}, 'lca': {}, 'other': {}}
+
+    @staticmethod
+    def _count_diagnoses(arteries: Dict) -> Dict[str, int]:
+        """Count diagnoses for a group of arteries."""
+        try:
+            counts = {diagnosis_type: 0 for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES}
+            
+            for artery_name, artery_data in arteries.items():
+                for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES:
+                    diagnosis_key = f'diagnosis_{diagnosis_type}'
+                    if (diagnosis_key in artery_data and 
+                        artery_data[diagnosis_key] == HTMLParser.DIAGNOSIS_VALUES[diagnosis_type]):
+                        counts[diagnosis_type] += 1
+            
+            return counts
+            
+        except Exception as e:
+            logging.error(f"Error counting diagnoses: {e}")
+            return {diagnosis_type: 0 for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES}
+
+    @staticmethod
+    def _calculate_total_counts(classified_arteries: Dict[str, Dict]) -> Dict[str, int]:
+        """Calculate total counts across all artery systems."""
+        try:
+            all_counts = {}
+            for system_name, system_arteries in classified_arteries.items():
+                system_counts = HTMLParser._count_diagnoses(system_arteries)
+                for diagnosis_type, count in system_counts.items():
+                    all_counts[diagnosis_type] = all_counts.get(diagnosis_type, 0) + count
+            
+            logging.info(f"Total counts: {all_counts}")
+            return all_counts
+            
+        except Exception as e:
+            logging.error(f"Error calculating total counts: {e}")
+            return {diagnosis_type: 0 for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES}
+
+    @staticmethod
+    def _determine_colors(total_counts: Dict[str, int]) -> Dict[str, str]:
+        """Determine card colors based on total counts."""
+        try:
+            colors = {}
+            for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES:
+                colors[diagnosis_type] = "red" if total_counts.get(diagnosis_type, 0) > 1 else "green"
+            return colors
+            
+        except Exception as e:
+            logging.error(f"Error determining colors: {e}")
+            return {diagnosis_type: "green" for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES}
+
+    @staticmethod
+    def _generate_status_card(diagnosis_type: str, count: int, total: int, color: str) -> str:
+        """Generate HTML for a single status card."""
+        try:
+            title = diagnosis_type.title()
+            return f"""
+                    <div class="status-card {diagnosis_type} {color}">
+                        <div class="card-content">
+                            <h3 class="card-title">{title}</h3>
+                            <div class="card-number">{count} / {total}</div>
+                            <div class="card-label">vessels affected</div>
+                        </div>
+                    </div>"""
+        except Exception as e:
+            logging.error(f"Error generating status card: {e}")
+            return ""
+
+    @staticmethod
+    def _generate_system_section(system_name: str, arteries: Dict, counts: Dict[str, int], colors: Dict[str, str]) -> str:
+        """Generate HTML section for a coronary artery system."""
+        cards_html = ""
+        for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES:
+            count = counts.get(diagnosis_type, 0)
+            color = colors.get(diagnosis_type, "green")
+            cards_html += HTMLParser._generate_status_card(diagnosis_type, count, len(arteries), color)
+        
+        return f"""
+                <div style="text-align: center; margin: 30px 0;">
+                    <h1 style="color: #2c3e50; font-size: 28px; font-weight: 700;">{system_name}</h1>
+                </div>
+
+                <div class="status-cards">
+                    {cards_html}
+                </div>"""
+
+    @staticmethod
+    def _get_css_styles() -> str:
+        """Return the CSS styles for the HTML report."""
+        return """
+                :root {
+                    --primary-color: #3498db;
+                    --secondary-color: #2980b9;
+                    --background-color: #f8f9fa;
+                    --text-color: #2c3e50;
+                    --border-color: #e9ecef;
+                    --status-color: #4ecdc4;
+                    --warning-color: #e74c3c;
+                    --normal-color: #27ae60;
+                    --card-bg: #ffffff;
+                }
+                
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    margin: 0;
+                    padding: 20px;
+                    background-color: var(--background-color);
+                    color: var(--text-color);
+                    line-height: 1.6;
+                }
+                
+                .detection-results {
+                    max-width: 1200px;
+                    margin: 0 auto;
+                    background-color: var(--card-bg);
+                    border-radius: 12px;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                    padding: 30px;
+                    border: 1px solid var(--border-color);
+                }
+                
+                .header {
+                    text-align: center;
+                    margin-bottom: 40px;
+                    padding-bottom: 30px;
+                    border-bottom: 3px solid var(--primary-color);
+                }
+
+                .header h1 {
+                    color: var(--primary-color);
+                    margin: 0 0 10px 0;
+                    font-size: 32px;
+                    font-weight: 700;
+                }
+
+                .header .subtitle {
+                    color: var(--secondary-color);
+                    font-size: 16px;
+                    margin: 0;
+                }
+                
+                .status-cards {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    gap: 20px;
+                    margin-top: 30px;
+                }
+
+                .status-card {
+                    display: flex;
+                    align-items: center;
+                    padding: 20px;
+                    background-color: var(--card-bg);
+                    border-radius: 10px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    border: 1px solid var(--border-color);
+                }
+
+                .status-card .card-content {
+                    flex-grow: 1;
+                }
+
+                .status-card .card-title {
+                    color: var(--primary-color);
+                    font-size: 18px;
+                    font-weight: 600;
+                    margin-bottom: 5px;
+                }
+
+                .status-card .card-number {
+                    font-size: 28px;
+                    font-weight: bold;
+                    color: var(--status-color);
+                    margin-bottom: 5px;
+                }
+
+                .status-card .card-label {
+                    font-size: 14px;
+                    color: var(--secondary-color);
+                    text-transform: uppercase;
+                    font-weight: 500;
+                }
+                
+                /* Dynamic color classes for status cards */
+                .status-card.stenosis.red {
+                    border-color: #e74c3c;
+                    background: linear-gradient(135deg, #e74c3c15, #e74c3c05);
+                }
+                
+                .status-card.stenosis.green {
+                    border-color: #27ae60;
+                    background: linear-gradient(135deg, #27ae6015, #27ae6005);
+                }
+                
+                .status-card.calcif.red {
+                    border-color: #e74c3c;
+                    background: linear-gradient(135deg, #e74c3c15, #e74c3c05);
+                }
+                
+                .status-card.calcif.green {
+                    border-color: #27ae60;
+                    background: linear-gradient(135deg, #27ae6015, #27ae6005);
+                }
+                
+                .status-card.thrombus.red {
+                    border-color: #e74c3c;
+                    background: linear-gradient(135deg, #e74c3c15, #e74c3c05);
+                }
+                
+                .status-card.thrombus.green {
+                    border-color: #27ae60;
+                    background: linear-gradient(135deg, #27ae6015, #27ae6005);
+                }
+                
+                .status-card.cto.red {
+                    border-color: #e74c3c;
+                    background: linear-gradient(135deg, #e74c3c15, #e74c3c05);
+                }
+                
+                .status-card.cto.green {
+                    border-color: #27ae60;
+                    background: linear-gradient(135deg, #27ae6015, #27ae6005);
+                }
+                
+                /* Color the numbers based on status */
+                .status-card.red .card-number {
+                    color: #e74c3c;
+                }
+                
+                .status-card.green .card-number {
+                    color: #27ae60;
+                }"""
+
+    @staticmethod
+    def _generate_recommendations_section(recommendations: Dict[str, str]) -> str:
+        """Generate HTML for the clinical recommendations section."""
+        recommendations_en = recommendations.get("en", "")
+        recommendations_fr = recommendations.get("fr", "")
+        
+        en_section = f'<div style="margin: 15px 0;"><span style="font-weight: bold; color: #3498db; text-transform: uppercase; font-size: 13px; margin-bottom: 8px; display: block;">English</span><div style="font-size: 16px; line-height: 1.6;">{recommendations_en}</div></div>' if recommendations_en else ''
+        fr_section = f'<div style="margin: 15px 0;"><span style="font-weight: bold; color: #3498db; text-transform: uppercase; font-size: 13px; margin-bottom: 8px; display: block;">Français</span><div style="font-size: 16px; line-height: 1.6;">{recommendations_fr}</div></div>' if recommendations_fr else ''
+        
+        return f"""
+                <!-- Clinical Recommendations Section -->
+                <div style="margin: 40px 0; padding: 25px; background: linear-gradient(135deg, #3498db15, #3498db05); border-left: 4px solid #3498db; border-radius: 8px;">
+                    <h2 style="color: #3498db; margin: 0 0 20px 0; font-size: 24px; font-weight: 600;">Clinical Recommendations</h2>            
+                    {en_section}
+                    {fr_section}
+                </div>"""
+
+    @staticmethod
+    def _generate_detailed_diagnosis_section(diagnosis_data: Dict) -> str:
+        """Generate HTML for detailed diagnosis analysis section."""
+        if not diagnosis_data:
+            return ""
+        
+        # Classify arteries by system
+        classified_arteries = HTMLParser._classify_arteries({"probability": diagnosis_data})
+        
+        # Generate sections for each artery system
+        sections = []
+        
+        # RCA Section
+        rca_arteries = classified_arteries.get('rca', {})
+        if rca_arteries:
+            rca_section = HTMLParser._generate_system_detailed_section("RCA", "Right Coronary Artery", rca_arteries, HTMLParser.SYSTEM_COLORS['rca'])
+            sections.append(rca_section)
+        
+        # LCA Section
+        lca_arteries = classified_arteries.get('lca', {})
+        if lca_arteries:
+            lca_section = HTMLParser._generate_system_detailed_section("LCA", "Left Coronary Artery", lca_arteries, HTMLParser.SYSTEM_COLORS['lca'])
+            sections.append(lca_section)
+        
+        # Other Section
+        other_arteries = classified_arteries.get('other', {})
+        if other_arteries:
+            other_section = HTMLParser._generate_system_detailed_section("Other", "Other Vessels", other_arteries, HTMLParser.SYSTEM_COLORS['other'])
+            sections.append(other_section)
+        
+        return ''.join(sections)
+
+    @staticmethod
+    def _generate_system_detailed_section(system_key: str, system_name: str, arteries: Dict, color: str) -> str:
+        """Generate detailed analysis section for a specific artery system."""
+        try:
+            vessel_details = []
+            
+            for vessel_name, vessel_data in arteries.items():
+                # Extract probabilities and convert to percentages
+                stenosis_prob = vessel_data.get('stenosis_prob', 0) * 100
+                calcif_prob = vessel_data.get('calcif_prob', 0) * 100
+                cto_prob = vessel_data.get('cto_prob', 0) * 100
+                thrombus_prob = vessel_data.get('thrombus_prob', 0) * 100
+                
+                # Get diagnoses
+                stenosis_diagnosis = vessel_data.get('diagnosis_stenosis', 'normal')
+                calcif_diagnosis = vessel_data.get('diagnosis_calcif', 'normal')
+                cto_diagnosis = vessel_data.get('diagnosis_cto', 'normal')
+                thrombus_diagnosis = vessel_data.get('diagnosis_thrombus', 'normal')
+                
+                # Determine status colors
+                stenosis_color = "red" if stenosis_diagnosis == 'blocked' else "green"
+                calcif_color = "red" if calcif_diagnosis == 'calcified' else "green"
+                cto_color = "red" if cto_diagnosis == 'cto' else "green"
+                thrombus_color = "red" if thrombus_diagnosis == 'thrombus' else "green"
+                
+                vessel_html = f"""
+                        <div style="background: #ffffff; border-radius: 8px; padding: 20px; margin: 15px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid {color};">
+                            <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 20px; font-weight: 600;">{vessel_name}</h3>
+                            
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                                <div style="background: linear-gradient(135deg, #{'e74c3c' if stenosis_color == 'red' else '27ae60'}15, #{'e74c3c' if stenosis_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if stenosis_color == 'red' else '#27ae60'};">
+                                    <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">Stenosis</div>
+                                    <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if stenosis_color == 'red' else '#27ae60'};">{stenosis_prob:.1f}%</div>
+                                    <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{stenosis_diagnosis}</div>
+                                </div>
+                                
+                                <div style="background: linear-gradient(135deg, #{'e74c3c' if calcif_color == 'red' else '27ae60'}15, #{'e74c3c' if calcif_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if calcif_color == 'red' else '#27ae60'};">
+                                    <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">Calcification</div>
+                                    <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if calcif_color == 'red' else '#27ae60'};">{calcif_prob:.1f}%</div>
+                                    <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{calcif_diagnosis}</div>
+                                </div>
+                                
+                                <div style="background: linear-gradient(135deg, #{'e74c3c' if cto_color == 'red' else '27ae60'}15, #{'e74c3c' if cto_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if cto_color == 'red' else '#27ae60'};">
+                                    <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">CTO</div>
+                                    <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if cto_color == 'red' else '#27ae60'};">{cto_prob:.1f}%</div>
+                                    <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{cto_diagnosis}</div>
+                                </div>
+                                
+                                <div style="background: linear-gradient(135deg, #{'e74c3c' if thrombus_color == 'red' else '27ae60'}15, #{'e74c3c' if thrombus_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if thrombus_color == 'red' else '#27ae60'};">
+                                    <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">Thrombus</div>
+                                    <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if thrombus_color == 'red' else '#27ae60'};">{thrombus_prob:.1f}%</div>
+                                    <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{thrombus_diagnosis}</div>
+                                </div>
+                            </div>
+                        </div>"""
+                
+                vessel_details.append(vessel_html)
+            
+            return f"""
+                    <!-- Detailed {system_name} Analysis Section -->
+                    <div style="margin: 40px 0; padding: 25px; background: linear-gradient(135deg, {color}15, {color}05); border-left: 4px solid {color}; border-radius: 8px;">
+                        <h2 style="color: {color}; margin: 0 0 20px 0; font-size: 24px; font-weight: 600;">Detailed {system_name} Analysis</h2>
+                        <p style="color: #2c3e50; margin-bottom: 20px; font-size: 16px;">Individual vessel analysis with probability percentages and AI diagnoses for each {system_name} segment.</p>
+                        
+                        {''.join(vessel_details)}
+                    </div>"""
+                    
+        except Exception as e:
+            logging.error(f"Error generating detailed section for {system_name}: {e}")
+            return ""
+
+    @staticmethod
+    def generate_detection_results(results: Dict) -> str:
         """Generate HTML output with coronary stenosis detection results.
 
         Args:
@@ -15,122 +458,50 @@ class HTMLParser:
         Returns:
             str: HTML formatted string containing the classification result
         """
-        probability_dict = results["probability"]
-        diagnosis_json = results.get("diagnosis", "{}")
-        recommendations = results.get("recommendations", {})
+        # Validate input
+        if not HTMLParser._validate_input(results):
+            logging.error("Invalid input data for HTML generation.")
+            return "Error: Invalid input data."
 
-        # Parse diagnosis JSON string
-        try:
-            diagnosis_dict = (
-                json.loads(diagnosis_json) if isinstance(diagnosis_json, str) else diagnosis_json
-            )
-        except:
-            diagnosis_dict = {}
-
-        # Separate binary and regression predictions
-        binary_predictions = {k: v for k, v in probability_dict.items() if "_binary" in k}
-        regression_predictions = {k: v for k, v in probability_dict.items() if "_binary" not in k}
-
-        # Find blocked arteries (above threshold)
-        blocked_arteries = {"LCA": [], "RCA": []}
-        normal_arteries = {"LCA": [], "RCA": []}
-
-        # Artery display names
-        artery_names = {
-            "LCA": {
-                "leftmain_stenosis_binary": "Left Main",
-                "lad_stenosis_binary": "LAD (Left Anterior Descending)",
-                "mid_lad_stenosis_binary": "Mid LAD",
-                "dist_lad_stenosis_binary": "Distal LAD",
-                "diagonal_stenosis_binary": "D1 Branch",
-                "D2_stenosis_binary": "D2 Branch",
-                "lcx_stenosis_binary": "LCX (Left Circumflex)",
-                "dist_lcx_stenosis_binary": "Distal LCX",
-                "om1_stenosis_binary": "OM1 (Obtuse Marginal 1)",
-                "om2_stenosis_binary": "OM2 (Obtuse Marginal 2)",
-                "bx_stenosis_binary": "Branch Vessel",
-            },
-            "RCA": {
-                "prox_rca_stenosis_binary": "Proximal RCA",
-                "mid_rca_stenosis_binary": "Mid RCA",
-                "dist_rca_stenosis_binary": "Distal RCA",
-                "pda_stenosis_binary": "PDA (Posterior Descending)",
-                "posterolateral_stenosis_binary": "Posterolateral Branch",
-            },
+        # Classify arteries by system
+        classified_arteries = HTMLParser._classify_arteries(results)
+        
+        # Calculate counts for each system
+        system_counts = {}
+        for system_name, arteries in classified_arteries.items():
+            system_counts[system_name] = HTMLParser._count_diagnoses(arteries)
+        
+        # Calculate total counts across all systems
+        total_counts = HTMLParser._calculate_total_counts(classified_arteries)
+        
+        # Determine card colors based on counts
+        colors = HTMLParser._determine_colors(total_counts)
+        
+        # Generate HTML sections for each system
+        system_sections = []
+        system_names = {
+            'rca': 'Right Coronary Artery (RCA) System',
+            'lca': 'Left Coronary Artery (LCA) System', 
+            'other': 'Other Vessels'
         }
-
-        # Categorize arteries by LCA/RCA
-        def categorize_artery(artery_name):
-            if artery_name in artery_names["LCA"]:
-                return "LCA"
-            if artery_name in artery_names["RCA"]:
-                return "RCA"
-            return None
-
-        # Define artery priority order to ensure D1 comes before D2
-        def get_artery_priority(artery_key):
-            """Return priority order for arteries to ensure anatomical ordering"""
-            priority_order = {
-                # LCA system - anatomical order
-                "leftmain_stenosis_binary": 1,
-                "lad_stenosis_binary": 2,
-                "mid_lad_stenosis_binary": 3,
-                "dist_lad_stenosis_binary": 4,
-                "diagonal_stenosis_binary": 5,  # D1
-                "D2_stenosis_binary": 6,  # D2
-                "lcx_stenosis_binary": 7,
-                "dist_lcx_stenosis_binary": 8,
-                "om1_stenosis_binary": 9,
-                "om2_stenosis_binary": 10,
-                "bx_stenosis_binary": 11,
-                # RCA system - anatomical order
-                "prox_rca_stenosis_binary": 12,
-                "mid_rca_stenosis_binary": 13,
-                "dist_rca_stenosis_binary": 14,
-                "pda_stenosis_binary": 15,
-                "posterolateral_stenosis_binary": 16,
-            }
-            return priority_order.get(artery_key, 999)  # Default high value for unknown arteries
-
-        # Custom sorting function for binary predictions
-        def sort_binary_arteries(artery_tuple, reverse_prob=False):
-            """Sort arteries by anatomical priority first, then by probability"""
-            artery_key, prob = artery_tuple
-            priority = get_artery_priority(artery_key)
-            # Return tuple: (priority, probability) for sorting
-            # For blocked arteries, we want high probability first within same priority
-            # For normal arteries, we want low probability first within same priority
-            if reverse_prob:
-                return (priority, -prob)  # Negative prob for descending order
-            return (priority, prob)  # Positive prob for ascending order
-
-        # Custom sorting function for regression predictions
-        def sort_regression_arteries(artery_tuple, reverse_value=False):
-            """Sort arteries by anatomical priority first, then by stenosis value"""
-            regression_key, value, binary_key = artery_tuple
-            priority = get_artery_priority(binary_key)
-            # Return tuple: (priority, value) for sorting
-            if reverse_value:
-                return (priority, -value)  # Negative value for descending order
-            return (priority, value)  # Positive value for ascending order
-
-        for head, prob in binary_predictions.items():
-            category = categorize_artery(head)
-            if category:
-                # Assume threshold of 0.5 for binary classification
-                if prob > 0.5:
-                    blocked_arteries[category].append((head, prob))
-                else:
-                    normal_arteries[category].append((head, prob))
-
-        # Determine overall status
-        total_blocked = len(blocked_arteries["LCA"]) + len(blocked_arteries["RCA"])
-        has_stenosis = total_blocked > 0
-        status_color = "#ff6b6b" if has_stenosis else "#4ecdc4"
-        overall_status = (
-            "Coronary Stenosis Detected" if has_stenosis else "No Significant Stenosis"
-        )
-
+        
+        for system_key, system_name in system_names.items():
+            if classified_arteries[system_key]:  # Only generate section if arteries exist
+                section = HTMLParser._generate_system_section(
+                    system_name, 
+                    classified_arteries[system_key], 
+                    system_counts[system_key], 
+                    colors
+                )
+                system_sections.append(section)
+        
+        # Generate recommendations section
+        recommendations_section = HTMLParser._generate_recommendations_section(results.get("recommendations", {}))
+        
+        # Generate detailed diagnosis section
+        detailed_diagnosis_section = HTMLParser._generate_detailed_diagnosis_section(results.get("probability", {}))
+        
+        # Build the complete HTML
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -139,587 +510,36 @@ class HTMLParser:
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
-                :root {{
-                    --primary-color: #3498db;
-                    --secondary-color: #2980b9;
-                    --background-color: #f8f9fa;
-                    --text-color: #2c3e50;
-                    --border-color: #e9ecef;
-                    --status-color: {status_color};
-                    --warning-color: #e74c3c;
-                    --normal-color: #27ae60;
-                    --card-bg: #ffffff;
-                }}
-
-                body {{
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                    margin: 0;
-                    padding: 20px;
-                    background-color: var(--background-color);
-                    color: var(--text-color);
-                    line-height: 1.6;
-                }}
-
-                .detection-results {{
-                    max-width: 1200px;
-                    margin: 0 auto;
-                    background-color: var(--card-bg);
-                    border-radius: 12px;
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                    padding: 30px;
-                    border: 1px solid var(--border-color);
-                }}
-
-                .header {{
-                    text-align: center;
-                    margin-bottom: 40px;
-                    padding-bottom: 30px;
-                    border-bottom: 3px solid var(--primary-color);
-                }}
-
-                .header h1 {{
-                    color: var(--primary-color);
-                    margin: 0 0 10px 0;
-                    font-size: 32px;
-                    font-weight: 700;
-                }}
-
-                .header .subtitle {{
-                    color: var(--secondary-color);
-                    font-size: 16px;
-                    margin: 0;
-                }}
-
-                .section {{
-                    background-color: var(--card-bg);
-                    border-radius: 8px;
-                    padding: 25px;
-                    margin: 25px 0;
-                    border: 1px solid var(--border-color);
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                }}
-
-                .section h2 {{
-                    color: var(--primary-color);
-                    margin: 0 0 20px 0;
-                    font-size: 24px;
-                    font-weight: 600;
-                }}
-
-                .overall-status {{
-                    text-align: center;
-                    padding: 30px;
-                    background: linear-gradient(135deg, {status_color}15, {status_color}05);
-                    border-radius: 12px;
-                    border: 2px solid var(--status-color);
-                    margin-bottom: 30px;
-                }}
-
-                .status-text {{
-                    font-size: 28px;
-                    font-weight: bold;
-                    color: var(--status-color);
-                    margin: 0;
-                }}
-
-                .status-summary {{
-                    font-size: 16px;
-                    color: var(--text-color);
-                    margin-top: 10px;
-                }}
-
-                .arteries-grid {{
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                    gap: 20px;
-                    margin: 25px 0;
-                }}
-
-                .artery-card {{
-                    background: var(--card-bg);
-                    padding: 20px;
-                    border-radius: 8px;
-                    border-left: 4px solid;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }}
-
-                .artery-card.blocked {{
-                    border-left-color: var(--warning-color);
-                    background: linear-gradient(135deg, #e74c3c15, #e74c3c05);
-                }}
-
-                .artery-card.normal {{
-                    border-left-color: var(--normal-color);
-                    background: linear-gradient(135deg, #27ae6015, #27ae6005);
-                }}
-
-                .artery-name {{
-                    font-weight: bold;
-                    color: var(--text-color);
-                    font-size: 16px;
-                    margin-bottom: 10px;
-                }}
-
-                .artery-probability {{
-                    font-size: 14px;
-                    color: var(--secondary-color);
-                    margin-bottom: 8px;
-                }}
-
-                .artery-status {{
-                    font-weight: bold;
-                    font-size: 14px;
-                }}
-
-                .artery-status.blocked {{
-                    color: var(--warning-color);
-                }}
-
-                .artery-status.normal {{
-                    color: var(--normal-color);
-                }}
-
-                .probability-bar {{
-                    width: 100%;
-                    height: 8px;
-                    background-color: #e9ecef;
-                    border-radius: 4px;
-                    overflow: hidden;
-                    margin: 8px 0;
-                }}
-
-                .probability-fill {{
-                    height: 100%;
-                    border-radius: 4px;
-                    transition: width 0.3s ease;
-                }}
-
-                .blocked .probability-fill {{
-                    background: linear-gradient(90deg, #f39c12, #e74c3c);
-                }}
-
-                .normal .probability-fill {{
-                    background: linear-gradient(90deg, #f1c40f, #27ae60);
-                }}
-
-                .summary-stats {{
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                    gap: 20px;
-                    margin: 25px 0;
-                }}
-
-                .stat-card {{
-                    background: var(--card-bg);
-                    padding: 20px;
-                    border-radius: 8px;
-                    text-align: center;
-                    border: 1px solid var(--border-color);
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                }}
-
-                .stat-number {{
-                    font-size: 32px;
-                    font-weight: bold;
-                    color: var(--primary-color);
-                    margin-bottom: 5px;
-                }}
-
-                .stat-label {{
-                    font-size: 14px;
-                    color: var(--secondary-color);
-                    text-transform: uppercase;
-                    font-weight: 500;
-                }}
-
-                .recommendations {{
-                    background: linear-gradient(135deg, var(--primary-color)15, var(--primary-color)05);
-                    border-left: 4px solid var(--primary-color);
-                    padding: 20px 25px;
-                    margin: 20px 0;
-                    border-radius: 8px;
-                }}
-
-                .recommendation-text {{
-                    margin: 15px 0;
-                    font-size: 16px;
-                    line-height: 1.6;
-                }}
-
-                .language-label {{
-                    font-weight: bold;
-                    color: var(--primary-color);
-                    text-transform: uppercase;
-                    font-size: 13px;
-                    margin-bottom: 8px;
-                    display: block;
-                }}
-
-                .timestamp {{
-                    text-align: center;
-                    color: var(--secondary-color);
-                    font-size: 12px;
-                    margin-top: 40px;
-                    padding-top: 20px;
-                    border-top: 1px solid var(--border-color);
-                }}
-
-                .highlight {{
-                    background-color: #fff3cd;
-                    padding: 15px;
-                    border-radius: 6px;
-                    border-left: 4px solid #ffc107;
-                    margin: 15px 0;
-                }}
+                {HTMLParser._get_css_styles()}
             </style>
         </head>
         <body>
             <div class="detection-results">
                 <div class="header">
-                    <h1>Coronary Stenosis Detection Report</h1>
+                    <h1>Coronary Analysis Results Report</h1>
                     <p class="subtitle">AI-Powered Cardiac Analysis</p>
                 </div>
 
-                <div class="overall-status">
-                    <p class="status-text">{overall_status}</p>
-                    <p class="status-summary">
-                        {total_blocked} vessel(s) with significant stenosis detected out of {len(binary_predictions)} analyzed
-                    </p>
+                {''.join(system_sections)}
+
+                {recommendations_section}
+
+                {detailed_diagnosis_section}
+
+                <!-- Important Note -->
+                <div style="background-color: #fff3cd; padding: 15px; border-radius: 6px; border-left: 4px solid #ffc107; margin: 15px 0;">
+                    <strong>Important:</strong> This AI analysis is for screening purposes only and should be interpreted by a qualified cardiologist. Clinical correlation with patient symptoms, risk factors, and additional imaging may be necessary for definitive diagnosis and treatment planning.
                 </div>
 
-                <div class="section">
-                    <h2>Summary Statistics</h2>
-                    <div class="summary-stats">
-                        <div class="stat-card">
-                            <div class="stat-number">{total_blocked}</div>
-                            <div class="stat-label">Blocked Vessels</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number">{len(normal_arteries["LCA"]) + len(normal_arteries["RCA"])}</div>
-                            <div class="stat-label">Normal Vessels</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number">{len(binary_predictions)}</div>
-                            <div class="stat-label">Total Analyzed</div>
-                        </div>
-                    </div>
-                </div>
-        """
-
-        # Add detailed vessel analysis
-        if binary_predictions:
-            html_content += """
-                <div class="section">
-                    <h2>Detailed Vessel Analysis</h2>
-            """
-
-            # Show blocked arteries first
-            if blocked_arteries["LCA"] or blocked_arteries["RCA"]:
-                html_content += "<h3 style='color: var(--warning-color); margin-bottom: 15px;'>⚠️ Vessels with Significant Stenosis</h3>"
-
-                # LCA Section
-                if blocked_arteries["LCA"]:
-                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Left Coronary Artery (LCA) System</h4>"
-                    html_content += '<div class="arteries-grid">'
-
-                    for head, prob in sorted(
-                        blocked_arteries["LCA"], key=lambda x: x[1], reverse=True
-                    ):
-                        artery_name = artery_names["LCA"].get(
-                            head, head.replace("_stenosis_binary", "").replace("_", " ").title()
-                        )
-                        diagnosis_text = diagnosis_dict.get(head, "blocked")
-
-                        html_content += f"""
-                            <div class="artery-card blocked">
-                                <div class="artery-name">{artery_name}</div>
-                                <div class="artery-probability">Probability: {prob:.3f}</div>
-                                <div class="probability-bar">
-                                    <div class="probability-fill" style="width: {prob * 100}%;"></div>
-                                </div>
-                                <div class="artery-status blocked">Status: {diagnosis_text.upper()}</div>
-                            </div>
-                        """
-
-                    html_content += "</div>"
-
-                # RCA Section
-                if blocked_arteries["RCA"]:
-                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Right Coronary Artery (RCA) System</h4>"
-                    html_content += '<div class="arteries-grid">'
-
-                    for head, prob in sorted(
-                        blocked_arteries["RCA"], key=lambda x: x[1], reverse=True
-                    ):
-                        artery_name = artery_names["RCA"].get(
-                            head, head.replace("_stenosis_binary", "").replace("_", " ").title()
-                        )
-                        diagnosis_text = diagnosis_dict.get(head, "blocked")
-
-                        html_content += f"""
-                            <div class="artery-card blocked">
-                                <div class="artery-name">{artery_name}</div>
-                                <div class="artery-probability">Probability: {prob:.3f}</div>
-                                <div class="probability-bar">
-                                    <div class="probability-fill" style="width: {prob * 100}%;"></div>
-                                </div>
-                                <div class="artery-status blocked">Status: {diagnosis_text.upper()}</div>
-                            </div>
-                        """
-
-                    html_content += "</div>"
-
-            # Show normal arteries
-            if normal_arteries["LCA"] or normal_arteries["RCA"]:
-                html_content += "<h3 style='color: var(--normal-color); margin-top: 30px; margin-bottom: 15px;'>✅ Normal Vessels</h3>"
-
-                # LCA Normal Section
-                if normal_arteries["LCA"]:
-                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Left Coronary Artery (LCA) System</h4>"
-                    html_content += '<div class="arteries-grid">'
-
-                    for head, prob in sorted(
-                        normal_arteries["LCA"], key=lambda x: x[1], reverse=True
-                    ):
-                        artery_name = artery_names["LCA"].get(
-                            head, head.replace("_stenosis_binary", "").replace("_", " ").title()
-                        )
-                        diagnosis_text = diagnosis_dict.get(head, "normal")
-
-                        html_content += f"""
-                            <div class="artery-card normal">
-                                <div class="artery-name">{artery_name}</div>
-                                <div class="artery-probability">Probability: {prob:.3f}</div>
-                                <div class="probability-bar">
-                                    <div class="probability-fill" style="width: {prob * 100}%;"></div>
-                                </div>
-                                <div class="artery-status normal">Status: {diagnosis_text.upper()}</div>
-                            </div>
-                        """
-
-                    html_content += "</div>"
-
-                # RCA Normal Section
-                if normal_arteries["RCA"]:
-                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Right Coronary Artery (RCA) System</h4>"
-                    html_content += '<div class="arteries-grid">'
-
-                    for head, prob in sorted(
-                        normal_arteries["RCA"], key=lambda x: x[1], reverse=True
-                    ):
-                        artery_name = artery_names["RCA"].get(
-                            head, head.replace("_stenosis_binary", "").replace("_", " ").title()
-                        )
-                        diagnosis_text = diagnosis_dict.get(head, "normal")
-
-                        html_content += f"""
-                            <div class="artery-card normal">
-                                <div class="artery-name">{artery_name}</div>
-                                <div class="artery-probability">Probability: {prob:.3f}</div>
-                                <div class="probability-bar">
-                                    <div class="probability-fill" style="width: {prob * 100}%;"></div>
-                                </div>
-                                <div class="artery-status normal">Status: {diagnosis_text.upper()}</div>
-                            </div>
-                        """
-
-                    html_content += "</div>"
-
-            html_content += "</div>"
-
-        # Add regression results if available
-        if regression_predictions:
-            # Categorize regression predictions by LCA/RCA
-            regression_blocked = {"LCA": [], "RCA": []}
-            regression_normal = {"LCA": [], "RCA": []}
-
-            # Map regression keys to binary keys for categorization
-            regression_to_binary_map = {
-                k.replace("_stenosis", "_stenosis_binary"): k for k in regression_predictions
-            }
-
-            for binary_key, regression_key in regression_to_binary_map.items():
-                value = regression_predictions[regression_key]
-                category = categorize_artery(binary_key)
-                if category:
-                    if value > 50:  # Threshold for significant stenosis
-                        regression_blocked[category].append((regression_key, value, binary_key))
-                    else:
-                        regression_normal[category].append((regression_key, value, binary_key))
-
-            html_content += """
-                <div class="section">
-                    <h2>Quantitative Stenosis Assessment</h2>
-            """
-
-            # Show blocked arteries first
-            if regression_blocked["LCA"] or regression_blocked["RCA"]:
-                html_content += "<h3 style='color: var(--warning-color); margin-bottom: 15px;'>⚠️ Vessels with Significant Stenosis (>50%)</h3>"
-
-                # LCA Section
-                if regression_blocked["LCA"]:
-                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Left Coronary Artery (LCA) System</h4>"
-                    html_content += '<div class="arteries-grid">'
-
-                    for regression_key, value, binary_key in sorted(
-                        regression_blocked["LCA"], key=lambda x: x[1], reverse=True
-                    ):
-                        artery_name = artery_names["LCA"].get(
-                            binary_key,
-                            regression_key.replace("_stenosis", "").replace("_", " ").title(),
-                        )
-
-                        html_content += f"""
-                            <div class="artery-card blocked">
-                                <div class="artery-name">{artery_name}</div>
-                                <div class="artery-probability">Stenosis Percentage: {value:.1f}%</div>
-                                <div class="probability-bar">
-                                    <div class="probability-fill" style="width: {min(value, 100)}%;"></div>
-                                </div>
-                                <div class="artery-status blocked">
-                                    {"Severe" if value > 70 else "Moderate" if value > 50 else "Mild" if value > 30 else "Minimal"}
-                                </div>
-                            </div>
-                        """
-
-                    html_content += "</div>"
-
-                # RCA Section
-                if regression_blocked["RCA"]:
-                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Right Coronary Artery (RCA) System</h4>"
-                    html_content += '<div class="arteries-grid">'
-
-                    for regression_key, value, binary_key in sorted(
-                        regression_blocked["RCA"], key=lambda x: x[1], reverse=True
-                    ):
-                        artery_name = artery_names["RCA"].get(
-                            binary_key,
-                            regression_key.replace("_stenosis", "").replace("_", " ").title(),
-                        )
-
-                        html_content += f"""
-                            <div class="artery-card blocked">
-                                <div class="artery-name">{artery_name}</div>
-                                <div class="artery-probability">Stenosis Percentage: {value:.1f}%</div>
-                                <div class="probability-bar">
-                                    <div class="probability-fill" style="width: {min(value, 100)}%;"></div>
-                                </div>
-                                <div class="artery-status blocked">
-                                    {"Severe" if value > 70 else "Moderate" if value > 50 else "Mild" if value > 30 else "Minimal"}
-                                </div>
-                            </div>
-                        """
-
-                    html_content += "</div>"
-
-            # Show normal/minimal stenosis arteries
-            if regression_normal["LCA"] or regression_normal["RCA"]:
-                html_content += "<h3 style='color: var(--normal-color); margin-top: 30px; margin-bottom: 15px;'>✅ Vessels with Minimal Stenosis (≤50%)</h3>"
-
-                # LCA Normal Section
-                if regression_normal["LCA"]:
-                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Left Coronary Artery (LCA) System</h4>"
-                    html_content += '<div class="arteries-grid">'
-
-                    for regression_key, value, binary_key in sorted(
-                        regression_normal["LCA"], key=lambda x: x[1], reverse=True
-                    ):
-                        artery_name = artery_names["LCA"].get(
-                            binary_key,
-                            regression_key.replace("_stenosis", "").replace("_", " ").title(),
-                        )
-
-                        html_content += f"""
-                            <div class="artery-card normal">
-                                <div class="artery-name">{artery_name}</div>
-                                <div class="artery-probability">Stenosis Percentage: {value:.1f}%</div>
-                                <div class="probability-bar">
-                                    <div class="probability-fill" style="width: {min(value, 100)}%;"></div>
-                                </div>
-                                <div class="artery-status normal">
-                                    {"Severe" if value > 70 else "Moderate" if value > 50 else "Mild" if value > 30 else "Minimal"}
-                                </div>
-                            </div>
-                        """
-
-                    html_content += "</div>"
-
-                # RCA Normal Section
-                if regression_normal["RCA"]:
-                    html_content += "<h4 style='color: var(--primary-color); margin: 20px 0 10px 0;'>📍 Right Coronary Artery (RCA) System</h4>"
-                    html_content += '<div class="arteries-grid">'
-
-                    for regression_key, value, binary_key in sorted(
-                        regression_normal["RCA"], key=lambda x: x[1], reverse=True
-                    ):
-                        artery_name = artery_names["RCA"].get(
-                            binary_key,
-                            regression_key.replace("_stenosis", "").replace("_", " ").title(),
-                        )
-
-                        html_content += f"""
-                            <div class="artery-card normal">
-                                <div class="artery-name">{artery_name}</div>
-                                <div class="artery-probability">Stenosis Percentage: {value:.1f}%</div>
-                                <div class="probability-bar">
-                                    <div class="probability-fill" style="width: {min(value, 100)}%;"></div>
-                                </div>
-                                <div class="artery-status normal">
-                                    {"Severe" if value > 70 else "Moderate" if value > 50 else "Mild" if value > 30 else "Minimal"}
-                                </div>
-                            </div>
-                        """
-
-                    html_content += "</div>"
-
-            html_content += """
-                </div>
-            """
-
-        # Add recommendations section if available
-        if recommendations:
-            html_content += """
-                <div class="section">
-                    <h2>Clinical Recommendations</h2>
-            """
-
-            if "en" in recommendations:
-                html_content += f"""
-                    <div class="recommendations">
-                        <span class="language-label">English</span>
-                        <div class="recommendation-text">{recommendations["en"]}</div>
-                    </div>
-                """
-
-            if "fr" in recommendations:
-                html_content += f"""
-                    <div class="recommendations">
-                        <span class="language-label">Français</span>
-                        <div class="recommendation-text">{recommendations["fr"]}</div>
-                    </div>
-                """
-
-            html_content += "</div>"
-
-        # Add important note
-        html_content += """
-            <div class="highlight">
-                <strong>Important:</strong> This AI analysis is for screening purposes only and should be interpreted by a qualified cardiologist.
-                Clinical correlation with patient symptoms, risk factors, and additional imaging may be necessary for definitive diagnosis and treatment planning.
-            </div>
-        """
-
-        # Add timestamp and close
-        html_content += f"""
-                <div class="timestamp">
-                    Report generated on {__import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")}
+                <div class="timestamp" style="text-align: center; margin: 30px 0;">
+                    Report generated on {datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")}
                 </div>
             </div>
         </body>
         </html>
         """
+        
         return html_content
-
 
 # Example usage with test data
 if __name__ == "__main__":
