@@ -208,7 +208,6 @@ class CustomPredictionService(BasePredictionService):
             }
         """
         class_mapping = CustomPredictionService._class_mapping
-        print(f"predictions.keys(): {predictions.keys()}")
         
         reordered_predictions = {}
         for key in predictions.keys():
