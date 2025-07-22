@@ -461,13 +461,13 @@ class CustomPredictionService(BasePredictionService):
                 recommendations.append(
                     "<strong>Thrombus coronarien détecté. ÉVALUATION URGENTE REQUISE.</strong> "
                     "Consulter immédiatement un cardiologue interventionnel pour "
-                    "évaluation de thrombolyse ou thrombectomie selon la situation clinique."
+                    "évaluation de thrombolyse ou thrombectomie selon la situation clinique. <br><br>"
                 )
             else:
                 recommendations.append(
                     "<strong>Coronary thrombus detected. URGENT EVALUATION REQUIRED.</strong> "
                     "Immediately consult an interventional cardiologist for "
-                    "thrombolysis or thrombectomy evaluation based on clinical situation."
+                    "thrombolysis or thrombectomy evaluation based on clinical situation. <br><br>"
                 )
         
         if has_cto:
@@ -476,13 +476,13 @@ class CustomPredictionService(BasePredictionService):
                 recommendations.append(
                     "<strong>Occlusion chronique totale (CTO) détectée.</strong> "
                     "Évaluation spécialisée recommandée pour techniques de revascularisation "
-                    "avancées (rétrograde, dissection subintimale)."
+                    "avancées (rétrograde, dissection subintimale). <br><br>"
                 )
             else:
                 recommendations.append(
                     "<strong>Chronic Total Occlusion (CTO) detected.</strong> "
                     "Specialized evaluation recommended for advanced revascularization "
-                    "techniques (retrograde, subintimal dissection)."
+                    "techniques (retrograde, subintimal dissection). <br><br>"
                 )
         
         if has_stenosis:
@@ -491,38 +491,38 @@ class CustomPredictionService(BasePredictionService):
                 recommendations.append(
                     "<strong>Sténose coronarienne détectée.</strong> "
                     "Consulter un cardiologue interventionnel pour "
-                    "évaluation d'une intervention coronarienne percutanée (ICP)."
+                    "évaluation d'une intervention coronarienne percutanée (ICP). <br><br>"
                 )
             else:
                 recommendations.append(
                     "<strong>Coronary stenosis detected.</strong> "
                     "Consult an interventional cardiologist for "
-                    "percutaneous coronary intervention (PCI) evaluation."
+                    "percutaneous coronary intervention (PCI) evaluation. <br><br>"
                 )
         if has_calcification:
             if language == "fr":
                 recommendations.append(
                     "<strong>Calcification coronarienne détectée.</strong> "
                     "Consulter un cardiologue interventionnel pour "
-                    "évaluation d'une intervention coronarienne percutanée (ICP)."
+                    "évaluation d'une intervention coronarienne percutanée (ICP). <br><br>"
                 )
             else:
                 recommendations.append(
                     "<strong>Coronary calcification detected.</strong> "
                     "Consult an interventional cardiologist for "
-                    "percutaneous coronary intervention (PCI) evaluation."
+                    "percutaneous coronary intervention (PCI) evaluation. <br><br>"
                 )
                 
         if not recommendations:
             if language == "fr":
                 return (
                     "<strong>Aucune pathologie coronarienne significative détectée.</strong> "
-                    "Continuer la surveillance clinique de routine selon les protocoles établis."
+                    "Continuer la surveillance clinique de routine selon les protocoles établis. <br><br>"
                 )
             else:
                 return (
                     "<strong>No significant coronary pathology detected.</strong> "
-                    "Continue routine clinical monitoring per established protocols."
+                    "Continue routine clinical monitoring per established protocols. <br><br>"
                 )
         
         return "\n\n".join(recommendations)
