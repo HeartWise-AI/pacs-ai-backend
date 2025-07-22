@@ -529,38 +529,38 @@ class CustomPredictionService(BasePredictionService):
                 "probability": {},
                 "recommendations": {
                     "en": "No video could be extracted or processed from the current DICOM series",
-                    "fr": "No video could be extracted or processed from the current DICOM series"
+                    "fr": "Aucune vidéo ne peut être extraite ou traitée à partir de la série DICOM actuelle"
                 }
             }
             
         # Obtain per-head diagnosis/interpretation
-        diagnosis_dict: dict[str, dict] = self._process_predictions(probability)
+        structured_predictions: dict[str, dict] = self._process_predictions(probability)
+
+        # Transform into a diagnosis string
+        try:    
+            diagnosis = self._get_diagnosis(structured_predictions)
+        except Exception as e:
+            print(f"Error in _get_diagnosis: {e}")
+            diagnosis = "Error in _get_diagnosis"
 
         # The API schema (`JsonPredictionResponse`) expects the *diagnosis* field
         # to be a **string**.  We therefore serialise the dictionary into a JSON
         # string so that downstream consumers still get a single text field
         # while retaining full information.
-        diagnosis = json.dumps(diagnosis_dict)
-
-        # Convert all tensor values to Python floats for JSON serialization
-        predictions_serializable = {}
-        for key, value in probability.items():
-            if isinstance(value, torch.Tensor):
-                predictions_serializable[key] = value.item()
-            else:
-                predictions_serializable[key] = value
+        try:    
+            structured_predictions_json = json.dumps(structured_predictions)
+        except Exception as e:
+            print(f"Error in json.dumps(structured_predictions): {e}")
+            structured_predictions_json = "Error in json.dumps(structured_predictions)"
 
         # Generate recommendations based on stenosis analysis
-        recommendations_en = self._get_recommendations(probability, "en")
-        recommendations_fr = self._get_recommendations(probability, "fr")
-
-        print(f"recommendations_en: {recommendations_en}")
-        print(f"recommendations_fr: {recommendations_fr}")
+        recommendations_en = self._get_recommendations(structured_predictions, "en")
+        recommendations_fr = self._get_recommendations(structured_predictions, "fr")
         
         # Prepare comprehensive data for HTML parser
         html_data = {
             "diagnosis": diagnosis,
-            "probability": predictions_serializable,
+            "probability": structured_predictions,
             "recommendations": {"en": recommendations_en, "fr": recommendations_fr},
         }
 
@@ -582,7 +582,7 @@ class CustomPredictionService(BasePredictionService):
                 "predictions": {},
                 "modelRecommendations": {
                     "en": "No video could be extracted or processed from the current DICOM series",
-                    "fr": "No video could be extracted or processed from la série DICOM actuelle",
+                    "fr": "Aucune vidéo ne peut être extraite ou traitée à partir de la série DICOM actuelle",
                     "presentable": True,
                 }
             }
