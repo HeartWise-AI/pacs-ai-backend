@@ -1,7 +1,8 @@
-import json
 import logging
+
+from io import StringIO
+from typing import Dict
 from datetime import datetime
-from typing import Dict, List, Tuple, Optional
 
 
 class HTMLParser:
@@ -48,139 +49,7 @@ class HTMLParser:
         'other': '#9b59b6'  # Purple
     }
 
-    @staticmethod
-    def _validate_input(results: Dict) -> bool:
-        """Validate input data structure."""
-        if not isinstance(results, dict):
-            logging.error("Input results must be a dictionary")
-            return False
-        
-        required_keys = ['probability']
-        for key in required_keys:
-            if key not in results:
-                logging.error(f"Missing required key: {key}")
-                return False
-        
-        if not isinstance(results['probability'], dict):
-            logging.error("Probability data must be a dictionary")
-            return False
-        
-        return True
-
-    @staticmethod
-    def _classify_arteries(results: Dict) -> Dict[str, Dict]:
-        """Classify arteries by system (RCA, LCA, Other)."""
-        try:
-            classified = {
-                'rca': {},
-                'lca': {},
-                'other': {}
-            }
-            
-            for artery_name, data in results['probability'].items():
-                if artery_name in HTMLParser.ARTERY_SYSTEMS['Right Coronary Artery (RCA) System']:
-                    classified['rca'][artery_name] = data
-                elif artery_name in HTMLParser.ARTERY_SYSTEMS['Left Coronary Artery (LCA) System']:
-                    classified['lca'][artery_name] = data
-                elif artery_name in HTMLParser.ARTERY_SYSTEMS['Other']:
-                    classified['other'][artery_name] = data
-                else:
-                    logging.warning(f"Unknown artery: {artery_name}")
-            
-            logging.info(f"Classified arteries - RCA: {len(classified['rca'])}, LCA: {len(classified['lca'])}, Other: {len(classified['other'])}")
-            return classified
-            
-        except Exception as e:
-            logging.error(f"Error classifying arteries: {e}")
-            return {'rca': {}, 'lca': {}, 'other': {}}
-
-    @staticmethod
-    def _count_diagnoses(arteries: Dict) -> Dict[str, int]:
-        """Count diagnoses for a group of arteries."""
-        try:
-            counts = {diagnosis_type: 0 for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES}
-            
-            for artery_name, artery_data in arteries.items():
-                for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES:
-                    diagnosis_key = f'diagnosis_{diagnosis_type}'
-                    if (diagnosis_key in artery_data and 
-                        artery_data[diagnosis_key] == HTMLParser.DIAGNOSIS_VALUES[diagnosis_type]):
-                        counts[diagnosis_type] += 1
-            
-            return counts
-            
-        except Exception as e:
-            logging.error(f"Error counting diagnoses: {e}")
-            return {diagnosis_type: 0 for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES}
-
-    @staticmethod
-    def _calculate_total_counts(classified_arteries: Dict[str, Dict]) -> Dict[str, int]:
-        """Calculate total counts across all artery systems."""
-        try:
-            all_counts = {}
-            for system_name, system_arteries in classified_arteries.items():
-                system_counts = HTMLParser._count_diagnoses(system_arteries)
-                for diagnosis_type, count in system_counts.items():
-                    all_counts[diagnosis_type] = all_counts.get(diagnosis_type, 0) + count
-            
-            logging.info(f"Total counts: {all_counts}")
-            return all_counts
-            
-        except Exception as e:
-            logging.error(f"Error calculating total counts: {e}")
-            return {diagnosis_type: 0 for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES}
-
-    @staticmethod
-    def _determine_colors(total_counts: Dict[str, int]) -> Dict[str, str]:
-        """Determine card colors based on total counts."""
-        try:
-            colors = {}
-            for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES:
-                colors[diagnosis_type] = "red" if total_counts.get(diagnosis_type, 0) > 1 else "green"
-            return colors
-            
-        except Exception as e:
-            logging.error(f"Error determining colors: {e}")
-            return {diagnosis_type: "green" for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES}
-
-    @staticmethod
-    def _generate_status_card(diagnosis_type: str, count: int, total: int, color: str) -> str:
-        """Generate HTML for a single status card."""
-        try:
-            title = diagnosis_type.title()
-            return f"""
-                    <div class="status-card {diagnosis_type} {color}">
-                        <div class="card-content">
-                            <h3 class="card-title">{title}</h3>
-                            <div class="card-number">{count} / {total}</div>
-                            <div class="card-label">vessels affected</div>
-                        </div>
-                    </div>"""
-        except Exception as e:
-            logging.error(f"Error generating status card: {e}")
-            return ""
-
-    @staticmethod
-    def _generate_system_section(system_name: str, arteries: Dict, counts: Dict[str, int], colors: Dict[str, str]) -> str:
-        """Generate HTML section for a coronary artery system."""
-        cards_html = "".join(
-            HTMLParser._generate_status_card(diagnosis_type, counts.get(diagnosis_type, 0), len(arteries), colors.get(diagnosis_type, "green"))
-            for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES
-        )
-        
-        return f"""
-                <div style="text-align: center; margin: 30px 0;">
-                    <h1 style="color: #2c3e50; font-size: 28px; font-weight: 700;">{system_name}</h1>
-                </div>
-
-                <div class="status-cards">
-                    {cards_html}
-                </div>"""
-
-    @staticmethod
-    def _get_css_styles() -> str:
-        """Return the CSS styles for the HTML report."""
-        return """
+    CSS_STYLES = """
                 :root {
                     --primary-color: #3498db;
                     --secondary-color: #2980b9;
@@ -325,6 +194,140 @@ class HTMLParser:
                 }"""
 
     @staticmethod
+    def _validate_input(results: Dict) -> bool:
+        """Validate input data structure."""
+        if not isinstance(results, dict):
+            logging.error("Input results must be a dictionary")
+            return False
+        
+        required_keys = ['probability']
+        for key in required_keys:
+            if key not in results:
+                logging.error(f"Missing required key: {key}")
+                return False
+        
+        if not isinstance(results['probability'], dict):
+            logging.error("Probability data must be a dictionary")
+            return False
+        
+        return True
+
+    @staticmethod
+    def _classify_arteries(results: Dict) -> Dict[str, Dict]:
+        """Classify arteries by system (RCA, LCA, Other)."""
+        try:
+            classified = {
+                'rca': {},
+                'lca': {},
+                'other': {}
+            }
+            
+            for artery_name, data in results['probability'].items():
+                if artery_name in HTMLParser.ARTERY_SYSTEMS['Right Coronary Artery (RCA) System']:
+                    classified['rca'][artery_name] = data
+                elif artery_name in HTMLParser.ARTERY_SYSTEMS['Left Coronary Artery (LCA) System']:
+                    classified['lca'][artery_name] = data
+                elif artery_name in HTMLParser.ARTERY_SYSTEMS['Other']:
+                    classified['other'][artery_name] = data
+                else:
+                    logging.warning(f"Unknown artery: {artery_name}")
+            
+            logging.info(f"Classified arteries - RCA: {len(classified['rca'])}, LCA: {len(classified['lca'])}, Other: {len(classified['other'])}")
+            return classified
+            
+        except Exception as e:
+            logging.error(f"Error classifying arteries: {e}")
+            return {'rca': {}, 'lca': {}, 'other': {}}
+
+    @staticmethod
+    def _count_diagnoses(arteries: Dict) -> Dict[str, int]:
+        """Count diagnoses for a group of arteries."""
+        try:
+            counts = {diagnosis_type: 0 for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES}
+            
+            for artery_name, artery_data in arteries.items():
+                for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES:
+                    diagnosis_key = f'diagnosis_{diagnosis_type}'
+                    if (diagnosis_key in artery_data and 
+                        artery_data[diagnosis_key] == HTMLParser.DIAGNOSIS_VALUES[diagnosis_type]):
+                        counts[diagnosis_type] += 1
+            
+            return counts
+            
+        except Exception as e:
+            logging.error(f"Error counting diagnoses: {e}")
+            return {diagnosis_type: 0 for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES}
+
+    @staticmethod
+    def _calculate_total_counts(classified_arteries: Dict[str, Dict]) -> Dict[str, int]:
+        """Calculate total counts across all artery systems."""
+        try:
+            all_counts = {}
+            for system_name, system_arteries in classified_arteries.items():
+                system_counts = HTMLParser._count_diagnoses(system_arteries)
+                for diagnosis_type, count in system_counts.items():
+                    all_counts[diagnosis_type] = all_counts.get(diagnosis_type, 0) + count
+            
+            logging.info(f"Total counts: {all_counts}")
+            return all_counts
+            
+        except Exception as e:
+            logging.error(f"Error calculating total counts: {e}")
+            return {diagnosis_type: 0 for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES}
+
+    @staticmethod
+    def _determine_colors(total_counts: Dict[str, int]) -> Dict[str, str]:
+        """Determine card colors based on total counts."""
+        try:
+            colors = {}
+            for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES:
+                colors[diagnosis_type] = "red" if total_counts.get(diagnosis_type, 0) > 1 else "green"
+            return colors
+            
+        except Exception as e:
+            logging.error(f"Error determining colors: {e}")
+            return {diagnosis_type: "green" for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES}
+
+    @staticmethod
+    def _generate_status_card(diagnosis_type: str, count: int, total: int, color: str) -> str:
+        """Generate HTML for a single status card."""
+        try:
+            title = diagnosis_type.title()
+            return f"""
+                    <div class="status-card {diagnosis_type} {color}">
+                        <div class="card-content">
+                            <h3 class="card-title">{title}</h3>
+                            <div class="card-number">{count} / {total}</div>
+                            <div class="card-label">vessels affected</div>
+                        </div>
+                    </div>"""
+        except Exception as e:
+            logging.error(f"Error generating status card: {e}")
+            return ""
+
+    @staticmethod
+    def _generate_system_section(system_name: str, arteries: Dict, counts: Dict[str, int], colors: Dict[str, str]) -> str:
+        """Generate HTML section for a coronary artery system."""
+        cards_html = "".join(
+            HTMLParser._generate_status_card(diagnosis_type, counts.get(diagnosis_type, 0), len(arteries), colors.get(diagnosis_type, "green"))
+            for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES
+        )
+        
+        return f"""
+                <div style="text-align: center; margin: 30px 0;">
+                    <h1 style="color: #2c3e50; font-size: 28px; font-weight: 700;">{system_name}</h1>
+                </div>
+
+                <div class="status-cards">
+                    {cards_html}
+                </div>"""
+
+    @staticmethod
+    def _get_css_styles() -> str:
+        """Return the CSS styles for the HTML report."""
+        return HTMLParser.CSS_STYLES
+
+    @staticmethod
     def _generate_recommendations_section(recommendations: Dict[str, str]) -> str:
         """Generate HTML for the clinical recommendations section."""
         recommendations_en = recommendations.get("en", "")
@@ -465,22 +468,39 @@ class HTMLParser:
             logging.error("Invalid input data for HTML generation.")
             return "Error: Invalid input data."
 
-        # Classify arteries by system
+        # Use StringIO for the entire HTML generation
+        buffer = StringIO()
+        
+        # Write  HTML header
+        buffer.write("""<!DOCTYPE html>
+        <html>
+        <head>
+            <title>Coronary Stenosis Detection Report</title>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                """)
+        buffer.write(HTMLParser._get_css_styles())
+        buffer.write("""
+            </style>
+        </head>
+        <body>
+            <div class="detection-results">
+                <div class="header">
+                    <h1>Coronary Analysis Results Report</h1>
+                    <p class="subtitle">AI-Powered Cardiac Analysis</p>
+                </div>
+                
+                """)
+        
+        # Generate sections efficiently
         classified_arteries = HTMLParser._classify_arteries(results)
-        
-        # Calculate counts for each system
-        system_counts = {}
-        for system_name, arteries in classified_arteries.items():
-            system_counts[system_name] = HTMLParser._count_diagnoses(arteries)
-        
-        # Calculate total counts across all systems
+        system_counts = {system: HTMLParser._count_diagnoses(arteries) 
+                        for system, arteries in classified_arteries.items()}
         total_counts = HTMLParser._calculate_total_counts(classified_arteries)
-        
-        # Determine card colors based on counts
         colors = HTMLParser._determine_colors(total_counts)
         
-        # Generate HTML sections for each system
-        system_sections = []
+        # Write sections
         system_names = {
             'rca': 'Right Coronary Artery (RCA) System',
             'lca': 'Left Coronary Artery (LCA) System', 
@@ -495,39 +515,14 @@ class HTMLParser:
                     system_counts[system_key], 
                     colors
                 )
-                system_sections.append(section)
+                buffer.write(section)
         
-        # Generate recommendations section
-        recommendations_section = HTMLParser._generate_recommendations_section(results.get("recommendations", {}))
+        # Write remaining sections
+        buffer.write(HTMLParser._generate_recommendations_section(results.get("recommendations", {})))
+        buffer.write(HTMLParser._generate_detailed_diagnosis_section(results.get("probability", {})))
         
-        # Generate detailed diagnosis section
-        detailed_diagnosis_section = HTMLParser._generate_detailed_diagnosis_section(results.get("probability", {}))
-        
-        # Build the complete HTML
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Coronary Stenosis Detection Report</title>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                {HTMLParser._get_css_styles()}
-            </style>
-        </head>
-        <body>
-            <div class="detection-results">
-                <div class="header">
-                    <h1>Coronary Analysis Results Report</h1>
-                    <p class="subtitle">AI-Powered Cardiac Analysis</p>
-                </div>
-
-                {''.join(system_sections)}
-
-                {recommendations_section}
-
-                {detailed_diagnosis_section}
-
+        # Write footer
+        buffer.write(f"""
                 <!-- Important Note -->
                 <div style="background-color: #fff3cd; padding: 15px; border-radius: 6px; border-left: 4px solid #ffc107; margin: 15px 0;">
                     <strong>Important:</strong> This AI analysis is for screening purposes only and should be interpreted by a qualified cardiologist. Clinical correlation with patient symptoms, risk factors, and additional imaging may be necessary for definitive diagnosis and treatment planning.
@@ -539,9 +534,9 @@ class HTMLParser:
             </div>
         </body>
         </html>
-        """
+        """)
         
-        return html_content
+        return buffer.getvalue()
 
 # Example usage with test data
 if __name__ == "__main__":
