@@ -163,11 +163,10 @@ class HTMLParser:
     @staticmethod
     def _generate_system_section(system_name: str, arteries: Dict, counts: Dict[str, int], colors: Dict[str, str]) -> str:
         """Generate HTML section for a coronary artery system."""
-        cards_html = ""
-        for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES:
-            count = counts.get(diagnosis_type, 0)
-            color = colors.get(diagnosis_type, "green")
-            cards_html += HTMLParser._generate_status_card(diagnosis_type, count, len(arteries), color)
+        cards_html = "".join(
+            HTMLParser._generate_status_card(diagnosis_type, counts.get(diagnosis_type, 0), len(arteries), colors.get(diagnosis_type, "green"))
+            for diagnosis_type in HTMLParser.DIAGNOSIS_TYPES
+        )
         
         return f"""
                 <div style="text-align: center; margin: 30px 0;">
@@ -357,80 +356,83 @@ class HTMLParser:
         # RCA Section
         rca_arteries = classified_arteries.get('rca', {})
         if rca_arteries:
-            rca_section = HTMLParser._generate_system_detailed_section("RCA", "Right Coronary Artery", rca_arteries, HTMLParser.SYSTEM_COLORS['rca'])
+            rca_section = HTMLParser._generate_system_detailed_section("Right Coronary Artery", rca_arteries, HTMLParser.SYSTEM_COLORS['rca'])
             sections.append(rca_section)
         
         # LCA Section
         lca_arteries = classified_arteries.get('lca', {})
         if lca_arteries:
-            lca_section = HTMLParser._generate_system_detailed_section("LCA", "Left Coronary Artery", lca_arteries, HTMLParser.SYSTEM_COLORS['lca'])
+            lca_section = HTMLParser._generate_system_detailed_section("Left Coronary Artery", lca_arteries, HTMLParser.SYSTEM_COLORS['lca'])
             sections.append(lca_section)
         
         # Other Section
         other_arteries = classified_arteries.get('other', {})
         if other_arteries:
-            other_section = HTMLParser._generate_system_detailed_section("Other", "Other Vessels", other_arteries, HTMLParser.SYSTEM_COLORS['other'])
+            other_section = HTMLParser._generate_system_detailed_section("Other Vessels", other_arteries, HTMLParser.SYSTEM_COLORS['other'])
             sections.append(other_section)
         
         return ''.join(sections)
 
     @staticmethod
-    def _generate_system_detailed_section(system_key: str, system_name: str, arteries: Dict, color: str) -> str:
+    def _build_vessel_html(vessel_name: str, vessel_data: Dict, color: str) -> str:
+        # Extract probabilities and convert to percentages
+        stenosis_prob = vessel_data.get('stenosis_prob', 0) * 100
+        calcif_prob = vessel_data.get('calcif_prob', 0) * 100
+        cto_prob = vessel_data.get('cto_prob', 0) * 100
+        thrombus_prob = vessel_data.get('thrombus_prob', 0) * 100
+        
+        # Get diagnoses
+        stenosis_diagnosis = vessel_data.get('diagnosis_stenosis', 'normal')
+        calcif_diagnosis = vessel_data.get('diagnosis_calcif', 'normal')
+        cto_diagnosis = vessel_data.get('diagnosis_cto', 'normal')
+        thrombus_diagnosis = vessel_data.get('diagnosis_thrombus', 'normal')
+        
+        # Determine status colors
+        stenosis_color = "red" if stenosis_diagnosis == 'blocked' else "green"
+        calcif_color = "red" if calcif_diagnosis == 'calcified' else "green"
+        cto_color = "red" if cto_diagnosis == 'cto' else "green"
+        thrombus_color = "red" if thrombus_diagnosis == 'thrombus' else "green"
+        
+        return f"""
+                <div style="background: #ffffff; border-radius: 8px; padding: 20px; margin: 15px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid {color};">
+                    <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 20px; font-weight: 600;">{vessel_name}</h3>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div style="background: linear-gradient(135deg, #{'e74c3c' if stenosis_color == 'red' else '27ae60'}15, #{'e74c3c' if stenosis_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if stenosis_color == 'red' else '#27ae60'};">
+                            <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">Stenosis</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if stenosis_color == 'red' else '#27ae60'};">{stenosis_prob:.1f}%</div>
+                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{stenosis_diagnosis}</div>
+                        </div>
+                        
+                        <div style="background: linear-gradient(135deg, #{'e74c3c' if calcif_color == 'red' else '27ae60'}15, #{'e74c3c' if calcif_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if calcif_color == 'red' else '#27ae60'};">
+                            <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">Calcification</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if calcif_color == 'red' else '#27ae60'};">{calcif_prob:.1f}%</div>
+                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{calcif_diagnosis}</div>
+                        </div>
+                        
+                        <div style="background: linear-gradient(135deg, #{'e74c3c' if cto_color == 'red' else '27ae60'}15, #{'e74c3c' if cto_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if cto_color == 'red' else '#27ae60'};">
+                            <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">CTO</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if cto_color == 'red' else '#27ae60'};">{cto_prob:.1f}%</div>
+                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{cto_diagnosis}</div>
+                        </div>
+                        
+                        <div style="background: linear-gradient(135deg, #{'e74c3c' if thrombus_color == 'red' else '27ae60'}15, #{'e74c3c' if thrombus_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if thrombus_color == 'red' else '#27ae60'};">
+                            <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">Thrombus</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if thrombus_color == 'red' else '#27ae60'};">{thrombus_prob:.1f}%</div>
+                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{thrombus_diagnosis}</div>
+                        </div>
+                    </div>
+                </div>"""
+
+    @staticmethod
+    def _generate_system_detailed_section(system_name: str, arteries: Dict, color: str) -> str:
         """Generate detailed analysis section for a specific artery system."""
         try:
-            vessel_details = []
-            
-            for vessel_name, vessel_data in arteries.items():
-                # Extract probabilities and convert to percentages
-                stenosis_prob = vessel_data.get('stenosis_prob', 0) * 100
-                calcif_prob = vessel_data.get('calcif_prob', 0) * 100
-                cto_prob = vessel_data.get('cto_prob', 0) * 100
-                thrombus_prob = vessel_data.get('thrombus_prob', 0) * 100
-                
-                # Get diagnoses
-                stenosis_diagnosis = vessel_data.get('diagnosis_stenosis', 'normal')
-                calcif_diagnosis = vessel_data.get('diagnosis_calcif', 'normal')
-                cto_diagnosis = vessel_data.get('diagnosis_cto', 'normal')
-                thrombus_diagnosis = vessel_data.get('diagnosis_thrombus', 'normal')
-                
-                # Determine status colors
-                stenosis_color = "red" if stenosis_diagnosis == 'blocked' else "green"
-                calcif_color = "red" if calcif_diagnosis == 'calcified' else "green"
-                cto_color = "red" if cto_diagnosis == 'cto' else "green"
-                thrombus_color = "red" if thrombus_diagnosis == 'thrombus' else "green"
-                
-                vessel_html = f"""
-                        <div style="background: #ffffff; border-radius: 8px; padding: 20px; margin: 15px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid {color};">
-                            <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 20px; font-weight: 600;">{vessel_name}</h3>
-                            
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-                                <div style="background: linear-gradient(135deg, #{'e74c3c' if stenosis_color == 'red' else '27ae60'}15, #{'e74c3c' if stenosis_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if stenosis_color == 'red' else '#27ae60'};">
-                                    <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">Stenosis</div>
-                                    <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if stenosis_color == 'red' else '#27ae60'};">{stenosis_prob:.1f}%</div>
-                                    <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{stenosis_diagnosis}</div>
-                                </div>
-                                
-                                <div style="background: linear-gradient(135deg, #{'e74c3c' if calcif_color == 'red' else '27ae60'}15, #{'e74c3c' if calcif_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if calcif_color == 'red' else '#27ae60'};">
-                                    <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">Calcification</div>
-                                    <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if calcif_color == 'red' else '#27ae60'};">{calcif_prob:.1f}%</div>
-                                    <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{calcif_diagnosis}</div>
-                                </div>
-                                
-                                <div style="background: linear-gradient(135deg, #{'e74c3c' if cto_color == 'red' else '27ae60'}15, #{'e74c3c' if cto_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if cto_color == 'red' else '#27ae60'};">
-                                    <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">CTO</div>
-                                    <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if cto_color == 'red' else '#27ae60'};">{cto_prob:.1f}%</div>
-                                    <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{cto_diagnosis}</div>
-                                </div>
-                                
-                                <div style="background: linear-gradient(135deg, #{'e74c3c' if thrombus_color == 'red' else '27ae60'}15, #{'e74c3c' if thrombus_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if thrombus_color == 'red' else '#27ae60'};">
-                                    <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">Thrombus</div>
-                                    <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if thrombus_color == 'red' else '#27ae60'};">{thrombus_prob:.1f}%</div>
-                                    <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{thrombus_diagnosis}</div>
-                                </div>
-                            </div>
-                        </div>"""
-                
-                vessel_details.append(vessel_html)
+            vessel_details = ''.join(
+                HTMLParser._build_vessel_html(
+                    vessel_name, vessel_data, color
+                ) for vessel_name, vessel_data in arteries.items()
+            )
             
             return f"""
                     <!-- Detailed {system_name} Analysis Section -->
@@ -438,7 +440,7 @@ class HTMLParser:
                         <h2 style="color: {color}; margin: 0 0 20px 0; font-size: 24px; font-weight: 600;">Detailed {system_name} Analysis</h2>
                         <p style="color: #2c3e50; margin-bottom: 20px; font-size: 16px;">Individual vessel analysis with probability percentages and AI diagnoses for each {system_name} segment.</p>
                         
-                        {''.join(vessel_details)}
+                        {vessel_details}
                     </div>"""
                     
         except Exception as e:
