@@ -378,7 +378,7 @@ class CustomPredictionService(BasePredictionService):
         blocked_arteries = []
         cto_arteries = []
         thrombus_arteries = []
-
+        calcification_arteries = []
         for artery_name, data in predictions.items():
             # Check for blocked arteries (stenosis)
             if data.get('diagnosis_stenosis') == 'blocked':
@@ -429,6 +429,21 @@ class CustomPredictionService(BasePredictionService):
                 if localized_name:
                     thrombus_arteries.append((localized_name, percentage))
 
+            # Check for calcification
+            if data.get('diagnosis_calcif') == 'calcified':
+                prob_value = data.get('calcif_prob', 0)
+                if isinstance(prob_value, torch.Tensor):
+                    prob_value = prob_value.item()
+                percentage = prob_value * 100
+                localized_name = None
+                
+                for system_name, arteries in artery_names.items():
+                    if artery_name in arteries:
+                        localized_name = arteries.get(artery_name, artery_name)
+                        break
+                if localized_name:
+                    calcification_arteries.append((localized_name, percentage))
+
         # ------------------------------------------------------------------
         # 4) Generate simplified clinical recommendations
         # ------------------------------------------------------------------
@@ -438,74 +453,75 @@ class CustomPredictionService(BasePredictionService):
         has_stenosis = len(blocked_arteries) > 0
         has_cto = len(cto_arteries) > 0
         has_thrombus = len(thrombus_arteries) > 0
+        has_calcification = len(calcification_arteries) > 0
         
         if has_thrombus:
             # Thrombus is the highest priority - requires immediate attention
             if language == "fr":
                 recommendations.append(
-                    "Thrombus coronarien détecté. ÉVALUATION URGENTE REQUISE. "
+                    "<strong>Thrombus coronarien détecté. ÉVALUATION URGENTE REQUISE.</strong> "
                     "Consulter immédiatement un cardiologue interventionnel pour "
                     "évaluation de thrombolyse ou thrombectomie selon la situation clinique."
                 )
             else:
                 recommendations.append(
-                    "Coronary thrombus detected. URGENT EVALUATION REQUIRED. "
+                    "<strong>Coronary thrombus detected. URGENT EVALUATION REQUIRED.</strong> "
                     "Immediately consult an interventional cardiologist for "
                     "thrombolysis or thrombectomy evaluation based on clinical situation."
                 )
         
-        elif has_cto:
+        if has_cto:
             # CTO requires specialized intervention
             if language == "fr":
                 recommendations.append(
-                    "Occlusion chronique totale (CTO) détectée. "
+                    "<strong>Occlusion chronique totale (CTO) détectée.</strong> "
                     "Évaluation spécialisée recommandée pour techniques de revascularisation "
                     "avancées (rétrograde, dissection subintimale)."
                 )
             else:
                 recommendations.append(
-                    "Chronic Total Occlusion (CTO) detected. "
+                    "<strong>Chronic Total Occlusion (CTO) detected.</strong> "
                     "Specialized evaluation recommended for advanced revascularization "
                     "techniques (retrograde, subintimal dissection)."
                 )
         
-        elif has_stenosis:
+        if has_stenosis:
             # Stenosis requires standard PCI evaluation
             if language == "fr":
                 recommendations.append(
-                    "Sténose coronarienne détectée. "
+                    "<strong>Sténose coronarienne détectée.</strong> "
                     "Consulter un cardiologue interventionnel pour "
                     "évaluation d'une intervention coronarienne percutanée (ICP)."
                 )
             else:
                 recommendations.append(
-                    "Coronary stenosis detected. "
+                    "<strong>Coronary stenosis detected.</strong> "
                     "Consult an interventional cardiologist for "
                     "percutaneous coronary intervention (PCI) evaluation."
                 )
-        
-        else:
-            # No significant pathology detected
+        if has_calcification:
             if language == "fr":
                 recommendations.append(
-                    "Aucune pathologie coronarienne significative détectée. "
-                    "Continuer la surveillance clinique de routine selon les protocoles établis."
+                    "<strong>Calcification coronarienne détectée.</strong> "
+                    "Consulter un cardiologue interventionnel pour "
+                    "évaluation d'une intervention coronarienne percutanée (ICP)."
                 )
             else:
                 recommendations.append(
-                    "No significant coronary pathology detected. "
-                    "Continue routine clinical monitoring per established protocols."
+                    "<strong>Coronary calcification detected.</strong> "
+                    "Consult an interventional cardiologist for "
+                    "percutaneous coronary intervention (PCI) evaluation."
                 )
-        
+                
         if not recommendations:
             if language == "fr":
                 return (
-                    "Aucune pathologie coronarienne significative détectée. "
+                    "<strong>Aucune pathologie coronarienne significative détectée.</strong> "
                     "Continuer la surveillance clinique de routine selon les protocoles établis."
                 )
             else:
                 return (
-                    "No significant coronary pathology detected. "
+                    "<strong>No significant coronary pathology detected.</strong> "
                     "Continue routine clinical monitoring per established protocols."
                 )
         
@@ -563,7 +579,12 @@ class CustomPredictionService(BasePredictionService):
             "recommendations": {"en": recommendations_en, "fr": recommendations_fr},
         }
 
-        html_output = HTMLParser.generate_detection_results(html_data)
+        try:
+            html_output = HTMLParser.generate_detection_results(html_data)
+        except Exception as e:
+            print(f"Error in HTMLParser.generate_detection_results: {e}")
+            html_output = "Error in HTMLParser.generate_detection_results"
+
         return {"htmlBase64": base64.b64encode(html_output.encode("utf-8")).decode("utf-8")}
 
     async def _handle_json_output(self, request: PredictRequest):
