@@ -15,6 +15,15 @@ from torchvision.transforms import v2
 from utils.genericLogic import BasePredictionService
 from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
+from typing import Optional
+
+# Add DICOM_TAGS dictionary
+DICOM_TAGS = {
+    'series_times': '00080031',  # Series Time
+    'frame_height': '00180011',  # Sequence of Ultrasound Regions
+    'frame_width': '00180010',   # Contrast/Bolus Agent
+    'frame_rate': '00181063',    # Frame Time Vector
+}
 
 
 class VideoMILWrapper(torch.nn.Module):
@@ -172,7 +181,7 @@ class CustomPredictionService(BasePredictionService):
             "cuda" if torch.cuda.is_available() else "cpu"
         )
         CustomPredictionService.is_initialized = True
-
+        print(f"Cuda available: {torch.cuda.is_available()}")
         print("Model loaded")
 
     def _process_predictions(
@@ -647,100 +656,125 @@ class CustomPredictionService(BasePredictionService):
             },
         }
 
-    def videoShenanigans(self, video):
-        # Use uuid.uuid4() to create a unique file name
-        unique_filename = f"tmp_{uuid.uuid4()}.avi"
-        compressedVideo = []
-        fourcc = cv.VideoWriter_fourcc("M", "J", "P", "G")
-        out = cv.VideoWriter(unique_filename, fourcc, 15, video.shape[1:3])
+    def process_dicom_to_video(
+        self, 
+        dicom: pydicom.Dataset, 
+        dicom_name: str = None
+    ) -> Optional[np.ndarray]:
+        """
+        Process a DICOM dataset to extract video using the process_dicom_video function.
+        
+        Args:
+            dicom: DICOM dataset
+            dicom_name: Optional name for the DICOM
+            
+        Returns:
+            Processed video as numpy array or None if processing failed
+        """
         try:
-            for i in video:
-                out.write(i)
-            out.release()
-        except:
-            print("Error in writing video file")
-            # Ensure file is deleted even if an error occurs
-            if os.path.exists(unique_filename):
-                os.remove(unique_filename)
-            # Re-raise the exception to handle it as needed by the caller
-            raise
+            # Create temporary file paths
+            input_path = f"{dicom_name}.avi"
+                       
+            # Process using the provided function
+            avi_path = process_dicom_video(dicom, input_path)
+            
+            if avi_path is None:
+                print(f"Failed to process DICOM {dicom_name}")
+                return None
+                
+            # Read the processed AVI file
+            capture = cv.VideoCapture(avi_path)
+            frame_count = int(capture.get(cv.CAP_PROP_FRAME_COUNT))
+            compressedVideo = []
+            try:
+                for count in range(frame_count):
+                    ret, frame = capture.read()
+                    if not ret:
+                        raise ValueError(f"Failed to load frame #{count} of video.")
+                    frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+                    compressedVideo.append(frame)
+            finally:
+                capture.release()
+                
+            # Clean up temporary files
+            try:
+                if os.path.exists(input_path):
+                    os.remove(input_path)
+                if os.path.exists(avi_path):
+                    os.remove(avi_path)
+            except:
+                pass
 
-        capture = cv.VideoCapture(unique_filename)
-        frame_count = int(capture.get(cv.CAP_PROP_FRAME_COUNT))
-        try:
-            for count in range(frame_count):
-                ret, frame = capture.read()
-                if not ret:
-                    raise ValueError(f"Failed to load frame #{count} of video.")
-                frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-                compressedVideo.append(frame)
-        finally:
-            capture.release()
-
-            # Delete the temporary file after processing
-            if os.path.exists(unique_filename):
-                os.remove(unique_filename)
-
-        return np.asarray(compressedVideo).transpose(0, 3, 1, 2)
+            return np.asarray(compressedVideo)
+            
+        except Exception as e:
+            print(f"Error processing DICOM {dicom_name}: {e}")
+            return None
 
     def _run_inference(self, dicoms: list[pydicom.Dataset]) -> dict[str, float] | None:
         try:
             videos = []
             max_videos = CustomPredictionService.model_config["VideoMILWrapper"]["num_videos"]
-            
-            print(f"nb_dicoms: {len(dicoms)} received, max_videos: {max_videos} expected")
-            
+                        
             stop_pt = min(len(dicoms), max_videos)
             dicom_ok = 0
             for dicom in dicoms:
                 if dicom_ok >= stop_pt:
                     break
 
-                pixel_array: np.ndarray = dicom.pixel_array
-
-                if pixel_array.ndim == 1 or pixel_array.ndim == 2:
+                # Extract DICOM name/identifier (still needed for logging and temp files)
+                dicom_name = None
+                try:
+                    dicom_name = dicom.SeriesInstanceUID
+                except:
+                    dicom_name = f"temp_{uuid.uuid4()}"
+                
+                # Process video
+                try:
+                    video = self.process_dicom_to_video(dicom, dicom_name)
+                    if video is None:
+                        print(f"Failed to process DICOM {dicom_name}")
+                        continue
+                except Exception as e:
+                    print(f"Error in process_dicom_to_video for {dicom_name}: {e}")
                     continue
 
-                if pixel_array.ndim == 3:
-                    # Expand single channel to 3 channels by repeating
-                    pixel_array = np.expand_dims(pixel_array, axis=1)  # Shape: F,1,W,H
-                    pixel_array = np.repeat(pixel_array, 3, axis=1)  # Shape: F,3,W,H
-
-                assert pixel_array.ndim == 4, "Pixel array must have 4 dimensions"
-
-                pixel_array = self.videoShenanigans(pixel_array.transpose(0, 2, 3, 1)).astype(
-                    np.uint8
-                )
-                pixel_array = pixel_array.astype(np.float32)
-
-                mean = [112.24039459228516, 112.24039459228516, 112.24039459228516]
-                std = [39.012229919433594, 39.012229919433594, 39.012229919433594]
+                # Convert to float32 for normalization
+                video = video.astype(np.float32)
 
                 # Convert numpy array to torch tensor and ensure float type
-                video = torch.from_numpy(pixel_array)
-                video = v2.Resize((224, 224), antialias=None)(video)
+                video = torch.from_numpy(video)
+                               
+                # Permute to [F,C,H,W] si besoin
+                if video.shape[-1] in [1, 3]:
+                    video = video.permute(0, 3, 1, 2)                
+                
+                t = video.shape[0]
+                expected_frames = CustomPredictionService.model_config["VideoEncoder"]["num_frames"]
+                # Gestion du nombre de frames
+                if t < expected_frames:
+                    last_frame = video[-1:].repeat(expected_frames - t, 1, 1, 1) # repeat the last frame to match the expected number of frames
+                    video = torch.cat([video, last_frame], dim=0)
+                elif t > expected_frames:
+                    indices = torch.linspace(0, t - 1, expected_frames).long()
+                    video = video[indices]     
+                               
+                mean = [116.91661071777344, 116.91661071777344, 116.91661071777344]
+                std = [30.85062026977539, 30.85062026977539, 30.85062026977539]
+                
                 video = v2.Normalize(mean, std)(video)
-                video = video.permute(1, 0, 2, 3)
-                video = video.numpy()
-
-                c, f, h, w = video.shape
-                length = 16
-                if f < length * 2:
-                    video = np.concatenate(
-                        (video, np.zeros((c, length * 2 - f, h, w), video.dtype)), axis=1
-                    )
-                    c, f, h, w = video.shape
-                start = np.array([0])
-                video = tuple(video[:, s + 2 * np.arange(length), :, :] for s in start)[0]
+                video = v2.Resize((224, 224), antialias=True)(video)             
+                video = video.permute(0, 2, 3, 1).contiguous()
+            
+                video = video.cpu().numpy()
+                           
                 videos.append(video)
                 dicom_ok += 1
 
-            video_batch = torch.from_numpy(np.array(videos))
-            video_batch = video_batch.permute(0, 2, 3, 4, 1)
-            
+            video_batch = torch.from_numpy(np.array(videos)).to(dtype=torch.float16)
+                        
             # Zero pad the video_batch if we have fewer videos than max_videos
             if video_batch.shape[0] < max_videos:
-                print(f"Padding video_batch from {video_batch.shape[0]} to {max_videos} videos")
                 # Get the shape of a single video (after permute)
                 single_video_shape = video_batch.shape[1:]  # (C, H, W, T)
                 # Create zero tensor for padding
@@ -752,20 +786,22 @@ class CustomPredictionService(BasePredictionService):
             video_batch = video_batch.unsqueeze(0).to(
                 "cuda" if torch.cuda.is_available() else "cpu"
             )
-
+            
+            model = CustomPredictionService.models["video_mil_wrapper"]
+            model.eval()
+            
             with torch.no_grad():
-                output: torch.Tensor = CustomPredictionService.models["video_mil_wrapper"](
+                outputs: torch.Tensor = model(
                     video_batch
                 )
 
             # Normalize the output
-            for key in output:
+            for key in outputs:
                 if "binary" in key or "cto" in key or "thrombus" in key:  # Compute probability output
-                    output[key] = torch.sigmoid(output[key])
+                    outputs[key] = torch.sigmoid(outputs[key])
                 else:  # Clamp output to 0-100
-                    output[key] = torch.clamp(output[key], min=0, max=100)
-
-            return output
+                    outputs[key] = torch.clamp(outputs[key], min=0, max=100)
+            return outputs
 
         except Exception:
             # Make sure to clean GPU memory even if there's an error
@@ -773,3 +809,67 @@ class CustomPredictionService(BasePredictionService):
                 torch.cuda.empty_cache()
             
             return None
+        
+def process_dicom_video(
+    dicom: pydicom.Dataset, 
+    output_path: str
+)->Optional[str]:
+    """
+    Converts DICOM videos to AVI format and extracts acquisition time information.
+    
+    Args:
+        dicom (pydicom.Dataset): The DICOM dataset.
+        output_path (str): The path to save the AVI file.
+    
+    Returns:
+        Optional[str]: The path to the converted AVI file, or None if conversion failed.
+    """
+        
+    # get pixel array
+    video: np.ndarray = dicom.pixel_array
+    
+    # Insure extracted array is 3D
+    if len(video.shape) != 3:
+        print(f"Error: Extracted video's shape is not 3D: {video.shape} -  {dicom}") 
+        return None
+    
+    # get frame height and width
+    frame_height: int = dicom[(0x028, 0x0011)].value
+    frame_width: int = dicom[(0x028, 0x0010)].value
+    
+    # Insure consistence between dicom info and extracted video
+    if frame_height != video.shape[1]:
+        print(f"Error: Dicom video height {frame_height} does not match extracted video's shape: {video.shape[1]} -  {dicom}") 
+        return None
+    
+    if frame_width != video.shape[2]:
+        print(f"Error: Dicom video width {frame_width} does not match extracted video's shape: {video.shape[2]} -  {dicom}") 
+        return None
+    
+    # Extract FPS; ensure the DICOM tag exists
+    fps: float = 30.0  # Default FPS if not specified
+    if (0x08, 0x2144) in dicom:
+        fps = float(dicom[(0x08, 0x2144)].value)
+    
+    try:
+        photometrics: str = dicom.PhotometricInterpretation
+        if photometrics not in ['MONOCHROME1', 'MONOCHROME2', 'RGB']:
+            print(f"Error: Unsupported Photometric Interpretation: {photometrics} - with shape {video.shape}")
+            return None
+    except:
+        print(f"Error in reading {dicom}")
+        return None
+        
+    # Create video writer
+    fourcc: int = cv.VideoWriter_fourcc("M", "J", "P", "G")
+    out: cv.VideoWriter = cv.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
+        
+    conversion_fn: int = cv.COLOR_GRAY2BGR if photometrics == 'MONOCHROME1' or photometrics == 'MONOCHROME2' else cv.COLOR_RGB2BGR    
+    for frame in dicom.pixel_array:
+        frame: np.ndarray = cv.cvtColor(frame, conversion_fn)
+        out.write(frame)
+    
+    # Release video writer
+    out.release()
+
+    return output_path
