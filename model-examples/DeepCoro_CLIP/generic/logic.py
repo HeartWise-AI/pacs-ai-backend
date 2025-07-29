@@ -15,7 +15,8 @@ from torchvision.transforms import v2
 from utils.genericLogic import BasePredictionService
 from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Tuple
 
 # Add DICOM_TAGS dictionary
 DICOM_TAGS = {
