@@ -1,5 +1,4 @@
 import logging
-
 from io import StringIO
 from typing import Dict
 from datetime import datetime
@@ -379,10 +378,7 @@ class HTMLParser:
     @staticmethod
     def _build_vessel_html(vessel_name: str, vessel_data: Dict, color: str) -> str:
         # Extract probabilities and convert to percentages
-        stenosis_prob = vessel_data.get('stenosis_prob', 0) * 100
-        calcif_prob = vessel_data.get('calcif_prob', 0) * 100
-        cto_prob = vessel_data.get('cto_prob', 0) * 100
-        thrombus_prob = vessel_data.get('thrombus_prob', 0) * 100
+        stenosis_regression = vessel_data.get('regression', 0)
         
         # Get diagnoses
         stenosis_diagnosis = vessel_data.get('diagnosis_stenosis', 'normal')
@@ -403,26 +399,23 @@ class HTMLParser:
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
                         <div style="background: linear-gradient(135deg, #{'e74c3c' if stenosis_color == 'red' else '27ae60'}15, #{'e74c3c' if stenosis_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if stenosis_color == 'red' else '#27ae60'};">
                             <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">Stenosis</div>
-                            <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if stenosis_color == 'red' else '#27ae60'};">{stenosis_prob:.1f}%</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if stenosis_color == 'red' else '#27ae60'};">{stenosis_regression:.1f}%</div>
                             <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{stenosis_diagnosis}</div>
                         </div>
                         
-                        <div style="background: linear-gradient(135deg, #{'e74c3c' if calcif_color == 'red' else '27ae60'}15, #{'e74c3c' if calcif_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if calcif_color == 'red' else '#27ae60'};">
-                            <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">Calcification</div>
-                            <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if calcif_color == 'red' else '#27ae60'};">{calcif_prob:.1f}%</div>
-                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{calcif_diagnosis}</div>
+                        <div style="background: linear-gradient(135deg, #{'e74c3c' if calcif_color == 'red' else '27ae60'}15, #{'e74c3c' if calcif_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if calcif_color == 'red' else '#27ae60'}; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 80px;">
+                            <div style="font-weight: 600; color: #2c3e50; margin-bottom: 8px; text-align: center;">Calcification</div>
+                            <div style="font-size: 14px; color: #7f8c8d; text-transform: uppercase; font-weight: 500; text-align: center;">{calcif_diagnosis}</div>
                         </div>
                         
-                        <div style="background: linear-gradient(135deg, #{'e74c3c' if cto_color == 'red' else '27ae60'}15, #{'e74c3c' if cto_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if cto_color == 'red' else '#27ae60'};">
-                            <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">CTO</div>
-                            <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if cto_color == 'red' else '#27ae60'};">{cto_prob:.1f}%</div>
-                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{cto_diagnosis}</div>
+                        <div style="background: linear-gradient(135deg, #{'e74c3c' if cto_color == 'red' else '27ae60'}15, #{'e74c3c' if cto_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if cto_color == 'red' else '#27ae60'}; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 80px;">
+                            <div style="font-weight: 600; color: #2c3e50; margin-bottom: 8px; text-align: center;">CTO</div>
+                            <div style="font-size: 14px; color: #7f8c8d; text-transform: uppercase; font-weight: 500; text-align: center;">{cto_diagnosis}</div>
                         </div>
                         
-                        <div style="background: linear-gradient(135deg, #{'e74c3c' if thrombus_color == 'red' else '27ae60'}15, #{'e74c3c' if thrombus_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if thrombus_color == 'red' else '#27ae60'};">
-                            <div style="font-weight: 600; color: #2c3e50; margin-bottom: 5px;">Thrombus</div>
-                            <div style="font-size: 24px; font-weight: bold; color: #{'#e74c3c' if thrombus_color == 'red' else '#27ae60'};">{thrombus_prob:.1f}%</div>
-                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">{thrombus_diagnosis}</div>
+                        <div style="background: linear-gradient(135deg, #{'e74c3c' if thrombus_color == 'red' else '27ae60'}15, #{'e74c3c' if thrombus_color == 'red' else '27ae60'}05); padding: 15px; border-radius: 6px; border-left: 3px solid #{'#e74c3c' if thrombus_color == 'red' else '#27ae60'}; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 80px;">
+                            <div style="font-weight: 600; color: #2c3e50; margin-bottom: 8px; text-align: center;">Thrombus</div>
+                            <div style="font-size: 14px; color: #7f8c8d; text-transform: uppercase; font-weight: 500; text-align: center;">{thrombus_diagnosis}</div>
                         </div>
                     </div>
                 </div>"""
