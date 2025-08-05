@@ -30,9 +30,9 @@
         "description": "LV stroke volume"
     },
     "LVSize": {
-        "Normal": 0,
-        "Mildly Increased": 1,
-        "Moderately|Severely Increased": 2,
+        "Mildly Increased": 0,
+        "Moderately|Severely Increased": 1,
+        "Normal": 2,
         "description": "LV size"
     },
     "LVWallThickness-increased-any": {
@@ -46,9 +46,9 @@
         "description": "Moderate or greater LV hypertrophy (increased wall thickness)"
     },
     "LVSystolicFunction": {
-        "Normal|Hyperdynamic": 0,
-        "Mildly Decreased": 1,
-        "Moderately|Severely Decreased": 2,
+        "Mildly Decreased": 0,
+        "Moderately|Severely Decreased": 1,
+        "Normal|Hyperdynamic": 2,
         "description": "LV systolic function"
     },
     "LVWallMotionAbnormalities": {
@@ -82,9 +82,9 @@
         "description": "LV outflow tract diameter"
     },
     "LVDiastolicFunction": {
-        "Normal": 0,
-        "Mild|Indeterminate": 1,
-        "Moderate|Severe": 2,
+        "Mild|Indeterminate": 0,
+        "Moderate|Severe": 1,
+        "Normal": 2,
         "description": "LV diastolic function"
     },
     "E|EAvg": {
@@ -98,9 +98,9 @@
         "description": "Right ventricular (RV) systolic pressure"
     },
     "RVSize": {
-        "Normal": 0,
-        "Mildly Increased": 1,
-        "Moderately|Severely Increased": 2,
+        "Mildly Increased": 0,
+        "Moderately|Severely Increased": 1,
+        "Normal": 2,
         "description": "RV size"
     },
     "RVSystolicFunction": {
@@ -124,9 +124,9 @@
         "description": "RV systolic excursion velocity (RV S')"
     },
     "LASize": {
-        "Normal": 0,
-        "Mildly Dilated": 1,
-        "Moderately|Severely Dilated": 2,
+        "Mildly Dilated": 0,
+        "Moderately|Severely Dilated": 1,
+        "Normal": 2,
         "description": "Left atrial (LA) size"
     },
     "LAIDs2D": {
@@ -155,8 +155,8 @@
         "description": "Bicuspid aortic valve"
     },
     "AVStenosis": {
-        "None": 0,
-        "Mild|Moderate": 1,
+        "Mild|Moderate": 0,
+        "None": 1,
         "Severe": 2,
         "description": "Aortic valve stenosis"
     },
@@ -166,9 +166,9 @@
         "description": "Aortic valve peak velocity"
     },
     "AVRegurg": {
-        "None|Trace": 0,
-        "Mild": 1,
-        "Moderate|Severe": 2,
+        "Mild": 0,
+        "Moderate|Severe": 1,
+        "None|Trace": 2,
         "description": "Aortic valve regurgitation"
     },
     "LVOT20mmHg": {
@@ -182,15 +182,15 @@
         "description": "Mitral valve stenosis"
     },
     "MVRegurgitation": {
-        "None|Trace": 0,
-        "Mild": 1,
-        "Moderate|Severe": 2,
+        "Mild": 0,
+        "Moderate|Severe": 1,
+        "None|Trace": 2,
         "description": "Mitral valve regurgitation"
     },
     "TVRegurgitation": {
-        "None|Trace": 0,
-        "Mild": 1,
-        "Moderate|Severe": 2,
+        "Mild": 0,
+        "Moderate|Severe": 1,
+        "None|Trace": 2,
         "description": "Tricuspid valve regurgitation"
     },
     "TVPkGrad": {
