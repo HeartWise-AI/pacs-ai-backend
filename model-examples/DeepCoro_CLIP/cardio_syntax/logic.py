@@ -1,22 +1,22 @@
-import base64
-import json
 import os
-import pprint
+import json
 import uuid
-from io import BytesIO
+import torch
+import base64
+import pydicom
 
 import cv2 as cv
 import numpy as np
-import pydicom
-import torch
-from models.multi_instance_linear_probing import MultiInstanceLinearProbing
-from models.video_encoder import VideoEncoder
+
+from io import BytesIO
+from typing import Optional
 from torchvision.transforms import v2
-from utils.genericLogic import BasePredictionService
+
 from utils.html_parser import HTMLParser
+from models.video_encoder import VideoEncoder
 from utils.http_utils import Config, PredictRequest
-from pathlib import Path
-from typing import Optional, Tuple
+from utils.genericLogic import BasePredictionService
+from models.multi_instance_linear_probing import MultiInstanceLinearProbing
 
 # Add DICOM_TAGS dictionary
 DICOM_TAGS = {
@@ -92,6 +92,7 @@ class VideoMILWrapper(torch.nn.Module):
             # hierarchical layout [B, N, L, D] so that the MIL head can
             # perform two-level attention.
             B, NL, D = embeddings.shape  # noqa: N806
+            
             # print(f"embeddings.shape: {embeddings.shape}")
             if NL % self.num_videos != 0:
                 raise ValueError(
@@ -453,22 +454,30 @@ class CustomPredictionService(BasePredictionService):
                        
             # Process using the provided function
             avi_path = process_dicom_video(dicom, input_path)
-            
+
             if avi_path is None:
                 print(f"Failed to process DICOM {dicom_name}")
                 return None
                 
             # Read the processed AVI file
+            frame_count = 0
+            compressedVideo = []
             capture = cv.VideoCapture(avi_path)
             frame_count = int(capture.get(cv.CAP_PROP_FRAME_COUNT))
-            compressedVideo = []
+            stride = CustomPredictionService.model_config["VideoMILWrapper"]["frame_stride"]
             try:
-                for count in range(frame_count):
+                while True:
                     ret, frame = capture.read()
                     if not ret:
-                        raise ValueError(f"Failed to load frame #{count} of video.")
-                    frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-                    compressedVideo.append(frame)
+                        break
+                    if frame_count % stride == 0:
+                        if frame.ndim == 3:
+                            frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+                        compressedVideo.append(frame)
+                    frame_count += 1
+            except Exception as e:
+                print(f"Error in process_dicom_to_video: {e}")
+                return None
             finally:
                 capture.release()
                 
@@ -480,7 +489,7 @@ class CustomPredictionService(BasePredictionService):
                     os.remove(avi_path)
             except:
                 pass
-
+                
             return np.asarray(compressedVideo)
             
         except Exception as e:
@@ -491,7 +500,7 @@ class CustomPredictionService(BasePredictionService):
         try:
             videos = []
             max_videos = CustomPredictionService.model_config["VideoMILWrapper"]["num_videos"]
-                        
+
             stop_pt = min(len(dicoms), max_videos)
             dicom_ok = 0
             for dicom in dicoms:
@@ -534,12 +543,16 @@ class CustomPredictionService(BasePredictionService):
                 elif t > expected_frames:
                     indices = torch.linspace(0, t - 1, expected_frames).long()
                     video = video[indices]
-                               
-                mean = [116.91661071777344, 116.91661071777344, 116.91661071777344]
-                std = [30.85062026977539, 30.85062026977539, 30.85062026977539]
                 
-                video = v2.Normalize(mean, std)(video)
+                # resize
                 video = v2.Resize((224, 224), antialias=True)(video)             
+
+                # normalize
+                mean = [105.2699966430664, 105.2699966430664, 105.2699966430664]
+                std = [39.241127014160156, 39.241127014160156, 39.241127014160156]
+                video = v2.Normalize(mean=mean, std=std)(video.float())
+                
+                # permute
                 video = video.permute(0, 2, 3, 1).contiguous()
             
                 video = video.cpu().numpy()
@@ -548,7 +561,7 @@ class CustomPredictionService(BasePredictionService):
                 dicom_ok += 1
 
             video_batch = torch.from_numpy(np.array(videos)).to(dtype=torch.float16)
-                        
+        
             # Zero pad the video_batch if we have fewer videos than max_videos
             if video_batch.shape[0] < max_videos:
                 # Get the shape of a single video (after permute)
