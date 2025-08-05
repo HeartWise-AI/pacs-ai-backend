@@ -678,22 +678,30 @@ class CustomPredictionService(BasePredictionService):
                        
             # Process using the provided function
             avi_path = process_dicom_video(dicom, input_path)
-            
+
             if avi_path is None:
                 print(f"Failed to process DICOM {dicom_name}")
                 return None
                 
             # Read the processed AVI file
+            frame_count = 0
+            compressedVideo = []
             capture = cv.VideoCapture(avi_path)
             frame_count = int(capture.get(cv.CAP_PROP_FRAME_COUNT))
-            compressedVideo = []
+            stride = CustomPredictionService.model_config["VideoMILWrapper"]["frame_stride"]
             try:
-                for count in range(frame_count):
+                while True:
                     ret, frame = capture.read()
                     if not ret:
-                        raise ValueError(f"Failed to load frame #{count} of video.")
-                    frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-                    compressedVideo.append(frame)
+                        break
+                    if frame_count % stride == 0:
+                        if frame.ndim == 3:
+                            frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+                        compressedVideo.append(frame)
+                    frame_count += 1
+            except Exception as e:
+                print(f"Error in process_dicom_to_video: {e}")
+                return None
             finally:
                 capture.release()
                 
@@ -705,7 +713,7 @@ class CustomPredictionService(BasePredictionService):
                     os.remove(avi_path)
             except:
                 pass
-
+                
             return np.asarray(compressedVideo)
             
         except Exception as e:
