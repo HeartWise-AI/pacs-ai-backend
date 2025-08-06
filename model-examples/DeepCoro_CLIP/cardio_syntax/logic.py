@@ -463,7 +463,6 @@ class CustomPredictionService(BasePredictionService):
             frame_count = 0
             compressedVideo = []
             capture = cv.VideoCapture(avi_path)
-            frame_count = int(capture.get(cv.CAP_PROP_FRAME_COUNT))
             stride = CustomPredictionService.model_config["VideoMILWrapper"]["frame_stride"]
             try:
                 while True:
