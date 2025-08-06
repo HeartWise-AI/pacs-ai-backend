@@ -675,7 +675,7 @@ class CustomPredictionService(BasePredictionService):
         try:
             # Create temporary file paths
             input_path = f"{dicom_name}.avi"
-                       
+
             # Process using the provided function
             avi_path = process_dicom_video(dicom, input_path)
 
@@ -687,7 +687,6 @@ class CustomPredictionService(BasePredictionService):
             frame_count = 0
             compressedVideo = []
             capture = cv.VideoCapture(avi_path)
-            frame_count = int(capture.get(cv.CAP_PROP_FRAME_COUNT))
             stride = CustomPredictionService.model_config["VideoMILWrapper"]["frame_stride"]
             try:
                 while True:
@@ -768,11 +767,15 @@ class CustomPredictionService(BasePredictionService):
                     indices = torch.linspace(0, t - 1, expected_frames).long()
                     video = video[indices]     
                                
-                mean = [116.91661071777344, 116.91661071777344, 116.91661071777344]
-                std = [30.85062026977539, 30.85062026977539, 30.85062026977539]
-                
+                # Resize the video
+                video = v2.Resize((224, 224), antialias=True)(video)                            
+
+                # Normalize the video
+                mean = [105.24055480957031, 105.24055480957031, 105.24055480957031]
+                std = [39.24827194213867, 39.24827194213867, 39.24827194213867]              
                 video = v2.Normalize(mean, std)(video)
-                video = v2.Resize((224, 224), antialias=True)(video)             
+                
+                # Permute to [F,C,H,W]
                 video = video.permute(0, 2, 3, 1).contiguous()
             
                 video = video.cpu().numpy()
