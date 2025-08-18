@@ -1,11 +1,11 @@
 import os
+import argparse
 
 from huggingface_hub import hf_hub_download
 
 
-def download_model():
+def download_model(token):
     # Retrieve the Hugging Face API key from environment (required at build time)
-    token = os.getenv("HF_API_KEY")
     if not token:
         raise ValueError("HF_API_KEY environment variable is not set")
 
@@ -24,4 +24,9 @@ def download_model():
 
 
 if __name__ == "__main__":
-    download_model()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--token", type=str, required=True)
+    args = parser.parse_args()
+    token = args.token
+    
+    download_model(token)

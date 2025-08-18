@@ -8,12 +8,12 @@ WORKDIR /app
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
 RUN pip install -r requirements.txt
+
 ARG HF_API_KEY
-ENV HF_API_KEY=${HF_API_KEY}
 
 # Copy the model download script
 COPY download_model.py .
-RUN python download_model.py
+RUN python download_model.py --token ${HF_API_KEY}
 
 # Copy application files
 COPY main.py .
