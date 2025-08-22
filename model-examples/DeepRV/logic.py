@@ -31,7 +31,7 @@ class RegressionHead(nn.Module):
 
 class CustomPredictionService(BasePredictionService):
     def load_model(self, config: Config):
-        print('Loading model')
+        print('Loading model...')
         
         # Load the HuggingFacemodel config 
         with open(os.path.join("models", "config.json")) as fp:
@@ -77,7 +77,6 @@ class CustomPredictionService(BasePredictionService):
                 )
 
         probability = self._run_inference(dicoms)
-        print(f"probability: {probability}")
         html_output = HTMLParser.generate_detection_results({'probability': probability})
         return {'htmlBase64': base64.b64encode(html_output.encode('utf-8')).decode('utf-8')}        
 
@@ -190,13 +189,6 @@ class CustomPredictionService(BasePredictionService):
                 "class": "Error in _process_predictions",
             }
         
-        # Serialize the predictions to a JSON string
-        try:    
-            structured_predictions_json = json.dumps(structured_predictions)
-        except Exception as e:
-            print(f"Error in json.dumps(structured_predictions): {e}")
-            structured_predictions_json = "Error in json.dumps(structured_predictions)"
-
         # Transform into a diagnosis string
         try:    
             diagnosis: str = self._get_diagnosis(structured_predictions)
@@ -212,10 +204,10 @@ class CustomPredictionService(BasePredictionService):
             print(f"Error in _get_recommendations: {e}")
             recommendations_en = "Error in _get_recommendations"
             recommendations_fr = "Error in _get_recommendations"
-
+        
         return {
             "diagnosis": diagnosis,
-            "predictions": structured_predictions_json,
+            "predictions": structured_predictions,  # Use the dict, not the JSON string
             "modelRecommendations": {
                 "en": recommendations_en,
                 "fr": recommendations_fr,
@@ -260,7 +252,6 @@ class CustomPredictionService(BasePredictionService):
         return np.asarray(compressedVideo).transpose(0, 3, 1, 2)
 
     def _run_inference(self, dicoms: List[pydicom.Dataset]) -> float:
-        print(f"Processing {len(dicoms)} dicoms")
         try:
             mean_output: float = 0.0
             for dicom in dicoms:
