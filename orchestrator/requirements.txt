@@ -1,5 +1,5 @@
 python-dotenv==1.1.0
-transformers==4.52.1
+transformers==4.53.0
 uvicorn==0.34.2
 fastapi==0.115.12
 langgraph==0.4.5
