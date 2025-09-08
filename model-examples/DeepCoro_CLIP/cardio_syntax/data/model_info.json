@@ -1,5 +1,6 @@
 {
   "modelName": "DeepCoro_CLIP_cardio_syntax",
+  "domainName": "Cardiology",
   "version": "1.0.0",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
