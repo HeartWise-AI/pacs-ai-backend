@@ -1,5 +1,6 @@
 {
   "modelName": "DeepRV",
+  "domainName": "Cardiology",
   "version": "1.0.0",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
