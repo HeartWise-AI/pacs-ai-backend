@@ -269,8 +269,6 @@ class CustomPredictionService(BasePredictionService):
         """
         Generate recommendations based on predictions
         """
-        class_mapping = CustomPredictionService._class_mapping
-
         recommendations = []
         for syntax_name in predictions.keys():
             if predictions[syntax_name]['category'] != 'zero':
