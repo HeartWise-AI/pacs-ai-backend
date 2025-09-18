@@ -326,16 +326,6 @@ class CustomPredictionService(BasePredictionService):
             print(f"Error in _get_diagnosis: {e}")
             diagnosis = "Error in _get_diagnosis"
 
-        # The API schema (`JsonPredictionResponse`) expects the *diagnosis* field
-        # to be a **string**.  We therefore serialise the dictionary into a JSON
-        # string so that downstream consumers still get a single text field
-        # while retaining full information.
-        try:    
-            structured_predictions_json = json.dumps(structured_predictions)
-        except Exception as e:
-            print(f"Error in json.dumps(structured_predictions): {e}")
-            structured_predictions_json = "Error in json.dumps(structured_predictions)"
-
         # # Generate recommendations based on stenosis analysis
         try:
             recommendations_en = self._get_recommendations(structured_predictions, "en")
