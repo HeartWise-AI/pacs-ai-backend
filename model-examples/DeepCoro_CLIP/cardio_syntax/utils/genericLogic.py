@@ -146,7 +146,6 @@ class BasePredictionService:
             return False
         except Exception:
             return False
-    
 
     async def _handle_json_output(self, request: PredictRequest):
         raise NotImplementedError("JSON output not implemented for this model")
