@@ -348,9 +348,8 @@ class CustomPredictionService(BasePredictionService):
         """
         Generate recommendations based on predictions
         """
-        class_mapping = CustomPredictionService._class_mapping
 
-        # 2) Mapping for human-readable artery names
+        # 1) Mapping for human-readable artery names
         # ------------------------------------------------------------------
         artery_names: dict[str, dict[str, str]] = {
             'Right Coronary Artery (RCA) System': {
@@ -383,7 +382,7 @@ class CustomPredictionService(BasePredictionService):
         }
         
         # ------------------------------------------------------------------
-        # 3) Check which arteries are above threshold
+        # 2) Check which arteries are above threshold
         # ------------------------------------------------------------------
         blocked_arteries = []
         cto_arteries = []
@@ -455,7 +454,7 @@ class CustomPredictionService(BasePredictionService):
                     calcification_arteries.append((localized_name, percentage))
 
         # ------------------------------------------------------------------
-        # 4) Generate simplified clinical recommendations
+        # 3) Generate simplified clinical recommendations
         # ------------------------------------------------------------------
         recommendations = []
         
@@ -568,16 +567,6 @@ class CustomPredictionService(BasePredictionService):
             print(f"Error in _get_diagnosis: {e}")
             diagnosis = "Error in _get_diagnosis"
 
-        # The API schema (`JsonPredictionResponse`) expects the *diagnosis* field
-        # to be a **string**.  We therefore serialise the dictionary into a JSON
-        # string so that downstream consumers still get a single text field
-        # while retaining full information.
-        try:    
-            structured_predictions_json = json.dumps(structured_predictions)
-        except Exception as e:
-            print(f"Error in json.dumps(structured_predictions): {e}")
-            structured_predictions_json = "Error in json.dumps(structured_predictions)"
-
         # Generate recommendations based on stenosis analysis
         recommendations_en = self._get_recommendations(structured_predictions, "en")
         recommendations_fr = self._get_recommendations(structured_predictions, "fr")
@@ -599,27 +588,77 @@ class CustomPredictionService(BasePredictionService):
 
     async def _handle_json_output(self, request: PredictRequest):
         dicoms = []
-        for series_number in request.seriesInstanceImages:
-            for instance_number in request.seriesInstanceImages[series_number]:
-                dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
-                dicoms.append(pydicom.dcmread(BytesIO(base64.b64decode(dicom_base64))))
-                
-        probability = self._run_inference(dicoms)
 
-        if not probability:
+        try:
+            for series_number in request.seriesInstanceImages:
+                for instance_number in request.seriesInstanceImages[series_number]:
+                    try:
+                        dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
+                        
+                        # Validate base64 string
+                        if not self._is_valid_base64(dicom_base64):
+                            print(f"Invalid base64 string for series {series_number} instance {instance_number}")
+                            continue
+                        
+                        # Decode base64 string and validate DICOM data
+                        dicom_data = base64.b64decode(dicom_base64)
+                        if not self._is_valid_dicom(dicom_data):
+                            print(f"Invalid DICOM data for series {series_number} instance {instance_number}")
+                            continue
+                                            
+                        # Load DICOM
+                        dicom = pydicom.dcmread(BytesIO(dicom_data))
+                        dicoms.append(dicom)
+                        
+                    except Exception as e:
+                        error_msg = f"Error in processing series {series_number} instance {instance_number}: {e}"
+                        print(error_msg)
+                        continue
+
+        except Exception as e:
+            error_msg = f"Error in _handle_json_output: {e}"
+            print(error_msg)
             return {
-                "diagnosis": "No video could be extracted or processed from the current DICOM series",
+                "diagnosis": "Error in _handle_json_output",
                 "predictions": {},
                 "modelRecommendations": {
-                    "en": "No video could be extracted or processed from the current DICOM series",
-                    "fr": "Aucune vidéo ne peut être extraite ou traitée à partir de la série DICOM actuelle",
+                    "en": "Error in _handle_json_output",
+                    "fr": "Erreur dans _handle_json_output",
+                    "presentable": True,
+                }
+            }
+                
+        try:
+            probability: dict[str, float] = self._run_inference(dicoms)
+        except Exception as e:
+            print(f"Error in _run_inference: {e}")
+            return {
+                "diagnosis": "Error in _run_inference",
+                "predictions": {},
+                "modelRecommendations": {
+                    "en": "Error in _run_inference",
+                    "fr": "Erreur dans _run_inference",
                     "presentable": True,
                 }
             }
 
         # Obtain per-head diagnosis/interpretation
-        structured_predictions: dict[str, dict] = self._process_predictions(probability)
+        try:
+            structured_predictions: dict[str, dict] = self._process_predictions(probability)
+        except Exception as e:
+            print(f"Error in _process_predictions: {e}")
+            structured_predictions = {
+                "diagnosis": "Error in _process_predictions",
+                "predictions": "Error in _process_predictions",
+                "modelRecommendations": {
+                    "en": "Error in _process_predictions",
+                    "fr": "Erreur dans _process_predictions",
+                    "presentable": True,
+                }
+            }
+            return structured_predictions
 
+        
         # Transform into a diagnosis string
         try:    
             diagnosis = self._get_diagnosis(structured_predictions)
@@ -627,16 +666,6 @@ class CustomPredictionService(BasePredictionService):
             print(f"Error in _get_diagnosis: {e}")
             diagnosis = "Error in _get_diagnosis"
         
-        # The API schema (`JsonPredictionResponse`) expects the *diagnosis* field
-        # to be a **string**.  We therefore serialise the dictionary into a JSON
-        # string so that downstream consumers still get a single text field
-        # while retaining full information.
-        try:    
-            structured_predictions_json = json.dumps(structured_predictions)
-        except Exception as e:
-            print(f"Error in json.dumps(structured_predictions): {e}")
-            structured_predictions_json = "Error in json.dumps(structured_predictions)"
-
         try:
             # Generate recommendations based on stenosis analysis
             recommendations_en = self._get_recommendations(structured_predictions, "en")
@@ -649,7 +678,7 @@ class CustomPredictionService(BasePredictionService):
 
         return {
             "diagnosis": diagnosis,
-            "predictions": structured_predictions_json,
+            "predictions": structured_predictions,
             "modelRecommendations": {
                 "en": recommendations_en,
                 "fr": recommendations_fr,
