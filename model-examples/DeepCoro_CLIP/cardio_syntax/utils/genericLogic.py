@@ -1,5 +1,7 @@
-import json
 import os
+import json
+import base64
+
 from typing import Any
 
 from utils.http_utils import HTTPResponse, PredictRequest
@@ -116,6 +118,35 @@ class BasePredictionService:
                 error_code="PROCESSING_ERROR",
                 data={"requestedMode": output_mode, "modelInfo": self.__class__.get_model_info()},
             ).to_response()
+
+    def _is_valid_base64(self, dicom_base64):
+        try:
+            if isinstance(dicom_base64, str):
+                base64.b64decode(dicom_base64)
+                return True
+            return False
+        except Exception as e:
+            return False
+
+    def _is_valid_dicom(self, dicom):
+        """Check if bytes represent valid DICOM data."""
+        try:
+            # Check for DICOM magic bytes
+            if len(dicom) < 132:
+                return False
+            
+            # DICOM files start with specific bytes
+            if dicom[:4] == b'DICM':
+                return True
+            
+            # Check for transfer syntax in first 132 bytes
+            if dicom[128:132] in [b'DICM', b'DICM']:
+                return True
+                
+            return False
+        except Exception:
+            return False
+    
 
     async def _handle_json_output(self, request: PredictRequest):
         raise NotImplementedError("JSON output not implemented for this model")
