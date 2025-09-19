@@ -2,7 +2,7 @@
   "en": {
     "Summary": {
       "Name": "DeepCoro_CLIP Cardio Syntax",
-      "Description": "Predict cardiac syntax from angiograms.",
+      "Description": "Predict cardiac score syntax from angiograms.",
       "Developed_by": "Heartwise",
       "Development_period": "2024-2025",
       "Version": "1.0.0"
