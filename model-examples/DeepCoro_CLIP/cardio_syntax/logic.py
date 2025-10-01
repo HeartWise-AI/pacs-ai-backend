@@ -294,8 +294,7 @@ class CustomPredictionService(BasePredictionService):
         """
         recommendations = []
         for syntax_name in predictions.keys():
-            if predictions[syntax_name]['category'] != 'zero':
-                recommendations.append(f"{syntax_name} anormal.\n")
+            recommendations.append(f"{syntax_name} {predictions[syntax_name]['category']}.\n")
 
         if recommendations:
             recommendations.append(
