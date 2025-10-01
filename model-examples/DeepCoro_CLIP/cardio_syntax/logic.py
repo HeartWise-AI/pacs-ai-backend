@@ -123,6 +123,25 @@ class VideoMILWrapper(torch.nn.Module):
 
 
 class CustomPredictionService(BasePredictionService):
+    def _get_category_from_threshold(self, regression_value: float) -> str:
+        """
+        Convert regression value to category based on thresholds.
+        
+        Args:
+            regression_value: The regression score (0-100)
+            
+        Returns:
+            Category string: 'normal', 'low', 'intermediate', or 'high'
+        """
+        if regression_value <= 2.23:
+            return 'normal'
+        elif regression_value <= 18.50:
+            return 'low'
+        elif regression_value <= 22.95:
+            return 'intermediate'
+        else:
+            return 'high'
+    
     def load_model(self, config: Config):
         print("Loading model")
 
@@ -222,15 +241,19 @@ class CustomPredictionService(BasePredictionService):
         
         reordered_predictions = {}
         for key in predictions.keys():
+            
+            if 'category' in key:
+                continue
+            
             new_key = class_mapping[key]['name']
 
             if not new_key in reordered_predictions:
                 reordered_predictions[new_key] = {}
             
-            if 'category' in key:
-                reordered_predictions[new_key]['category'] = class_mapping[key][str(predictions[key].item())]
-            else:
-                reordered_predictions[new_key]['regression'] = float(predictions[key].item())
+            # All predictions are now regression values with threshold-based categorization
+            score_syntax = float(predictions[key].item())
+            reordered_predictions[new_key]['regression'] = score_syntax
+            reordered_predictions[new_key]['category'] = self._get_category_from_threshold(score_syntax)
 
         return reordered_predictions
 
@@ -269,8 +292,6 @@ class CustomPredictionService(BasePredictionService):
         """
         Generate recommendations based on predictions
         """
-        class_mapping = CustomPredictionService._class_mapping
-
         recommendations = []
         for syntax_name in predictions.keys():
             if predictions[syntax_name]['category'] != 'zero':
@@ -325,17 +346,7 @@ class CustomPredictionService(BasePredictionService):
         except Exception as e:
             print(f"Error in _get_diagnosis: {e}")
             diagnosis = "Error in _get_diagnosis"
-
-        # The API schema (`JsonPredictionResponse`) expects the *diagnosis* field
-        # to be a **string**.  We therefore serialise the dictionary into a JSON
-        # string so that downstream consumers still get a single text field
-        # while retaining full information.
-        try:    
-            structured_predictions_json = json.dumps(structured_predictions)
-        except Exception as e:
-            print(f"Error in json.dumps(structured_predictions): {e}")
-            structured_predictions_json = "Error in json.dumps(structured_predictions)"
-
+            
         # # Generate recommendations based on stenosis analysis
         try:
             recommendations_en = self._get_recommendations(structured_predictions, "en")
@@ -403,16 +414,6 @@ class CustomPredictionService(BasePredictionService):
             print(f"Error in _get_diagnosis: {e}")
             diagnosis = "Error in _get_diagnosis"
         
-        # The API schema (`JsonPredictionResponse`) expects the *diagnosis* field
-        # to be a **string**.  We therefore serialise the dictionary into a JSON
-        # string so that downstream consumers still get a single text field
-        # while retaining full information.
-        try:    
-            structured_predictions_json = json.dumps(structured_predictions)
-        except Exception as e:
-            print(f"Error in json.dumps(structured_predictions): {e}")
-            structured_predictions_json = "Error in json.dumps(structured_predictions)"
-
         try:
             # Generate recommendations based on stenosis analysis
             recommendations_en = self._get_recommendations(structured_predictions, "en")
