@@ -346,7 +346,7 @@ class CustomPredictionService(BasePredictionService):
         except Exception as e:
             print(f"Error in _get_diagnosis: {e}")
             diagnosis = "Error in _get_diagnosis"
-            
+
         # # Generate recommendations based on stenosis analysis
         try:
             recommendations_en = self._get_recommendations(structured_predictions, "en")
@@ -373,20 +373,56 @@ class CustomPredictionService(BasePredictionService):
 
     async def _handle_json_output(self, request: PredictRequest):
         dicoms = []
-        for series_number in request.seriesInstanceImages:
-            for instance_number in request.seriesInstanceImages[series_number]:
-                dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
-                dicoms.append(pydicom.dcmread(BytesIO(base64.b64decode(dicom_base64))))
-                
-        probability = self._run_inference(dicoms)
+        
+        try:
+            for series_number in request.seriesInstanceImages:
+                for instance_number in request.seriesInstanceImages[series_number]:
+                    try:
+                        dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
+                        
+                        # Validate base64 string
+                        if not self._is_valid_base64(dicom_base64):
+                            print(f"Invalid base64 string for series {series_number} instance {instance_number}")
+                            continue
+                        
+                        # Decode base64 string and validate DICOM data
+                        dicom_data = base64.b64decode(dicom_base64)
+                        if not self._is_valid_dicom(dicom_data):
+                            print(f"Invalid DICOM data for series {series_number} instance {instance_number}")
+                            continue
+                                            
+                        # Load DICOM
+                        dicom = pydicom.dcmread(BytesIO(dicom_data))
+                        dicoms.append(dicom)
+                        
+                    except Exception as e:
+                        error_msg = f"Error in processing series {series_number} instance {instance_number}: {e}"
+                        print(error_msg)
+                        continue
 
-        if not probability:
+        except Exception as e:
+            error_msg = f"Error in _handle_json_output: {e}"
+            print(error_msg)
             return {
-                "diagnosis": "No video could be extracted or processed from the current DICOM series",
+                "diagnosis": "Error in _handle_json_output",
                 "predictions": {},
                 "modelRecommendations": {
-                    "en": "No video could be extracted or processed from the current DICOM series",
-                    "fr": "Aucune vidéo ne peut être extraite ou traitée à partir de la série DICOM actuelle",
+                    "en": "Error in _handle_json_output",
+                    "fr": "Erreur dans _handle_json_output",
+                    "presentable": True,
+                }
+            }
+
+        try:
+            probability: dict[str, float] = self._run_inference(dicoms)
+        except Exception as e:
+            print(f"Error in _run_inference: {e}")
+            return {
+                "diagnosis": "Error in _run_inference",
+                "predictions": {},
+                "modelRecommendations": {
+                    "en": "Error in _run_inference",
+                    "fr": "Erreur dans _run_inference",
                     "presentable": True,
                 }
             }
@@ -496,7 +532,7 @@ class CustomPredictionService(BasePredictionService):
             print(f"Error processing DICOM {dicom_name}: {e}")
             return None
 
-    def _run_inference(self, dicoms: list[pydicom.Dataset]) -> dict[str, float] | None:
+    def _run_inference(self, dicoms: list[pydicom.Dataset]) -> dict[str, float]:
         try:
             videos = []
             max_videos = CustomPredictionService.model_config["VideoMILWrapper"]["num_videos"]

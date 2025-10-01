@@ -2,13 +2,13 @@
   "en": {
     "Summary": {
       "Name": "DeepCoro_CLIP generic",
-      "Description": "Classify stenosis and predict severity of stenosis from angiograms.",
+      "Description": "Predict stenosis severity and blockage percentage, predict calcification severity only, predict CTO severity and predict thrombus severity from angiograms.",
       "Developed_by": "Heartwise",
       "Development_period": "2024-2025",
       "Version": "1.0.0"
     },
     "Mechanism": {
-      "Outcome": "Classification of stenosis and predict severity of stenosis",
+      "Outcome": "Predict stenosis severity and blockage percentage, predict calcification severity only, predict CTO severity and predict thrombus severity",
       "Output": "Probability of stenosis and severity of stenosis",
       "Target_population": "",
       "Input_data_source": "angiograms",
