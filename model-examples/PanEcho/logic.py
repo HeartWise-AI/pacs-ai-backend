@@ -325,26 +325,81 @@ class CustomPredictionService(BasePredictionService):
 
     async def _handle_json_output(self, request: PredictRequest):
         dicoms = []
-        for series_number in request.seriesInstanceImages:
-            for instance_number in request.seriesInstanceImages[series_number]:
-                dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
-                dicoms.append(
-                    pydicom.dcmread(
-                        BytesIO(
-                            base64.b64decode(dicom_base64)
-                        )
-                    )
-                )
-        
-        probability = self._run_inference(dicoms)
-        
+
+        try:
+            for series_number in request.seriesInstanceImages:
+                for instance_number in request.seriesInstanceImages[series_number]:
+                    try:
+                        dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
+                        
+                        if not self._is_valid_base64(dicom_base64):
+                            print(f"Invalid base64 string for series {series_number} instance {instance_number}")
+                            continue
+                        
+                        dicom_data = base64.b64decode(dicom_base64)
+                        if not self._is_valid_dicom(dicom_data):
+                            print(f"Invalid DICOM data for series {series_number} instance {instance_number}")
+                            continue
+                        
+                        dicom = pydicom.dcmread(BytesIO(dicom_data))
+                        dicoms.append(dicom)
+
+                    except Exception as e:
+                        error_msg = f"Error in processing series {series_number} instance {instance_number}: {e}"
+                        print(error_msg)
+                        continue
+
+        except Exception as e:
+            error_msg = f"Error in _handle_json_output: {e}"
+            print(error_msg)
+            return {
+                "diagnosis": "Error in _handle_json_output",
+                "predictions": {},
+                "modelRecommendations": {
+                    "en": "Error in _handle_json_output",
+                    "fr": "Erreur dans _handle_json_output",
+                    "presentable": True,
+                }
+            }
+
+        try:
+            probability = self._run_inference(dicoms)
+        except Exception as e:
+            print(f"Error in _run_inference: {e}")
+            return {
+                "diagnosis": "Error in _run_inference",
+                "predictions": {},
+                "modelRecommendations": {
+                    "en": "Error in _run_inference",
+                    "fr": "Erreur dans _run_inference",
+                    "presentable": True,
+                }
+            }
+
         # Obtain per-head diagnosis/interpretation
-        diagnosis_dict, predictions_serializable = self.postprocess_predictions(probability)
-        
+        try:
+            diagnosis_dict, predictions_serializable = self.postprocess_predictions(probability)
+        except Exception as e:
+            print(f"Error in postprocess_predictions: {e}")
+            return {
+                "diagnosis": "Error in postprocess_predictions",
+                "predictions": {},
+                "modelRecommendations": {
+                    "en": "Error in postprocess_predictions",
+                    "fr": "Erreur dans postprocess_predictions",
+                    "presentable": True,
+                }
+            }
+
         # Generate recommendations
-        recommendations_en = self._get_recommendations(diagnosis_dict, "en")
-        recommendations_fr = self._get_recommendations(diagnosis_dict, "fr")
-        
+        try:
+            recommendations_en = self._get_recommendations(diagnosis_dict, "en")
+            recommendations_fr = self._get_recommendations(diagnosis_dict, "fr")
+        except Exception as e:
+            print(f"Error in _get_recommendations: {e}")
+            recommendations_en = "Error in _get_recommendations"
+            recommendations_fr = "Error in _get_recommendations"
+
         return {
             'diagnosis': json.dumps(diagnosis_dict),
             'predictions': predictions_serializable,
