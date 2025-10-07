@@ -1,5 +1,7 @@
 {
   "modelName": "PanEcho",
+  "domainName": "Cardiology",
+  "modality": "Echocardiogram",
   "version": "1.0.0",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
