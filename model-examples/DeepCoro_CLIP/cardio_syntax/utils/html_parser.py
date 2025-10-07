@@ -223,7 +223,7 @@ class HTMLParser:
             regression_value = value.get('regression', 0.0)
             
             # Determine styling based on category
-            is_abnormal = category != 'zero'
+            is_abnormal = category != 'normal'
             card_style = RED_STYLE if is_abnormal else BLUE_STYLE
             title_color = RED_COLOR if is_abnormal else BLUE_COLOR
             severity_color = RED_COLOR if is_abnormal else GREEN_COLOR

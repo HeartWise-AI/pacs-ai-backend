@@ -123,6 +123,25 @@ class VideoMILWrapper(torch.nn.Module):
 
 
 class CustomPredictionService(BasePredictionService):
+    def _get_category_from_threshold(self, regression_value: float) -> str:
+        """
+        Convert regression value to category based on thresholds.
+        
+        Args:
+            regression_value: The regression score (0-100)
+            
+        Returns:
+            Category string: 'normal', 'low', 'intermediate', or 'high'
+        """
+        if regression_value <= 2.23:
+            return 'normal'
+        elif regression_value <= 18.50:
+            return 'low'
+        elif regression_value <= 22.95:
+            return 'intermediate'
+        else:
+            return 'high'
+    
     def load_model(self, config: Config):
         print("Loading model")
 
@@ -222,15 +241,19 @@ class CustomPredictionService(BasePredictionService):
         
         reordered_predictions = {}
         for key in predictions.keys():
+            
+            if 'category' in key:
+                continue
+            
             new_key = class_mapping[key]['name']
 
             if not new_key in reordered_predictions:
                 reordered_predictions[new_key] = {}
             
-            if 'category' in key:
-                reordered_predictions[new_key]['category'] = class_mapping[key][str(predictions[key].item())]
-            else:
-                reordered_predictions[new_key]['regression'] = float(predictions[key].item())
+            # All predictions are now regression values with threshold-based categorization
+            score_syntax = float(predictions[key].item())
+            reordered_predictions[new_key]['regression'] = score_syntax
+            reordered_predictions[new_key]['category'] = self._get_category_from_threshold(score_syntax)
 
         return reordered_predictions
 
@@ -271,8 +294,7 @@ class CustomPredictionService(BasePredictionService):
         """
         recommendations = []
         for syntax_name in predictions.keys():
-            if predictions[syntax_name]['category'] != 'zero':
-                recommendations.append(f"{syntax_name} anormal.\n")
+            recommendations.append(f"{syntax_name} {predictions[syntax_name]['category']}.\n")
 
         if recommendations:
             recommendations.append(
