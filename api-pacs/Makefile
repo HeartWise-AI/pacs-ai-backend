@@ -7,7 +7,7 @@ install:
 
 .PHONY:	lint
 lint:
-	golangci-lint run 
+	golangci-lint run
 
 .PHONY:	build
 build:
@@ -24,7 +24,7 @@ build-dev:
 .PHONY:	test
 test:
 	go test -race -v -p 1 ./...
-	
+
 .PHONY:	run
 run:	build
 	./bin/api-pacs

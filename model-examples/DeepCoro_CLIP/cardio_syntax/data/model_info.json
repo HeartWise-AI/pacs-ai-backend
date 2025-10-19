@@ -1,0 +1,13 @@
+{
+  "modelName": "DeepCoro_CLIP_cardio_syntax",
+  "domainName": "Cardiology",
+  "modality": "Angiogram",
+  "version": "1.0.0",
+  "dicomTargetLevel": "SERIES",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 99,
+  "supportedDicomModalities": ["XA"],
+  "supportedDicomTags": ["*"],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": ["HTML", "JSON"]
+}

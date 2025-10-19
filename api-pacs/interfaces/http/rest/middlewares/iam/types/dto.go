@@ -6,4 +6,5 @@ const (
 	TenantIDCtx ctxKey = iota
 	UserIDCtx
 	RoleCtx
+	BearerTokenCtx
 )

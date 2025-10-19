@@ -38,6 +38,7 @@ type FindModalityStudiesRequest struct {
 type RetrieveModalityStudyRequest struct {
 	ModalityID       string `json:"modalityId" validate:"required"`
 	StudyInstanceUID string `json:"studyInstanceUID" validate:"required"`
+	ModalityType     string `json:"modalityType,omitempty"`
 }
 
 type UpdateDICOMModalityRequest struct {

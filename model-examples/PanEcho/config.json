@@ -1,0 +1,16 @@
+{
+  "modelDirectory": "models",
+  "models": {
+    "pan_echo": {
+      "model_path": "/app/content/panecho.pt",
+      "task_path": "/app/content/tasks.pkl",
+      "pretrained": true,
+      "image_encoder_only": false,
+      "backbone_only": false,
+      "tasks": "all",
+      "activations": true,
+      "clip_len": 16,
+      "normalization": ""
+    }
+  }
+}

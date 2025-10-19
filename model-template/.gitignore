@@ -1,4 +1,5 @@
 pacs-model-template
+sample_data
 vendor
 __pycache__
 .env

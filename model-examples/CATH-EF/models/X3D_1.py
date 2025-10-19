@@ -2,10 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 def conv1x1x1(in_planes, out_planes, stride=1):
-    return nn.Conv3d(
-        in_planes, out_planes, kernel_size=1, stride=(1, stride, stride), bias=False
-    )
+    return nn.Conv3d(in_planes, out_planes, kernel_size=1, stride=(1, stride, stride), bias=False)
 
 
 def conv3x3x3(in_planes, out_planes, stride=1):
@@ -19,16 +18,18 @@ def conv3x3x3(in_planes, out_planes, stride=1):
         groups=in_planes,
     )
 
+
 class Swish(nn.Module):
     """FROM SLOWFAST"""
 
     """Swish activation function: x * sigmoid(x)."""
 
     def __init__(self):
-        super(Swish, self).__init__()
+        super().__init__()
 
     def forward(self, x):
         return SwishEfficient.apply(x)
+
 
 class SwishEfficient(torch.autograd.Function):
     """FROM SLOWFAST"""
@@ -47,11 +48,10 @@ class SwishEfficient(torch.autograd.Function):
         sigmoid_x = torch.sigmoid(x)
         return grad_output * (sigmoid_x * (1 + x * (1 - sigmoid_x)))
 
+
 class Bottleneck(nn.Module):
-    def __init__(
-        self, in_planes, planes, stride=1, downsample=None, index=0, base_bn_splits=8
-    ):
-        super(Bottleneck, self).__init__()
+    def __init__(self, in_planes, planes, stride=1, downsample=None, index=0, base_bn_splits=8):
+        super().__init__()
 
         self.index = index
         self.base_bn_splits = base_bn_splits
@@ -110,9 +110,8 @@ class Bottleneck(nn.Module):
             residual = self.downsample(x)
 
         out += residual
-        out = self.relu(out)
+        return self.relu(out)
 
-        return out
 
 def get_inplanes(version):
     planes = {
@@ -132,8 +131,8 @@ class X3D_1(nn.Module):
     def __init__(
         self,
         block=Bottleneck,
-        layers=get_blocks("M"),
-        block_inplanes=get_inplanes("M"),
+        layers=None,
+        block_inplanes=None,
         n_input_channels=3,
         shortcut_type="B",
         widen_factor=1.0,
@@ -142,7 +141,12 @@ class X3D_1(nn.Module):
         base_bn_splits=8,
         task="class",
     ):
-        super(X3D_1, self).__init__()
+        super().__init__()
+
+        if layers is None:
+            layers = get_blocks("M")
+        if block_inplanes is None:
+            block_inplanes = get_inplanes("M")
 
         block_inplanes = [
             (int(x * widen_factor), int(y * widen_factor)) for x, y in block_inplanes
@@ -197,9 +201,7 @@ class X3D_1(nn.Module):
             self.avgpool = nn.AdaptiveAvgPool3d((1, 1, 1))
         elif task == "loc":
             self.avgpool = nn.AdaptiveAvgPool3d((None, 1, 1))
-        self.fc1 = nn.Conv3d(
-            block_inplanes[3][0], 2048, bias=False, kernel_size=1, stride=1
-        )
+        self.fc1 = nn.Conv3d(block_inplanes[3][0], 2048, bias=False, kernel_size=1, stride=1)
 
         # switch for binary vs multiclass
         if n_classes == 2:
@@ -226,15 +228,19 @@ class X3D_1(nn.Module):
         if isinstance(out.data, torch.cuda.FloatTensor):
             zero_pads = zero_pads.cuda()
 
-        out = torch.cat([out.data, zero_pads], dim=1)
-
-        return out
+        return torch.cat([out.data, zero_pads], dim=1)
 
     def _make_layer(self, block, planes, blocks, shortcut_type, stride=1):
         downsample = None
         if stride != 1 or self.in_planes != planes[1]:
             downsample = nn.Sequential(
-                nn.Conv3d(self.in_planes, planes[1], kernel_size=1, stride=(1, stride, stride), bias=False),
+                nn.Conv3d(
+                    self.in_planes,
+                    planes[1],
+                    kernel_size=1,
+                    stride=(1, stride, stride),
+                    bias=False,
+                ),
                 nn.BatchNorm3d(planes[1]),
             )
         layers = []
@@ -250,7 +256,7 @@ class X3D_1(nn.Module):
         )
         self.in_planes = planes[1]
         self.index += 1
-        for i in range(1, blocks):
+        for _i in range(1, blocks):
             layers.append(
                 block(
                     self.in_planes,
@@ -310,8 +316,5 @@ class X3D_1(nn.Module):
 
         # switch for final layer type. Sigmoid for binary classification, softmax for multiclass.
         if self.task != "regress":
-            if self.n_classes == 2:
-                x = self.sigmoid(x)
-            else:
-                x = self.softmax(x)
+            x = self.sigmoid(x) if self.n_classes == 2 else self.softmax(x)
         return x

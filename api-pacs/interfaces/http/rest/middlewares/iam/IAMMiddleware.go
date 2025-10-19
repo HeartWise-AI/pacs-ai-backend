@@ -123,6 +123,7 @@ func (middleware *IAMMiddleware) TokenSessionAuthGuard(next http.Handler) http.H
 		ctx := context.WithValue(r.Context(), types.TenantIDCtx, tokenSession.TenantID)
 		ctx = context.WithValue(ctx, types.UserIDCtx, tokenSession.UserID)
 		ctx = context.WithValue(ctx, types.RoleCtx, tokenSession.Role)
+		ctx = context.WithValue(ctx, types.BearerTokenCtx, sessionToken)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
