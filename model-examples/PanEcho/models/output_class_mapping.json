@@ -1,7 +1,7 @@
 {
     "pericardial-effusion": {
-        "absent": 0,
-        "mild_mod_severe": 1,
+        "mild_mod_severe": 0,
+        "none_trace": 1,
         "description": "Pericardial effusion"
     },
     "EF": {
@@ -37,12 +37,12 @@
     },
     "LVWallThickness-increased-any": {
         "Increased": 0,
-        "normal": 1,
+        "Normal": 1,
         "description": "Any level of LV hypertrophy (increased wall thickness)"
     },
     "LVWallThickness-increased-modsev": {
         "Moderately|severely increased": 0,
-        "normal": 1,
+        "Normal or mildly increased": 1,
         "description": "Moderate or greater LV hypertrophy (increased wall thickness)"
     },
     "LVSystolicFunction": {
@@ -105,7 +105,7 @@
     },
     "RVSystolicFunction": {
         "Decreased": 0,
-        "normal": 1,
+        "Normal": 1,
         "description": "RV systolic function"
     },
     "RVIDd": {
@@ -141,7 +141,7 @@
     },
     "RASize": {
         "Dilated": 0,
-        "normal": 1,
+        "Normal": 1,
         "description": "Right atrial (RA) size"
     },
     "RADimensionM-L(cm)": {
@@ -151,7 +151,7 @@
     },
     "AVStructure": {
         "Bicuspid": 0,
-        "normal": 1,
+        "Normal": 1,
         "description": "Bicuspid aortic valve"
     },
     "AVStenosis": {
@@ -172,13 +172,13 @@
         "description": "Aortic valve regurgitation"
     },
     "LVOT20mmHg": {
-        "absent": 0,
-        "Present": 1,
+        "0.0": 0,
+        "1.0": 1,
         "description": "Elevated LV outflow tract pressure"
     },
     "MVStenosis": {
         "Mild|Moderate|Severe": 0,
-        "normal": 1,
+        "None": 1,
         "description": "Mitral valve stenosis"
     },
     "MVRegurgitation": {
@@ -199,8 +199,8 @@
         "description": "Tricuspid valve peak gradient"
     },
     "RAP-8-or-higher": {
-        "absent": 0,
-        "Present": 1,
+        "0.0": 0,
+        "1.0": 1,
         "description": "Elevated RA pressure"
     },
     "AORoot": {
