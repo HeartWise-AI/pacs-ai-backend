@@ -1,23 +1,24 @@
 import os
 import uuid
+import json
 import torch
 import base64
 import pydicom
 import cv2 as cv
 import numpy as np
 import torch.nn as nn
-import json
 
 from io import BytesIO
-from typing import List, Dict, Union, Tuple
 from torchvision import tv_tensors
+from collections import defaultdict
 from torchvision.transforms import v2
+from typing import List, Dict, Union, Tuple, Optional
 
+from models.pan_echo import PanEcho
 from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
 
-from models.pan_echo import PanEcho
 
 class CustomPredictionService(BasePredictionService):
     def load_model(self, config: Config):        
@@ -34,6 +35,8 @@ class CustomPredictionService(BasePredictionService):
                 pretrained=config.models['pan_echo'].pretrained,
                 image_encoder_only=config.models['pan_echo'].image_encoder_only,
                 backbone_only=config.models['pan_echo'].backbone_only,
+                activations=config.models['pan_echo'].activations,  # Use config value (False for proper logit averaging)
+                clip_len=config.models['pan_echo'].clip_len,
             )
             print("Successfully created PanEcho model directly from local package")        
         except Exception as e:
@@ -280,7 +283,15 @@ class CustomPredictionService(BasePredictionService):
         dicoms = []
         for series_number in request.seriesInstanceImages:
             for instance_number in request.seriesInstanceImages[series_number]:
-                dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
+                instance_data = request.seriesInstanceImages[series_number][instance_number]
+                
+                # Extract image from the instance data (HTML doesn't use views)
+                if isinstance(instance_data, dict):
+                    dicom_base64 = instance_data.get("image", instance_data)
+                else:
+                    # Backward compatibility: if it's a string, treat it as base64
+                    dicom_base64 = instance_data
+                
                 dicoms.append(
                     pydicom.dcmread(
                         BytesIO(
@@ -289,6 +300,7 @@ class CustomPredictionService(BasePredictionService):
                     )
                 )
                 
+        # HTML output uses simple averaging (no view-level averaging)
         probability = self._run_inference(dicoms)
         
         # Obtain per-head diagnosis/interpretation
@@ -325,12 +337,22 @@ class CustomPredictionService(BasePredictionService):
 
     async def _handle_json_output(self, request: PredictRequest):
         dicoms = []
-
+        views = []
+        
         try:
             for series_number in request.seriesInstanceImages:
                 for instance_number in request.seriesInstanceImages[series_number]:
                     try:
-                        dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
+                        instance_data = request.seriesInstanceImages[series_number][instance_number]
+                        
+                        # Extract image and view from the instance data
+                        if isinstance(instance_data, dict):
+                            dicom_base64 = instance_data.get("image", instance_data)
+                            view = instance_data.get("view", None)
+                        else:
+                            # Backward compatibility: if it's a string, treat it as base64
+                            dicom_base64 = instance_data
+                            view = None
                         
                         if not self._is_valid_base64(dicom_base64):
                             print(f"Invalid base64 string for series {series_number} instance {instance_number}")
@@ -343,6 +365,7 @@ class CustomPredictionService(BasePredictionService):
                         
                         dicom = pydicom.dcmread(BytesIO(dicom_data))
                         dicoms.append(dicom)
+                        views.append(view)
 
                     except Exception as e:
                         error_msg = f"Error in processing series {series_number} instance {instance_number}: {e}"
@@ -362,8 +385,19 @@ class CustomPredictionService(BasePredictionService):
                 }
             }
 
+        if len(dicoms) != len(views):
+            return {
+                "diagnosis": "Number of dicoms and views must be the same",
+                "predictions": {},
+                "modelRecommendations": {
+                    "en": "Number of dicoms and views must be the same",
+                    "fr": "Le nombre de dicoms et de vues doit être le même",
+                    "presentable": True,
+                }
+            }
+
         try:
-            probability = self._run_inference(dicoms)
+            probability = self._run_inference(dicoms=dicoms, views=views)
         except Exception as e:
             print(f"Error in _run_inference: {e}")
             return {
@@ -419,9 +453,21 @@ class CustomPredictionService(BasePredictionService):
         Load and preprocess video clip from DICOM pixel array.
         Adapted from EchoDataset._load_clip method.
         """
+        # CRITICAL: Ensure pixel values are in [0, 255] range for proper normalization
+        if pixel_array.dtype == np.uint16 or pixel_array.max() > 255:
+            # Scale to [0, 255] range for 16-bit or out-of-range values
+            pix_min, pix_max = pixel_array.min(), pixel_array.max()
+            if pix_max > pix_min:
+                pixel_array = ((pixel_array - pix_min) / (pix_max - pix_min) * 255).astype(np.uint8)
+            else:
+                pixel_array = np.zeros_like(pixel_array, dtype=np.uint8)
+        elif pixel_array.dtype != np.uint8:
+            # Ensure uint8 type
+            pixel_array = pixel_array.astype(np.uint8)
+        
         # Handle different input dimensions
         if pixel_array.ndim == 3:
-            # Single channel to 3 channels
+            # Single channel to 3 channels (grayscale to RGB)
             pixel_array = np.expand_dims(pixel_array, axis=-1)  # Shape: F,W,H,1
             pixel_array = np.repeat(pixel_array, 3, axis=-1)    # Shape: F,W,H,3
         elif pixel_array.ndim == 4:
@@ -463,6 +509,7 @@ class CustomPredictionService(BasePredictionService):
 
         # Add normalization
         if normalization == 'imagenet':
+            print("Using ImageNet normalization")
             mean = np.array([0.485, 0.456, 0.406])
             std = np.array([0.229, 0.224, 0.225])
         elif normalization == 'kinetics':
@@ -476,20 +523,29 @@ class CustomPredictionService(BasePredictionService):
         
         return v2.Compose(transform_list)
 
-    def _run_inference(self, dicoms: List[pydicom.Dataset]) -> Dict[str, torch.Tensor]:
+    def _run_inference_logits_only(self, dicoms: List[pydicom.Dataset]) -> Dict[str, torch.Tensor]:
         """
-        Enhanced inference function that processes each DICOM individually and averages results.
+        Run inference and return averaged logits without applying activations.
+        Processes at most 8 DICOMs in a single batch.
+        
+        Args:
+            dicoms: List of DICOM datasets
+            
+        Returns:
+            Dictionary of averaged logits (before activation)
         """
         try:
             # Create transform pipeline
             transform = self._create_transform(normalization=self.config.models['pan_echo'].normalization)
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            MAX_BATCH_SIZE = 8
             
-            # Store individual results
-            all_outputs = []
-            
-            # Process each DICOM individually
-            for i, dicom in enumerate(dicoms):
-                pixel_array: np.ndarray = dicom.pixel_array
+            # Process at most MAX_BATCH_SIZE DICOMs
+            batch_size = min(MAX_BATCH_SIZE, len(dicoms))
+            batch_clips = []
+                        
+            for i in range(batch_size):
+                pixel_array: np.ndarray = dicoms[i].pixel_array
                 
                 # Skip invalid data
                 if pixel_array.ndim < 3:
@@ -503,43 +559,116 @@ class CustomPredictionService(BasePredictionService):
                 )
                 
                 # Convert to torch tensor and apply transforms
-                # Single clip: (F, H, W, C) -> (F, C, H, W)
                 clip_tensor = tv_tensors.Video(np.transpose(clip, (0, 3, 1, 2)))
                 clip_tensor = transform(clip_tensor)
+                
                 # (F, C, H, W) -> (C, F, H, W) for model input
                 clip_tensor = torch.permute(clip_tensor, (1, 0, 2, 3))
                 
-                # Add batch dimension for single video
-                clip_tensor = clip_tensor.unsqueeze(0)  # Shape: (1, C, F, H, W)
-                
-                # Move to device
-                device = 'cuda' if torch.cuda.is_available() else 'cpu'
-                clip_tensor = clip_tensor.to(device)
-                
-                print(f"Processing DICOM {i} with shape: {clip_tensor.shape}")
-                
-                # Run inference on single DICOM
-                with torch.no_grad():
-                    single_output: Dict[str, torch.Tensor] = CustomPredictionService.models['pan_echo'](clip_tensor)
-                
-                all_outputs.append(single_output)
+                batch_clips.append(clip_tensor)
             
-            if not all_outputs:
+            if not batch_clips:
                 raise ValueError("No valid DICOM files processed")
             
-            # Average the results across all DICOMs
-            averaged_output = {}
-            for key in all_outputs[0].keys():
-                # Stack all outputs for this key
-                stacked_outputs = torch.stack([output[key] for output in all_outputs])
-                # Average across the batch dimension
-                averaged_output[key] = torch.mean(stacked_outputs, dim=0)
+            # Stack clips into a batch tensor: (batch_size, C, F, H, W)
+            batch_tensor = torch.stack(batch_clips).to(device)
+            
+            # Run inference on this batch
+            with torch.no_grad():
+                batch_outputs: Dict[str, torch.Tensor] = CustomPredictionService.models['pan_echo'](batch_tensor)
+            
+            # Average the logits across the batch dimension (without activation)
+            averaged_logits = {}
+            for key, output_tensor in batch_outputs.items():
+                # Output tensor shape: (batch_size, ...)
+                # Average across batch dimension (dim=0)
+                averaged_logits[key] = torch.mean(output_tensor, dim=0)
                         
-            return averaged_output
+            return averaged_logits
         
         except Exception as e:
             # Clean up GPU memory
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            print(f"Error in _run_inference: {str(e)}")
+            print(f"Error in _run_inference_logits_only: {str(e)}")
             raise e
+
+    def _run_inference(
+        self, 
+        dicoms: List[pydicom.Dataset], 
+        views: Optional[List[Optional[str]]] = None
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Enhanced inference function that processes each DICOM individually and averages results.
+        If views are provided, performs view-level averaging: averages within each view, then averages across all views.
+        
+        Args:
+            dicoms: List of DICOM datasets
+            views: Optional list of view names corresponding to each DICOM (can be None)
+                  If provided, performs view-level averaging. If None, performs simple averaging.
+            
+        Returns:
+            Dictionary of averaged predictions with activations applied
+        """
+        
+        # If views are provided, do view-level averaging
+        if views is not None and len(views) > 0:
+            # Group dicoms by view
+            view_groups = defaultdict(list)
+            for i, (dicom, view) in enumerate(zip(dicoms, views)):
+                # Use None as key for instances without a view
+                view_key = view if view is not None else f"_no_view_{i}"
+                view_groups[view_key].append((i, dicom))
+            
+            # Run inference for each view group and get view-level averaged logits
+            view_logits = []
+            for view_name, group_items in view_groups.items():
+                group_dicoms = [dicom for _, dicom in group_items]
+                print(f"Processing view '{view_name}' with {len(group_dicoms)} instances")
+                
+                # Get averaged logits for this view group (averages within the view)
+                view_averaged_logits = self._run_inference_logits_only(group_dicoms)
+                view_logits.append(view_averaged_logits)
+            
+            if not view_logits:
+                raise ValueError("No valid view groups processed")
+            
+            # Average logits across all views
+            final_logits = {}
+            for key in view_logits[0].keys():
+                # Stack all view-level logits for this key
+                stacked_view_logits = torch.stack([logits[key] for logits in view_logits])
+                # Average across views
+                final_logits[key] = torch.mean(stacked_view_logits, dim=0)
+        else:
+            # Simple averaging: no view-level grouping
+            final_logits = self._run_inference_logits_only(dicoms)
+        
+        # STEP 3: Apply activations to the final globally averaged logits
+        final_output = {}
+        task_dict = CustomPredictionService.models['pan_echo'].model.tasks
+        
+        for key, averaged_logits in final_logits.items():
+            # Find the task to determine the correct activation
+            task = next((t for t in task_dict if t.task_name == key), None)
+            if task:
+                if task.task_type == 'binary_classification':
+                    # Apply sigmoid to averaged logits
+                    # Handle special cases where output should be inverted
+                    if task.task_name in ['MVStenosis', 'AVStructure', 'RASize', 'RVSystolicFunction', 
+                                           'LVWallThickness-increased-modsev', 'LVWallThickness-increased-any', 
+                                           'pericardial-effusion']:
+                        final_output[key] = 1 - torch.sigmoid(averaged_logits)
+                    else:
+                        final_output[key] = torch.sigmoid(averaged_logits)
+                elif task.task_type == 'multi-class_classification':
+                    # Apply softmax to averaged logits
+                    final_output[key] = torch.softmax(averaged_logits, dim=-1)
+                else:
+                    # Regression - no activation needed
+                    final_output[key] = averaged_logits
+            else:
+                # Fallback if task not found
+                final_output[key] = averaged_logits
+        
+        return final_output
