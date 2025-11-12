@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
-  "dicomUploadMax": 5,
+  "dicomUploadMax": 99,
   "supportedDicomModalities": ["US"],
   "supportedDicomTags": ["*"],
   "supportedAdditionalMetadata": [],
