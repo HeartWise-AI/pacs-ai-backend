@@ -599,50 +599,26 @@ class CustomPredictionService(BasePredictionService):
         views: Optional[List[Optional[str]]] = None
     ) -> Dict[str, torch.Tensor]:
         """
-        Enhanced inference function that processes each DICOM individually and averages results.
-        If views are provided, performs view-level averaging: averages within each view, then averages across all views.
+        Run inference on a list of DICOM datasets and return averaged predictions with activations.
+        
+        This function processes DICOMs by:
+        1. Computing logits for the input DICOMs (processes at most 8 DICOMs in a batch)
+        2. Averaging the logits across all DICOMs
+        3. Applying appropriate activation functions (sigmoid for binary, softmax for multi-class)
         
         Args:
-            dicoms: List of DICOM datasets
-            views: Optional list of view names corresponding to each DICOM (can be None)
-                  If provided, performs view-level averaging. If None, performs simple averaging.
+            dicoms: List of DICOM datasets to process
+            views: Optional list of view names corresponding to each DICOM (currently unused,
+                  reserved for future view-level averaging implementation)
             
         Returns:
-            Dictionary of averaged predictions with activations applied
+            Dictionary mapping task names to their predictions with activations applied:
+            - Binary classification: sigmoid probabilities (0-1)
+            - Multi-class classification: softmax probabilities
+            - Regression: raw values
         """
         
-        # If views are provided, do view-level averaging
-        if views is not None and len(views) > 0:
-            # Group dicoms by view
-            view_groups = defaultdict(list)
-            for i, (dicom, view) in enumerate(zip(dicoms, views)):
-                # Use None as key for instances without a view
-                view_key = view if view is not None else f"_no_view_{i}"
-                view_groups[view_key].append((i, dicom))
-            
-            # Run inference for each view group and get view-level averaged logits
-            view_logits = []
-            for view_name, group_items in view_groups.items():
-                group_dicoms = [dicom for _, dicom in group_items]
-                print(f"Processing view '{view_name}' with {len(group_dicoms)} instances")
-                
-                # Get averaged logits for this view group (averages within the view)
-                view_averaged_logits = self._run_inference_logits_only(group_dicoms)
-                view_logits.append(view_averaged_logits)
-            
-            if not view_logits:
-                raise ValueError("No valid view groups processed")
-            
-            # Average logits across all views
-            final_logits = {}
-            for key in view_logits[0].keys():
-                # Stack all view-level logits for this key
-                stacked_view_logits = torch.stack([logits[key] for logits in view_logits])
-                # Average across views
-                final_logits[key] = torch.mean(stacked_view_logits, dim=0)
-        else:
-            # Simple averaging: no view-level grouping
-            final_logits = self._run_inference_logits_only(dicoms)
+        final_logits = self._run_inference_logits_only(dicoms)
         
         # STEP 3: Apply activations to the final globally averaged logits
         final_output = {}
