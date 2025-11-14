@@ -599,20 +599,17 @@ class CustomPredictionService(BasePredictionService):
         views: Optional[List[Optional[str]]] = None
     ) -> Dict[str, torch.Tensor]:
         """
-        Run inference on a list of DICOM datasets and return averaged predictions with activations.
+        Run inference on DICOM datasets and return predictions with activations applied.
         
-        This function processes DICOMs by:
-        1. Computing logits for the input DICOMs (processes at most 8 DICOMs in a batch)
-        2. Averaging the logits across all DICOMs
-        3. Applying appropriate activation functions (sigmoid for binary, softmax for multi-class)
+        Computes averaged logits via _run_inference_logits_only, then applies task-specific
+        activation functions to produce final predictions.
         
         Args:
             dicoms: List of DICOM datasets to process
-            views: Optional list of view names corresponding to each DICOM (currently unused,
-                  reserved for future view-level averaging implementation)
+            views: Optional list of view names (currently unused, reserved for future use)
             
         Returns:
-            Dictionary mapping task names to their predictions with activations applied:
+            Dictionary mapping task names to predictions with activations:
             - Binary classification: sigmoid probabilities (0-1)
             - Multi-class classification: softmax probabilities
             - Regression: raw values
@@ -620,7 +617,6 @@ class CustomPredictionService(BasePredictionService):
         
         final_logits = self._run_inference_logits_only(dicoms)
         
-        # STEP 3: Apply activations to the final globally averaged logits
         final_output = {}
         task_dict = CustomPredictionService.models['pan_echo'].model.tasks
         
@@ -629,14 +625,7 @@ class CustomPredictionService(BasePredictionService):
             task = next((t for t in task_dict if t.task_name == key), None)
             if task:
                 if task.task_type == 'binary_classification':
-                    # Apply sigmoid to averaged logits
-                    # Handle special cases where output should be inverted
-                    if task.task_name in ['MVStenosis', 'AVStructure', 'RASize', 'RVSystolicFunction', 
-                                           'LVWallThickness-increased-modsev', 'LVWallThickness-increased-any', 
-                                           'pericardial-effusion']:
-                        final_output[key] = 1 - torch.sigmoid(averaged_logits)
-                    else:
-                        final_output[key] = torch.sigmoid(averaged_logits)
+                    final_output[key] = torch.sigmoid(averaged_logits)
                 elif task.task_type == 'multi-class_classification':
                     # Apply softmax to averaged logits
                     final_output[key] = torch.softmax(averaged_logits, dim=-1)
