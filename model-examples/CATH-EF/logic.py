@@ -137,6 +137,40 @@ class CustomPredictionService(BasePredictionService):
 
         return np.asarray(compressedVideo).transpose(0, 3, 1, 2)
 
+    def _preprocess_single_dicom(
+        self, dicom: pydicom.Dataset, mean: list[float], std: list[float], framesToUse: int
+    ) -> torch.Tensor:
+        """Preprocess a single DICOM series for inference"""
+        data = np.expand_dims(dicom.pixel_array, axis=1).repeat(3, axis=1)
+        compressedVideo = self.videoShenanigans(
+            np.transpose(data, (0, 2, 3, 1)).astype(np.uint8)
+        )
+        compressedVideo = compressedVideo.astype(np.float32)
+
+        # Transform video to torch and resize
+        video = torch.from_numpy(compressedVideo)
+        resize_transform = torchvision.transforms.Resize((224, 224), antialias=False)
+        video = resize_transform(video)
+
+        # Apply normalization
+        normalize_transform = torchvision.transforms.Normalize(mean, std)
+        video = normalize_transform(video)
+        video = video.permute(1, 0, 2, 3)
+        video = video.numpy()
+
+        # Set number of frames
+        c, f, h, w = video.shape
+        length = framesToUse
+        if f < length:
+            video = np.concatenate(
+                (video, np.zeros((c, length - f, h, w), video.dtype)), axis=1
+            )
+            c, f, h, w = video.shape
+        start = np.array([0])
+        video = tuple(video[:, s + 1 * np.arange(length), :, :] for s in start)[0]
+        
+        return torch.as_tensor(video).unsqueeze(0).to("cuda" if torch.cuda.is_available() else "cpu")
+
     def _common_preprocessing(
         self, series: list[pydicom.Dataset], mean: list[float], std: list[float], framesToUse: int
     ) -> torch.Tensor:
@@ -180,10 +214,22 @@ class CustomPredictionService(BasePredictionService):
         std = [59.551239013671875, 59.551239013671875, 59.551239013671875]
         return self._common_preprocessing(series, mean, std, framesToUse=48)
 
+    def _X3D_1_preprocess_single(self, dicom: pydicom.Dataset) -> torch.Tensor:
+        """Preprocess a single DICOM for X3D_1 model"""
+        mean = [93.81117248535156, 93.81117248535156, 93.81117248535156]
+        std = [59.551239013671875, 59.551239013671875, 59.551239013671875]
+        return self._preprocess_single_dicom(dicom, mean, std, framesToUse=48)
+
     def _X3D_2_preprocessing(self, series: list[pydicom.Dataset]) -> torch.Tensor:
         mean = [111.72716, 111.72716, 111.72716]
         std = [47.53218, 47.53218, 47.53218]
         return self._common_preprocessing(series, mean, std, framesToUse=72)
+
+    def _X3D_2_preprocess_single(self, dicom: pydicom.Dataset) -> torch.Tensor:
+        """Preprocess a single DICOM for X3D_2 model"""
+        mean = [111.72716, 111.72716, 111.72716]
+        std = [47.53218, 47.53218, 47.53218]
+        return self._preprocess_single_dicom(dicom, mean, std, framesToUse=72)
 
     def _get_dicoms_from_payload(self, request: dict[str, Any]) -> list[pydicom.Dataset]:
         return [
@@ -198,21 +244,35 @@ class CustomPredictionService(BasePredictionService):
         return "Recommendation for the next model"
 
     def _process_vessels_and_lvef(self, dicoms: list[pydicom.Dataset]):
-        """Common processing for vessels and LVEF predictions"""
-        X3D_1_input = self._X3D_1_preprocessing(dicoms)
-        X3D_1_outputs = self.inference(X3D_1_input, "X3D_1")
-
-        # Process vessels and collect data
+        """Common processing for vessels and LVEF predictions - processes one DICOM at a time to avoid GPU OOM"""
+        # Process vessels and collect data - one DICOM at a time
         vessel_predictions = []
         left_coronary_dicoms = []
 
-        for i, output in enumerate(X3D_1_outputs):
-            prediction = output.numpy().argmax()
+        for dicom in dicoms:
+            # Preprocess single DICOM
+            X3D_1_input = self._X3D_1_preprocess_single(dicom)
+            
+            # Run inference on single DICOM
+            X3D_1_output = self.inference(X3D_1_input, "X3D_1")
+            
+            # Handle single output (remove batch dimension if needed)
+            if isinstance(X3D_1_output, (list, tuple)):
+                output = X3D_1_output[0]
+            else:
+                output = X3D_1_output
+            
+            # Get prediction - output shape is (1, num_classes), so take first batch item
+            output_np = output.numpy()
+            if output_np.ndim > 1:
+                prediction = output_np[0].argmax()
+            else:
+                prediction = output_np.argmax()
             vessel_name = self._get_vessel_name(prediction)
 
             vessel_predictions.append(
                 {
-                    "seriesNumber": int(dicoms[i].SeriesNumber),
+                    "seriesNumber": int(dicom.SeriesNumber),
                     "vessel": vessel_name,
                     "prediction": prediction,
                 }
@@ -220,19 +280,32 @@ class CustomPredictionService(BasePredictionService):
 
             # Keep only left coronary vessels for LVEF processing
             if prediction == 5:
-                left_coronary_dicoms.append(dicoms[i])
+                left_coronary_dicoms.append(dicom)
 
-        # Process LVEF for left coronary vessels if any
+        # Process LVEF for left coronary vessels if any - one DICOM at a time
         lvef_predictions = []
-        if left_coronary_dicoms:
-            X3D_2_input = self._X3D_2_preprocessing(left_coronary_dicoms)
-            X3D_2_outputs = self.inference(X3D_2_input, "X3D_2")
+        for dicom in left_coronary_dicoms:
+            # Preprocess single DICOM
+            X3D_2_input = self._X3D_2_preprocess_single(dicom)
+            
+            # Run inference on single DICOM
+            X3D_2_output = self.inference(X3D_2_input, "X3D_2")
+            
+            # Handle single output (remove batch dimension if needed)
+            if isinstance(X3D_2_output, (list, tuple)):
+                output = X3D_2_output[0]
+            else:
+                output = X3D_2_output
+            
+            # Get LVEF value - output shape is (1,), so take first element
+            output_np = output.numpy()
+            if output_np.ndim > 0:
+                lvef_value = round(float(output_np[0]), 2)
+            else:
+                lvef_value = round(float(output_np), 2)
+            seriesNumber = int(dicom.SeriesNumber)
 
-            for idx, output in enumerate(X3D_2_outputs):
-                lvef_value = round(float(output.numpy()), 2)
-                seriesNumber = int(left_coronary_dicoms[idx].SeriesNumber)
-
-                lvef_predictions.append({"seriesNumber": seriesNumber, "value": lvef_value})
+            lvef_predictions.append({"seriesNumber": seriesNumber, "value": lvef_value})
 
         return vessel_predictions, lvef_predictions, left_coronary_dicoms
 
