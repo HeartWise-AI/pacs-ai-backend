@@ -344,245 +344,245 @@
     "prox_rca_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.01944151520729065,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Proximal RCA"
     },
     "mid_rca_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.012055556289851665,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Mid RCA"
     },
     "dist_rca_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.0016879113391041756,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Distal RCA"
     },
     "pda_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.0006491217063739896,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Posterior Descending Artery"
     },
     "posterolateral_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.0015382246347144246,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Posterolateral Branch"
     },
     "left_main_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.0010402644984424114,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Left Main Branch"
     },
     "prox_lad_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.007851351983845234,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Proximal LAD"
     },
     "mid_lad_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.011972684413194656,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Mid LAD"
     },
     "dist_lad_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.0003601424104999751,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Distal LAD"
     },
     "D1_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.001623910036869347,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "D1 Branch"
     },
     "D2_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.0009579166653566062,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "D2 Branch"
     },
     "prox_lcx_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.006393968127667904,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Proximal LCX"
     },
     "mid_lcx_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.006384100299328566,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Mid LCX"
     },
     "dist_lcx_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.0017044602427631617,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Distal LCX"
     },
     "om1_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.0015355583745986223,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "OM1 (Obtuse Marginal 1)"
     },
     "om2_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.0008810019353404641,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "OM2 (Obtuse Marginal 2)"
     },
     "bx_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 0.0023963088169693947,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Branch Vessel"
     },
     "lvp_cto": {
         "normal": 0,
         "cto": 1,
-        "threshold": 7.395446459668165e-07,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "LVp"
     },
     "prox_rca_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.008479813113808632,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Proximal RCA"
     },
     "mid_rca_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.011265038512647152,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Mid RCA"
     },
     "dist_rca_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.002419252647086978,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Distal RCA"
     },
     "pda_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.00029054173501208425,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Posterior Descending Artery"
     },
     "posterolateral_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.0005488698952831328,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Posterolateral Branch"
     },
     "left_main_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.0004001938796136528,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Left Main Branch"
     },
     "prox_lad_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.004109825938940048,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Proximal LAD"
     },
     "mid_lad_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.006098567508161068,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Mid LAD"
     },
     "dist_lad_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.00025622130488045514,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Distal LAD"
     },
     "D1_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.0002342588413739577,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "D1 Branch"
     },
     "D2_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.00010957501945085824,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "D2 Branch"
     },
     "prox_lcx_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.00039672761340625584,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Proximal LCX"
     },
     "mid_lcx_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.0009178786422125995,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Mid LCX"
     },
     "dist_lcx_thrombus": { 
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.0008584276656620204,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Distal LCX"
     },
     "om1_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 0.00021652608120348305,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "OM1 (Obtuse Marginal 1)"
     },
     "om2_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 9.414095984539017e-05,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "OM2 (Obtuse Marginal 2)"
     },
     "bx_thrombus": {
         "normal": 0,
         "thrombus": 1,
-        "threshold": 7.824700878700241e-05,
+        "threshold": 0.5,
         "head_dim": 1,
         "name": "Branch Vessel"
     },

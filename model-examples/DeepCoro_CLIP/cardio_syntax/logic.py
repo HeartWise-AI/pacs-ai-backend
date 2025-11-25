@@ -18,14 +18,6 @@ from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
 from models.multi_instance_linear_probing import MultiInstanceLinearProbing
 
-# Add DICOM_TAGS dictionary
-DICOM_TAGS = {
-    'series_times': '00080031',  # Series Time
-    'frame_height': '00180011',  # Sequence of Ultrasound Regions
-    'frame_width': '00180010',   # Contrast/Bolus Agent
-    'frame_rate': '00181063',    # Frame Time Vector
-}
-
 
 class VideoMILWrapper(torch.nn.Module):
     def __init__(self, video_encoder, mil_model, num_videos: int):

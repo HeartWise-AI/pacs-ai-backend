@@ -1,8 +1,12 @@
 from fastapi.responses import JSONResponse
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypeAlias
 
 from pydantic import BaseModel, Field
 
+# Type alias for nested dictionary structure
+SeriesInstanceMetadata: TypeAlias = Dict[str, Any]
+SeriesInstanceMetadata: TypeAlias = Dict[int, Dict[int, str]]
+SeriesInstanceViewMetadata: TypeAlias = Dict[int, Dict[int, Dict[str, Any]]]
 
 class Config(BaseModel):
     class ModelConfig(BaseModel):
@@ -59,11 +63,12 @@ class HTTPResponse:
         )
 
 class PredictRequest(BaseModel):
-    seriesInstanceImages: Optional[Dict[int, Dict[int, str]]] = None
-    seriesInstanceMetadata: Optional[Dict[str, Any]] = None
-    additionalMetadata: Optional[Dict[str, Any]] = None
     outputMode: str
-
+    additionalMetadata: Optional[Dict[str, Any]] = None
+    seriesInstanceMetadata: Optional[SeriesInstanceMetadata] = None
+    seriesInstanceImages: Optional[
+        SeriesInstanceMetadata | SeriesInstanceViewMetadata
+    ] = None
 
 class JsonPredictionResponse(BaseModel):
     class ModelRecommendations(BaseModel):

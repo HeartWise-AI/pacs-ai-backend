@@ -1,7 +1,7 @@
 {
   "en": {
     "Summary": {
-      "Name": "Model Template",
+      "Name": "PanEcho",
       "Description": "PanEcho is a view-agnostic, multi-task model that performs 39 reporting tasks from echocardiogram videos. The model consists of an image encoder, temporal frame Transformer, and task-specific output heads. Since PanEcho is view-agnostic, multi-view echocardiography can be leveraged to integrate information across views. At test time, predictions are aggregated across echocardiograms acquired during the same study to generate study-level predictions for each task.",
       "Developed_by": "Gregory Holste et al.",
       "Development_period": "2020-01-01 to 2023-06-23",

@@ -8,9 +8,9 @@
       "image_encoder_only": false,
       "backbone_only": false,
       "tasks": "all",
-      "activations": true,
+      "activations": false,
       "clip_len": 16,
-      "normalization": ""
+      "normalization": "imagenet"
     }
   }
 }
