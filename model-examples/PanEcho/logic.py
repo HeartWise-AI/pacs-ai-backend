@@ -122,7 +122,7 @@ class CustomPredictionService(BasePredictionService):
                     else:
                         # Find the class with value 0
                         predicted_class = [k for k, v in class_labels.items() if v == 0][0]
-                    print(predicted_class)
+
                     if not any(normal_indicator in predicted_class.lower() for normal_indicator in normal_diagnoses):
                         diagnoses[description] = predicted_class
                     
@@ -143,7 +143,7 @@ class CustomPredictionService(BasePredictionService):
                     
                     # Find the class name corresponding to this index
                     predicted_class = [k for k, v in class_labels.items() if v == predicted_class_idx][0]
-                    print(predicted_class)
+
                     if not any(normal_indicator in predicted_class.lower() for normal_indicator in normal_diagnoses):
                         diagnoses[description] = predicted_class
                     
