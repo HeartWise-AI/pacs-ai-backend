@@ -127,9 +127,9 @@ class CustomPredictionService(BasePredictionService):
                         diagnoses[description] = predicted_class
                     
                     # For binary classification, invert some probabilities to make them 0 for normal cases
-                    if predicted_class in {
+                    if head in {
                         'Pericardial effusion',
-                        'Any level of LV hypertrophy (increased wall thickness)', 
+                        'LVWallThickness-increased-any', 
                         'AVStructure',
                         'AVRegurg',
                         'MVStenosis',
