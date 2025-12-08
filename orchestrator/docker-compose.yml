@@ -1,6 +1,7 @@
 services:
   orchestrator:
     build: .
+    image: pacs-ai-backend-orchestrator
     container_name: orchestrator
     restart: unless-stopped
     expose:
