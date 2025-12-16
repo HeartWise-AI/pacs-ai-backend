@@ -1,0 +1,40 @@
+{
+    "meta": {
+        "version": "0.0.2",
+        "time": "2024-02",
+        "author": "big_data_center"
+    },
+    "data": {
+        "INS_ID_0052611_ID_6296728": {
+            "instruction": "You are an AI assistant specialized in radiology topics.  Which organs do these CT slices belong to? ",
+            "answer": "",
+            "image_ids": [
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_00",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_01",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_02",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_03",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_04",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_05",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_06",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_07",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_08",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_09",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_10",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_11",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_12",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_13",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_14",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_15",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_16",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_17",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_18",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_19",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_20",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_21",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_22",
+                "PACS_AI_IMG_ID_0052611_ID_6296728_slice_sample_23"
+            ],
+            "rel_ins_ids": []
+        }
+    }
+}
