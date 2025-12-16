@@ -1,13 +1,34 @@
 # CT -> 24 slices PNG équidistantes -> Encodage base64 dans un JSON -> écriture fichier innstruction pour BrainGPT
 # -> Preparation des données pour BrainGPT -> 
 
+import sys
+import os
 
 
+# 1. Chemin pour l'importation 'otter' (Répertoire BrainGPT) et 'flamingo' (sous-répertoire otter)
+otter_parent_path = "/home/tibia/Documents/pacs-ai/pacs-ai-backend/model-examples/BrainGPT"
+flamingo_parent_path = "/home/tibia/Documents/pacs-ai/pacs-ai-backend/model-examples/BrainGPT/otter"
 
+if otter_parent_path not in sys.path:
+    sys.path.append(otter_parent_path)
+ 
+
+if flamingo_parent_path not in sys.path:
+    sys.path.append(flamingo_parent_path)
+    
+    
+    
+import os
 import nibabel as nib
 import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
+import subprocess
+import torch
+from otter.modeling_otter import OtterForConditionalGeneration
+from torch.utils.data import DataLoader
+from mimicit_utils.mimicit_dataset import MimicitDataset
+
 
 INPUT_DIR = Path("/home/tibia/Documents/Brain_GPT_Dataset/black") #Chemin du Ct scans d'entrée
 SLICE_OUTPUT_DIR = INPUT_DIR / "slices_png"
@@ -46,8 +67,6 @@ for file in nii_files:
     print(f"  {file.name} : 24 tranches (équidistantes) sauvegardées dans {SLICE_OUTPUT_DIR}")
     
     
-    import os
-from pathlib import Path
 
 
 
@@ -79,11 +98,11 @@ for f in png_files:
     
     
     
-import subprocess
+
 
 # Chemins
-script_dir = "/home/tibia/Documents/LLM/BrainGPT/MIIT/mimic-it/convert-it"
-image_path = "/home/tibia/Documents/Brain_GPT_Dataset/black/slices_png"
+script_dir = "/home/tibia/Documents/pacs-ai/pacs-ai-backend/model-examples/BrainGPT/MIIT/mimic-it/convert-it"
+image_path = "/home/tibia/Documents/pacs-ai/pacs-ai-backend/model-examples/BrainGPT/temp/slices_png"
 
 
 command = [
@@ -122,7 +141,7 @@ from collections import defaultdict
 
 
 # Chemin vers le dossier contenant les images brutes
-dataset_path = "/home/tibia/Documents/LLM/BrainGPT/Dataset/00526c11"
+dataset_path = "/home/tibia/Documents/pacs-ai/pacs-ai-backend/model-examples/BrainGPT/temp/slices_png"
 
 # Nom court du dataset (doit être le même que dans main.py)
 short_name = "PACS_AI"
@@ -144,7 +163,7 @@ INSTRUCTION_TEXT = (
 
 # =================================================
 
-def generate_instruction_json():
+def generate_instruction_json(dataset_path=dataset_path):
     # 1. Lister les images
     extensions = ["*.png", "*.jpg", "*.jpeg", "*.bmp"]
     all_files = []
@@ -228,9 +247,9 @@ def generate_instruction_json():
 
     print(f"Terminé ! Fichier '{output_filename}' généré.")
 
-import torch
+generate_instruction_json()
 
-from otter.modeling_otter import OtterForConditionalGeneration
+
 
 model = OtterForConditionalGeneration.from_pretrained(
                 "/home/tibia/Documents/LLM/BrainGPT/checkpoints/OTTER_CLIP_BRAINGPT_hf/"
@@ -258,9 +277,7 @@ class SimpleArgs:
         self.workers = 1
         
         
-import torch
-from torch.utils.data import DataLoader
-from pipeline.mimicit_utils.mimicit_dataset import MimicitDataset
+
 
 def get_inference_dataloader(args, tokenizer):
     
@@ -273,12 +290,13 @@ def get_inference_dataloader(args, tokenizer):
     
     # 2. Préparation des listes de chemins
     # MimicitDataset attend des listes, même pour un seul fichier
-    mimicit_paths = ["/home/tibia/Documents/LLM/BrainGPT/data/instruction_dataset_3.json"]
-    image_paths = ["/home/tibia/Documents/LLM/BrainGPT/data/Adri.json"]
+    mimicit_paths = ["/home/tibia/Documents/pacs-ai/pacs-ai-backend/model-examples/BrainGPT/temp/instruction_dataset.json"] # CHEMIN DU JSON D'INSTRUCTION
+    image_paths = ["/home/tibia/Documents/pacs-ai/pacs-ai-backend/model-examples/BrainGPT/MIIT/mimic-it/convert-it/output/PACS_AI.json"] # CHEMIN DU JSON D'IMAGES PRODUIT PAR MIIT
 
-    # Gestion de la config d'entraînement (probablement vide pour vous, mais requise par la classe)
+    # Gestion de la config d'entraînement (vide mais necessaire poru compatibilité code)
     #  on passe une liste avec une chaîne vide
     train_config_paths = [""]
+
     
     # Statut des données (tout est "new" pour l'inférence)
     status_list = ["new"]
@@ -312,11 +330,10 @@ def get_inference_dataloader(args, tokenizer):
     # On retourne directement le dataloader (pas une liste de dataloaders)
     return dataloader
 
+
 device_id = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device_id)
 batch_mimicit = next(iter(get_inference_dataloader(SimpleArgs(tokenizer), tokenizer)))
-
-
 
 
 media_token_id = tokenizer("<image>", add_special_tokens=False)["input_ids"][-1]
@@ -366,11 +383,6 @@ for i in range(labels.shape[0]):
 
 labels[labels == answer_token_id] = -100
 labels[labels == media_token_id] = -100
-
-
-# images ??
-
-
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -434,4 +446,4 @@ df_data = [(key, val[0], val[1]) for key, val in generated_captions.items()]
 df = pd.DataFrame(df_data, columns=['id', 'gt', 'parsed_output'])
 print(df)
 
-df.to_csv("/home/tibia/Documents/LLM/BrainGPT/notebooks/output2", index=False)
+df.to_csv("/home/tibia/Documents/pacs-ai/pacs-ai-backend/model-examples/BrainGPT/temp/output3", index=False)
