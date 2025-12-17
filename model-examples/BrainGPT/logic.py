@@ -85,45 +85,6 @@ class CustomPredictionService(BasePredictionService):
             modelRecommendations={"en": generated_text, "presentable": True}
         )
 
-    # --- fonction inference ---
-    def _run_inference(self, vision_tensor):
-       
-        model = self.models["model"]
-        tokenizer = self.models["tokenizer"]
-        device = self.models["device"]
-
-        # 1. Le Prompt (Instruction)
-        prompt = "<image>User: Describe the CT slices. GPT:<answer>"
-        
-        # 2. Tokenization du texte
-        lang_x = tokenizer(
-            [prompt],
-            return_tensors="pt",
-        )
-        
-        # 3. Envoi sur GPU
-        vision_x = vision_tensor.to(device).unsqueeze(0) # Ajout dimension batch si besoin
-        lang_x_input_ids = lang_x["input_ids"].to(device)
-        lang_x_attention_mask = lang_x["attention_mask"].to(device)
-
-        # 4. GÉNÉRATION (Le cœur de BrainGPT)
-        generated_ids = model.generate(
-            vision_x=vision_x,
-            lang_x=lang_x_input_ids,
-            attention_mask=lang_x_attention_mask,
-            max_new_tokens=512,
-            num_beams=3,
-            no_repeat_ngram_size=3
-        )
-
-        # 5. Décodage du résultat
-        output_text = tokenizer.decode(generated_ids[0])
-        
-        # Nettoyage (optionnel, selon ce que renvoie le modèle)
-        clean_text = output_text.split("<answer>")[-1].replace("<|endofchunk|>", "")
-        
-        return clean_text
-
     def _process_nifti_to_tensor(self, nii_path):
         """
 
