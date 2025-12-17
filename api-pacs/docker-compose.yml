@@ -9,12 +9,8 @@ services:
       - pacs-net
     expose:
       - ${API_URL_REST_PORT}
-    ports:
-      - 8000:8000
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      - API_BASE_URL=http://api-pacs:${API_URL_REST_PORT}/v1
     depends_on:
       - redis
       - elasticsearch
