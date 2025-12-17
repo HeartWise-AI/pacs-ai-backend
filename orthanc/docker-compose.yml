@@ -5,7 +5,6 @@ services:
     restart: unless-stopped
     ports:
       - ${ORTHANC_DICOM_PORT}:${ORTHANC_DICOM_PORT}
-      - 8042:8042
     volumes:
       - orthanc-storage:/var/lib/orthanc/db/
     environment:
