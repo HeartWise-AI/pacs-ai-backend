@@ -85,7 +85,7 @@ class CustomPredictionService(BasePredictionService):
             modelRecommendations={"en": generated_text, "presentable": True}
         )
 
-    # --- 3. TA FONCTION D'INFÉRENCE (C'est elle que tu cherchais !) ---
+    # --- fonction inference ---
     def _run_inference(self, vision_tensor):
         """
         C'est ici qu'on colle ton code de 'main.py' original
@@ -185,9 +185,7 @@ class CustomPredictionService(BasePredictionService):
    
         
     def run_inference(self, vision_tensor):
-        """
-        C'est ici qu'on colle ton code de 'main.py' original
-        """
+        
         model = self.models["model"]
         tokenizer = self.models["tokenizer"]
         device = self.models["device"]
