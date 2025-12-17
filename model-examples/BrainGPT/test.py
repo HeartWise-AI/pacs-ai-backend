@@ -298,13 +298,13 @@ def get_inference_dataloader(args, tokenizer):
     train_config_paths = [""]
 
     
-    # Statut des données (tout est "new" pour l'inférence)
+
     status_list = ["new"]
 
     print(f"Chargement du dataset depuis : {mimicit_paths[0]} et {image_paths[0]}")
 
     # 3. Création de l'instance du Dataset
-    # On suppose que la classe MimicitDataset est importée
+    #Classe du git branch mimicit 
     dataset = MimicitDataset(
         args, 
         mimicit_paths, 
@@ -316,15 +316,15 @@ def get_inference_dataloader(args, tokenizer):
     # 4. Création du DataLoader simple
     # - batch_size=1 : Pour traiter une image à la fois
     # - shuffle=False : IMPORTANT pour l'inférence (garder l'ordre des fichiers)
-    # - drop_last=False : On veut traiter TOUTES les images, même si le compte n'est pas rond
+
     dataloader = DataLoader(
         dataset,
         batch_size=1, 
-        num_workers=args.workers, # ou 1
+        num_workers=args.workers,
         pin_memory=True,
         shuffle=False, 
         drop_last=False,
-        collate_fn=dataset.collate # On garde la méthode de formatage du dataset
+        collate_fn=dataset.collate 
     )
 
     # On retourne directement le dataloader (pas une liste de dataloaders)
