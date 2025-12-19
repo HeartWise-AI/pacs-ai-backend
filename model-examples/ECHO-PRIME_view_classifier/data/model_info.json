@@ -1,0 +1,13 @@
+{
+  "modelName": "EchoPrime_ViewClassifier",
+  "domainName": "Cardiology",
+  "modality": "Echocardiogram",
+  "version": "1.0.0",
+  "dicomTargetLevel": "SERIES",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 99,
+  "supportedDicomModalities": ["US"],
+  "supportedDicomTags": ["00280008", "00280010", "00280011", "00280002"],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": [ "JSON"]
+}
