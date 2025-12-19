@@ -17,6 +17,34 @@ from models.echo_prime_view_classifier import EchoPrimeViewClassifier
 
 
 class CustomPredictionService(BasePredictionService):
+    def _is_valid_base64(self, dicom_base64):
+        try:
+            if isinstance(dicom_base64, str):
+                base64.b64decode(dicom_base64)
+                return True
+            return False
+        except Exception as e:
+            return False
+
+    def _is_valid_dicom(self, dicom):
+        """Check if bytes represent valid DICOM data."""
+        try:
+            # Check for DICOM magic bytes
+            if len(dicom) < 132:
+                return False
+            
+            # DICOM files start with specific bytes
+            if dicom[:4] == b'DICM':
+                return True
+            
+            # Check for transfer syntax in first 132 bytes
+            if dicom[128:132] in [b'DICM', b'DICM']:
+                return True
+                
+            return False
+        except Exception:
+            return False
+
     def load_model(self, config: Config):
         print("Loading model")
         
