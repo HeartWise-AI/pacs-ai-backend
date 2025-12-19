@@ -3,6 +3,7 @@ FROM python:3.12.1-slim
 # Install nginx and supervisor
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
+    nginx \
     supervisor \
     && rm -rf /var/lib/apt/lists/*
 
