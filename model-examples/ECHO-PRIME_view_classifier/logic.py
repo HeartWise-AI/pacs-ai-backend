@@ -1,13 +1,13 @@
 import os
 import json
 import torch
+import base64
 import pydicom
 import torchvision
 
 import numpy as np
 
 from io import BytesIO
-from base64 import b64decode
 
 from utils.html_parser import generate_html_report
 from utils.http_utils import Config, PredictRequest
