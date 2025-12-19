@@ -1,6 +1,14 @@
 import pydicom
 import numpy as np
 
+from skimage import morphology
+
+def to_uint8(array):
+    array = array - np.min(array)
+    array = array / np.max(array)
+    array = array * 255
+    return np.uint8(array)
+
 def handle_colorspace(im_array: np.ndarray, dicom_ds: pydicom.Dataset) -> np.ndarray:
     """
     Handle colorspace conversion for DICOM images.
