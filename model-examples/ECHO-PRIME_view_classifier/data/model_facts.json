@@ -1,0 +1,58 @@
+{
+  "en": {
+      "Summary": {
+          "Name": "EchoPrime",
+          "Description": "EchoPrime is a multi-view, view-informed, video-based vision-language foundation model for comprehensive echocardiogram interpretation",
+          "Developed_by": "Milos Vukadinovic, Xiu Tang, Neal Yuan, Paul Cheng, Debiao Li, Susan Cheng, Bryan He, David Ouyang",
+          "Version": "1.2.0"
+      },
+      "Mechanism": {
+          "Outcome": "Comprehensive echocardiogram interpretation",
+          "Output": "Multiple cardiac features and diagnoses interpretations",
+          "Target_population": "Patients receiving echocardiogram examinations",
+          "Time_of_prediction": "~ 1 minute",
+          "Input_data_source": "Multiple echocardiogram videos from different views",
+          "Input_data_type": "Video data",
+          "Training_data_location_and_time-period": "Cedars-Sinai Medical Center, 2011-2022",
+          "Model_type": "Vision-language foundation model with mVIT video encoder and BioMedBERT text encoder"
+      },
+      "Validation_and_performance": [
+          {
+              "Internal_validation": {
+                  "Mean_AUC": 0.92,
+                  "LVEF_MAE": 4.8,
+                  "Video_to_text_recall@10": 98,
+                  "Text_to_video_recall@10": 97
+              },
+              "External_validation": {
+                  "LVEF_MAE": 4.1,
+                  "Aortic_regurgitation_AUC": 0.89
+              }
+          },
+          {
+              "Training_cohort": {
+                  "Number_of_patients": 108913,
+                  "Number_of_studies": 275442,
+                  "Number_of_videos": 12124168
+              }
+          }
+      ],
+      "Uses_and_directions": {
+          "Benefits": "Comprehensive multi-view echocardiogram interpretation with state-of-the-art performance",
+          "Target_population_and_use_case": "Patients receiving echocardiogram examinations",
+          "General_use": "Automated preliminary assessment of comprehensive echocardiography",
+          "Before_using_this_model": "Ensure multiple standard echocardiographic views are available"
+      },
+      "Warnings_and_limitations": {
+          "Risks": "Not specified",
+          "Inappropriate_settings": "Not validated in point-of-care settings",
+          "Generalizability": "Further analyses in diverse clinical settings required",
+          "Clinical_rationale": "Model designed to mimic clinical expert interpretation process"
+      },
+      "Other_information": {
+          "Github": "https://github.com/echonet/EchoPrime",
+          "Scientific_publication": "https://arxiv.org/pdf/2410.09704",
+          "Contact_info": "david.ouyang@cshs.org"
+      }
+  }
+}
