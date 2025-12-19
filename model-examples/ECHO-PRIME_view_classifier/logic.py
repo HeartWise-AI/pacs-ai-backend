@@ -29,16 +29,16 @@ class CustomPredictionService(BasePredictionService):
     def _is_valid_dicom(self, dicom):
         """Check if bytes represent valid DICOM data."""
         try:
-            # Check for DICOM magic bytes
+            # Check minimum length for standard DICOM with preamble
             if len(dicom) < 132:
                 return False
             
-            # DICOM files start with specific bytes
-            if dicom[:4] == b'DICM':
+            # Standard DICOM Part 10: 128-byte preamble followed by "DICM"
+            if dicom[128:132] == b'DICM':
                 return True
             
-            # Check for transfer syntax in first 132 bytes
-            if dicom[128:132] in [b'DICM', b'DICM']:
+            # Some non-standard DICOM files may start directly with "DICM"
+            if dicom[:4] == b'DICM':
                 return True
                 
             return False
