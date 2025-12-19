@@ -42,4 +42,4 @@ COPY supervisord.conf /etc/supervisord.conf
 EXPOSE 8000
 
 # Start supervisor
-# CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
