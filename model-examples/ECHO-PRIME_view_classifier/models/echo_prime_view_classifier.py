@@ -11,8 +11,8 @@ class EchoPrimeViewClassifier(nn.Module):
             self.model.head,  
             torch.nn.Linear(512, 20)  
         )  
-        self.model = torch.nn.DataParallel(self.model, device_ids=[3])
-        self.model.load_state_dict(torch.load(weights_file_path))
+        self.model = torch.nn.DataParallel(self.model, device_ids=["cuda" if torch.cuda.is_available() else "cpu"])
+        self.model.load_state_dict(torch.load(weights_file_path, map_location="cuda" if torch.cuda.is_available() else "cpu"))
 
         for param in self.model.parameters():
             param.requires_grad = False
