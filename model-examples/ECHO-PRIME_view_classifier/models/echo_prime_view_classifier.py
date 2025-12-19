@@ -10,9 +10,17 @@ class EchoPrimeViewClassifier(nn.Module):
         self.model.head = torch.nn.Sequential(
             self.model.head,  
             torch.nn.Linear(512, 20)  
-        )  
-        self.model = torch.nn.DataParallel(self.model, device_ids=["cuda" if torch.cuda.is_available() else "cpu"])
-        self.model.load_state_dict(torch.load(weights_file_path, map_location="cuda" if torch.cuda.is_available() else "cpu"))
+        )
+        
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        state_dict = torch.load(weights_file_path, map_location=device)
+        
+        # Handle weights saved with DataParallel (have 'module.' prefix)
+        if any(k.startswith('module.') for k in state_dict.keys()):
+            state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
+        
+        self.model.load_state_dict(state_dict)
+        self.model.to(device)
 
         for param in self.model.parameters():
             param.requires_grad = False
