@@ -9,5 +9,5 @@
   "supportedDicomModalities": ["US"],
   "supportedDicomTags": ["00280008", "00280010", "00280011", "00280002"],
   "supportedAdditionalMetadata": [],
-  "supportedOutputModes": [ "HTML", "JSON"]
+  "supportedOutputModes": [ "JSON"]
 }
