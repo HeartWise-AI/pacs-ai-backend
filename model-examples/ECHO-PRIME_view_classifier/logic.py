@@ -148,6 +148,18 @@ class CustomPredictionService(BasePredictionService):
     async def _handle_json_output(self, request: PredictRequest):
         print("Handling JSON output")
         
+        # Check if seriesInstanceImages is provided
+        if request.seriesInstanceImages is None or len(request.seriesInstanceImages) == 0:
+            return {
+                "diagnosis": "Error: No DICOM images provided",
+                "predictions": {},
+                "modelRecommendations": {
+                    "en": "No DICOM images were provided in the request. Please include seriesInstanceImages.",
+                    "fr": "Aucune image DICOM n'a été fournie dans la requête. Veuillez inclure seriesInstanceImages.",
+                    "presentable": True,
+                }
+            }
+        
         # Results organized by study_id -> series_id -> instance_id
         results: dict[str, dict[str, dict[str, dict]]] = {}
         
