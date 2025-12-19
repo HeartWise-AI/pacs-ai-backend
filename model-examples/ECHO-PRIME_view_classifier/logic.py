@@ -113,7 +113,7 @@ class CustomPredictionService(BasePredictionService):
             outputs = CustomPredictionService.models["view_classifier"](video)
             probs = torch.softmax(outputs, dim=-1).cpu()
             pred_idx = torch.argmax(probs, dim=-1).item()
-            pred_class = CustomPredictionService._class_mapping[pred_idx]
+            pred_class = CustomPredictionService._class_mapping[str(pred_idx)]
         
         return pred_class, probs.numpy(), "success"
 
