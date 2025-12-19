@@ -1,6 +1,8 @@
 {
-  "modelName": "EchoPrime",
-  "version": "1.2.0",
+  "modelName": "EchoPrime_ViewClassifier",
+  "domainName": "Cardiology",
+  "modality": "Echocardiogram",
+  "version": "1.0.0",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 99,
