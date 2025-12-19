@@ -147,7 +147,10 @@ class CustomPredictionService(BasePredictionService):
 
     async def _handle_json_output(self, request: PredictRequest):
         print("Handling JSON output")
-        dicoms = []
+        
+        # Results organized by study_id -> series_id -> instance_id
+        results: dict[str, dict[str, dict[str, dict]]] = {}
+        
         try:
             for series_number in request.seriesInstanceImages:
                 for instance_number in request.seriesInstanceImages[series_number]:
@@ -171,7 +174,34 @@ class CustomPredictionService(BasePredictionService):
                             continue
                         
                         dicom = pydicom.dcmread(BytesIO(dicom_data))
-                        dicoms.append(dicom)
+                        
+                        # Extract study and series UIDs from DICOM metadata
+                        study_uid = str(getattr(dicom, 'StudyInstanceUID', 'unknown_study'))
+                        series_uid = str(getattr(dicom, 'SeriesInstanceUID', str(series_number)))
+                        instance_uid = str(getattr(dicom, 'SOPInstanceUID', str(instance_number)))
+                        
+                        # Run inference
+                        pred_class, probs, status = self._run_inference(dicom)
+                        
+                        # Initialize nested dicts if needed
+                        if study_uid not in results:
+                            results[study_uid] = {}
+                        if series_uid not in results[study_uid]:
+                            results[study_uid][series_uid] = {}
+                        
+                        # Store result
+                        if status == "success":
+                            results[study_uid][series_uid][instance_uid] = {
+                                "predicted_class": pred_class,
+                                "probabilities": probs.tolist() if probs is not None else None,
+                                "status": status
+                            }
+                        else:
+                            results[study_uid][series_uid][instance_uid] = {
+                                "predicted_class": None,
+                                "probabilities": None,
+                                "status": status
+                            }
 
                     except Exception as e:
                         error_msg = f"Error in processing series {series_number} instance {instance_number}: {e}"
@@ -191,23 +221,9 @@ class CustomPredictionService(BasePredictionService):
                 }
             }
         
-        try:
-            probability: dict[str, float] = self._run_inference(dicoms)
-        except Exception as e:
-            print(f"Error in _run_inference: {e}")
-            return {
-                "diagnosis": "Error in _run_inference",
-                "predictions": {},
-                "modelRecommendations": {
-                    "en": "Error in _run_inference",
-                    "fr": "Erreur dans _run_inference",
-                    "presentable": True,
-                }
-            }
-        
         return {
             "diagnosis": "report",
-            "predictions": "metrics",
+            "predictions": results,
             "modelRecommendations": {
                 "en": None,
                 "fr": None,
