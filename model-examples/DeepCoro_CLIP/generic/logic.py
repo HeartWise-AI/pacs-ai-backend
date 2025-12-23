@@ -286,13 +286,13 @@ class CustomPredictionService(BasePredictionService):
             status = []
             if artery_data.get('diagnosis_stenosis') == 'blocked':
                 status.append('stenosis')
-                status.append(f"{artery_data.get('regression')*100:.1f}%")       
+                status.append(f"{artery_data.get('regression'):.1f}%")       
             if artery_data.get('diagnosis_cto') == 'cto':
                 status.append('cto')
-                status.append(f"{artery_data.get('regression')*100:.1f}%")
+                status.append(f"{artery_data.get('regression'):.1f}%")
             if artery_data.get('diagnosis_thrombus') == 'thrombus':
                 status.append('thrombus')
-                status.append(f"{artery_data.get('regression')*100:.1f}%")
+                status.append(f"{artery_data.get('regression'):.1f}%")
             return status
         
         def format_artery_list(arteries_dict, system_name):
