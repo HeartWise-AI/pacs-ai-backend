@@ -34,21 +34,21 @@ class CustomPredictionService(BasePredictionService):
         print('Loading model...')
         
         # Load the HuggingFacemodel config 
-        with open(os.path.join("models", "config.json")) as fp:
+        with open(os.path.join("config.json")) as fp:
             CustomPredictionService.model_config = json.load(fp)
-
+        print(CustomPredictionService.model_config)
         # Load the class mapping from the local package
-        class_mapping_path = os.path.join("models", "class_mapping.json")
+        class_mapping_path = CustomPredictionService.model_config['classMapping']['path']
         with open(class_mapping_path) as fp:
             CustomPredictionService._class_mapping = json.load(fp)
 
         # Create and load the model
         try:
-            CustomPredictionService.model_path = os.path.join("models", CustomPredictionService.model_config['ModelStateDict']['model_path'])
-            print(f"Model path: {CustomPredictionService.model_path}")         
+            CustomPredictionService.model_path = CustomPredictionService.model_config['models']['path']
+            print(f"Model path: {CustomPredictionService.model_config['models']['path']}")         
 
             CustomPredictionService.models['x3d_m'] = torch.hub.load(
-                "facebookresearch/pytorchvideo", "x3d_m", pretrained=True
+                "facebookresearch/pytorchvideo", "x3d_m", pretrained=True, source="local"
             )
             CustomPredictionService.models['x3d_m'].blocks[-1] = RegressionHead(dim_in=192, num_classes=1)
 

@@ -1,4 +1,9 @@
 {
   "modelDirectory": "models",
-  "models": {}
+  "models": {
+    "path": "models/deeprv_x3d.pt"
+  },
+  "classMapping": {
+    "path": "models/class_mapping.json"
+  }
 }
