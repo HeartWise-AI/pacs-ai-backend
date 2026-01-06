@@ -11,11 +11,6 @@ RUN pip install uv
 
 WORKDIR /app
 
-# Clone Orion repository
-RUN git clone https://github.com/HeartWise-AI/Orion.git
-
-RUN pip install uv
-
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
 
@@ -28,10 +23,9 @@ ARG HF_API_KEY
 COPY download_model.py .
 RUN python download_model.py --token ${HF_API_KEY}
 
-# Copy application files
+# # Copy application files
 COPY main.py .
 COPY logic.py .
-COPY config.json .
 COPY data/ ./data/
 COPY docs/ ./docs/
 COPY models/ ./models/
@@ -47,4 +41,4 @@ COPY supervisord.conf /etc/supervisord.conf
 EXPOSE 8000
 
 # Start supervisor
-# CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
