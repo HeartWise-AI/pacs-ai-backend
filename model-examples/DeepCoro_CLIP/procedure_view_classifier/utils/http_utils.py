@@ -62,17 +62,8 @@ class PredictRequest(BaseModel):
     additionalMetadata: dict[str, Any] | None = None
     outputMode: str
 
-
 class JsonPredictionResponse(BaseModel):
-    class ModelRecommendations(BaseModel):
-        en: str | None = None
-        fr: str | None = None
-        presentable: bool | None = None
-
-    predictions: Any
-    diagnosis: str | None = None
-    modelRecommendations: ModelRecommendations | None
-
+    predictions: list[dict[str, str]]
 
 class OHIFPredictionResponse(BaseModel):
     class Segmentation(BaseModel):
