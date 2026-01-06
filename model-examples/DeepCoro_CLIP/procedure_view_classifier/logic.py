@@ -42,24 +42,7 @@ class CustomPredictionService(BasePredictionService):
             print('Model loaded')
         except Exception as e:
             print(f"Error loading model: {e}")
-            raise e
-        
-    async def _handle_html_output(self, request: PredictRequest):
-        dicoms = []
-        for series_number in request.seriesInstanceImages:
-            for instance_number in request.seriesInstanceImages[series_number]:
-                dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
-                dicoms.append(
-                    pydicom.dcmread(
-                        BytesIO(
-                            base64.b64decode(dicom_base64)
-                        )
-                    )
-                )
-
-        probability = self._run_inference(dicoms)
-        html_output = HTMLParser.generate_detection_results({'probability': probability})
-        return {'htmlBase64': base64.b64encode(html_output.encode('utf-8')).decode('utf-8')}        
+            raise e  
 
     def _is_valid_base64(self, dicom_base64):
         try:
