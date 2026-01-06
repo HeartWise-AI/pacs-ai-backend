@@ -1,7 +1,7 @@
 from typing import Any
 
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
 
 class HeadStructure(BaseModel):
     contrast_agent: int
@@ -9,17 +9,14 @@ class HeadStructure(BaseModel):
     stent_presence: int
     dominance: int
 
-class PathConfig(BaseModel):
-    path: str
-
 class Config(BaseModel):
     frames: int
     resize: int
     head_structure: HeadStructure
     mean: list[float]
     std: list[float]
-    class_mapping: PathConfig
-    model_path: PathConfig
+    class_mapping: str
+    model_path: str
 
 
 class HTTPResponse:
