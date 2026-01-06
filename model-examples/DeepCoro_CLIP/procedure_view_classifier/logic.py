@@ -1,4 +1,3 @@
-import configparser
 import os
 import uuid
 import json
@@ -7,7 +6,6 @@ import base64
 import pydicom
 import cv2 as cv
 import numpy as np
-import torch.nn as nn
 
 from io import BytesIO
 from typing import List
@@ -15,7 +13,6 @@ from torchvision.transforms import v2
 
 from models.vaso_vision import VasoVision
 
-from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
 
@@ -26,17 +23,23 @@ class CustomPredictionService(BasePredictionService):
         
         CustomPredictionService.config = config
 
+        with open(os.path.join('models', config.class_mapping)) as f:
+            class_mapping = json.load(f)
+
+        CustomPredictionService.class_mapping = {}
+        for key, value in class_mapping.items():
+            CustomPredictionService.class_mapping[key] = {v:k for k, v in value.items()}      
+        
         # Create and load the model
         try:
             CustomPredictionService.model_path = os.path.join(
-                'models', CustomPredictionService.config.model_path.path
+                'models', CustomPredictionService.config.model_path
             )
-            print(f"Model path: {CustomPredictionService.model_path}")
-            print(f"Head structure: {CustomPredictionService.config.head_structure}")
+
 
             CustomPredictionService.models['vaso_vision'] = VasoVision(
-                CustomPredictionService.config.model_path,
-                CustomPredictionService.config.head_structure
+                CustomPredictionService.model_path,
+                CustomPredictionService.config.head_structure.model_dump()
             )
             CustomPredictionService.is_initialized = True
             print('Model loaded')
@@ -52,22 +55,7 @@ class CustomPredictionService(BasePredictionService):
             return False
         except Exception as e:
             return False
- 
-    def _process_predictions(self, probability):
-        class_mapping = CustomPredictionService.config.class_mapping
-        
-        threshold = class_mapping['threshold']
-        class_mapping = {v: k for v, k in class_mapping.items() if v != 'threshold'} 
-        
-        processed_predictions = {'probability': probability}
                 
-        if probability < threshold:
-            processed_predictions['class'] = class_mapping['normal']
-        else:
-            processed_predictions['class'] = class_mapping['reduced']
-        
-        return processed_predictions
-        
     def _is_valid_dicom(self, dicom):
         """Check if bytes represent valid DICOM data."""
         try:
@@ -80,14 +68,14 @@ class CustomPredictionService(BasePredictionService):
                 return True
             
             # Check for transfer syntax in first 132 bytes
-            if dicom[128:132] in [b'DICM', b'DICM']:
+            if dicom[128:132] in [b'DICM']:
                 return True
                 
             return False
         except Exception:
             return False
     
-    async def _handle_json_output(self, request: PredictRequest):
+    async def _handle_json_output(self, request: PredictRequest)->dict[str, dict[str, str]]:
         dicoms = []
 
         try:
@@ -128,9 +116,9 @@ class CustomPredictionService(BasePredictionService):
                     "presentable": True,
                 }
             }
-
+        
         try:
-            probability: float = self._run_inference(dicoms)
+            structured_predictions: dict[str, dict[str, np.ndarray]] = self._run_inference(dicoms)
         except Exception as e:
             print(f"Error in _run_inference: {e}")
             return {
@@ -142,44 +130,12 @@ class CustomPredictionService(BasePredictionService):
                     "presentable": True,
                 }
             }
-
-        # Obtain per-head diagnosis/interpretation
-        try:
-            structured_predictions: dict[str, dict] = self._process_predictions(probability)
-        except Exception as e:
-            print(f"Error in _process_predictions: {e}")
-            structured_predictions = {
-                "probability": probability,
-                "class": "Error in _process_predictions",
-            }
-        
-        # Transform into a diagnosis string
-        try:    
-            diagnosis: str = self._get_diagnosis(structured_predictions)
-        except Exception as e:
-            print(f"Error in _get_diagnosis: {e}")
-            diagnosis: str = "Error in _get_diagnosis"
-
-        try:
-            # Generate recommendations based on stenosis analysis
-            recommendations_en = self._get_recommendations(structured_predictions, "en")
-            recommendations_fr = self._get_recommendations(structured_predictions, "fr")            
-        except Exception as e:
-            print(f"Error in _get_recommendations: {e}")
-            recommendations_en = "Error in _get_recommendations"
-            recommendations_fr = "Error in _get_recommendations"
-        
+                
         return {
-            "diagnosis": diagnosis,
             "predictions": structured_predictions,  # Use the dict, not the JSON string
-            "modelRecommendations": {
-                "en": recommendations_en,
-                "fr": recommendations_fr,
-                "presentable": True,
-            },
         }
 
-    def _videoShenanigans(self, video):
+    def _videoShenanigans(self, video)->np.ndarray:
         # Use uuid.uuid4() to create a unique file name
         unique_filename = f"tmp_{uuid.uuid4()}.avi"
         compressedVideo = []
@@ -215,76 +171,82 @@ class CustomPredictionService(BasePredictionService):
 
         return np.asarray(compressedVideo).transpose(0, 3, 1, 2)
 
-    def _run_inference(self, dicoms: List[pydicom.Dataset]) -> float:
-        try:
-            mean_output: float = 0.0
-            for dicom in dicoms:
-                pixel_array: np.ndarray = dicom.pixel_array
-                if pixel_array.ndim == 1 or pixel_array.ndim == 2:
-                    continue
-                
-                if pixel_array.ndim == 3:
-                    # Expand single channel to 3 channels by repeating
-                    pixel_array = np.expand_dims(pixel_array, axis=1)  # Shape: F,1,W,H
-                    pixel_array = np.repeat(pixel_array, 3, axis=1)    # Shape: F,3,W,H
-                    
-                assert pixel_array.ndim == 4, "Pixel array must have 4 dimensions"
-                
-                pixel_array = self._videoShenanigans(pixel_array.transpose(0, 2, 3, 1)).astype(np.uint8)
-                pixel_array = pixel_array.astype(np.float32)
-                
-                mean = [112.24039459228516, 112.24039459228516, 112.24039459228516]
-                std = [39.012229919433594, 39.012229919433594, 39.012229919433594]
-                
-                # Convert numpy array to torch tensor and ensure float type
-                video = torch.from_numpy(pixel_array)
-                video = v2.Resize((256, 256), antialias=None)(video)
-                video = v2.Normalize(mean, std)(video)
-                video = video.permute(1, 0, 2, 3)
-                video = video.numpy()
-                
-                c, f, h, w = video.shape
-                length = 72
-                if f < length * 2:
-                    video = np.concatenate((video, np.zeros((c, length * 2 - f, h, w), video.dtype)), axis=1)
-                    c, f, h, w = video.shape
-                start = np.array([0])
-                video = tuple(video[:, s + 2 * np.arange(length), :, :] for s in start)[0]
-                
-                video = torch.from_numpy(video)
-
-                # Add batch dimension after processing
-                video = video.unsqueeze(0).to('cuda' if torch.cuda.is_available() else 'cpu')
-                with torch.no_grad():
-                    output: torch.Tensor = CustomPredictionService.models['x3d_m'](video)
-                    output = torch.sigmoid(output)  # Add sigmoid activation
-                    output: float = output.squeeze(0).detach().cpu().numpy().astype(float)
-                    mean_output += float(output[0])
-                    
-            mean_output = mean_output / len(dicoms)
-            return float(mean_output)
+    def _process_dicom(self, dicom: pydicom.Dataset) -> np.ndarray:
+        pixel_array: np.ndarray = dicom.pixel_array
+        if pixel_array.ndim == 1 or pixel_array.ndim == 2:
+            return None
         
+        if pixel_array.ndim == 3:
+            # Expand single channel to 3 channels by repeating
+            pixel_array = np.expand_dims(pixel_array, axis=1)  # Shape: F,1,W,H
+            pixel_array = np.repeat(pixel_array, 3, axis=1)    # Shape: F,3,W,H
+            
+        assert pixel_array.ndim == 4, "Pixel array must have 4 dimensions"
+        
+        pixel_array = self._videoShenanigans(pixel_array.transpose(0, 2, 3, 1)).astype(np.uint8)
+        pixel_array = pixel_array.astype(np.float32)
+        
+        mean = CustomPredictionService.config.mean
+        std = CustomPredictionService.config.std
+        
+        resize = CustomPredictionService.config.resize
+        
+        # Convert numpy array to torch tensor and ensure float type
+        video = torch.from_numpy(pixel_array)
+        video = v2.Resize((resize, resize), antialias=None)(video)
+        video = v2.Normalize(mean, std)(video)
+        video = video.permute(1, 0, 2, 3)
+        video = video.numpy()
+        
+        c, f, h, w = video.shape
+        length = CustomPredictionService.config.frames
+        if f < length * 2:
+            video = np.concatenate((video, np.zeros((c, length * 2 - f, h, w), video.dtype)), axis=1)
+            c, f, h, w = video.shape
+        start = np.array([0])
+        video = tuple(video[:, s + 2 * np.arange(length), :, :] for s in start)[0]
+        
+        return torch.from_numpy(video)
+
+    def _run_inference(self, dicoms: List[pydicom.Dataset]) -> list[dict[str, str]]:
+        try:
+            video_stack = []
+            for dicom in dicoms:
+                video = self._process_dicom(dicom)
+                if video is None:
+                    continue
+                # Add batch dimension after processing
+                video_stack.append(video)
+            if not video_stack:
+                return []
+            video_stack = torch.stack(video_stack).to('cuda' if torch.cuda.is_available() else 'cpu')
+            with torch.no_grad():
+                output_stack: dict[str, torch.Tensor] = CustomPredictionService.models['vaso_vision'](video_stack)
+                
+                for head_name, head_output in output_stack.items():
+                    if getattr(CustomPredictionService.config.head_structure, head_name) == 1:
+                        output_stack[head_name] = torch.sigmoid(head_output).to('cpu').detach().numpy()
+                    else:
+                        output_stack[head_name] = torch.softmax(head_output, dim=1).to('cpu').detach().numpy()
+            
+            # Transpose {head : [B, P] -> [{head: [P]} for each B]}
+            results = []
+            class_mapping = CustomPredictionService.class_mapping
+            for i in range(video_stack.shape[0]):
+                result = {}
+                for head_name, head_output in output_stack.items():
+                    if getattr(CustomPredictionService.config.head_structure, head_name) == 1:
+                        predicted_class = 1 if head_output[i][0] >= 0.5 else 0
+                        result[head_name] = class_mapping[head_name][predicted_class]
+                    else:
+                        result[head_name] = class_mapping[head_name][np.argmax(head_output[i])]
+                results.append(result)
+                
+            return results
+
         except Exception as e:
             print(f"Error in handler: {e}")
             # Make sure to clean GPU memory even if there's an error
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             raise e
-            return 0.0
-        
-    def _get_recommendations(self, structured_predictions: dict[str, dict], language: str) -> dict[str, str]:
-        class_mapping = CustomPredictionService.config.class_mapping
-            
-        if structured_predictions['class'] == class_mapping['normal']:
-            return "No recommendations needed" if language == "en" else "Aucune recommandation nécessaire"
-        
-        return "Please consult a physician for further evaluation" if language == "en" else "Veuillez consulter un médecin pour une évaluation plus approfondie"
-        
-    def _get_diagnosis(self, structured_predictions: dict[str, dict]) -> str:
-        class_mapping = CustomPredictionService.config.class_mapping
-        class_mapping = {v: k for v, k in class_mapping.items() if v != 'threshold'} 
-        
-        if structured_predictions['class'] == class_mapping['normal']:
-            return "Normal Right Ventricular Function"
-        
-        return "Reduced Right Ventricular Function"
