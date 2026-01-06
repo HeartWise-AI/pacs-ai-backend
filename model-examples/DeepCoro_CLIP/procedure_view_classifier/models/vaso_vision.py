@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
 
+from torch.nn import functional as F
+
 class ClassificationHead(nn.Module):
-    def __init__(self, dim_in, num_classes=1):
+    def __init__(self, dim_in: int, num_classes: int = 1):
         super().__init__()
         self.fc1 = nn.Conv3d(dim_in, 2048, bias=True, kernel_size=1, stride=1)
         self.regress = nn.Linear(2048, num_classes)
@@ -23,14 +25,17 @@ class ClassificationHead(nn.Module):
 class MultiOutputHead(nn.Module):
     def __init__(
         self, 
-        dim_in, 
+        dim_in: int, 
         head_structure: dict[str, int], 
     ):
         super().__init__()
-        self.heads = nn.ModuleDict(
-            {head_name: nn.ModuleList([ClassificationHead(dim_in, num_classes)]) for head_name, num_classes in head_structure}
-        )
-    
+        self.heads = nn.ModuleDict()
+        for head_name, num_classes in head_structure.items():
+            self.heads[head_name] = nn.ModuleList([ClassificationHead(dim_in, num_classes)])
+
+    def forward(self, x):
+        return {head_name: head[0](x) for head_name, head in self.heads.items()}
+
 class VasoVision(nn.Module):
     def __init__(
         self, 
@@ -54,5 +59,5 @@ class VasoVision(nn.Module):
         self.model.to("cuda" if torch.cuda.is_available() else "cpu")
         self.model.eval()
         
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         return self.model(x)
