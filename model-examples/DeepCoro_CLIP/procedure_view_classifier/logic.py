@@ -112,7 +112,7 @@ class CustomPredictionService(BasePredictionService):
         # 3. PCI already been seen *earlier* for this artery?"
         df["pci_seen_before"] = (
             df.groupby("main_structure", sort=False)["is_pci"]
-            .transform(lambda x: x.cumsum().shift(fill_value=0))
+            .transform(lambda x: x.shift(fill_value=0).cummax())
             .astype(bool)
         )
 
