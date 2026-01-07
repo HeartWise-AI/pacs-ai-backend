@@ -6,9 +6,11 @@ import base64
 import pydicom
 import cv2 as cv
 import numpy as np
+import pandas as pd
 
 from io import BytesIO
 from typing import List
+from datetime import time
 from torchvision.transforms import v2
 
 from models.vaso_vision import VasoVision
@@ -35,7 +37,6 @@ class CustomPredictionService(BasePredictionService):
             CustomPredictionService.model_path = os.path.join(
                 'models', CustomPredictionService.config.model_path
             )
-
 
             CustomPredictionService.models['vaso_vision'] = VasoVision(
                 CustomPredictionService.model_path,
@@ -74,7 +75,61 @@ class CustomPredictionService(BasePredictionService):
             return False
         except Exception:
             return False
-    
+ 
+ 
+    def _assign_procedure_status(self, predictions: list[dict[str, time | int | None]]) -> list[dict[str, time | int | None]]:
+        """
+        Assign procedure status based on PCI (stent) presence and timing.
+        
+        This function creates three mutually-exclusive status categories:
+        - "PCI": Current procedure has stent placement
+        - "POST_PCI": Current procedure is after a previous PCI in the same study/artery
+        - "diagnostic": Diagnostic procedure with no previous PCI
+        
+        Args:
+            predictions: Input list of predictions with series_time and series_number
+        
+        Returns:
+            DataFrame with added 'status' column
+        """
+        print("Assigning procedure status based on PCI timing...")        
+        df = pd.DataFrame(predictions, columns=predictions[0].keys())
+
+        # 1. Parse and sort by time (safe)
+        df["series_time_dt"] = pd.to_datetime(
+            df["series_time"],
+            format="%H:%M:%S.%f",
+            errors="coerce"
+        )
+        df = df.sort_values("series_time_dt", kind="mergesort")
+                
+        # ── 1. Ensure the column exists up front ────────────────────────────────────────
+        df["status"] = "unknown"          # will be overwritten below
+        
+        # 2. PCI flag
+        df["is_pci"] = df["stent_presence"].eq('present')
+
+        # 3. PCI already been seen *earlier* for this artery?"
+        df["pci_seen_before"] = (
+            df.groupby("main_structure", sort=False)["is_pci"]
+            .transform(lambda x: x.cumsum().shift(fill_value=0))
+            .astype(bool)
+        )
+
+        # 4. Assign status
+        df["status"] = "diagnostic"
+        df.loc[df["is_pci"], "status"] = "PCI"
+        df.loc[
+            (~df["is_pci"]) &
+            (df["pci_seen_before"]) &
+            (df["contrast_agent"].eq("yes")),
+            "status"
+        ] = "POST_PCI"
+        
+        return df.drop(
+                columns=["series_time_dt", "is_pci", "pci_seen_before"]
+        ).to_dict(orient="records")
+
     async def _handle_json_output(self, request: PredictRequest)->dict[str, dict[str, str]]:
         dicoms = []
 
@@ -108,13 +163,7 @@ class CustomPredictionService(BasePredictionService):
             error_msg = f"Error in _handle_json_output: {e}"
             print(error_msg)
             return {
-                "diagnosis": "Error in _handle_json_output",
-                "predictions": {},
-                "modelRecommendations": {
-                    "en": "Error in _handle_json_output",
-                    "fr": "Erreur dans _handle_json_output",
-                    "presentable": True,
-                }
+                "predictions": {}
             }
         
         try:
@@ -122,15 +171,17 @@ class CustomPredictionService(BasePredictionService):
         except Exception as e:
             print(f"Error in _run_inference: {e}")
             return {
-                "diagnosis": "Error in _run_inference",
-                "predictions": {},
-                "modelRecommendations": {
-                    "en": "Error in _run_inference",
-                    "fr": "Erreur dans _run_inference",
-                    "presentable": True,
-                }
+                "predictions": {}
             }
-                
+        
+        try:
+            structured_predictions = self._assign_procedure_status(predictions=structured_predictions)
+        except Exception as e:
+            print(f"Error in _process_predictions: {e}")
+            return {
+                "predictions": {}
+            }
+            
         return {
             "predictions": structured_predictions,  # Use the dict, not the JSON string
         }
@@ -208,15 +259,52 @@ class CustomPredictionService(BasePredictionService):
         
         return torch.from_numpy(video)
 
+    def _extract_metadata(self, dicom: pydicom.Dataset) -> tuple[time | None, int | None]:
+        series_time_raw: str | None = dicom.get('SeriesTime')
+        series_number_raw: int | None = dicom.get('SeriesNumber')
+        series_number = str(series_number_raw) if series_number_raw is not None else None
+        series_time = None
+        if series_time_raw:
+            try:
+                if '.' in series_time_raw:
+                    main_part, frac = series_time_raw.split('.')
+                    microseconds = int(frac.ljust(6, '0')[:6])
+                else:
+                    main_part = series_time_raw
+                    microseconds = 0
+                hours = int(main_part[:2])
+                minutes = int(main_part[2:4])
+                seconds = int(main_part[4:6])
+                series_time = time(hours, minutes, seconds, microseconds)
+            except (ValueError, IndexError):
+                series_time = None
+                
+        return series_time, series_number
+
     def _run_inference(self, dicoms: List[pydicom.Dataset]) -> list[dict[str, str]]:
         try:
-            video_stack = []
+            video_stack: list[torch.Tensor] = []
+            dicom_metadata_stack: list[dict[str, time | int | None]] = []
             for dicom in dicoms:
+                # Extract metadata from dicom
+                series_time, series_number = self._extract_metadata(dicom)
+                
+                # Skip if metadata is not available
+                if series_time is None and series_number is None:
+                    continue  
+                
+                # Process dicom to video
                 video = self._process_dicom(dicom)
                 if video is None:
                     continue
-                # Add batch dimension after processing
+                
+                # Add video and metadata to stack
                 video_stack.append(video)
+                dicom_metadata_stack.append({
+                    'series_time': series_time,
+                    'series_number': series_number
+                })           
+                                
             if not video_stack:
                 return []
             video_stack = torch.stack(video_stack).to('cuda' if torch.cuda.is_available() else 'cpu')
@@ -240,6 +328,11 @@ class CustomPredictionService(BasePredictionService):
                         result[head_name] = class_mapping[head_name][predicted_class]
                     else:
                         result[head_name] = class_mapping[head_name][np.argmax(head_output[i])]
+                
+                # Add metadata to result
+                result['series_time'] = dicom_metadata_stack[i]['series_time'].isoformat() if dicom_metadata_stack[i]['series_time'] is not None else None
+                result['series_number'] = dicom_metadata_stack[i]['series_number']
+                
                 results.append(result)
                 
             return results
