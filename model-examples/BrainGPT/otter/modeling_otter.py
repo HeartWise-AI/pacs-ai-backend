@@ -549,7 +549,7 @@ class OtterModel(OtterPreTrainedModel):
         ### TODO: give "LlamaForCausalLM" as the name of text_config.architectures of Llama_based flamingo
         if "llama" not in config.text_config._name_or_path:
             if config.text_config.architectures[0] == "MPTForCausalLM":
-                text_tokenizer = AutoTokenizer.from_pretrained("mosaicml/mpt-7b-instruct")
+                text_tokenizer = AutoTokenizer.from_pretrained("mosaicml/mpt-7b-instruct",trust_remote_code=True)
                 lang_encoder = MPTForCausalLM(config=config.text_config)
             elif config.text_config.text_config.architectures[0] == "MosaicGPT":
                 text_tokenizer = AutoTokenizer.from_pretrained("mosaicml/mosaic-llama-redpajama-final-candidate")
@@ -749,7 +749,7 @@ class OtterForConditionalGeneration(OtterPreTrainedModel):
         ### TODO: give "LlamaForCausalLM" as the name of text_config.architectures of Llama_based flamingo
         if "llama" not in config.text_config._name_or_path:
             if config.text_config.architectures[0] == "MPTForCausalLM":
-                text_tokenizer = AutoTokenizer.from_pretrained("mosaicml/mpt-7b-instruct")
+                text_tokenizer = AutoTokenizer.from_pretrained( "EleutherAI/gpt-neox-20b",use_fast=True)
                 lang_encoder = MPTForCausalLM(config=config.text_config)
             elif config.text_config.architectures[0] == "MosaicGPT":
                 text_tokenizer = AutoTokenizer.from_pretrained("mosaicml/mosaic-llama-redpajama-final-candidate")
