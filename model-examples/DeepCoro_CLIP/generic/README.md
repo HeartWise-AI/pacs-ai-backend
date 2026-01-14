@@ -19,5 +19,5 @@ docker run -p 8000:8000 --gpus all heartwisehub/deepcoro-clip/pacs-ai-generic:1.
 
 To run the docker image locally for debugging with the pacs network, run the following command and then you can attach to the container and debug it:
 ```
-docker run -it --network pacs-net --gpus all --entrypoint /bin/bash heartwisehub/deepcoro-clip/pacs-ai-generic:1.0 .
+docker run -it --network pacs-net --gpus all --entrypoint /bin/bash heartwisehub/deepcoro-clip/pacs-ai-generic:1.0
 ```
