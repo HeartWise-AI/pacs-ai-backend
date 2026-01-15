@@ -281,60 +281,50 @@ class CustomPredictionService(BasePredictionService):
             elif artery_name in artery_names['Other']:
                 other_arteries[artery_name] = data
         
-        def get_artery_status(artery_data):
-            """Extract blocked, CTO, and thrombus status from artery data"""
-            status = []
-            if artery_data.get('diagnosis_stenosis') == 'blocked':
-                status.append('stenosis')
-                status.append(f"{artery_data.get('regression'):.1f}%")       
-            if artery_data.get('diagnosis_cto') == 'cto':
-                status.append('cto')
-                status.append(f"{artery_data.get('regression'):.1f}%")
-            if artery_data.get('diagnosis_thrombus') == 'thrombus':
-                status.append('thrombus')
-                status.append(f"{artery_data.get('regression'):.1f}%")
-            return status
-        
-        def format_artery_list(arteries_dict, system_name):
-            """Format arteries with their conditions for a specific system"""
-            affected_arteries = []
+        def format_artery_diagnosis(artery_name, data):
+            """Format a single artery's diagnosis with all conditions."""
+            parts = []
             
-            for artery_name, data in arteries_dict.items():
-                status = get_artery_status(data)
-                if status:
-                    # Get artery name
-                    display_name = artery_names[system_name].get(artery_name, artery_name)
-                    status_text = ', '.join(status)
-                    affected_arteries.append(f"{display_name} ({status_text})")
+            # Stenosis
+            stenosis_status = data.get('diagnosis_stenosis')
+            if stenosis_status == 'blocked':
+                regression = data.get('regression')
+                parts.append(f"stenosis: blocked ({regression:.1f}%)")
+            else:
+                parts.append(f"stenosis: {stenosis_status}")
             
-            if not affected_arteries:
-                return None
-                
-            return f"{system_name}: {', '.join(affected_arteries)}"
+            # Calcification
+            parts.append(f"calcified: {data.get('diagnosis_calcif', 'normal')}")
+            
+            # CTO
+            parts.append(f"cto: {data.get('diagnosis_cto', 'normal')}")
+            
+            # Thrombus
+            parts.append(f"thrombus: {data.get('diagnosis_thrombus', 'normal')}")
+            
+            return f"  {artery_name} - {', '.join(parts)}"
         
-        # Generate paragraphs for each system
         paragraphs = []
         
-        # RCA System
-        rca_paragraph = format_artery_list(rca_arteries, 'Right Coronary Artery (RCA) System')
-        if rca_paragraph:
-            paragraphs.append(rca_paragraph)
+        # RCA paragraph
+        rca_lines = ["RCA:"]
+        for artery_name, data in rca_arteries.items():
+            rca_lines.append(format_artery_diagnosis(artery_name, data))
+        paragraphs.append("\n".join(rca_lines))
         
-        # LCA System  
-        lca_paragraph = format_artery_list(lca_arteries, 'Left Coronary Artery (LCA) System')
-        if lca_paragraph:
-            paragraphs.append(lca_paragraph)
+        # LCA paragraph
+        lca_lines = ["LCA:"]
+        for artery_name, data in lca_arteries.items():
+            lca_lines.append(format_artery_diagnosis(artery_name, data))
+        paragraphs.append("\n".join(lca_lines))
         
-        # Other arteries
-        other_paragraph = format_artery_list(other_arteries, 'Other')
-        if other_paragraph:
-            paragraphs.append(other_paragraph)
+        # Other paragraph
+        other_lines = ["Other:"]
+        for artery_name, data in other_arteries.items():
+            other_lines.append(format_artery_diagnosis(artery_name, data))
+        paragraphs.append("\n".join(other_lines))
         
-        if not paragraphs:
-            return "No significant coronary pathology detected."
-        
-        # Join paragraphs
-        return "Detected pathologies:\n" + "\n".join(paragraphs)
+        return "Model diagnosis:\n" + "\n".join(paragraphs)
 
     def _get_recommendations(self, predictions: dict, language: str = "en") -> str:
         """
