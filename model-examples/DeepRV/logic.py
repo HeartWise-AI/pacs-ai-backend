@@ -92,7 +92,7 @@ class CustomPredictionService(BasePredictionService):
     def _process_predictions(self, probability):
         class_mapping = CustomPredictionService._class_mapping
         
-        threshold = class_mapping['threshold']
+        threshold = class_mapping.get('threshold', 0.5)
         class_mapping = {v: k for v, k in class_mapping.items() if v != 'threshold'} 
         
         processed_predictions = {'probability': probability}
