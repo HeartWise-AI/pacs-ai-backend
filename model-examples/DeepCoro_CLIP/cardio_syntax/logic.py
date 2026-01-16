@@ -243,7 +243,7 @@ class CustomPredictionService(BasePredictionService):
                 reordered_predictions[new_key] = {}
             
             # All predictions are now regression values with threshold-based categorization
-            score_syntax = float(predictions[key].item())
+            score_syntax = round(float(predictions[key].item()), 1)
             reordered_predictions[new_key]['regression'] = score_syntax
             reordered_predictions[new_key]['category'] = self._get_category_from_threshold(score_syntax)
 
