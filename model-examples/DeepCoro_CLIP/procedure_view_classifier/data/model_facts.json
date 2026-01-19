@@ -2,7 +2,7 @@
     "en": {
         "Summary": {
             "Name": "DeepCoro_CLIP_ProcedureViewClassifier",
-            "Description": "DeepCoro_CLIP_ProcedureViewClassifier is a procedure view classifier model that predicts the view and the procedure status of angiograms",
+            "Description": "DeepCoro_CLIP_ProcedureViewClassifier is a preprocessing model that predicts the view and the procedure status of angiograms",
             "Developed_by": "Heartwise",
             "Version": "1.0.0"
         },
