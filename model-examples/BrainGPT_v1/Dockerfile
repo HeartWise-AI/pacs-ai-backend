@@ -8,7 +8,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# On crée un lien pour que "python" lance bien python3.10
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
 WORKDIR /app
