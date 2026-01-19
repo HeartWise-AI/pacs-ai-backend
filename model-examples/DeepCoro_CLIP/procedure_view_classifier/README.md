@@ -3,7 +3,7 @@ Important: Models are stored on huggingface, please refer to [pacs-ai-examples](
 To build the docker image and push it to the docker hub, run the following command:
 
 ```
-docker build -t heartwisehub/deepcoro-clip/pacs-ai-procedure_view-classifier:1.0 .
+docker build --build-arg HF_API_KEY=**** -t heartwisehub/deepcoro-clip/pacs-ai-procedure_view-classifier:1.0 .
 docker push heartwisehub/deepcoro-clip/pacs-ai-procedure_view-classifier:1.0 .
 ```
 
