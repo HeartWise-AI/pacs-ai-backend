@@ -60,9 +60,9 @@ class MPTModel(MPTPreTrainedModel):
         self.blocks = nn.ModuleList([MPTBlock(device=config.init_device, **config.to_dict()) for _ in range(config.n_layers)])
         self.norm_f = norm_class(config.d_model, device=config.init_device)
         if config.init_device != "meta":
-            print(
-                f'You are using config.init_device={config.init_device!r}, but you can also use config.init_device="meta" with Composer + FSDP for fast initialization.'
-            )
+            # print(
+            #     f'You are using config.init_device={config.init_device!r}, but you can also use config.init_device="meta" with Composer + FSDP for fast initialization.'
+            # )
             self.apply(self.param_init_fn)
         self.is_causal = not self.prefix_lm
         self._attn_bias_initialized = False
