@@ -87,7 +87,7 @@ class CustomPredictionService(BasePredictionService):
         - "diagnostic": Diagnostic procedure with no previous PCI
         
         Args:
-            predictions: Input list of predictions with series_time and series_number
+            predictions: Input list of predictions with series_time and dicom_name
         
         Returns:
             DataFrame with added 'status' column
@@ -132,30 +132,30 @@ class CustomPredictionService(BasePredictionService):
 
     async def _handle_json_output(self, request: PredictRequest)->dict[str, dict[str, str]]:
         dicoms = []
+        dicom_names = []
 
         try:
             for series_number in request.seriesInstanceImages:
-                for instance_number in request.seriesInstanceImages[series_number]:
+                print(f"Processing series {series_number}")
+                for dicom_name in request.seriesInstanceImages[series_number]:
                     try: 
-                        dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
+                        dicom_base64 = request.seriesInstanceImages[series_number][dicom_name]
                         
-                        # Validat base64 string
                         if not self._is_valid_base64(dicom_base64):
-                            print(f"Invalid base64 string for series {series_number} instance {instance_number}")
+                            print(f"Invalid base64 string for series {series_number} dicom {dicom_name}")
                             continue
                         
-                        # Decode base64 string and validate DICOM data
                         dicom_data = base64.b64decode(dicom_base64)
                         if not self._is_valid_dicom(dicom_data):
-                            print(f"Invalid DICOM data for series {series_number} instance {instance_number}")
+                            print(f"Invalid DICOM data for series {series_number} dicom {dicom_name}")
                             continue
                                             
-                        # Load DICOM
                         dicom = pydicom.dcmread(BytesIO(dicom_data))
                         dicoms.append(dicom)
+                        dicom_names.append(str(dicom.SeriesInstanceUID))
                         
                     except Exception as e:
-                        error_msg = f"Error in processing series {series_number} instance {instance_number}: {e}"
+                        error_msg = f"Error in processing series {series_number} dicom {dicom_name}: {e}"
                         print(error_msg)
                         continue
                     
@@ -167,7 +167,7 @@ class CustomPredictionService(BasePredictionService):
             }
         
         try:
-            structured_predictions: dict[str, dict[str, np.ndarray]] = self._run_inference(dicoms)
+            structured_predictions: dict[str, dict[str, np.ndarray]] = self._run_inference(dicoms, dicom_names)
         except Exception as e:
             print(f"Error in _run_inference: {e}")
             return {
@@ -259,50 +259,40 @@ class CustomPredictionService(BasePredictionService):
         
         return torch.from_numpy(video)
 
-    def _extract_metadata(self, dicom: pydicom.Dataset) -> tuple[time | None, int | None]:
+    def _extract_series_time(self, dicom: pydicom.Dataset) -> time | None:
         series_time_raw: str | None = dicom.get('SeriesTime')
-        series_number_raw: int | None = dicom.get('SeriesNumber')
-        series_number = str(series_number_raw) if series_number_raw is not None else None
-        series_time = None
-        if series_time_raw:
-            try:
-                if '.' in series_time_raw:
-                    main_part, frac = series_time_raw.split('.')
-                    microseconds = int(frac.ljust(6, '0')[:6])
-                else:
-                    main_part = series_time_raw
-                    microseconds = 0
-                hours = int(main_part[:2])
-                minutes = int(main_part[2:4])
-                seconds = int(main_part[4:6])
-                series_time = time(hours, minutes, seconds, microseconds)
-            except (ValueError, IndexError):
-                series_time = None
-                
-        return series_time, series_number
+        if not series_time_raw:
+            return None
+        try:
+            if '.' in series_time_raw:
+                main_part, frac = series_time_raw.split('.')
+                microseconds = int(frac.ljust(6, '0')[:6])
+            else:
+                main_part = series_time_raw
+                microseconds = 0
+            hours = int(main_part[:2])
+            minutes = int(main_part[2:4])
+            seconds = int(main_part[4:6])
+            return time(hours, minutes, seconds, microseconds)
+        except (ValueError, IndexError):
+            return None
 
-    def _run_inference(self, dicoms: List[pydicom.Dataset]) -> list[dict[str, str]]:
+    def _run_inference(self, dicoms: List[pydicom.Dataset], dicom_names: List[str]) -> list[dict[str, str]]:
         try:
             video_stack: list[torch.Tensor] = []
-            dicom_metadata_stack: list[dict[str, time | int | None]] = []
-            for dicom in dicoms:
-                # Extract metadata from dicom
-                series_time, series_number = self._extract_metadata(dicom)
+            dicom_metadata_stack: list[dict[str, time | str | None]] = []
+            for dicom, dicom_name in zip(dicoms, dicom_names):
+                series_time = self._extract_series_time(dicom)
                 
-                # Skip if metadata is not available
-                if series_time is None and series_number is None:
-                    continue  
-                
-                # Process dicom to video
                 video = self._process_dicom(dicom)
                 if video is None:
                     continue
                 
-                # Add video and metadata to stack
                 video_stack.append(video)
+
                 dicom_metadata_stack.append({
                     'series_time': series_time,
-                    'series_number': series_number
+                    'dicom_name': dicom_name
                 })           
                                 
             if not video_stack:
@@ -331,7 +321,7 @@ class CustomPredictionService(BasePredictionService):
                 
                 # Add metadata to result
                 result['series_time'] = dicom_metadata_stack[i]['series_time'].isoformat() if dicom_metadata_stack[i]['series_time'] is not None else None
-                result['series_number'] = dicom_metadata_stack[i]['series_number']
+                result['dicom_name'] = dicom_metadata_stack[i]['dicom_name']
                 
                 results.append(result)
                 
