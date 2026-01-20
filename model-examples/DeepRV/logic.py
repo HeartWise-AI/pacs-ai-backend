@@ -76,6 +76,17 @@ class CustomPredictionService(BasePredictionService):
                     )
                 )
 
+        filtered_dicoms = self._filter_dicoms_with_metadata(
+            dicoms,
+            request.seriesInstanceMetadata
+        )
+        print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Right Coronary + diagnostic)")
+        if filtered_dicoms:
+            dicoms = filtered_dicoms
+            print(f"Using {len(dicoms)} filtered DICOMs")
+        else:
+            print(f"No matches, using all {len(dicoms)} DICOMs")
+
         probability = self._run_inference(dicoms)
         html_output = HTMLParser.generate_detection_results({'probability': probability})
         return {'htmlBase64': base64.b64encode(html_output.encode('utf-8')).decode('utf-8')}        
@@ -86,8 +97,26 @@ class CustomPredictionService(BasePredictionService):
                 base64.b64decode(dicom_base64)
                 return True
             return False
-        except Exception as e:
+        except Exception:
             return False
+
+    def _filter_dicoms_with_metadata(self, dicoms: List[pydicom.Dataset], metadata: dict) -> List[pydicom.Dataset]:
+        """
+        Filter DICOMs to keep only Right Coronary with diagnostic status.
+        """
+        allowed_views = ['Right Coronary']
+        filtered_dicoms = []
+        for dicom in dicoms:
+            dicom_name = str(dicom.SeriesInstanceUID)
+            if dicom_name not in metadata:
+                continue
+            dicom_meta = metadata[dicom_name]
+            if dicom_meta.get('main_structure') not in allowed_views:
+                continue
+            if dicom_meta.get('status') != 'diagnostic':
+                continue
+            filtered_dicoms.append(dicom)
+        return filtered_dicoms
  
     def _process_predictions(self, probability):
         class_mapping = CustomPredictionService._class_mapping
@@ -164,6 +193,17 @@ class CustomPredictionService(BasePredictionService):
                     "presentable": True,
                 }
             }
+
+        filtered_dicoms = self._filter_dicoms_with_metadata(
+            dicoms,
+            request.seriesInstanceMetadata
+        )
+        print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Right Coronary + diagnostic)")
+        if filtered_dicoms:
+            dicoms = filtered_dicoms
+            print(f"Using {len(dicoms)} filtered DICOMs")
+        else:
+            print(f"No matches, using all {len(dicoms)} DICOMs")
 
         try:
             probability: float = self._run_inference(dicoms)
