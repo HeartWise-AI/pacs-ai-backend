@@ -1,6 +1,7 @@
 {
   "modelName": "DeepRV",
   "domainName": "Cardiology",
+  "stage": "ai_inference",
   "modality": "Angiogram",
   "version": "1.0.0",
   "dicomTargetLevel": "SERIES",

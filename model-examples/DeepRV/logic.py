@@ -34,21 +34,21 @@ class CustomPredictionService(BasePredictionService):
         print('Loading model...')
         
         # Load the HuggingFacemodel config 
-        with open(os.path.join("models", "config.json")) as fp:
+        with open(os.path.join("config.json")) as fp:
             CustomPredictionService.model_config = json.load(fp)
-
+        print(CustomPredictionService.model_config)
         # Load the class mapping from the local package
-        class_mapping_path = os.path.join("models", "class_mapping.json")
+        class_mapping_path = CustomPredictionService.model_config['classMapping']['path']
         with open(class_mapping_path) as fp:
             CustomPredictionService._class_mapping = json.load(fp)
 
         # Create and load the model
         try:
-            CustomPredictionService.model_path = os.path.join("models", CustomPredictionService.model_config['ModelStateDict']['model_path'])
-            print(f"Model path: {CustomPredictionService.model_path}")         
+            CustomPredictionService.model_path = CustomPredictionService.model_config['models']['path']
+            print(f"Model path: {CustomPredictionService.model_config['models']['path']}")         
 
             CustomPredictionService.models['x3d_m'] = torch.hub.load(
-                "facebookresearch/pytorchvideo", "x3d_m", pretrained=True
+                "facebookresearch/pytorchvideo", "x3d_m", pretrained=True, source="local"
             )
             CustomPredictionService.models['x3d_m'].blocks[-1] = RegressionHead(dim_in=192, num_classes=1)
 
@@ -76,6 +76,20 @@ class CustomPredictionService(BasePredictionService):
                     )
                 )
 
+        if request.seriesInstanceMetadata:
+            filtered_dicoms = self._filter_dicoms_with_metadata(
+                dicoms,
+                request.seriesInstanceMetadata
+            )
+            print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Right Coronary + diagnostic)")
+            if filtered_dicoms:
+                dicoms = filtered_dicoms
+                print(f"Using {len(dicoms)} filtered DICOMs")
+            else:
+                print(f"No matches, using all {len(dicoms)} DICOMs")
+        else:
+            print("No series instance metadata, using all DICOMs")
+
         probability = self._run_inference(dicoms)
         html_output = HTMLParser.generate_detection_results({'probability': probability})
         return {'htmlBase64': base64.b64encode(html_output.encode('utf-8')).decode('utf-8')}        
@@ -86,13 +100,31 @@ class CustomPredictionService(BasePredictionService):
                 base64.b64decode(dicom_base64)
                 return True
             return False
-        except Exception as e:
+        except Exception:
             return False
+
+    def _filter_dicoms_with_metadata(self, dicoms: List[pydicom.Dataset], metadata: dict) -> List[pydicom.Dataset]:
+        """
+        Filter DICOMs to keep only Right Coronary with diagnostic status.
+        """
+        allowed_views = ['Right Coronary']
+        filtered_dicoms = []
+        for dicom in dicoms:
+            dicom_name = str(dicom.SeriesInstanceUID)
+            if dicom_name not in metadata:
+                continue
+            dicom_meta = metadata[dicom_name]
+            if dicom_meta.get('main_structure') not in allowed_views:
+                continue
+            if dicom_meta.get('status') != 'diagnostic':
+                continue
+            filtered_dicoms.append(dicom)
+        return filtered_dicoms
  
     def _process_predictions(self, probability):
         class_mapping = CustomPredictionService._class_mapping
         
-        threshold = class_mapping['threshold']
+        threshold = class_mapping.get('threshold', 0.5)
         class_mapping = {v: k for v, k in class_mapping.items() if v != 'threshold'} 
         
         processed_predictions = {'probability': probability}
@@ -164,6 +196,20 @@ class CustomPredictionService(BasePredictionService):
                     "presentable": True,
                 }
             }
+
+        if request.seriesInstanceMetadata:
+            filtered_dicoms = self._filter_dicoms_with_metadata(
+                dicoms,
+                request.seriesInstanceMetadata
+            )
+            print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Right Coronary + diagnostic)")
+            if filtered_dicoms:
+                dicoms = filtered_dicoms
+                print(f"Using {len(dicoms)} filtered DICOMs")
+            else:
+                print(f"No matches, using all {len(dicoms)} DICOMs")
+        else:
+            print("No series instance metadata, using all DICOMs")
 
         try:
             probability: float = self._run_inference(dicoms)

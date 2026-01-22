@@ -1,6 +1,7 @@
 services:
   api-pacs:
     build: .
+    image: pacs-ai-backend-api-pacs:latest
     container_name: api-pacs
     restart: unless-stopped
     networks:

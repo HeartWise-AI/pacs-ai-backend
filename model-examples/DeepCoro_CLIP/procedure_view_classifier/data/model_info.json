@@ -1,0 +1,15 @@
+{
+    "modelName": "DeepCoro_CLIP_ProcedureViewClassifier",
+    "domainName": "Cardiology",
+    "stage": "preprocessing",
+    "modality": "Angiogram",
+    "version": "1.0.0",
+    "dicomTargetLevel": "SERIES",
+    "dicomUploadMin": 1,
+    "dicomUploadMax": 99,
+    "supportedDicomModalities": ["XA"],
+    "supportedDicomTags": ["00280008", "00280010", "00280011", "00280002"],
+    "supportedAdditionalMetadata": [],
+    "supportedOutputModes": [ "JSON"]
+  }
+  

@@ -1,4 +1,5 @@
 {
+    "threshold": 0.5,
     "normal": 0,
     "reduced": 1
 }

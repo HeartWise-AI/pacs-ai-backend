@@ -75,6 +75,7 @@ class CustomPredictionService(BasePredictionService):
         class_mapping = self.__class__._output_class_mapping
 
         diagnoses: Dict[str, str] = {}
+        normal_diagnoses: set = {"normal", "none", "0.0"}
         serializable_predictions: Dict[str, Union[float, torch.Tensor]] = {}
         for head, value in predictions.items():
                             
@@ -101,11 +102,6 @@ class CustomPredictionService(BasePredictionService):
                 else:
                     scalar_value = value
                 
-                units = head_cfg.get("units", "")
-                if units:
-                    diagnoses[description] = f"{scalar_value:.1f} {units}"
-                else:
-                    diagnoses[description] = f"{scalar_value:.1f}"
                 serializable_predictions[description] = scalar_value
 
             else:
@@ -126,7 +122,20 @@ class CustomPredictionService(BasePredictionService):
                     else:
                         # Find the class with value 0
                         predicted_class = [k for k, v in class_labels.items() if v == 0][0]
-                    diagnoses[description] = predicted_class
+
+                    if not any(normal_indicator in predicted_class.lower() for normal_indicator in normal_diagnoses):
+                        diagnoses[description] = predicted_class
+                    
+                    # For binary classification, invert some probabilities to make them 0 for normal cases
+                    if head in {
+                        'Pericardial effusion',
+                        'LVWallThickness-increased-any', 
+                        'AVStructure',
+                        'AVRegurg',
+                        'MVStenosis',
+                        'TVRegurgitation',
+                    }:
+                        scalar_value = 1 - scalar_value
                     serializable_predictions[description] = scalar_value
                 else:
                     # Multi-class classification - use argmax on tensor                   
@@ -134,7 +143,9 @@ class CustomPredictionService(BasePredictionService):
                     
                     # Find the class name corresponding to this index
                     predicted_class = [k for k, v in class_labels.items() if v == predicted_class_idx][0]
-                    diagnoses[description] = predicted_class
+
+                    if not any(normal_indicator in predicted_class.lower() for normal_indicator in normal_diagnoses):
+                        diagnoses[description] = predicted_class
                     
                     # For multi-class, store the raw probability/logits as serializable
                     if isinstance(value, torch.Tensor):

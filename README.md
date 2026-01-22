@@ -28,11 +28,17 @@ Before running this repository, ensure you have:
    git clone https://github.com/HeartWise-AI/pacs-ai-backend.git
    git clone https://github.com/HeartWise-AI/PACS-AI.git
 
+   # Clone agent codebase
+   cd pacs-ai-backend
+   git clone https://github.com/HeartWise-AI/cardio-agent.git
+   cd ..
+
    # Setup environment files
    cp PACS-AI/platform/app/.env.example PACS-AI/platform/app/.env
    cp pacs-ai-backend/api-pacs/.env.example pacs-ai-backend/api-pacs/.env
    cp pacs-ai-backend/orthanc/.env.example pacs-ai-backend/orthanc/.env
    cp pacs-ai-backend/nginx/.env.example pacs-ai-backend/nginx/.env
+   cp pacs-ai-backend/cardio-agent/.env.example pacs-ai-backend/cardio-agent/.env
    ```
 
 2. Create Docker network:

@@ -243,7 +243,7 @@ class CustomPredictionService(BasePredictionService):
                 reordered_predictions[new_key] = {}
             
             # All predictions are now regression values with threshold-based categorization
-            score_syntax = float(predictions[key].item())
+            score_syntax = round(float(predictions[key].item()), 1)
             reordered_predictions[new_key]['regression'] = score_syntax
             reordered_predictions[new_key]['category'] = self._get_category_from_threshold(score_syntax)
 
@@ -296,7 +296,24 @@ class CustomPredictionService(BasePredictionService):
             recommendations.append("Normal cardiac syntax detected." if language == "en" else "Syntaxe cardiaque normale.")
 
         return "\n".join(recommendations)
-        
+
+    def _filter_dicoms_with_metadata(self, dicoms: list[pydicom.Dataset], metadata: dict) -> list[pydicom.Dataset]:
+        """
+        Filter DICOMs to keep only Left/Right Coronary with diagnostic status.
+        """
+        allowed_views = ['Left Coronary', 'Right Coronary']
+        filtered_dicoms = []
+        for dicom in dicoms:
+            dicom_name = str(dicom.SeriesInstanceUID)
+            if dicom_name not in metadata:
+                continue
+            dicom_meta = metadata[dicom_name]
+            if dicom_meta.get('main_structure') not in allowed_views:
+                continue
+            if dicom_meta.get('status') != 'diagnostic':
+                continue
+            filtered_dicoms.append(dicom)
+        return filtered_dicoms
 
     async def _handle_html_output(self, request: PredictRequest):
         dicoms = []
@@ -304,6 +321,20 @@ class CustomPredictionService(BasePredictionService):
             for instance_number in request.seriesInstanceImages[series_number]:
                 dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
                 dicoms.append(pydicom.dcmread(BytesIO(base64.b64decode(dicom_base64))))
+
+        if request.seriesInstanceMetadata:
+            filtered_dicoms = self._filter_dicoms_with_metadata(
+                dicoms,
+                request.seriesInstanceMetadata
+            )
+            print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Left/Right Coronary + diagnostic)")
+            if filtered_dicoms:
+                dicoms = filtered_dicoms
+                print(f"Using {len(dicoms)} filtered DICOMs")
+            else:
+                print(f"No matches, using all {len(dicoms)} DICOMs")
+        else:
+            print("No series instance metadata, using all DICOMs")
 
         probability = self._run_inference(dicoms)
         
@@ -403,6 +434,20 @@ class CustomPredictionService(BasePredictionService):
                     "presentable": True,
                 }
             }
+
+        if request.seriesInstanceMetadata:
+            filtered_dicoms = self._filter_dicoms_with_metadata(
+                dicoms,
+                request.seriesInstanceMetadata
+            )
+            print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Left/Right Coronary + diagnostic)")
+            if filtered_dicoms:
+                dicoms = filtered_dicoms
+                print(f"Using {len(dicoms)} filtered DICOMs")
+            else:
+                print(f"No matches, using all {len(dicoms)} DICOMs")
+        else:
+            print("No series instance metadata, using all DICOMs")
 
         try:
             probability: dict[str, float] = self._run_inference(dicoms)
