@@ -322,16 +322,19 @@ class CustomPredictionService(BasePredictionService):
                 dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
                 dicoms.append(pydicom.dcmread(BytesIO(base64.b64decode(dicom_base64))))
 
-        filtered_dicoms = self._filter_dicoms_with_metadata(
-            dicoms,
-            request.seriesInstanceMetadata
-        )
-        print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Left/Right Coronary + diagnostic)")
-        if filtered_dicoms:
-            dicoms = filtered_dicoms
-            print(f"Using {len(dicoms)} filtered DICOMs")
+        if request.seriesInstanceMetadata:
+            filtered_dicoms = self._filter_dicoms_with_metadata(
+                dicoms,
+                request.seriesInstanceMetadata
+            )
+            print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Left/Right Coronary + diagnostic)")
+            if filtered_dicoms:
+                dicoms = filtered_dicoms
+                print(f"Using {len(dicoms)} filtered DICOMs")
+            else:
+                print(f"No matches, using all {len(dicoms)} DICOMs")
         else:
-            print(f"No matches, using all {len(dicoms)} DICOMs")
+            print("No series instance metadata, using all DICOMs")
 
         probability = self._run_inference(dicoms)
         
@@ -432,16 +435,19 @@ class CustomPredictionService(BasePredictionService):
                 }
             }
 
-        filtered_dicoms = self._filter_dicoms_with_metadata(
-            dicoms,
-            request.seriesInstanceMetadata
-        )
-        print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Left/Right Coronary + diagnostic)")
-        if filtered_dicoms:
-            dicoms = filtered_dicoms
-            print(f"Using {len(dicoms)} filtered DICOMs")
+        if request.seriesInstanceMetadata:
+            filtered_dicoms = self._filter_dicoms_with_metadata(
+                dicoms,
+                request.seriesInstanceMetadata
+            )
+            print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Left/Right Coronary + diagnostic)")
+            if filtered_dicoms:
+                dicoms = filtered_dicoms
+                print(f"Using {len(dicoms)} filtered DICOMs")
+            else:
+                print(f"No matches, using all {len(dicoms)} DICOMs")
         else:
-            print(f"No matches, using all {len(dicoms)} DICOMs")
+            print("No series instance metadata, using all DICOMs")
 
         try:
             probability: dict[str, float] = self._run_inference(dicoms)
