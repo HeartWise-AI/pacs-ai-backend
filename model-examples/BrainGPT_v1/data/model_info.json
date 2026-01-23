@@ -5,5 +5,6 @@
   "description": "A multimodal model specialized in detecting intracranial hemorrhages from CT scans and generating medical reports.",
   "task": "Image Captioning / VQA",
   "input_type": "Dicoms",
-  "output_type": "Medical Report"
+  "output_type": "Medical Report",
+  "supportedOutputModes": ["HTML", "JSON"]
 }
