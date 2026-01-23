@@ -13,10 +13,22 @@ from pipeline_script import BrainGPTInference
 
 class CustomPredictionService(BasePredictionService):
     def __init__(self):
-        self.brain_gpt = BrainGPTInference() # On instancie la classe
+        try: 
+            self.brain_gpt = BrainGPTInference() # On instancie la classe
+        except Exception as e1:
+            print(f"First attempt failed: {e1}. Retrying...")
+        try:
+           
+            self.brain_gpt = BrainGPTInference()
+        except Exception as e2:
+            
+            raise RuntimeError(
+                f"Cannot initialize model: second attempt error: {str(e2)}"
+            ) from e2   
+            
+                
         self.is_initialized = False
-        
-        
+            
     def load_model(self, config: Config):
         if not self.is_initialized:
             print("Initialisation du modèle BrainGPT...")
