@@ -1,0 +1,14 @@
+[
+  {
+    "title": "Architecture",
+    "description": "Based on Otter-Image (Multimodal) using MPT-7B as the language backbone."
+  },
+  {
+    "title": "Training Data",
+    "description": "Fine-tuned on a dataset of brain CT scans and radiological reports."
+  },
+  {
+    "title": "Capabilities",
+    "description": "Can analyze 24 slices of a CT scan simultaneously to detect hemorrhages."
+  }
+]

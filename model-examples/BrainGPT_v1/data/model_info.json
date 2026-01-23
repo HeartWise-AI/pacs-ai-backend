@@ -1,0 +1,9 @@
+{
+  "id": "braingpt-v1",
+  "name": "BrainGPT (Otter-Image)",
+  "version": "1.0",
+  "description": "A multimodal model specialized in detecting intracranial hemorrhages from CT scans and generating medical reports.",
+  "task": "Image Captioning / VQA",
+  "input_type": "Dicoms",
+  "output_type": "Medical Report"
+}
