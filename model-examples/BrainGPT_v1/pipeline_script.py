@@ -31,7 +31,8 @@ def main():
 
     # 2. Chargement du modèle
     # Chemin interne au Docker ou il faut copier les poids
-    model_path = "/app/models/OTTER_CLIP_BRAINGPT_hf"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(script_dir, "models", "OTTER_CLIP_BRAINGPT_hf")
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Loading model from {model_path} on {device}...")
