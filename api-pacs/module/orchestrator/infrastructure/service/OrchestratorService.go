@@ -242,16 +242,20 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 	// Extract bearer token from context
 	bearerToken := service.extractBearerTokenFromContext(ctx)
 	
+	// Extract user ID from context
+	userID := service.extractUserIDFromContext(ctx)
+
+	// Create request payload
 	requestPayload := struct {
 		Payload     []types.StudyData `json:"payload"`
-		ThreadID    *string           `json:"thread_id,omitempty"`
+		ThreadID    *string           `json:"conversation_id,omitempty"`
 		BearerToken string            `json:"bearer_token"`
-		APIBaseURL  string            `json:"api_base_url"`
+		UserID      string            `json:"user_id"`
 	}{
 		Payload:     request.Payload,
 		ThreadID:    request.ThreadID,
 		BearerToken: bearerToken,
-		APIBaseURL:  os.Getenv("API_BASE_URL"),
+		UserID:      userID,
 	}
 
 	requestBytes, err := json.Marshal(requestPayload)
@@ -283,7 +287,7 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 
 	// Parse response
 	var pythonResponse struct {
-		ThreadID string `json:"thread_id"`
+		ThreadID string `json:"conversation_id"`
 		Status   string `json:"status"`
 		Message  string `json:"message"`
 	}
