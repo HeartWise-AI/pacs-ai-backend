@@ -27,17 +27,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ============================================
-# MODEL DOWNLOAD SECTION (NEW)
-# ============================================
-# Build argument for HuggingFace API key
-# This is passed at build time: docker build --build-arg HF_API_KEY=xxx
-ARG HF_API_KEY
-
 # Copy the download script and execute it
 # The model will be downloaded into models/OTTER_CLIP_BRAINGPT_hf/
 COPY download_model.py .
-RUN python download_model.py --token ${HF_API_KEY}
+RUN python download_model.py
 # ============================================
 
 # Copy application code
