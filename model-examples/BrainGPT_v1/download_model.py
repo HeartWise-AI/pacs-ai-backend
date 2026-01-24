@@ -13,9 +13,6 @@ def download_model(token: str) -> None:
     Args:
         token: HuggingFace API token with read access to the model repo
     """
-    if not token:
-        raise ValueError("HuggingFace token is required but was not provided")
-
      
     repo_id = "Charliebear/BrainGPT"
     
@@ -43,7 +40,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--token",
         type=str,
-        required=True,
+        required=False,
+        default=None,
         help="HuggingFace API token"
     )
     args = parser.parse_args()
