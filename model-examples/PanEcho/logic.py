@@ -382,8 +382,6 @@ class CustomPredictionService(BasePredictionService):
                     "presentable": True,
                 }
             }
-        print(f"probability: {probability}")
-        print(f"probability: {len(probability)}")
         
         # Obtain per-head diagnosis/interpretation
         try:
@@ -399,8 +397,6 @@ class CustomPredictionService(BasePredictionService):
                     "presentable": True,
                 }
             }
-        print(f"predictions_serializable: {predictions_serializable}")
-        print(f"diagnosis_dict: {diagnosis_dict}")
         
         # The API schema (`JsonPredictionResponse`) expects the *diagnosis* field
         # to be a **string**.  We therefore serialise the dictionary into a JSON
@@ -409,9 +405,21 @@ class CustomPredictionService(BasePredictionService):
         diagnosis = json.dumps(diagnosis_dict)
         
         # Generate recommendations based on stenosis analysis
-        recommendations_en = self._get_recommendations(diagnosis_dict, "en")
-        recommendations_fr = self._get_recommendations(diagnosis_dict, "fr")
-
+        try:
+            recommendations_en = self._get_recommendations(diagnosis_dict, "en")
+            recommendations_fr = self._get_recommendations(diagnosis_dict, "fr")
+        except Exception as e:
+            print(f"Error in _get_recommendations: {e}")
+            return {
+                "diagnosis": "Error in _get_recommendations",
+                "predictions": {},
+                "modelRecommendations": {
+                    "en": "Error in _get_recommendations",
+                    "fr": "Erreur dans _get_recommendations",
+                    "presentable": True,
+                }
+            }
+        
         # Prepare comprehensive data for HTML parser
         html_data = {
             'diagnosis': diagnosis,
@@ -505,7 +513,6 @@ class CustomPredictionService(BasePredictionService):
                     "presentable": True,
                 }
             }
-        print(f"probability: {probability}")
         # Obtain per-head diagnosis/interpretation
         try:
             diagnosis_dict, predictions_serializable = self.postprocess_predictions(probability)
@@ -520,7 +527,7 @@ class CustomPredictionService(BasePredictionService):
                     "presentable": True,
                 }
             }
-        print(f"diagnosis_dict: {diagnosis_dict}")
+
         # Generate recommendations
         try:
             recommendations_en = self._get_recommendations(diagnosis_dict, "en")
