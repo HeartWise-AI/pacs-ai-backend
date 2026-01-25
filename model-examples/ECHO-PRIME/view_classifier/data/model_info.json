@@ -1,6 +1,7 @@
 {
   "modelName": "EchoPrime_ViewClassifier",
   "domainName": "Cardiology",
+  "stage": "preprocessing",
   "modality": "Echocardiogram",
   "version": "1.0.0",
   "dicomTargetLevel": "SERIES",
