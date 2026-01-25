@@ -322,10 +322,10 @@ class CustomPredictionService(BasePredictionService):
                 dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
                 dicoms.append(pydicom.dcmread(BytesIO(base64.b64decode(dicom_base64))))
 
-        if request.seriesInstanceMetadata:
+        if request.additionalMetadata:
             filtered_dicoms = self._filter_dicoms_with_metadata(
                 dicoms,
-                request.seriesInstanceMetadata
+                request.additionalMetadata
             )
             print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Left/Right Coronary + diagnostic)")
             if filtered_dicoms:
@@ -334,7 +334,7 @@ class CustomPredictionService(BasePredictionService):
             else:
                 print(f"No matches, using all {len(dicoms)} DICOMs")
         else:
-            print("No series instance metadata, using all DICOMs")
+            print("No additional metadata, using all DICOMs")
 
         probability = self._run_inference(dicoms)
         

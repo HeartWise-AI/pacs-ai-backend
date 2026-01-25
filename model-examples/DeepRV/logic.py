@@ -76,10 +76,10 @@ class CustomPredictionService(BasePredictionService):
                     )
                 )
 
-        if request.seriesInstanceMetadata:
+        if request.additionalMetadata:
             filtered_dicoms = self._filter_dicoms_with_metadata(
                 dicoms,
-                request.seriesInstanceMetadata
+                request.additionalMetadata
             )
             print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Right Coronary + diagnostic)")
             if filtered_dicoms:
@@ -88,7 +88,7 @@ class CustomPredictionService(BasePredictionService):
             else:
                 print(f"No matches, using all {len(dicoms)} DICOMs")
         else:
-            print("No series instance metadata, using all DICOMs")
+            print("No additional metadata, using all DICOMs")
 
         probability = self._run_inference(dicoms)
         html_output = HTMLParser.generate_detection_results({'probability': probability})
@@ -197,10 +197,10 @@ class CustomPredictionService(BasePredictionService):
                 }
             }
 
-        if request.seriesInstanceMetadata:
+        if request.additionalMetadata:
             filtered_dicoms = self._filter_dicoms_with_metadata(
                 dicoms,
-                request.seriesInstanceMetadata
+                request.additionalMetadata
             )
             print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Right Coronary + diagnostic)")
             if filtered_dicoms:
@@ -209,7 +209,7 @@ class CustomPredictionService(BasePredictionService):
             else:
                 print(f"No matches, using all {len(dicoms)} DICOMs")
         else:
-            print("No series instance metadata, using all DICOMs")
+            print("No additional metadata, using all DICOMs")
 
         try:
             probability: float = self._run_inference(dicoms)

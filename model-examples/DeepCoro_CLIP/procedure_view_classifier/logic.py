@@ -163,7 +163,7 @@ class CustomPredictionService(BasePredictionService):
             error_msg = f"Error in _handle_json_output: {e}"
             print(error_msg)
             return {
-                "predictions": {}
+                "predictions": []
             }
         
         try:
@@ -171,7 +171,7 @@ class CustomPredictionService(BasePredictionService):
         except Exception as e:
             print(f"Error in _run_inference: {e}")
             return {
-                "predictions": {}
+                "predictions": []
             }
         
         try:
@@ -179,7 +179,7 @@ class CustomPredictionService(BasePredictionService):
         except Exception as e:
             print(f"Error in _process_predictions: {e}")
             return {
-                "predictions": {}
+                "predictions": []
             }
             
         return {
