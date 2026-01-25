@@ -2,7 +2,7 @@
   "en": {
       "Summary": {
           "Name": "EchoPrime_ViewClassifier",
-          "Description": "EchoPrime_ViewClassifier is a echocardiogram view classifier model that predicts the view of the echocardiogram",
+          "Description": "EchoPrime_ViewClassifier is a preprocessing model that predicts the view of the echocardiogram",
           "Developed_by": "Milos Vukadinovic, Xiu Tang, Neal Yuan, Paul Cheng, Debiao Li, Susan Cheng, Bryan He, David Ouyang",
           "Version": "1.0.0"
       },
@@ -11,32 +11,12 @@
           "Output": "View of the echocardiogram",
           "Target_population": "Patients receiving echocardiogram examinations",
           "Time_of_prediction": "~ 1 minute",
-          "Input_data_source": "Multiple echocardiogram videos from different views",
-          "Input_data_type": "Video data",
+          "Input_data_source": "echocardiogram videos",
+          "Input_data_type": "dicom",
           "Training_data_location_and_time-period": "Cedars-Sinai Medical Center, 2011-2022",
-          "Model_type": "Vision-language foundation model with mVIT video encoder and BioMedBERT text encoder"
+          "Model_type": "Deep Learning"
       },
-      "Validation_and_performance": [
-          {
-              "Internal_validation": {
-                  "Mean_AUC": 0.92,
-                  "LVEF_MAE": 4.8,
-                  "Video_to_text_recall@10": 98,
-                  "Text_to_video_recall@10": 97
-              },
-              "External_validation": {
-                  "LVEF_MAE": 4.1,
-                  "Aortic_regurgitation_AUC": 0.89
-              }
-          },
-          {
-              "Training_cohort": {
-                  "Number_of_patients": 108913,
-                  "Number_of_studies": 275442,
-                  "Number_of_videos": 12124168
-              }
-          }
-      ],
+      "Validation_and_performance": [],
       "Uses_and_directions": {
           "Benefits": "Prediction of the view of the echocardiogram",
           "Target_population_and_use_case": "Patients receiving echocardiogram examinations",
