@@ -19,12 +19,13 @@
         "Validation_and_performance": [
             {
                 "Internal_validation": {
-                    "Accuracy": 0.95
+                    "AUC": 0.93
                 }
             },
             {
                 "Training_cohort": {
-                    "Number_of_angiograms": 1000
+                    "Number_of_angiograms": 1400,
+                    "Number_of_patients": 1400
                 }
             }
         ],
