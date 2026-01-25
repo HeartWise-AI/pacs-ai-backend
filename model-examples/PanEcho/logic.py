@@ -57,17 +57,78 @@ class CustomPredictionService(BasePredictionService):
         
         print('Model loaded')
 
-    def postprocess_predictions(self, predictions: Dict[str, Union[float, torch.Tensor]]) -> Tuple[Dict[str, str], Dict[str, Union[float, torch.Tensor]]]:
+    def _interpret_regression_value(self, value: float, head_cfg: dict, sex: str = None) -> str:
+        """Interpret a regression value using clinical thresholds from the mapping.
+        
+        Args:
+            value: The numeric measurement value
+            head_cfg: Configuration dict containing normal_range and thresholds
+            sex: Optional sex ('male' or 'female') for sex-specific thresholds
+            
+        Returns:
+            Clinical interpretation string (e.g., "Normal", "Mildly abnormal", etc.)
+        """
+        normal_range = head_cfg.get('normal_range', {})
+        thresholds = head_cfg.get('thresholds', {})
+        
+        def get_range_value(range_dict: dict, key: str) -> Optional[float]:
+            if sex and sex in range_dict:
+                return range_dict[sex].get(key)
+            return range_dict.get(key)
+        
+        def check_in_range(val: float, range_dict: dict) -> bool:
+            if sex and sex in range_dict:
+                range_dict = range_dict[sex]
+            
+            min_val = range_dict.get('min')
+            max_val = range_dict.get('max')
+            
+            if min_val is not None and max_val is not None:
+                return min_val <= val <= max_val
+            elif min_val is not None:
+                return val >= min_val
+            elif max_val is not None:
+                return val <= max_val
+            return False
+        
+        def is_normal(val: float, normal: dict) -> bool:
+            if sex and sex in normal:
+                normal = normal[sex]
+            
+            min_val = normal.get('min')
+            max_val = normal.get('max')
+            
+            if min_val is not None and max_val is not None:
+                return min_val <= val <= max_val
+            elif min_val is not None:
+                return val >= min_val
+            elif max_val is not None:
+                return val <= max_val
+            return True
+        
+        if normal_range and is_normal(value, normal_range):
+            return "Normal"
+        
+        for threshold_name, threshold_range in thresholds.items():
+            if check_in_range(value, threshold_range):
+                return threshold_name.replace('_', ' ').title()
+        
+        if normal_range:
+            return "Abnormal"
+        
+        return "Unknown"
+
+    def postprocess_predictions(self, predictions: Dict[str, Union[float, torch.Tensor]], sex: str = None) -> Tuple[Dict[str, str], Dict[str, Union[float, torch.Tensor]]]:
         """Generate diagnosis labels for each prediction head based on output_class_mapping.json.
 
         For binary classification heads: use 0.5 threshold to determine class
         For multi-class classification heads: use argmax to get predicted class  
-        For regression heads: return raw value with units
+        For regression heads: return value with clinical interpretation using thresholds
+        
+        Args:
+            predictions: Dictionary of model predictions
+            sex: Optional patient sex ('male' or 'female') for sex-specific thresholds
         """
-        # ------------------------------------------------------------------
-        # 1) Lazy-load the output class mapping file (only once per process)
-        # ------------------------------------------------------------------
-            
         if not hasattr(self.__class__, "_output_class_mapping"):
             mapping_path = os.path.join("models", "output_class_mapping.json")
             with open(mapping_path, "r") as fp:
@@ -75,14 +136,13 @@ class CustomPredictionService(BasePredictionService):
         class_mapping = self.__class__._output_class_mapping
 
         diagnoses: Dict[str, str] = {}
-        normal_diagnoses: set = {"normal", "none", "0.0"}
         serializable_predictions: Dict[str, Union[float, torch.Tensor]] = {}
+        
         for head, value in predictions.items():
                             
             head_cfg = class_mapping.get(head, {})
             
             if not head_cfg:
-                # If head not found in mapping, just return the raw value
                 if isinstance(value, torch.Tensor):
                     scalar_value = value.item()
                 else:
@@ -91,25 +151,29 @@ class CustomPredictionService(BasePredictionService):
                 serializable_predictions[head] = scalar_value
                 continue
 
-            value = value.squeeze(0) # remove batch dimension
+            value = value.squeeze(0)
             description = head_cfg.get('description', head)
+            units = head_cfg.get('units', '')
 
-            # Check if this is a regression task
             if "regression" in head_cfg:
-                # Convert tensor to scalar for regression
                 if isinstance(value, torch.Tensor):
                     scalar_value = value.item()
                 else:
                     scalar_value = value
                 
                 serializable_predictions[description] = scalar_value
-
+                
+                if 'normal_range' in head_cfg or 'thresholds' in head_cfg:
+                    interpretation = self._interpret_regression_value(scalar_value, head_cfg, sex)
+                    diagnoses[description] = f"{scalar_value:.1f} {units} ({interpretation})"
+                else:
+                    diagnoses[description] = f"{scalar_value:.1f} {units}"
             else:
-                # Classification task - get all class labels (excluding 'description')
-                class_labels = {k: v for k, v in head_cfg.items() if k != "description"}
+                reserved_keys = {'description', 'units', 'unit', 'normal_range', 'thresholds', 
+                               'note', 'indexed_normal'}
+                class_labels = {k: v for k, v in head_cfg.items() if k not in reserved_keys}
                 
                 if len(class_labels) == 2:
-                    # Binary classification - convert to scalar and use 0.5 threshold
                     if isinstance(value, torch.Tensor):
                         scalar_value = value.item()
                     else:
@@ -117,39 +181,19 @@ class CustomPredictionService(BasePredictionService):
 
                     threshold = 0.5
                     if scalar_value > threshold:
-                        # Find the class with value 1
                         predicted_class = [k for k, v in class_labels.items() if v == 1][0]
                     else:
-                        # Find the class with value 0
                         predicted_class = [k for k, v in class_labels.items() if v == 0][0]
 
-                    if not any(normal_indicator in predicted_class.lower() for normal_indicator in normal_diagnoses):
-                        diagnoses[description] = predicted_class
-                    
-                    # For binary classification, invert some probabilities to make them 0 for normal cases
-                    if head in {
-                        'Pericardial effusion',
-                        'LVWallThickness-increased-any', 
-                        'AVStructure',
-                        'AVRegurg',
-                        'MVStenosis',
-                        'TVRegurgitation',
-                    }:
-                        scalar_value = 1 - scalar_value
-                    serializable_predictions[description] = scalar_value
+                    diagnoses[description] = predicted_class
                 else:
-                    # Multi-class classification - use argmax on tensor                   
                     predicted_class_idx = torch.argmax(value).item()
-                    
-                    # Find the class name corresponding to this index
                     predicted_class = [k for k, v in class_labels.items() if v == predicted_class_idx][0]
 
-                    if not any(normal_indicator in predicted_class.lower() for normal_indicator in normal_diagnoses):
-                        diagnoses[description] = predicted_class
+                    diagnoses[description] = predicted_class
                     
-                    # For multi-class, store the raw probability/logits as serializable
                     if isinstance(value, torch.Tensor):
-                        serializable_predictions[description] = value.tolist()  # Convert tensor to list for multi-class
+                        serializable_predictions[description] = value.tolist()
                     else:
                         serializable_predictions[description] = value
 
@@ -291,32 +335,73 @@ class CustomPredictionService(BasePredictionService):
         return recommendation
         
     async def _handle_html_output(self, request: PredictRequest):
-        dicoms = []
-        for series_number in request.seriesInstanceImages:
-            for instance_number in request.seriesInstanceImages[series_number]:
-                instance_data = request.seriesInstanceImages[series_number][instance_number]
-                
-                # Extract image from the instance data (HTML doesn't use views)
-                if isinstance(instance_data, dict):
-                    dicom_base64 = instance_data.get("image", instance_data)
-                else:
-                    # Backward compatibility: if it's a string, treat it as base64
-                    dicom_base64 = instance_data
-                
-                dicoms.append(
-                    pydicom.dcmread(
-                        BytesIO(
-                            base64.b64decode(dicom_base64)
+        try:
+            dicoms = []
+            for series_number in request.seriesInstanceImages:
+                for instance_number in request.seriesInstanceImages[series_number]:
+                    instance_data = request.seriesInstanceImages[series_number][instance_number]
+                    
+                    # Extract image from the instance data (HTML doesn't use views)
+                    if isinstance(instance_data, dict):
+                        dicom_base64 = instance_data.get("image", instance_data)
+                    else:
+                        # Backward compatibility: if it's a string, treat it as base64
+                        dicom_base64 = instance_data
+                    
+                    dicoms.append(
+                        pydicom.dcmread(
+                            BytesIO(
+                                base64.b64decode(dicom_base64)
+                            )
                         )
                     )
-                )
+
+        except Exception as e:
+            error_msg = f"Error in _handle_html_output: {e}"
+            print(error_msg)
+            return {
+                "diagnosis": "Error in _handle_html_output",
+                "predictions": {},
+                "modelRecommendations": {
+                    "en": "Error in _handle_html_output",
+                    "fr": "Erreur dans _handle_html_output",
+                    "presentable": True,
+                }
+            }
                 
-        # HTML output uses simple averaging (no view-level averaging)
-        probability = self._run_inference(dicoms)
+        try:
+            probability = self._run_inference(dicoms=dicoms)
+        except Exception as e:
+            print(f"Error in _run_inference: {e}")
+            return {
+                "diagnosis": "Error in _run_inference",
+                "predictions": {},
+                "modelRecommendations": {
+                    "en": "Error in _run_inference",
+                    "fr": "Erreur dans _run_inference",
+                    "presentable": True,
+                }
+            }
+        print(f"probability: {probability}")
+        print(f"probability: {len(probability)}")
         
         # Obtain per-head diagnosis/interpretation
-        diagnosis_dict, predictions_serializable = self.postprocess_predictions(probability)
-
+        try:
+            diagnosis_dict, predictions_serializable = self.postprocess_predictions(probability)
+        except Exception as e:
+            print(f"Error in postprocess_predictions: {e}")
+            return {
+                "diagnosis": "Error in postprocess_predictions",
+                "predictions": {},
+                "modelRecommendations": {
+                    "en": "Error in postprocess_predictions",
+                    "fr": "Erreur dans postprocess_predictions",
+                    "presentable": True,
+                }
+            }
+        print(f"predictions_serializable: {predictions_serializable}")
+        print(f"diagnosis_dict: {diagnosis_dict}")
+        
         # The API schema (`JsonPredictionResponse`) expects the *diagnosis* field
         # to be a **string**.  We therefore serialise the dictionary into a JSON
         # string so that downstream consumers still get a single text field
@@ -420,7 +505,7 @@ class CustomPredictionService(BasePredictionService):
                     "presentable": True,
                 }
             }
-
+        print(f"probability: {probability}")
         # Obtain per-head diagnosis/interpretation
         try:
             diagnosis_dict, predictions_serializable = self.postprocess_predictions(probability)
@@ -435,7 +520,7 @@ class CustomPredictionService(BasePredictionService):
                     "presentable": True,
                 }
             }
-
+        print(f"diagnosis_dict: {diagnosis_dict}")
         # Generate recommendations
         try:
             recommendations_en = self._get_recommendations(diagnosis_dict, "en")
