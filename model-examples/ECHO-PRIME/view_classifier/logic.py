@@ -8,6 +8,7 @@ import torchvision
 import numpy as np
 
 from io import BytesIO
+from datetime import time
 
 from utils.html_parser import generate_html_report
 from utils.http_utils import Config, PredictRequest
@@ -145,6 +146,24 @@ class CustomPredictionService(BasePredictionService):
         
         return pred_class, probs.numpy(), "success"
 
+    def _extract_series_time(self, dicom: pydicom.Dataset) -> time | None:
+        series_time_raw: str | None = dicom.get('SeriesTime')
+        if not series_time_raw:
+            return None
+        try:
+            if '.' in series_time_raw:
+                main_part, frac = series_time_raw.split('.')
+                microseconds = int(frac.ljust(6, '0')[:6])
+            else:
+                main_part = series_time_raw
+                microseconds = 0
+            hours = int(main_part[:2])
+            minutes = int(main_part[2:4])
+            seconds = int(main_part[4:6])
+            return time(hours, minutes, seconds, microseconds)
+        except (ValueError, IndexError):
+            return None
+
     def _run_batch_inference(self, dicoms: list[pydicom.Dataset], dicom_names: list[str]) -> list[dict]:
         """
         Run inference on a batch of DICOMs.
@@ -155,8 +174,10 @@ class CustomPredictionService(BasePredictionService):
         results = []
         for dicom, dicom_name in zip(dicoms, dicom_names):
             pred_class, probs, status = self._run_inference(dicom)
+            series_time = self._extract_series_time(dicom)
             results.append({
                 "dicom_name": dicom_name,
+                "series_time": series_time.isoformat() if series_time is not None else None,
                 "predicted_class": pred_class,
                 "probabilities": probs.tolist() if probs is not None else None,
                 "status": status
