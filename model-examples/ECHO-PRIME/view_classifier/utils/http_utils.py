@@ -60,14 +60,7 @@ class PredictRequest(BaseModel):
 
 
 class JsonPredictionResponse(BaseModel):
-    class ModelRecommendations(BaseModel):
-        en: str | None = None
-        fr: str | None = None
-        presentable: bool | None = None
-
-    diagnosis: str | None = None
-    predictions: Any
-    modelRecommendations: ModelRecommendations | None
+    predictions: list[dict[str, Any]]
 
 
 class OHIFPredictionResponse(BaseModel):
