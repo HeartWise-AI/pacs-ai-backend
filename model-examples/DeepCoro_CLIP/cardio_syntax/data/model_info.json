@@ -1,5 +1,5 @@
 {
-  "modelName": "DeepCoro_CLIP_cardio_syntax",
+  "modelName": "CardioSyntax-CLIP",
   "domainName": "Cardiology",
   "stage": "ai_inference",
   "modality": "Angiogram",
