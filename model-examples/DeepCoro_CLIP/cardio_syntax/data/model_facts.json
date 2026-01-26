@@ -2,7 +2,7 @@
   "en": {
     "Summary": {
       "Name": "DeepCoro_CLIP Cardio Syntax",
-      "Description": "Predict cardiac score syntax from angiograms.",
+      "Description": "Calculate the SYNTAX score from coronary angiogram images. The SYNTAX score quantifies the complexity of coronary artery disease based on lesion characteristics. Use this tool ONLY for SYNTAX score calculation. DO NOT use for stenosis severity assessment, thrombus detection, CTO detection, or calcification detection - use DeepCoro_CLIP_generic for those.",
       "Developed_by": "Heartwise",
       "Development_period": "2024-2025",
       "Version": "1.0.0"
