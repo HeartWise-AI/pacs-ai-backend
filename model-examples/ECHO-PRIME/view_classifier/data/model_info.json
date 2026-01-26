@@ -8,7 +8,7 @@
   "dicomUploadMin": 1,
   "dicomUploadMax": 99,
   "supportedDicomModalities": ["US"],
-  "supportedDicomTags": ["00280008", "00280010", "00280011", "00280002"],
+  "supportedDicomTags": ["*"],
   "supportedAdditionalMetadata": [],
   "supportedOutputModes": [ "JSON"]
 }
