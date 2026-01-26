@@ -13,7 +13,7 @@ class EchoPrimeViewClassifier(nn.Module):
         )
         
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        state_dict = torch.load(weights_file_path, map_location=device)
+        state_dict = torch.load(weights_file_path, map_location=device, weights_only=True)
         
         # Handle weights saved with DataParallel (have 'module.' prefix)
         if any(k.startswith('module.') for k in state_dict.keys()):
