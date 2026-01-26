@@ -145,100 +145,68 @@ class CustomPredictionService(BasePredictionService):
         
         return pred_class, probs.numpy(), "success"
 
-    async def _handle_json_output(self, request: PredictRequest):
-        print("Handling JSON output")
+    def _run_batch_inference(self, dicoms: list[pydicom.Dataset], dicom_names: list[str]) -> list[dict]:
+        """
+        Run inference on a batch of DICOMs.
         
-        # Check if seriesInstanceImages is provided
-        if request.seriesInstanceImages is None or len(request.seriesInstanceImages) == 0:
-            return {
-                "diagnosis": "Error: No DICOM images provided",
-                "predictions": {},
-                "modelRecommendations": {
-                    "en": "No DICOM images were provided in the request. Please include seriesInstanceImages.",
-                    "fr": "Aucune image DICOM n'a été fournie dans la requête. Veuillez inclure seriesInstanceImages.",
-                    "presentable": True,
-                }
-            }
-        
-        # Results organized by study_id -> series_id -> instance_id
-        results: dict[str, dict[str, dict[str, dict]]] = {}
-        
+        Returns:
+            List of prediction results for each DICOM
+        """
+        results = []
+        for dicom, dicom_name in zip(dicoms, dicom_names):
+            pred_class, probs, status = self._run_inference(dicom)
+            results.append({
+                "dicom_name": dicom_name,
+                "predicted_class": pred_class,
+                "probabilities": probs.tolist() if probs is not None else None,
+                "status": status
+            })
+        return results
+
+    async def _handle_json_output(self, request: PredictRequest) -> dict[str, list]:
+        dicoms = []
+        dicom_names = []
+
         try:
             for series_number in request.seriesInstanceImages:
-                for instance_number in request.seriesInstanceImages[series_number]:
+                print(f"Processing series {series_number}")
+                for dicom_name in request.seriesInstanceImages[series_number]:
                     try:
-                        instance_data = request.seriesInstanceImages[series_number][instance_number]
-                        
-                        # Extract image and view from the instance data
-                        if isinstance(instance_data, dict):
-                            dicom_base64 = instance_data.get("image", instance_data)
-                        else:
-                            # Backward compatibility: if it's a string, treat it as base64
-                            dicom_base64 = instance_data
+                        dicom_base64 = request.seriesInstanceImages[series_number][dicom_name]
                         
                         if not self._is_valid_base64(dicom_base64):
-                            print(f"Invalid base64 string for series {series_number} instance {instance_number}")
+                            print(f"Invalid base64 string for series {series_number} dicom {dicom_name}")
                             continue
                         
                         dicom_data = base64.b64decode(dicom_base64)
                         if not self._is_valid_dicom(dicom_data):
-                            print(f"Invalid DICOM data for series {series_number} instance {instance_number}")
+                            print(f"Invalid DICOM data for series {series_number} dicom {dicom_name}")
                             continue
                         
                         dicom = pydicom.dcmread(BytesIO(dicom_data))
+                        dicoms.append(dicom)
+                        dicom_names.append(str(dicom.SeriesInstanceUID))
                         
-                        # Extract study and series UIDs from DICOM metadata
-                        study_uid = str(getattr(dicom, 'StudyInstanceUID', 'unknown_study'))
-                        series_uid = str(getattr(dicom, 'SeriesInstanceUID', str(series_number)))
-                        instance_uid = str(getattr(dicom, 'SOPInstanceUID', str(instance_number)))
-                        
-                        # Run inference
-                        pred_class, probs, status = self._run_inference(dicom)
-                        
-                        # Initialize nested dicts if needed
-                        if study_uid not in results:
-                            results[study_uid] = {}
-                        if series_uid not in results[study_uid]:
-                            results[study_uid][series_uid] = {}
-                        
-                        # Store result
-                        if status == "success":
-                            results[study_uid][series_uid][instance_uid] = {
-                                "predicted_class": pred_class,
-                                "probabilities": probs.tolist() if probs is not None else None,
-                                "status": status
-                            }
-                        else:
-                            results[study_uid][series_uid][instance_uid] = {
-                                "predicted_class": None,
-                                "probabilities": None,
-                                "status": status
-                            }
-
                     except Exception as e:
-                        error_msg = f"Error in processing series {series_number} instance {instance_number}: {e}"
+                        error_msg = f"Error in processing series {series_number} dicom {dicom_name}: {e}"
                         print(error_msg)
                         continue
-
+                    
         except Exception as e:
             error_msg = f"Error in _handle_json_output: {e}"
             print(error_msg)
             return {
-                "diagnosis": "Error in _handle_json_output",
-                "predictions": {},
-                "modelRecommendations": {
-                    "en": "Error in _handle_json_output",
-                    "fr": "Erreur dans _handle_json_output",
-                    "presentable": True,
-                }
+                "predictions": []
             }
         
-        return {
-            "diagnosis": "report",
-            "predictions": results,
-            "modelRecommendations": {
-                "en": None,
-                "fr": None,
-                "presentable": True
+        try:
+            structured_predictions = self._run_batch_inference(dicoms, dicom_names)
+        except Exception as e:
+            print(f"Error in _run_batch_inference: {e}")
+            return {
+                "predictions": []
             }
+            
+        return {
+            "predictions": structured_predictions,
         }
