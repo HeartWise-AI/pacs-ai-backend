@@ -11,14 +11,6 @@ SeriesInstanceViewMetadata: TypeAlias = Dict[int, Dict[int, Dict[str, Any]]]
 class Config(BaseModel):
     class ModelConfig(BaseModel):
         model_path: str
-        task_path: str
-        pretrained: bool
-        image_encoder_only: bool
-        backbone_only: bool
-        tasks: str
-        activations: bool
-        clip_len: int
-        normalization: str
     
     modelDirectory: str
     models: Dict[str, ModelConfig]
