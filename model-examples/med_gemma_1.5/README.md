@@ -3,7 +3,7 @@ Important: Models are stored on huggingface, please refer to [pacs-ai-examples](
 To build the docker image and push it to the docker hub, run the following command:
 
 ```
-docker build -t heartwisehub/medgemma_1.5:1.0 .
+docker build --secret id=hf_token,src=./hf_token.txt -t heartwisehub/medgemma_1.5:1.0 .
 docker push heartwisehub/medgemma_1.5:1.0
 ```
 
