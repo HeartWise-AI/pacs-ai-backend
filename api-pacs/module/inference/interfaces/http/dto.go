@@ -18,6 +18,10 @@ var (
 		"UpdateInferenceModel.DisallowedDICOMTags":  "Disallowed DICOM tags are required.",
 		"UpdateInferenceModel.OutputMode":           "Output mode is required.",
 		"UpdateInferenceModelContainer.ContainerID": "Container ID is required.",
+		"UpdateModelFeedback.TenantID":              "Tenant ID is required.",
+		"UpdateModelFeedback.UserID":                "User ID is required.",
+		"UpdateModelFeedback.ModelID":               "Model ID is required.",
+		"UpdateModelFeedback.FeedbackType":          "Feedback type is required.",
 	}
 )
 
@@ -42,6 +46,14 @@ type PredictInferenceModelRequest struct {
 
 type UpdateInferenceModelContainerRequest struct {
 	ContainerID string `json:"containerId" validate:"required"`
+}
+
+type UpdateModelFeedbackRequest struct {
+	TenantID            string              `json:"tenantId" validate:"required"`
+	UserID              string              `json:"userId" validate:"required"`
+	ModelID             string              `json:"modelId" validate:"required"`
+	FeedbackType        entity.FeedbackType `json:"feedbackType" validate:"required"`
+	ModelFeedbackAnswer ModelFeedbackAnswer `json:"modelFeedbackAnswer"`
 }
 
 type GetContainerInfoResponse struct {
@@ -85,4 +97,12 @@ type GetInferenceAvailableModelResponse struct {
 
 type ModelFacts struct {
 	En map[string]interface{} `json:"en"`
+}
+
+type ModelFeedbackAnswer struct {
+	ID                     string   `json:"id"`
+	ModelFeedbackID        string   `json:"modelFeedbackId"`
+	QuestionnaireID        string   `json:"questionnaireId"`
+	QuestionnaireQuestions []string `json:"questionnaireQuestions"`
+	QuestionnaireAnswers   []string `json:"questionnaireAnswers"`
 }

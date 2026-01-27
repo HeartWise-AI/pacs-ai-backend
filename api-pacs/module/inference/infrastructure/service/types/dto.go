@@ -21,6 +21,15 @@ type UpdateInferenceModel struct {
 	OutputMode          entity.OutputMode
 }
 
+type UpdateModelFeedback struct {
+	ID                  string
+	TenantID            string
+	UserID              string
+	ModelID             string
+	FeedbackType        entity.FeedbackType
+	ModelFeedbackAnswer *ModelFeedbackAnswer
+}
+
 type PredictInferenceModel struct {
 	StudyInstanceUID   string
 	SeriesInstanceUIDs []string
@@ -69,4 +78,11 @@ type GetInferenceAvailableModelResult struct {
 
 type ModelFacts struct {
 	En map[string]interface{}
+}
+
+type ModelFeedbackAnswer struct {
+	ModelFeedbackID        string
+	QuestionnaireID        string
+	QuestionnaireQuestions []string
+	QuestionnaireAnswers   []string
 }

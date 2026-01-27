@@ -25,4 +25,6 @@ type InferenceCommandServiceInterface interface {
 	StopInferenceModelContainer(ctx context.Context, containerID string) error
 	// UpdateInferenceModel updates an inference model
 	UpdateInferenceModel(ctx context.Context, data types.UpdateInferenceModel) error
+	// UpdateModelFeedback updates model feedback
+	UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error
 }

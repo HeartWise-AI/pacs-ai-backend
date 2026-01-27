@@ -44,6 +44,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteInferenceModel
 	}
 }
 
+// InsertModelFeedbackAnswer is the decorator for the inference command repository to insert model feedback answer
+func (repository *InferenceCommandRepositoryCircuitBreaker) InsertModelFeedbackAnswer(ctx context.Context, data types.AddModelFeedbackAnswer) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("insert_model_feedback_answer", config.Settings())
+	errors := hystrix.Go("insert_model_feedback_answer", func() error {
+		err := repository.InferenceCommandRepositoryInterface.InsertModelFeedbackAnswer(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // InsertInferenceModel is the decorator for the inference command repository to insert inference model
 func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceModel(ctx context.Context, data types.AddInferenceModel) error {
 	output := make(chan bool, 1)
@@ -106,6 +133,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceModel
 	hystrix.ConfigureCommand("update_inference_model_container_id", config.Settings())
 	errors := hystrix.Go("update_inference_model_container_id", func() error {
 		err := repository.InferenceCommandRepositoryInterface.UpdateInferenceModelContainerID(ctx, ID, containerID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// UpsertModelFeedback is the decorator for the inference command repository to upsert model feedback
+func (repository *InferenceCommandRepositoryCircuitBreaker) UpsertModelFeedback(ctx context.Context, data types.UpsertModelFeedback) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("upsert_model_feedback", config.Settings())
+	errors := hystrix.Go("upsert_model_feedback", func() error {
+		err := repository.InferenceCommandRepositoryInterface.UpsertModelFeedback(ctx, data)
 		if err != nil {
 			errChan <- err
 			return nil

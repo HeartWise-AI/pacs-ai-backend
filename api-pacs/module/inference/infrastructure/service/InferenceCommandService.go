@@ -19,6 +19,7 @@ import (
 	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
@@ -502,6 +503,36 @@ func (service *InferenceCommandService) UpdateInferenceModelContainerID(ctx cont
 	err := service.InferenceCommandRepositoryInterface.UpdateInferenceModelContainerID(ctx, ID, containerID)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// UpdateModelFeedback updates model feedback
+func (service *InferenceCommandService) UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error {
+	err := service.InferenceCommandRepositoryInterface.UpsertModelFeedback(ctx, repositoryTypes.UpsertModelFeedback{
+		ID:           data.ID,
+		TenantID:     data.TenantID,
+		UserID:       data.UserID,
+		ModelID:      data.ModelID,
+		FeedbackType: data.FeedbackType,
+	})
+	if err != nil {
+		return err
+	}
+
+	// if feedback type is reject, insert model feedback answer
+	if data.FeedbackType == entity.RejectFeedbackType {
+		err = service.InferenceCommandRepositoryInterface.InsertModelFeedbackAnswer(ctx, repositoryTypes.AddModelFeedbackAnswer{
+			ID:                     generateID(),
+			ModelFeedbackID:        data.ID,
+			QuestionnaireID:        data.ModelFeedbackAnswer.QuestionnaireID,
+			QuestionnaireQuestions: data.ModelFeedbackAnswer.QuestionnaireQuestions,
+			QuestionnaireAnswers:   data.ModelFeedbackAnswer.QuestionnaireAnswers,
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
