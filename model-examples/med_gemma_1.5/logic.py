@@ -67,17 +67,22 @@ class CustomPredictionService(BasePredictionService):
         )
 
     async def _handle_html_output(self, request: PredictRequest):
+        if not request.seriesInstanceImages:
+            return {
+                "diagnosis": "No images provided",
+                "predictions": {},
+                "modelRecommendations": {
+                    "en": "No images provided for analysis",
+                    "fr": "Aucune image fournie pour l'analyse",
+                    "presentable": True,
+                }
+            }
+
         try:
             images = []
             for series_number in request.seriesInstanceImages:
                 for instance_number in request.seriesInstanceImages[series_number]:
-                    instance_data = request.seriesInstanceImages[series_number][instance_number]
-                    
-                    if isinstance(instance_data, dict):
-                        dicom_base64 = instance_data.get("image", instance_data)
-                    else:
-                        dicom_base64 = instance_data
-                    
+                    dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
                     dicom = pydicom.dcmread(BytesIO(base64.b64decode(dicom_base64)))
                     images.append(self._extract_frame_from_dicom(dicom))
 
@@ -114,6 +119,17 @@ class CustomPredictionService(BasePredictionService):
             raise e
 
     async def _handle_json_output(self, request: PredictRequest):
+        if not request.seriesInstanceImages:
+            return {
+                "diagnosis": "No images provided",
+                "predictions": {},
+                "modelRecommendations": {
+                    "en": "No images provided for analysis",
+                    "fr": "Aucune image fournie pour l'analyse",
+                    "presentable": True,
+                }
+            }
+
         images = []
 
         try:

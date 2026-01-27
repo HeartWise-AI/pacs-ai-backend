@@ -4,8 +4,6 @@ from PIL import Image
 from transformers import AutoProcessor, AutoModelForImageTextToText
 
 
-MODEL_PATH = "/models/medgemma"
-
 class MedGemma:
     def __init__(self, model_path: str):
         self.model = AutoModelForImageTextToText.from_pretrained(
