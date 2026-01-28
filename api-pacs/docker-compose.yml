@@ -8,6 +8,8 @@ services:
       - pacs-net
     expose:
       - ${API_URL_REST_PORT}
+    ports:
+      - ${API_URL_REST_PORT}:${API_URL_REST_PORT}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
