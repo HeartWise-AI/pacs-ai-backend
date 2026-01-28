@@ -1743,9 +1743,12 @@
         }
       },
       "UpdateModelFeedbackRequest": {
-        "required": ["modelId", "feedbackType"],
+        "required": ["inferenceModelId", "modelId", "feedbackType"],
         "type": "object",
         "properties": {
+          "inferenceModelId": {
+            "type": "string"
+          },
           "modelId": {
             "type": "string"
           },

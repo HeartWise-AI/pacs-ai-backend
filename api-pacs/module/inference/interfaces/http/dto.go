@@ -18,8 +18,7 @@ var (
 		"UpdateInferenceModel.DisallowedDICOMTags":  "Disallowed DICOM tags are required.",
 		"UpdateInferenceModel.OutputMode":           "Output mode is required.",
 		"UpdateInferenceModelContainer.ContainerID": "Container ID is required.",
-		"UpdateModelFeedback.TenantID":              "Tenant ID is required.",
-		"UpdateModelFeedback.UserID":                "User ID is required.",
+		"UpdateModelFeedback.InferenceModelID":      "Inference Model ID is required.",
 		"UpdateModelFeedback.ModelID":               "Model ID is required.",
 		"UpdateModelFeedback.FeedbackType":          "Feedback type is required.",
 	}
@@ -49,6 +48,7 @@ type UpdateInferenceModelContainerRequest struct {
 }
 
 type UpdateModelFeedbackRequest struct {
+	InferenceModelID    string               `json:"inferenceModelId" validate:"required"`
 	ModelID             string               `json:"modelId" validate:"required"`
 	FeedbackType        entity.FeedbackType  `json:"feedbackType" validate:"required"`
 	ModelFeedbackAnswer *ModelFeedbackAnswer `json:"modelFeedbackAnswer"`

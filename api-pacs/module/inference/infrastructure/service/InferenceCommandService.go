@@ -112,7 +112,7 @@ func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context
 func (service *InferenceCommandService) DeleteModelFeedback(ctx context.Context, userID string) error {
 	// get model feedbacks
 	modelFeedbacks, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbacksByUserID(ctx, userID)
-	if err != nil {
+	if err != nil && err.Error() != apiError.MissingRecord {
 		return err
 	}
 
@@ -125,7 +125,7 @@ func (service *InferenceCommandService) DeleteModelFeedback(ctx context.Context,
 
 		// get model feedback answers
 		modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, modelFeedback.ID)
-		if err != nil {
+		if err != nil && err.Error() != apiError.MissingRecord {
 			return err
 		}
 

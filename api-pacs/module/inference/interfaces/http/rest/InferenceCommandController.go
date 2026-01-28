@@ -668,6 +668,7 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 		ID:                  ID,
 		TenantID:            tenantID,
 		UserID:              userID,
+		InferenceModelID:    request.InferenceModelID,
 		ModelID:             request.ModelID,
 		FeedbackType:        request.FeedbackType,
 		ModelFeedbackAnswer: modelFeedbackAnswer,
