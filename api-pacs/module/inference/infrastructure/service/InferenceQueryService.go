@@ -219,3 +219,53 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 
 	return inferenceAvailableModels, nil
 }
+
+// GetModelFeedBacksByUserModelID gets the model feedbacks by user ID and model ID
+func (service *InferenceQueryService) GetModelFeedBacksByUserModelID(ctx context.Context, userID, modelID string) ([]types.GetModelFeedbackResult, error) {
+	modelFeedbacks, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbacksByUserModelID(ctx, userID, modelID)
+	if err != nil {
+		return nil, err
+	}
+
+	var modelFeedbacksResult []types.GetModelFeedbackResult
+
+	for _, modelFeedback := range modelFeedbacks {
+		// get model feedback answers
+		modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, modelFeedback.ID)
+		if err != nil && err.Error() != apiError.MissingRecord {
+			return nil, err
+		}
+
+		var modelFeedbackAnswersResult *[]types.ModelFeedbackAnswerResult
+
+		if modelFeedbackAnswers != nil {
+			var answers []types.ModelFeedbackAnswerResult
+
+			for _, modelFeedbackAnswer := range modelFeedbackAnswers {
+				answers = append(answers, types.ModelFeedbackAnswerResult{
+					ID:                     modelFeedbackAnswer.ID,
+					ModelFeedbackID:        modelFeedbackAnswer.ModelFeedbackID,
+					QuestionnaireID:        modelFeedbackAnswer.QuestionnaireID,
+					QuestionnaireQuestion:  modelFeedbackAnswer.QuestionnaireQuestion,
+					QuestionnaireAnswerIDs: modelFeedbackAnswer.QuestionnaireAnswerIDs,
+					QuestionnaireAnswers:   modelFeedbackAnswer.QuestionnaireAnswers,
+				})
+
+				modelFeedbackAnswersResult = &answers
+			}
+		}
+
+		modelFeedbacksResult = append(modelFeedbacksResult, types.GetModelFeedbackResult{
+			ID:                   modelFeedback.ID,
+			TenantID:             modelFeedback.TenantID,
+			UserID:               modelFeedback.UserID,
+			InferenceModelID:     modelFeedback.InferenceModelID,
+			ModelID:              modelFeedback.ModelID,
+			FeedbackType:         modelFeedback.FeedbackType,
+			ModelFeedbackAnswers: modelFeedbackAnswersResult,
+		})
+
+	}
+
+	return modelFeedbacksResult, nil
+}

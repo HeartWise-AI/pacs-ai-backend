@@ -151,6 +151,45 @@ func (repository *InferenceQueryRepository) SelectModelFeedbacksByUserID(ctx con
 	return modelFeedbacks, nil
 }
 
+// SelectModelFeedbacksByUserModelID get model feedback by user ID and model ID
+func (repository *InferenceQueryRepository) SelectModelFeedbacksByUserModelID(ctx context.Context, userID, modelID string) ([]entity.ModelFeedback, error) {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	// get firestore model feedback
+	var modelFeedback entity.ModelFeedback
+
+	query := firestoreClient.Collection(modelFeedback.GetModelName()).Where("user_id", "==", userID).Where("model_id", "==", modelID)
+	docs, err := query.Documents(ctx).GetAll()
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	if len(docs) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	var modelFeedbacks []entity.ModelFeedback
+
+	for _, doc := range docs {
+		var modelFeedback entity.ModelFeedback
+		if err := doc.DataTo(&modelFeedback); err != nil {
+			log.Println(err)
+			continue
+		}
+
+		modelFeedback.ID = doc.Ref.ID
+		modelFeedbacks = append(modelFeedbacks, modelFeedback)
+	}
+
+	return modelFeedbacks, nil
+}
+
 // SelectModelFeedbackAnswersByFeedbackID get model feedback answers by feedback ID
 func (repository *InferenceQueryRepository) SelectModelFeedbackAnswersByFeedbackID(ctx context.Context, feedbackID string) ([]entity.ModelFeedbackAnswer, error) {
 	// firestore client

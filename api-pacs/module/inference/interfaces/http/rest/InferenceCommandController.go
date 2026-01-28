@@ -658,7 +658,8 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 		modelFeedbackAnswer = &serviceTypes.ModelFeedbackAnswer{
 			ModelFeedbackID:        ID,
 			QuestionnaireID:        request.ModelFeedbackAnswer.QuestionnaireID,
-			QuestionnaireQuestions: request.ModelFeedbackAnswer.QuestionnaireQuestions,
+			QuestionnaireQuestion:  request.ModelFeedbackAnswer.QuestionnaireQuestion,
+			QuestionnaireAnswerIDs: request.ModelFeedbackAnswer.QuestionnaireAnswerIDs,
 			QuestionnaireAnswers:   request.ModelFeedbackAnswer.QuestionnaireAnswers,
 		}
 	}

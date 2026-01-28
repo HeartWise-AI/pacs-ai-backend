@@ -545,11 +545,12 @@ func (service *InferenceCommandService) UpdateInferenceModelContainerID(ctx cont
 // UpdateModelFeedback updates model feedback
 func (service *InferenceCommandService) UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error {
 	err := service.InferenceCommandRepositoryInterface.UpsertModelFeedback(ctx, repositoryTypes.UpsertModelFeedback{
-		ID:           data.ID,
-		TenantID:     data.TenantID,
-		UserID:       data.UserID,
-		ModelID:      data.ModelID,
-		FeedbackType: data.FeedbackType,
+		ID:               data.ID,
+		TenantID:         data.TenantID,
+		InferenceModelID: data.InferenceModelID,
+		UserID:           data.UserID,
+		ModelID:          data.ModelID,
+		FeedbackType:     data.FeedbackType,
 	})
 	if err != nil {
 		return err
@@ -561,7 +562,8 @@ func (service *InferenceCommandService) UpdateModelFeedback(ctx context.Context,
 			ID:                     generateID(),
 			ModelFeedbackID:        data.ID,
 			QuestionnaireID:        data.ModelFeedbackAnswer.QuestionnaireID,
-			QuestionnaireQuestions: data.ModelFeedbackAnswer.QuestionnaireQuestions,
+			QuestionnaireQuestion:  data.ModelFeedbackAnswer.QuestionnaireQuestion,
+			QuestionnaireAnswerIDs: data.ModelFeedbackAnswer.QuestionnaireAnswerIDs,
 			QuestionnaireAnswers:   data.ModelFeedbackAnswer.QuestionnaireAnswers,
 		})
 		if err != nil {

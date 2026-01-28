@@ -5,7 +5,8 @@ type ModelFeedbackAnswer struct {
 	ID                     string   `firestore:"id,omitempty"`
 	ModelFeedbackID        string   `firestore:"model_feedback_id"`
 	QuestionnaireID        string   `firestore:"questionnaire_id"`
-	QuestionnaireQuestions []string `firestore:"questionnaire_questions"`
+	QuestionnaireQuestion  string   `firestore:"questionnaire_question"`
+	QuestionnaireAnswerIDs []string `firestore:"questionnaire_answer_ids"`
 	QuestionnaireAnswers   []string `firestore:"questionnaire_answers"`
 	CreatedAt              int      `firestore:"created_at"`
 	UpdatedAt              int      `firestore:"updated_at"`

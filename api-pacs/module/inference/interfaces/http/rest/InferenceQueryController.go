@@ -321,3 +321,88 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 
 	response.JSON(w)
 }
+
+// GetModelFeedbacksByModelID gets the model feedbacks by model ID
+func (controller *InferenceQueryController) GetModelFeedbacksByModelID(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	modelID := chi.URLParam(r, "modelID")
+	if len(modelID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid model ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	res, err := controller.InferenceQueryServiceInterface.GetModelFeedBacksByUserModelID(r.Context(), userID, modelID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Firestore service encountered an error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	modelFeedbacks := []types.GetModelFeedbackResponse{}
+
+	for _, modelFeedback := range res {
+		var modelFeedbackAnswers *[]types.ModelFeedbackAnswerResult
+
+		if modelFeedback.ModelFeedbackAnswers != nil {
+			var answers []types.ModelFeedbackAnswerResult
+
+			for _, modelFeedbackAnswer := range *modelFeedback.ModelFeedbackAnswers {
+				answers = append(answers, types.ModelFeedbackAnswerResult{
+					ID:                     modelFeedbackAnswer.ID,
+					ModelFeedbackID:        modelFeedbackAnswer.ModelFeedbackID,
+					QuestionnaireID:        modelFeedbackAnswer.QuestionnaireID,
+					QuestionnaireQuestion:  modelFeedbackAnswer.QuestionnaireQuestion,
+					QuestionnaireAnswerIDs: modelFeedbackAnswer.QuestionnaireAnswerIDs,
+					QuestionnaireAnswers:   modelFeedbackAnswer.QuestionnaireAnswers,
+				})
+			}
+
+			modelFeedbackAnswers = &answers
+		}
+
+		modelFeedbacks = append(modelFeedbacks, types.GetModelFeedbackResponse{
+			ID:                   modelFeedback.ID,
+			TenantID:             modelFeedback.TenantID,
+			UserID:               modelFeedback.UserID,
+			InferenceModelID:     modelFeedback.InferenceModelID,
+			ModelID:              modelFeedback.ModelID,
+			FeedbackType:         modelFeedback.FeedbackType,
+			ModelFeedbackAnswers: modelFeedbackAnswers,
+		})
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully retrieved model feedbacks.",
+		Data:    modelFeedbacks,
+	}
+
+	response.JSON(w)
+}

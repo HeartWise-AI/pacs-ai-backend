@@ -95,6 +95,33 @@ func (repository *InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbacksBy
 	}
 }
 
+// SelectModelFeedbacksByUserModelID get model feedbacks by user ID and model ID
+func (repository *InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbacksByUserModelID(ctx context.Context, userID, modelID string) ([]entity.ModelFeedback, error) {
+	output := make(chan []entity.ModelFeedback, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_model_feedbacks_by_user_model_id", config.Settings())
+	errors := hystrix.Go("select_model_feedbacks_by_user_model_id", func() error {
+		modelFeedbacks, err := repository.InferenceQueryRepositoryInterface.SelectModelFeedbacksByUserModelID(ctx, userID, modelID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- modelFeedbacks
+		return nil
+	}, nil)
+
+	select {
+	case modelFeedbacks := <-output:
+		return modelFeedbacks, nil
+	case err := <-errChan:
+		return nil, err
+	case err := <-errors:
+		return nil, err
+	}
+}
+
 // SelectModelFeedbackAnswersByFeedbackID get model feedback answers by feedback ID
 func (repository *InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbackAnswersByFeedbackID(ctx context.Context, feedbackID string) ([]entity.ModelFeedbackAnswer, error) {
 	output := make(chan []entity.ModelFeedbackAnswer, 1)

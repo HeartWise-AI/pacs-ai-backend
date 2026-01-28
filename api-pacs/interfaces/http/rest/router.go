@@ -137,6 +137,7 @@ func (router *router) InitRouter() *chi.Mux {
 							// inference model routes
 							r.Post("/add", inferenceCommandController.AddInferenceModel)
 							r.Get("/list", inferenceQueryController.GetInferenceModels)
+							r.Get("/{modelID}/feedbacks", inferenceQueryController.GetModelFeedbacksByModelID)
 							r.Delete("/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
 							r.Put("/{ID}/update", inferenceCommandController.UpdateInferenceModel)
 							r.Put("/feedback/{ID}/update", inferenceCommandController.UpdateModelFeedback)

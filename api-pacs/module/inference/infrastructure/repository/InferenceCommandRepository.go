@@ -108,7 +108,8 @@ func (repository *InferenceCommandRepository) InsertModelFeedbackAnswer(ctx cont
 		ID:                     data.ID,
 		ModelFeedbackID:        data.ModelFeedbackID,
 		QuestionnaireID:        data.QuestionnaireID,
-		QuestionnaireQuestions: data.QuestionnaireQuestions,
+		QuestionnaireQuestion:  data.QuestionnaireQuestion,
+		QuestionnaireAnswerIDs: data.QuestionnaireAnswerIDs,
 		QuestionnaireAnswers:   data.QuestionnaireAnswers,
 		CreatedAt:              int(time.Now().Unix()),
 		UpdatedAt:              int(time.Now().Unix()),
@@ -251,18 +252,23 @@ func (repository *InferenceCommandRepository) UpsertModelFeedback(ctx context.Co
 
 	// try to insert model feedback
 	_, err = docRef.Create(ctx, entity.ModelFeedback{
-		ID:           data.ID,
-		TenantID:     data.TenantID,
-		UserID:       data.UserID,
-		ModelID:      data.ModelID,
-		FeedbackType: data.FeedbackType,
-		CreatedAt:    int(time.Now().Unix()),
-		UpdatedAt:    int(time.Now().Unix()),
+		ID:               data.ID,
+		TenantID:         data.TenantID,
+		UserID:           data.UserID,
+		InferenceModelID: data.InferenceModelID,
+		ModelID:          data.ModelID,
+		FeedbackType:     data.FeedbackType,
+		CreatedAt:        int(time.Now().Unix()),
+		UpdatedAt:        int(time.Now().Unix()),
 	})
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
 			// update model feedback
 			updateModelFeedback := []firestore.Update{
+				{
+					Path:  "inference_model_id",
+					Value: data.InferenceModelID,
+				},
 				{
 					Path:  "model_id",
 					Value: data.ModelID,

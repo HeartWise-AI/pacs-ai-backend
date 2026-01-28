@@ -578,6 +578,40 @@
         }
       }
     },
+    "/inference/model/{modelId}/feedbacks": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Model Feedbacks By Model ID",
+        "description": "Get model feedbacks by model ID.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modelId",
+            "in": "path",
+            "description": "model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/inference/model/{id}/update": {
       "put": {
         "tags": ["inference"],
@@ -1726,7 +1760,10 @@
               "questionnaireId": {
                 "type": "string"
               },
-              "questionnaireQuestions": {
+              "questionnaireQuestion": {
+                "type": "string"
+              },
+              "questionnaireAnswerIds": {
                 "type": "array",
                 "items": {
                   "type": "string"

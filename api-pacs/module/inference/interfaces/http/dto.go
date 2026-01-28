@@ -93,12 +93,32 @@ type GetInferenceAvailableModelResponse struct {
 	OutputMode                  entity.OutputMode `json:"outputMode"`
 }
 
+type GetModelFeedbackResponse struct {
+	ID                   string                       `json:"id"`
+	TenantID             string                       `json:"tenantId"`
+	UserID               string                       `json:"userId"`
+	InferenceModelID     string                       `json:"inferenceModelId"`
+	ModelID              string                       `json:"modelId"`
+	FeedbackType         entity.FeedbackType          `json:"feedbackType"`
+	ModelFeedbackAnswers *[]ModelFeedbackAnswerResult `json:"modelFeedbackAnswers"`
+}
+
 type ModelFacts struct {
 	En map[string]interface{} `json:"en"`
 }
 
 type ModelFeedbackAnswer struct {
 	QuestionnaireID        string   `json:"questionnaireId"`
-	QuestionnaireQuestions []string `json:"questionnaireQuestions"`
+	QuestionnaireQuestion  string   `json:"questionnaireQuestion"`
+	QuestionnaireAnswerIDs []string `json:"questionnaireAnswerIds"`
+	QuestionnaireAnswers   []string `json:"questionnaireAnswers"`
+}
+
+type ModelFeedbackAnswerResult struct {
+	ID                     string   `json:"id"`
+	ModelFeedbackID        string   `json:"modelFeedbackId"`
+	QuestionnaireID        string   `json:"questionnaireId"`
+	QuestionnaireQuestion  string   `json:"questionnaireQuestion"`
+	QuestionnaireAnswerIDs []string `json:"questionnaireAnswerIds"`
 	QuestionnaireAnswers   []string `json:"questionnaireAnswers"`
 }

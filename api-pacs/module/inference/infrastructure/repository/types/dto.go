@@ -17,7 +17,8 @@ type AddModelFeedbackAnswer struct {
 	ID                     string
 	ModelFeedbackID        string
 	QuestionnaireID        string
-	QuestionnaireQuestions []string
+	QuestionnaireQuestion  string
+	QuestionnaireAnswerIDs []string
 	QuestionnaireAnswers   []string
 }
 
@@ -28,9 +29,10 @@ type UpdateInferenceModel struct {
 }
 
 type UpsertModelFeedback struct {
-	ID           string
-	TenantID     string
-	UserID       string
-	ModelID      string
-	FeedbackType entity.FeedbackType
+	ID               string
+	TenantID         string
+	UserID           string
+	InferenceModelID string
+	ModelID          string
+	FeedbackType     entity.FeedbackType
 }
