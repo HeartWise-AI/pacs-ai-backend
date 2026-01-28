@@ -5,7 +5,9 @@ import random
 import sys
 import tempfile
 import webbrowser
+from typing import Union
 from pathlib import Path
+import pprint
 
 import pydicom
 import requests
@@ -58,30 +60,40 @@ def display_response(response_data, output_mode):
             print(f"Unsupported output mode for display: {output_mode}")
             return
 
-        # Create a temporary file
-        with tempfile.NamedTemporaryFile(
-            delete=False, suffix=file_extension, mode="wb"
-        ) as tmp_file:
-            if output_mode == "HTML":
-                tmp_file.write(content.encode("utf-8"))
-            else:  # PDF
+        # Save file in current directory
+        if output_mode == "HTML":
+            # Generate a unique filename for HTML
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"output_{timestamp}.html"
+            
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(content)
+            
+            file_path = os.path.abspath(filename)
+            print(f"HTML file saved as: {file_path}")
+        else:  # PDF
+            # For PDF, still use temporary file since we need binary mode
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=file_extension, mode="wb"
+            ) as tmp_file:
                 tmp_file.write(content)
-            temp_path = tmp_file.name
+                file_path = tmp_file.name
 
         # Open the file in the default web browser
-        webbrowser.open("file://" + os.path.realpath(temp_path))
+        webbrowser.open("file://" + os.path.realpath(file_path))
 
     except Exception as e:
         print(f"Error displaying content: {str(e)}")
 
 
 def send_dicom_data(
-    dicom_paths: str | list[str],
+    dicom_paths: Union[str, list[str]],
     server_url: str,
     output_mode: str = "JSON",
     send_metadata_only: bool = False,
     group_series: bool = False,
-):
+) -> requests.Response:
     """
     Read DICOM file(s), process the data, and send a POST request to the server.
 
@@ -171,10 +183,15 @@ def send_dicom_data(
 
     # Send POST request
     try:
-        response = requests.post(server_url, json=payload, timeout=500)
-        response.raise_for_status()
-        print(f"Request sent successfully. Status code: {response.status_code}")
-        return response.json()
+        response: requests.Response = requests.post(
+            server_url, 
+            json=payload, 
+            timeout=500,
+            headers={"Content-Type": "application/json"}
+        )
+        
+        return response
+    
     except requests.exceptions.RequestException as e:
         print(f"Error sending request: {str(e)}")
         return None
@@ -205,14 +222,14 @@ def main():
 
     parser.add_argument(
         "--metadata-only",
-        default=True,
+        default=False,
         action="store_true",
         help="Send only DICOM metadata without separate pixel data",
     )
 
     parser.add_argument(
         "--group-series",
-        default=True,
+        default=False,
         action="store_true",
         help="Treat all DICOM files as part of the same series",
     )
@@ -229,7 +246,7 @@ def main():
     print(f"Found {len(dicom_files)} DICOM files")
 
     # Send the request
-    result = send_dicom_data(
+    response: requests.Response = send_dicom_data(
         dicom_paths=dicom_files,
         server_url=args.url,
         output_mode=args.output_mode,
@@ -237,24 +254,30 @@ def main():
         group_series=args.group_series,
     )
 
-    if result:
-        print("Server response received")
+    print("Server response received with status code: ", response)
+    response_json = response.json()
+    if not response_json['success']:
+        print("Server response failed with errorCode: ", response_json['errorCode'])
+        print("Server response failed with errorMessage: ", response_json['message'])
+        return
 
-        # Display content if it's HTML or PDF
-        if args.output_mode in ["HTML", "PDF"]:
-            display_response(result, args.output_mode)
-            return
+    # Display content if it's HTML or PDF
+    if args.output_mode in ["HTML", "PDF"]:
+        display_response(response_json, args.output_mode)
+        return
 
-        if args.output_mode == "OHIF_ANNOTATIONS":
-            payload = result["data"]
-            visualize_segmentation(
-                encoded_data=payload["segmentation"]["labelmap"],
-                dimensions=payload["segmentation"]["dimensions"],
-                segments=payload["segmentation"]["segments"],
-            )
-            return
-        print(result)
-        # result will be an HTML string containing an interactive 3D visualization
+    if args.output_mode == "OHIF_ANNOTATIONS":
+        payload = response_json["data"]
+        visualize_segmentation(
+            encoded_data=payload["segmentation"]["labelmap"],
+            dimensions=payload["segmentation"]["dimensions"],
+            segments=payload["segmentation"]["segments"],
+        )
+        return
+    
+    if args.output_mode == "JSON":
+        pprint.pprint(response_json)
+    # result will be an HTML string containing an interactive 3D visualization
 
 
 if __name__ == "__main__":

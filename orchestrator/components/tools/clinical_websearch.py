@@ -236,6 +236,9 @@ class ClinicalWebSearchTool(BaseTool):
         logger.info(f"Performing Tavily search for: {query}")
         
         try:
+            # Log the exact query being sent to Tavily
+            logger.debug(f"Sending query to Tavily API: {query}")
+            
             # Use Tavily search tool
             response = self._tavily_search.invoke({"query": query})
             

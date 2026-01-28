@@ -1,0 +1,35 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "DeepCoro_CLIP Cardio Syntax",
+      "Description": "Calculate the SYNTAX score from coronary angiogram images. The SYNTAX score quantifies the complexity of coronary artery disease based on lesion characteristics. Use this tool ONLY for SYNTAX score calculation. DO NOT use for stenosis severity assessment, thrombus detection, CTO detection, or calcification detection - use DeepCoro_CLIP_generic for those.",
+      "Developed_by": "Heartwise",
+      "Development_period": "2024-2025",
+      "Version": "1.0.0"
+    },
+    "Mechanism": {
+      "Outcome": "Predict cardiac syntax",
+      "Output": "Probability of cardiac syntax",
+      "Target_population": "",
+      "Input_data_source": "angiograms",
+      "Input_data_type": "dicom",
+      "Model_type": "Deep Learning"
+    },
+    "Model_Components": {
+      "Model": {
+        "Purpose": "Predict cardiac syntax",
+        "Output": "Probability of cardiac syntax"
+      }
+    },
+    "Uses_and_directions": {
+      "General_use": "This model can be used to predict cardiac syntax from angiograms.",
+      "Target_population_and_use_case": "This model is intended for use in the cardiac imaging field to assist in the diagnosis of cardiac syntax.",
+      "Before_using_this_model": "Before using this model, please ensure that the input data is in the correct format and that the model is trained on the appropriate data."
+    },
+    "Warnings_and_limitations": {
+      "Image_Quality": "The model requires high-quality angiograms with clear visualization of the cardiac syntax.",
+      "Multiple_Devices": "The model is designed to predict cardiac syntax from multiple angiograms.",
+      "Confidence_Scores": "Current threshold applied on probability output for classification is defined in class_mapping.json"
+    }
+  }
+}

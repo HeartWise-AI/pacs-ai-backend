@@ -31,20 +31,33 @@ func (service *OrchestratorService) extractBearerTokenFromContext(ctx context.Co
 	return ""
 }
 
+// User ID from context
+func (service *OrchestratorService) extractUserIDFromContext(ctx context.Context) string {
+    if userID := ctx.Value(iamTypes.UserIDCtx); userID != nil {
+        return userID.(string)
+    }
+    return ""
+}
+
 // CreateThread creates a new thread
 func (service *OrchestratorService) CreateThread(ctx context.Context, request types.CreateThreadRequest) (types.CreateThreadResponse, error) {
 	// Extract bearer token from context
 	bearerToken := service.extractBearerTokenFromContext(ctx)
 	
+	// Extract user ID from context
+	userID := service.extractUserIDFromContext(ctx)
+
 	// Create request payload including bearer token for the orchestrator service
 	requestPayload := struct {
 		Metadata    map[string]interface{} `json:"metadata,omitempty"`
 		BearerToken string                 `json:"bearer_token,omitempty"`
 		APIBaseURL  string                 `json:"api_base_url,omitempty"`
+		UserID      string                 `json:"user_id,omitempty"`
 	}{
 		Metadata:    request.Metadata,
 		BearerToken: bearerToken,
 		APIBaseURL:  os.Getenv("API_BASE_URL"), // Allow orchestrator to know where to callback
+		UserID:      userID,
 	}
 
 	requestBytes, err := json.Marshal(requestPayload)
@@ -54,7 +67,7 @@ func (service *OrchestratorService) CreateThread(ctx context.Context, request ty
 
 	// Make HTTP request to external python orchestrator API
 	resp, err := service.OrchestratorClient.Post(
-		fmt.Sprintf("%s/new_thread", service.OrchestratorAPIURL),
+		fmt.Sprintf("%s/chat/init_chat", service.OrchestratorAPIURL),
 		"application/json",
 		bytes.NewBuffer(requestBytes),
 	)
@@ -70,7 +83,7 @@ func (service *OrchestratorService) CreateThread(ctx context.Context, request ty
 
 	// Parse response
 	var response struct {
-		ThreadID string `json:"thread_id"`
+		ThreadID string `json:"conversation_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return types.CreateThreadResponse{}, err
@@ -94,21 +107,26 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 	// Extract bearer token from context
 	bearerToken := service.extractBearerTokenFromContext(ctx)
 	
+	// Extract user ID from context
+	userID := service.extractUserIDFromContext(ctx)
+
 	// Create the request payload for the Python server including bearer token
 	requestPayload := struct {
-		Message     string `json:"message"`
-		ThreadID    string `json:"thread_id"`
-		ImageData   string `json:"image_data,omitempty"`
-		ImageType   string `json:"image_type,omitempty"`
-		BearerToken string `json:"bearer_token,omitempty"`
-		APIBaseURL  string `json:"api_base_url,omitempty"`
+		Message           string `json:"message"`
+		ConversationID    string `json:"conversation_id"`
+		ImageData         string `json:"image_data,omitempty"`
+		ImageType         string `json:"image_type,omitempty"`
+		BearerToken       string `json:"bearer_token,omitempty"`
+		APIBaseURL        string `json:"api_base_url,omitempty"`
+		UserID            string `json:"user_id,omitempty"`
 	}{
-		Message:     request.Content,
-		ThreadID:    request.ThreadID,
-		ImageData:   request.ImageData,
-		ImageType:   request.ImageType,
-		BearerToken: bearerToken,
-		APIBaseURL:  os.Getenv("API_BASE_URL"),
+		Message:           request.Content,
+		ConversationID:    request.ThreadID,
+		ImageData:         request.ImageData,
+		ImageType:         request.ImageType,
+		BearerToken:       bearerToken,
+		APIBaseURL:        os.Getenv("API_BASE_URL"),
+		UserID:      	   userID,
 	}
 
 	requestBytes, err := json.Marshal(requestPayload)
@@ -224,16 +242,20 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 	// Extract bearer token from context
 	bearerToken := service.extractBearerTokenFromContext(ctx)
 	
+	// Extract user ID from context
+	userID := service.extractUserIDFromContext(ctx)
+
+	// Create request payload
 	requestPayload := struct {
 		Payload     []types.StudyData `json:"payload"`
-		ThreadID    *string           `json:"thread_id,omitempty"`
+		ThreadID    *string           `json:"conversation_id,omitempty"`
 		BearerToken string            `json:"bearer_token"`
-		APIBaseURL  string            `json:"api_base_url"`
+		UserID      string            `json:"user_id"`
 	}{
 		Payload:     request.Payload,
 		ThreadID:    request.ThreadID,
 		BearerToken: bearerToken,
-		APIBaseURL:  os.Getenv("API_BASE_URL"),
+		UserID:      userID,
 	}
 
 	requestBytes, err := json.Marshal(requestPayload)
@@ -265,7 +287,7 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 
 	// Parse response
 	var pythonResponse struct {
-		ThreadID string `json:"thread_id"`
+		ThreadID string `json:"conversation_id"`
 		Status   string `json:"status"`
 		Message  string `json:"message"`
 	}

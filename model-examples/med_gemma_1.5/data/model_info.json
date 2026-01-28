@@ -1,0 +1,14 @@
+{
+  "modelName": "MedGemma_1.5",
+  "domainName": "Chest X-Ray",
+  "stage": "ai_inference",
+  "modality": "Chest X-Ray",
+  "version": "1.5.0",
+  "dicomTargetLevel": "SERIES",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 99,
+  "supportedDicomModalities": ["XA"],
+  "supportedDicomTags": ["*"],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": ["HTML", "JSON"]
+}

@@ -2,18 +2,20 @@ FROM python:3.12.1-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends nginx supervisor git
 
+# Install uv
+RUN pip install uv
+
 # Create necessary directories
 WORKDIR /app
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
-RUN pip install -r requirements.txt
-ARG HF_API_KEY
-ENV HF_API_KEY=${HF_API_KEY}
+RUN uv pip install -r requirements.txt --system
 
 # Copy the model download script
 COPY download_model.py .
-RUN python download_model.py
+RUN --mount=type=secret,id=hf_token \
+    python download_model.py --token $(cat /run/secrets/hf_token)
 
 # Copy application files
 COPY main.py .

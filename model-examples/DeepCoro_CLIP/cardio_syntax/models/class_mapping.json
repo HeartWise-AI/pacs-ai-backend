@@ -1,0 +1,40 @@
+{
+    "syntax": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Global Cardiac Syntax"
+    },
+    "syntax_right": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Right Cardiac Syntax"
+    },    
+    "syntax_left": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Left Cardiac Syntax"
+    },    
+    "syntax_category": {
+        "0": "zero",
+        "1": "low",
+        "2": "intermediate",
+        "3": "high",
+        "head_dim": 4,
+        "name": "Global Cardiac Syntax"
+    },
+    "syntax_right_category": {
+        "0": "zero",
+        "1": "low",
+        "2": "intermediate",
+        "head_dim": 3,
+        "name": "Right Cardiac Syntax"
+    },
+    "syntax_left_category": {
+        "0": "zero",
+        "1": "low",
+        "2": "intermediate",
+        "3": "high",
+        "head_dim": 4,
+        "name": "Left Cardiac Syntax"
+    }
+}

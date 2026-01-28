@@ -1,0 +1,314 @@
+{
+    "pericardial-effusion": {
+        "mild_mod_severe": 0,
+        "none_trace": 1,
+        "description": "Pericardial effusion"
+    },
+    "EF": {
+        "regression": 0,
+        "units": "%",
+        "description": "Left ventricular (LV) ejection fraction",
+        "normal_range": {"min": 52, "max": 72},
+        "thresholds": {
+            "mildly_abnormal": {"min": 41, "max": 51},
+            "moderately_abnormal": {"min": 30, "max": 40},
+            "severely_abnormal": {"max": 29}
+        }
+    },
+    "GLS": {
+        "regression": 0,
+        "units": "%",
+        "description": "Global longitudinal strain",
+        "note": "Absolute value; actual is negative",
+        "normal_range": {"min": 18},
+        "thresholds": {
+            "borderline": {"min": 16, "max": 17.9},
+            "mildly_abnormal": {"min": 14, "max": 15.9},
+            "moderately_abnormal": {"min": 10, "max": 13.9},
+            "severely_abnormal": {"max": 9.9}
+        }
+    },
+    "LVEDV": {
+        "regression": 0,
+        "units": "mL",
+        "description": "LV end-diastolic volume",
+        "normal_range": {"max": 150},
+        "note": "Should be indexed to BSA; >74 mL/m² abnormal"
+    },
+    "LVESV": {
+        "regression": 0,
+        "units": "mL",
+        "description": "LV end-systolic volume",
+        "normal_range": {"max": 61},
+        "note": "Should be indexed to BSA; >31 mL/m² abnormal"
+    },
+    "LVSV": {
+        "regression": 0,
+        "units": "mL",
+        "description": "LV stroke volume",
+        "normal_range": {"min": 50, "max": 100}
+    },
+    "LVSize": {
+        "Mildly Increased": 0,
+        "Moderately|Severely Increased": 1,
+        "Normal": 2,
+        "description": "LV size"
+    },
+    "LVWallThickness-increased-any": {
+        "Increased": 0,
+        "Normal": 1,
+        "description": "Any level of LV hypertrophy (increased wall thickness)"
+    },
+    "LVWallThickness-increased-modsev": {
+        "Moderately|severely increased": 0,
+        "Normal or mildly increased": 1,
+        "description": "Moderate or greater LV hypertrophy (increased wall thickness)"
+    },
+    "LVSystolicFunction": {
+        "Mildly Decreased": 0,
+        "Moderately|Severely Decreased": 1,
+        "Normal|Hyperdynamic": 2,
+        "description": "LV systolic function"
+    },
+    "LVWallMotionAbnormalities": {
+        "None": 0,
+        "Present": 1,
+        "description": "LV wall motion abnormalities"
+    },
+    "IVSd": {
+        "regression": 0,
+        "units": "cm",
+        "description": "LV intraventricular septum thickness at diastole",
+        "normal_range": {"male": {"max": 1.1}, "female": {"max": 1.0}},
+        "thresholds": {
+            "mild_hypertrophy": {"min": 1.1, "max": 1.3},
+            "moderate_hypertrophy": {"min": 1.4, "max": 1.5},
+            "severe_hypertrophy": {"min": 1.6}
+        }
+    },
+    "LVPWd": {
+        "regression": 0,
+        "units": "cm",
+        "description": "LV posterior wall thickness at diastole",
+        "normal_range": {"male": {"max": 1.1}, "female": {"max": 1.0}},
+        "thresholds": {
+            "mild_hypertrophy": {"min": 1.1, "max": 1.3},
+            "moderate_hypertrophy": {"min": 1.4, "max": 1.5},
+            "severe_hypertrophy": {"min": 1.6}
+        }
+    },
+    "LVIDs": {
+        "regression": 0,
+        "units": "cm",
+        "description": "LV internal diameter at systole",
+        "normal_range": {"max": 4.0}
+    },
+    "LVIDd": {
+        "regression": 0,
+        "units": "cm",
+        "description": "LV internal diameter at diastole",
+        "normal_range": {"male": {"max": 5.8}, "female": {"max": 5.2}},
+        "thresholds": {
+            "mildly_dilated": {"male": {"min": 5.9, "max": 6.3}, "female": {"min": 5.3, "max": 5.6}},
+            "moderately_dilated": {"male": {"min": 6.4, "max": 6.8}, "female": {"min": 5.7, "max": 6.1}},
+            "severely_dilated": {"male": {"min": 6.9}, "female": {"min": 6.2}}
+        }
+    },
+    "LVOTDiam": {
+        "regression": 0,
+        "units": "cm",
+        "description": "LV outflow tract diameter",
+        "normal_range": {"min": 1.8, "max": 2.2}
+    },
+    "LVDiastolicFunction": {
+        "Mild|Indeterminate": 0,
+        "Moderate|Severe": 1,
+        "Normal": 2,
+        "description": "LV diastolic function"
+    },
+    "E|EAvg": {
+        "regression": 0,
+        "units": "ratio",
+        "description": "E/e' ratio",
+        "normal_range": {"max": 8},
+        "thresholds": {
+            "indeterminate": {"min": 9, "max": 14},
+            "elevated_filling_pressures": {"min": 15}
+        }
+    },
+    "RVSP": {
+        "regression": 0,
+        "units": "mmHg",
+        "description": "Right ventricular (RV) systolic pressure",
+        "normal_range": {"max": 35},
+        "thresholds": {
+            "mild_pulmonary_hypertension": {"min": 36, "max": 45},
+            "moderate_pulmonary_hypertension": {"min": 46, "max": 60},
+            "severe_pulmonary_hypertension": {"min": 61}
+        }
+    },
+    "RVSize": {
+        "Mildly Increased": 0,
+        "Moderately|Severely Increased": 1,
+        "Normal": 2,
+        "description": "RV size"
+    },
+    "RVSystolicFunction": {
+        "Decreased": 0,
+        "Normal": 1,
+        "description": "RV systolic function"
+    },
+    "RVIDd": {
+        "regression": 0,
+        "units": "cm",
+        "description": "RV internal diameter at diastole",
+        "normal_range": {"max": 4.1},
+        "thresholds": {
+            "mildly_dilated": {"min": 4.2, "max": 4.5},
+            "moderately_dilated": {"min": 4.6, "max": 5.0},
+            "severely_dilated": {"min": 5.1}
+        }
+    },
+    "TAPSE": {
+        "regression": 0,
+        "units": "cm",
+        "description": "Tricuspid annular plane systolic excursion",
+        "normal_range": {"min": 1.7},
+        "thresholds": {
+            "mildly_reduced": {"min": 1.4, "max": 1.69},
+            "moderately_reduced": {"min": 1.0, "max": 1.39},
+            "severely_reduced": {"max": 0.99}
+        }
+    },
+    "RVSVel": {
+        "regression": 0,
+        "units": "cm/s",
+        "description": "RV systolic excursion velocity (RV S')",
+        "normal_range": {"min": 9.5},
+        "thresholds": {
+            "abnormal": {"max": 9.4}
+        }
+    },
+    "LASize": {
+        "Mildly Dilated": 0,
+        "Moderately|Severely Dilated": 1,
+        "Normal": 2,
+        "description": "Left atrial (LA) size"
+    },
+    "LAIDs2D": {
+        "regression": 0,
+        "units": "cm",
+        "description": "LA internal diameter at systole",
+        "normal_range": {"male": {"max": 4.0}, "female": {"max": 3.8}},
+        "thresholds": {
+            "mildly_dilated": {"male": {"min": 4.1, "max": 4.6}, "female": {"min": 3.9, "max": 4.2}},
+            "moderately_dilated": {"male": {"min": 4.7, "max": 5.2}, "female": {"min": 4.3, "max": 4.6}},
+            "severely_dilated": {"male": {"min": 5.3}, "female": {"min": 4.7}}
+        }
+    },
+    "LAVol": {
+        "regression": 0,
+        "units": "mL",
+        "description": "LA volume",
+        "normal_range": {"max": 52},
+        "indexed_normal": {"max": 34, "unit": "mL/m²"},
+        "thresholds": {
+            "mildly_dilated": {"indexed": {"min": 35, "max": 41}},
+            "moderately_dilated": {"indexed": {"min": 42, "max": 48}},
+            "severely_dilated": {"indexed": {"min": 49}}
+        }
+    },
+    "RASize": {
+        "Dilated": 0,
+        "Normal": 1,
+        "description": "Right atrial (RA) size"
+    },
+    "RADimensionM-L(cm)": {
+        "regression": 0,
+        "units": "cm",
+        "description": "RA major dimension",
+        "normal_range": {"max": 5.3},
+        "thresholds": {
+            "dilated": {"min": 5.4}
+        }
+    },
+    "AVStructure": {
+        "Bicuspid": 0,
+        "Normal": 1,
+        "description": "Bicuspid aortic valve"
+    },
+    "AVStenosis": {
+        "Mild|Moderate": 0,
+        "None": 1,
+        "Severe": 2,
+        "description": "Aortic valve stenosis"
+    },
+    "AVPkVel(m|s)": {
+        "regression": 0,
+        "units": "m/s",
+        "description": "Aortic valve peak velocity",
+        "normal_range": {"max": 2.5},
+        "thresholds": {
+            "mild_stenosis": {"min": 2.6, "max": 2.9},
+            "moderate_stenosis": {"min": 3.0, "max": 4.0},
+            "severe_stenosis": {"min": 4.1}
+        }
+    },
+    "AVRegurg": {
+        "Mild": 0,
+        "Moderate|Severe": 1,
+        "None|Trace": 2,
+        "description": "Aortic valve regurgitation"
+    },
+    "LVOT20mmHg": {
+        "0.0": 0,
+        "1.0": 1,
+        "description": "Elevated LV outflow tract pressure",
+        "unit": "mmHg",
+        "normal_range": {"max": 30},
+        "thresholds": {
+            "significant_obstruction": {"min": 30},
+            "severe_obstruction": {"min": 50}
+        }
+    },
+    "MVStenosis": {
+        "Mild|Moderate|Severe": 0,
+        "None": 1,
+        "description": "Mitral valve stenosis"
+    },
+    "MVRegurgitation": {
+        "Mild": 0,
+        "Moderate|Severe": 1,
+        "None|Trace": 2,
+        "description": "Mitral valve regurgitation"
+    },
+    "TVRegurgitation": {
+        "Mild": 0,
+        "Moderate|Severe": 1,
+        "None|Trace": 2,
+        "description": "Tricuspid valve regurgitation"
+    },
+    "TVPkGrad": {
+        "regression": 0,
+        "units": "mmHg",
+        "description": "Tricuspid valve peak gradient",
+        "normal_range": {"max": 30},
+        "note": "Used to estimate RVSP with RA pressure"
+    },
+    "RAP-8-or-higher": {
+        "0.0": 0,
+        "1.0": 1,
+        "description": "Elevated RA pressure"
+    },
+    "AORoot": {
+        "regression": 0,
+        "units": "cm",
+        "description": "Transverse aortic root diameter",
+        "normal_range": {"male": {"max": 4.0}, "female": {"max": 3.6}},
+        "thresholds": {
+            "mildly_dilated": {"male": {"min": 4.1, "max": 4.5}, "female": {"min": 3.7, "max": 4.1}},
+            "moderately_dilated": {"male": {"min": 4.6, "max": 5.0}, "female": {"min": 4.2, "max": 4.6}},
+            "severely_dilated_aneurysm": {"male": {"min": 5.1}, "female": {"min": 4.7}}
+        }
+    }
+}

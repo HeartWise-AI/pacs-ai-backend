@@ -5,14 +5,12 @@ from pydantic import BaseModel, Field
 
 
 class Config(BaseModel):
-    class ModelConfig(BaseModel):
-        architectureFile: str
-        weightsFile: str
-        workers: int = Field(gt=0)
-        batchSize: int = Field(gt=0)
+    class PathConfig(BaseModel):
+        path: str
 
     modelDirectory: str
-    models: dict[str, ModelConfig]
+    models: PathConfig
+    classMapping: PathConfig
 
 
 class HTTPResponse:

@@ -1,0 +1,14 @@
+{
+  "modelName": "CardioSyntax-CLIP",
+  "domainName": "Cardiology",
+  "stage": "ai_inference",
+  "modality": "Angiogram",
+  "version": "1.0.0",
+  "dicomTargetLevel": "SERIES",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 99,
+  "supportedDicomModalities": ["XA"],
+  "supportedDicomTags": ["*"],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": ["HTML", "JSON"]
+}
