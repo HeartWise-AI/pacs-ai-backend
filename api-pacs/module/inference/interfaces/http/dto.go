@@ -49,11 +49,9 @@ type UpdateInferenceModelContainerRequest struct {
 }
 
 type UpdateModelFeedbackRequest struct {
-	TenantID            string              `json:"tenantId" validate:"required"`
-	UserID              string              `json:"userId" validate:"required"`
-	ModelID             string              `json:"modelId" validate:"required"`
-	FeedbackType        entity.FeedbackType `json:"feedbackType" validate:"required"`
-	ModelFeedbackAnswer ModelFeedbackAnswer `json:"modelFeedbackAnswer"`
+	ModelID             string               `json:"modelId" validate:"required"`
+	FeedbackType        entity.FeedbackType  `json:"feedbackType" validate:"required"`
+	ModelFeedbackAnswer *ModelFeedbackAnswer `json:"modelFeedbackAnswer"`
 }
 
 type GetContainerInfoResponse struct {
@@ -100,8 +98,6 @@ type ModelFacts struct {
 }
 
 type ModelFeedbackAnswer struct {
-	ID                     string   `json:"id"`
-	ModelFeedbackID        string   `json:"modelFeedbackId"`
 	QuestionnaireID        string   `json:"questionnaireId"`
 	QuestionnaireQuestions []string `json:"questionnaireQuestions"`
 	QuestionnaireAnswers   []string `json:"questionnaireAnswers"`

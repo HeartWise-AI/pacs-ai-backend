@@ -70,6 +70,30 @@ func (repository *InferenceCommandRepository) DeleteModelFeedback(ctx context.Co
 	return nil
 }
 
+// DeleteModelFeedbackAnswer deletes model feedback answer
+func (repository *InferenceCommandRepository) DeleteModelFeedbackAnswer(ctx context.Context, ID string) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	// delete model feedback answer
+	var model entity.ModelFeedbackAnswer
+
+	collectionPath := fmt.Sprintf("%s/%s", model.GetModelName(), ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Delete(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
 // InsertModelFeedbackAnswer inserts a new  model feedback answer
 func (repository *InferenceCommandRepository) InsertModelFeedbackAnswer(ctx context.Context, data types.AddModelFeedbackAnswer) error {
 	// firestore client

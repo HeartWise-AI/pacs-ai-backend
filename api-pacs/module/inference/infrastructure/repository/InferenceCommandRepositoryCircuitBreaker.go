@@ -44,6 +44,60 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteInferenceModel
 	}
 }
 
+// DeleteModelFeedback is the decorator for the inference command repository to delete model feedback
+func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteModelFeedback(ctx context.Context, ID string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("delete_model_feedback", config.Settings())
+	errors := hystrix.Go("delete_model_feedback", func() error {
+		err := repository.InferenceCommandRepositoryInterface.DeleteModelFeedback(ctx, ID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// DeleteModelFeedbackAnswer is the decorator for the inference command repository to delete model feedback answer
+func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteModelFeedbackAnswer(ctx context.Context, ID string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("delete_model_feedback_answer", config.Settings())
+	errors := hystrix.Go("delete_model_feedback_answer", func() error {
+		err := repository.InferenceCommandRepositoryInterface.DeleteModelFeedbackAnswer(ctx, ID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // InsertModelFeedbackAnswer is the decorator for the inference command repository to insert model feedback answer
 func (repository *InferenceCommandRepositoryCircuitBreaker) InsertModelFeedbackAnswer(ctx context.Context, data types.AddModelFeedbackAnswer) error {
 	output := make(chan bool, 1)

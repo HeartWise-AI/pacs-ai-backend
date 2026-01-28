@@ -108,6 +108,40 @@ func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context
 	return nil
 }
 
+// DeleteModelFeedback deletes model feedback
+func (service *InferenceCommandService) DeleteModelFeedback(ctx context.Context, userID string) error {
+	// get model feedbacks
+	modelFeedbacks, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbacksByUserID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	// delete model feedbacks by user
+	for _, modelFeedback := range modelFeedbacks {
+		err = service.InferenceCommandRepositoryInterface.DeleteModelFeedback(ctx, modelFeedback.ID)
+		if err != nil {
+			return err
+		}
+
+		// get model feedback answers
+		modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, modelFeedback.ID)
+		if err != nil {
+			return err
+		}
+
+		// delete model feedback answers
+		for _, modelFeedbackAnswer := range modelFeedbackAnswers {
+			// delete model feedback answers
+			err = service.InferenceCommandRepositoryInterface.DeleteModelFeedbackAnswer(ctx, modelFeedbackAnswer.ID)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error) {
 	// get inference model
 	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)

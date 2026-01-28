@@ -166,6 +166,44 @@ func (controller *InferenceCommandController) DeleteInferenceModel(w http.Respon
 	response.JSON(w)
 }
 
+// RemoveModelFeedback removes model feedback
+func (controller *InferenceCommandController) RemoveModelFeedback(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	err := controller.InferenceCommandServiceInterface.DeleteModelFeedback(context.TODO(), userID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while removing model feedback."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully removed model feedback.",
+	}
+
+	response.JSON(w)
+}
+
 // PredictInferenceModel predicts an inference model
 func (controller *InferenceCommandController) PredictInferenceModel(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
@@ -605,6 +643,18 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 
 	// if feedback type is reject, include model feedback answer
 	if request.FeedbackType == entity.RejectFeedbackType {
+		if request.ModelFeedbackAnswer == nil {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   "Model feedback answer is required for reject feedback type.",
+				ErrorCode: apiError.InvalidRequestPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
 		modelFeedbackAnswer = &serviceTypes.ModelFeedbackAnswer{
 			ModelFeedbackID:        ID,
 			QuestionnaireID:        request.ModelFeedbackAnswer.QuestionnaireID,

@@ -9,6 +9,10 @@ import (
 type InferenceCommandRepositoryInterface interface {
 	// DeleteInferenceModel deletes an inference model
 	DeleteInferenceModel(ctx context.Context, ID string) error
+	// DeleteModelFeedback deletes model feedback
+	DeleteModelFeedback(ctx context.Context, ID string) error
+	// DeleteModelFeedbackAnswer deletes model feedback answer
+	DeleteModelFeedbackAnswer(ctx context.Context, ID string) error
 	// InsertModelFeedbackAnswer inserts a new  model feedback answer
 	InsertModelFeedbackAnswer(ctx context.Context, data types.AddModelFeedbackAnswer) error
 	// InsertInferenceModel inserts an inference model
