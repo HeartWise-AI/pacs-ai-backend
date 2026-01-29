@@ -300,6 +300,7 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 		inferenceAvailableModelsResponse = append(inferenceAvailableModelsResponse, types.GetInferenceAvailableModelResponse{
 			ContainerID:                 inferenceAvailableModel.ContainerID,
 			ContainerName:               inferenceAvailableModel.ContainerName,
+			ModelID:                     inferenceAvailableModel.ModelID,
 			ModelName:                   inferenceAvailableModel.ModelName,
 			ModelFacts:                  types.ModelFacts(inferenceAvailableModel.ModelFacts),
 			Version:                     inferenceAvailableModel.Version,
@@ -309,6 +310,7 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 			SupportedDicomModalities:    inferenceAvailableModel.SupportedDicomModalities,
 			SupportedDicomTags:          inferenceAvailableModel.SupportedDicomTags,
 			SupportedAdditionalMetadata: inferenceAvailableModel.SupportedAdditionalMetadata,
+			FeedbackQuestionnaires:      inferenceAvailableModel.FeedbackQuestionnaires,
 			OutputMode:                  inferenceAvailableModel.OutputMode,
 		})
 	}

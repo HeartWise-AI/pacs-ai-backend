@@ -195,6 +195,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 					inferenceAvailableModels = append(inferenceAvailableModels, types.GetInferenceAvailableModelResult{
 						ContainerID:                 inferenceModel.ContainerID,
 						ContainerName:               containerName,
+						ModelID:                     modelInfo.Data.ModelID,
 						ModelName:                   modelInfo.Data.ModelName,
 						ModelFacts:                  types.ModelFacts(modelFacts.Data),
 						Version:                     modelInfo.Data.Version,
@@ -204,6 +205,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 						SupportedDicomModalities:    modelInfo.Data.SupportedDicomModalities,
 						SupportedDicomTags:          modelInfo.Data.SupportedDicomTags,
 						SupportedAdditionalMetadata: modelInfo.Data.SupportedAdditionalMetadata,
+						FeedbackQuestionnaires:      modelInfo.Data.FeedbackQuestionnaires,
 						OutputMode:                  inferenceModel.OutputMode,
 					})
 				}

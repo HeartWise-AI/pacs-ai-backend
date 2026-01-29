@@ -42,6 +42,7 @@ type GetInferenceModelResult struct {
 type GetInferenceAvailableModelResult struct {
 	ContainerID                 string
 	ContainerName               string
+	ModelID                     string
 	ModelName                   string
 	ModelFacts                  ModelFacts
 	Version                     string
@@ -51,6 +52,7 @@ type GetInferenceAvailableModelResult struct {
 	SupportedDicomModalities    []string
 	SupportedDicomTags          []string
 	SupportedAdditionalMetadata []interface{}
+	FeedbackQuestionnaires      []interface{}
 	OutputMode                  entity.OutputMode
 }
 
