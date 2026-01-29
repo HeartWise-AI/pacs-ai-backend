@@ -14,6 +14,7 @@ import (
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
+	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
 )
 
@@ -220,51 +221,44 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 	return inferenceAvailableModels, nil
 }
 
-// GetModelFeedBacksByUserModelID gets the model feedbacks by user ID and model ID
-func (service *InferenceQueryService) GetModelFeedBacksByUserModelID(ctx context.Context, userID, modelID string) ([]types.GetModelFeedbackResult, error) {
-	modelFeedbacks, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbacksByUserModelID(ctx, userID, modelID)
+// GetModelFeedBackByUser gets the model feedback by user
+func (service *InferenceQueryService) GetModelFeedBackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (types.GetModelFeedbackResult, error) {
+	modelFeedback, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackByUser(ctx, repositoryTypes.GetModelFeedbackByUser{
+		TenantID: data.TenantID,
+		UserID:   data.UserID,
+		ModelID:  data.ModelID,
+	})
 	if err != nil {
-		return nil, err
+		return types.GetModelFeedbackResult{}, err
 	}
 
-	var modelFeedbacksResult []types.GetModelFeedbackResult
+	var modelFeedbackAnswersResult []types.ModelFeedbackAnswer
 
-	for _, modelFeedback := range modelFeedbacks {
-		// get model feedback answers
+	// populate model feedback answers if rejected
+	if modelFeedback.FeedbackType == entity.RejectFeedbackType {
 		modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, modelFeedback.ID)
 		if err != nil && err.Error() != apiError.MissingRecord {
-			return nil, err
+			return types.GetModelFeedbackResult{}, err
 		}
 
-		var modelFeedbackAnswersResult *[]types.ModelFeedbackAnswerResult
-
-		if modelFeedbackAnswers != nil {
-			var answers []types.ModelFeedbackAnswerResult
-
-			for _, modelFeedbackAnswer := range modelFeedbackAnswers {
-				answers = append(answers, types.ModelFeedbackAnswerResult{
-					ID:                     modelFeedbackAnswer.ID,
-					ModelFeedbackID:        modelFeedbackAnswer.ModelFeedbackID,
-					QuestionnaireID:        modelFeedbackAnswer.QuestionnaireID,
-					QuestionnaireQuestion:  modelFeedbackAnswer.QuestionnaireQuestion,
-					QuestionnaireAnswerIDs: modelFeedbackAnswer.QuestionnaireAnswerIDs,
-					QuestionnaireAnswers:   modelFeedbackAnswer.QuestionnaireAnswers,
-				})
-			}
-
-			modelFeedbackAnswersResult = &answers
+		for _, modelFeedbackAnswer := range modelFeedbackAnswers {
+			modelFeedbackAnswersResult = append(modelFeedbackAnswersResult, types.ModelFeedbackAnswer{
+				ModelFeedbackID:        modelFeedbackAnswer.ModelFeedbackID,
+				QuestionnaireID:        modelFeedbackAnswer.QuestionnaireID,
+				QuestionnaireQuestion:  modelFeedbackAnswer.QuestionnaireQuestion,
+				QuestionnaireAnswerIDs: modelFeedbackAnswer.QuestionnaireAnswerIDs,
+				QuestionnaireAnswers:   modelFeedbackAnswer.QuestionnaireAnswers,
+			})
 		}
-
-		modelFeedbacksResult = append(modelFeedbacksResult, types.GetModelFeedbackResult{
-			ID:                   modelFeedback.ID,
-			TenantID:             modelFeedback.TenantID,
-			UserID:               modelFeedback.UserID,
-			InferenceModelID:     modelFeedback.InferenceModelID,
-			ModelID:              modelFeedback.ModelID,
-			FeedbackType:         modelFeedback.FeedbackType,
-			ModelFeedbackAnswers: modelFeedbackAnswersResult,
-		})
 	}
 
-	return modelFeedbacksResult, nil
+	return types.GetModelFeedbackResult{
+		ID:                   modelFeedback.ID,
+		TenantID:             modelFeedback.TenantID,
+		UserID:               modelFeedback.UserID,
+		InferenceModelID:     modelFeedback.InferenceModelID,
+		ModelID:              modelFeedback.ModelID,
+		FeedbackType:         modelFeedback.FeedbackType,
+		ModelFeedbackAnswers: modelFeedbackAnswersResult,
+	}, nil
 }

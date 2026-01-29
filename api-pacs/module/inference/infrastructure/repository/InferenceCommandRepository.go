@@ -266,14 +266,6 @@ func (repository *InferenceCommandRepository) UpsertModelFeedback(ctx context.Co
 			// update model feedback
 			updateModelFeedback := []firestore.Update{
 				{
-					Path:  "inference_model_id",
-					Value: data.InferenceModelID,
-				},
-				{
-					Path:  "model_id",
-					Value: data.ModelID,
-				},
-				{
 					Path:  "feedback_type",
 					Value: data.FeedbackType,
 				},

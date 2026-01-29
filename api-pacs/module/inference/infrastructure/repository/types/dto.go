@@ -22,6 +22,12 @@ type AddModelFeedbackAnswer struct {
 	QuestionnaireAnswers   []string
 }
 
+type GetModelFeedbackByUser struct {
+	TenantID string
+	UserID   string
+	ModelID  string
+}
+
 type UpdateInferenceModel struct {
 	ID                  string
 	DisallowedDICOMTags []string

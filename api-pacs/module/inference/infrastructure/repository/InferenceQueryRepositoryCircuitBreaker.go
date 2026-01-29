@@ -7,6 +7,7 @@ import (
 
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
+	"api-pacs/module/inference/infrastructure/repository/types"
 )
 
 // InferenceQueryRepositoryCircuitBreaker is the circuit breaker for the inference query repository
@@ -22,6 +23,33 @@ func (repository *InferenceQueryRepositoryCircuitBreaker) SelectInferenceModelBy
 	hystrix.ConfigureCommand("select_inference_model_by_id", config.Settings())
 	errors := hystrix.Go("select_inference_model_by_id", func() error {
 		inferenceModel, err := repository.InferenceQueryRepositoryInterface.SelectInferenceModelByID(ctx, ID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- inferenceModel
+		return nil
+	}, nil)
+
+	select {
+	case inferenceModel := <-output:
+		return inferenceModel, nil
+	case err := <-errChan:
+		return entity.InferenceModel{}, err
+	case err := <-errors:
+		return entity.InferenceModel{}, err
+	}
+}
+
+// SelectInferenceModelByContainerID get inference model by container
+func (repository *InferenceQueryRepositoryCircuitBreaker) SelectInferenceModelByContainer(ctx context.Context, tenantID, containerID string) (entity.InferenceModel, error) {
+	output := make(chan entity.InferenceModel, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_inference_model_by_container", config.Settings())
+	errors := hystrix.Go("select_inference_model_by_container", func() error {
+		inferenceModel, err := repository.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
 		if err != nil {
 			errChan <- err
 			return nil
@@ -68,20 +96,20 @@ func (repository *InferenceQueryRepositoryCircuitBreaker) SelectInferenceModels(
 	}
 }
 
-// SelectModelFeedbacksByUserID get model feedbacks by user ID
-func (repository *InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbacksByUserID(ctx context.Context, userID string) ([]entity.ModelFeedback, error) {
-	output := make(chan []entity.ModelFeedback, 1)
+// SelectModelFeedbackByUser get model feedback by model ID
+func (repository InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (entity.ModelFeedback, error) {
+	output := make(chan entity.ModelFeedback, 1)
 	errChan := make(chan error, 1)
 
-	hystrix.ConfigureCommand("select_model_feedbacks_by_user_id", config.Settings())
-	errors := hystrix.Go("select_model_feedbacks_by_user_id", func() error {
-		modelFeedbacks, err := repository.InferenceQueryRepositoryInterface.SelectModelFeedbacksByUserID(ctx, userID)
+	hystrix.ConfigureCommand("select_model_feedback_by_user", config.Settings())
+	errors := hystrix.Go("select_model_feedback_by_user", func() error {
+		modelFeedback, err := repository.InferenceQueryRepositoryInterface.SelectModelFeedbackByUser(ctx, data)
 		if err != nil {
 			errChan <- err
 			return nil
 		}
 
-		output <- modelFeedbacks
+		output <- modelFeedback
 		return nil
 	}, nil)
 
@@ -89,36 +117,9 @@ func (repository *InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbacksBy
 	case modelFeedback := <-output:
 		return modelFeedback, nil
 	case err := <-errChan:
-		return nil, err
+		return entity.ModelFeedback{}, err
 	case err := <-errors:
-		return nil, err
-	}
-}
-
-// SelectModelFeedbacksByUserModelID get model feedbacks by user ID and model ID
-func (repository *InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbacksByUserModelID(ctx context.Context, userID, modelID string) ([]entity.ModelFeedback, error) {
-	output := make(chan []entity.ModelFeedback, 1)
-	errChan := make(chan error, 1)
-
-	hystrix.ConfigureCommand("select_model_feedbacks_by_user_model_id", config.Settings())
-	errors := hystrix.Go("select_model_feedbacks_by_user_model_id", func() error {
-		modelFeedbacks, err := repository.InferenceQueryRepositoryInterface.SelectModelFeedbacksByUserModelID(ctx, userID, modelID)
-		if err != nil {
-			errChan <- err
-			return nil
-		}
-
-		output <- modelFeedbacks
-		return nil
-	}, nil)
-
-	select {
-	case modelFeedbacks := <-output:
-		return modelFeedbacks, nil
-	case err := <-errChan:
-		return nil, err
-	case err := <-errors:
-		return nil, err
+		return entity.ModelFeedback{}, err
 	}
 }
 

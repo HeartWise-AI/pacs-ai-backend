@@ -13,12 +13,12 @@ type InferenceCommandServiceInterface interface {
 	AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error
 	// DeleteInferenceModel deletes an inference model
 	DeleteInferenceModel(ctx context.Context, ID string) error
-	// DeleteModelFeedback deletes model feedback
-	DeleteModelFeedback(ctx context.Context, userID string) error
 	// GenerateInferenceModelPredictRequest generates the prediction request payload
 	GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error)
 	// PredictInferenceModel predicts an inference model
 	PredictInferenceModel(ctx context.Context, tenantID, userID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
+	// RemoveModelFeedback removes model feedback
+	RemoveModelFeedback(ctx context.Context, ID string) error
 	// RestartInferenceModelContainer restarts an inference model container
 	RestartInferenceModelContainer(ctx context.Context, containerID string) error
 	// StartInferenceModelContainer starts an inference model container

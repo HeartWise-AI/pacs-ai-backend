@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"api-pacs/module/inference/domain/entity"
+	"api-pacs/module/inference/infrastructure/repository/types"
 )
 
 type InferenceQueryRepositoryInterface interface {
@@ -13,10 +14,8 @@ type InferenceQueryRepositoryInterface interface {
 	SelectInferenceModelByContainer(ctx context.Context, tenantID, containerID string) (entity.InferenceModel, error)
 	// SelectInferenceModels get inference models by tenant id
 	SelectInferenceModels(ctx context.Context, tenantID string) ([]entity.InferenceModel, error)
-	// SelectModelFeedbacksByUserID get model feedbacks by user ID
-	SelectModelFeedbacksByUserID(ctx context.Context, userID string) ([]entity.ModelFeedback, error)
-	// SelectModelFeedbacksByUserModelID get model feedbacks by user ID and model ID
-	SelectModelFeedbacksByUserModelID(ctx context.Context, userID, modelID string) ([]entity.ModelFeedback, error)
+	// SelectModelFeedbackByUser get model feedback by model ID
+	SelectModelFeedbackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (entity.ModelFeedback, error)
 	// SelectModelFeedbackAnswersByFeedbackID get model feedback answers by feedback ID
 	SelectModelFeedbackAnswersByFeedbackID(ctx context.Context, feedbackID string) ([]entity.ModelFeedbackAnswer, error)
 }

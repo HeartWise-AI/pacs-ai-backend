@@ -108,40 +108,6 @@ func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context
 	return nil
 }
 
-// DeleteModelFeedback deletes model feedback
-func (service *InferenceCommandService) DeleteModelFeedback(ctx context.Context, userID string) error {
-	// get model feedbacks
-	modelFeedbacks, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbacksByUserID(ctx, userID)
-	if err != nil && err.Error() != apiError.MissingRecord {
-		return err
-	}
-
-	// delete model feedbacks by user
-	for _, modelFeedback := range modelFeedbacks {
-		err = service.InferenceCommandRepositoryInterface.DeleteModelFeedback(ctx, modelFeedback.ID)
-		if err != nil {
-			return err
-		}
-
-		// get model feedback answers
-		modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, modelFeedback.ID)
-		if err != nil && err.Error() != apiError.MissingRecord {
-			return err
-		}
-
-		// delete model feedback answers
-		for _, modelFeedbackAnswer := range modelFeedbackAnswers {
-			// delete model feedback answers
-			err = service.InferenceCommandRepositoryInterface.DeleteModelFeedbackAnswer(ctx, modelFeedbackAnswer.ID)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
 func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error) {
 	// get inference model
 	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
@@ -485,6 +451,31 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	return predictionResult, nil
 }
 
+// RemoveModelFeedback removes model feedback
+func (service *InferenceCommandService) RemoveModelFeedback(ctx context.Context, ID string) error {
+	// delete model feedback
+	err := service.InferenceCommandRepositoryInterface.DeleteModelFeedback(ctx, ID)
+	if err != nil {
+		return err
+	}
+
+	// get model feedback answers
+	modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, ID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return err
+	}
+
+	// delete model feedback answers
+	for _, modelFeedbackAnswer := range modelFeedbackAnswers {
+		err = service.InferenceCommandRepositoryInterface.DeleteModelFeedbackAnswer(ctx, modelFeedbackAnswer.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // RestartInferenceModelContainer restarts an inference model container
 func (service *InferenceCommandService) RestartInferenceModelContainer(ctx context.Context, containerID string) error {
 	err := service.DockerSDKInterface.RestartContainer(ctx, containerID)
@@ -544,8 +535,15 @@ func (service *InferenceCommandService) UpdateInferenceModelContainerID(ctx cont
 
 // UpdateModelFeedback updates model feedback
 func (service *InferenceCommandService) UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error {
+	modelFeedbackID := data.ID
+
+	if modelFeedbackID == nil {
+		modelFeedbackIDStr := generateID()
+		modelFeedbackID = &modelFeedbackIDStr
+	}
+
 	err := service.InferenceCommandRepositoryInterface.UpsertModelFeedback(ctx, repositoryTypes.UpsertModelFeedback{
-		ID:               data.ID,
+		ID:               *modelFeedbackID,
 		TenantID:         data.TenantID,
 		InferenceModelID: data.InferenceModelID,
 		UserID:           data.UserID,
@@ -556,18 +554,36 @@ func (service *InferenceCommandService) UpdateModelFeedback(ctx context.Context,
 		return err
 	}
 
-	// if feedback type is reject, insert model feedback answer
-	if data.FeedbackType == entity.RejectFeedbackType {
-		err = service.InferenceCommandRepositoryInterface.InsertModelFeedbackAnswer(ctx, repositoryTypes.AddModelFeedbackAnswer{
-			ID:                     generateID(),
-			ModelFeedbackID:        data.ID,
-			QuestionnaireID:        data.ModelFeedbackAnswer.QuestionnaireID,
-			QuestionnaireQuestion:  data.ModelFeedbackAnswer.QuestionnaireQuestion,
-			QuestionnaireAnswerIDs: data.ModelFeedbackAnswer.QuestionnaireAnswerIDs,
-			QuestionnaireAnswers:   data.ModelFeedbackAnswer.QuestionnaireAnswers,
-		})
-		if err != nil {
+	// check feedback type
+	if data.FeedbackType == entity.ApproveFeedbackType {
+		// delete exiting feedback answers
+		// get model feedback answers
+		modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, *modelFeedbackID)
+		if err != nil && err.Error() != apiError.MissingRecord {
 			return err
+		}
+
+		// delete model feedback answers
+		for _, modelFeedbackAnswer := range modelFeedbackAnswers {
+			err = service.InferenceCommandRepositoryInterface.DeleteModelFeedbackAnswer(ctx, modelFeedbackAnswer.ID)
+			if err != nil {
+				return err
+			}
+		}
+	} else if data.FeedbackType == entity.RejectFeedbackType {
+		// add feedback answers
+		for _, answer := range data.ModelFeedbackAnswers {
+			err = service.InferenceCommandRepositoryInterface.InsertModelFeedbackAnswer(ctx, repositoryTypes.AddModelFeedbackAnswer{
+				ID:                     generateID(),
+				ModelFeedbackID:        *modelFeedbackID,
+				QuestionnaireID:        answer.QuestionnaireID,
+				QuestionnaireQuestion:  answer.QuestionnaireQuestion,
+				QuestionnaireAnswerIDs: answer.QuestionnaireAnswerIDs,
+				QuestionnaireAnswers:   answer.QuestionnaireAnswers,
+			})
+			if err != nil {
+				return err
+			}
 		}
 	}
 
