@@ -1,0 +1,8 @@
+{
+  "modelDirectory": "models",
+  "models": {
+    "medgemma": {
+      "model_path": "/models/medgemma/"
+    }
+  }
+}

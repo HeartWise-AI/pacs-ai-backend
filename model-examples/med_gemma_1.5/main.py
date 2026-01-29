@@ -6,23 +6,47 @@ import os
 from datetime import datetime
 import signal
 import asyncio
-import contextlib
 
-from utils.http_utils import Config, HTMLPredictionResponse, OHIFPredictionResponse, HTTPResponse, PDFPredictionResponse, PredictRequest, JsonPredictionResponse, WebAppPredictionResponse
+from utils.http_utils import (
+    Config,
+    HTMLPredictionResponse, 
+    OHIFPredictionResponse, 
+    HTTPResponse, 
+    PDFPredictionResponse, 
+    PredictRequest, 
+    JsonPredictionResponse, 
+    WebAppPredictionResponse
+)
 from logic import CustomPredictionService
 
 root_path = os.getcwd()
+
+# Semaphore to ensure only 1 inference runs at a time (GPU can only handle one)
+inference_lock = asyncio.Semaphore(1)
 
 with open(os.path.join(root_path, 'config.json'), 'r') as f:
     config_dict = json.load(f)
 
 config = Config(**config_dict)
 
-inference_lock = asyncio.Semaphore(1)
+app = FastAPI(
+    title="PACS.AI Inference Model API",
+    description="API Documentation of PACS.AI Model Inference",
+    version="1.0.0",
+    docs_url=None,  # Disable default docs
+    redoc_url=None  # Disable default redoc
+)
 
 PredictionService = CustomPredictionService()
 
+# Mount static files for documentation
+app.mount("/docs", StaticFiles(directory=os.path.join(root_path, "docs"), html=True), name="docs")
+
 last_request_time = datetime.now()
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(check_inactivity())
 
 async def check_inactivity():
     global last_request_time
@@ -39,25 +63,6 @@ async def check_inactivity():
             else:
                 last_request_time = datetime.now()
 
-@contextlib.asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    asyncio.create_task(check_inactivity())
-    yield
-    # Shutdown (if needed)
-
-app = FastAPI(
-    title="PACS.AI Inference Model API",
-    description="API Documentation of PACS.AI Model Inference",
-    version="1.0.0",
-    docs_url=None,  # Disable default docs
-    redoc_url=None,  # Disable default redoc
-    lifespan=lifespan
-)
-
-# Mount static files for documentation
-app.mount("/docs", StaticFiles(directory=os.path.join(root_path, "docs"), html=True), name="docs")
-
 @app.middleware("http")
 async def update_last_request_time(request: Request, call_next):
     global last_request_time
@@ -67,6 +72,7 @@ async def update_last_request_time(request: Request, call_next):
 
 @app.post("/inference/predict")
 async def predict(request: PredictRequest):
+    # Acquire lock to ensure only one inference at a time
     async with inference_lock:
         try:
             PredictionService.load_model(config)
@@ -78,10 +84,10 @@ async def predict(request: PredictRequest):
                 error_code="MODEL_ERROR"
             ).to_response()
         
-        succes, response = await PredictionService.predict(request)
-        if not succes:
+        success, response = await PredictionService.predict(request)
+        if not success:
             return response
-        
+
         output_mode = request.outputMode
         if output_mode == "JSON":
             return HTTPResponse(

@@ -1,7 +1,7 @@
 {
   "en": {
     "Summary": {
-      "Name": "DeepCoro_CLIP generic",
+      "Name": "DeepCoro_CLIP_generic",
       "Description": "Analyze coronary angiogram images for vessel-level findings including: 1) Stenosis severity - degree of arterial narrowing/blockage percentage, 2) Thrombus detection - presence of blood clots in coronary vessels, 3) CTO (Chronic Total Occlusion) detection - complete vessel blockages, 4) Calcification detection - calcium deposits in vessel walls. Use this tool for detailed vessel analysis. DO NOT use for SYNTAX score calculation - use CardioSyntax-CLIP for that.",
       "Developed_by": "Heartwise",
       "Development_period": "2024-2025",
