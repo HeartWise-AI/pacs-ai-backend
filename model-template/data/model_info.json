@@ -1,6 +1,7 @@
 {
+  "modelId": "ModelTemplate",
   "modelName": "Model Template",
-  "version": "1.9.0",
+  "version": "1.10.1",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 5,
@@ -20,5 +21,99 @@
       "required": false
     }
   ],
-  "supportedOutputModes": ["OHIF_ANNOTATIONS", "JSON", "HTML", "WEB_APP"]
+  "supportedOutputModes": ["OHIF_ANNOTATIONS", "JSON", "HTML", "WEB_APP"],
+  "feedbackQuestionnaires": [
+    {
+      "id": "q1",
+      "type": "TEXT",
+      "questionEn": "",
+      "questionFr": "",
+      "answerOptionsEn": null,
+      "answerOptionsFr": null
+    },
+    {
+      "id": "q2",
+      "type": "CHECKBOX",
+      "questionEn": "What diagnosis do you think PACS AI has?",
+      "questionFr": "Quel est, selon vous, le diagnostic de PACS AI ?",
+      "answerOptionsEn": [
+        {
+          "id": "mono",
+          "answer": "Monomorphic"
+        },
+        {
+          "id": "reg",
+          "answer": "Regular"
+        },
+        {
+          "id": "sinus",
+          "answer": "Sinusoidal"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "mono",
+          "answer": "Monomorphe"
+        },
+        {
+          "id": "reg",
+          "answer": "Régulier"
+        },
+        {
+          "id": "sinus",
+          "answer": "Sinusoïdal"
+        }
+      ]
+    },
+    {
+      "id": "q3",
+      "type": "RADIO",
+      "questionEn": "How confident are you about your diagnosis?",
+      "questionFr": "À quel point êtes-vous sûr de votre diagnostic ?",
+      "answerOptionsEn": [
+        {
+          "id": "nc",
+          "answer": "Not at all"
+        },
+        {
+          "id": "lc",
+          "answer": "Little"
+        },
+        {
+          "id": "sc",
+          "answer": "Somewhat"
+        },
+        {
+          "id": "vc",
+          "answer": "Very"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "nc",
+          "answer": "Pas du tout"
+        },
+        {
+          "id": "lc",
+          "answer": "Un peu"
+        },
+        {
+          "id": "sc",
+          "answer": "Assez"
+        },
+        {
+          "id": "vc",
+          "answer": "Très"
+        }
+      ]
+    },
+    {
+      "id": "q4",
+      "type": "TEXT",
+      "questionEn": "Please provide any additional comments about the analysis:",
+      "questionFr": "Veuillez fournir des commentaires supplémentaires sur l'analyse :",
+      "answerOptionsEn": null,
+      "answerOptionsFr": null
+    }
+  ]
 }

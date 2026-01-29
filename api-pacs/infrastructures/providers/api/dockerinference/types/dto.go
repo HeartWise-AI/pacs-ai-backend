@@ -29,6 +29,7 @@ type GetModelInfoResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 	Data    struct {
+		ModelID                     string        `json:"modelId"`
 		ModelName                   string        `json:"modelName"`
 		Version                     string        `json:"version"`
 		DicomTargetLevel            string        `json:"dicomTargetLevel"`
@@ -38,6 +39,7 @@ type GetModelInfoResponse struct {
 		SupportedDicomTags          []string      `json:"supportedDicomTags"`
 		SupportedAdditionalMetadata []interface{} `json:"supportedAdditionalMetadata"`
 		SupportedOutputModes        []string      `json:"supportedOutputModes"`
+		FeedbackQuestionnaires      []interface{} `json:"feedbackQuestionnaires"`
 	} `json:"data"`
 }
 

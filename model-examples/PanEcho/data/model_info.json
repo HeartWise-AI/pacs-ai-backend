@@ -1,6 +1,8 @@
 {
+  "modelId": "PanEcho",
   "modelName": "PanEcho",
   "domainName": "Cardiology",
+  "stage": "ai_inference",
   "modality": "Echocardiogram",
   "version": "1.0.0",
   "dicomTargetLevel": "SERIES",

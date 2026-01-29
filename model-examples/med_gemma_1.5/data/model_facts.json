@@ -1,0 +1,36 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "MedGemma _.5",
+      "Description": "MedGemma is a collection of Gemma 3 variants that are trained for performance on medical text and image comprehension. Developers can use MedGemma to accelerate building healthcare-based AI applications.",
+      "Developed_by": "Google",
+      "Development_period": "2025-2026",
+      "Version": "1.5.0"
+    },
+    "Mechanism": {
+      "Outcome": "Medical text and image comprehension",
+      "Output": "Medical text and image comprehension",
+      "Target_population": "",
+      "Input_data_source": "Medical text and image",
+      "Input_data_type": "Text and image",
+      "Model_type": "Gemma 3",
+      "Supported_DICOM_modalities": "XA"
+    },
+    "Model_Components": {
+      "Model": {
+        "Purpose": "Medical text and image comprehension",
+        "Output": "Medical text and image comprehension"
+      }
+    },
+    "Uses_and_directions": {
+      "General_use": "This model can be used to perform medical text and image comprehension.",
+      "Target_population_and_use_case": "This model is intended for use in the healthcare field to assist in the diagnosis of medical text and image comprehension.",
+      "Before_using_this_model": "Before using this model, please ensure that the input data is in the correct format and that the model is trained on the appropriate data."
+    },
+    "Warnings_and_limitations": {
+      "Image_Quality": "The model requires high-quality medical text and image.",
+      "Multiple_Devices": "The model is designed to perform medical text and image comprehension.",
+      "Confidence_Scores": "Current threshold applied on probability output for classification is 0.1"
+    }
+  }
+}

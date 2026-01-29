@@ -12,11 +12,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN uv pip install -r requirements.txt --system
 
-ARG HF_API_KEY
-
 # Copy the model download script
 COPY download_model.py .
-RUN python download_model.py --token ${HF_API_KEY}
+RUN --mount=type=secret,id=hf_token \
+    python download_model.py --token $(cat /run/secrets/hf_token)
 
 # Copy application files
 COPY main.py .

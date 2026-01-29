@@ -92,8 +92,12 @@ class CustomPredictionService(BasePredictionService):
         Returns:
             DataFrame with added 'status' column
         """
-        print("Assigning procedure status based on PCI timing...")        
-        df = pd.DataFrame(predictions, columns=predictions[0].keys())
+        print("Assigning procedure status based on PCI timing...")
+        
+        if not predictions:
+            return []
+        
+        df = pd.DataFrame(predictions)
 
         # 1. Parse and sort by time (safe)
         df["series_time_dt"] = pd.to_datetime(
@@ -152,6 +156,7 @@ class CustomPredictionService(BasePredictionService):
                                             
                         dicom = pydicom.dcmread(BytesIO(dicom_data))
                         dicoms.append(dicom)
+                        print(str(dicom.SeriesInstanceUID))
                         dicom_names.append(str(dicom.SeriesInstanceUID))
                         
                     except Exception as e:
@@ -163,23 +168,24 @@ class CustomPredictionService(BasePredictionService):
             error_msg = f"Error in _handle_json_output: {e}"
             print(error_msg)
             return {
-                "predictions": {}
+                "predictions": []
             }
         
         try:
+            print(f"len(dicoms): {len(dicoms)}, len(dicom_names): {len(dicom_names)}")
             structured_predictions: dict[str, dict[str, np.ndarray]] = self._run_inference(dicoms, dicom_names)
         except Exception as e:
             print(f"Error in _run_inference: {e}")
             return {
-                "predictions": {}
+                "predictions": []
             }
-        
+        print(f"structured_predictions: {structured_predictions}")
         try:
             structured_predictions = self._assign_procedure_status(predictions=structured_predictions)
         except Exception as e:
             print(f"Error in _process_predictions: {e}")
             return {
-                "predictions": {}
+                "predictions": []
             }
             
         return {
@@ -286,6 +292,7 @@ class CustomPredictionService(BasePredictionService):
                 
                 video = self._process_dicom(dicom)
                 if video is None:
+                    print(f"Skipping DICOM {dicom_name}: not a multi-frame video (ndim <= 2)")
                     continue
                 
                 video_stack.append(video)
@@ -298,6 +305,7 @@ class CustomPredictionService(BasePredictionService):
             if not video_stack:
                 return []
             video_stack = torch.stack(video_stack).to('cuda' if torch.cuda.is_available() else 'cpu')
+            
             with torch.no_grad():
                 output_stack: dict[str, torch.Tensor] = CustomPredictionService.models['vaso_vision'](video_stack)
                 

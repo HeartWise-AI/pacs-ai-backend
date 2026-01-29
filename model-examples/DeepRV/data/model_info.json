@@ -1,4 +1,5 @@
 {
+  "modelId": "DeepRV",
   "modelName": "DeepRV",
   "domainName": "Cardiology",
   "stage": "ai_inference",
@@ -6,7 +7,7 @@
   "version": "1.0.0",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
-  "dicomUploadMax": 10,
+  "dicomUploadMax": 99,
   "supportedDicomModalities": ["XA"],
   "supportedDicomTags": ["*"],
   "supportedAdditionalMetadata": [],
