@@ -19,7 +19,8 @@
       "Input_data_source": "Left coronary angiogram videos",
       "Input_data_type": "Video data",
       "Training_data_location_and_time-period": "University of California, San Francisco (UCSF), Dec 12, 2012, to Dec 31, 2019",
-      "Model_type": "X3D architecture"
+      "Model_type": "X3D architecture",
+      "Supported_DICOM_modalities": "XA, CR"
     },
     "Validation_and_performance": [
       {
