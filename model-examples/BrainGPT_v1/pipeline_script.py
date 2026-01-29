@@ -89,8 +89,19 @@ class BrainGPTInference:
         
         vision_x = volume_tensor.to(self.device, dtype=self.model.dtype)
         
-        instruction = "You are provided with brain CT slices from a single study. The number of slices is 24. Please generate medical descriptions based on the images in a consistent style."
+        #instruction = "You are provided with brain CT slices from a single study. The number of slices is 24. Please generate medical descriptions based on the images in a consistent style."
+        instruction = (" You are provided with brain CT slices from a single study. "
+                        "The number of slices is 24. "
+                        "Please generate medical descriptions based on the images in a consistent style. "
+                        "Use the following guidelines: - Degree: Indicate the intensity or state (e.g., normal, mild, chronic, old, etc). "
+                        "- Landmark: Specify the area of interest (e.g., intracerebral, midline, parenchyma, sulci, etc). "
+                        "- Feature: Describe any observed abnormalities (e.g., hemorrhage, atrophy, infarcts, etc). "
+                        "- Impression: Conclude with a clinical impression (e.g., arteriosclerotic encephalopathy, intracerebral hemorrhage, dementia, etc). "
+                        "Ensure consistency and clarity in the report.")
+                            
+        
         prompt = f"<image>User: {instruction} GPT:<answer>"
+       
         
         lang_x = self.tokenizer([prompt], return_tensors="pt")
         lang_x_input_ids = lang_x["input_ids"].to(self.device)
