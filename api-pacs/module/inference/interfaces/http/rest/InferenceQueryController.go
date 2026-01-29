@@ -298,20 +298,21 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 	inferenceAvailableModelsResponse := []types.GetInferenceAvailableModelResponse{}
 	for _, inferenceAvailableModel := range inferenceAvailableModels {
 		inferenceAvailableModelsResponse = append(inferenceAvailableModelsResponse, types.GetInferenceAvailableModelResponse{
-			ContainerID:                 inferenceAvailableModel.ContainerID,
-			ContainerName:               inferenceAvailableModel.ContainerName,
-			ModelID:                     inferenceAvailableModel.ModelID,
-			ModelName:                   inferenceAvailableModel.ModelName,
-			ModelFacts:                  types.ModelFacts(inferenceAvailableModel.ModelFacts),
-			Version:                     inferenceAvailableModel.Version,
-			DicomTargetLevel:            inferenceAvailableModel.DicomTargetLevel,
-			DicomUploadMin:              inferenceAvailableModel.DicomUploadMin,
-			DicomUploadMax:              inferenceAvailableModel.DicomUploadMax,
-			SupportedDicomModalities:    inferenceAvailableModel.SupportedDicomModalities,
-			SupportedDicomTags:          inferenceAvailableModel.SupportedDicomTags,
-			SupportedAdditionalMetadata: inferenceAvailableModel.SupportedAdditionalMetadata,
-			FeedbackQuestionnaires:      inferenceAvailableModel.FeedbackQuestionnaires,
-			OutputMode:                  inferenceAvailableModel.OutputMode,
+			ContainerID:                   inferenceAvailableModel.ContainerID,
+			ContainerName:                 inferenceAvailableModel.ContainerName,
+			ModelID:                       inferenceAvailableModel.ModelID,
+			ModelName:                     inferenceAvailableModel.ModelName,
+			ModelFacts:                    types.ModelFacts(inferenceAvailableModel.ModelFacts),
+			Version:                       inferenceAvailableModel.Version,
+			DicomTargetLevel:              inferenceAvailableModel.DicomTargetLevel,
+			DicomUploadMin:                inferenceAvailableModel.DicomUploadMin,
+			DicomUploadMax:                inferenceAvailableModel.DicomUploadMax,
+			SupportedDicomModalities:      inferenceAvailableModel.SupportedDicomModalities,
+			SupportedDicomTags:            inferenceAvailableModel.SupportedDicomTags,
+			SupportedAdditionalMetadata:   inferenceAvailableModel.SupportedAdditionalMetadata,
+			ApproveFeedbackQuestionnaires: inferenceAvailableModel.ApproveFeedbackQuestionnaires,
+			RejectFeedbackQuestionnaires:  inferenceAvailableModel.RejectFeedbackQuestionnaires,
+			OutputMode:                    inferenceAvailableModel.OutputMode,
 		})
 	}
 
