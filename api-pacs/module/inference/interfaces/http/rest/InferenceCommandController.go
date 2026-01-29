@@ -16,7 +16,6 @@ import (
 	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/application"
-	"api-pacs/module/inference/domain/entity"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 	types "api-pacs/module/inference/interfaces/http"
 )
@@ -643,22 +642,10 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 		return
 	}
 
+	// check if there are model feedbacks
 	var modelFeedbackAnswers []serviceTypes.ModelFeedbackAnswer
 
-	// if feedback type is reject, include model feedback answer
-	if request.FeedbackType == entity.RejectFeedbackType {
-		if len(request.ModelFeedbackAnswers) == 0 {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   "Model feedback answer is required for reject feedback type.",
-				ErrorCode: apiError.InvalidRequestPayload,
-			}
-
-			response.JSON(w)
-			return
-		}
-
+	if len(request.ModelFeedbackAnswers) > 0 {
 		for _, answer := range request.ModelFeedbackAnswers {
 			modelFeedbackAnswers = append(modelFeedbackAnswers, serviceTypes.ModelFeedbackAnswer{
 				ModelFeedbackID:        request.ID,
