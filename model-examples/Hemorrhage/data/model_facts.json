@@ -13,7 +13,8 @@
       "Target_population": "",
       "Input_data_source": "computed tomography (CT)",
       "Input_data_type": "labelmap (Nifti)",
-      "Model_type": ""
+      "Model_type": "",
+      "Supported_DICOM_modalities": "CT"
     },
     "Model_Components": {
       "Segmentation_Model": {

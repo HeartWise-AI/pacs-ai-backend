@@ -13,7 +13,8 @@
       "Target_population": "",
       "Input_data_source": "angiograms",
       "Input_data_type": "dicom",
-      "Model_type": "Deep Learning"
+      "Model_type": "Deep Learning",
+      "Supported_DICOM_modalities": "XA"
     },
     "Model_Components": {
       "Model": {

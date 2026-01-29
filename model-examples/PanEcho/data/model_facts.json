@@ -19,7 +19,8 @@
       "Input_data_source": "Transthoracic echocardiogram videos",
       "Input_data_type": "Video data",
       "Training_data_location_and_time-period": "N/A",
-      "Model_type": "Multi-task model"
+      "Model_type": "Multi-task model",
+      "Supported_DICOM_modalities": "US"
     },
     "Validation_and_performance": [],
     "Uses_and_directions": {

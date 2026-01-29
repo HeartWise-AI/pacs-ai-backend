@@ -13,7 +13,8 @@
       "Target_population": "",
       "Input_data_source": "Medical text and image",
       "Input_data_type": "Text and image",
-      "Model_type": "Gemma 3"
+      "Model_type": "Gemma 3",
+      "Supported_DICOM_modalities": "XA"
     },
     "Model_Components": {
       "Model": {

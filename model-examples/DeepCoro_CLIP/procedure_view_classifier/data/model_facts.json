@@ -1,51 +1,51 @@
 {
-    "en": {
-        "Summary": {
-            "Name": "DeepCoro_CLIP_ProcedureViewClassifier",
-            "Description": "DeepCoro_CLIP_ProcedureViewClassifier is a preprocessing model that predicts the view and the procedure status of angiograms",
-            "Developed_by": "Heartwise",
-            "Version": "1.0.0"
-        },
-        "Mechanism": {
-            "Outcome": "Prediction of the view and the procedure status of angiograms",
-            "Output": "View and procedure status of an angiogram",
-            "Target_population": "Patients receiving angiogram examinations",
-            "Time_of_prediction": "~ 1 minute",
-            "Input_data_source": "angiograms",
-            "Input_data_type": "dicom",
-            "Training_data_location_and_time-period": "Heartwise, 2024-2025",
-            "Model_type": "Deep Learning"
-        },
-        "Validation_and_performance": [
-            {
-                "Internal_validation": {
-                    "AUC": 0.93
-                }
-            },
-            {
-                "Training_cohort": {
-                    "Number_of_angiograms": 1400,
-                    "Number_of_patients": 1400
-                }
-            }
-        ],
-        "Uses_and_directions": {
-            "Benefits": "Prediction of the view and the procedure status of angiograms",
-            "Target_population_and_use_case": "Patients receiving angiogram examinations",
-            "General_use": "Prediction of the view and the procedure status of angiograms",
-            "Before_using_this_model": "Ensure the input data is in the correct format and that the model is trained on the appropriate data."
-        },
-        "Warnings_and_limitations": {
-            "Risks": "Not specified",
-            "Inappropriate_settings": "Not specified",
-            "Generalizability": "Not specified",
-            "Clinical_rationale": "Not specified"
-        },
-        "Other_information": {
-            "Github": "https://github.com/heartwise/DeepCoro_CLIP",
-            "Scientific_publication": "https://arxiv.org/pdf/2410.09704",
-            "Contact_info": "info@heartwise.ai"
+  "en": {
+    "Summary": {
+      "Name": "DeepCoro_CLIP_ProcedureViewClassifier",
+      "Description": "DeepCoro_CLIP_ProcedureViewClassifier is a preprocessing model that predicts the view and the procedure status of angiograms",
+      "Developed_by": "Heartwise",
+      "Version": "1.0.0"
+    },
+    "Mechanism": {
+      "Outcome": "Prediction of the view and the procedure status of angiograms",
+      "Output": "View and procedure status of an angiogram",
+      "Target_population": "Patients receiving angiogram examinations",
+      "Time_of_prediction": "~ 1 minute",
+      "Input_data_source": "angiograms",
+      "Input_data_type": "dicom",
+      "Training_data_location_and_time-period": "Heartwise, 2024-2025",
+      "Model_type": "Deep Learning",
+      "Supported_DICOM_modalities": "XA"
+    },
+    "Validation_and_performance": [
+      {
+        "Internal_validation": {
+          "AUC": 0.93
         }
+      },
+      {
+        "Training_cohort": {
+          "Number_of_angiograms": 1400,
+          "Number_of_patients": 1400
+        }
+      }
+    ],
+    "Uses_and_directions": {
+      "Benefits": "Prediction of the view and the procedure status of angiograms",
+      "Target_population_and_use_case": "Patients receiving angiogram examinations",
+      "General_use": "Prediction of the view and the procedure status of angiograms",
+      "Before_using_this_model": "Ensure the input data is in the correct format and that the model is trained on the appropriate data."
+    },
+    "Warnings_and_limitations": {
+      "Risks": "Not specified",
+      "Inappropriate_settings": "Not specified",
+      "Generalizability": "Not specified",
+      "Clinical_rationale": "Not specified"
+    },
+    "Other_information": {
+      "Github": "https://github.com/heartwise/DeepCoro_CLIP",
+      "Scientific_publication": "https://arxiv.org/pdf/2410.09704",
+      "Contact_info": "info@heartwise.ai"
     }
   }
-  
+}
