@@ -1,7 +1,7 @@
 {
   "modelId": "ModelTemplate",
   "modelName": "Model Template",
-  "version": "1.9.0",
+  "version": "1.10.1",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 5,

@@ -19,7 +19,6 @@ import (
 	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
-	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
@@ -564,36 +563,33 @@ func (service *InferenceCommandService) UpdateModelFeedback(ctx context.Context,
 		return err
 	}
 
-	// check feedback type
-	if data.FeedbackType == entity.ApproveFeedbackType {
-		// delete exiting feedback answers
-		// get model feedback answers
-		modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, *modelFeedbackID)
-		if err != nil && err.Error() != apiError.MissingRecord {
+	// delete exiting feedback answers
+	// get model feedback answers
+	modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, *modelFeedbackID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return err
+	}
+
+	// delete model feedback answers
+	for _, modelFeedbackAnswer := range modelFeedbackAnswers {
+		err = service.InferenceCommandRepositoryInterface.DeleteModelFeedbackAnswer(ctx, modelFeedbackAnswer.ID)
+		if err != nil {
 			return err
 		}
+	}
 
-		// delete model feedback answers
-		for _, modelFeedbackAnswer := range modelFeedbackAnswers {
-			err = service.InferenceCommandRepositoryInterface.DeleteModelFeedbackAnswer(ctx, modelFeedbackAnswer.ID)
-			if err != nil {
-				return err
-			}
-		}
-	} else if data.FeedbackType == entity.RejectFeedbackType {
-		// add feedback answers
-		for _, answer := range data.ModelFeedbackAnswers {
-			err = service.InferenceCommandRepositoryInterface.InsertModelFeedbackAnswer(ctx, repositoryTypes.AddModelFeedbackAnswer{
-				ID:                     generateID(),
-				ModelFeedbackID:        *modelFeedbackID,
-				QuestionnaireID:        answer.QuestionnaireID,
-				QuestionnaireQuestion:  answer.QuestionnaireQuestion,
-				QuestionnaireAnswerIDs: answer.QuestionnaireAnswerIDs,
-				QuestionnaireAnswers:   answer.QuestionnaireAnswers,
-			})
-			if err != nil {
-				return err
-			}
+	// add model feedback answers
+	for _, answer := range data.ModelFeedbackAnswers {
+		err = service.InferenceCommandRepositoryInterface.InsertModelFeedbackAnswer(ctx, repositoryTypes.AddModelFeedbackAnswer{
+			ID:                     generateID(),
+			ModelFeedbackID:        *modelFeedbackID,
+			QuestionnaireID:        answer.QuestionnaireID,
+			QuestionnaireQuestion:  answer.QuestionnaireQuestion,
+			QuestionnaireAnswerIDs: answer.QuestionnaireAnswerIDs,
+			QuestionnaireAnswers:   answer.QuestionnaireAnswers,
+		})
+		if err != nil {
+			return err
 		}
 	}
 

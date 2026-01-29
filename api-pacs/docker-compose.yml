@@ -1,5 +1,6 @@
 services:
   api-pacs:
+    env_file: .env
     build: .
     image: pacs-ai-backend-api-pacs:latest
     container_name: api-pacs

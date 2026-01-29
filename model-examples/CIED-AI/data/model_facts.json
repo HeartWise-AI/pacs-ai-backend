@@ -13,7 +13,8 @@
       "Target_population": "Patients with implanted cardiac devices",
       "Input_data_source": "Chest X-ray images",
       "Input_data_type": "Image data (PNG format)",
-      "Model_type": "Multi-model system (Detection, Quality Assessment, and Device Type Classification)"
+      "Model_type": "Multi-model system (Detection, Quality Assessment, and Device Type Classification)",
+      "Supported_DICOM_modalities": "DX, CR"
     },
     "Model_Components": {
       "Detection_Model": {
@@ -28,9 +29,23 @@
         "Purpose": "Classifies device type",
         "Output": "Device type classification with confidence score",
         "Supported_Devices": [
-          "BIO_ICD", "BIO_PM", "BSC_CRT-P", "BSC_ICD", "BSC_PM", "BSC_S-ICD",
-          "ELA_PM", "IMC_PM", "MED_CRT-P", "MED_ICD", "MED_ICM", "MED_PM",
-          "SJM_CRT-P", "SJM_ICD", "SJM_PM", "TPS_PM", "VIT_PM"
+          "BIO_ICD",
+          "BIO_PM",
+          "BSC_CRT-P",
+          "BSC_ICD",
+          "BSC_PM",
+          "BSC_S-ICD",
+          "ELA_PM",
+          "IMC_PM",
+          "MED_CRT-P",
+          "MED_ICD",
+          "MED_ICM",
+          "MED_PM",
+          "SJM_CRT-P",
+          "SJM_ICD",
+          "SJM_PM",
+          "TPS_PM",
+          "VIT_PM"
         ]
       }
     },
