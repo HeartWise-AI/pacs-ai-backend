@@ -1,11 +1,19 @@
 {
+  "modelId": "CIED-AI",
   "modelName": "CIED-AI",
   "version": "1.0.0",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 1,
   "supportedDicomModalities": ["DX", "CR"],
-  "supportedDicomTags": ["00280008", "00280010", "00280011", "00280100", "00280101", "00101010"],
+  "supportedDicomTags": [
+    "00280008",
+    "00280010",
+    "00280011",
+    "00280100",
+    "00280101",
+    "00101010"
+  ],
   "supportedAdditionalMetadata": [],
   "supportedOutputModes": ["HTML"]
 }

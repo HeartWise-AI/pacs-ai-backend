@@ -1,4 +1,5 @@
 {
+  "modelId": "CardioSyntax-CLIP",
   "modelName": "CardioSyntax-CLIP",
   "domainName": "Cardiology",
   "stage": "ai_inference",

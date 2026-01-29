@@ -1,4 +1,5 @@
 {
+  "modelId": "EchoPrime_ViewClassifier",
   "modelName": "EchoPrime_ViewClassifier",
   "domainName": "Cardiology",
   "stage": "preprocessing",
@@ -10,5 +11,5 @@
   "supportedDicomModalities": ["US"],
   "supportedDicomTags": ["*"],
   "supportedAdditionalMetadata": [],
-  "supportedOutputModes": [ "JSON"]
+  "supportedOutputModes": ["JSON"]
 }
