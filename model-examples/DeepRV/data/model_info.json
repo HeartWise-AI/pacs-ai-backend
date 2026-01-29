@@ -1,4 +1,5 @@
 {
+  "modelId": "DeepRV",
   "modelName": "DeepRV",
   "domainName": "Cardiology",
   "stage": "ai_inference",

@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "0.20.1-beta"
+    "version": "0.21.0-beta"
   },
   "servers": [
     {
@@ -578,11 +578,11 @@
         }
       }
     },
-    "/inference/model/{id}/remove": {
-      "delete": {
+    "/inference/model/{modelId}/feedback": {
+      "get": {
         "tags": ["inference"],
-        "summary": "Delete Inference Model",
-        "description": "Delete inference model.",
+        "summary": "Get Model Feedback By Model ID",
+        "description": "Get model feedback by model ID.",
         "security": [
           {
             "bearerAuth": []
@@ -590,9 +590,9 @@
         ],
         "parameters": [
           {
-            "name": "id",
+            "name": "modelId",
             "in": "path",
-            "description": "Inference model ID",
+            "description": "Model ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -643,6 +643,107 @@
             }
           }
         },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/feedback/update": {
+      "put": {
+        "tags": ["inference"],
+        "summary": "Update Model Feedback",
+        "description": "Update model feedback.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update model feedback request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateModelFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/{id}/remove": {
+      "delete": {
+        "tags": ["inference"],
+        "summary": "Delete Inference Model",
+        "description": "Delete inference model.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Inference model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/{modelId}/feedback/remove": {
+      "delete": {
+        "tags": ["inference"],
+        "summary": "Remove Model Feedback",
+        "description": "Remove model feedback.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modelId",
+            "in": "path",
+            "description": "Model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "2xx": {
             "description": "Success"
@@ -1638,6 +1739,59 @@
           "inputSeriesFileType": {
             "type": "string",
             "enum": ["PDF", "DCM"]
+          }
+        }
+      },
+      "UpdateModelFeedbackRequest": {
+        "required": ["inferenceModelId", "modelId", "feedbackType"],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "inferenceModelId": {
+            "type": "string"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "feedbackType": {
+            "type": "string",
+            "enum": ["APPROVE", "REJECT"]
+          },
+          "modelFeedbackAnswers": {
+            "required": [
+              "questionnaireId",
+              "questionnaireQuestion",
+              "questionnaireAnswerIds",
+              "questionnaireAnswers"
+            ],
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "object",
+              "properties": {
+                "questionnaireId": {
+                  "type": "string"
+                },
+                "questionnaireQuestion": {
+                  "type": "string"
+                },
+                "questionnaireAnswerIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "questionnaireAnswers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       },

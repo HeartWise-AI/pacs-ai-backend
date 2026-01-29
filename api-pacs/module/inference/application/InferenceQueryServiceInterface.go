@@ -19,4 +19,6 @@ type InferenceQueryServiceInterface interface {
 	GetInferenceModelFacts(ctx context.Context, containerID string) (dockerInferenceTypes.GetModelFactsResponse, error)
 	// GetInferenceAvailableModels gets the inference available models
 	GetInferenceAvailableModels(ctx context.Context, tenantID string) ([]types.GetInferenceAvailableModelResult, error)
+	// GetModelFeedBackByUser gets the model feedback by user
+	GetModelFeedBackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (types.GetModelFeedbackResult, error)
 }
