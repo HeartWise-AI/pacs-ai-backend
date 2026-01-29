@@ -250,9 +250,9 @@ func (service *InferenceQueryService) GetModelFeedBacksByUserModelID(ctx context
 					QuestionnaireAnswerIDs: modelFeedbackAnswer.QuestionnaireAnswerIDs,
 					QuestionnaireAnswers:   modelFeedbackAnswer.QuestionnaireAnswers,
 				})
-
-				modelFeedbackAnswersResult = &answers
 			}
+
+			modelFeedbackAnswersResult = &answers
 		}
 
 		modelFeedbacksResult = append(modelFeedbacksResult, types.GetModelFeedbackResult{
@@ -264,7 +264,6 @@ func (service *InferenceQueryService) GetModelFeedBacksByUserModelID(ctx context
 			FeedbackType:         modelFeedback.FeedbackType,
 			ModelFeedbackAnswers: modelFeedbackAnswersResult,
 		})
-
 	}
 
 	return modelFeedbacksResult, nil

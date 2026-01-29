@@ -642,7 +642,7 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 	var modelFeedbackAnswer *serviceTypes.ModelFeedbackAnswer
 
 	// if feedback type is reject, include model feedback answer
-	if request.FeedbackType == entity.RejectFeedbackType {
+	if request.FeedbackType != entity.ApproveFeedbackType {
 		if request.ModelFeedbackAnswer == nil {
 			response := viewmodels.HTTPResponseVM{
 				Status:    http.StatusBadRequest,
