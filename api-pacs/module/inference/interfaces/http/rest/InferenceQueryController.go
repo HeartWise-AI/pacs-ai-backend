@@ -354,6 +354,9 @@ func (controller *InferenceQueryController) GetModelFeedbackByModelID(w http.Res
 		case apiError.FirestoreError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Firestore service encountered an error."
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "Model feedback not found."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Please contact technical support."
