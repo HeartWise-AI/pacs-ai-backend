@@ -3,7 +3,7 @@ import argparse
 from huggingface_hub import snapshot_download
 
 
-def download_model(token: str) -> None:
+def download_model() -> None:
     """
     Download the BrainGPT model from HuggingFace.
     
@@ -25,7 +25,7 @@ def download_model(token: str) -> None:
     
     local_dir = snapshot_download(
         repo_id=repo_id,
-        token=token,
+        token=None,
         local_dir=output_dir,
         local_dir_use_symlinks=False  # Use actual files, not symlinks
     )
@@ -34,16 +34,4 @@ def download_model(token: str) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Download BrainGPT model from HuggingFace"
-    )
-    parser.add_argument(
-        "--token",
-        type=str,
-        required=False,
-        default=None,
-        help="HuggingFace API token"
-    )
-    args = parser.parse_args()
-    
-    download_model(args.token)
+    download_model()
