@@ -75,7 +75,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.20.2-beta",
+				"version": "v0.21.0-beta",
 			},
 		}
 
@@ -141,7 +141,7 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Delete("/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
 							r.Put("/{ID}/update", inferenceCommandController.UpdateInferenceModel)
 							r.Put("/feedback/update", inferenceCommandController.UpdateModelFeedback)
-							r.Delete("/{modelID}/feedback/user/remove", inferenceCommandController.RemoveModelFeedback)
+							r.Delete("/{modelID}/feedback/remove", inferenceCommandController.RemoveModelFeedback)
 
 							// container routes
 							r.Route("/container", func(r chi.Router) {
