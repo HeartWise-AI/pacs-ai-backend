@@ -113,8 +113,8 @@ func (repository *InferenceQueryRepository) SelectInferenceModels(ctx context.Co
 	return inferenceModels, nil
 }
 
-// SelectModelFeedbackByUser get model feedback by model and user
-func (repository *InferenceQueryRepository) SelectModelFeedbackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (entity.ModelFeedback, error) {
+// SelectModelFeedbackByUserModelID get model feedback by model and user ID
+func (repository *InferenceQueryRepository) SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
 	// firestore client
 	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
 	if err != nil {

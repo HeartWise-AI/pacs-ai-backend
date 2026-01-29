@@ -578,11 +578,11 @@
         }
       }
     },
-    "/inference/model/{modelId}/feedbacks": {
+    "/inference/model/{modelId}/feedback": {
       "get": {
         "tags": ["inference"],
-        "summary": "Get Model Feedbacks By Model ID",
-        "description": "Get model feedbacks by model ID.",
+        "summary": "Get Model Feedback By Model ID",
+        "description": "Get model feedback by model ID.",
         "security": [
           {
             "bearerAuth": []
@@ -656,7 +656,7 @@
         }
       }
     },
-    "/inference/model/feedback/{ID}/update": {
+    "/inference/model/feedback/update": {
       "put": {
         "tags": ["inference"],
         "summary": "Update Model Feedback",
@@ -664,17 +664,6 @@
         "security": [
           {
             "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "ID",
-            "in": "path",
-            "description": "Model feedback ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "requestBody": {
@@ -734,7 +723,7 @@
         }
       }
     },
-    "/inference/model/feedback/user/remove": {
+    "/inference/model/{modelId}/feedback/user/remove": {
       "delete": {
         "tags": ["inference"],
         "summary": "Remove Model Feedback",
@@ -742,6 +731,17 @@
         "security": [
           {
             "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modelId",
+            "in": "path",
+            "description": "Model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1746,6 +1746,10 @@
         "required": ["inferenceModelId", "modelId", "feedbackType"],
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
           "inferenceModelId": {
             "type": "string"
           },
@@ -1756,26 +1760,29 @@
             "type": "string",
             "enum": ["APPROVE", "REJECT"]
           },
-          "modelFeedbackAnswer": {
-            "type": "object",
+          "modelFeedbackAnswers": {
+            "type": "array",
             "nullable": true,
-            "properties": {
-              "questionnaireId": {
-                "type": "string"
-              },
-              "questionnaireQuestion": {
-                "type": "string"
-              },
-              "questionnaireAnswerIds": {
-                "type": "array",
-                "items": {
+            "items": {
+              "type": "object",
+              "properties": {
+                "questionnaireId": {
                   "type": "string"
-                }
-              },
-              "questionnaireAnswers": {
-                "type": "array",
-                "items": {
+                },
+                "questionnaireQuestion": {
                   "type": "string"
+                },
+                "questionnaireAnswerIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "questionnaireAnswers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               }
             }

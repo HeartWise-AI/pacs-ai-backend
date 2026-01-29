@@ -14,8 +14,8 @@ type InferenceQueryRepositoryInterface interface {
 	SelectInferenceModelByContainer(ctx context.Context, tenantID, containerID string) (entity.InferenceModel, error)
 	// SelectInferenceModels get inference models by tenant id
 	SelectInferenceModels(ctx context.Context, tenantID string) ([]entity.InferenceModel, error)
-	// SelectModelFeedbackByUser get model feedback by model ID
-	SelectModelFeedbackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (entity.ModelFeedback, error)
+	// SelectModelFeedbackByUserModelID get model feedback by user and model ID
+	SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error)
 	// SelectModelFeedbackAnswersByFeedbackID get model feedback answers by feedback ID
 	SelectModelFeedbackAnswersByFeedbackID(ctx context.Context, feedbackID string) ([]entity.ModelFeedbackAnswer, error)
 }

@@ -223,7 +223,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 
 // GetModelFeedBackByUser gets the model feedback by user
 func (service *InferenceQueryService) GetModelFeedBackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (types.GetModelFeedbackResult, error) {
-	modelFeedback, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackByUser(ctx, repositoryTypes.GetModelFeedbackByUser{
+	modelFeedback, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackByUserModelID(ctx, repositoryTypes.GetModelFeedbackByUserModelID{
 		TenantID: data.TenantID,
 		UserID:   data.UserID,
 		ModelID:  data.ModelID,
@@ -232,7 +232,7 @@ func (service *InferenceQueryService) GetModelFeedBackByUser(ctx context.Context
 		return types.GetModelFeedbackResult{}, err
 	}
 
-	var modelFeedbackAnswersResult []types.ModelFeedbackAnswer
+	var modelFeedbackAnswersResult []types.ModelFeedbackAnswerResult
 
 	// populate model feedback answers if rejected
 	if modelFeedback.FeedbackType == entity.RejectFeedbackType {
@@ -242,7 +242,8 @@ func (service *InferenceQueryService) GetModelFeedBackByUser(ctx context.Context
 		}
 
 		for _, modelFeedbackAnswer := range modelFeedbackAnswers {
-			modelFeedbackAnswersResult = append(modelFeedbackAnswersResult, types.ModelFeedbackAnswer{
+			modelFeedbackAnswersResult = append(modelFeedbackAnswersResult, types.ModelFeedbackAnswerResult{
+				ID:                     modelFeedbackAnswer.ID,
 				ModelFeedbackID:        modelFeedbackAnswer.ModelFeedbackID,
 				QuestionnaireID:        modelFeedbackAnswer.QuestionnaireID,
 				QuestionnaireQuestion:  modelFeedbackAnswer.QuestionnaireQuestion,

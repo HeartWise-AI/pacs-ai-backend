@@ -168,9 +168,27 @@ func (controller *InferenceCommandController) DeleteInferenceModel(w http.Respon
 
 // RemoveModelFeedback removes model feedback
 func (controller *InferenceCommandController) RemoveModelFeedback(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
-	err := controller.InferenceCommandServiceInterface.DeleteModelFeedback(context.TODO(), userID)
+	modelID := chi.URLParam(r, "modelID")
+	if len(modelID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Model id is required.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err := controller.InferenceCommandServiceInterface.RemoveModelFeedback(context.TODO(), serviceTypes.RemoveModelFeedback{
+		TenantID: tenantID,
+		UserID:   userID,
+		ModelID:  modelID,
+	})
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -584,20 +602,6 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
-	// required
-	ID := chi.URLParam(r, "ID")
-	if len(ID) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid model feedback ID.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
 	var request types.UpdateModelFeedbackRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -639,11 +643,11 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 		return
 	}
 
-	var modelFeedbackAnswer *serviceTypes.ModelFeedbackAnswer
+	var modelFeedbackAnswers []serviceTypes.ModelFeedbackAnswer
 
 	// if feedback type is reject, include model feedback answer
 	if request.FeedbackType != entity.ApproveFeedbackType {
-		if request.ModelFeedbackAnswer == nil {
+		if request.ModelFeedbackAnswers == nil {
 			response := viewmodels.HTTPResponseVM{
 				Status:    http.StatusBadRequest,
 				Success:   false,
@@ -655,23 +659,25 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 			return
 		}
 
-		modelFeedbackAnswer = &serviceTypes.ModelFeedbackAnswer{
-			ModelFeedbackID:        ID,
-			QuestionnaireID:        request.ModelFeedbackAnswer.QuestionnaireID,
-			QuestionnaireQuestion:  request.ModelFeedbackAnswer.QuestionnaireQuestion,
-			QuestionnaireAnswerIDs: request.ModelFeedbackAnswer.QuestionnaireAnswerIDs,
-			QuestionnaireAnswers:   request.ModelFeedbackAnswer.QuestionnaireAnswers,
+		for _, answer := range request.ModelFeedbackAnswers {
+			modelFeedbackAnswers = append(modelFeedbackAnswers, serviceTypes.ModelFeedbackAnswer{
+				ModelFeedbackID:        request.ID,
+				QuestionnaireID:        answer.QuestionnaireID,
+				QuestionnaireQuestion:  answer.QuestionnaireQuestion,
+				QuestionnaireAnswerIDs: answer.QuestionnaireAnswerIDs,
+				QuestionnaireAnswers:   answer.QuestionnaireAnswers,
+			})
 		}
 	}
 
 	err = controller.InferenceCommandServiceInterface.UpdateModelFeedback(context.TODO(), serviceTypes.UpdateModelFeedback{
-		ID:                  ID,
-		TenantID:            tenantID,
-		UserID:              userID,
-		InferenceModelID:    request.InferenceModelID,
-		ModelID:             request.ModelID,
-		FeedbackType:        request.FeedbackType,
-		ModelFeedbackAnswer: modelFeedbackAnswer,
+		ID:                   request.ID,
+		TenantID:             tenantID,
+		UserID:               userID,
+		InferenceModelID:     request.InferenceModelID,
+		ModelID:              request.ModelID,
+		FeedbackType:         request.FeedbackType,
+		ModelFeedbackAnswers: modelFeedbackAnswers,
 	})
 	if err != nil {
 		var httpCode int

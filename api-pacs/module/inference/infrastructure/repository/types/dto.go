@@ -22,7 +22,7 @@ type AddModelFeedbackAnswer struct {
 	QuestionnaireAnswers   []string
 }
 
-type GetModelFeedbackByUser struct {
+type GetModelFeedbackByUserModelID struct {
 	TenantID string
 	UserID   string
 	ModelID  string

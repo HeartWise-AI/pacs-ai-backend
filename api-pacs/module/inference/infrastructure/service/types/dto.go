@@ -67,7 +67,7 @@ type GetModelFeedbackResult struct {
 	InferenceModelID     string
 	ModelID              string
 	FeedbackType         entity.FeedbackType
-	ModelFeedbackAnswers []ModelFeedbackAnswer
+	ModelFeedbackAnswers []ModelFeedbackAnswerResult
 }
 
 type PredictInferenceModel struct {
@@ -75,6 +75,12 @@ type PredictInferenceModel struct {
 	SeriesInstanceUIDs []string
 	AdditionalMetadata map[string]interface{}
 	ForceJSON          *bool
+}
+
+type RemoveModelFeedback struct {
+	TenantID string
+	UserID   string
+	ModelID  string
 }
 
 type UpdateInferenceModel struct {
@@ -98,6 +104,16 @@ type ModelFacts struct {
 }
 
 type ModelFeedbackAnswer struct {
+	ID                     string
+	ModelFeedbackID        *string
+	QuestionnaireID        string
+	QuestionnaireQuestion  string
+	QuestionnaireAnswerIDs []string
+	QuestionnaireAnswers   []string
+}
+
+type ModelFeedbackAnswerResult struct {
+	ID                     string
 	ModelFeedbackID        string
 	QuestionnaireID        string
 	QuestionnaireQuestion  string

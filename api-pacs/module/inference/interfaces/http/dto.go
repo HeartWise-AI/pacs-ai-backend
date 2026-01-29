@@ -48,10 +48,11 @@ type UpdateInferenceModelContainerRequest struct {
 }
 
 type UpdateModelFeedbackRequest struct {
-	InferenceModelID    string               `json:"inferenceModelId" validate:"required"`
-	ModelID             string               `json:"modelId" validate:"required"`
-	FeedbackType        entity.FeedbackType  `json:"feedbackType" validate:"required"`
-	ModelFeedbackAnswer *ModelFeedbackAnswer `json:"modelFeedbackAnswer"`
+	ID                   *string               `json:"id"`
+	InferenceModelID     string                `json:"inferenceModelId" validate:"required"`
+	ModelID              string                `json:"modelId" validate:"required"`
+	FeedbackType         entity.FeedbackType   `json:"feedbackType" validate:"required"`
+	ModelFeedbackAnswers []ModelFeedbackAnswer `json:"modelFeedbackAnswers"`
 }
 
 type GetContainerInfoResponse struct {
@@ -94,13 +95,13 @@ type GetInferenceAvailableModelResponse struct {
 }
 
 type GetModelFeedbackResponse struct {
-	ID                   string                       `json:"id"`
-	TenantID             string                       `json:"tenantId"`
-	UserID               string                       `json:"userId"`
-	InferenceModelID     string                       `json:"inferenceModelId"`
-	ModelID              string                       `json:"modelId"`
-	FeedbackType         entity.FeedbackType          `json:"feedbackType"`
-	ModelFeedbackAnswers *[]ModelFeedbackAnswerResult `json:"modelFeedbackAnswers"`
+	ID                   string                      `json:"id"`
+	TenantID             string                      `json:"tenantId"`
+	UserID               string                      `json:"userId"`
+	InferenceModelID     string                      `json:"inferenceModelId"`
+	ModelID              string                      `json:"modelId"`
+	FeedbackType         entity.FeedbackType         `json:"feedbackType"`
+	ModelFeedbackAnswers []ModelFeedbackAnswerResult `json:"modelFeedbackAnswers"`
 }
 
 type ModelFacts struct {

@@ -452,15 +452,25 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 }
 
 // RemoveModelFeedback removes model feedback
-func (service *InferenceCommandService) RemoveModelFeedback(ctx context.Context, ID string) error {
+func (service *InferenceCommandService) RemoveModelFeedback(ctx context.Context, data types.RemoveModelFeedback) error {
+	// get model feedback
+	modelFeedback, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackByUserModelID(ctx, repositoryTypes.GetModelFeedbackByUserModelID{
+		TenantID: data.TenantID,
+		UserID:   data.UserID,
+		ModelID:  data.ModelID,
+	})
+	if err != nil {
+		return err
+	}
+
 	// delete model feedback
-	err := service.InferenceCommandRepositoryInterface.DeleteModelFeedback(ctx, ID)
+	err = service.InferenceCommandRepositoryInterface.DeleteModelFeedback(ctx, modelFeedback.ID)
 	if err != nil {
 		return err
 	}
 
 	// get model feedback answers
-	modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, ID)
+	modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, modelFeedback.ID)
 	if err != nil && err.Error() != apiError.MissingRecord {
 		return err
 	}

@@ -9,6 +9,7 @@ import (
 	"api-pacs/interfaces/http/rest/viewmodels"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/application"
+	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 	types "api-pacs/module/inference/interfaces/http"
 )
 
@@ -322,8 +323,9 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 	response.JSON(w)
 }
 
-// GetModelFeedbacksByModelID gets the model feedbacks by model ID
-func (controller *InferenceQueryController) GetModelFeedbacksByModelID(w http.ResponseWriter, r *http.Request) {
+// GetModelFeedbackByModelID gets the model feedback by model ID
+func (controller *InferenceQueryController) GetModelFeedbackByModelID(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
 	modelID := chi.URLParam(r, "modelID")
@@ -339,7 +341,11 @@ func (controller *InferenceQueryController) GetModelFeedbacksByModelID(w http.Re
 		return
 	}
 
-	res, err := controller.InferenceQueryServiceInterface.GetModelFeedBacksByUserModelID(r.Context(), userID, modelID)
+	res, err := controller.InferenceQueryServiceInterface.GetModelFeedBackByUser(r.Context(), serviceTypes.GetModelFeedbackByUser{
+		TenantID: tenantID,
+		UserID:   userID,
+		ModelID:  modelID,
+	})
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -364,44 +370,40 @@ func (controller *InferenceQueryController) GetModelFeedbacksByModelID(w http.Re
 		return
 	}
 
-	modelFeedbacks := []types.GetModelFeedbackResponse{}
+	var modelFeedbackAnswers []types.ModelFeedbackAnswerResult
 
-	for _, modelFeedback := range res {
-		var modelFeedbackAnswers *[]types.ModelFeedbackAnswerResult
+	if res.ModelFeedbackAnswers != nil {
+		var answers []types.ModelFeedbackAnswerResult
 
-		if modelFeedback.ModelFeedbackAnswers != nil {
-			var answers []types.ModelFeedbackAnswerResult
-
-			for _, modelFeedbackAnswer := range *modelFeedback.ModelFeedbackAnswers {
-				answers = append(answers, types.ModelFeedbackAnswerResult{
-					ID:                     modelFeedbackAnswer.ID,
-					ModelFeedbackID:        modelFeedbackAnswer.ModelFeedbackID,
-					QuestionnaireID:        modelFeedbackAnswer.QuestionnaireID,
-					QuestionnaireQuestion:  modelFeedbackAnswer.QuestionnaireQuestion,
-					QuestionnaireAnswerIDs: modelFeedbackAnswer.QuestionnaireAnswerIDs,
-					QuestionnaireAnswers:   modelFeedbackAnswer.QuestionnaireAnswers,
-				})
-			}
-
-			modelFeedbackAnswers = &answers
+		for _, modelFeedbackAnswer := range res.ModelFeedbackAnswers {
+			answers = append(answers, types.ModelFeedbackAnswerResult{
+				ID:                     modelFeedbackAnswer.ID,
+				ModelFeedbackID:        modelFeedbackAnswer.ModelFeedbackID,
+				QuestionnaireID:        modelFeedbackAnswer.QuestionnaireID,
+				QuestionnaireQuestion:  modelFeedbackAnswer.QuestionnaireQuestion,
+				QuestionnaireAnswerIDs: modelFeedbackAnswer.QuestionnaireAnswerIDs,
+				QuestionnaireAnswers:   modelFeedbackAnswer.QuestionnaireAnswers,
+			})
 		}
 
-		modelFeedbacks = append(modelFeedbacks, types.GetModelFeedbackResponse{
-			ID:                   modelFeedback.ID,
-			TenantID:             modelFeedback.TenantID,
-			UserID:               modelFeedback.UserID,
-			InferenceModelID:     modelFeedback.InferenceModelID,
-			ModelID:              modelFeedback.ModelID,
-			FeedbackType:         modelFeedback.FeedbackType,
-			ModelFeedbackAnswers: modelFeedbackAnswers,
-		})
+		modelFeedbackAnswers = answers
+	}
+
+	modelFeedbackAnswer := types.GetModelFeedbackResponse{
+		ID:                   res.ID,
+		TenantID:             res.TenantID,
+		UserID:               res.UserID,
+		InferenceModelID:     res.InferenceModelID,
+		ModelID:              res.ModelID,
+		FeedbackType:         res.FeedbackType,
+		ModelFeedbackAnswers: modelFeedbackAnswers,
 	}
 
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,
-		Message: "Successfully retrieved model feedbacks.",
-		Data:    modelFeedbacks,
+		Message: "Successfully retrieved model feedback.",
+		Data:    modelFeedbackAnswer,
 	}
 
 	response.JSON(w)
