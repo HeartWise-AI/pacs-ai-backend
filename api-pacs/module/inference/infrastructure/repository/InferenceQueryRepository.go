@@ -8,6 +8,7 @@ import (
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
+	"api-pacs/module/inference/infrastructure/repository/types"
 )
 
 // InferenceQueryRepository handles the inference query repository logic
@@ -110,4 +111,74 @@ func (repository *InferenceQueryRepository) SelectInferenceModels(ctx context.Co
 	}
 
 	return inferenceModels, nil
+}
+
+// SelectModelFeedbackByUserModelID get model feedback by model and user ID
+func (repository *InferenceQueryRepository) SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return entity.ModelFeedback{}, errors.New(apiError.FirestoreError)
+	}
+
+	// get firestore model feedback
+	var modelFeedback entity.ModelFeedback
+
+	firestoreRes, err := firestoreClient.Collection(modelFeedback.GetModelName()).Where("tenant_id", "==", data.TenantID).Where("user_id", "==", data.UserID).Where("model_id", "==", data.ModelID).Documents(ctx).GetAll()
+	if err != nil {
+		log.Println(err)
+		return entity.ModelFeedback{}, errors.New(apiError.FirestoreError)
+	}
+
+	if len(firestoreRes) == 0 {
+		return entity.ModelFeedback{}, errors.New(apiError.MissingRecord)
+	}
+
+	err = firestoreRes[0].DataTo(&modelFeedback)
+	if err != nil {
+		log.Println(err)
+		return entity.ModelFeedback{}, errors.New(apiError.FirestoreError)
+	}
+
+	return modelFeedback, nil
+}
+
+// SelectModelFeedbackAnswersByFeedbackID get model feedback answers by feedback ID
+func (repository *InferenceQueryRepository) SelectModelFeedbackAnswersByFeedbackID(ctx context.Context, feedbackID string) ([]entity.ModelFeedbackAnswer, error) {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	// get firestore model feedback answer
+	var modelFeedbackAnswer entity.ModelFeedbackAnswer
+
+	query := firestoreClient.Collection(modelFeedbackAnswer.GetModelName()).Where("model_feedback_id", "==", feedbackID)
+	docs, err := query.Documents(ctx).GetAll()
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	var modelFeedbackAnswers []entity.ModelFeedbackAnswer
+
+	for _, doc := range docs {
+		var modelFeedbackAnswer entity.ModelFeedbackAnswer
+		if err := doc.DataTo(&modelFeedbackAnswer); err != nil {
+			log.Println(err)
+			continue
+		}
+
+		modelFeedbackAnswer.ID = doc.Ref.ID
+		modelFeedbackAnswers = append(modelFeedbackAnswers, modelFeedbackAnswer)
+	}
+
+	if len(modelFeedbackAnswers) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return modelFeedbackAnswers, nil
 }

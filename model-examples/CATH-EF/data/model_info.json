@@ -1,4 +1,5 @@
 {
+  "modelId": "CathEF",
   "modelName": "CathEF",
   "version": "1.6.0",
   "dicomTargetLevel": "SERIES",

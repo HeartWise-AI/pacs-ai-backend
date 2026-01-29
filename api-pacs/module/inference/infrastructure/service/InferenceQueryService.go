@@ -14,6 +14,7 @@ import (
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
+	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
 )
 
@@ -218,4 +219,47 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 	}
 
 	return inferenceAvailableModels, nil
+}
+
+// GetModelFeedBackByUser gets the model feedback by user
+func (service *InferenceQueryService) GetModelFeedBackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (types.GetModelFeedbackResult, error) {
+	modelFeedback, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackByUserModelID(ctx, repositoryTypes.GetModelFeedbackByUserModelID{
+		TenantID: data.TenantID,
+		UserID:   data.UserID,
+		ModelID:  data.ModelID,
+	})
+	if err != nil {
+		return types.GetModelFeedbackResult{}, err
+	}
+
+	var modelFeedbackAnswersResult []types.ModelFeedbackAnswerResult
+
+	// populate model feedback answers if rejected
+	if modelFeedback.FeedbackType == entity.RejectFeedbackType {
+		modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, modelFeedback.ID)
+		if err != nil && err.Error() != apiError.MissingRecord {
+			return types.GetModelFeedbackResult{}, err
+		}
+
+		for _, modelFeedbackAnswer := range modelFeedbackAnswers {
+			modelFeedbackAnswersResult = append(modelFeedbackAnswersResult, types.ModelFeedbackAnswerResult{
+				ID:                     modelFeedbackAnswer.ID,
+				ModelFeedbackID:        modelFeedbackAnswer.ModelFeedbackID,
+				QuestionnaireID:        modelFeedbackAnswer.QuestionnaireID,
+				QuestionnaireQuestion:  modelFeedbackAnswer.QuestionnaireQuestion,
+				QuestionnaireAnswerIDs: modelFeedbackAnswer.QuestionnaireAnswerIDs,
+				QuestionnaireAnswers:   modelFeedbackAnswer.QuestionnaireAnswers,
+			})
+		}
+	}
+
+	return types.GetModelFeedbackResult{
+		ID:                   modelFeedback.ID,
+		TenantID:             modelFeedback.TenantID,
+		UserID:               modelFeedback.UserID,
+		InferenceModelID:     modelFeedback.InferenceModelID,
+		ModelID:              modelFeedback.ModelID,
+		FeedbackType:         modelFeedback.FeedbackType,
+		ModelFeedbackAnswers: modelFeedbackAnswersResult,
+	}, nil
 }

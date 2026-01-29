@@ -1,4 +1,5 @@
 {
+  "modelId": "PanEcho",
   "modelName": "PanEcho",
   "domainName": "Cardiology",
   "stage": "ai_inference",

@@ -1,4 +1,5 @@
 {
+  "modelId": "DeepCoro_CLIP_generic",
   "modelName": "DeepCoro_CLIP_generic",
   "domainName": "Cardiology",
   "stage": "ai_inference",

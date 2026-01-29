@@ -16,6 +16,7 @@ import (
 	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/application"
+	"api-pacs/module/inference/domain/entity"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 	types "api-pacs/module/inference/interfaces/http"
 )
@@ -160,6 +161,62 @@ func (controller *InferenceCommandController) DeleteInferenceModel(w http.Respon
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully deleted inference model.",
+	}
+
+	response.JSON(w)
+}
+
+// RemoveModelFeedback removes model feedback
+func (controller *InferenceCommandController) RemoveModelFeedback(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	modelID := chi.URLParam(r, "modelID")
+	if len(modelID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Model id is required.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err := controller.InferenceCommandServiceInterface.RemoveModelFeedback(context.TODO(), serviceTypes.RemoveModelFeedback{
+		TenantID: tenantID,
+		UserID:   userID,
+		ModelID:  modelID,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while removing model feedback."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully removed model feedback.",
 	}
 
 	response.JSON(w)
@@ -535,6 +592,121 @@ func (controller *InferenceCommandController) UpdateInferenceModel(w http.Respon
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully updated inference model.",
+	}
+
+	response.JSON(w)
+}
+
+// UpdateModelFeedback updates model feedback
+func (controller *InferenceCommandController) UpdateModelFeedback(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	var request types.UpdateModelFeedbackRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var modelFeedbackAnswers []serviceTypes.ModelFeedbackAnswer
+
+	// if feedback type is reject, include model feedback answer
+	if request.FeedbackType == entity.RejectFeedbackType {
+		if len(request.ModelFeedbackAnswers) == 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   "Model feedback answer is required for reject feedback type.",
+				ErrorCode: apiError.InvalidRequestPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		for _, answer := range request.ModelFeedbackAnswers {
+			modelFeedbackAnswers = append(modelFeedbackAnswers, serviceTypes.ModelFeedbackAnswer{
+				ModelFeedbackID:        request.ID,
+				QuestionnaireID:        answer.QuestionnaireID,
+				QuestionnaireQuestion:  answer.QuestionnaireQuestion,
+				QuestionnaireAnswerIDs: answer.QuestionnaireAnswerIDs,
+				QuestionnaireAnswers:   answer.QuestionnaireAnswers,
+			})
+		}
+	}
+
+	err = controller.InferenceCommandServiceInterface.UpdateModelFeedback(context.TODO(), serviceTypes.UpdateModelFeedback{
+		ID:                   request.ID,
+		TenantID:             tenantID,
+		UserID:               userID,
+		InferenceModelID:     request.InferenceModelID,
+		ModelID:              request.ModelID,
+		FeedbackType:         request.FeedbackType,
+		ModelFeedbackAnswers: modelFeedbackAnswers,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while updating model feedback."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully updated model feedback.",
 	}
 
 	response.JSON(w)

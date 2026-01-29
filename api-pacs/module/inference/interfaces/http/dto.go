@@ -10,14 +10,17 @@ import (
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
-		"AddInferenceModel.Name":                    "Name is required.",
-		"AddInferenceModel.DockerImage":             "Docker image is required.",
-		"AddInferenceModel.OutputMode":              "Output mode is required.",
-		"PredictInferenceModel.StudyInstanceUID":    "Study Instance UID is required.",
-		"PredictInferenceModel.SeriesInstanceUIDs":  "Series Instance UIDs are required.",
-		"UpdateInferenceModel.DisallowedDICOMTags":  "Disallowed DICOM tags are required.",
-		"UpdateInferenceModel.OutputMode":           "Output mode is required.",
-		"UpdateInferenceModelContainer.ContainerID": "Container ID is required.",
+		"AddInferenceModel.Name":                           "Name is required.",
+		"AddInferenceModel.DockerImage":                    "Docker image is required.",
+		"AddInferenceModel.OutputMode":                     "Output mode is required.",
+		"PredictInferenceModelRequest.StudyInstanceUID":    "Study Instance UID is required.",
+		"PredictInferenceModelRequest.SeriesInstanceUIDs":  "Series Instance UIDs are required.",
+		"UpdateInferenceModelRequest.DisallowedDICOMTags":  "Disallowed DICOM tags are required.",
+		"UpdateInferenceModelRequest.OutputMode":           "Output mode is required.",
+		"UpdateInferenceModelContainerRequest.ContainerID": "Container ID is required.",
+		"UpdateModelFeedbackRequest.InferenceModelID":      "Inference Model ID is required.",
+		"UpdateModelFeedbackRequest.ModelID":               "Model ID is required.",
+		"UpdateModelFeedbackRequest.FeedbackType":          "Feedback type is required.",
 	}
 )
 
@@ -42,6 +45,14 @@ type PredictInferenceModelRequest struct {
 
 type UpdateInferenceModelContainerRequest struct {
 	ContainerID string `json:"containerId" validate:"required"`
+}
+
+type UpdateModelFeedbackRequest struct {
+	ID                   *string               `json:"id"`
+	InferenceModelID     string                `json:"inferenceModelId" validate:"required"`
+	ModelID              string                `json:"modelId" validate:"required"`
+	FeedbackType         entity.FeedbackType   `json:"feedbackType" validate:"required"`
+	ModelFeedbackAnswers []ModelFeedbackAnswer `json:"modelFeedbackAnswers"`
 }
 
 type GetContainerInfoResponse struct {
@@ -83,6 +94,32 @@ type GetInferenceAvailableModelResponse struct {
 	OutputMode                  entity.OutputMode `json:"outputMode"`
 }
 
+type GetModelFeedbackResponse struct {
+	ID                   string                      `json:"id"`
+	TenantID             string                      `json:"tenantId"`
+	UserID               string                      `json:"userId"`
+	InferenceModelID     string                      `json:"inferenceModelId"`
+	ModelID              string                      `json:"modelId"`
+	FeedbackType         entity.FeedbackType         `json:"feedbackType"`
+	ModelFeedbackAnswers []ModelFeedbackAnswerResult `json:"modelFeedbackAnswers"`
+}
+
 type ModelFacts struct {
 	En map[string]interface{} `json:"en"`
+}
+
+type ModelFeedbackAnswer struct {
+	QuestionnaireID        string   `json:"questionnaireId"`
+	QuestionnaireQuestion  string   `json:"questionnaireQuestion"`
+	QuestionnaireAnswerIDs []string `json:"questionnaireAnswerIds"`
+	QuestionnaireAnswers   []string `json:"questionnaireAnswers"`
+}
+
+type ModelFeedbackAnswerResult struct {
+	ID                     string   `json:"id"`
+	ModelFeedbackID        string   `json:"modelFeedbackId"`
+	QuestionnaireID        string   `json:"questionnaireId"`
+	QuestionnaireQuestion  string   `json:"questionnaireQuestion"`
+	QuestionnaireAnswerIDs []string `json:"questionnaireAnswerIds"`
+	QuestionnaireAnswers   []string `json:"questionnaireAnswers"`
 }

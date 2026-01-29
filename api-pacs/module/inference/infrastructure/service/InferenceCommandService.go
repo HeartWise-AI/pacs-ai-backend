@@ -19,6 +19,7 @@ import (
 	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
@@ -450,6 +451,41 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	return predictionResult, nil
 }
 
+// RemoveModelFeedback removes model feedback
+func (service *InferenceCommandService) RemoveModelFeedback(ctx context.Context, data types.RemoveModelFeedback) error {
+	// get model feedback
+	modelFeedback, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackByUserModelID(ctx, repositoryTypes.GetModelFeedbackByUserModelID{
+		TenantID: data.TenantID,
+		UserID:   data.UserID,
+		ModelID:  data.ModelID,
+	})
+	if err != nil {
+		return err
+	}
+
+	// delete model feedback
+	err = service.InferenceCommandRepositoryInterface.DeleteModelFeedback(ctx, modelFeedback.ID)
+	if err != nil {
+		return err
+	}
+
+	// get model feedback answers
+	modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, modelFeedback.ID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return err
+	}
+
+	// delete model feedback answers
+	for _, modelFeedbackAnswer := range modelFeedbackAnswers {
+		err = service.InferenceCommandRepositoryInterface.DeleteModelFeedbackAnswer(ctx, modelFeedbackAnswer.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // RestartInferenceModelContainer restarts an inference model container
 func (service *InferenceCommandService) RestartInferenceModelContainer(ctx context.Context, containerID string) error {
 	err := service.DockerSDKInterface.RestartContainer(ctx, containerID)
@@ -502,6 +538,63 @@ func (service *InferenceCommandService) UpdateInferenceModelContainerID(ctx cont
 	err := service.InferenceCommandRepositoryInterface.UpdateInferenceModelContainerID(ctx, ID, containerID)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// UpdateModelFeedback updates model feedback
+func (service *InferenceCommandService) UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error {
+	modelFeedbackID := data.ID
+
+	if modelFeedbackID == nil {
+		modelFeedbackIDStr := generateID()
+		modelFeedbackID = &modelFeedbackIDStr
+	}
+
+	err := service.InferenceCommandRepositoryInterface.UpsertModelFeedback(ctx, repositoryTypes.UpsertModelFeedback{
+		ID:               *modelFeedbackID,
+		TenantID:         data.TenantID,
+		InferenceModelID: data.InferenceModelID,
+		UserID:           data.UserID,
+		ModelID:          data.ModelID,
+		FeedbackType:     data.FeedbackType,
+	})
+	if err != nil {
+		return err
+	}
+
+	// check feedback type
+	if data.FeedbackType == entity.ApproveFeedbackType {
+		// delete exiting feedback answers
+		// get model feedback answers
+		modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, *modelFeedbackID)
+		if err != nil && err.Error() != apiError.MissingRecord {
+			return err
+		}
+
+		// delete model feedback answers
+		for _, modelFeedbackAnswer := range modelFeedbackAnswers {
+			err = service.InferenceCommandRepositoryInterface.DeleteModelFeedbackAnswer(ctx, modelFeedbackAnswer.ID)
+			if err != nil {
+				return err
+			}
+		}
+	} else if data.FeedbackType == entity.RejectFeedbackType {
+		// add feedback answers
+		for _, answer := range data.ModelFeedbackAnswers {
+			err = service.InferenceCommandRepositoryInterface.InsertModelFeedbackAnswer(ctx, repositoryTypes.AddModelFeedbackAnswer{
+				ID:                     generateID(),
+				ModelFeedbackID:        *modelFeedbackID,
+				QuestionnaireID:        answer.QuestionnaireID,
+				QuestionnaireQuestion:  answer.QuestionnaireQuestion,
+				QuestionnaireAnswerIDs: answer.QuestionnaireAnswerIDs,
+				QuestionnaireAnswers:   answer.QuestionnaireAnswers,
+			})
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil

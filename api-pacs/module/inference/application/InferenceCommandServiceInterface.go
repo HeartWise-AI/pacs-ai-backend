@@ -17,6 +17,8 @@ type InferenceCommandServiceInterface interface {
 	GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error)
 	// PredictInferenceModel predicts an inference model
 	PredictInferenceModel(ctx context.Context, tenantID, userID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
+	// RemoveModelFeedback removes model feedback
+	RemoveModelFeedback(ctx context.Context, data types.RemoveModelFeedback) error
 	// RestartInferenceModelContainer restarts an inference model container
 	RestartInferenceModelContainer(ctx context.Context, containerID string) error
 	// StartInferenceModelContainer starts an inference model container
@@ -25,4 +27,6 @@ type InferenceCommandServiceInterface interface {
 	StopInferenceModelContainer(ctx context.Context, containerID string) error
 	// UpdateInferenceModel updates an inference model
 	UpdateInferenceModel(ctx context.Context, data types.UpdateInferenceModel) error
+	// UpdateModelFeedback updates model feedback
+	UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error
 }

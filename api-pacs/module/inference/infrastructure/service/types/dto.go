@@ -15,19 +15,6 @@ type AddInferenceModel struct {
 	OutputMode  entity.OutputMode
 }
 
-type UpdateInferenceModel struct {
-	ID                  string
-	DisallowedDICOMTags []string
-	OutputMode          entity.OutputMode
-}
-
-type PredictInferenceModel struct {
-	StudyInstanceUID   string
-	SeriesInstanceUIDs []string
-	AdditionalMetadata map[string]interface{}
-	ForceJSON          *bool
-}
-
 type GetContainerInfoResult struct {
 	ID              string
 	Name            string
@@ -67,6 +54,69 @@ type GetInferenceAvailableModelResult struct {
 	OutputMode                  entity.OutputMode
 }
 
+type GetModelFeedbackByUser struct {
+	TenantID string
+	UserID   string
+	ModelID  string
+}
+
+type GetModelFeedbackResult struct {
+	ID                   string
+	TenantID             string
+	UserID               string
+	InferenceModelID     string
+	ModelID              string
+	FeedbackType         entity.FeedbackType
+	ModelFeedbackAnswers []ModelFeedbackAnswerResult
+}
+
+type PredictInferenceModel struct {
+	StudyInstanceUID   string
+	SeriesInstanceUIDs []string
+	AdditionalMetadata map[string]interface{}
+	ForceJSON          *bool
+}
+
+type RemoveModelFeedback struct {
+	TenantID string
+	UserID   string
+	ModelID  string
+}
+
+type UpdateInferenceModel struct {
+	ID                  string
+	DisallowedDICOMTags []string
+	OutputMode          entity.OutputMode
+}
+
+type UpdateModelFeedback struct {
+	ID                   *string
+	TenantID             string
+	UserID               string
+	InferenceModelID     string
+	ModelID              string
+	FeedbackType         entity.FeedbackType
+	ModelFeedbackAnswers []ModelFeedbackAnswer
+}
+
 type ModelFacts struct {
 	En map[string]interface{}
+}
+
+type ModelFeedbackAnswer struct {
+	ID                     string
+	ModelFeedbackID        *string
+	QuestionnaireID        string
+	QuestionnaireQuestion  string
+	QuestionnaireAnswerIDs []string
+	QuestionnaireAnswers   []string
+}
+
+type ModelFeedbackAnswerResult struct {
+	ID                     string
+	ModelFeedbackID        string
+	QuestionnaireID        string
+	QuestionnaireQuestion  string
+	QuestionnaireAnswerIDs []string
+	QuestionnaireAnswers   []string
 }
