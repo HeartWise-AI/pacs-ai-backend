@@ -140,7 +140,7 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Get("/{modelID}/feedback", inferenceQueryController.GetModelFeedbackByModelID)
 							r.Delete("/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
 							r.Put("/{ID}/update", inferenceCommandController.UpdateInferenceModel)
-							r.Put("/feedback/{ID}/update", inferenceCommandController.UpdateModelFeedback)
+							r.Put("/feedback/update", inferenceCommandController.UpdateModelFeedback)
 							r.Delete("/{modelID}/feedback/user/remove", inferenceCommandController.RemoveModelFeedback)
 
 							// container routes

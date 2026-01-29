@@ -10,17 +10,17 @@ import (
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
-		"AddInferenceModel.Name":                    "Name is required.",
-		"AddInferenceModel.DockerImage":             "Docker image is required.",
-		"AddInferenceModel.OutputMode":              "Output mode is required.",
-		"PredictInferenceModel.StudyInstanceUID":    "Study Instance UID is required.",
-		"PredictInferenceModel.SeriesInstanceUIDs":  "Series Instance UIDs are required.",
-		"UpdateInferenceModel.DisallowedDICOMTags":  "Disallowed DICOM tags are required.",
-		"UpdateInferenceModel.OutputMode":           "Output mode is required.",
-		"UpdateInferenceModelContainer.ContainerID": "Container ID is required.",
-		"UpdateModelFeedback.InferenceModelID":      "Inference Model ID is required.",
-		"UpdateModelFeedback.ModelID":               "Model ID is required.",
-		"UpdateModelFeedback.FeedbackType":          "Feedback type is required.",
+		"AddInferenceModel.Name":                           "Name is required.",
+		"AddInferenceModel.DockerImage":                    "Docker image is required.",
+		"AddInferenceModel.OutputMode":                     "Output mode is required.",
+		"PredictInferenceModelRequest.StudyInstanceUID":    "Study Instance UID is required.",
+		"PredictInferenceModelRequest.SeriesInstanceUIDs":  "Series Instance UIDs are required.",
+		"UpdateInferenceModelRequest.DisallowedDICOMTags":  "Disallowed DICOM tags are required.",
+		"UpdateInferenceModelRequest.OutputMode":           "Output mode is required.",
+		"UpdateInferenceModelContainerRequest.ContainerID": "Container ID is required.",
+		"UpdateModelFeedbackRequest.InferenceModelID":      "Inference Model ID is required.",
+		"UpdateModelFeedbackRequest.ModelID":               "Model ID is required.",
+		"UpdateModelFeedbackRequest.FeedbackType":          "Feedback type is required.",
 	}
 )
 
