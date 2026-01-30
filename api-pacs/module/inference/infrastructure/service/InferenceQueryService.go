@@ -237,23 +237,21 @@ func (service *InferenceQueryService) GetModelFeedBackByUser(ctx context.Context
 
 	var modelFeedbackAnswersResult []types.ModelFeedbackAnswerResult
 
-	// populate model feedback answers if rejected
-	if modelFeedback.FeedbackType == entity.RejectFeedbackType {
-		modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, modelFeedback.ID)
-		if err != nil && err.Error() != apiError.MissingRecord {
-			return types.GetModelFeedbackResult{}, err
-		}
+	// get model feedback answers
+	modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, modelFeedback.ID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return types.GetModelFeedbackResult{}, err
+	}
 
-		for _, modelFeedbackAnswer := range modelFeedbackAnswers {
-			modelFeedbackAnswersResult = append(modelFeedbackAnswersResult, types.ModelFeedbackAnswerResult{
-				ID:                     modelFeedbackAnswer.ID,
-				ModelFeedbackID:        modelFeedbackAnswer.ModelFeedbackID,
-				QuestionnaireID:        modelFeedbackAnswer.QuestionnaireID,
-				QuestionnaireQuestion:  modelFeedbackAnswer.QuestionnaireQuestion,
-				QuestionnaireAnswerIDs: modelFeedbackAnswer.QuestionnaireAnswerIDs,
-				QuestionnaireAnswers:   modelFeedbackAnswer.QuestionnaireAnswers,
-			})
-		}
+	for _, modelFeedbackAnswer := range modelFeedbackAnswers {
+		modelFeedbackAnswersResult = append(modelFeedbackAnswersResult, types.ModelFeedbackAnswerResult{
+			ID:                     modelFeedbackAnswer.ID,
+			ModelFeedbackID:        modelFeedbackAnswer.ModelFeedbackID,
+			QuestionnaireID:        modelFeedbackAnswer.QuestionnaireID,
+			QuestionnaireQuestion:  modelFeedbackAnswer.QuestionnaireQuestion,
+			QuestionnaireAnswerIDs: modelFeedbackAnswer.QuestionnaireAnswerIDs,
+			QuestionnaireAnswers:   modelFeedbackAnswer.QuestionnaireAnswers,
+		})
 	}
 
 	return types.GetModelFeedbackResult{
