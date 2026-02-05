@@ -413,23 +413,27 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	go func() {
 		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, userID)
 		if err != nil {
+			log.Println(err)
 			return
 		}
 
 		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
 		if err != nil {
+			log.Println(err)
 			return
 		}
 
 		// Get inference model data for logging
 		inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
 		if err != nil {
+			log.Println(err)
 			return
 		}
 
 		// get model info
 		modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerName)
 		if err != nil {
+			log.Println(err)
 			return
 		}
 
