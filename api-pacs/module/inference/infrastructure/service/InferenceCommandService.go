@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"log"
 	"slices"
 	"sync"
@@ -426,6 +427,16 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 			return
 		}
 
+		modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerName)
+		if err != nil {
+			return
+		}
+
+		modelName := modelInfo.Data.ModelID
+		if len(modelInfo.Data.ModelID) == 0 {
+			modelName = modelInfo.Data.ModelName
+		}
+
 		_, err = service.ElasticsearchCommandServiceInterface.CreatePredictInferenceModelLog(ctx, elasticsearchTypes.CreatePredictInferenceModelLog{
 			TenantID:           tenant.ID,
 			TenantName:         tenant.Name,
@@ -437,6 +448,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 			InferenceModelID:   inferenceModel.ID,
 			InferenceModelName: inferenceModel.Name,
 			DockerImage:        inferenceModel.DockerImage,
+			Model:              fmt.Sprintf("%s-%s", modelName, modelInfo.Data.Version), // {modelID/modelName-version}
 			StudyInstanceUID:   data.StudyInstanceUID,
 			SeriesInstanceUIDs: data.SeriesInstanceUIDs,
 			AdditionalMetadata: data.AdditionalMetadata,

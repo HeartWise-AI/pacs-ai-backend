@@ -281,6 +281,8 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 				ContainerName:      predictInferenceModel.ContainerName,
 				InferenceModelID:   predictInferenceModel.InferenceModelID,
 				InferenceModelName: predictInferenceModel.InferenceModelName,
+				DockerImage:        predictInferenceModel.DockerImage,
+				Model:              predictInferenceModel.Model,
 				StudyInstanceUID:   predictInferenceModel.StudyInstanceUID,
 				SeriesInstanceUIDs: predictInferenceModel.SeriesInstanceUIDs,
 				AdditionalMetadata: predictInferenceModel.AdditionalMetadata,
