@@ -427,14 +427,15 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 			return
 		}
 
+		// get model info
 		modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerName)
 		if err != nil {
 			return
 		}
 
-		modelName := modelInfo.Data.ModelID
-		if len(modelInfo.Data.ModelID) == 0 {
-			modelName = modelInfo.Data.ModelName
+		modelID := modelInfo.Data.ModelID
+		if len(modelID) == 0 {
+			modelID = modelInfo.Data.ModelName
 		}
 
 		_, err = service.ElasticsearchCommandServiceInterface.CreatePredictInferenceModelLog(ctx, elasticsearchTypes.CreatePredictInferenceModelLog{
@@ -448,7 +449,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 			InferenceModelID:   inferenceModel.ID,
 			InferenceModelName: inferenceModel.Name,
 			DockerImage:        inferenceModel.DockerImage,
-			Model:              fmt.Sprintf("%s-%s", modelName, modelInfo.Data.Version), // {modelID/modelName-version}
+			Model:              fmt.Sprintf("%s-%s", modelID, modelInfo.Data.Version), // {modelID/modelName-version}
 			StudyInstanceUID:   data.StudyInstanceUID,
 			SeriesInstanceUIDs: data.SeriesInstanceUIDs,
 			AdditionalMetadata: data.AdditionalMetadata,
