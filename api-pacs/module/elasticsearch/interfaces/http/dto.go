@@ -77,6 +77,8 @@ type PredictInferenceModelLogResponse struct {
 	ContainerName      string                 `json:"containerName" csv:"container_name"`
 	InferenceModelID   string                 `json:"inferenceModelId" csv:"inference_model_id"`
 	InferenceModelName string                 `json:"inferenceModelName" csv:"inference_model_name"`
+	DockerImage        string                 `json:"dockerImage" csv:"docker_image"`
+	Model              string                 `json:"model" csv:"model"`
 	StudyInstanceUID   string                 `json:"studyInstanceUID" csv:"study_instance_uid"`
 	SeriesInstanceUIDs []string               `json:"seriesInstanceUIDs" csv:"series_instance_uids"`
 	AdditionalMetadata map[string]interface{} `json:"additionalMetadata" csv:"additional_metadata"`

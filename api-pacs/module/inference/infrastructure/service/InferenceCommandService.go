@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"log"
 	"slices"
 	"sync"
@@ -412,18 +413,33 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	go func() {
 		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, userID)
 		if err != nil {
+			log.Println(err)
 			return
 		}
 
 		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
 		if err != nil {
+			log.Println(err)
 			return
 		}
 
 		// Get inference model data for logging
 		inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
 		if err != nil {
+			log.Println(err)
 			return
+		}
+
+		// get model info
+		modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerName)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		modelID := modelInfo.Data.ModelID
+		if len(modelID) == 0 {
+			modelID = modelInfo.Data.ModelName
 		}
 
 		_, err = service.ElasticsearchCommandServiceInterface.CreatePredictInferenceModelLog(ctx, elasticsearchTypes.CreatePredictInferenceModelLog{
@@ -437,6 +453,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 			InferenceModelID:   inferenceModel.ID,
 			InferenceModelName: inferenceModel.Name,
 			DockerImage:        inferenceModel.DockerImage,
+			Model:              fmt.Sprintf("%s-%s", modelID, modelInfo.Data.Version), // {modelID/modelName-version}
 			StudyInstanceUID:   data.StudyInstanceUID,
 			SeriesInstanceUIDs: data.SeriesInstanceUIDs,
 			AdditionalMetadata: data.AdditionalMetadata,

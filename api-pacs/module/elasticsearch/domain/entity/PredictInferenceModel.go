@@ -12,6 +12,7 @@ type PredictInferenceModel struct {
 	InferenceModelID   string                 `json:"inference_model_id"`
 	InferenceModelName string                 `json:"inference_model_name"`
 	DockerImage        string                 `json:"docker_image"`
+	Model              string                 `json:"model"`
 	StudyInstanceUID   string                 `json:"study_instance_uid"`
 	SeriesInstanceUIDs []string               `json:"series_instance_uids"`
 	AdditionalMetadata map[string]interface{} `json:"additional_metadata"`

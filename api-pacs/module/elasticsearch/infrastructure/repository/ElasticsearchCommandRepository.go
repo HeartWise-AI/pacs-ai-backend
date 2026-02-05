@@ -101,6 +101,7 @@ func (repository *ElasticsearchCommandRepository) InsertPredictInferenceModelLog
 		InferenceModelID:   data.InferenceModelID,
 		InferenceModelName: data.InferenceModelName,
 		DockerImage:        data.DockerImage,
+		Model:              data.Model,
 		StudyInstanceUID:   data.StudyInstanceUID,
 		SeriesInstanceUIDs: data.SeriesInstanceUIDs,
 		AdditionalMetadata: data.AdditionalMetadata,
