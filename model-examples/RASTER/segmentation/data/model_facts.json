@@ -1,0 +1,29 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "RASTER",
+      "Description": "RAdiology STrokE Report",
+      "Developed_by": "Laurent Letourneau-Guillon and Guillaume Theaud",
+      "Development_period": "",
+      "Version": "0.1.0"
+    },
+    "Mechanism": {
+      "Outcome": "Radiology report for stroke",
+      "Output": "Radiology PDF report for stroke",
+      "Target_population": "",
+      "Input_data_source": "computed tomography (CT)",
+      "Input_data_type": "3D image (Nifti)",
+      "Model_type": ""
+    },
+    "Uses_and_directions": {
+      "General_use": "",
+      "Target_population_and_use_case": "",
+      "Before_using_this_model": ""
+    },
+    "Warnings_and_limitations": {
+      "Image_Quality": "",
+      "Multiple_Devices": "",
+      "Confidence_Scores": ""
+    }
+  }
+}

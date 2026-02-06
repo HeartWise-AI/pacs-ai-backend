@@ -1,0 +1,11 @@
+{
+  "modelName": "RASTER",
+  "version": "0.1.0-dev",
+  "dicomTargetLevel": "SERIES",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 1,
+  "supportedDicomModalities": ["CT"],
+  "supportedDicomTags": ["*"],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": ["PDF"]
+}
