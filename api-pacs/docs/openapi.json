@@ -1925,6 +1925,10 @@
         "required": ["metadata"],
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
           "metadata": {
             "type": "object"
           }

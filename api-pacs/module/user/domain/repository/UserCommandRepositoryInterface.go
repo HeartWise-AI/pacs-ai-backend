@@ -11,5 +11,5 @@ type UserCommandRepositoryInterface interface {
 	InsertTenantUser(ctx context.Context, data repositoryTypes.CreateTenantUser) (string, error)
 	UpdateTenantUser(ctx context.Context, data repositoryTypes.UpdateTenantUser) error
 	UpdateTenantUserPassword(ctx context.Context, data repositoryTypes.UpdateTenantUserPassword) error
-	UpdateUserMetadata(ctx context.Context, data repositoryTypes.UpdateUserMetadata) error
+	UpsertUserMetadata(ctx context.Context, data repositoryTypes.UpsertUserMetadata) error
 }

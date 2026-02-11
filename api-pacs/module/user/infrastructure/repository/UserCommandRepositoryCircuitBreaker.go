@@ -125,14 +125,14 @@ func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUserPassword(
 	}
 }
 
-// UpdateUserMetadata decorator pattern to update user metadata
-func (repository *UserCommandRepositoryCircuitBreaker) UpdateUserMetadata(ctx context.Context, data repositoryTypes.UpdateUserMetadata) error {
+// UpsertUserMetadata decorator pattern to upsert user metadata
+func (repository *UserCommandRepositoryCircuitBreaker) UpsertUserMetadata(ctx context.Context, data repositoryTypes.UpsertUserMetadata) error {
 	output := make(chan bool, 1)
 	errChan := make(chan error, 1)
 
-	hystrix.ConfigureCommand("update_user_metadata", config.Settings())
-	errors := hystrix.Go("update_user_metadata", func() error {
-		err := repository.UserCommandRepositoryInterface.UpdateUserMetadata(ctx, data)
+	hystrix.ConfigureCommand("upsert_user_metadata", config.Settings())
+	errors := hystrix.Go("upsert_user_metadata", func() error {
+		err := repository.UserCommandRepositoryInterface.UpsertUserMetadata(ctx, data)
 		if err != nil {
 			errChan <- err
 			return nil
