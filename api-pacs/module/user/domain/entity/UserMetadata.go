@@ -2,7 +2,7 @@ package entity
 
 // UserMetadata holds the user metadata entity fields
 type UserMetadata struct {
-	ID        string `firestore:"id,omitempty"` // firebase auth
+	ID        string `firestore:"id,omitempty"`
 	UserID    string `firestore:"user_id"`
 	Metadata  string `firestore:"metadata"` // json
 	CreatedAt int    `firestore:"created_at,omitempty"`
