@@ -528,7 +528,6 @@ func (controller *UserCommandController) UpdateUserMetadata(w http.ResponseWrite
 	}
 
 	err = controller.UserCommandServiceInterface.UpdateUserMetadata(context.TODO(), serviceTypes.UpdateUserMetadata{
-		ID:       request.ID,
 		UserID:   userID,
 		Metadata: request.Metadata,
 	})

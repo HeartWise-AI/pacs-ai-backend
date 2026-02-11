@@ -58,7 +58,6 @@ type UpdateTenantUserPasswordRequest struct {
 }
 
 type UpdateUserMetadataRequest struct {
-	ID       *string                `json:"id"`
 	Metadata map[string]interface{} `json:"metadata" validate:"required"`
 }
 
@@ -81,7 +80,6 @@ type GetTenantUserResponse struct {
 }
 
 type GetUserMetadataResponse struct {
-	ID        string                 `json:"id"`
 	UserID    string                 `json:"userId"`
 	Metadata  map[string]interface{} `json:"metadata"`
 	CreatedAt uint64                 `json:"createdAt"`

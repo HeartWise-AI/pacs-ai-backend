@@ -39,7 +39,6 @@ type UpdateTenantUserPassword struct {
 }
 
 type UpdateUserMetadata struct {
-	ID       *string
 	UserID   string
 	Metadata map[string]interface{}
 }

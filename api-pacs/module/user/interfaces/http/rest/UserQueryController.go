@@ -201,7 +201,6 @@ func (controller *UserQueryController) GetUserMetadata(w http.ResponseWriter, r 
 		Success: true,
 		Message: "Successfully fetched user metadata.",
 		Data: &types.GetUserMetadataResponse{
-			ID:        res.ID,
 			UserID:    res.UserID,
 			Metadata:  metadata,
 			CreatedAt: uint64(res.CreatedAt),

@@ -203,20 +203,12 @@ func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context,
 
 // UpdateUserMetadata update user metadata
 func (service *UserCommandService) UpdateUserMetadata(ctx context.Context, data types.UpdateUserMetadata) error {
-	userMetadataID := data.ID
-
-	if userMetadataID == nil {
-		userMetadataIDStr := generateID()
-		userMetadataID = &userMetadataIDStr
-	}
-
 	metadataJSON, err := json.Marshal(data.Metadata)
 	if err != nil {
 		return err
 	}
 
 	err = service.UserCommandRepositoryInterface.UpsertUserMetadata(ctx, repositoryTypes.UpsertUserMetadata{
-		ID:       *userMetadataID,
 		UserID:   data.UserID,
 		Metadata: string(metadataJSON),
 	})

@@ -222,12 +222,11 @@ func (repository *UserCommandRepository) UpsertUserMetadata(ctx context.Context,
 		return errors.New(apiError.FirestoreError)
 	}
 
-	collectionPath := fmt.Sprintf("%s/%s", userMetadata.GetModelName(), data.ID)
+	collectionPath := fmt.Sprintf("%s/%s", userMetadata.GetModelName(), data.UserID)
 	docRef := firestoreClient.Doc(collectionPath)
 
 	// try to insert user metadata
 	_, err = docRef.Create(ctx, entity.UserMetadata{
-		ID:        data.ID,
 		UserID:    data.UserID,
 		Metadata:  data.Metadata,
 		CreatedAt: int(time.Now().Unix()),
