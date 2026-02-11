@@ -193,11 +193,5 @@ func (repository *UserQueryRepository) SelectUserMetadataByUserID(ctx context.Co
 		return entity.UserMetadata{}, errors.New(apiError.FirestoreError)
 	}
 
-	return entity.UserMetadata{
-		ID:        userMetadata.ID,
-		UserID:    userMetadata.UserID,
-		Metadata:  userMetadata.Metadata,
-		CreatedAt: userMetadata.CreatedAt,
-		UpdatedAt: userMetadata.UpdatedAt,
-	}, nil
+	return userMetadata, nil
 }
