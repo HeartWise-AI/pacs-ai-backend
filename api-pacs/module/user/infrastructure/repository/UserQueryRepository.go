@@ -164,3 +164,40 @@ func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, te
 
 	return users, nil
 }
+
+// SelectUserMetadataByID get user metadata by user id
+func (repository *UserQueryRepository) SelectUserMetadataByUserID(ctx context.Context, userID string) (entity.UserMetadata, error) {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return entity.UserMetadata{}, errors.New(apiError.FirestoreError)
+	}
+
+	// get firestore user metadata
+	var userMetadata entity.UserMetadata
+
+	firestoreRes, err := firestoreClient.Collection(userMetadata.GetModelName()).Where("user_id", "==", userID).Documents(ctx).GetAll()
+	if err != nil {
+		log.Println(err)
+		return entity.UserMetadata{}, errors.New(apiError.FirestoreError)
+	}
+
+	if len(firestoreRes) == 0 {
+		return entity.UserMetadata{}, errors.New(apiError.MissingRecord)
+	}
+
+	err = firestoreRes[0].DataTo(&userMetadata)
+	if err != nil {
+		log.Println(err)
+		return entity.UserMetadata{}, errors.New(apiError.FirestoreError)
+	}
+
+	return entity.UserMetadata{
+		ID:        userMetadata.ID,
+		UserID:    userMetadata.UserID,
+		Metadata:  userMetadata.Metadata,
+		CreatedAt: userMetadata.CreatedAt,
+		UpdatedAt: userMetadata.UpdatedAt,
+	}, nil
+}

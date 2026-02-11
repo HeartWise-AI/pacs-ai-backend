@@ -232,7 +232,9 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
 					r.Get("/me", userQueryController.GetCurrentTenantUser)
+					r.Get("/metadata", userQueryController.GetUserMetadata)
 					r.Put("/password/update", userCommandController.UpdateTenantUserPassword)
+					r.Put("/metadata/update", userCommandController.UpdateUserMetadata)
 
 					// admin or owner only
 					r.Group(func(r chi.Router) {

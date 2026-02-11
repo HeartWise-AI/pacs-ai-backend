@@ -208,3 +208,37 @@ func (repository *UserCommandRepository) UpdateTenantUserPassword(ctx context.Co
 
 	return nil
 }
+
+// UpdateUserMetadata update user metadata
+func (repository *UserCommandRepository) UpdateUserMetadata(ctx context.Context, data repositoryTypes.UpdateUserMetadata) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	var userMetadata entity.UserMetadata
+
+	updateUserMetadata := []firestore.Update{
+		{
+			Path:  "metadata",
+			Value: data.Metadata,
+		},
+		{
+			Path:  "updated_at",
+			Value: int(time.Now().Unix()),
+		},
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", userMetadata.GetModelName(), data.ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Update(ctx, updateUserMetadata)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}

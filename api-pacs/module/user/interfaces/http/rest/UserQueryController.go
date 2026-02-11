@@ -2,6 +2,7 @@ package rest
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
@@ -152,6 +153,60 @@ func (controller *UserQueryController) GetTenantUsers(w http.ResponseWriter, r *
 		Success: true,
 		Message: "Successfully fetched tenant users.",
 		Data:    users,
+	}
+
+	response.JSON(w)
+}
+
+// GetUserMetadata get user metadata
+func (controller *UserQueryController) GetUserMetadata(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	res, err := controller.UserQueryServiceInterface.GetUserMetadata(context.TODO(), userID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while fetching user metadata."
+		case errors.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "User metadata not found."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var metadata map[string]interface{}
+	err = json.Unmarshal([]byte(res.Metadata), &metadata)
+	if err != nil {
+		metadata = map[string]interface{}{}
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully fetched user metadata.",
+		Data: &types.GetUserMetadataResponse{
+			ID:        res.ID,
+			UserID:    res.UserID,
+			Metadata:  metadata,
+			CreatedAt: uint64(res.CreatedAt),
+			UpdatedAt: uint64(res.UpdatedAt),
+		},
 	}
 
 	response.JSON(w)
