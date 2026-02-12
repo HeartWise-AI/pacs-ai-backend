@@ -12,4 +12,5 @@ type UserCommandServiceInterface interface {
 	DeleteTenantUser(ctx context.Context, tenantID, id string) error
 	UpdateTenantUser(ctx context.Context, data types.UpdateTenantUser) error
 	UpdateTenantUserPassword(ctx context.Context, data types.UpdateTenantUserPassword) error
+	UpdateUserMetadata(ctx context.Context, data types.UpdateUserMetadata) error
 }

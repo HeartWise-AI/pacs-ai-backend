@@ -75,7 +75,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.22.1-beta",
+				"version": "v0.22.2-beta",
 			},
 		}
 
@@ -232,7 +232,9 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
 					r.Get("/me", userQueryController.GetCurrentTenantUser)
+					r.Get("/metadata", userQueryController.GetUserMetadata)
 					r.Put("/password/update", userCommandController.UpdateTenantUserPassword)
+					r.Put("/metadata/update", userCommandController.UpdateUserMetadata)
 
 					// admin or owner only
 					r.Group(func(r chi.Router) {

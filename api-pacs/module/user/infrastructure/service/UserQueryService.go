@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"api-pacs/module/user/domain/entity"
 	"api-pacs/module/user/domain/repository"
 	"api-pacs/module/user/infrastructure/service/types"
 )
@@ -80,4 +81,14 @@ func (service *UserQueryService) GetTenantUsers(ctx context.Context, tenantID st
 	}
 
 	return users, nil
+}
+
+// GetUserMetadata get user metadata
+func (service *UserQueryService) GetUserMetadata(ctx context.Context, userID string) (entity.UserMetadata, error) {
+	userMetadata, err := service.UserQueryRepositoryInterface.SelectUserMetadataByID(ctx, userID)
+	if err != nil {
+		return entity.UserMetadata{}, err
+	}
+
+	return userMetadata, nil
 }

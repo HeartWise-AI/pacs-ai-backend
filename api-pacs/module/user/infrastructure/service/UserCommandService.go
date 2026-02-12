@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -193,6 +194,24 @@ func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context,
 	})
 	if err != nil {
 		log.Println(err)
+		return err
+	}
+
+	return nil
+}
+
+// UpdateUserMetadata update user metadata
+func (service *UserCommandService) UpdateUserMetadata(ctx context.Context, data types.UpdateUserMetadata) error {
+	metadataBytes, err := json.Marshal(data.Metadata)
+	if err != nil {
+		return err
+	}
+
+	err = service.UserCommandRepositoryInterface.UpsertUserMetadata(ctx, repositoryTypes.UpsertUserMetadata{
+		UserID:   data.UserID,
+		Metadata: string(metadataBytes),
+	})
+	if err != nil {
 		return err
 	}
 
