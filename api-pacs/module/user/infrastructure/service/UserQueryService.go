@@ -85,7 +85,7 @@ func (service *UserQueryService) GetTenantUsers(ctx context.Context, tenantID st
 
 // GetUserMetadata get user metadata
 func (service *UserQueryService) GetUserMetadata(ctx context.Context, userID string) (entity.UserMetadata, error) {
-	userMetadata, err := service.UserQueryRepositoryInterface.SelectUserMetadataByUserID(ctx, userID)
+	userMetadata, err := service.UserQueryRepositoryInterface.SelectUserMetadataByID(ctx, userID)
 	if err != nil {
 		return entity.UserMetadata{}, err
 	}

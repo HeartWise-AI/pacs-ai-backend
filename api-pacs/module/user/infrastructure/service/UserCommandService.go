@@ -23,7 +23,6 @@ import (
 // UserCommandService handles the User command service logic
 type UserCommandService struct {
 	repository.UserCommandRepositoryInterface
-	repository.UserQueryRepositoryInterface
 	userApplication.UserQueryServiceInterface
 	tenantApplication.TenantQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
@@ -203,14 +202,14 @@ func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context,
 
 // UpdateUserMetadata update user metadata
 func (service *UserCommandService) UpdateUserMetadata(ctx context.Context, data types.UpdateUserMetadata) error {
-	metadataJSON, err := json.Marshal(data.Metadata)
+	metadataBytes, err := json.Marshal(data.Metadata)
 	if err != nil {
 		return err
 	}
 
 	err = service.UserCommandRepositoryInterface.UpsertUserMetadata(ctx, repositoryTypes.UpsertUserMetadata{
 		UserID:   data.UserID,
-		Metadata: string(metadataJSON),
+		Metadata: string(metadataBytes),
 	})
 	if err != nil {
 		return err

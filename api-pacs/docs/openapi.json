@@ -1922,7 +1922,6 @@
         }
       },
       "UpdateUserMetadataRequest": {
-        "required": ["metadata"],
         "type": "object",
         "properties": {
           "metadata": {

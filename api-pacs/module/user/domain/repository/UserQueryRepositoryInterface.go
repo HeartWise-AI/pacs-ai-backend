@@ -10,5 +10,5 @@ import (
 type UserQueryRepositoryInterface interface {
 	SelectTenantUserByID(ctx context.Context, tenantID, id string) (repositoryTypes.GetTenantUser, error)
 	SelectTenantUsers(ctx context.Context, tenantID string) ([]repositoryTypes.GetTenantUser, error)
-	SelectUserMetadataByUserID(ctx context.Context, userID string) (entity.UserMetadata, error)
+	SelectUserMetadataByID(ctx context.Context, userID string) (entity.UserMetadata, error)
 }

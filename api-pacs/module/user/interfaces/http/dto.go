@@ -20,7 +20,6 @@ var (
 		"UpdateTenantUserRequest.LicenseNo":           "License number is required.",
 		"UpdateTenantUserRequest.Specialty":           "Specialty is required.",
 		"UpdateTenantUserPasswordRequest.NewPassword": "New password is required.",
-		"UpdateUserMetadataRequest.Metadata":          "Metadata is required.",
 	}
 )
 
@@ -58,7 +57,7 @@ type UpdateTenantUserPasswordRequest struct {
 }
 
 type UpdateUserMetadataRequest struct {
-	Metadata map[string]interface{} `json:"metadata" validate:"required"`
+	Metadata map[string]interface{} `json:"metadata"`
 }
 
 type CreateTenantUserResponse struct {

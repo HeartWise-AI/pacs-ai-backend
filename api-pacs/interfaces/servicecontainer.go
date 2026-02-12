@@ -473,16 +473,9 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 		FirebaseAdminSDK: firebaseAdminSDK,
 	}
 
-	queryRepository := &userRepository.UserQueryRepository{
-		FirebaseAdminSDK: firebaseAdminSDK,
-	}
-
 	service := &userService.UserCommandService{
 		UserCommandRepositoryInterface: &userRepository.UserCommandRepositoryCircuitBreaker{
 			UserCommandRepositoryInterface: repository,
-		},
-		UserQueryRepositoryInterface: &userRepository.UserQueryRepositoryCircuitBreaker{
-			UserQueryRepositoryInterface: queryRepository,
 		},
 		UserQueryServiceInterface:            k.userQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),

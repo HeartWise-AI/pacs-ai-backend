@@ -8,6 +8,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/api/iterator"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	apiError "api-pacs/internal/errors"
@@ -165,8 +167,8 @@ func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, te
 	return users, nil
 }
 
-// SelectUserMetadataByID get user metadata by user id
-func (repository *UserQueryRepository) SelectUserMetadataByUserID(ctx context.Context, userID string) (entity.UserMetadata, error) {
+// SelectUserMetadataByID get user metadata by id
+func (repository *UserQueryRepository) SelectUserMetadataByID(ctx context.Context, userID string) (entity.UserMetadata, error) {
 	// firestore client
 	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
 	if err != nil {
@@ -177,17 +179,16 @@ func (repository *UserQueryRepository) SelectUserMetadataByUserID(ctx context.Co
 	// get firestore user metadata
 	var userMetadata entity.UserMetadata
 
-	firestoreRes, err := firestoreClient.Collection(userMetadata.GetModelName()).Where("user_id", "==", userID).Documents(ctx).GetAll()
+	firestoreRes, err := firestoreClient.Collection(userMetadata.GetModelName()).Doc(userID).Get(ctx)
 	if err != nil {
 		log.Println(err)
+		if status.Code(err) == codes.NotFound {
+			return entity.UserMetadata{}, errors.New(apiError.MissingRecord)
+		}
 		return entity.UserMetadata{}, errors.New(apiError.FirestoreError)
 	}
 
-	if len(firestoreRes) == 0 {
-		return entity.UserMetadata{}, errors.New(apiError.MissingRecord)
-	}
-
-	err = firestoreRes[0].DataTo(&userMetadata)
+	err = firestoreRes.DataTo(&userMetadata)
 	if err != nil {
 		log.Println(err)
 		return entity.UserMetadata{}, errors.New(apiError.FirestoreError)

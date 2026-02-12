@@ -69,14 +69,14 @@ func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUsers(ctx conte
 	}
 }
 
-// SelectUserMetadataByUserID is a decorator for the select user metadata by user id
-func (repository *UserQueryRepositoryCircuitBreaker) SelectUserMetadataByUserID(ctx context.Context, userID string) (entity.UserMetadata, error) {
+// SelectUserMetadataByID is a decorator for the select user metadata by id
+func (repository *UserQueryRepositoryCircuitBreaker) SelectUserMetadataByID(ctx context.Context, userID string) (entity.UserMetadata, error) {
 	output := make(chan entity.UserMetadata, 1)
 	errChan := make(chan error, 1)
 
-	hystrix.ConfigureCommand("select_user_metadata_by_user_id", config.Settings())
-	errors := hystrix.Go("select_user_metadata_by_user_id", func() error {
-		userMetadata, err := repository.UserQueryRepositoryInterface.SelectUserMetadataByUserID(ctx, userID)
+	hystrix.ConfigureCommand("select_user_metadata_by_id", config.Settings())
+	errors := hystrix.Go("select_user_metadata_by_id", func() error {
+		userMetadata, err := repository.UserQueryRepositoryInterface.SelectUserMetadataByID(ctx, userID)
 		if err != nil {
 			errChan <- err
 			return nil
