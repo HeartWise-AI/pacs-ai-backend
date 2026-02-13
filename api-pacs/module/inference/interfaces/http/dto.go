@@ -10,17 +10,23 @@ import (
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
-		"AddInferenceModel.Name":                           "Name is required.",
-		"AddInferenceModel.DockerImage":                    "Docker image is required.",
-		"AddInferenceModel.OutputMode":                     "Output mode is required.",
-		"PredictInferenceModelRequest.StudyInstanceUID":    "Study Instance UID is required.",
-		"PredictInferenceModelRequest.SeriesInstanceUIDs":  "Series Instance UIDs are required.",
-		"UpdateInferenceModelRequest.DisallowedDICOMTags":  "Disallowed DICOM tags are required.",
-		"UpdateInferenceModelRequest.OutputMode":           "Output mode is required.",
-		"UpdateInferenceModelContainerRequest.ContainerID": "Container ID is required.",
-		"UpdateModelFeedbackRequest.InferenceModelID":      "Inference Model ID is required.",
-		"UpdateModelFeedbackRequest.ModelID":               "Model ID is required.",
-		"UpdateModelFeedbackRequest.FeedbackType":          "Feedback type is required.",
+		"AddInferenceModel.Name":                                              "Name is required.",
+		"AddInferenceModel.DockerImage":                                       "Docker image is required.",
+		"AddInferenceModel.OutputMode":                                        "Output mode is required.",
+		"PredictInferenceModelRequest.StudyInstanceUID":                       "Study Instance UID is required.",
+		"PredictInferenceModelRequest.SeriesInstanceUIDs":                     "Series Instance UIDs are required.",
+		"SaveOnboardingQuestionnaireAnswerRequest":                            " Questionnaire type is required.",
+		"SaveOnboardingQuestionnaireAnswerRequest.QuestionnaireID":            "Questionnaire ID is required.",
+		"SaveOnboardingQuestionnaireAnswerRequest.QuestionnaireQuestion":      "Questionnaire question is required.",
+		"SaveOnboardingModelQuestionnaireAnswerRequest.ModelID":               "Model ID is required.",
+		"SaveOnboardingModelQuestionnaireAnswerRequest.QuestionnaireID":       "Questionnaire ID is required.",
+		"SaveOnboardingModelQuestionnaireAnswerRequest.QuestionnaireQuestion": "Questionnaire question is required.",
+		"UpdateInferenceModelRequest.DisallowedDICOMTags":                     "Disallowed DICOM tags are required.",
+		"UpdateInferenceModelRequest.OutputMode":                              "Output mode is required.",
+		"UpdateInferenceModelContainerRequest.ContainerID":                    "Container ID is required.",
+		"UpdateModelFeedbackRequest.InferenceModelID":                         "Inference Model ID is required.",
+		"UpdateModelFeedbackRequest.ModelID":                                  "Model ID is required.",
+		"UpdateModelFeedbackRequest.FeedbackType":                             "Feedback type is required.",
 	}
 )
 
@@ -37,6 +43,14 @@ type SaveOnboardingQuestionnaireAnswerRequest struct {
 	QuestionnaireQuestion  string                   `json:"questionnaireQuestion" validate:"required"`
 	QuestionnaireAnswerIDs []string                 `json:"questionnaireAnswerIds"`
 	QuestionnaireAnswers   []string                 `json:"questionnaireAnswers"`
+}
+
+type SaveOnboardingModelQuestionnaireAnswerRequest struct {
+	ModelID                string   `json:"modelId" validate:"required"`
+	QuestionnaireID        string   `json:"questionnaireId" validate:"required"`
+	QuestionnaireQuestion  string   `json:"questionnaireQuestion" validate:"required"`
+	QuestionnaireAnswerIDs []string `json:"questionnaireAnswerIds"`
+	QuestionnaireAnswers   []string `json:"questionnaireAnswers"`
 }
 
 type PredictInferenceModelRequest struct {
@@ -126,6 +140,19 @@ type GetOnboardingQuestionnaireAnswerResponse struct {
 	QuestionnaireAnswers   []string                 `json:"questionnaireAnswers"`
 	CreatedAt              uint64                   `json:"createdAt"`
 	UpdatedAt              uint64                   `json:"updatedAt"`
+}
+
+type GetOnboardingModelQuestionnaireAnswerResponse struct {
+	ID                     string   `json:"id"`
+	TenantID               string   `json:"tenantId"`
+	UserID                 string   `json:"userId"`
+	ModelID                string   `json:"modelId"`
+	QuestionnaireID        string   `json:"questionnaireId"`
+	QuestionnaireQuestion  string   `json:"questionnaireQuestion"`
+	QuestionnaireAnswerIDs []string `json:"questionnaireAnswerIds"`
+	QuestionnaireAnswers   []string `json:"questionnaireAnswers"`
+	CreatedAt              uint64   `json:"createdAt"`
+	UpdatedAt              uint64   `json:"updatedAt"`
 }
 
 type ModelFacts struct {

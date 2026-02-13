@@ -33,6 +33,17 @@ type AddOnboardingQuestionnaireAnswer struct {
 	QuestionnaireAnswers   []string
 }
 
+type AddOnboardingModelQuestionnaireAnswer struct {
+	ID                     string
+	TenantID               string
+	UserID                 string
+	ModelID                string
+	QuestionnaireID        string
+	QuestionnaireQuestion  string
+	QuestionnaireAnswerIDs []string
+	QuestionnaireAnswers   []string
+}
+
 type GetModelFeedbackByUserModelID struct {
 	TenantID string
 	UserID   string
@@ -43,6 +54,12 @@ type GetOnboardingQuestionnaireAnswer struct {
 	TenantID          string
 	UserID            string
 	QuestionnaireType entity.QuestionnaireType
+}
+
+type GetOnboardingModelQuestionnaireAnswer struct {
+	TenantID string
+	UserID   string
+	ModelID  string
 }
 
 type UpdateInferenceModel struct {

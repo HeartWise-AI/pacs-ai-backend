@@ -278,3 +278,17 @@ func (service *InferenceQueryService) GetOnboardingQuestionnaireAnswers(ctx cont
 
 	return res, nil
 }
+
+// GetOnboardingModelQuestionnaireAnswers gets the onboarding model questionnaire answers
+func (service *InferenceQueryService) GetOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingModelQuestionnaireAnswer) ([]entity.OnboardingModelQuestionnaireAnswer, error) {
+	res, err := service.InferenceQueryRepositoryInterface.SelectOnboardingModelQuestionnaireAnswers(ctx, repositoryTypes.GetOnboardingModelQuestionnaireAnswer{
+		TenantID: data.TenantID,
+		UserID:   data.UserID,
+		ModelID:  data.ModelID,
+	})
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return nil, err
+	}
+
+	return res, nil
+}

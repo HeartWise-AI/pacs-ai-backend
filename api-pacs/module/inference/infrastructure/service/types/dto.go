@@ -26,6 +26,17 @@ type AddOnboardingQuestionnaireAnswer struct {
 	QuestionnaireAnswers   []string
 }
 
+type AddOnboardingModelQuestionnaireAnswer struct {
+	ID                     string
+	TenantID               string
+	UserID                 string
+	ModelID                string
+	QuestionnaireID        string
+	QuestionnaireQuestion  string
+	QuestionnaireAnswerIDs []string
+	QuestionnaireAnswers   []string
+}
+
 type GetContainerInfoResult struct {
 	ID              string
 	Name            string
@@ -78,6 +89,12 @@ type GetOnboardingQuestionnaireAnswer struct {
 	TenantID          string
 	UserID            string
 	QuestionnaireType entity.QuestionnaireType
+}
+
+type GetOnboardingModelQuestionnaireAnswer struct {
+	TenantID string
+	UserID   string
+	ModelID  string
 }
 
 type GetModelFeedbackResult struct {

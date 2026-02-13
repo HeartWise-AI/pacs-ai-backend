@@ -24,4 +24,6 @@ type InferenceQueryServiceInterface interface {
 	GetModelFeedBackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (types.GetModelFeedbackResult, error)
 	// GetOnboardingQuestionnaireAnswers gets the onboarding questionnaire answers
 	GetOnboardingQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingQuestionnaireAnswer) ([]entity.OnboardingQuestionnaireAnswer, error)
+	// GetOnboardingModelQuestionnaireAnswers gets the onboarding model questionnaire answers
+	GetOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingModelQuestionnaireAnswer) ([]entity.OnboardingModelQuestionnaireAnswer, error)
 }

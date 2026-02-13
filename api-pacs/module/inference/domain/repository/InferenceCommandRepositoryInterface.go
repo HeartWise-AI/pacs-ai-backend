@@ -19,6 +19,8 @@ type InferenceCommandRepositoryInterface interface {
 	InsertInferenceModel(ctx context.Context, data types.AddInferenceModel) error
 	// InsertOnboardingQuestionnaireAnswer inserts an onboarding questionnaire answer
 	InsertOnboardingQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingQuestionnaireAnswer) error
+	// InsertOnboardingModelQuestionnaireAnswer inserts an onboarding model questionnaire answer
+	InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
 	// UpdateInferenceModel updates an inference model
 	UpdateInferenceModel(ctx context.Context, data types.UpdateInferenceModel) error
 	// UpdateInferenceModelContainerID updates the container ID of an inference model

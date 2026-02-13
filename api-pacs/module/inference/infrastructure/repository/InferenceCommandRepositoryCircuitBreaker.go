@@ -179,6 +179,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) InsertOnboardingQues
 	}
 }
 
+// InsertOnboardingModelQuestionnaireAnswer is the decorator for the inference command repository to insert onboarding model questionnaire answer
+func (repository *InferenceCommandRepositoryCircuitBreaker) InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("insert_onboarding_model_questionnaire_answer", config.Settings())
+	errors := hystrix.Go("insert_onboarding_model_questionnaire_answer", func() error {
+		err := repository.InferenceCommandRepositoryInterface.InsertOnboardingModelQuestionnaireAnswer(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // UpdateInferenceModel is the decorator for the inference command repository to update inference model
 func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceModel(ctx context.Context, data types.UpdateInferenceModel) error {
 	output := make(chan bool, 1)

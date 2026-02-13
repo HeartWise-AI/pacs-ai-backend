@@ -487,6 +487,92 @@ func (controller *InferenceCommandController) SaveOnboardingQuestionnaireAnswer(
 	response.JSON(w)
 }
 
+// SaveOnboardingModelQuestionnaireAnswer saves onboarding model questionnaire answer
+func (controller *InferenceCommandController) SaveOnboardingModelQuestionnaireAnswer(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	var request types.SaveOnboardingModelQuestionnaireAnswerRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err = controller.InferenceCommandServiceInterface.AddOnboardingModelQuestionnaireAnswer(context.TODO(), serviceTypes.AddOnboardingModelQuestionnaireAnswer{
+		TenantID:               tenantID,
+		UserID:                 userID,
+		ModelID:                request.ModelID,
+		QuestionnaireID:        request.QuestionnaireID,
+		QuestionnaireQuestion:  request.QuestionnaireQuestion,
+		QuestionnaireAnswerIDs: request.QuestionnaireAnswerIDs,
+		QuestionnaireAnswers:   request.QuestionnaireAnswers,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while saving onboarding questionnaire answer."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully saved onboarding model questionnaire answer.",
+	}
+
+	response.JSON(w)
+}
+
 // StartInferenceModelContainer starts an inference model container
 func (controller *InferenceCommandController) StartInferenceModelContainer(w http.ResponseWriter, r *http.Request) {
 	containerID := chi.URLParam(r, "containerID")
