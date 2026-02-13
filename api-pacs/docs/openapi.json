@@ -284,6 +284,39 @@
         }
       }
     },
+    "/inference/onboarding-questionnaire-answer/save": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Save Onboarding Questionnaire Answer",
+        "description": "Save onboarding questionnaire answer.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Save onboarding questionnaire answer request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveOnboardingQuestionnaireAnswerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/inference/model/container/{containerID}/restart": {
       "post": {
         "tags": ["inference"],
@@ -596,6 +629,41 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/onboarding-questionnaire-answers": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Onboarding Questionnaire Answers",
+        "description": "Get onboarding questionnaire answers.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "questionnaireType",
+            "in": "query",
+            "description": "Onboarding questionnaire type",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["PRE_SURVEY", "POST_SURVEY"]
             }
           }
         ],
@@ -1772,6 +1840,38 @@
         "properties": {
           "queryId": {
             "type": "string"
+          }
+        }
+      },
+      "SaveOnboardingQuestionnaireAnswerRequest": {
+        "required": [
+          "questionnaireType",
+          "questionnaireId",
+          "questionnaireQuestion"
+        ],
+        "type": "object",
+        "properties": {
+          "questionnaireType": {
+            "type": "string",
+            "enum": ["PRE_SURVEY", "POST_SURVEY"]
+          },
+          "questionnaireId": {
+            "type": "string"
+          },
+          "questionnaireQuestion": {
+            "type": "string"
+          },
+          "questionnaireAnswerIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "questionnaireAnswers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

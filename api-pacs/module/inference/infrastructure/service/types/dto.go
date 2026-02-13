@@ -15,6 +15,17 @@ type AddInferenceModel struct {
 	OutputMode  entity.OutputMode
 }
 
+type AddOnboardingQuestionnaireAnswer struct {
+	ID                     string
+	TenantID               string
+	UserID                 string
+	QuestionnaireType      entity.QuestionnaireType
+	QuestionnaireID        string
+	QuestionnaireQuestion  string
+	QuestionnaireAnswerIDs []string
+	QuestionnaireAnswers   []string
+}
+
 type GetContainerInfoResult struct {
 	ID              string
 	Name            string
@@ -61,6 +72,12 @@ type GetModelFeedbackByUser struct {
 	TenantID string
 	UserID   string
 	ModelID  string
+}
+
+type GetOnboardingQuestionnaireAnswer struct {
+	TenantID          string
+	UserID            string
+	QuestionnaireType entity.QuestionnaireType
 }
 
 type GetModelFeedbackResult struct {

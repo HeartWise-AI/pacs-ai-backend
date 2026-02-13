@@ -7,7 +7,7 @@ import (
 
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
-	"api-pacs/module/inference/infrastructure/repository/types"
+	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 )
 
 // InferenceQueryRepositoryCircuitBreaker is the circuit breaker for the inference query repository
@@ -97,7 +97,7 @@ func (repository *InferenceQueryRepositoryCircuitBreaker) SelectInferenceModels(
 }
 
 // SelectModelFeedbackByUserModelID get model feedback by model ID
-func (repository InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
+func (repository InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbackByUserModelID(ctx context.Context, data repositoryTypes.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
 	output := make(chan entity.ModelFeedback, 1)
 	errChan := make(chan error, 1)
 
@@ -143,6 +143,33 @@ func (repository *InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbackAns
 	select {
 	case modelFeedbackAnswers := <-output:
 		return modelFeedbackAnswers, nil
+	case err := <-errChan:
+		return nil, err
+	case err := <-errors:
+		return nil, err
+	}
+}
+
+// SelectOnboardingQuestionnaireAnswers select onboarding questionnaire answers
+func (repository *InferenceQueryRepositoryCircuitBreaker) SelectOnboardingQuestionnaireAnswers(ctx context.Context, data repositoryTypes.GetOnboardingQuestionnaireAnswer) ([]entity.OnboardingQuestionnaireAnswer, error) {
+	output := make(chan []entity.OnboardingQuestionnaireAnswer, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_onboarding_questionnaire_answers", config.Settings())
+	errors := hystrix.Go("select_onboarding_questionnaire_answers", func() error {
+		answers, err := repository.InferenceQueryRepositoryInterface.SelectOnboardingQuestionnaireAnswers(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- answers
+		return nil
+	}, nil)
+
+	select {
+	case answers := <-output:
+		return answers, nil
 	case err := <-errChan:
 		return nil, err
 	case err := <-errors:

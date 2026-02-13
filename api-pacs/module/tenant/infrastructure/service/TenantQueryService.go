@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	"api-pacs/internal/inference"
 	"api-pacs/module/tenant/domain/repository"
 	"api-pacs/module/tenant/infrastructure/service/types"
 )
@@ -19,11 +20,30 @@ func (service *TenantQueryService) GetTenantByID(ctx context.Context, tenantID s
 		return types.GetTenant{}, err
 	}
 
+	onboardingQuestionnairesRes := map[string][]types.OnboardingQuestionnaire{}
+	for questionnaireType, questionnaires := range inference.OnboardingQuestionnaires {
+		var questionnairesRes []types.OnboardingQuestionnaire
+
+		for _, questionnaire := range questionnaires {
+			questionnairesRes = append(questionnairesRes, types.OnboardingQuestionnaire{
+				ID:              questionnaire.ID,
+				Type:            questionnaire.Type,
+				QuestionEn:      questionnaire.QuestionEn,
+				QuestionFr:      questionnaire.QuestionFr,
+				AnswerOptions:   questionnaire.AnswerOptions,
+				AnswerOptionsFr: questionnaire.AnswerOptionsFr,
+			})
+		}
+
+		onboardingQuestionnairesRes[questionnaireType] = questionnairesRes
+	}
+
 	return types.GetTenant{
-		ID:        tenant.ID,
-		Name:      tenant.Name,
-		Address:   tenant.Address,
-		CreatedAt: uint(tenant.CreatedAt),
-		UpdatedAt: uint(tenant.UpdatedAt),
+		ID:                       tenant.ID,
+		Name:                     tenant.Name,
+		Address:                  tenant.Address,
+		OnboardingQuestionnaires: onboardingQuestionnairesRes,
+		CreatedAt:                uint(tenant.CreatedAt),
+		UpdatedAt:                uint(tenant.UpdatedAt),
 	}, nil
 }

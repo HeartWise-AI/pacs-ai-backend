@@ -264,3 +264,17 @@ func (service *InferenceQueryService) GetModelFeedBackByUser(ctx context.Context
 		ModelFeedbackAnswers: modelFeedbackAnswersResult,
 	}, nil
 }
+
+// GetOnboardingQuestionnaireAnswers gets the onboarding questionnaire answers
+func (service *InferenceQueryService) GetOnboardingQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingQuestionnaireAnswer) ([]entity.OnboardingQuestionnaireAnswer, error) {
+	res, err := service.InferenceQueryRepositoryInterface.SelectOnboardingQuestionnaireAnswers(ctx, repositoryTypes.GetOnboardingQuestionnaireAnswer{
+		TenantID:          data.TenantID,
+		UserID:            data.UserID,
+		QuestionnaireType: data.QuestionnaireType,
+	})
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return nil, err
+	}
+
+	return res, nil
+}

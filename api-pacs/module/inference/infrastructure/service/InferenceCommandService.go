@@ -85,6 +85,25 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 	return nil
 }
 
+// AddOnboardingQuestionnaireAnswer adds an onboarding questionnaire answer
+func (service *InferenceCommandService) AddOnboardingQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingQuestionnaireAnswer) error {
+	err := service.InferenceCommandRepositoryInterface.InsertOnboardingQuestionnaireAnswer(ctx, repositoryTypes.AddOnboardingQuestionnaireAnswer{
+		ID:                     generateID(),
+		TenantID:               data.TenantID,
+		UserID:                 data.UserID,
+		QuestionnaireType:      data.QuestionnaireType,
+		QuestionnaireID:        data.QuestionnaireID,
+		QuestionnaireQuestion:  data.QuestionnaireQuestion,
+		QuestionnaireAnswerIDs: data.QuestionnaireAnswerIDs,
+		QuestionnaireAnswers:   data.QuestionnaireAnswers,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // DeleteInferenceModel deletes an inference model
 func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context, ID string) error {
 	// get inference model

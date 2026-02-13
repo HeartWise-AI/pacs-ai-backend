@@ -31,9 +31,12 @@ type AddInferenceModelRequest struct {
 	OutputMode  entity.OutputMode `json:"outputMode" validate:"required"`
 }
 
-type UpdateInferenceModelRequest struct {
-	DisallowedDICOMTags []string          `json:"disallowedDICOMTags" validate:"required"`
-	OutputMode          entity.OutputMode `json:"outputMode" validate:"required"`
+type SaveOnboardingQuestionnaireAnswerRequest struct {
+	QuestionnaireType      entity.QuestionnaireType `json:"questionnaireType" validate:"required"`
+	QuestionnaireID        string                   `json:"questionnaireId" validate:"required"`
+	QuestionnaireQuestion  string                   `json:"questionnaireQuestion" validate:"required"`
+	QuestionnaireAnswerIDs []string                 `json:"questionnaireAnswerIds"`
+	QuestionnaireAnswers   []string                 `json:"questionnaireAnswers"`
 }
 
 type PredictInferenceModelRequest struct {
@@ -41,6 +44,11 @@ type PredictInferenceModelRequest struct {
 	SeriesInstanceUIDs []string               `json:"seriesInstanceUIDs" validate:"required"`
 	AdditionalMetadata map[string]interface{} `json:"additionalMetadata"`
 	ForceJSON          *bool                  `json:"forceJSON,omitempty"`
+}
+
+type UpdateInferenceModelRequest struct {
+	DisallowedDICOMTags []string          `json:"disallowedDICOMTags" validate:"required"`
+	OutputMode          entity.OutputMode `json:"outputMode" validate:"required"`
 }
 
 type UpdateInferenceModelContainerRequest struct {
@@ -105,6 +113,19 @@ type GetModelFeedbackResponse struct {
 	ModelID              string                      `json:"modelId"`
 	FeedbackType         entity.FeedbackType         `json:"feedbackType"`
 	ModelFeedbackAnswers []ModelFeedbackAnswerResult `json:"modelFeedbackAnswers"`
+}
+
+type GetOnboardingQuestionnaireAnswerResponse struct {
+	ID                     string                   `json:"id"`
+	TenantID               string                   `json:"tenantId"`
+	UserID                 string                   `json:"userId"`
+	QuestionnaireType      entity.QuestionnaireType `json:"questionnaireType"`
+	QuestionnaireID        string                   `json:"questionnaireId"`
+	QuestionnaireQuestion  string                   `json:"questionnaireQuestion"`
+	QuestionnaireAnswerIDs []string                 `json:"questionnaireAnswerIds"`
+	QuestionnaireAnswers   []string                 `json:"questionnaireAnswers"`
+	CreatedAt              uint64                   `json:"createdAt"`
+	UpdatedAt              uint64                   `json:"updatedAt"`
 }
 
 type ModelFacts struct {

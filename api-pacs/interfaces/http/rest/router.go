@@ -130,6 +130,9 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
+					r.Post("/onboarding-questionnaire-answer/save", inferenceCommandController.SaveOnboardingQuestionnaireAnswer)
+					r.Get("/onboarding-questionnaire-answers", inferenceQueryController.GetOnboardingQuestionnaireAnswers)
+
 					r.Route("/model", func(r chi.Router) {
 						r.Group(func(r chi.Router) {
 							r.Use(iamMiddleware.RBACOwnerOrAdminGuard)

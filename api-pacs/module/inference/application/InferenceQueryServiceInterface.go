@@ -4,6 +4,7 @@ import (
 	"context"
 
 	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
+	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/infrastructure/service/types"
 )
 
@@ -21,4 +22,6 @@ type InferenceQueryServiceInterface interface {
 	GetInferenceAvailableModels(ctx context.Context, tenantID string) ([]types.GetInferenceAvailableModelResult, error)
 	// GetModelFeedBackByUser gets the model feedback by user
 	GetModelFeedBackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (types.GetModelFeedbackResult, error)
+	// GetOnboardingQuestionnaireAnswers gets the onboarding questionnaire answers
+	GetOnboardingQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingQuestionnaireAnswer) ([]entity.OnboardingQuestionnaireAnswer, error)
 }

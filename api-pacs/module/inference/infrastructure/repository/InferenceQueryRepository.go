@@ -8,7 +8,7 @@ import (
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
-	"api-pacs/module/inference/infrastructure/repository/types"
+	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 )
 
 // InferenceQueryRepository handles the inference query repository logic
@@ -114,7 +114,7 @@ func (repository *InferenceQueryRepository) SelectInferenceModels(ctx context.Co
 }
 
 // SelectModelFeedbackByUserModelID get model feedback by model and user ID
-func (repository *InferenceQueryRepository) SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
+func (repository *InferenceQueryRepository) SelectModelFeedbackByUserModelID(ctx context.Context, data repositoryTypes.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
 	// firestore client
 	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
 	if err != nil {
@@ -181,4 +181,43 @@ func (repository *InferenceQueryRepository) SelectModelFeedbackAnswersByFeedback
 	}
 
 	return modelFeedbackAnswers, nil
+}
+
+// SelectOnboardingQuestionnaireAnswers selects onboarding questionnaire answers
+func (repository *InferenceQueryRepository) SelectOnboardingQuestionnaireAnswers(ctx context.Context, data repositoryTypes.GetOnboardingQuestionnaireAnswer) ([]entity.OnboardingQuestionnaireAnswer, error) {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	// get firestore onboarding questionnaire answers
+	var onboardingQuestionnaireAnswer entity.OnboardingQuestionnaireAnswer
+
+	query := firestoreClient.Collection(onboardingQuestionnaireAnswer.GetModelName()).Where("tenant_id", "==", data.TenantID).Where("user_id", "==", data.UserID).Where("questionnaire_type", "==", data.QuestionnaireType)
+	docs, err := query.Documents(ctx).GetAll()
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	var onboardingQuestionnaireAnswers []entity.OnboardingQuestionnaireAnswer
+
+	for _, doc := range docs {
+		var onboardingQuestionnaireAnswer entity.OnboardingQuestionnaireAnswer
+		if err := doc.DataTo(&onboardingQuestionnaireAnswer); err != nil {
+			log.Println(err)
+			continue
+		}
+
+		onboardingQuestionnaireAnswer.ID = doc.Ref.ID
+		onboardingQuestionnaireAnswers = append(onboardingQuestionnaireAnswers, onboardingQuestionnaireAnswer)
+	}
+
+	if len(onboardingQuestionnaireAnswers) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return onboardingQuestionnaireAnswers, nil
 }

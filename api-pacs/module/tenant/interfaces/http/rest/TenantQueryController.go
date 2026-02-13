@@ -47,16 +47,35 @@ func (controller *TenantQueryController) GetTenantByID(w http.ResponseWriter, r 
 		return
 	}
 
+	onboardingQuestionnaires := map[string][]types.OnboardingQuestionnaire{}
+	for questionnaireType, questionnaires := range res.OnboardingQuestionnaires {
+		var questionnairesRes []types.OnboardingQuestionnaire
+
+		for _, questionnaire := range questionnaires {
+			questionnairesRes = append(questionnairesRes, types.OnboardingQuestionnaire{
+				ID:              questionnaire.ID,
+				Type:            questionnaire.Type,
+				QuestionEn:      questionnaire.QuestionEn,
+				QuestionFr:      questionnaire.QuestionFr,
+				AnswerOptions:   questionnaire.AnswerOptions,
+				AnswerOptionsFr: questionnaire.AnswerOptionsFr,
+			})
+		}
+
+		onboardingQuestionnaires[questionnaireType] = questionnairesRes
+	}
+
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully fetched tenant by id.",
 		Data: &types.GetTenantResponse{
-			ID:        res.ID,
-			Name:      res.Name,
-			Address:   res.Address,
-			CreatedAt: res.CreatedAt,
-			UpdatedAt: res.UpdatedAt,
+			ID:                       res.ID,
+			Name:                     res.Name,
+			Address:                  res.Address,
+			OnboardingQuestionnaires: onboardingQuestionnaires,
+			CreatedAt:                res.CreatedAt,
+			UpdatedAt:                res.UpdatedAt,
 		},
 	}
 

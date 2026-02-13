@@ -162,6 +162,41 @@ func (repository *InferenceCommandRepository) InsertInferenceModel(ctx context.C
 	return nil
 }
 
+// InsertOnboardingQuestionnaireAnswer inserts a onboarding questionnaire answer
+func (repository *InferenceCommandRepository) InsertOnboardingQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingQuestionnaireAnswer) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	// add onboarding questionnaire answer
+	answer := entity.OnboardingQuestionnaireAnswer{
+		ID:                     data.ID,
+		TenantID:               data.TenantID,
+		UserID:                 data.UserID,
+		QuestionnaireType:      data.QuestionnaireType,
+		QuestionnaireID:        data.QuestionnaireID,
+		QuestionnaireQuestion:  data.QuestionnaireQuestion,
+		QuestionnaireAnswerIDs: data.QuestionnaireAnswerIDs,
+		QuestionnaireAnswers:   data.QuestionnaireAnswers,
+		CreatedAt:              int(time.Now().Unix()),
+		UpdatedAt:              int(time.Now().Unix()),
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", answer.GetModelName(), data.ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Create(ctx, answer)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
 // UpdateInferenceModel updates an inference model
 func (repository *InferenceCommandRepository) UpdateInferenceModel(ctx context.Context, data types.UpdateInferenceModel) error {
 	// firestore client
