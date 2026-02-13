@@ -15,7 +15,7 @@ var (
 		"AddInferenceModel.OutputMode":                                        "Output mode is required.",
 		"PredictInferenceModelRequest.StudyInstanceUID":                       "Study Instance UID is required.",
 		"PredictInferenceModelRequest.SeriesInstanceUIDs":                     "Series Instance UIDs are required.",
-		"SaveOnboardingQuestionnaireAnswerRequest":                            " Questionnaire type is required.",
+		"SaveOnboardingQuestionnaireAnswerRequest.QuestionnaireType":          "Questionnaire type is required.",
 		"SaveOnboardingQuestionnaireAnswerRequest.QuestionnaireID":            "Questionnaire ID is required.",
 		"SaveOnboardingQuestionnaireAnswerRequest.QuestionnaireQuestion":      "Questionnaire question is required.",
 		"SaveOnboardingModelQuestionnaireAnswerRequest.ModelID":               "Model ID is required.",

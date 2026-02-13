@@ -14,6 +14,6 @@ type OnboardingQuestionnaire struct {
 	Type            string
 	QuestionEn      string
 	QuestionFr      string
-	AnswerOptions   []string
+	AnswerOptionsEn []string
 	AnswerOptionsFr []string
 }

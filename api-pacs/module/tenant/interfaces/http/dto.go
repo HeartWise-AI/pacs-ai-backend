@@ -29,6 +29,6 @@ type OnboardingQuestionnaire struct {
 	Type            string   `json:"type"`
 	QuestionEn      string   `json:"questionEn"`
 	QuestionFr      string   `json:"questionFr"`
-	AnswerOptions   []string `json:"answerOptions"`
+	AnswerOptionsEn []string `json:"answerOptionsEn"`
 	AnswerOptionsFr []string `json:"answerOptionsFr"`
 }

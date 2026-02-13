@@ -416,6 +416,7 @@ func (controller *InferenceCommandController) SaveOnboardingQuestionnaireAnswer(
 		}
 
 		response.JSON(w)
+		return
 	}
 
 	// validate request
@@ -502,6 +503,7 @@ func (controller *InferenceCommandController) SaveOnboardingModelQuestionnaireAn
 		}
 
 		response.JSON(w)
+		return
 	}
 
 	// validate request

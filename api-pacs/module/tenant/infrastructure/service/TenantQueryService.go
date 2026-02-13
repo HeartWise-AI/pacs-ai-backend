@@ -30,7 +30,7 @@ func (service *TenantQueryService) GetTenantByID(ctx context.Context, tenantID s
 				Type:            questionnaire.Type,
 				QuestionEn:      questionnaire.QuestionEn,
 				QuestionFr:      questionnaire.QuestionFr,
-				AnswerOptions:   questionnaire.AnswerOptions,
+				AnswerOptionsEn: questionnaire.AnswerOptionsEn,
 				AnswerOptionsFr: questionnaire.AnswerOptionsFr,
 			})
 		}

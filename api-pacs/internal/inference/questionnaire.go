@@ -5,7 +5,7 @@ type Questionnaire struct {
 	Type            string   `json:"type"`
 	QuestionEn      string   `json:"questionEn"`
 	QuestionFr      string   `json:"questionFr"`
-	AnswerOptions   []string `json:"answerOptions"`
+	AnswerOptionsEn []string `json:"answerOptionsEn"`
 	AnswerOptionsFr []string `json:"answerOptionsFr"`
 }
 
@@ -15,8 +15,8 @@ var OnboardingQuestionnaires = map[string][]Questionnaire{
 			ID:              "q1",
 			Type:            "TEXT",
 			QuestionEn:      "What is your current activity level?",
-			QuestionFr:      "Quel est svotre niveau d'activité actuel?",
-			AnswerOptions:   nil,
+			QuestionFr:      "Quel est votre niveau d'activité actuel?",
+			AnswerOptionsEn: nil,
 			AnswerOptionsFr: nil,
 		},
 		{
@@ -24,7 +24,7 @@ var OnboardingQuestionnaires = map[string][]Questionnaire{
 			Type:            "RADIO",
 			QuestionEn:      "Do you have any existing medical conditions?",
 			QuestionFr:      "Avez-vous des conditions médicales existantes?",
-			AnswerOptions:   []string{"Yes", "No", "Prefer not to say"},
+			AnswerOptionsEn: []string{"Yes", "No", "Prefer not to say"},
 			AnswerOptionsFr: []string{"Oui", "Non", "Je préfère ne pas répondre"},
 		},
 	},
@@ -34,7 +34,7 @@ var OnboardingQuestionnaires = map[string][]Questionnaire{
 			Type:            "TEXT",
 			QuestionEn:      "How was your experience?",
 			QuestionFr:      "Comment était votre expérience?",
-			AnswerOptions:   nil,
+			AnswerOptionsEn: nil,
 			AnswerOptionsFr: nil,
 		},
 		{
@@ -42,7 +42,7 @@ var OnboardingQuestionnaires = map[string][]Questionnaire{
 			Type:            "RADIO",
 			QuestionEn:      "Would you recommend our service to others?",
 			QuestionFr:      "Recommanderiez-vous notre service à d'autres?",
-			AnswerOptions:   []string{"Yes", "No", "Maybe"},
+			AnswerOptionsEn: []string{"Yes", "No", "Maybe"},
 			AnswerOptionsFr: []string{"Oui", "Non", "Peut-être"},
 		},
 	},

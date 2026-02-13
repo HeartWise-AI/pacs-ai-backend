@@ -57,7 +57,7 @@ func (controller *TenantQueryController) GetTenantByID(w http.ResponseWriter, r 
 				Type:            questionnaire.Type,
 				QuestionEn:      questionnaire.QuestionEn,
 				QuestionFr:      questionnaire.QuestionFr,
-				AnswerOptions:   questionnaire.AnswerOptions,
+				AnswerOptionsEn: questionnaire.AnswerOptionsEn,
 				AnswerOptionsFr: questionnaire.AnswerOptionsFr,
 			})
 		}
