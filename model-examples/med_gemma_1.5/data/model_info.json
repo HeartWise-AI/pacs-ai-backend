@@ -8,7 +8,7 @@
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 99,
-  "supportedDicomModalities": ["XA"],
+  "supportedDicomModalities": ["DX", "CR"],
   "supportedDicomTags": ["*"],
   "supportedAdditionalMetadata": [],
   "supportedOutputModes": ["HTML", "JSON"],
