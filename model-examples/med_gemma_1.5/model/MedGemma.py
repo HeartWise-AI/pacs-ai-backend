@@ -1,5 +1,5 @@
 import torch
-
+import numpy as np
 from PIL import Image
 from transformers import AutoProcessor, AutoModelForImageTextToText
 
@@ -21,6 +21,12 @@ class MedGemma:
         max_new_tokens: int = 2000
     ) -> str:
         if image is not None:
+            img_array = np.array(image, dtype=np.float32)
+            img_min, img_max = img_array.min(), img_array.max()
+            if img_max > img_min:
+                img_array = (img_array - img_min) / (img_max - img_min) * 255
+            image = Image.fromarray(img_array.astype(np.uint8))
+
             content = [
                 {"type": "image", "image": image},
                 {"type": "text", "text": prompt}
