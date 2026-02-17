@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "0.21.1-beta"
+    "version": "0.23.0-beta"
   },
   "servers": [
     {
@@ -1395,6 +1395,29 @@
         }
       }
     },
+    "/user/metadata": {
+      "get": {
+        "tags": ["user"],
+        "summary": "Get User Metadata",
+        "description": "Get user metadata.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/update": {
       "put": {
         "tags": ["user"],
@@ -1445,6 +1468,40 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/UpdateTenantUserPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/metadata/update": {
+      "put": {
+        "tags": ["user"],
+        "summary": "Update User Metadata",
+        "description": "Update user metadata.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update user metadata request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserMetadataRequest"
               }
             }
           },
@@ -1861,6 +1918,14 @@
           "outputMode": {
             "type": "string",
             "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
+          }
+        }
+      },
+      "UpdateUserMetadataRequest": {
+        "type": "object",
+        "properties": {
+          "metadata": {
+            "type": "object"
           }
         }
       },

@@ -124,3 +124,30 @@ func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUserPassword(
 		return err
 	}
 }
+
+// UpsertUserMetadata decorator pattern to upsert user metadata
+func (repository *UserCommandRepositoryCircuitBreaker) UpsertUserMetadata(ctx context.Context, data repositoryTypes.UpsertUserMetadata) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("upsert_user_metadata", config.Settings())
+	errors := hystrix.Go("upsert_user_metadata", func() error {
+		err := repository.UserCommandRepositoryInterface.UpsertUserMetadata(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}

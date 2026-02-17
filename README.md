@@ -169,6 +169,7 @@ Update `api-pacs/.env` with the following variables:
 | `OPENAPI_DOCS_PASSWORD`     | Strong password for API documentation access                                        |
 | `ORTHANC_AET`               | Should be set to `PACS_AI`                                                          |
 | `ORTHANC_BASE_URL`          | Should be set to `http://orthanc:8042` or correct port                              |
+| `ORTHANC_LOCAL_CACHE_EXPIRATION_IN_HOURS`             | Should be set to `24` (default) or desired hour           |
 | `REDIS_HOST`                | Should be set to `redis`                                                            |
 | `REDIS_PORT`                | Should be set to `6379` (do not change)                                             |
 | `REDIS_PASSWORD`            | Should be set to `pacs.staging` (requires update in `redis/redis.conf` if changed)  |
@@ -229,7 +230,7 @@ Update `api-pacs/.env` with the following variables:
 | `API_URL_REST_PORT`         | Should be set to `8000` (do not change)                                                                                   |
 | `APP_URL`                   | Should be set to `http://localhost:3000`                                                                                  |
 | `CLOUDFLARE_SECRET_KEY`    | Your Cloudflare secret key                                                                                                 |
-| `CLOUDFLARE_TURNSTILE_BASE_URL` | Should be set to `https://challenges.cloudflare.com/turnstile/v0`                                                |
+| `CLOUDFLARE_TURNSTILE_BASE_URL` | Should be set to `https://challenges.cloudflare.com/turnstile/v0`                                                     |
 | `DOCKER_USERNAME`           | Your DockerHub username                                                                                                   |
 | `DOCKER_PASSWORD`           | Your DockerHub password                                                                                                   |
 | `DOCKER_NETWORK`            | Should be set to `pacs-net`                                                                                               |
@@ -247,6 +248,7 @@ Update `api-pacs/.env` with the following variables:
 | `OPENAPI_DOCS_PASSWORD`     | Strong password for API documentation access                                                                              |
 | `ORTHANC_AET`               | Should be set to `PACS_AI`                                                                                                |
 | `ORTHANC_BASE_URL`          | Should be set to `http://orthanc:8042` or correct port                                                                    |
+| `ORTHANC_LOCAL_CACHE_EXPIRATION_IN_HOURS`             | Should be set to `24` (default) or desired hour                                                 |
 | `REDIS_HOST`                | Should be set to `localhost`                                                                                              |
 | `REDIS_PORT`                | Should be set to `6379` (do not change)                                                                                   |
 | `REDIS_PASSWORD`            | Should be set to `pacs.staging` (requires update in `redis/redis.conf` if changed)                                        |

@@ -40,18 +40,21 @@ type GetInferenceModelResult struct {
 }
 
 type GetInferenceAvailableModelResult struct {
-	ContainerID                 string
-	ContainerName               string
-	ModelName                   string
-	ModelFacts                  ModelFacts
-	Version                     string
-	DicomTargetLevel            string
-	DicomUploadMin              int
-	DicomUploadMax              int
-	SupportedDicomModalities    []string
-	SupportedDicomTags          []string
-	SupportedAdditionalMetadata []interface{}
-	OutputMode                  entity.OutputMode
+	ContainerID                   string
+	ContainerName                 string
+	ModelID                       string
+	ModelName                     string
+	ModelFacts                    ModelFacts
+	Version                       string
+	DicomTargetLevel              string
+	DicomUploadMin                int
+	DicomUploadMax                int
+	SupportedDicomModalities      []string
+	SupportedDicomTags            []string
+	SupportedAdditionalMetadata   []interface{}
+	ApproveFeedbackQuestionnaires []interface{}
+	RejectFeedbackQuestionnaires  []interface{}
+	OutputMode                    entity.OutputMode
 }
 
 type GetModelFeedbackByUser struct {

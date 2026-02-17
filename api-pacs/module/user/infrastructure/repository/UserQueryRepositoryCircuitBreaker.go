@@ -5,6 +5,7 @@ import (
 
 	"github.com/afex/hystrix-go/hystrix"
 
+	"api-pacs/module/user/domain/entity"
 	"api-pacs/module/user/domain/repository"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
 )
@@ -65,5 +66,32 @@ func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUsers(ctx conte
 		return []repositoryTypes.GetTenantUser{}, err
 	case err := <-errors:
 		return []repositoryTypes.GetTenantUser{}, err
+	}
+}
+
+// SelectUserMetadataByID is a decorator for the select user metadata by id
+func (repository *UserQueryRepositoryCircuitBreaker) SelectUserMetadataByID(ctx context.Context, userID string) (entity.UserMetadata, error) {
+	output := make(chan entity.UserMetadata, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_user_metadata_by_id", config.Settings())
+	errors := hystrix.Go("select_user_metadata_by_id", func() error {
+		userMetadata, err := repository.UserQueryRepositoryInterface.SelectUserMetadataByID(ctx, userID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- userMetadata
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errChan:
+		return entity.UserMetadata{}, err
+	case err := <-errors:
+		return entity.UserMetadata{}, err
 	}
 }

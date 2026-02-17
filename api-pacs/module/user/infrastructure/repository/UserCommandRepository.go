@@ -10,6 +10,8 @@ import (
 
 	"cloud.google.com/go/firestore"
 	"firebase.google.com/go/v4/auth"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	apiError "api-pacs/internal/errors"
@@ -204,6 +206,57 @@ func (repository *UserCommandRepository) UpdateTenantUserPassword(ctx context.Co
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	return nil
+}
+
+// UpsertUserMetadata upserts user metadata
+func (repository *UserCommandRepository) UpsertUserMetadata(ctx context.Context, data repositoryTypes.UpsertUserMetadata) error {
+	var userMetadata entity.UserMetadata
+
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", userMetadata.GetModelName(), data.UserID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	// try to insert user metadata
+	_, err = docRef.Create(ctx, entity.UserMetadata{
+		UserID:    data.UserID,
+		Metadata:  data.Metadata,
+		CreatedAt: int(time.Now().Unix()),
+		UpdatedAt: int(time.Now().Unix()),
+	})
+	if err != nil {
+		if status.Code(err) == codes.AlreadyExists {
+			// update user metadata
+			updateUserMetadata := []firestore.Update{
+				{
+					Path:  "metadata",
+					Value: data.Metadata,
+				},
+				{
+					Path:  "updated_at",
+					Value: int(time.Now().Unix()),
+				},
+			}
+
+			_, err = docRef.Update(ctx, updateUserMetadata)
+			if err != nil {
+				log.Println(err)
+				return errors.New(apiError.FirestoreError)
+			}
+
+			return nil
+		}
+
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
 	}
 
 	return nil

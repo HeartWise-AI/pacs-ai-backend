@@ -37,3 +37,8 @@ type UpdateTenantUserPassword struct {
 	ID          string
 	NewPassword string
 }
+
+type UpdateUserMetadata struct {
+	UserID   string
+	Metadata map[string]interface{}
+}

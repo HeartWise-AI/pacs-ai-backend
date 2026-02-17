@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"log"
 	"slices"
 	"sync"
@@ -107,6 +108,7 @@ func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context
 	return nil
 }
 
+// GenerateInferenceModelPredictRequest generates a predict request for inference model
 func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error) {
 	// get inference model
 	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
@@ -371,7 +373,7 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 		}
 	}
 
-	// Generate the request payload
+	// create predict request
 	predictRequest := dockerInferenceTypes.PredictRequest{
 		SeriesInstanceImages:   seriesInstanceImages,
 		SeriesInstanceMetadata: seriesInstanceMetadata,
@@ -379,7 +381,7 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 		OutputMode:             dockerInferenceTypes.OutputMode(inferenceModel.OutputMode),
 	}
 
-	// Override OutputMode to JSON if ForceJSON is true
+	// override OutputMode to JSON if ForceJSON is true
 	if data.ForceJSON != nil && *data.ForceJSON {
 		predictRequest.OutputMode = dockerInferenceTypes.OutputModeJSON
 	}
@@ -392,13 +394,12 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	// TODO: remove this
 	predictionStartTime := time.Now()
 
-	// Generate the request payload
 	predictRequest, containerName, err := service.GenerateInferenceModelPredictRequest(ctx, tenantID, containerID, data)
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
 
-	// Send the prediction request
+	// predict
 	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, predictRequest)
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
@@ -412,18 +413,33 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	go func() {
 		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, userID)
 		if err != nil {
+			log.Println(err)
 			return
 		}
 
 		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
 		if err != nil {
+			log.Println(err)
 			return
 		}
 
 		// Get inference model data for logging
 		inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
 		if err != nil {
+			log.Println(err)
 			return
+		}
+
+		// get model info
+		modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerName)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		modelID := modelInfo.Data.ModelID
+		if len(modelID) == 0 {
+			modelID = modelInfo.Data.ModelName
 		}
 
 		_, err = service.ElasticsearchCommandServiceInterface.CreatePredictInferenceModelLog(ctx, elasticsearchTypes.CreatePredictInferenceModelLog{
@@ -437,6 +453,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 			InferenceModelID:   inferenceModel.ID,
 			InferenceModelName: inferenceModel.Name,
 			DockerImage:        inferenceModel.DockerImage,
+			Model:              fmt.Sprintf("%s-%s", modelID, modelInfo.Data.Version), // {modelID/modelName-version}
 			StudyInstanceUID:   data.StudyInstanceUID,
 			SeriesInstanceUIDs: data.SeriesInstanceUIDs,
 			AdditionalMetadata: data.AdditionalMetadata,

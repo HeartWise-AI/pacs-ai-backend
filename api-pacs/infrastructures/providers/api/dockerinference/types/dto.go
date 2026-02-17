@@ -29,17 +29,18 @@ type GetModelInfoResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 	Data    struct {
-		ModelID                     string        `json:"modelId"`
-		ModelName                   string        `json:"modelName"`
-		Version                     string        `json:"version"`
-		DicomTargetLevel            string        `json:"dicomTargetLevel"`
-		DicomUploadMin              int           `json:"dicomUploadMin"`
-		DicomUploadMax              int           `json:"dicomUploadMax"`
-		SupportedDicomModalities    []string      `json:"supportedDicomModalities"`
-		SupportedDicomTags          []string      `json:"supportedDicomTags"`
-		SupportedAdditionalMetadata []interface{} `json:"supportedAdditionalMetadata"`
-		SupportedOutputModes        []string      `json:"supportedOutputModes"`
-		FeedbackQuestionnaires      []interface{} `json:"feedbackQuestionnaires"`
+		ModelID                       string        `json:"modelId"`
+		ModelName                     string        `json:"modelName"`
+		Version                       string        `json:"version"`
+		DicomTargetLevel              string        `json:"dicomTargetLevel"`
+		DicomUploadMin                int           `json:"dicomUploadMin"`
+		DicomUploadMax                int           `json:"dicomUploadMax"`
+		SupportedDicomModalities      []string      `json:"supportedDicomModalities"`
+		SupportedDicomTags            []string      `json:"supportedDicomTags"`
+		SupportedAdditionalMetadata   []interface{} `json:"supportedAdditionalMetadata"`
+		SupportedOutputModes          []string      `json:"supportedOutputModes"`
+		ApproveFeedbackQuestionnaires []interface{} `json:"approveFeedbackQuestionnaires"`
+		RejectFeedbackQuestionnaires  []interface{} `json:"rejectFeedbackQuestionnaires"`
 	} `json:"data"`
 }
 

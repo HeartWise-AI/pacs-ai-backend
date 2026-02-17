@@ -193,18 +193,21 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 					}
 
 					inferenceAvailableModels = append(inferenceAvailableModels, types.GetInferenceAvailableModelResult{
-						ContainerID:                 inferenceModel.ContainerID,
-						ContainerName:               containerName,
-						ModelName:                   modelInfo.Data.ModelName,
-						ModelFacts:                  types.ModelFacts(modelFacts.Data),
-						Version:                     modelInfo.Data.Version,
-						DicomTargetLevel:            modelInfo.Data.DicomTargetLevel,
-						DicomUploadMin:              modelInfo.Data.DicomUploadMin,
-						DicomUploadMax:              modelInfo.Data.DicomUploadMax,
-						SupportedDicomModalities:    modelInfo.Data.SupportedDicomModalities,
-						SupportedDicomTags:          modelInfo.Data.SupportedDicomTags,
-						SupportedAdditionalMetadata: modelInfo.Data.SupportedAdditionalMetadata,
-						OutputMode:                  inferenceModel.OutputMode,
+						ContainerID:                   inferenceModel.ContainerID,
+						ContainerName:                 containerName,
+						ModelID:                       modelInfo.Data.ModelID,
+						ModelName:                     modelInfo.Data.ModelName,
+						ModelFacts:                    types.ModelFacts(modelFacts.Data),
+						Version:                       modelInfo.Data.Version,
+						DicomTargetLevel:              modelInfo.Data.DicomTargetLevel,
+						DicomUploadMin:                modelInfo.Data.DicomUploadMin,
+						DicomUploadMax:                modelInfo.Data.DicomUploadMax,
+						SupportedDicomModalities:      modelInfo.Data.SupportedDicomModalities,
+						SupportedDicomTags:            modelInfo.Data.SupportedDicomTags,
+						SupportedAdditionalMetadata:   modelInfo.Data.SupportedAdditionalMetadata,
+						ApproveFeedbackQuestionnaires: modelInfo.Data.ApproveFeedbackQuestionnaires,
+						RejectFeedbackQuestionnaires:  modelInfo.Data.RejectFeedbackQuestionnaires,
+						OutputMode:                    inferenceModel.OutputMode,
 					})
 				}
 
@@ -234,23 +237,21 @@ func (service *InferenceQueryService) GetModelFeedBackByUser(ctx context.Context
 
 	var modelFeedbackAnswersResult []types.ModelFeedbackAnswerResult
 
-	// populate model feedback answers if rejected
-	if modelFeedback.FeedbackType == entity.RejectFeedbackType {
-		modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, modelFeedback.ID)
-		if err != nil && err.Error() != apiError.MissingRecord {
-			return types.GetModelFeedbackResult{}, err
-		}
+	// get model feedback answers
+	modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, modelFeedback.ID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return types.GetModelFeedbackResult{}, err
+	}
 
-		for _, modelFeedbackAnswer := range modelFeedbackAnswers {
-			modelFeedbackAnswersResult = append(modelFeedbackAnswersResult, types.ModelFeedbackAnswerResult{
-				ID:                     modelFeedbackAnswer.ID,
-				ModelFeedbackID:        modelFeedbackAnswer.ModelFeedbackID,
-				QuestionnaireID:        modelFeedbackAnswer.QuestionnaireID,
-				QuestionnaireQuestion:  modelFeedbackAnswer.QuestionnaireQuestion,
-				QuestionnaireAnswerIDs: modelFeedbackAnswer.QuestionnaireAnswerIDs,
-				QuestionnaireAnswers:   modelFeedbackAnswer.QuestionnaireAnswers,
-			})
-		}
+	for _, modelFeedbackAnswer := range modelFeedbackAnswers {
+		modelFeedbackAnswersResult = append(modelFeedbackAnswersResult, types.ModelFeedbackAnswerResult{
+			ID:                     modelFeedbackAnswer.ID,
+			ModelFeedbackID:        modelFeedbackAnswer.ModelFeedbackID,
+			QuestionnaireID:        modelFeedbackAnswer.QuestionnaireID,
+			QuestionnaireQuestion:  modelFeedbackAnswer.QuestionnaireQuestion,
+			QuestionnaireAnswerIDs: modelFeedbackAnswer.QuestionnaireAnswerIDs,
+			QuestionnaireAnswers:   modelFeedbackAnswer.QuestionnaireAnswers,
+		})
 	}
 
 	return types.GetModelFeedbackResult{

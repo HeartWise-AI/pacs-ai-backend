@@ -481,3 +481,88 @@ func (controller *UserCommandController) UpdateTenantUserPassword(w http.Respons
 
 	response.JSON(w)
 }
+
+// UpdateUserMetadata updates user metadata
+func (controller *UserCommandController) UpdateUserMetadata(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	var request types.UpdateUserMetadataRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err = controller.UserCommandServiceInterface.UpdateUserMetadata(context.TODO(), serviceTypes.UpdateUserMetadata{
+		UserID:   userID,
+		Metadata: request.Metadata,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while updating user metadata."
+		case errors.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "User metadata not found."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully updated user metadata.",
+	}
+
+	response.JSON(w)
+}

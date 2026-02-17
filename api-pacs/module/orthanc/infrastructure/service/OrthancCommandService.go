@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,6 +52,14 @@ func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context
 
 	var expiredResources []string
 
+	// get local cache expiration config
+	localCacheExpiration, err := strconv.Atoi(os.Getenv("ORTHANC_LOCAL_CACHE_EXPIRATION_IN_HOURS"))
+	if err != nil || localCacheExpiration <= 0 {
+		// override to 24h if invalid or <=0
+		log.Println("[Cache] invalid cache expiration config, using default 24h")
+		localCacheExpiration = 24
+	}
+
 	for _, resource := range localResources {
 		lastUpdateTime, err := time.Parse("20060102T150405", resource.LastUpdate)
 		if err != nil {
@@ -58,8 +67,8 @@ func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context
 			return err
 		}
 
-		// check if last update time is more than 24h
-		expirationTime := lastUpdateTime.Add(time.Hour * 24)
+		// check if last update time is more than local cache expiration
+		expirationTime := lastUpdateTime.Add(time.Hour * time.Duration(localCacheExpiration))
 
 		// if true, include the resource for bulk delete
 		if time.Now().After(expirationTime) {
