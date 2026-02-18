@@ -37,7 +37,7 @@ type AddOnboardingModelQuestionnaireAnswer struct {
 	QuestionnaireAnswers   []string
 }
 
-type RemoveOnboardingQuestionnnaire struct {
+type RemoveOnboardingQuestionnaire struct {
 	TenantID string
 	UserID   string
 }

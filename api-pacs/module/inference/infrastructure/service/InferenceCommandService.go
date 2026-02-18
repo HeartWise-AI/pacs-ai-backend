@@ -540,8 +540,8 @@ func (service *InferenceCommandService) RemoveModelFeedback(ctx context.Context,
 	return nil
 }
 
-// RemoveOnboardingQuestionnnaires removes onboarding questionnaires
-func (service *InferenceCommandService) RemoveOnboardingQuestionnnaires(ctx context.Context, data types.RemoveOnboardingQuestionnnaire) error {
+// RemoveOnboardingQuestionnaires removes onboarding questionnaires
+func (service *InferenceCommandService) RemoveOnboardingQuestionnaires(ctx context.Context, data types.RemoveOnboardingQuestionnaire) error {
 	// get onboarding questionnaire answers
 	onboardingQuestionnaireAnswers, err := service.InferenceQueryRepositoryInterface.SelectOnboardingQuestionnaireAnswers(ctx, repositoryTypes.GetOnboardingQuestionnaireAnswer{
 		TenantID: data.TenantID,

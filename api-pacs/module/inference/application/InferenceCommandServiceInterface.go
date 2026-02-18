@@ -23,8 +23,8 @@ type InferenceCommandServiceInterface interface {
 	PredictInferenceModel(ctx context.Context, tenantID, userID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
 	// RemoveModelFeedback removes model feedback
 	RemoveModelFeedback(ctx context.Context, data types.RemoveModelFeedback) error
-	// RemoveOnboardingQuestionnnaires removes onboarding questionnaires
-	RemoveOnboardingQuestionnnaires(ctx context.Context, data types.RemoveOnboardingQuestionnnaire) error
+	// RemoveOnboardingQuestionnaires removes onboarding questionnaires
+	RemoveOnboardingQuestionnaires(ctx context.Context, data types.RemoveOnboardingQuestionnaire) error
 	// RestartInferenceModelContainer restarts an inference model container
 	RestartInferenceModelContainer(ctx context.Context, containerID string) error
 	// StartInferenceModelContainer starts an inference model container

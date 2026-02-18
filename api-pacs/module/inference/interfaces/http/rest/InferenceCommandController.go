@@ -16,6 +16,7 @@ import (
 	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/application"
+	"api-pacs/module/inference/domain/entity"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 	types "api-pacs/module/inference/interfaces/http"
 )
@@ -226,7 +227,7 @@ func (controller *InferenceCommandController) ResetTutorial(w http.ResponseWrite
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
-	err := controller.InferenceCommandServiceInterface.RemoveOnboardingQuestionnnaires(context.TODO(), serviceTypes.RemoveOnboardingQuestionnnaire{
+	err := controller.InferenceCommandServiceInterface.RemoveOnboardingQuestionnaires(context.TODO(), serviceTypes.RemoveOnboardingQuestionnaire{
 		TenantID: tenantID,
 		UserID:   userID,
 	})
@@ -481,6 +482,19 @@ func (controller *InferenceCommandController) SaveOnboardingQuestionnaireAnswer(
 			Status:    http.StatusBadRequest,
 			Success:   false,
 			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate questionnaire type
+	if request.QuestionnaireType != entity.PreSurveyQuestionnaireType && request.QuestionnaireType != entity.PostSurveyQuestionnaireType {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid questionnaire type.",
 			ErrorCode: apiError.InvalidRequestPayload,
 		}
 
