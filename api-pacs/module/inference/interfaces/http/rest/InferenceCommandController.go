@@ -258,7 +258,7 @@ func (controller *InferenceCommandController) ResetTutorial(w http.ResponseWrite
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,
-		Message: "Successfully resetted tutorial.",
+		Message: "Successfully reset tutorial.",
 	}
 
 	response.JSON(w)
