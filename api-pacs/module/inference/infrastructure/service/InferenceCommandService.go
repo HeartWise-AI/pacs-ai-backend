@@ -540,6 +540,45 @@ func (service *InferenceCommandService) RemoveModelFeedback(ctx context.Context,
 	return nil
 }
 
+// RemoveOnboardingQuestionnnaires removes onboarding questionnaires
+func (service *InferenceCommandService) RemoveOnboardingQuestionnnaires(ctx context.Context, data types.RemoveOnboardingQuestionnnaire) error {
+	// get onboarding questionnaire answers
+	onboardingQuestionnaireAnswers, err := service.InferenceQueryRepositoryInterface.SelectOnboardingQuestionnaireAnswers(ctx, repositoryTypes.GetOnboardingQuestionnaireAnswer{
+		TenantID: data.TenantID,
+		UserID:   data.UserID,
+	})
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return err
+	}
+
+	// get onboarding model questionnaire answers
+	onboardingModelQuestionnaireAnswers, err := service.InferenceQueryRepositoryInterface.SelectOnboardingModelQuestionnaireAnswers(ctx, repositoryTypes.GetOnboardingModelQuestionnaireAnswer{
+		TenantID: data.TenantID,
+		UserID:   data.UserID,
+	})
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return err
+	}
+
+	// delete onboarding questionnaire answers
+	for _, onboardingQuestionnaireAnswer := range onboardingQuestionnaireAnswers {
+		err = service.InferenceCommandRepositoryInterface.DeleteOnboardingQuestionnaireAnswer(ctx, onboardingQuestionnaireAnswer.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	// delete onboarding model questionnaire answers
+	for _, onboardingModelQuestionnaireAnswer := range onboardingModelQuestionnaireAnswers {
+		err = service.InferenceCommandRepositoryInterface.DeleteOnboardingModelQuestionnaireAnswer(ctx, onboardingModelQuestionnaireAnswer.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // RestartInferenceModelContainer restarts an inference model container
 func (service *InferenceCommandService) RestartInferenceModelContainer(ctx context.Context, containerID string) error {
 	err := service.DockerSDKInterface.RestartContainer(ctx, containerID)

@@ -37,6 +37,11 @@ type AddOnboardingModelQuestionnaireAnswer struct {
 	QuestionnaireAnswers   []string
 }
 
+type RemoveOnboardingQuestionnnaire struct {
+	TenantID string
+	UserID   string
+}
+
 type GetContainerInfoResult struct {
 	ID              string
 	Name            string

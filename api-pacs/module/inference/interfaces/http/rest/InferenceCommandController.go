@@ -221,6 +221,48 @@ func (controller *InferenceCommandController) RemoveModelFeedback(w http.Respons
 	response.JSON(w)
 }
 
+// ResetTutorial resets the tutorial onboarding questionnaires by user
+func (controller *InferenceCommandController) ResetTutorial(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	err := controller.InferenceCommandServiceInterface.RemoveOnboardingQuestionnnaires(context.TODO(), serviceTypes.RemoveOnboardingQuestionnnaire{
+		TenantID: tenantID,
+		UserID:   userID,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while resetting tutorial."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully resetted tutorial.",
+	}
+
+	response.JSON(w)
+}
+
 // PredictInferenceModel predicts an inference model
 func (controller *InferenceCommandController) PredictInferenceModel(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)

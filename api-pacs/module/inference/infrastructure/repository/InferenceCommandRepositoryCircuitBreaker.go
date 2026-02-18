@@ -98,6 +98,60 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteModelFeedbackA
 	}
 }
 
+// DeleteOnboardingQuestionnaireAnswer is the decorator for the inference command repository to delete onboarding questionnaire answer
+func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteOnboardingQuestionnaireAnswer(ctx context.Context, ID string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("delete_onboarding_questionnaire_answer", config.Settings())
+	errors := hystrix.Go("delete_onboarding_questionnaire_answer", func() error {
+		err := repository.InferenceCommandRepositoryInterface.DeleteOnboardingQuestionnaireAnswer(ctx, ID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// DeleteOnboardingModelQuestionnaireAnswer is the decorator for the inference command repository to delete onboarding model questionnaire answer
+func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("delete_onboarding_model_questionnaire_answer", config.Settings())
+	errors := hystrix.Go("delete_onboarding_model_questionnaire_answer", func() error {
+		err := repository.InferenceCommandRepositoryInterface.DeleteOnboardingModelQuestionnaireAnswer(ctx, ID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // InsertModelFeedbackAnswer is the decorator for the inference command repository to insert model feedback answer
 func (repository *InferenceCommandRepositoryCircuitBreaker) InsertModelFeedbackAnswer(ctx context.Context, data types.AddModelFeedbackAnswer) error {
 	output := make(chan bool, 1)

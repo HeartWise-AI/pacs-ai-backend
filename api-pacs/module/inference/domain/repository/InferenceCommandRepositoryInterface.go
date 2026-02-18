@@ -13,6 +13,10 @@ type InferenceCommandRepositoryInterface interface {
 	DeleteModelFeedback(ctx context.Context, ID string) error
 	// DeleteModelFeedbackAnswer deletes model feedback answer
 	DeleteModelFeedbackAnswer(ctx context.Context, ID string) error
+	// DeleteOnboardingQuestionnaireAnswer deletes onboarding questionnaire answer
+	DeleteOnboardingQuestionnaireAnswer(ctx context.Context, ID string) error
+	// DeleteOnboardingModelQuestionnaireAnswer deletes onboarding model questionnaire answer
+	DeleteOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error
 	// InsertModelFeedbackAnswer inserts a new  model feedback answer
 	InsertModelFeedbackAnswer(ctx context.Context, data types.AddModelFeedbackAnswer) error
 	// InsertInferenceModel inserts an inference model

@@ -94,6 +94,54 @@ func (repository *InferenceCommandRepository) DeleteModelFeedbackAnswer(ctx cont
 	return nil
 }
 
+// DeleteOnboardingQuestionnaireAnswer deletes an onboarding questionnaire answer
+func (repository *InferenceCommandRepository) DeleteOnboardingQuestionnaireAnswer(ctx context.Context, ID string) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	// delete onboarding questionnaire answer
+	var answer entity.OnboardingQuestionnaireAnswer
+
+	collectionPath := fmt.Sprintf("%s/%s", answer.GetModelName(), ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Delete(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
+// DeleteOnboardingModelQuestionnaireAnswer deletes an onboarding model questionnaire answer
+func (repository *InferenceCommandRepository) DeleteOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	// delete onboarding model questionnaire answer
+	var answer entity.OnboardingModelQuestionnaireAnswer
+
+	collectionPath := fmt.Sprintf("%s/%s", answer.GetModelName(), ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Delete(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
 // InsertModelFeedbackAnswer inserts a new  model feedback answer
 func (repository *InferenceCommandRepository) InsertModelFeedbackAnswer(ctx context.Context, data types.AddModelFeedbackAnswer) error {
 	// firestore client

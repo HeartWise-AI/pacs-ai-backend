@@ -195,7 +195,13 @@ func (repository *InferenceQueryRepository) SelectOnboardingQuestionnaireAnswers
 	// get firestore onboarding questionnaire answers
 	var onboardingQuestionnaireAnswer entity.OnboardingQuestionnaireAnswer
 
-	query := firestoreClient.Collection(onboardingQuestionnaireAnswer.GetModelName()).Where("tenant_id", "==", data.TenantID).Where("user_id", "==", data.UserID).Where("questionnaire_type", "==", data.QuestionnaireType)
+	query := firestoreClient.Collection(onboardingQuestionnaireAnswer.GetModelName()).Where("tenant_id", "==", data.TenantID).Where("user_id", "==", data.UserID)
+
+	// if questionnaire type is set
+	if data.QuestionnaireType != nil {
+		query = query.Where("questionnaire_type", "==", data.QuestionnaireType)
+	}
+
 	docs, err := query.Documents(ctx).GetAll()
 	if err != nil {
 		log.Println(err)
@@ -234,7 +240,13 @@ func (repository *InferenceQueryRepository) SelectOnboardingModelQuestionnaireAn
 	// get firestore onboarding model questionnaire answers
 	var onboardingModelQuestionnaireAnswer entity.OnboardingModelQuestionnaireAnswer
 
-	query := firestoreClient.Collection(onboardingModelQuestionnaireAnswer.GetModelName()).Where("tenant_id", "==", data.TenantID).Where("user_id", "==", data.UserID).Where("model_id", "==", data.ModelID)
+	query := firestoreClient.Collection(onboardingModelQuestionnaireAnswer.GetModelName()).Where("tenant_id", "==", data.TenantID).Where("user_id", "==", data.UserID)
+
+	// if model id is set
+	if data.ModelID != nil {
+		query = query.Where("model_id", "==", data.ModelID)
+	}
+
 	docs, err := query.Documents(ctx).GetAll()
 	if err != nil {
 		log.Println(err)

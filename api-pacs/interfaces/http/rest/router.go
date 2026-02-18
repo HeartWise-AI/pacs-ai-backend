@@ -134,6 +134,7 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Post("/onboarding-model-questionnaire-answer/save", inferenceCommandController.SaveOnboardingModelQuestionnaireAnswer)
 					r.Get("/onboarding-questionnaire-answers", inferenceQueryController.GetOnboardingQuestionnaireAnswers)
 					r.Get("/onboarding-model-questionnaire-answers", inferenceQueryController.GetOnboardingModelQuestionnaireAnswers)
+					r.Delete("/tutorial/reset", inferenceCommandController.ResetTutorial)
 
 					r.Route("/model", func(r chi.Router) {
 						r.Group(func(r chi.Router) {

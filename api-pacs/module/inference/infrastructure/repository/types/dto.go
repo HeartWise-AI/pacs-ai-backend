@@ -53,13 +53,13 @@ type GetModelFeedbackByUserModelID struct {
 type GetOnboardingQuestionnaireAnswer struct {
 	TenantID          string
 	UserID            string
-	QuestionnaireType entity.QuestionnaireType
+	QuestionnaireType *entity.QuestionnaireType
 }
 
 type GetOnboardingModelQuestionnaireAnswer struct {
 	TenantID string
 	UserID   string
-	ModelID  string
+	ModelID  *string
 }
 
 type UpdateInferenceModel struct {
