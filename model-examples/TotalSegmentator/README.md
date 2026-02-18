@@ -1,8 +1,8 @@
 To build the docker image and push it to the docker hub, run the following command:
 
 ```sh
-docker build -t cacoool/pacs-ai-segmentation:1.0.0 .
-docker push cacoool/pacs-ai-segmentation:1.0.0
+docker build -t heartwisehub/pacs-ai-segmentation:1.0.0 .
+docker push heartwisehub/pacs-ai-segmentation:1.0.0
 ```
 
 To run the docker image locally for testing, run the following command:
