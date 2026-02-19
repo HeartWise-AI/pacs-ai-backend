@@ -10,23 +10,21 @@ import (
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{
-		"AddInferenceModel.Name":                                              "Name is required.",
-		"AddInferenceModel.DockerImage":                                       "Docker image is required.",
-		"AddInferenceModel.OutputMode":                                        "Output mode is required.",
-		"PredictInferenceModelRequest.StudyInstanceUID":                       "Study Instance UID is required.",
-		"PredictInferenceModelRequest.SeriesInstanceUIDs":                     "Series Instance UIDs are required.",
-		"SaveOnboardingQuestionnaireAnswerRequest.QuestionnaireType":          "Questionnaire type is required.",
-		"SaveOnboardingQuestionnaireAnswerRequest.QuestionnaireID":            "Questionnaire ID is required.",
-		"SaveOnboardingQuestionnaireAnswerRequest.QuestionnaireQuestion":      "Questionnaire question is required.",
-		"SaveOnboardingModelQuestionnaireAnswerRequest.ModelID":               "Model ID is required.",
-		"SaveOnboardingModelQuestionnaireAnswerRequest.QuestionnaireID":       "Questionnaire ID is required.",
-		"SaveOnboardingModelQuestionnaireAnswerRequest.QuestionnaireQuestion": "Questionnaire question is required.",
-		"UpdateInferenceModelRequest.DisallowedDICOMTags":                     "Disallowed DICOM tags are required.",
-		"UpdateInferenceModelRequest.OutputMode":                              "Output mode is required.",
-		"UpdateInferenceModelContainerRequest.ContainerID":                    "Container ID is required.",
-		"UpdateModelFeedbackRequest.InferenceModelID":                         "Inference Model ID is required.",
-		"UpdateModelFeedbackRequest.ModelID":                                  "Model ID is required.",
-		"UpdateModelFeedbackRequest.FeedbackType":                             "Feedback type is required.",
+		"AddInferenceModel.Name":                                                                                "Name is required.",
+		"AddInferenceModel.DockerImage":                                                                         "Docker image is required.",
+		"AddInferenceModel.OutputMode":                                                                          "Output mode is required.",
+		"PredictInferenceModelRequest.StudyInstanceUID":                                                         "Study Instance UID is required.",
+		"PredictInferenceModelRequest.SeriesInstanceUIDs":                                                       "Series Instance UIDs are required.",
+		"AddOnboardingModelQuestionnaireAnswerRequest.ModelID":                                                  "Model ID is required.",
+		"AddOnboardingModelQuestionnaireAnswerRequest.OnboardingModelQuestionnaireAnswers":                      "Questionnaire answers are required.",
+		"AddOnboardingModelQuestionnaireAnswerRequest.OnboardingModelQuestionnaireAnswer.QuestionnaireID":       "Questionnaire answer IDs are required.",
+		"AddOnboardingModelQuestionnaireAnswerRequest.OnboardingModelQuestionnaireAnswer.QuestionnaireQuestion": "Questionnaire answers are required.",
+		"UpdateInferenceModelRequest.DisallowedDICOMTags":                                                       "Disallowed DICOM tags are required.",
+		"UpdateInferenceModelRequest.OutputMode":                                                                "Output mode is required.",
+		"UpdateInferenceModelContainerRequest.ContainerID":                                                      "Container ID is required.",
+		"UpdateModelFeedbackRequest.InferenceModelID":                                                           "Inference Model ID is required.",
+		"UpdateModelFeedbackRequest.ModelID":                                                                    "Model ID is required.",
+		"UpdateModelFeedbackRequest.FeedbackType":                                                               "Feedback type is required.",
 	}
 )
 
@@ -37,20 +35,9 @@ type AddInferenceModelRequest struct {
 	OutputMode  entity.OutputMode `json:"outputMode" validate:"required"`
 }
 
-type SaveOnboardingQuestionnaireAnswerRequest struct {
-	QuestionnaireType      entity.QuestionnaireType `json:"questionnaireType" validate:"required"`
-	QuestionnaireID        string                   `json:"questionnaireId" validate:"required"`
-	QuestionnaireQuestion  string                   `json:"questionnaireQuestion" validate:"required"`
-	QuestionnaireAnswerIDs []string                 `json:"questionnaireAnswerIds"`
-	QuestionnaireAnswers   []string                 `json:"questionnaireAnswers"`
-}
-
-type SaveOnboardingModelQuestionnaireAnswerRequest struct {
-	ModelID                string   `json:"modelId" validate:"required"`
-	QuestionnaireID        string   `json:"questionnaireId" validate:"required"`
-	QuestionnaireQuestion  string   `json:"questionnaireQuestion" validate:"required"`
-	QuestionnaireAnswerIDs []string `json:"questionnaireAnswerIds"`
-	QuestionnaireAnswers   []string `json:"questionnaireAnswers"`
+type AddOnboardingModelQuestionnaireAnswerRequest struct {
+	ModelID                             string                               `json:"modelId" validate:"required"`
+	OnboardingModelQuestionnaireAnswers []OnboardingModelQuestionnaireAnswer `json:"onboardingModelQuestionnaireAnswers" validate:"required"`
 }
 
 type PredictInferenceModelRequest struct {
@@ -129,19 +116,6 @@ type GetModelFeedbackResponse struct {
 	ModelFeedbackAnswers []ModelFeedbackAnswerResult `json:"modelFeedbackAnswers"`
 }
 
-type GetOnboardingQuestionnaireAnswerResponse struct {
-	ID                     string                   `json:"id"`
-	TenantID               string                   `json:"tenantId"`
-	UserID                 string                   `json:"userId"`
-	QuestionnaireType      entity.QuestionnaireType `json:"questionnaireType"`
-	QuestionnaireID        string                   `json:"questionnaireId"`
-	QuestionnaireQuestion  string                   `json:"questionnaireQuestion"`
-	QuestionnaireAnswerIDs []string                 `json:"questionnaireAnswerIds"`
-	QuestionnaireAnswers   []string                 `json:"questionnaireAnswers"`
-	CreatedAt              uint64                   `json:"createdAt"`
-	UpdatedAt              uint64                   `json:"updatedAt"`
-}
-
 type GetOnboardingModelQuestionnaireAnswerResponse struct {
 	ID                     string   `json:"id"`
 	TenantID               string   `json:"tenantId"`
@@ -171,6 +145,13 @@ type ModelFeedbackAnswerResult struct {
 	ModelFeedbackID        string   `json:"modelFeedbackId"`
 	QuestionnaireID        string   `json:"questionnaireId"`
 	QuestionnaireQuestion  string   `json:"questionnaireQuestion"`
+	QuestionnaireAnswerIDs []string `json:"questionnaireAnswerIds"`
+	QuestionnaireAnswers   []string `json:"questionnaireAnswers"`
+}
+
+type OnboardingModelQuestionnaireAnswer struct {
+	QuestionnaireID        string   `json:"questionnaireId" validate:"required"`
+	QuestionnaireQuestion  string   `json:"questionnaireQuestion" validate:"required"`
 	QuestionnaireAnswerIDs []string `json:"questionnaireAnswerIds"`
 	QuestionnaireAnswers   []string `json:"questionnaireAnswers"`
 }

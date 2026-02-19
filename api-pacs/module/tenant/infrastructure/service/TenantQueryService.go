@@ -3,14 +3,31 @@ package service
 import (
 	"context"
 
-	"api-pacs/internal/inference"
+	apiError "api-pacs/internal/errors"
+	tenantUtil "api-pacs/internal/tenant"
+	"api-pacs/module/tenant/domain/entity"
 	"api-pacs/module/tenant/domain/repository"
+	repositoryTypes "api-pacs/module/tenant/infrastructure/repository/types"
 	"api-pacs/module/tenant/infrastructure/service/types"
 )
 
 // TenantQueryService handles the Tenant query service logic
 type TenantQueryService struct {
 	repository.TenantQueryRepositoryInterface
+}
+
+// GetOnboardingQuestionnaireAnswers gets the onboarding questionnaire answers
+func (service *TenantQueryService) GetOnboardingQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingQuestionnaireAnswer) ([]entity.OnboardingQuestionnaireAnswer, error) {
+	res, err := service.TenantQueryRepositoryInterface.SelectOnboardingQuestionnaireAnswers(ctx, repositoryTypes.GetOnboardingQuestionnaireAnswer{
+		TenantID:          data.TenantID,
+		UserID:            data.UserID,
+		QuestionnaireType: data.QuestionnaireType,
+	})
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 // GetTenantByID get tenant by id
@@ -21,7 +38,7 @@ func (service *TenantQueryService) GetTenantByID(ctx context.Context, tenantID s
 	}
 
 	onboardingQuestionnairesRes := map[string][]types.OnboardingQuestionnaire{}
-	for questionnaireType, questionnaires := range inference.OnboardingQuestionnaires {
+	for questionnaireType, questionnaires := range tenantUtil.OnboardingQuestionnaires {
 		var questionnairesRes []types.OnboardingQuestionnaire
 
 		for _, questionnaire := range questionnaires {

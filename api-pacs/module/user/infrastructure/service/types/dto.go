@@ -23,6 +23,11 @@ type GetTenantUser struct {
 	UpdatedAt         uint
 }
 
+type RemoveOnboardingQuestionnaire struct {
+	TenantID string
+	UserID   string
+}
+
 type UpdateTenantUser struct {
 	ID        string
 	TenantID  string

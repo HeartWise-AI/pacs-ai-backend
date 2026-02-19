@@ -54,6 +54,7 @@ func (router *router) InitRouter() *chi.Mux {
 	orthancProxy := interfaces.ServiceContainer().RegisterOrthancProxy()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
 	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
+	tenantCommandController := interfaces.ServiceContainer().RegisterTenantRESTCommandController()
 	tenantQueryController := interfaces.ServiceContainer().RegisterTenantRESTQueryController()
 	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
 	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
@@ -130,11 +131,8 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
-					r.Post("/onboarding-questionnaire-answer/save", inferenceCommandController.SaveOnboardingQuestionnaireAnswer)
-					r.Post("/onboarding-model-questionnaire-answer/save", inferenceCommandController.SaveOnboardingModelQuestionnaireAnswer)
-					r.Get("/onboarding-questionnaire-answers", inferenceQueryController.GetOnboardingQuestionnaireAnswers)
+					r.Post("/onboarding-model-questionnaire-answer/add", inferenceCommandController.AddOnboardingModelQuestionnaireAnswer)
 					r.Get("/onboarding-model-questionnaire-answers", inferenceQueryController.GetOnboardingModelQuestionnaireAnswers)
-					r.Delete("/tutorial/reset", inferenceCommandController.ResetTutorial)
 
 					r.Route("/model", func(r chi.Router) {
 						r.Group(func(r chi.Router) {
@@ -221,6 +219,8 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
+					r.Post("/onboarding-questionnaire-answer/add", tenantCommandController.AddOnboardingQuestionnaireAnswer)
+					r.Get("/onboarding-questionnaire-answers", tenantQueryController.GetOnboardingQuestionnaireAnswers)
 					r.Get("/", tenantQueryController.GetTenantByID)
 				})
 			})
@@ -241,6 +241,7 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Get("/metadata", userQueryController.GetUserMetadata)
 					r.Put("/password/update", userCommandController.UpdateTenantUserPassword)
 					r.Put("/metadata/update", userCommandController.UpdateUserMetadata)
+					r.Delete("/tutorial/reset", userCommandController.ResetTutorial)
 
 					// admin or owner only
 					r.Group(func(r chi.Router) {

@@ -10,7 +10,6 @@ import (
 	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/application"
-	"api-pacs/module/inference/domain/entity"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 	types "api-pacs/module/inference/interfaces/http"
 )
@@ -417,81 +416,6 @@ func (controller *InferenceQueryController) GetModelFeedbackByModelID(w http.Res
 	response.JSON(w)
 }
 
-// GetOnboardingQuestionnaireAnswers gets the onboarding questionnaire answers
-func (controller *InferenceQueryController) GetOnboardingQuestionnaireAnswers(w http.ResponseWriter, r *http.Request) {
-	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
-	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
-
-	// required
-	questionnaireType := r.URL.Query().Get("questionnaireType")
-	if len(questionnaireType) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid questionnaire type.",
-			ErrorCode: errors.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	res, err := controller.InferenceQueryServiceInterface.GetOnboardingQuestionnaireAnswers(r.Context(), serviceTypes.GetOnboardingQuestionnaireAnswer{
-		TenantID:          tenantID,
-		UserID:            userID,
-		QuestionnaireType: entity.QuestionnaireType(questionnaireType),
-	})
-	if err != nil {
-		var httpCode int
-		var errorMsg string
-
-		switch err.Error() {
-		case apiError.FirestoreError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Firestore service encountered an error."
-		default:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Please contact technical support."
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    httpCode,
-			Success:   false,
-			Message:   errorMsg,
-			ErrorCode: err.Error(),
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	onboardingQuestionnaireAnswers := []types.GetOnboardingQuestionnaireAnswerResponse{}
-
-	for _, answer := range res {
-		onboardingQuestionnaireAnswers = append(onboardingQuestionnaireAnswers, types.GetOnboardingQuestionnaireAnswerResponse{
-			ID:                     answer.ID,
-			TenantID:               answer.TenantID,
-			UserID:                 answer.UserID,
-			QuestionnaireType:      answer.QuestionnaireType,
-			QuestionnaireID:        answer.QuestionnaireID,
-			QuestionnaireQuestion:  answer.QuestionnaireQuestion,
-			QuestionnaireAnswerIDs: answer.QuestionnaireAnswerIDs,
-			QuestionnaireAnswers:   answer.QuestionnaireAnswers,
-			CreatedAt:              uint64(answer.CreatedAt),
-			UpdatedAt:              uint64(answer.UpdatedAt),
-		})
-	}
-
-	response := viewmodels.HTTPResponseVM{
-		Status:  http.StatusOK,
-		Success: true,
-		Message: "Successfully retrieved onboarding questionnaire answers.",
-		Data:    onboardingQuestionnaireAnswers,
-	}
-
-	response.JSON(w)
-}
-
 // GetOnboardingModelQuestionnaireAnswers gets the onboarding model questionnaire answers
 func (controller *InferenceQueryController) GetOnboardingModelQuestionnaireAnswers(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
@@ -513,7 +437,7 @@ func (controller *InferenceQueryController) GetOnboardingModelQuestionnaireAnswe
 	res, err := controller.InferenceQueryServiceInterface.GetOnboardingModelQuestionnaireAnswers(r.Context(), serviceTypes.GetOnboardingModelQuestionnaireAnswer{
 		TenantID: tenantID,
 		UserID:   userID,
-		ModelID:  modelID,
+		ModelID:  &modelID,
 	})
 	if err != nil {
 		var httpCode int

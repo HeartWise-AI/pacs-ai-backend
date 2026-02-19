@@ -16,7 +16,6 @@ import (
 	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/application"
-	"api-pacs/module/inference/domain/entity"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 	types "api-pacs/module/inference/interfaces/http"
 )
@@ -109,6 +108,102 @@ func (controller *InferenceCommandController) AddInferenceModel(w http.ResponseW
 		Status:  http.StatusCreated,
 		Success: true,
 		Message: "Successfully added inference model.",
+	}
+
+	response.JSON(w)
+}
+
+// AddOnboardingModelQuestionnaireAnswer adds onboarding model questionnaire answer
+func (controller *InferenceCommandController) AddOnboardingModelQuestionnaireAnswer(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	var request types.AddOnboardingModelQuestionnaireAnswerRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	onboardingModelQuestionnaires := []serviceTypes.OnboardingModelQuestionnaireAnswer{}
+	for _, answer := range request.OnboardingModelQuestionnaireAnswers {
+		onboardingModelQuestionnaire := serviceTypes.OnboardingModelQuestionnaireAnswer{
+			QuestionnaireID:        answer.QuestionnaireID,
+			QuestionnaireQuestion:  answer.QuestionnaireQuestion,
+			QuestionnaireAnswerIDs: answer.QuestionnaireAnswerIDs,
+			QuestionnaireAnswers:   answer.QuestionnaireAnswers,
+		}
+
+		onboardingModelQuestionnaires = append(onboardingModelQuestionnaires, onboardingModelQuestionnaire)
+	}
+
+	err = controller.InferenceCommandServiceInterface.AddOnboardingModelQuestionnaireAnswer(context.TODO(), serviceTypes.AddOnboardingModelQuestionnaireAnswer{
+		TenantID:                            tenantID,
+		UserID:                              userID,
+		ModelID:                             request.ModelID,
+		OnboardingModelQuestionnaireAnswers: onboardingModelQuestionnaires,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while saving onboarding model questionnaire answer."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully saved onboarding model questionnaire answer.",
 	}
 
 	response.JSON(w)
@@ -217,48 +312,6 @@ func (controller *InferenceCommandController) RemoveModelFeedback(w http.Respons
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully removed model feedback.",
-	}
-
-	response.JSON(w)
-}
-
-// ResetTutorial resets the tutorial onboarding questionnaires by user
-func (controller *InferenceCommandController) ResetTutorial(w http.ResponseWriter, r *http.Request) {
-	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
-	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
-
-	err := controller.InferenceCommandServiceInterface.RemoveOnboardingQuestionnaires(context.TODO(), serviceTypes.RemoveOnboardingQuestionnaire{
-		TenantID: tenantID,
-		UserID:   userID,
-	})
-	if err != nil {
-		var httpCode int
-		var errorMsg string
-
-		switch err.Error() {
-		case errors.FirestoreError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Error occurred while resetting tutorial."
-		default:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Please contact technical support."
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    httpCode,
-			Success:   false,
-			Message:   errorMsg,
-			ErrorCode: err.Error(),
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	response := viewmodels.HTTPResponseVM{
-		Status:  http.StatusOK,
-		Success: true,
-		Message: "Successfully reset tutorial.",
 	}
 
 	response.JSON(w)
@@ -439,193 +492,6 @@ func (controller *InferenceCommandController) RestartInferenceModelContainer(w h
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully restarted inference model container.",
-	}
-
-	response.JSON(w)
-}
-
-// SaveOnboardingQuestionnaireAnswer saves onboarding questionnaire answer
-func (controller *InferenceCommandController) SaveOnboardingQuestionnaireAnswer(w http.ResponseWriter, r *http.Request) {
-	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
-	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
-
-	var request types.SaveOnboardingQuestionnaireAnswerRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// validate request
-	err := types.Validate.Struct(request)
-	if err != nil {
-		errors := err.(validator.ValidationErrors)
-		if len(errors) > 0 {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   types.ValidationErrors[errors[0].StructNamespace()],
-				ErrorCode: apiError.InvalidPayload,
-			}
-
-			response.JSON(w)
-			return
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// validate questionnaire type
-	if request.QuestionnaireType != entity.PreSurveyQuestionnaireType && request.QuestionnaireType != entity.PostSurveyQuestionnaireType {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid questionnaire type.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	err = controller.InferenceCommandServiceInterface.AddOnboardingQuestionnaireAnswer(context.TODO(), serviceTypes.AddOnboardingQuestionnaireAnswer{
-		TenantID:               tenantID,
-		UserID:                 userID,
-		QuestionnaireType:      request.QuestionnaireType,
-		QuestionnaireID:        request.QuestionnaireID,
-		QuestionnaireQuestion:  request.QuestionnaireQuestion,
-		QuestionnaireAnswerIDs: request.QuestionnaireAnswerIDs,
-		QuestionnaireAnswers:   request.QuestionnaireAnswers,
-	})
-	if err != nil {
-		var httpCode int
-		var errorMsg string
-
-		switch err.Error() {
-		case errors.DatabaseError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Error occurred while saving onboarding questionnaire answer."
-		default:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Please contact technical support."
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    httpCode,
-			Success:   false,
-			Message:   errorMsg,
-			ErrorCode: err.Error(),
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	response := viewmodels.HTTPResponseVM{
-		Status:  http.StatusOK,
-		Success: true,
-		Message: "Successfully saved onboarding questionnaire answer.",
-	}
-
-	response.JSON(w)
-}
-
-// SaveOnboardingModelQuestionnaireAnswer saves onboarding model questionnaire answer
-func (controller *InferenceCommandController) SaveOnboardingModelQuestionnaireAnswer(w http.ResponseWriter, r *http.Request) {
-	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
-	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
-
-	var request types.SaveOnboardingModelQuestionnaireAnswerRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// validate request
-	err := types.Validate.Struct(request)
-	if err != nil {
-		errors := err.(validator.ValidationErrors)
-		if len(errors) > 0 {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   types.ValidationErrors[errors[0].StructNamespace()],
-				ErrorCode: apiError.InvalidPayload,
-			}
-
-			response.JSON(w)
-			return
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	err = controller.InferenceCommandServiceInterface.AddOnboardingModelQuestionnaireAnswer(context.TODO(), serviceTypes.AddOnboardingModelQuestionnaireAnswer{
-		TenantID:               tenantID,
-		UserID:                 userID,
-		ModelID:                request.ModelID,
-		QuestionnaireID:        request.QuestionnaireID,
-		QuestionnaireQuestion:  request.QuestionnaireQuestion,
-		QuestionnaireAnswerIDs: request.QuestionnaireAnswerIDs,
-		QuestionnaireAnswers:   request.QuestionnaireAnswers,
-	})
-	if err != nil {
-		var httpCode int
-		var errorMsg string
-
-		switch err.Error() {
-		case errors.DatabaseError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Error occurred while saving onboarding questionnaire answer."
-		default:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Please contact technical support."
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    httpCode,
-			Success:   false,
-			Message:   errorMsg,
-			ErrorCode: err.Error(),
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	response := viewmodels.HTTPResponseVM{
-		Status:  http.StatusOK,
-		Success: true,
-		Message: "Successfully saved onboarding model questionnaire answer.",
 	}
 
 	response.JSON(w)

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"api-pacs/module/inference/domain/entity"
-	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
+	"api-pacs/module/inference/infrastructure/repository/types"
 )
 
 type InferenceQueryRepositoryInterface interface {
@@ -15,11 +15,9 @@ type InferenceQueryRepositoryInterface interface {
 	// SelectInferenceModels get inference models by tenant id
 	SelectInferenceModels(ctx context.Context, tenantID string) ([]entity.InferenceModel, error)
 	// SelectModelFeedbackByUserModelID get model feedback by user and model ID
-	SelectModelFeedbackByUserModelID(ctx context.Context, data repositoryTypes.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error)
+	SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error)
 	// SelectModelFeedbackAnswersByFeedbackID get model feedback answers by feedback ID
 	SelectModelFeedbackAnswersByFeedbackID(ctx context.Context, feedbackID string) ([]entity.ModelFeedbackAnswer, error)
-	// SelectOnboardingQuestionnaireAnswers select onboarding questionnaire answers
-	SelectOnboardingQuestionnaireAnswers(ctx context.Context, data repositoryTypes.GetOnboardingQuestionnaireAnswer) ([]entity.OnboardingQuestionnaireAnswer, error)
 	// SelectOnboardingModelQuestionnaireAnswers select onboarding model questionnaire answers
-	SelectOnboardingModelQuestionnaireAnswers(ctx context.Context, data repositoryTypes.GetOnboardingModelQuestionnaireAnswer) ([]entity.OnboardingModelQuestionnaireAnswer, error)
+	SelectOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingModelQuestionnaireAnswer) ([]entity.OnboardingModelQuestionnaireAnswer, error)
 }

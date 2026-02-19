@@ -1,4 +1,4 @@
-package inference
+package tenant
 
 type Questionnaire struct {
 	ID              string   `json:"id"`

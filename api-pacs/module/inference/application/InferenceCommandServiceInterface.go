@@ -11,8 +11,6 @@ import (
 type InferenceCommandServiceInterface interface {
 	// AddInferenceModel adds an inference model
 	AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error
-	// AddOnboardingQuestionnaireAnswer adds onboarding questionnaire answer
-	AddOnboardingQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingQuestionnaireAnswer) error
 	// AddOnboardingModelQuestionnaireAnswer adds onboarding model questionnaire answer
 	AddOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
 	// DeleteInferenceModel deletes an inference model
@@ -23,8 +21,8 @@ type InferenceCommandServiceInterface interface {
 	PredictInferenceModel(ctx context.Context, tenantID, userID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
 	// RemoveModelFeedback removes model feedback
 	RemoveModelFeedback(ctx context.Context, data types.RemoveModelFeedback) error
-	// RemoveOnboardingQuestionnaires removes onboarding questionnaires
-	RemoveOnboardingQuestionnaires(ctx context.Context, data types.RemoveOnboardingQuestionnaire) error
+	// RemoveOnboardingModelQuestionnaireAnswer removes an onboarding model questionnaire answer
+	RemoveOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error
 	// RestartInferenceModelContainer restarts an inference model container
 	RestartInferenceModelContainer(ctx context.Context, containerID string) error
 	// StartInferenceModelContainer starts an inference model container

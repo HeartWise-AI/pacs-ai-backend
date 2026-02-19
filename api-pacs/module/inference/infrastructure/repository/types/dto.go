@@ -22,17 +22,6 @@ type AddModelFeedbackAnswer struct {
 	QuestionnaireAnswers   []string
 }
 
-type AddOnboardingQuestionnaireAnswer struct {
-	ID                     string
-	TenantID               string
-	UserID                 string
-	QuestionnaireType      entity.QuestionnaireType
-	QuestionnaireID        string
-	QuestionnaireQuestion  string
-	QuestionnaireAnswerIDs []string
-	QuestionnaireAnswers   []string
-}
-
 type AddOnboardingModelQuestionnaireAnswer struct {
 	ID                     string
 	TenantID               string
@@ -48,12 +37,6 @@ type GetModelFeedbackByUserModelID struct {
 	TenantID string
 	UserID   string
 	ModelID  string
-}
-
-type GetOnboardingQuestionnaireAnswer struct {
-	TenantID          string
-	UserID            string
-	QuestionnaireType *entity.QuestionnaireType
 }
 
 type GetOnboardingModelQuestionnaireAnswer struct {

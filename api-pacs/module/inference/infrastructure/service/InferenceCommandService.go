@@ -85,39 +85,23 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 	return nil
 }
 
-// AddOnboardingQuestionnaireAnswer adds an onboarding questionnaire answer
-func (service *InferenceCommandService) AddOnboardingQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingQuestionnaireAnswer) error {
-	err := service.InferenceCommandRepositoryInterface.InsertOnboardingQuestionnaireAnswer(ctx, repositoryTypes.AddOnboardingQuestionnaireAnswer{
-		ID:                     generateID(),
-		TenantID:               data.TenantID,
-		UserID:                 data.UserID,
-		QuestionnaireType:      data.QuestionnaireType,
-		QuestionnaireID:        data.QuestionnaireID,
-		QuestionnaireQuestion:  data.QuestionnaireQuestion,
-		QuestionnaireAnswerIDs: data.QuestionnaireAnswerIDs,
-		QuestionnaireAnswers:   data.QuestionnaireAnswers,
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // AddOnboardingModelQuestionnaireAnswer adds an onboarding model questionnaire answer
 func (service *InferenceCommandService) AddOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error {
-	err := service.InferenceCommandRepositoryInterface.InsertOnboardingModelQuestionnaireAnswer(ctx, repositoryTypes.AddOnboardingModelQuestionnaireAnswer{
-		ID:                     generateID(),
-		TenantID:               data.TenantID,
-		UserID:                 data.UserID,
-		ModelID:                data.ModelID,
-		QuestionnaireID:        data.QuestionnaireID,
-		QuestionnaireQuestion:  data.QuestionnaireQuestion,
-		QuestionnaireAnswerIDs: data.QuestionnaireAnswerIDs,
-		QuestionnaireAnswers:   data.QuestionnaireAnswers,
-	})
-	if err != nil {
-		return err
+	// add onboarding model questionnaire answer
+	for _, answer := range data.OnboardingModelQuestionnaireAnswers {
+		err := service.InferenceCommandRepositoryInterface.InsertOnboardingModelQuestionnaireAnswer(ctx, repositoryTypes.AddOnboardingModelQuestionnaireAnswer{
+			ID:                     generateID(),
+			TenantID:               data.TenantID,
+			UserID:                 data.UserID,
+			ModelID:                data.ModelID,
+			QuestionnaireID:        answer.QuestionnaireID,
+			QuestionnaireQuestion:  answer.QuestionnaireQuestion,
+			QuestionnaireAnswerIDs: answer.QuestionnaireAnswerIDs,
+			QuestionnaireAnswers:   answer.QuestionnaireAnswers,
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -139,6 +123,16 @@ func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context
 
 	// delete inference model
 	err = service.InferenceCommandRepositoryInterface.DeleteInferenceModel(ctx, ID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemoveOnboardingModelQuestionnaireAnswer removes an onboarding model questionnaire answer
+func (service *InferenceCommandService) RemoveOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error {
+	err := service.InferenceCommandRepositoryInterface.DeleteOnboardingModelQuestionnaireAnswer(ctx, ID)
 	if err != nil {
 		return err
 	}
@@ -532,45 +526,6 @@ func (service *InferenceCommandService) RemoveModelFeedback(ctx context.Context,
 	// delete model feedback answers
 	for _, modelFeedbackAnswer := range modelFeedbackAnswers {
 		err = service.InferenceCommandRepositoryInterface.DeleteModelFeedbackAnswer(ctx, modelFeedbackAnswer.ID)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// RemoveOnboardingQuestionnaires removes onboarding questionnaires
-func (service *InferenceCommandService) RemoveOnboardingQuestionnaires(ctx context.Context, data types.RemoveOnboardingQuestionnaire) error {
-	// get onboarding questionnaire answers
-	onboardingQuestionnaireAnswers, err := service.InferenceQueryRepositoryInterface.SelectOnboardingQuestionnaireAnswers(ctx, repositoryTypes.GetOnboardingQuestionnaireAnswer{
-		TenantID: data.TenantID,
-		UserID:   data.UserID,
-	})
-	if err != nil && err.Error() != apiError.MissingRecord {
-		return err
-	}
-
-	// get onboarding model questionnaire answers
-	onboardingModelQuestionnaireAnswers, err := service.InferenceQueryRepositoryInterface.SelectOnboardingModelQuestionnaireAnswers(ctx, repositoryTypes.GetOnboardingModelQuestionnaireAnswer{
-		TenantID: data.TenantID,
-		UserID:   data.UserID,
-	})
-	if err != nil && err.Error() != apiError.MissingRecord {
-		return err
-	}
-
-	// delete onboarding questionnaire answers
-	for _, onboardingQuestionnaireAnswer := range onboardingQuestionnaireAnswers {
-		err = service.InferenceCommandRepositoryInterface.DeleteOnboardingQuestionnaireAnswer(ctx, onboardingQuestionnaireAnswer.ID)
-		if err != nil {
-			return err
-		}
-	}
-
-	// delete onboarding model questionnaire answers
-	for _, onboardingModelQuestionnaireAnswer := range onboardingModelQuestionnaireAnswers {
-		err = service.InferenceCommandRepositoryInterface.DeleteOnboardingModelQuestionnaireAnswer(ctx, onboardingModelQuestionnaireAnswer.ID)
 		if err != nil {
 			return err
 		}

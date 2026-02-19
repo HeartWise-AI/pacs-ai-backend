@@ -285,6 +285,48 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 	response.JSON(w)
 }
 
+// ResetTutorial resets the tutorial onboarding questionnaires by user
+func (controller *UserCommandController) ResetTutorial(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	err := controller.UserCommandServiceInterface.RemoveOnboardingQuestionnaires(context.TODO(), serviceTypes.RemoveOnboardingQuestionnaire{
+		TenantID: tenantID,
+		UserID:   userID,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while resetting tutorial."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully reset tutorial.",
+	}
+
+	response.JSON(w)
+}
+
 // UpdateTenantUser update a tenant user. Only callable by admin or owner.
 func (controller *UserCommandController) UpdateTenantUser(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)

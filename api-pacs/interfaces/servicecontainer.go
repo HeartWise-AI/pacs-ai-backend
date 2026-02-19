@@ -443,7 +443,9 @@ func (k *kernel) orthancQueryServiceContainer() *orthancService.OrthancQueryServ
 }
 
 func (k *kernel) tenantCommandServiceContainer() *tenantService.TenantCommandService {
-	repository := &tenantRepository.TenantCommandRepository{}
+	repository := &tenantRepository.TenantCommandRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
 
 	service := &tenantService.TenantCommandService{
 		TenantCommandRepositoryInterface: &tenantRepository.TenantCommandRepositoryCircuitBreaker{
@@ -478,8 +480,11 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 			UserCommandRepositoryInterface: repository,
 		},
 		UserQueryServiceInterface:            k.userQueryServiceContainer(),
-		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		TenantCommandServiceInterface:        k.tenantCommandServiceContainer(),
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
+		InferenceCommandServiceInterface:     k.inferenceCommandServiceContainer(),
+		InferenceQueryServiceInterface:       k.inferenceQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
 		MailgunSDKInterface:                  mailgunSDK,
 	}
 
