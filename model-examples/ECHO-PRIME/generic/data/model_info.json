@@ -3,6 +3,7 @@
   "modelName": "EchoPrime",
   "domainName": "Cardiology",
   "stage": "ai_inference",
+  "modality": "Echocardiogram",
   "version": "1.2.0",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
