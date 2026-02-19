@@ -290,7 +290,7 @@ func (controller *UserCommandController) ResetTutorial(w http.ResponseWriter, r 
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
-	err := controller.UserCommandServiceInterface.RemoveOnboardingQuestionnaires(context.TODO(), serviceTypes.RemoveOnboardingQuestionnaire{
+	err := controller.UserCommandServiceInterface.ResetTutorial(context.TODO(), serviceTypes.ResetTutorial{
 		TenantID: tenantID,
 		UserID:   userID,
 	})

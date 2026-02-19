@@ -11,8 +11,8 @@ import (
 type InferenceCommandServiceInterface interface {
 	// AddInferenceModel adds an inference model
 	AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error
-	// AddOnboardingModelQuestionnaireAnswer adds onboarding model questionnaire answer
-	AddOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
+	// AddOnboardingModelQuestionnaireAnswers adds onboarding model questionnaire answers
+	AddOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
 	// DeleteInferenceModel deletes an inference model
 	DeleteInferenceModel(ctx context.Context, ID string) error
 	// GenerateInferenceModelPredictRequest generates the prediction request payload

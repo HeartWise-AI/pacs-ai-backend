@@ -284,11 +284,11 @@
         }
       }
     },
-    "/inference/onboarding-model-questionnaire-answer/add": {
+    "/inference/onboarding-model-questionnaire-answers/add": {
       "post": {
         "tags": ["inference"],
-        "summary": "Add Onboarding Model Questionnaire Answer",
-        "description": "Add onboarding model questionnaire answer.",
+        "summary": "Add Onboarding Model Questionnaire Answers",
+        "description": "Add onboarding model questionnaire answers.",
         "security": [
           {
             "bearerAuth": []
@@ -880,11 +880,11 @@
         }
       }
     },
-    "/tenant/onboarding-questionnaire-answer/add": {
+    "/tenant/onboarding-questionnaire-answers/add": {
       "post": {
         "tags": ["tenant"],
-        "summary": "Add Onboarding Questionnaire Answer",
-        "description": "Add onboarding questionnaire answer.",
+        "summary": "Add Onboarding Questionnaire Answers",
+        "description": "Add onboarding questionnaire answers.",
         "security": [
           {
             "bearerAuth": []
@@ -1461,6 +1461,29 @@
         }
       }
     },
+    "/user/tutorial/reset": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Reset Tutorial",
+        "description": "Reset tutorial.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/all": {
       "get": {
         "tags": ["user"],
@@ -1655,29 +1678,6 @@
         }
       }
     },
-    "/user/tutorial/reset": {
-      "delete": {
-        "tags": ["user"],
-        "summary": "Reset Tutorial",
-        "description": "Reset tutorial.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "2xx": {
-            "description": "Success"
-          },
-          "4xx": {
-            "description": "Client side errors"
-          },
-          "5xx": {
-            "description": "Server side errors"
-          }
-        }
-      }
-    },
     "/user/{id}/remove": {
       "delete": {
         "tags": ["user"],
@@ -1787,7 +1787,7 @@
         }
       },
       "AddOnboardingModelQuestionnaireAnswerRequest": {
-        "required": ["modelId"],
+        "required": ["modelId", "onboardingModelQuestionnaireAnswers"],
         "type": "object",
         "properties": {
           "modelId": {

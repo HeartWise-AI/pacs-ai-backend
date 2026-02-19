@@ -85,8 +85,8 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 	return nil
 }
 
-// AddOnboardingModelQuestionnaireAnswer adds an onboarding model questionnaire answer
-func (service *InferenceCommandService) AddOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error {
+// AddOnboardingModelQuestionnaireAnswers adds an onboarding model questionnaire answers
+func (service *InferenceCommandService) AddOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error {
 	// add onboarding model questionnaire answer
 	for _, answer := range data.OnboardingModelQuestionnaireAnswers {
 		err := service.InferenceCommandRepositoryInterface.InsertOnboardingModelQuestionnaireAnswer(ctx, repositoryTypes.AddOnboardingModelQuestionnaireAnswer{

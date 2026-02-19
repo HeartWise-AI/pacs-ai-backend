@@ -7,7 +7,7 @@ import (
 
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
-	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
+	"api-pacs/module/inference/infrastructure/repository/types"
 )
 
 // InferenceQueryRepositoryCircuitBreaker is the circuit breaker for the inference query repository
@@ -97,7 +97,7 @@ func (repository *InferenceQueryRepositoryCircuitBreaker) SelectInferenceModels(
 }
 
 // SelectModelFeedbackByUserModelID get model feedback by model ID
-func (repository InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbackByUserModelID(ctx context.Context, data repositoryTypes.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
+func (repository InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
 	output := make(chan entity.ModelFeedback, 1)
 	errChan := make(chan error, 1)
 
@@ -151,7 +151,7 @@ func (repository *InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbackAns
 }
 
 // SelectOnboardingModelQuestionnaireAnswers select onboarding model questionnaire answers
-func (repository *InferenceQueryRepositoryCircuitBreaker) SelectOnboardingModelQuestionnaireAnswers(ctx context.Context, data repositoryTypes.GetOnboardingModelQuestionnaireAnswer) ([]entity.OnboardingModelQuestionnaireAnswer, error) {
+func (repository *InferenceQueryRepositoryCircuitBreaker) SelectOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingModelQuestionnaireAnswer) ([]entity.OnboardingModelQuestionnaireAnswer, error) {
 	output := make(chan []entity.OnboardingModelQuestionnaireAnswer, 1)
 	errChan := make(chan error, 1)
 

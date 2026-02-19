@@ -113,8 +113,8 @@ func (controller *InferenceCommandController) AddInferenceModel(w http.ResponseW
 	response.JSON(w)
 }
 
-// AddOnboardingModelQuestionnaireAnswer adds onboarding model questionnaire answer
-func (controller *InferenceCommandController) AddOnboardingModelQuestionnaireAnswer(w http.ResponseWriter, r *http.Request) {
+// AddOnboardingModelQuestionnaireAnswers adds onboarding model questionnaire answers
+func (controller *InferenceCommandController) AddOnboardingModelQuestionnaireAnswers(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
@@ -170,7 +170,7 @@ func (controller *InferenceCommandController) AddOnboardingModelQuestionnaireAns
 		onboardingModelQuestionnaires = append(onboardingModelQuestionnaires, onboardingModelQuestionnaire)
 	}
 
-	err = controller.InferenceCommandServiceInterface.AddOnboardingModelQuestionnaireAnswer(context.TODO(), serviceTypes.AddOnboardingModelQuestionnaireAnswer{
+	err = controller.InferenceCommandServiceInterface.AddOnboardingModelQuestionnaireAnswers(context.TODO(), serviceTypes.AddOnboardingModelQuestionnaireAnswer{
 		TenantID:                            tenantID,
 		UserID:                              userID,
 		ModelID:                             request.ModelID,
@@ -183,7 +183,7 @@ func (controller *InferenceCommandController) AddOnboardingModelQuestionnaireAns
 		switch err.Error() {
 		case errors.DatabaseError:
 			httpCode = http.StatusInternalServerError
-			errorMsg = "Error occurred while saving onboarding model questionnaire answer."
+			errorMsg = "Error occurred while adding onboarding model questionnaire answers."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Please contact technical support."
@@ -203,7 +203,7 @@ func (controller *InferenceCommandController) AddOnboardingModelQuestionnaireAns
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,
-		Message: "Successfully saved onboarding model questionnaire answer.",
+		Message: "Successfully added onboarding model questionnaire answers.",
 	}
 
 	response.JSON(w)

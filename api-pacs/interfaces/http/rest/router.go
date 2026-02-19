@@ -131,7 +131,7 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
-					r.Post("/onboarding-model-questionnaire-answer/add", inferenceCommandController.AddOnboardingModelQuestionnaireAnswer)
+					r.Post("/onboarding-model-questionnaire-answers/add", inferenceCommandController.AddOnboardingModelQuestionnaireAnswers)
 					r.Get("/onboarding-model-questionnaire-answers", inferenceQueryController.GetOnboardingModelQuestionnaireAnswers)
 
 					r.Route("/model", func(r chi.Router) {
@@ -219,7 +219,7 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
-					r.Post("/onboarding-questionnaire-answer/add", tenantCommandController.AddOnboardingQuestionnaireAnswer)
+					r.Post("/onboarding-questionnaire-answers/add", tenantCommandController.AddOnboardingQuestionnaireAnswers)
 					r.Get("/onboarding-questionnaire-answers", tenantQueryController.GetOnboardingQuestionnaireAnswers)
 					r.Get("/", tenantQueryController.GetTenantByID)
 				})
@@ -237,11 +237,11 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
+					r.Post("/tutorial/reset", userCommandController.ResetTutorial)
 					r.Get("/me", userQueryController.GetCurrentTenantUser)
 					r.Get("/metadata", userQueryController.GetUserMetadata)
 					r.Put("/password/update", userCommandController.UpdateTenantUserPassword)
 					r.Put("/metadata/update", userCommandController.UpdateUserMetadata)
-					r.Delete("/tutorial/reset", userCommandController.ResetTutorial)
 
 					// admin or owner only
 					r.Group(func(r chi.Router) {

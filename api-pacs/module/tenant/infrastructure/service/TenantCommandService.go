@@ -15,8 +15,8 @@ type TenantCommandService struct {
 	repository.TenantCommandRepositoryInterface
 }
 
-// AddOnboardingQuestionnaireAnswer adds an onboarding questionnaire answer
-func (service *TenantCommandService) AddOnboardingQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingQuestionnaireAnswer) error {
+// AddOnboardingQuestionnaireAnswers adds an onboarding questionnaire answers
+func (service *TenantCommandService) AddOnboardingQuestionnaireAnswers(ctx context.Context, data types.AddOnboardingQuestionnaireAnswer) error {
 	// add onboarding questionnaire answers
 	for _, answer := range data.OnboardingQuestionnaireAnswers {
 		err := service.TenantCommandRepositoryInterface.InsertOnboardingQuestionnaireAnswer(ctx, repositoryTypes.AddOnboardingQuestionnaireAnswer{

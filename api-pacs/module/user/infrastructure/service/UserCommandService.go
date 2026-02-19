@@ -145,8 +145,8 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantI
 	return nil
 }
 
-// RemoveOnboardingQuestionnaires removes onboarding questionnaires
-func (service *UserCommandService) RemoveOnboardingQuestionnaires(ctx context.Context, data types.RemoveOnboardingQuestionnaire) error {
+// ResetTutorial resets the tutorial for a user
+func (service *UserCommandService) ResetTutorial(ctx context.Context, data types.ResetTutorial) error {
 	// get onboarding questionnaire answers
 	onboardingQuestionnaireAnswers, err := service.TenantQueryServiceInterface.GetOnboardingQuestionnaireAnswers(ctx, tenantTypes.GetOnboardingQuestionnaireAnswer{
 		TenantID: data.TenantID,

@@ -22,8 +22,8 @@ type TenantCommandController struct {
 	application.TenantCommandServiceInterface
 }
 
-// AddOnboardingQuestionnaireAnswer adds onboarding questionnaire answer
-func (controller *TenantCommandController) AddOnboardingQuestionnaireAnswer(w http.ResponseWriter, r *http.Request) {
+// AddOnboardingQuestionnaireAnswers adds onboarding questionnaire answers
+func (controller *TenantCommandController) AddOnboardingQuestionnaireAnswers(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
@@ -95,7 +95,7 @@ func (controller *TenantCommandController) AddOnboardingQuestionnaireAnswer(w ht
 		}
 	}
 
-	err = controller.TenantCommandServiceInterface.AddOnboardingQuestionnaireAnswer(context.TODO(), serviceTypes.AddOnboardingQuestionnaireAnswer{
+	err = controller.TenantCommandServiceInterface.AddOnboardingQuestionnaireAnswers(context.TODO(), serviceTypes.AddOnboardingQuestionnaireAnswer{
 		TenantID:                       tenantID,
 		UserID:                         userID,
 		QuestionnaireType:              request.QuestionnaireType,
