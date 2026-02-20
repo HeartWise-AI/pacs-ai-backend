@@ -98,6 +98,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteModelFeedbackA
 	}
 }
 
+// DeleteOnboardingModelQuestionnaireAnswer is the decorator for the inference command repository to delete onboarding model questionnaire answer
+func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("delete_onboarding_model_questionnaire_answer", config.Settings())
+	errors := hystrix.Go("delete_onboarding_model_questionnaire_answer", func() error {
+		err := repository.InferenceCommandRepositoryInterface.DeleteOnboardingModelQuestionnaireAnswer(ctx, ID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // InsertModelFeedbackAnswer is the decorator for the inference command repository to insert model feedback answer
 func (repository *InferenceCommandRepositoryCircuitBreaker) InsertModelFeedbackAnswer(ctx context.Context, data types.AddModelFeedbackAnswer) error {
 	output := make(chan bool, 1)
@@ -133,6 +160,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceModel
 	hystrix.ConfigureCommand("insert_inference_model", config.Settings())
 	errors := hystrix.Go("insert_inference_model", func() error {
 		err := repository.InferenceCommandRepositoryInterface.InsertInferenceModel(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// InsertOnboardingModelQuestionnaireAnswer is the decorator for the inference command repository to insert onboarding model questionnaire answer
+func (repository *InferenceCommandRepositoryCircuitBreaker) InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("insert_onboarding_model_questionnaire_answer", config.Settings())
+	errors := hystrix.Go("insert_onboarding_model_questionnaire_answer", func() error {
+		err := repository.InferenceCommandRepositoryInterface.InsertOnboardingModelQuestionnaireAnswer(ctx, data)
 		if err != nil {
 			errChan <- err
 			return nil

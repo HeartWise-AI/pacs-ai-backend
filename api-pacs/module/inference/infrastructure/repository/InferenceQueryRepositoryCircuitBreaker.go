@@ -149,3 +149,30 @@ func (repository *InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbackAns
 		return nil, err
 	}
 }
+
+// SelectOnboardingModelQuestionnaireAnswers select onboarding model questionnaire answers
+func (repository *InferenceQueryRepositoryCircuitBreaker) SelectOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingModelQuestionnaireAnswer) ([]entity.OnboardingModelQuestionnaireAnswer, error) {
+	output := make(chan []entity.OnboardingModelQuestionnaireAnswer, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_onboarding_model_questionnaire_answers", config.Settings())
+	errors := hystrix.Go("select_onboarding_model_questionnaire_answers", func() error {
+		answers, err := repository.InferenceQueryRepositoryInterface.SelectOnboardingModelQuestionnaireAnswers(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- answers
+		return nil
+	}, nil)
+
+	select {
+	case answers := <-output:
+		return answers, nil
+	case err := <-errChan:
+		return nil, err
+	case err := <-errors:
+		return nil, err
+	}
+}

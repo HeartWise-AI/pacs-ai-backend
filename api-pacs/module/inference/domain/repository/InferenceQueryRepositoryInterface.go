@@ -18,4 +18,6 @@ type InferenceQueryRepositoryInterface interface {
 	SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error)
 	// SelectModelFeedbackAnswersByFeedbackID get model feedback answers by feedback ID
 	SelectModelFeedbackAnswersByFeedbackID(ctx context.Context, feedbackID string) ([]entity.ModelFeedbackAnswer, error)
+	// SelectOnboardingModelQuestionnaireAnswers select onboarding model questionnaire answers
+	SelectOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingModelQuestionnaireAnswer) ([]entity.OnboardingModelQuestionnaireAnswer, error)
 }

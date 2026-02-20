@@ -1,9 +1,42 @@
 package types
 
+import "api-pacs/module/tenant/domain/entity"
+
+type AddOnboardingQuestionnaireAnswer struct {
+	ID                             string
+	TenantID                       string
+	UserID                         string
+	QuestionnaireType              entity.QuestionnaireType
+	OnboardingQuestionnaireAnswers []OnboardingQuestionnaireAnswer
+}
+
+type GetOnboardingQuestionnaireAnswer struct {
+	TenantID          string
+	UserID            string
+	QuestionnaireType *entity.QuestionnaireType
+}
+
 type GetTenant struct {
-	ID        string
-	Name      string
-	Address   string
-	CreatedAt uint
-	UpdatedAt uint
+	ID                       string
+	Name                     string
+	Address                  string
+	OnboardingQuestionnaires map[string][]OnboardingQuestionnaire
+	CreatedAt                uint
+	UpdatedAt                uint
+}
+
+type OnboardingQuestionnaire struct {
+	ID              string
+	Type            string
+	QuestionEn      string
+	QuestionFr      string
+	AnswerOptionsEn []string
+	AnswerOptionsFr []string
+}
+
+type OnboardingQuestionnaireAnswer struct {
+	QuestionnaireID        string
+	QuestionnaireQuestion  string
+	QuestionnaireAnswerIDs []string
+	QuestionnaireAnswers   []string
 }

@@ -85,6 +85,28 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 	return nil
 }
 
+// AddOnboardingModelQuestionnaireAnswers adds an onboarding model questionnaire answers
+func (service *InferenceCommandService) AddOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error {
+	// add onboarding model questionnaire answer
+	for _, answer := range data.OnboardingModelQuestionnaireAnswers {
+		err := service.InferenceCommandRepositoryInterface.InsertOnboardingModelQuestionnaireAnswer(ctx, repositoryTypes.AddOnboardingModelQuestionnaireAnswer{
+			ID:                     generateID(),
+			TenantID:               data.TenantID,
+			UserID:                 data.UserID,
+			ModelID:                data.ModelID,
+			QuestionnaireID:        answer.QuestionnaireID,
+			QuestionnaireQuestion:  answer.QuestionnaireQuestion,
+			QuestionnaireAnswerIDs: answer.QuestionnaireAnswerIDs,
+			QuestionnaireAnswers:   answer.QuestionnaireAnswers,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // DeleteInferenceModel deletes an inference model
 func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context, ID string) error {
 	// get inference model
@@ -101,6 +123,16 @@ func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context
 
 	// delete inference model
 	err = service.InferenceCommandRepositoryInterface.DeleteInferenceModel(ctx, ID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemoveOnboardingModelQuestionnaireAnswer removes an onboarding model questionnaire answer
+func (service *InferenceCommandService) RemoveOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error {
+	err := service.InferenceCommandRepositoryInterface.DeleteOnboardingModelQuestionnaireAnswer(ctx, ID)
 	if err != nil {
 		return err
 	}

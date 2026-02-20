@@ -10,6 +10,7 @@ import (
 type UserCommandServiceInterface interface {
 	CreateTenantUser(ctx context.Context, data types.CreateTenantUser) (string, error)
 	DeleteTenantUser(ctx context.Context, tenantID, id string) error
+	ResetTutorial(ctx context.Context, data types.ResetTutorial) error
 	UpdateTenantUser(ctx context.Context, data types.UpdateTenantUser) error
 	UpdateTenantUserPassword(ctx context.Context, data types.UpdateTenantUserPassword) error
 	UpdateUserMetadata(ctx context.Context, data types.UpdateUserMetadata) error

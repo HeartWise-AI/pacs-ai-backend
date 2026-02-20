@@ -94,6 +94,30 @@ func (repository *InferenceCommandRepository) DeleteModelFeedbackAnswer(ctx cont
 	return nil
 }
 
+// DeleteOnboardingModelQuestionnaireAnswer deletes an onboarding model questionnaire answer
+func (repository *InferenceCommandRepository) DeleteOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	// delete onboarding model questionnaire answer
+	var answer entity.OnboardingModelQuestionnaireAnswer
+
+	collectionPath := fmt.Sprintf("%s/%s", answer.GetModelName(), ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Delete(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
 // InsertModelFeedbackAnswer inserts a new  model feedback answer
 func (repository *InferenceCommandRepository) InsertModelFeedbackAnswer(ctx context.Context, data types.AddModelFeedbackAnswer) error {
 	// firestore client
@@ -154,6 +178,41 @@ func (repository *InferenceCommandRepository) InsertInferenceModel(ctx context.C
 	docRef := firestoreClient.Doc(collectionPath)
 
 	_, err = docRef.Create(ctx, model)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
+// InsertOnboardingModelQuestionnaireAnswer inserts a onboarding model questionnaire answer
+func (repository *InferenceCommandRepository) InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	// add onboarding model questionnaire answer
+	answer := entity.OnboardingModelQuestionnaireAnswer{
+		ID:                     data.ID,
+		TenantID:               data.TenantID,
+		UserID:                 data.UserID,
+		ModelID:                data.ModelID,
+		QuestionnaireID:        data.QuestionnaireID,
+		QuestionnaireQuestion:  data.QuestionnaireQuestion,
+		QuestionnaireAnswerIDs: data.QuestionnaireAnswerIDs,
+		QuestionnaireAnswers:   data.QuestionnaireAnswers,
+		CreatedAt:              int(time.Now().Unix()),
+		UpdatedAt:              int(time.Now().Unix()),
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", answer.GetModelName(), data.ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Create(ctx, answer)
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.FirestoreError)

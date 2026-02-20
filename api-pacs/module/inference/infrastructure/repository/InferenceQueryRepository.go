@@ -182,3 +182,48 @@ func (repository *InferenceQueryRepository) SelectModelFeedbackAnswersByFeedback
 
 	return modelFeedbackAnswers, nil
 }
+
+// SelectOnboardingModelQuestionnaireAnswers selects onboarding model questionnaire answers
+func (repository *InferenceQueryRepository) SelectOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingModelQuestionnaireAnswer) ([]entity.OnboardingModelQuestionnaireAnswer, error) {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	// get firestore onboarding model questionnaire answers
+	var onboardingModelQuestionnaireAnswer entity.OnboardingModelQuestionnaireAnswer
+
+	query := firestoreClient.Collection(onboardingModelQuestionnaireAnswer.GetModelName()).Where("tenant_id", "==", data.TenantID).Where("user_id", "==", data.UserID)
+
+	// if model id is set
+	if data.ModelID != nil {
+		query = query.Where("model_id", "==", data.ModelID)
+	}
+
+	docs, err := query.Documents(ctx).GetAll()
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	var onboardingModelQuestionnaireAnswers []entity.OnboardingModelQuestionnaireAnswer
+
+	for _, doc := range docs {
+		var onboardingModelQuestionnaireAnswer entity.OnboardingModelQuestionnaireAnswer
+		if err := doc.DataTo(&onboardingModelQuestionnaireAnswer); err != nil {
+			log.Println(err)
+			continue
+		}
+
+		onboardingModelQuestionnaireAnswer.ID = doc.Ref.ID
+		onboardingModelQuestionnaireAnswers = append(onboardingModelQuestionnaireAnswers, onboardingModelQuestionnaireAnswer)
+	}
+
+	if len(onboardingModelQuestionnaireAnswers) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return onboardingModelQuestionnaireAnswers, nil
+}

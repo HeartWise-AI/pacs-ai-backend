@@ -23,6 +23,11 @@ type GetTenantUser struct {
 	UpdatedAt         uint
 }
 
+type ResetTutorial struct {
+	TenantID string
+	UserID   string
+}
+
 type UpdateTenantUser struct {
 	ID        string
 	TenantID  string

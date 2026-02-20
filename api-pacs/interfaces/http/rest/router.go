@@ -54,6 +54,7 @@ func (router *router) InitRouter() *chi.Mux {
 	orthancProxy := interfaces.ServiceContainer().RegisterOrthancProxy()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
 	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
+	tenantCommandController := interfaces.ServiceContainer().RegisterTenantRESTCommandController()
 	tenantQueryController := interfaces.ServiceContainer().RegisterTenantRESTQueryController()
 	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
 	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
@@ -129,6 +130,9 @@ func (router *router) InitRouter() *chi.Mux {
 				// admin or owner only
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
+
+					r.Post("/onboarding-model-questionnaire-answers/add", inferenceCommandController.AddOnboardingModelQuestionnaireAnswers)
+					r.Get("/onboarding-model-questionnaire-answers", inferenceQueryController.GetOnboardingModelQuestionnaireAnswers)
 
 					r.Route("/model", func(r chi.Router) {
 						r.Group(func(r chi.Router) {
@@ -215,6 +219,8 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
+					r.Post("/onboarding-questionnaire-answers/add", tenantCommandController.AddOnboardingQuestionnaireAnswers)
+					r.Get("/onboarding-questionnaire-answers", tenantQueryController.GetOnboardingQuestionnaireAnswers)
 					r.Get("/", tenantQueryController.GetTenantByID)
 				})
 			})
@@ -231,6 +237,7 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
+					r.Post("/tutorial/reset", userCommandController.ResetTutorial)
 					r.Get("/me", userQueryController.GetCurrentTenantUser)
 					r.Get("/metadata", userQueryController.GetUserMetadata)
 					r.Put("/password/update", userCommandController.UpdateTenantUserPassword)

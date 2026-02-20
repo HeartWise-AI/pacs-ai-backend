@@ -113,6 +113,102 @@ func (controller *InferenceCommandController) AddInferenceModel(w http.ResponseW
 	response.JSON(w)
 }
 
+// AddOnboardingModelQuestionnaireAnswers adds onboarding model questionnaire answers
+func (controller *InferenceCommandController) AddOnboardingModelQuestionnaireAnswers(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	var request types.AddOnboardingModelQuestionnaireAnswerRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	onboardingModelQuestionnaires := []serviceTypes.OnboardingModelQuestionnaireAnswer{}
+	for _, answer := range request.OnboardingModelQuestionnaireAnswers {
+		onboardingModelQuestionnaire := serviceTypes.OnboardingModelQuestionnaireAnswer{
+			QuestionnaireID:        answer.QuestionnaireID,
+			QuestionnaireQuestion:  answer.QuestionnaireQuestion,
+			QuestionnaireAnswerIDs: answer.QuestionnaireAnswerIDs,
+			QuestionnaireAnswers:   answer.QuestionnaireAnswers,
+		}
+
+		onboardingModelQuestionnaires = append(onboardingModelQuestionnaires, onboardingModelQuestionnaire)
+	}
+
+	err = controller.InferenceCommandServiceInterface.AddOnboardingModelQuestionnaireAnswers(context.TODO(), serviceTypes.AddOnboardingModelQuestionnaireAnswer{
+		TenantID:                            tenantID,
+		UserID:                              userID,
+		ModelID:                             request.ModelID,
+		OnboardingModelQuestionnaireAnswers: onboardingModelQuestionnaires,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while adding onboarding model questionnaire answers."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully added onboarding model questionnaire answers.",
+	}
+
+	response.JSON(w)
+}
+
 // DeleteInferenceModel delete an inference model
 func (controller *InferenceCommandController) DeleteInferenceModel(w http.ResponseWriter, r *http.Request) {
 	ID := chi.URLParam(r, "ID")
