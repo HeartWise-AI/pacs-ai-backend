@@ -41,6 +41,7 @@ type GetModelInfoResponse struct {
 		SupportedOutputModes          []string      `json:"supportedOutputModes"`
 		ApproveFeedbackQuestionnaires []interface{} `json:"approveFeedbackQuestionnaires"`
 		RejectFeedbackQuestionnaires  []interface{} `json:"rejectFeedbackQuestionnaires"`
+		OnboardingModelQuestionnaires []interface{} `json:"onboardingModelQuestionnaires"`
 	} `json:"data"`
 }
 

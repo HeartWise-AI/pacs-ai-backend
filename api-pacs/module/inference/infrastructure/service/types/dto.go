@@ -62,6 +62,7 @@ type GetInferenceAvailableModelResult struct {
 	SupportedAdditionalMetadata   []interface{}
 	ApproveFeedbackQuestionnaires []interface{}
 	RejectFeedbackQuestionnaires  []interface{}
+	OnboardingModelQuestionnaires []interface{}
 	OutputMode                    entity.OutputMode
 }
 

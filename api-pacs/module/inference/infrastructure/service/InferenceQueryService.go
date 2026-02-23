@@ -207,7 +207,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 						SupportedAdditionalMetadata:   modelInfo.Data.SupportedAdditionalMetadata,
 						ApproveFeedbackQuestionnaires: modelInfo.Data.ApproveFeedbackQuestionnaires,
 						RejectFeedbackQuestionnaires:  modelInfo.Data.RejectFeedbackQuestionnaires,
-						OutputMode:                    inferenceModel.OutputMode,
+						OnboardingModelQuestionnaires: modelInfo.Data.OnboardingModelQuestionnaires,
 					})
 				}
 

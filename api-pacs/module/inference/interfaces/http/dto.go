@@ -103,6 +103,7 @@ type GetInferenceAvailableModelResponse struct {
 	SupportedAdditionalMetadata   []interface{}     `json:"supportedAdditionalMetadata"`
 	ApproveFeedbackQuestionnaires []interface{}     `json:"approveFeedbackQuestionnaires"`
 	RejectFeedbackQuestionnaires  []interface{}     `json:"rejectFeedbackQuestionnaires"`
+	OnboardingModelQuestionnaires []interface{}     `json:"onboardingModelQuestionnaires"`
 	OutputMode                    entity.OutputMode `json:"outputMode"`
 }
 

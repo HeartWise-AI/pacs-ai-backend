@@ -313,6 +313,7 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 			SupportedAdditionalMetadata:   inferenceAvailableModel.SupportedAdditionalMetadata,
 			ApproveFeedbackQuestionnaires: inferenceAvailableModel.ApproveFeedbackQuestionnaires,
 			RejectFeedbackQuestionnaires:  inferenceAvailableModel.RejectFeedbackQuestionnaires,
+			OnboardingModelQuestionnaires: inferenceAvailableModel.OnboardingModelQuestionnaires,
 			OutputMode:                    inferenceAvailableModel.OutputMode,
 		})
 	}
