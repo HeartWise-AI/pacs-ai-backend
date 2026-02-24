@@ -57,10 +57,15 @@ type OnboardingQuestionnaireAnswer struct {
 }
 
 type OnboardingQuestionnaire struct {
-	ID              string   `json:"id"`
-	Type            string   `json:"type"`
-	QuestionEn      string   `json:"questionEn"`
-	QuestionFr      string   `json:"questionFr"`
-	AnswerOptionsEn []string `json:"answerOptionsEn"`
-	AnswerOptionsFr []string `json:"answerOptionsFr"`
+	ID              string         `json:"id"`
+	Type            string         `json:"type"`
+	QuestionEn      string         `json:"questionEn"`
+	QuestionFr      string         `json:"questionFr"`
+	AnswerOptionsEn []AnswerOption `json:"answerOptionsEn"`
+	AnswerOptionsFr []AnswerOption `json:"answerOptionsFr"`
+}
+
+type AnswerOption struct {
+	ID     string `json:"id"`
+	Answer string `json:"answer"`
 }
