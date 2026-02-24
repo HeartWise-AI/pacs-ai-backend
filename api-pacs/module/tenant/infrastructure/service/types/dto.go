@@ -30,8 +30,8 @@ type OnboardingQuestionnaire struct {
 	Type            string
 	QuestionEn      string
 	QuestionFr      string
-	AnswerOptionsEn []string
-	AnswerOptionsFr []string
+	AnswerOptionsEn []AnswerOption
+	AnswerOptionsFr []AnswerOption
 }
 
 type OnboardingQuestionnaireAnswer struct {
@@ -39,4 +39,9 @@ type OnboardingQuestionnaireAnswer struct {
 	QuestionnaireQuestion  string
 	QuestionnaireAnswerIDs []string
 	QuestionnaireAnswers   []string
+}
+
+type AnswerOption struct {
+	ID     string
+	Answer string
 }

@@ -1,12 +1,17 @@
 package tenant
 
 type Questionnaire struct {
-	ID              string   `json:"id"`
-	Type            string   `json:"type"`
-	QuestionEn      string   `json:"questionEn"`
-	QuestionFr      string   `json:"questionFr"`
-	AnswerOptionsEn []string `json:"answerOptionsEn"`
-	AnswerOptionsFr []string `json:"answerOptionsFr"`
+	ID              string         `json:"id"`
+	Type            string         `json:"type"`
+	QuestionEn      string         `json:"questionEn"`
+	QuestionFr      string         `json:"questionFr"`
+	AnswerOptionsEn []AnswerOption `json:"answerOptionsEn"`
+	AnswerOptionsFr []AnswerOption `json:"answerOptionsFr"`
+}
+
+type AnswerOption struct {
+	ID     string `json:"id"`
+	Answer string `json:"answer"`
 }
 
 var OnboardingQuestionnaires = map[string][]Questionnaire{
@@ -20,12 +25,20 @@ var OnboardingQuestionnaires = map[string][]Questionnaire{
 			AnswerOptionsFr: nil,
 		},
 		{
-			ID:              "q2",
-			Type:            "RADIO",
-			QuestionEn:      "Do you have any existing medical conditions?",
-			QuestionFr:      "Avez-vous des conditions médicales existantes?",
-			AnswerOptionsEn: []string{"Yes", "No", "Prefer not to say"},
-			AnswerOptionsFr: []string{"Oui", "Non", "Je préfère ne pas répondre"},
+			ID:         "q2",
+			Type:       "RADIO",
+			QuestionEn: "Do you have any existing medical conditions?",
+			QuestionFr: "Avez-vous des conditions médicales existantes?",
+			AnswerOptionsEn: []AnswerOption{
+				{ID: "yes", Answer: "Yes"},
+				{ID: "no", Answer: "No"},
+				{ID: "prefer", Answer: "Prefer not to say"},
+			},
+			AnswerOptionsFr: []AnswerOption{
+				{ID: "yes", Answer: "Oui"},
+				{ID: "no", Answer: "Non"},
+				{ID: "prefer", Answer: "Je préfère ne pas répondre"},
+			},
 		},
 	},
 	"POST_SURVEY": {
@@ -38,12 +51,20 @@ var OnboardingQuestionnaires = map[string][]Questionnaire{
 			AnswerOptionsFr: nil,
 		},
 		{
-			ID:              "q2",
-			Type:            "RADIO",
-			QuestionEn:      "Would you recommend our service to others?",
-			QuestionFr:      "Recommanderiez-vous notre service à d'autres?",
-			AnswerOptionsEn: []string{"Yes", "No", "Maybe"},
-			AnswerOptionsFr: []string{"Oui", "Non", "Peut-être"},
+			ID:         "q2",
+			Type:       "RADIO",
+			QuestionEn: "Would you recommend our service to others?",
+			QuestionFr: "Recommanderiez-vous notre service à d'autres?",
+			AnswerOptionsEn: []AnswerOption{
+				{ID: "yes", Answer: "Yes"},
+				{ID: "no", Answer: "No"},
+				{ID: "maybe", Answer: "Maybe"},
+			},
+			AnswerOptionsFr: []AnswerOption{
+				{ID: "yes", Answer: "Oui"},
+				{ID: "no", Answer: "Non"},
+				{ID: "maybe", Answer: "Peut-être"},
+			},
 		},
 	},
 }

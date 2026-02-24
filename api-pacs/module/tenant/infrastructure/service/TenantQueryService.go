@@ -42,13 +42,29 @@ func (service *TenantQueryService) GetTenantByID(ctx context.Context, tenantID s
 		var questionnairesRes []types.OnboardingQuestionnaire
 
 		for _, questionnaire := range questionnaires {
+			var answerOptionsEn []types.AnswerOption
+			for _, answerOption := range questionnaire.AnswerOptionsEn {
+				answerOptionsEn = append(answerOptionsEn, types.AnswerOption{
+					ID:     answerOption.ID,
+					Answer: answerOption.Answer,
+				})
+			}
+
+			var answerOptionsFr []types.AnswerOption
+			for _, answerOption := range questionnaire.AnswerOptionsFr {
+				answerOptionsFr = append(answerOptionsFr, types.AnswerOption{
+					ID:     answerOption.ID,
+					Answer: answerOption.Answer,
+				})
+			}
+
 			questionnairesRes = append(questionnairesRes, types.OnboardingQuestionnaire{
 				ID:              questionnaire.ID,
 				Type:            questionnaire.Type,
 				QuestionEn:      questionnaire.QuestionEn,
 				QuestionFr:      questionnaire.QuestionFr,
-				AnswerOptionsEn: questionnaire.AnswerOptionsEn,
-				AnswerOptionsFr: questionnaire.AnswerOptionsFr,
+				AnswerOptionsEn: answerOptionsEn,
+				AnswerOptionsFr: answerOptionsFr,
 			})
 		}
 
