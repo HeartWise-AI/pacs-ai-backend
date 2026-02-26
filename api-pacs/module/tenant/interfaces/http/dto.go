@@ -35,12 +35,12 @@ type GetOnboardingQuestionnaireAnswerResponse struct {
 }
 
 type GetTenantResponse struct {
-	ID                       string                               `json:"id"`
-	Name                     string                               `json:"name"`
-	Address                  string                               `json:"address"`
-	OnboardingQuestionnaires map[string][]OnboardingQuestionnaire `json:"onboardingQuestionnaires"`
-	CreatedAt                uint                                 `json:"createdAt"`
-	UpdatedAt                uint                                 `json:"updatedAt"`
+	ID                       string                                `json:"id"`
+	Name                     string                                `json:"name"`
+	Address                  string                                `json:"address"`
+	OnboardingQuestionnaires *map[string][]OnboardingQuestionnaire `json:"onboardingQuestionnaires"`
+	CreatedAt                uint                                  `json:"createdAt"`
+	UpdatedAt                uint                                  `json:"updatedAt"`
 }
 
 type GetPublicTenantResponse struct {

@@ -4,7 +4,6 @@ import (
 	"context"
 
 	apiError "api-pacs/internal/errors"
-	tenantUtil "api-pacs/internal/tenant"
 	"api-pacs/module/tenant/domain/entity"
 	"api-pacs/module/tenant/domain/repository"
 	repositoryTypes "api-pacs/module/tenant/infrastructure/repository/types"
@@ -37,45 +36,11 @@ func (service *TenantQueryService) GetTenantByID(ctx context.Context, tenantID s
 		return types.GetTenant{}, err
 	}
 
-	onboardingQuestionnairesRes := map[string][]types.OnboardingQuestionnaire{}
-	for questionnaireType, questionnaires := range tenantUtil.OnboardingQuestionnaires {
-		var questionnairesRes []types.OnboardingQuestionnaire
-
-		for _, questionnaire := range questionnaires {
-			var answerOptionsEn []types.AnswerOption
-			for _, answerOption := range questionnaire.AnswerOptionsEn {
-				answerOptionsEn = append(answerOptionsEn, types.AnswerOption{
-					ID:     answerOption.ID,
-					Answer: answerOption.Answer,
-				})
-			}
-
-			var answerOptionsFr []types.AnswerOption
-			for _, answerOption := range questionnaire.AnswerOptionsFr {
-				answerOptionsFr = append(answerOptionsFr, types.AnswerOption{
-					ID:     answerOption.ID,
-					Answer: answerOption.Answer,
-				})
-			}
-
-			questionnairesRes = append(questionnairesRes, types.OnboardingQuestionnaire{
-				ID:              questionnaire.ID,
-				Type:            questionnaire.Type,
-				QuestionEn:      questionnaire.QuestionEn,
-				QuestionFr:      questionnaire.QuestionFr,
-				AnswerOptionsEn: answerOptionsEn,
-				AnswerOptionsFr: answerOptionsFr,
-			})
-		}
-
-		onboardingQuestionnairesRes[questionnaireType] = questionnairesRes
-	}
-
 	return types.GetTenant{
 		ID:                       tenant.ID,
 		Name:                     tenant.Name,
 		Address:                  tenant.Address,
-		OnboardingQuestionnaires: onboardingQuestionnairesRes,
+		OnboardingQuestionnaires: tenant.OnboardingQuestionnaires,
 		CreatedAt:                uint(tenant.CreatedAt),
 		UpdatedAt:                uint(tenant.UpdatedAt),
 	}, nil
