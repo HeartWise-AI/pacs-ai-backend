@@ -2,7 +2,9 @@ package rest
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"strconv"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
@@ -126,38 +128,18 @@ func (controller *TenantQueryController) GetTenantByID(w http.ResponseWriter, r 
 		return
 	}
 
-	onboardingQuestionnaires := map[string][]types.OnboardingQuestionnaire{}
-	for questionnaireType, questionnaires := range res.OnboardingQuestionnaires {
-		var questionnairesRes []types.OnboardingQuestionnaire
+	var onboardingQuestionnaires *map[string][]types.OnboardingQuestionnaire
 
-		for _, questionnaire := range questionnaires {
-			var answerOptionsEn []types.AnswerOption
-			for _, answerOption := range questionnaire.AnswerOptionsEn {
-				answerOptionsEn = append(answerOptionsEn, types.AnswerOption{
-					ID:     answerOption.ID,
-					Answer: answerOption.Answer,
-				})
-			}
-
-			var answerOptionsFr []types.AnswerOption
-			for _, answerOption := range questionnaire.AnswerOptionsFr {
-				answerOptionsFr = append(answerOptionsFr, types.AnswerOption{
-					ID:     answerOption.ID,
-					Answer: answerOption.Answer,
-				})
-			}
-
-			questionnairesRes = append(questionnairesRes, types.OnboardingQuestionnaire{
-				ID:              questionnaire.ID,
-				Type:            questionnaire.Type,
-				QuestionEn:      questionnaire.QuestionEn,
-				QuestionFr:      questionnaire.QuestionFr,
-				AnswerOptionsEn: answerOptionsEn,
-				AnswerOptionsFr: answerOptionsFr,
-			})
+	if res.OnboardingQuestionnaires != nil {
+		unquotedJSON, err := strconv.Unquote(*res.OnboardingQuestionnaires)
+		if err != nil {
+			unquotedJSON = *res.OnboardingQuestionnaires
 		}
 
-		onboardingQuestionnaires[questionnaireType] = questionnairesRes
+		err = json.Unmarshal([]byte(unquotedJSON), &onboardingQuestionnaires)
+		if err != nil {
+			onboardingQuestionnaires = nil
+		}
 	}
 
 	response := viewmodels.HTTPResponseVM{
