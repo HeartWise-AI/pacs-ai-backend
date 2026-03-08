@@ -118,21 +118,24 @@ class CustomPredictionService(BasePredictionService):
     def _get_category_from_threshold(self, regression_value: float) -> str:
         """
         Convert regression value to category based on thresholds.
-        
+
+        Thresholds are set based on quantile-based prevalence matching
+        on the training dataset (DeepCORO-CLIP SYNTAX paper).
+
         Args:
             regression_value: The regression score (0-100)
-            
+
         Returns:
-            Category string: 'normal', 'low', 'intermediate', or 'high'
+            Category string: 'no_disease', 'mild', 'moderate', or 'severe'
         """
         if regression_value <= 2.23:
-            return 'normal'
-        elif regression_value <= 18.50:
-            return 'low'
-        elif regression_value <= 22.95:
-            return 'intermediate'
+            return 'no_disease'
+        elif regression_value <= 20.92:
+            return 'mild'
+        elif regression_value <= 28.25:
+            return 'moderate'
         else:
-            return 'high'
+            return 'severe'
     
     def load_model(self, config: Config):
         print("Loading model")
@@ -252,50 +255,72 @@ class CustomPredictionService(BasePredictionService):
     def _get_diagnosis(self, predictions: dict) -> str:
         """
         Generate diagnosis string in English
-        """        
+        """
+        CATEGORY_LABELS = {
+            'no_disease': 'No Disease',
+            'mild': 'Mild',
+            'moderate': 'Moderate',
+            'severe': 'Severe',
+        }
+
         # Generate paragraphs for each system
         paragraphs = []
-        
+
         def format_syntax_list(predictions: dict, syntax_name: str) -> str:
             """
             Format a list of predictions for a given syntax
             """
-            return f"{syntax_name}: {predictions['category']} - Estimated severity: {predictions['regression']}"
-        
+            cat = predictions.get('category', 'no_disease')
+            label = CATEGORY_LABELS.get(cat, cat.replace('_', ' ').title())
+            return f"{syntax_name}: {label} (SYNTAX score: {predictions['regression']})"
+
         # RCA System
         global_paragraph = format_syntax_list(predictions['Global Cardiac Syntax'], 'Global Cardiac Syntax')
         if global_paragraph:
             paragraphs.append(global_paragraph)
-        
-        # LCA System  
+
+        # LCA System
         right_paragraph = format_syntax_list(predictions['Right Cardiac Syntax'], 'Right Cardiac Syntax')
         if right_paragraph:
             paragraphs.append(right_paragraph)
-        
+
         # Other arteries
         left_paragraph = format_syntax_list(predictions['Left Cardiac Syntax'], 'Left Cardiac Syntax')
         if left_paragraph:
             paragraphs.append(left_paragraph)
-                
+
         # Join paragraphs
         return "Cardiac Syntax Detection Summary:\n" + "\n".join(paragraphs)
 
     def _get_recommendations(self, predictions: dict, language: str = "en") -> str:
         """
-        Generate recommendations based on predictions
+        Generate per-category clinical recommendations based on predictions.
         """
-        recommendations = []
-        for syntax_name in predictions.keys():
-            recommendations.append(f"{syntax_name} {predictions[syntax_name]['category']}.\n")
+        RECOMMENDATIONS = {
+            'no_disease': {
+                'en': 'No significant coronary artery disease detected. No revascularization is indicated based on SYNTAX score.',
+                'fr': "Aucune maladie coronarienne significative détectée. Aucune revascularisation n'est indiquée selon le score SYNTAX."
+            },
+            'mild': {
+                'en': 'Low SYNTAX score (mild disease). Percutaneous coronary intervention (PCI) is preferred if revascularization is clinically indicated. Cardiology consultation recommended.',
+                'fr': "Score SYNTAX faible (maladie légère). L'intervention coronarienne percutanée (ICP) est préférée si une revascularisation est cliniquement indiquée. Consultation en cardiologie recommandée."
+            },
+            'moderate': {
+                'en': 'Intermediate SYNTAX score (moderate disease). Heart Team discussion is recommended to determine optimal revascularization strategy (PCI vs. CABG). Cardiology consultation required.',
+                'fr': "Score SYNTAX intermédiaire (maladie modérée). Une discussion en Heart Team est recommandée pour déterminer la stratégie optimale de revascularisation (ICP vs. PAC). Consultation cardiologique requise."
+            },
+            'severe': {
+                'en': 'High SYNTAX score (severe disease). Surgical revascularization (CABG) is preferred per current guidelines. Urgent Heart Team referral recommended.',
+                'fr': "Score SYNTAX élevé (maladie sévère). La revascularisation chirurgicale (PAC) est préférée selon les recommandations actuelles. Référence urgente au Heart Team recommandée."
+            }
+        }
 
-        if recommendations:
-            recommendations.append(
-                "Consult a Cardiologist for further evaluation is recommended." if language == "en" else "Un cardiologue doit être consulté pour une évaluation plus approfondie."
-            )
-        else:
-            recommendations.append("Normal cardiac syntax detected." if language == "en" else "Syntaxe cardiaque normale.")
-
-        return "\n".join(recommendations)
+        lines = []
+        for syntax_name, values in predictions.items():
+            category = values.get('category', 'no_disease')
+            rec = RECOMMENDATIONS.get(category, RECOMMENDATIONS['no_disease'])
+            lines.append(f"{syntax_name}: {rec[language]}")
+        return "\n\n".join(lines)
 
     def _filter_dicoms_with_metadata(self, dicoms: list[pydicom.Dataset], metadata: dict) -> list[pydicom.Dataset]:
         """

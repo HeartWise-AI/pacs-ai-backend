@@ -208,43 +208,58 @@ class HTMLParser:
         """Generate HTML for the diagnosis section with individual cards for each probability category."""
         if not probability:
             return ""
-        
-        # Pre-define styles to avoid repetition
-        RED_STYLE = "background: linear-gradient(135deg, #e74c3c15, #e74c3c05); border-left: 4px solid #e74c3c;"
-        BLUE_STYLE = "background: linear-gradient(135deg, #3498db15, #3498db05); border-left: 4px solid #3498db;"
-        RED_COLOR = "#e74c3c"
-        BLUE_COLOR = "#3498db"
-        GREEN_COLOR = "#27ae60"
-        
-        # Build cards efficiently using list comprehension
+
+        CATEGORY_COLORS = {
+            'no_disease': ('#27ae60', '#27ae6015', '#27ae6005'),   # green
+            'mild':       ('#3498db', '#3498db15', '#3498db05'),   # blue
+            'moderate':   ('#e67e22', '#e67e2215', '#e67e2205'),   # orange
+            'severe':     ('#e74c3c', '#e74c3c15', '#e74c3c05'),   # red
+        }
+
+        CATEGORY_LABELS = {
+            'no_disease': 'No Disease',
+            'mild': 'Mild (Low SYNTAX)',
+            'moderate': 'Moderate (Intermediate SYNTAX)',
+            'severe': 'Severe (High SYNTAX)',
+        }
+
+        CATEGORY_RECOMMENDATIONS = {
+            'no_disease': 'No revascularization indicated.',
+            'mild': 'PCI preferred if revascularization indicated.',
+            'moderate': 'Heart Team discussion recommended.',
+            'severe': 'CABG preferred. Urgent Heart Team referral.',
+        }
+
+        # Build cards
         cards = []
         for key, value in probability.items():
-            category = value.get('category', 'unknown')
+            category = value.get('category', 'no_disease')
             regression_value = value.get('regression', 0.0)
-            
-            # Determine styling based on category
-            is_abnormal = category != 'normal'
-            card_style = RED_STYLE if is_abnormal else BLUE_STYLE
-            title_color = RED_COLOR if is_abnormal else BLUE_COLOR
-            severity_color = RED_COLOR if is_abnormal else GREEN_COLOR
-            
-            # Create card HTML
-            card = f"""<div style="margin: 20px 0; padding: 20px; {card_style} border-radius: 8px;">
-                        <h3 style="color: {title_color}; margin: 0 0 15px 0; font-size: 20px; font-weight: 600;">{key}</h3>
+
+            primary, bg_start, bg_end = CATEGORY_COLORS.get(
+                category, CATEGORY_COLORS['no_disease']
+            )
+            label = CATEGORY_LABELS.get(category, category.replace('_', ' ').title())
+            rec = CATEGORY_RECOMMENDATIONS.get(category, '')
+
+            card = f"""<div style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, {bg_start}, {bg_end}); border-left: 4px solid {primary}; border-radius: 8px;">
+                        <h3 style="color: {primary}; margin: 0 0 15px 0; font-size: 20px; font-weight: 600;">{key}</h3>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <span style="font-weight: 500; color: #2c3e50;">Category:</span>
-                            <span style="font-weight: 600; color: {title_color}; text-transform: capitalize;">{category}</span>
+                            <span style="font-weight: 600; color: {primary};">{label}</span>
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-weight: 500; color: #2c3e50;">Regression Value:</span>
-                            <span style="font-weight: 600; color: {severity_color};">{regression_value:.1f}</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span style="font-weight: 500; color: #2c3e50;">SYNTAX Score:</span>
+                            <span style="font-weight: 600; color: {primary};">{regression_value:.1f}</span>
+                        </div>
+                        <div style="margin-top: 10px; padding: 8px 12px; background-color: {bg_start}; border-radius: 4px; font-size: 14px; color: {primary}; font-weight: 500;">
+                            {rec}
                         </div>
                     </div>"""
             cards.append(card)
-        
-        # Join all cards and return complete section
+
         cards_html = '\n'.join(cards)
-        
+
         return f"""<!-- Diagnosis Section -->
 <div style="margin: 40px 0; padding: 25px; background: linear-gradient(135deg, #f8f9fa, #e9ecef); border-radius: 8px;">
     <h2 style="color: #2c3e50; margin: 0 0 25px 0; font-size: 24px; font-weight: 600;">Cardiac Syntax Analysis</h2>
@@ -296,7 +311,7 @@ class HTMLParser:
             <div class="detection-results">
                 <div class="header">
                     <h1>Cardiac Syntax Analysis Results Report</h1>
-                    <p class="subtitle">AI-Powered Cardiac Syntax Analysis</p>
+                    <p class="subtitle">AI-Powered Cardiac SYNTAX Score Estimation — Thresholds: No Disease ≤2.23 | Mild 2.23–20.92 | Moderate 20.92–28.25 | Severe >28.25</p>
                 </div>
                 
                 """)
