@@ -3,6 +3,8 @@ from io import StringIO
 from typing import Dict
 from datetime import datetime
 
+from logic import SYNTAX_CATEGORY_LABELS
+
 
 class HTMLParser:    
     # System colors for detailed analysis
@@ -210,17 +212,10 @@ class HTMLParser:
             return ""
 
         CATEGORY_COLORS = {
-            'no_disease': ('#27ae60', '#27ae6015', '#27ae6005'),   # green
-            'mild':       ('#3498db', '#3498db15', '#3498db05'),   # blue
-            'moderate':   ('#e67e22', '#e67e2215', '#e67e2205'),   # orange
-            'severe':     ('#e74c3c', '#e74c3c15', '#e74c3c05'),   # red
-        }
-
-        CATEGORY_LABELS = {
-            'no_disease': 'No Disease',
-            'mild': 'Mild (Low SYNTAX)',
-            'moderate': 'Moderate (Intermediate SYNTAX)',
-            'severe': 'Severe (High SYNTAX)',
+            'no_disease': ('#27ae60', '#27ae6015', '#27ae6005'),
+            'mild':       ('#3498db', '#3498db15', '#3498db05'),
+            'moderate':   ('#e67e22', '#e67e2215', '#e67e2205'),
+            'severe':     ('#e74c3c', '#e74c3c15', '#e74c3c05'),
         }
 
         CATEGORY_RECOMMENDATIONS = {
@@ -239,7 +234,7 @@ class HTMLParser:
             primary, bg_start, bg_end = CATEGORY_COLORS.get(
                 category, CATEGORY_COLORS['no_disease']
             )
-            label = CATEGORY_LABELS.get(category, category.replace('_', ' ').title())
+            label = SYNTAX_CATEGORY_LABELS.get(category, category.replace('_', ' ').title())
             rec = CATEGORY_RECOMMENDATIONS.get(category, '')
 
             card = f"""<div style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, {bg_start}, {bg_end}); border-left: 4px solid {primary}; border-radius: 8px;">
