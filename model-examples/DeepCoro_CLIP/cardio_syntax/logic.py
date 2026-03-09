@@ -13,6 +13,7 @@ from typing import Optional
 from torchvision.transforms import v2
 
 from utils.html_parser import HTMLParser
+from utils.syntax_constants import SYNTAX_CATEGORY_LABELS
 from models.video_encoder import VideoEncoder
 from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
@@ -34,13 +35,6 @@ SYNTAX_THRESHOLDS = {
     "mild":       20.92,   # 2.23 – 20.92
     "moderate":   28.25,   # 20.92 – 28.25
     # severe:       > 28.25
-}
-
-SYNTAX_CATEGORY_LABELS = {
-    "no_disease": "No Disease",
-    "mild":       "Mild (Low SYNTAX)",
-    "moderate":   "Moderate (Intermediate SYNTAX)",
-    "severe":     "Severe (High SYNTAX)",
 }
 
 # Per-category clinical recommendations aligned with ESC/ACC revascularisation

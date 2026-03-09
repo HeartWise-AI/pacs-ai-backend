@@ -3,6 +3,8 @@ from io import StringIO
 from typing import Dict
 from datetime import datetime
 
+from utils.syntax_constants import SYNTAX_CATEGORY_LABELS
+
 
 class HTMLParser:    
     # System colors for detailed analysis
@@ -216,13 +218,6 @@ class HTMLParser:
             'severe':     ('#e74c3c', '#e74c3c15', '#e74c3c05'),   # red
         }
 
-        CATEGORY_LABELS = {
-            'no_disease': 'No Disease',
-            'mild': 'Mild (Low SYNTAX)',
-            'moderate': 'Moderate (Intermediate SYNTAX)',
-            'severe': 'Severe (High SYNTAX)',
-        }
-
         CATEGORY_RECOMMENDATIONS = {
             'no_disease': 'No revascularization indicated.',
             'mild': 'PCI preferred if revascularization indicated.',
@@ -239,7 +234,7 @@ class HTMLParser:
             primary, bg_start, bg_end = CATEGORY_COLORS.get(
                 category, CATEGORY_COLORS['no_disease']
             )
-            label = CATEGORY_LABELS.get(category, category.replace('_', ' ').title())
+            label = SYNTAX_CATEGORY_LABELS.get(category, category.replace('_', ' ').title())
             rec = CATEGORY_RECOMMENDATIONS.get(category, '')
 
             card = f"""<div style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, {bg_start}, {bg_end}); border-left: 4px solid {primary}; border-radius: 8px;">
