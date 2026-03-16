@@ -19,6 +19,25 @@ from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
 
+# Selected views for PanEcho inference (includes zoom variants via substring match)
+SELECTED_VIEWS = {"A2C", "A4C", "A5C", "PLAX", "PSAX"}
+
+
+def matches_selected_view(pred_class: Optional[str]) -> bool:
+    """Check if the predicted view class matches any of the selected views.
+    
+    Uses substring matching to accept zoom variants (e.g., A4C_ZOM matches A4C).
+    
+    Args:
+        pred_class: The predicted view class string
+        
+    Returns:
+        True if the view matches any selected view, False otherwise
+    """
+    if pred_class is None:
+        return False
+    return any(view in pred_class for view in SELECTED_VIEWS)
+
 
 class CustomPredictionService(BasePredictionService):
     def load_model(self, config: Config):        
@@ -333,12 +352,45 @@ class CustomPredictionService(BasePredictionService):
                 recommendation = "Normal echocardiogram. Continue routine clinical monitoring per established protocols."
         
         return recommendation
+
+    def _filter_dicoms_with_metadata(
+        self, 
+        dicoms: List[pydicom.Dataset], 
+        metadata: dict
+    ) -> List[pydicom.Dataset]:
+        """Filter DICOMs to keep only those with selected echocardiographic views.
+        
+        Uses metadata (keyed by SeriesInstanceUID) to get the predicted_class (view)
+        for each DICOM and filters based on SELECTED_VIEWS.
+        
+        Args:
+            dicoms: List of DICOM datasets
+            metadata: Dict keyed by SeriesInstanceUID containing view predictions
+            
+        Returns:
+            List of filtered DICOMs matching selected views
+        """
+        filtered_dicoms = []
+        
+        for dicom in dicoms:
+            dicom_name = str(dicom.SeriesInstanceUID)
+            if dicom_name not in metadata:
+                continue
+            dicom_meta = metadata[dicom_name]
+            pred_class = dicom_meta.get('predicted_class')
+            if not matches_selected_view(pred_class):
+                continue
+            filtered_dicoms.append(dicom)
+        
+        return filtered_dicoms
         
     async def _handle_html_output(self, request: PredictRequest):
         try:
+            cnt_dicoms = 0
             dicoms = []
             for series_number in request.seriesInstanceImages:
                 for instance_number in request.seriesInstanceImages[series_number]:
+                    cnt_dicoms += 1
                     instance_data = request.seriesInstanceImages[series_number][instance_number]
                     
                     # Extract image from the instance data (HTML doesn't use views)
@@ -355,7 +407,7 @@ class CustomPredictionService(BasePredictionService):
                             )
                         )
                     )
-
+            print(f"{cnt_dicoms} DICOMs and {len(dicoms)} dicoms read")
         except Exception as e:
             error_msg = f"Error in _handle_html_output: {e}"
             print(error_msg)
@@ -441,22 +493,14 @@ class CustomPredictionService(BasePredictionService):
 
     async def _handle_json_output(self, request: PredictRequest):
         dicoms = []
-        views = []
         
+        print(f"request.additionalMetadata: {request.additionalMetadata}")
+
         try:
             for series_number in request.seriesInstanceImages:
                 for instance_number in request.seriesInstanceImages[series_number]:
                     try:
-                        instance_data = request.seriesInstanceImages[series_number][instance_number]
-                        
-                        # Extract image and view from the instance data
-                        if isinstance(instance_data, dict):
-                            dicom_base64 = instance_data.get("image", instance_data)
-                            view = instance_data.get("view", None)
-                        else:
-                            # Backward compatibility: if it's a string, treat it as base64
-                            dicom_base64 = instance_data
-                            view = None
+                        dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
                         
                         if not self._is_valid_base64(dicom_base64):
                             print(f"Invalid base64 string for series {series_number} instance {instance_number}")
@@ -469,7 +513,6 @@ class CustomPredictionService(BasePredictionService):
                         
                         dicom = pydicom.dcmread(BytesIO(dicom_data))
                         dicoms.append(dicom)
-                        views.append(view)
 
                     except Exception as e:
                         error_msg = f"Error in processing series {series_number} instance {instance_number}: {e}"
@@ -489,19 +532,23 @@ class CustomPredictionService(BasePredictionService):
                 }
             }
 
-        if len(dicoms) != len(views):
-            return {
-                "diagnosis": "Number of dicoms and views must be the same",
-                "predictions": {},
-                "modelRecommendations": {
-                    "en": "Number of dicoms and views must be the same",
-                    "fr": "Le nombre de dicoms et de vues doit être le même",
-                    "presentable": True,
-                }
-            }
+        # Filter DICOMs by selected views from metadata
+        if request.additionalMetadata:
+            filtered_dicoms = self._filter_dicoms_with_metadata(
+                dicoms,
+                request.additionalMetadata
+            )
+            print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched selected views ({', '.join(sorted(SELECTED_VIEWS))})")
+            if filtered_dicoms:
+                dicoms = filtered_dicoms
+                print(f"Using {len(dicoms)} filtered DICOMs")
+            else:
+                print(f"No matches, using all {len(dicoms)} DICOMs")
+        else:
+            print("No additional metadata, using all DICOMs")
 
         try:
-            probability = self._run_inference(dicoms=dicoms, views=views)
+            probability = self._run_inference(dicoms=dicoms)
         except Exception as e:
             print(f"Error in _run_inference: {e}")
             return {
@@ -627,75 +674,71 @@ class CustomPredictionService(BasePredictionService):
         return v2.Compose(transform_list)
 
     def _run_inference_logits_only(self, dicoms: List[pydicom.Dataset]) -> Dict[str, torch.Tensor]:
-        """
-        Run inference and return averaged logits without applying activations.
-        Processes at most 8 DICOMs in a single batch.
-        
-        Args:
-            dicoms: List of DICOM datasets
-            
-        Returns:
-            Dictionary of averaged logits (before activation)
-        """
         try:
-            # Create transform pipeline
             transform = self._create_transform(normalization=self.config.models['pan_echo'].normalization)
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             MAX_BATCH_SIZE = 8
-            
-            # Process at most MAX_BATCH_SIZE DICOMs
-            batch_size = min(MAX_BATCH_SIZE, len(dicoms))
-            batch_clips = []
-                        
-            for i in range(batch_size):
-                pixel_array: np.ndarray = dicoms[i].pixel_array
-                
-                # Skip invalid data
-                if pixel_array.ndim < 3:
-                    print(f"Skipping DICOM {i} with invalid dimensions: {pixel_array.shape}")
+
+            accumulated_logits: Dict[str, torch.Tensor] = {}
+            total_clips = 0
+
+            # Process in chunks — never more than MAX_BATCH_SIZE in memory
+            for batch_start in range(0, len(dicoms), MAX_BATCH_SIZE):
+                batch_dicoms = dicoms[batch_start:batch_start + MAX_BATCH_SIZE]
+                batch_clips = []
+
+                for i, dicom in enumerate(batch_dicoms):
+                    pixel_array: np.ndarray = dicom.pixel_array
+                    if pixel_array.ndim < 3:
+                        print(f"Skipping DICOM {batch_start + i} with invalid dimensions: {pixel_array.shape}")
+                        continue
+
+                    clip = self._load_clip_from_dicom(
+                        pixel_array,
+                        clip_len=self.config.models['pan_echo'].clip_len
+                    )
+                    clip_tensor = tv_tensors.Video(np.transpose(clip, (0, 3, 1, 2)))
+                    clip_tensor = transform(clip_tensor)
+                    clip_tensor = torch.permute(clip_tensor, (1, 0, 2, 3))
+                    batch_clips.append(clip_tensor)
+
+                if not batch_clips:
                     continue
-                                
-                # Load clip using improved method
-                clip = self._load_clip_from_dicom(
-                    pixel_array, 
-                    clip_len=self.config.models['pan_echo'].clip_len 
-                )
-                
-                # Convert to torch tensor and apply transforms
-                clip_tensor = tv_tensors.Video(np.transpose(clip, (0, 3, 1, 2)))
-                clip_tensor = transform(clip_tensor)
-                
-                # (F, C, H, W) -> (C, F, H, W) for model input
-                clip_tensor = torch.permute(clip_tensor, (1, 0, 2, 3))
-                
-                batch_clips.append(clip_tensor)
-            
-            if not batch_clips:
+
+                batch_tensor = torch.stack(batch_clips).to(device)
+
+                with torch.no_grad():
+                    batch_outputs = CustomPredictionService.models['pan_echo'](batch_tensor)
+
+                for key, output_tensor in batch_outputs.items():
+                    batch_sum = torch.sum(output_tensor, dim=0)
+                    if key in accumulated_logits:
+                        accumulated_logits[key] += batch_sum
+                    else:
+                        accumulated_logits[key] = batch_sum.clone()
+
+                total_clips += len(batch_clips)
+
+                # Free GPU memory between batches
+                del batch_tensor, batch_outputs
+                torch.cuda.empty_cache()
+
+            if total_clips == 0:
                 raise ValueError("No valid DICOM files processed")
-            
-            # Stack clips into a batch tensor: (batch_size, C, F, H, W)
-            batch_tensor = torch.stack(batch_clips).to(device)
-            
-            # Run inference on this batch
-            with torch.no_grad():
-                batch_outputs: Dict[str, torch.Tensor] = CustomPredictionService.models['pan_echo'](batch_tensor)
-            
-            # Average the logits across the batch dimension (without activation)
-            averaged_logits = {}
-            for key, output_tensor in batch_outputs.items():
-                # Output tensor shape: (batch_size, ...)
-                # Average across batch dimension (dim=0)
-                averaged_logits[key] = torch.mean(output_tensor, dim=0)
-                        
+
+            averaged_logits = {
+                key: logits / total_clips
+                for key, logits in accumulated_logits.items()
+            }
+
             return averaged_logits
         
         except Exception as e:
-            # Clean up GPU memory
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            print(f"Error in _run_inference_logits_only: {str(e)}")
+            print(f"Error in _run_inference_logits_only: {e}")
             raise e
-
+    
     def _run_inference(
         self, 
         dicoms: List[pydicom.Dataset], 
