@@ -384,30 +384,45 @@ class CustomPredictionService(BasePredictionService):
         
         return filtered_dicoms
         
+    def _extract_dicoms(self, request: PredictRequest) -> list:
+        """Extract and filter multi-frame DICOMs from the request payload."""
+        dicoms = []
+        total = 0
+        for series_number in request.seriesInstanceImages:
+            for instance_number in request.seriesInstanceImages[series_number]:
+                total += 1
+                instance_data = request.seriesInstanceImages[series_number][instance_number]
+
+                if isinstance(instance_data, dict):
+                    dicom_base64 = instance_data.get("image", instance_data)
+                else:
+                    dicom_base64 = instance_data
+
+                if isinstance(dicom_base64, str) and not self._is_valid_base64(dicom_base64):
+                    print(f"Invalid base64 string for series {series_number} instance {instance_number}")
+                    continue
+
+                dicom_data = base64.b64decode(dicom_base64)
+                if not self._is_valid_dicom(dicom_data):
+                    print(f"Invalid DICOM data for series {series_number} instance {instance_number}")
+                    continue
+
+                dicom = pydicom.dcmread(BytesIO(dicom_data))
+
+                # Skip single-frame DICOMs — PanEcho expects video clips
+                num_frames = getattr(dicom, 'NumberOfFrames', None)
+                if num_frames is None or int(num_frames) <= 1:
+                    print(f"Skipping single-frame DICOM for series {series_number} instance {instance_number}")
+                    continue
+
+                dicoms.append(dicom)
+
+        print(f"{total} DICOMs found, {len(dicoms)} multi-frame DICOMs kept")
+        return dicoms
+
     async def _handle_html_output(self, request: PredictRequest):
         try:
-            cnt_dicoms = 0
-            dicoms = []
-            for series_number in request.seriesInstanceImages:
-                for instance_number in request.seriesInstanceImages[series_number]:
-                    cnt_dicoms += 1
-                    instance_data = request.seriesInstanceImages[series_number][instance_number]
-                    
-                    # Extract image from the instance data (HTML doesn't use views)
-                    if isinstance(instance_data, dict):
-                        dicom_base64 = instance_data.get("image", instance_data)
-                    else:
-                        # Backward compatibility: if it's a string, treat it as base64
-                        dicom_base64 = instance_data
-                    
-                    dicoms.append(
-                        pydicom.dcmread(
-                            BytesIO(
-                                base64.b64decode(dicom_base64)
-                            )
-                        )
-                    )
-            print(f"{cnt_dicoms} DICOMs and {len(dicoms)} dicoms read")
+            dicoms = self._extract_dicoms(request)
         except Exception as e:
             error_msg = f"Error in _handle_html_output: {e}"
             print(error_msg)
@@ -492,33 +507,10 @@ class CustomPredictionService(BasePredictionService):
             raise e
 
     async def _handle_json_output(self, request: PredictRequest):
-        dicoms = []
-        
         print(f"request.additionalMetadata: {request.additionalMetadata}")
 
         try:
-            for series_number in request.seriesInstanceImages:
-                for instance_number in request.seriesInstanceImages[series_number]:
-                    try:
-                        dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
-                        
-                        if not self._is_valid_base64(dicom_base64):
-                            print(f"Invalid base64 string for series {series_number} instance {instance_number}")
-                            continue
-                        
-                        dicom_data = base64.b64decode(dicom_base64)
-                        if not self._is_valid_dicom(dicom_data):
-                            print(f"Invalid DICOM data for series {series_number} instance {instance_number}")
-                            continue
-                        
-                        dicom = pydicom.dcmread(BytesIO(dicom_data))
-                        dicoms.append(dicom)
-
-                    except Exception as e:
-                        error_msg = f"Error in processing series {series_number} instance {instance_number}: {e}"
-                        print(error_msg)
-                        continue
-
+            dicoms = self._extract_dicoms(request)
         except Exception as e:
             error_msg = f"Error in _handle_json_output: {e}"
             print(error_msg)
