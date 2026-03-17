@@ -6,6 +6,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     && rm -rf /var/lib/apt/lists/*
 
+ARG USE_FULL_DICOM=false
+ENV USE_FULL_DICOM=${USE_FULL_DICOM}
+
 WORKDIR /app
 
 # Copy requirements first to leverage Docker cache
