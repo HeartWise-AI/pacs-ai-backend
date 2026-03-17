@@ -6,6 +6,7 @@ import math
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import BytesIO
 from typing import Any
 
 import cv2
@@ -651,3 +652,54 @@ class EchoPrimeInference:
         return torch.stack(stack_of_videos).to(
             self.DEVICE
         )  # Move stacked tensor to correct device
+
+    def process_series_instance_images(
+        self, seriesInstanceImages: dict[int, dict[int, str]]
+    ) -> torch.Tensor:
+        """Process full DICOM files received as base64-encoded images.
+
+        Used as a temporary workaround when the caller does not support
+        DICOM tag forwarding (e.g. cardio-agent).
+
+        Args:
+            seriesInstanceImages: Dict of series_number -> instance_number -> base64 DICOM
+
+        Returns:
+            Stack of preprocessed videos as a tensor, or None if no valid videos found
+        """
+        stack_of_videos = []
+
+        for series_number, instances in seriesInstanceImages.items():
+            for instance_number, dicom_base64 in instances.items():
+                try:
+                    dicom_data = base64.b64decode(dicom_base64)
+                    dcm = pydicom.dcmread(BytesIO(dicom_data))
+
+                    # Skip single-frame DICOMs
+                    num_frames = getattr(dcm, 'NumberOfFrames', None)
+                    if num_frames is None or int(num_frames) <= 1:
+                        print(f"Skipping single-frame DICOM for series {series_number} instance {instance_number}")
+                        continue
+
+                    pixels = dcm.pixel_array
+
+                    # Exclude images like (600,800) or (600,800,3)
+                    if pixels.ndim < 3 or pixels.shape[2] == 3:
+                        continue
+
+                    # If single channel repeat to 3 channels
+                    if pixels.ndim == 3:
+                        pixels = np.repeat(pixels[..., None], 3, axis=3)
+
+                    # Mask everything outside ultrasound region
+                    pixels = video_utils.mask_outside_ultrasound(pixels)
+
+                    stack_of_videos.append(self.preprocess_video(pixels))
+
+                except Exception as e:
+                    print(f"Error processing series {series_number} instance {instance_number}: {str(e)}")
+                    continue
+
+        if not stack_of_videos:
+            return None
+        return torch.stack(stack_of_videos).to(self.DEVICE)
