@@ -1,0 +1,36 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "nnunet",
+      "Description": "Segment brain hemorrhage in  CT scans.",
+      "Developed_by": "",
+      "Development_period": "",
+      "Version": "2.5.0"
+    },
+    "Mechanism": {
+      "Outcome": "Image segmentation of brain hemorrhage",
+      "Output": "Image segmentation of brain hemorrhage",
+      "Target_population": "",
+      "Input_data_source": "computed tomography (CT)",
+      "Input_data_type": "labelmap (Nifti)",
+      "Model_type": "",
+      "Supported_DICOM_modalities": "CT"
+    },
+    "Model_Components": {
+      "Segmentation_Model": {
+        "Purpose": "Segment brain hemorrhage",
+        "Output": "Labelmap (Nifti)"
+      }
+    },
+    "Uses_and_directions": {
+      "General_use": "",
+      "Target_population_and_use_case": "",
+      "Before_using_this_model": ""
+    },
+    "Warnings_and_limitations": {
+      "Image_Quality": "",
+      "Multiple_Devices": "",
+      "Confidence_Scores": ""
+    }
+  }
+}

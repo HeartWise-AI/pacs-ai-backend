@@ -1,0 +1,11 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "BrainGPT_v1",
+      "Description": "BrainGPT_v1 is a multimodal model specialized in detecting intracranial hemorrhages from CT scans and generating medical reports.",
+      "Developed_by": "Heartwise",
+      "Development_period": "2024-2025",
+      "Version": "1.0.0"
+    }
+  }
+}

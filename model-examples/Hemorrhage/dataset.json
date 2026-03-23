@@ -1,0 +1,13 @@
+{
+    "channel_names": {
+        "0": "z-norm"
+    },
+    "labels": {
+        "background": 0,
+        "ICH": 1,
+        "IVH": 2,
+        "PHE": 3
+    },
+    "numTraining": 509,
+    "file_ending": ".nii.gz"
+}

@@ -49,9 +49,12 @@ func (router *router) InitRouter() *chi.Mux {
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
 	inferenceCommandController := interfaces.ServiceContainer().RegisterInferenceRESTCommandController()
 	inferenceQueryController := interfaces.ServiceContainer().RegisterInferenceRESTQueryController()
+	leadCommandController := interfaces.ServiceContainer().RegisterLeadRESTCommandController()
+	orchestratorController := interfaces.ServiceContainer().RegisterOrchestratorRESTController()
 	orthancProxy := interfaces.ServiceContainer().RegisterOrthancProxy()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
 	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
+	tenantCommandController := interfaces.ServiceContainer().RegisterTenantRESTCommandController()
 	tenantQueryController := interfaces.ServiceContainer().RegisterTenantRESTQueryController()
 	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
 	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
@@ -73,7 +76,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.17.1-beta",
+				"version": "v0.23.2-beta",
 			},
 		}
 
@@ -128,6 +131,9 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
+					r.Post("/onboarding-model-questionnaire-answers/add", inferenceCommandController.AddOnboardingModelQuestionnaireAnswers)
+					r.Get("/onboarding-model-questionnaire-answers", inferenceQueryController.GetOnboardingModelQuestionnaireAnswers)
+
 					r.Route("/model", func(r chi.Router) {
 						r.Group(func(r chi.Router) {
 							r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
@@ -135,8 +141,11 @@ func (router *router) InitRouter() *chi.Mux {
 							// inference model routes
 							r.Post("/add", inferenceCommandController.AddInferenceModel)
 							r.Get("/list", inferenceQueryController.GetInferenceModels)
+							r.Get("/{modelID}/feedback", inferenceQueryController.GetModelFeedbackByModelID)
 							r.Delete("/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
 							r.Put("/{ID}/update", inferenceCommandController.UpdateInferenceModel)
+							r.Put("/feedback/update", inferenceCommandController.UpdateModelFeedback)
+							r.Delete("/{modelID}/feedback/remove", inferenceCommandController.RemoveModelFeedback)
 
 							// container routes
 							r.Route("/container", func(r chi.Router) {
@@ -158,6 +167,27 @@ func (router *router) InitRouter() *chi.Mux {
 				})
 			})
 
+			// lead module
+			r.Route("/lead", func(r chi.Router) {
+				r.Post("/contact-form", leadCommandController.AddContactForm)
+				r.Post("/subscribe", leadCommandController.Subscribe)
+			})
+
+			// orchestrator module
+			r.Route("/orchestrator", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.TokenSessionAuthGuard)
+
+					// Thread management
+					r.Post("/threads", orchestratorController.CreateThread)
+					r.Get("/threads/{threadID}", orchestratorController.GetThread)
+
+					// Message and payload management
+					r.Post("/threads/{threadID}/chat", orchestratorController.CreateMessage)
+					r.Post("/threads/{threadID}/dicom", orchestratorController.UploadDicomPayload)
+				})
+			})
+
 			// orthanc module
 			r.Route("/orthanc", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
@@ -165,8 +195,10 @@ func (router *router) InitRouter() *chi.Mux {
 
 					r.Post("/modality/studies", orthancQueryController.FindModalityStudies)
 					r.Post("/modality/retrieve", orthancCommandController.RetrieveModalityStudy)
+					r.Post("/modality/{modalityID}/study/{studyInstanceUID}/series/store", orthancCommandController.StoreStudyCustomSeries)
 					r.Get("/jobs", orthancQueryController.GetJobsInfo)
 					r.Get("/modalities/list", orthancQueryController.ListDICOMModalities)
+					r.Get("/modality/{modalityID}/linked/storage/enabled", orthancQueryController.GetLinkedDICOMModalityWithEnabledCStore)
 					r.Get("/sop-instance/{sopInstanceUID}/find", orthancQueryController.FindLocalSOPInstance)
 
 					// admin or owner only
@@ -187,6 +219,8 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
+					r.Post("/onboarding-questionnaire-answers/add", tenantCommandController.AddOnboardingQuestionnaireAnswers)
+					r.Get("/onboarding-questionnaire-answers", tenantQueryController.GetOnboardingQuestionnaireAnswers)
 					r.Get("/", tenantQueryController.GetTenantByID)
 				})
 			})
@@ -203,8 +237,11 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
+					r.Post("/tutorial/reset", userCommandController.ResetTutorial)
 					r.Get("/me", userQueryController.GetCurrentTenantUser)
+					r.Get("/metadata", userQueryController.GetUserMetadata)
 					r.Put("/password/update", userCommandController.UpdateTenantUserPassword)
+					r.Put("/metadata/update", userCommandController.UpdateUserMetadata)
 
 					// admin or owner only
 					r.Group(func(r chi.Router) {

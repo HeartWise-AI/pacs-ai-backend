@@ -33,6 +33,23 @@ type CreateGetModalityStudyLog struct {
 	QueryID    string
 }
 
+type CreatePredictInferenceModelLog struct {
+	TenantID           string
+	TenantName         string
+	UserID             string
+	Email              string
+	Name               string
+	ContainerID        string
+	ContainerName      string
+	InferenceModelID   string
+	InferenceModelName string
+	DockerImage        string
+	Model              string
+	StudyInstanceUID   string
+	SeriesInstanceUIDs []string
+	AdditionalMetadata map[string]interface{}
+}
+
 type CreateRetrieveStudyLog struct {
 	TenantID         string
 	TenantName       string
@@ -41,6 +58,22 @@ type CreateRetrieveStudyLog struct {
 	Email            string
 	Name             string
 	StudyInstanceUID string
+}
+
+type CreateStoredCustomSeriesLog struct {
+	TenantID                string
+	TenantName              string
+	UserID                  string
+	Email                   string
+	Name                    string
+	ModalityID              string
+	StudyInstanceUID        string
+	SeriesInstanceUIDs      []string
+	PatientID               string
+	ModelName               string
+	ModelVersion            string
+	CustomSeriesInstanceUID string
+	CustomSOPInstanceUID    string
 }
 
 type SearchDocument struct {

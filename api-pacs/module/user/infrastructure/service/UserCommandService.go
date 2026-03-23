@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -9,10 +10,14 @@ import (
 	"github.com/segmentio/ksuid"
 
 	mailgunTypes "api-pacs/infrastructures/providers/sdk/mailgun/types"
+	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	"api-pacs/module/elasticsearch/domain/entity"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	inferenceApplication "api-pacs/module/inference/application"
+	inferenceTypes "api-pacs/module/inference/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
+	tenantTypes "api-pacs/module/tenant/infrastructure/service/types"
 	userApplication "api-pacs/module/user/application"
 	"api-pacs/module/user/domain/repository"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
@@ -23,7 +28,10 @@ import (
 type UserCommandService struct {
 	repository.UserCommandRepositoryInterface
 	userApplication.UserQueryServiceInterface
+	tenantApplication.TenantCommandServiceInterface
 	tenantApplication.TenantQueryServiceInterface
+	inferenceApplication.InferenceCommandServiceInterface
+	inferenceApplication.InferenceQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	mailgunTypes.MailgunSDKInterface
 }
@@ -137,6 +145,45 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantI
 	return nil
 }
 
+// ResetTutorial resets the tutorial for a user
+func (service *UserCommandService) ResetTutorial(ctx context.Context, data types.ResetTutorial) error {
+	// get onboarding questionnaire answers
+	onboardingQuestionnaireAnswers, err := service.TenantQueryServiceInterface.GetOnboardingQuestionnaireAnswers(ctx, tenantTypes.GetOnboardingQuestionnaireAnswer{
+		TenantID: data.TenantID,
+		UserID:   data.UserID,
+	})
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return err
+	}
+
+	// remove onboarding questionnaire answers
+	for _, onboardingQuestionnaireAnswer := range onboardingQuestionnaireAnswers {
+		err = service.TenantCommandServiceInterface.RemoveOnboardingQuestionnaireAnswer(ctx, onboardingQuestionnaireAnswer.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	// get onboarding model questionnaire answers
+	onboardingModelQuestionnaireAnswers, err := service.InferenceQueryServiceInterface.GetOnboardingModelQuestionnaireAnswers(ctx, inferenceTypes.GetOnboardingModelQuestionnaireAnswer{
+		TenantID: data.TenantID,
+		UserID:   data.UserID,
+	})
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return err
+	}
+
+	// remove onboarding model questionnaire answers
+	for _, onboardingModelQuestionnaireAnswer := range onboardingModelQuestionnaireAnswers {
+		err = service.InferenceCommandServiceInterface.RemoveOnboardingModelQuestionnaireAnswer(ctx, onboardingModelQuestionnaireAnswer.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // UpdateTenantUser update tenant user
 func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data types.UpdateTenantUser) error {
 	err := service.UserCommandRepositoryInterface.UpdateTenantUser(ctx, repositoryTypes.UpdateTenantUser{
@@ -193,6 +240,24 @@ func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context,
 	})
 	if err != nil {
 		log.Println(err)
+		return err
+	}
+
+	return nil
+}
+
+// UpdateUserMetadata update user metadata
+func (service *UserCommandService) UpdateUserMetadata(ctx context.Context, data types.UpdateUserMetadata) error {
+	metadataBytes, err := json.Marshal(data.Metadata)
+	if err != nil {
+		return err
+	}
+
+	err = service.UserCommandRepositoryInterface.UpsertUserMetadata(ctx, repositoryTypes.UpsertUserMetadata{
+		UserID:   data.UserID,
+		Metadata: string(metadataBytes),
+	})
+	if err != nil {
 		return err
 	}
 

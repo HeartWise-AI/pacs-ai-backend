@@ -285,6 +285,48 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 	response.JSON(w)
 }
 
+// ResetTutorial resets the tutorial onboarding questionnaires by user
+func (controller *UserCommandController) ResetTutorial(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	err := controller.UserCommandServiceInterface.ResetTutorial(context.TODO(), serviceTypes.ResetTutorial{
+		TenantID: tenantID,
+		UserID:   userID,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while resetting tutorial."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully reset tutorial.",
+	}
+
+	response.JSON(w)
+}
+
 // UpdateTenantUser update a tenant user. Only callable by admin or owner.
 func (controller *UserCommandController) UpdateTenantUser(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
@@ -477,6 +519,91 @@ func (controller *UserCommandController) UpdateTenantUserPassword(w http.Respons
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully updated tenant user password.",
+	}
+
+	response.JSON(w)
+}
+
+// UpdateUserMetadata updates user metadata
+func (controller *UserCommandController) UpdateUserMetadata(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	var request types.UpdateUserMetadataRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err = controller.UserCommandServiceInterface.UpdateUserMetadata(context.TODO(), serviceTypes.UpdateUserMetadata{
+		UserID:   userID,
+		Metadata: request.Metadata,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while updating user metadata."
+		case errors.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "User metadata not found."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully updated user metadata.",
 	}
 
 	response.JSON(w)

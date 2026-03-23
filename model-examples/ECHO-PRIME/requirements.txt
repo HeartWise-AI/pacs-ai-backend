@@ -1,5 +1,0 @@
-fastapi==0.115.6
-uvicorn==0.34.0
-pandas==2.2.3
-pydicom==3.0.1
-opencv-python-headless==4.11.0.86

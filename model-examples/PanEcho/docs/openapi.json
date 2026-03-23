@@ -1,0 +1,531 @@
+{
+  "openapi": "3.0.2",
+  "info": {
+    "title": "PACS.AI Inference Model API",
+    "description": "API Documentation of PACS.AI Model Inference",
+    "termsOfService": "https://github.com/HeartWise-AI",
+    "contact": {
+      "name": "HeartWise AI",
+      "email": "hello@heartwise.ai"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://ciedai/api",
+      "description": "Docker"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Local"
+    },
+    {
+      "url": "http://localhost:8000/api",
+      "description": "Local Docker"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Inference",
+      "description": "Inference service"
+    }
+  ],
+  "paths": {
+    "/inference/predict": {
+      "post": {
+        "tags": ["Inference"],
+        "summary": "Predict",
+        "description": "Creates a prediction request",
+        "requestBody": {
+          "description": "Prediction request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/PredictResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "JSON": {
+                    "summary": "Successful JSON prediction request",
+                    "value": {
+                      "success": true,
+                      "message": "Registration request created successfully",
+                      "data": {
+                        "diagnosis": "limit",
+                        "predictions": {
+                          "Vessel": {
+                            "probability": 56.534433434343,
+                            "confidence": "intermediate",
+                            "presentable": true,
+                            "displayResult": "Left Coronary"
+                          }
+                        },
+                        "modelRecommendations": {
+                          "en": "Recommendation for the next model",
+                          "fr": "Recommandation pour le prochain modèle",
+                          "presentable": true
+                        }
+                      }
+                    }
+                  },
+                  "OHIF_ANNOTATIONS": {
+                    "summary": "Successful OHIF Annotations prediction request",
+                    "value": {
+                      "success": true,
+                      "message": "Registration request created successfully",
+                      "data": {
+                        "metadata": {
+                          "key": "value pair"
+                        },
+                        "segmentations": [],
+                        "boundingBoxes": [],
+                        "measurements": []
+                      }
+                    }
+                  },
+                  "HTML": {
+                    "summary": "Successful HTML prediction request",
+                    "value": {
+                      "success": true,
+                      "message": "Registration request created successfully",
+                      "data": {
+                        "htmlBase64": "PCFET0NUWVBFIGh0bWw+DQo8aHRtbCBsYW5nPSJlbiI+DQogIDxoZWFkPg0KICAgIDxtZXRhIGNoYXJzZXQ9IlVURi04IiAvPg0KICAgIDxtZXRhIG5hbWU9InZpZXdwb3J0IiBjb250ZW50PSJ3aWR0aD1kZXZpY2Utd2lkdGgsIGluaXRpYWwtc2NhbGU9MS4wIiAvPg0KICAgIDx0aXRsZT5TdWNjZXNzPC90aXRsZT4NCiAgICA8c3R5bGU+DQogICAgICBib2R5IHsNCiAgICAgICAgbWFyZ2luOiAwOw0KICAgICAgICBoZWlnaHQ6IDEwMHZoOw0KICAgICAgICBkaXNwbGF5OiBmbGV4Ow0KICAgICAgICBhbGlnbi1pdGVtczogY2VudGVyOw0KICAgICAgICBqdXN0aWZ5LWNvbnRlbnQ6IGNlbnRlcjsNCiAgICAgICAgZm9udC1mYW1pbHk6IHN5c3RlbS11aSwgLWFwcGxlLXN5c3RlbSwgc2Fucy1zZXJpZjsNCiAgICAgICAgYmFja2dyb3VuZC1jb2xvcjogI2Y5ZmFmYjsNCiAgICAgIH0NCiAgICAgIC5tZXNzYWdlIHsNCiAgICAgICAgY29sb3I6ICMxNTgwM2Q7DQogICAgICAgIGZvbnQtc2l6ZTogMS4yNXJlbTsNCiAgICAgICAgcGFkZGluZzogMnJlbTsNCiAgICAgICAgYmFja2dyb3VuZC1jb2xvcjogd2hpdGU7DQogICAgICAgIGJvcmRlci1yYWRpdXM6IDAuNXJlbTsNCiAgICAgICAgYm94LXNoYWRvdzogMCAxcHggM3B4IHJnYmEoMCwgMCwgMCwgMC4xKTsNCiAgICAgIH0NCiAgICA8L3N0eWxlPg0KICA8L2hlYWQ+DQogIDxib2R5Pg0KICAgIDxkaXYgY2xhc3M9Im1lc3NhZ2UiPlJlZ2lzdHJhdGlvbiByZXF1ZXN0IGNyZWF0ZWQgc3VjY2Vzc2Z1bGx5PC9kaXY+DQogIDwvYm9keT4NCjwvaHRtbD4="
+                      }
+                    }
+                  },
+                  "WEB_APP": {
+                    "summary": "Successful WEB_APP prediction request",
+                    "value": {
+                      "success": true,
+                      "message": "Registration request created successfully",
+                      "data": {
+                        "webappPath": "/app/viewer/",
+                        "webappDataBase64": "base64 encoded webapp data..."
+                      }
+                    }
+                  },
+                  "PDF": {
+                    "summary": "Successful PDF prediction request",
+                    "value": {
+                      "success": true,
+                      "message": "Registration request created successfully",
+                      "data": {
+                        "pdfBase64": "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DrZm1CGqO/YGnKWG6HSMLwCeNJQD7ID/WcT9iBvGHhBOWwe0DhvfFYveX5qoXsE1KjZ5PEXXMJJ1ILlGPT40xC1KxXBA4xKHXTyaCbjIglum6/p8dCZPqO7AMJxAX2w1+7QazGn1++uO+XVkbE65IuqVOMWvpMgV4hh/HYeFHBeGcQIlEcjeJtt1sZ26nL6pjln+m0hKSxOdDOgUE/BqTfhGewgmMBQWLXofNNHn0qq2qyva5qGN1Lor6kT5S7VRlClj9Ja3tK7SzrivP5wJlLon3FF8H6bEZlIczAPgmiaq2nImd2gmLHSfMeXHjH4KLvol8K9UAm1qFcPYKVw4YBA5dD/Sj3/21rIG1sraspt2rDc2PR1pDtesO10TTiZ3bm5uaFDUeRabxx8Xu5O/3l33LF5mXf36jl3PnK9L1aW3ZvbuaX92d+NT66KRVF1KybQ/196+d0+Gb40+xVcoVdFoVej+Fxubd+1qbt69+4tDoYMPPlEmw/v3d7YPHSuemvvJGzd+WMg9tzUc6f/sF39sa25uo+dH4U8e/GvoTGtLb/v+o1bh+u1rZwoTe8yBvTR1srE+sFLaeIh+efPQ3IVzrzH2X2oMfYkKZW5kc3RyZWFtCmVuZG9iagoxOCAwIG9iago8PCAvVGl0bGUgKHNhbXBsZS1wZGYpIC9Qcm9kdWNlciAobWFjT1MgVmVyc2lvbiAxMy42LjEgXChCdWlsZCAyMkczMTNcKSBRdWFydHogUERGQ29udGV4dCkKL0F1dGhvciAoQW5kcmVhIEVsbGEgUmVtb3JlcmFzKSAvQ3JlYXRvciAoV29yZCkgL0NyZWF0aW9uRGF0ZSAoRDoyMDI0MTEwNTA0MDkyNlowMCcwMCcpCi9Nb2REYXRlIChEOjIwMjQxMTA1MDQwOTI2WjAwJzAwJykgPj4KZW5kb2JqCnhyZWYKMCAxOQowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAzOTEgMDAwMDAgbiAKMDAwMDAwMzM1MiAwMDAwMCBuIAowMDAwMDAwMDIyIDAwMDAwIG4gCjAwMDAwMDA0OTUgMDAwMDAgbiAKMDAwMDAwMzMxNiAwMDAwMCBuIAowMDAwMDAwMDAwIDAwMDAwIG4gCjAwMDAwMDM0ODUgMDAwMDAgbiAKMDAwMDAwMDAwMCAwMDAwMCBuIAowMDAwMDA5MTE5IDAwMDAwIG4gCjAwMDAwMDA2MDMgMDAwMDAgbiAKMDAwMDAwMzQzNSAwMDAwMCBuIAowMDAwMDA0MTI1IDAwMDAwIG4gCjAwMDAwMDM3MTggMDAwMDAgbiAKMDAwMDAwNDM2NCAwMDAwMCBuIAowMDAwMDA5NTc1IDAwMDAwIG4gCjAwMDAwMDkyNzkgMDAwMDAgbiAKMDAwMDAwOTgwOSAwMDAwMCBuIAowMDAwMDEzMDc2IDAwMDAwIG4gCnRyYWlsZXIKPDwgL1NpemUgMTkgL1Jvb3QgMTEgMCBSIC9JbmZvIDE4IDAgUiAvSUQgWyA8MjhkZmI5ZDUzN2M4NmYzOTczMTlmMmEyZjU1Yzk1YjE+CjwyOGRmYjlkNTM3Yzg2ZjM5NzMxOWYyYTJmNTVjOTViMT4gXSA+PgpzdGFydHhyZWYKMTMzMDkKJSVFT0YK"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-info": {
+      "get": {
+        "tags": ["Inference"],
+        "summary": "Get Model Info",
+        "description": "Get model info",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GetModelInfoResponse"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-facts": {
+      "get": {
+        "tags": ["Inference"],
+        "summary": "Get Model Facts",
+        "description": "Get model facts",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GetModelFactsResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Model facts retrieved successfully",
+                  "data": {
+                    "en": {
+                      "Changelogs": {
+                        "1.0.0": "2023-03-01: Initial release"
+                      },
+                      "Mechanism": {
+                        "Input_data_source": "Left coronary angiogram videos",
+                        "Input_data_type": "Video data",
+                        "Model_type": "X3D architecture",
+                        "Outcome": "Prediction of LVEF from left coronary angiograms",
+                        "Output": "Continuous LVEF percentage value",
+                        "Target_population": "Adult patients aged ≥18 years who received a coronary angiogram and transthoracic echocardiogram (TTE)",
+                        "Time_of_prediction": "N/A",
+                        "Training_data_location_and_time-period": "University of California, San Francisco (UCSF), Dec 12, 2012, to Dec 31, 2019"
+                      },
+                      "Other_information": {
+                        "Clinical_impact_evaluation": "N/A",
+                        "Clinical_trial": "LVEF Prediction During ACS Using AI Algorithm Applied on Coronary Angiogram Videos (CathEF) - NCT05317286",
+                        "Clinical_trial_URL": "https://www.clinicaltrials.gov/ct2/show/NCT05317286",
+                        "Contact_info": "robert.avram.md@gmail.com",
+                        "Github": "N/A",
+                        "Outcome_definition": "LVEF",
+                        "Related_model": "CathAI",
+                        "Scientific_publication": "N/A"
+                      },
+                      "Other_results": {
+                        "GradCAM": "GradCAM consistently highlighted epicardial LCA vessel segments and septal perforators predominantly during systole as the strongest predictors of low-LVEF."
+                      },
+                      "Summary": {
+                        "Approval_date": "2023-04-17",
+                        "Description": "CathEF is a video-based deep neural network (DNN) designed to predict left ventricular ejection fraction (LVEF) from left coronary angiograms.",
+                        "Developed_by": "Dr. Avram, Dr. Tison and Dr. Olgin",
+                        "Development_period": "2020-01-01 to 2023-04-17",
+                        "Last_update": "2023-04-17",
+                        "License_date": "2023-03-01",
+                        "Licensed_to": "Montreal Heart Institute",
+                        "Name": "CathEF",
+                        "Version": "1.0"
+                      },
+                      "Uses_and_directions": {
+                        "Appropriate_decision_and_support": "N/A",
+                        "Before_using_this_model": "Make sure you have at least three views available to input into the model (RAO Caudal, AP Cranial and LAO Cranial are the best)",
+                        "Benefits": "Estimation of LVEF from standard LCA angiogram videos without additional",
+                        "General_use": "CathEF is an automated estimation of LVEF from standard coronary angiogram videos. It can be used to provide real-time, dynamic assessment of cardiac function during coronary angiography without additional equipment or procedures. It is especially useful for patients with acute coronary syndrome or those at increased risk of contrast-induced nephropathy.",
+                        "Safety_and_efficacy_evaluation": "N/A",
+                        "Target_population_and_use_case": "Adult patients aged ≥18 years who received a coronary angiogram of the left coronmary angiography."
+                      },
+                      "Validation_and_performance": [
+                        {
+                          "UCSF_test_dataset": {
+                            "AUC_ROC_LVEF_40": 0.911,
+                            "AUC_ROC_LVEF_50": 0.879,
+                            "ICC_continuous_LVEF": 0.77,
+                            "MAE_continuous_LVEF": 8.5,
+                            "Pearson_correlation_continuous_LVEF": 0.71,
+                            "Sensitivity_LVEF_40": 83.9,
+                            "Specificity_LVEF_40": 81.3
+                          },
+                          "UOHI_external_validation": {
+                            "AUC_ROC_LVEF_40": 0.906,
+                            "AUC_ROC_LVEF_50": "N/A",
+                            "ICC_continuous_LVEF": 0.62,
+                            "MAE_continuous_LVEF": 7,
+                            "Pearson_correlation_continuous_LVEF": 0.72,
+                            "Sensitivity_LVEF_40": 77.9,
+                            "Specificity_LVEF_40": 88.6
+                          }
+                        },
+                        {
+                          "UCSF_study_cohort": {
+                            "Female_percentage": 35,
+                            "LVEF_over_40_percentage": 82.2,
+                            "LVEF_under_40_percentage": 17.7,
+                            "Mean_age": "64.3±13.3",
+                            "Number_of_angiograms": 3960,
+                            "Number_of_patients": 3404
+                          },
+                          "UOHI_external_validation_cohort": {
+                            "Female_percentage": 33,
+                            "LVEF_over_40_percentage": 76.3,
+                            "LVEF_under_40_percentage": 16.8,
+                            "Mean_age": "68.6±13.3",
+                            "Number_of_angiograms": 776,
+                            "Number_of_patients": 744
+                          }
+                        }
+                      ],
+                      "Warnings_and_limitations": {
+                        "Clinical_rationale": "CathEF has not been validated for use with right coronary angiograms.",
+                        "Discontinue_use_if": "N/A",
+                        "Generalizability": "The model's generalizability to other healthcare institutions and populations requires further validation.",
+                        "Inappropriate_decision_support": "CathEF performance may be affected by administration of contrast during angiography, which can temporarily depress LVEF.",
+                        "Inappropriate_settings": "The model has not been tested on patients with atrial fibrillation, congenital heart disease, or prior cardiac surgery.",
+                        "Risks": "CathEF's performance may be less accurate at extreme LVEF values."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PredictRequest": {
+        "required": ["seriesInstanceMetadata", "outputMode"],
+        "type": "object",
+        "properties": {
+          "seriesInstanceMetadata": {
+            "type": "object"
+          },
+          "additionalMetadata": {
+            "type": "object",
+            "nullable": true
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"],
+            "description": "Output mode"
+          }
+        }
+      },
+      "APIResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Operation successful"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "APIErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "Bad Request"
+          },
+          "errorCode": {
+            "type": "string",
+            "example": "BAD_REQUEST"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "GetModelInfoResponse": {
+        "type": "object",
+        "properties": {
+          "modelName": {
+            "type": "string",
+            "description": "Model display name",
+            "example": "CathEF"
+          },
+          "version": {
+            "type": "string",
+            "description": "Model version",
+            "example": "0.8.0"
+          },
+          "dicomTargetLevel": {
+            "type": "string",
+            "enum": ["PATIENT", "STUDY", "SERIES", "INSTANCE"],
+            "description": "DICOM target level",
+            "example": "SERIES"
+          },
+          "dicomUploadMin": {
+            "type": "integer",
+            "description": "Minimum number of DICOM frames to upload for inference",
+            "example": 1
+          },
+          "dicomUploadMax": {
+            "type": "integer",
+            "description": "Maximum number of DICOM frames to upload for inference",
+            "example": 5
+          },
+          "supportedDicomModalities": {
+            "type": "array",
+            "description": "Supported DICOM modalities",
+            "items": {
+              "type": "string",
+              "example": "XA"
+            }
+          },
+          "supportedDicomTags": {
+            "type": "array",
+            "description": "Supported DICOM tags",
+            "items": {
+              "type": "string",
+              "example": "00200011"
+            }
+          },
+          "supportedAdditionalMetadata": {
+            "type": "array",
+            "description": "Supported additional metadata",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "example": "smoking"
+                },
+                "name": {
+                  "type": "string",
+                  "example": "Smoking"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["boolean", "number", "string"],
+                  "example": "boolean"
+                },
+                "required": {
+                  "type": "boolean",
+                  "example": true
+                }
+              }
+            }
+          },
+          "supportedOutputModes": {
+            "type": "array",
+            "description": "Supported output modes",
+            "items": {
+              "type": "string",
+              "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"],
+              "example": "JSON"
+            }
+          }
+        }
+      },
+      "GetModelFactsResponse": {
+        "type": "object",
+        "properties": {
+          "en": {
+            "type": "object",
+            "description": "Model facts in English. See example for more details."
+          }
+        }
+      },
+      "PredictResponse": {
+        "type": "object",
+        "properties": {
+          "htmlBase64": {
+            "type": "string",
+            "description": "Base64 encoded HTML"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,1 +1,0 @@
-Files are stored on huggingface, please refer to [pacs-ai-examples](https://huggingface.co/heartwise/pacs-ai-examples).

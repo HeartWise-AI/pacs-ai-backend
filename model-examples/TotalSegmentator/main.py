@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 import signal
 import asyncio
+import contextlib
 
 from utils.http_utils import Config, HTMLPredictionResponse, OHIFPredictionResponse, HTTPResponse, PDFPredictionResponse, PredictRequest, JsonPredictionResponse, WebAppPredictionResponse
 from logic import CustomPredictionService
@@ -17,24 +18,11 @@ with open(os.path.join(root_path, 'config.json'), 'r') as f:
 
 config = Config(**config_dict)
 
-app = FastAPI(
-    title="PACS.AI Inference Model API",
-    description="API Documentation of PACS.AI Model Inference",
-    version="1.0.0",
-    docs_url=None,  # Disable default docs
-    redoc_url=None  # Disable default redoc
-)
+inference_lock = asyncio.Semaphore(1)
 
 PredictionService = CustomPredictionService()
 
-# Mount static files for documentation
-app.mount("/docs", StaticFiles(directory=os.path.join(root_path, "docs"), html=True), name="docs")
-
 last_request_time = datetime.now()
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(check_inactivity())
 
 async def check_inactivity():
     global last_request_time
@@ -51,6 +39,25 @@ async def check_inactivity():
             else:
                 last_request_time = datetime.now()
 
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    asyncio.create_task(check_inactivity())
+    yield
+    # Shutdown (if needed)
+
+app = FastAPI(
+    title="PACS.AI Inference Model API",
+    description="API Documentation of PACS.AI Model Inference",
+    version="1.0.0",
+    docs_url=None,  # Disable default docs
+    redoc_url=None,  # Disable default redoc
+    lifespan=lifespan
+)
+
+# Mount static files for documentation
+app.mount("/docs", StaticFiles(directory=os.path.join(root_path, "docs"), html=True), name="docs")
+
 @app.middleware("http")
 async def update_last_request_time(request: Request, call_next):
     global last_request_time
@@ -60,69 +67,69 @@ async def update_last_request_time(request: Request, call_next):
 
 @app.post("/inference/predict")
 async def predict(request: PredictRequest):
+    async with inference_lock:
+        try:
+            PredictionService.load_model(config)
+        except Exception as e:
+            return HTTPResponse(
+                status=500,
+                success=False,
+                message=str(e),
+                error_code="MODEL_ERROR"
+            ).to_response()
+        
+        succes, response = await PredictionService.predict(request)
+        if not succes:
+            return response
+        
+        output_mode = request.outputMode
+        if output_mode == "JSON":
+            return HTTPResponse(
+                status=200,
+                success=True,
+                message="Prediction successful",
+                data=JsonPredictionResponse(**response)
+            ).to_response()
 
-    try:
-        PredictionService.load_model(config)
-    except Exception as e:
-        return HTTPResponse(
-            status=500,
-            success=False,
-            message=str(e),
-            error_code="MODEL_ERROR"
-        ).to_response()
-    
-    succes, response = await PredictionService.predict(request)
-    if not succes:
-        return response
-    
-    output_mode = request.outputMode
-    if output_mode == "JSON":
-        return HTTPResponse(
-            status=200,
-            success=True,
-            message="Prediction successful",
-            data=JsonPredictionResponse(**response)
-        ).to_response()
+        elif output_mode == "OHIF_ANNOTATIONS":
+            return HTTPResponse(
+                status=200,
+                success=True,
+                message="Prediction successful",
+                data=OHIFPredictionResponse(**response)
+            ).to_response()
 
-    elif output_mode == "OHIF_ANNOTATIONS":
-        return HTTPResponse(
-            status=200,
-            success=True,
-            message="Prediction successful",
-            data=OHIFPredictionResponse(**response)
-        ).to_response()
+        elif output_mode == "HTML":
+            return HTTPResponse(
+                status=200,
+                success=True,
+                message="Prediction successful",
+                data=HTMLPredictionResponse(**response)
+            ).to_response()
 
-    elif output_mode == "HTML":
-        return HTTPResponse(
-            status=200,
-            success=True,
-            message="Prediction successful",
-            data=HTMLPredictionResponse(**response)
-        ).to_response()
+        elif output_mode == "WEB_APP":
+            return HTTPResponse(
+                status=200,
+                success=True,
+                message="Prediction successful",
+                data=WebAppPredictionResponse(**response)
+            ).to_response()
 
-    elif output_mode == "WEB_APP":
-        return HTTPResponse(
-            status=200,
-            success=True,
-            message="Prediction successful",
-            data=WebAppPredictionResponse(**response)
-        ).to_response()
+        elif output_mode == "PDF":
+            return HTTPResponse(
+                status=200,
+                success=True,
+                message="Prediction successful",
+                data=PDFPredictionResponse(**response)
+            ).to_response()
 
-    elif output_mode == "PDF":
-        return HTTPResponse(
-            status=200,
-            success=True,
-            message="Prediction successful",
-            data=PDFPredictionResponse(**response)
-        ).to_response()
-
-    else:
-        return HTTPResponse(
-            status=400,
-            success=False,
-            message="Unsupported output mode",
-            error_code="UNSUPPORTED_OUTPUT_MODE"
-        ).to_response()
+        else:
+            return HTTPResponse(
+                status=400,
+                success=False,
+                message="Unsupported output mode",
+                error_code="UNSUPPORTED_OUTPUT_MODE"
+            ).to_response()
 
 @app.get("/inference/model-info")
 async def get_model_info():
@@ -172,4 +179,4 @@ async def get_model_facts():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

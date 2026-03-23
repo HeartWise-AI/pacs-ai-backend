@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"log"
 	"slices"
 	"sync"
@@ -15,17 +16,24 @@ import (
 	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
-	dicomUtils "api-pacs/internal/dicoms"
+	dicomUtils "api-pacs/internal/dicom"
 	apiError "api-pacs/internal/errors"
+	elasticsearchApplication "api-pacs/module/elasticsearch/application"
+	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	"api-pacs/module/inference/domain/repository"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
+	tenantApplication "api-pacs/module/tenant/application"
+	userApplication "api-pacs/module/user/application"
 )
 
 // InferenceCommandService handles the Inference command service logic
 type InferenceCommandService struct {
 	repository.InferenceCommandRepositoryInterface
 	repository.InferenceQueryRepositoryInterface
+	tenantApplication.TenantQueryServiceInterface
+	userApplication.UserQueryServiceInterface
+	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	dockerTypes.DockerSDKInterface
 	orthancAPITypes.OrthancAPIInterface
 	dockerInferenceTypes.DockerInferenceAPIInterface
@@ -77,6 +85,28 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 	return nil
 }
 
+// AddOnboardingModelQuestionnaireAnswers adds an onboarding model questionnaire answers
+func (service *InferenceCommandService) AddOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error {
+	// add onboarding model questionnaire answer
+	for _, answer := range data.OnboardingModelQuestionnaireAnswers {
+		err := service.InferenceCommandRepositoryInterface.InsertOnboardingModelQuestionnaireAnswer(ctx, repositoryTypes.AddOnboardingModelQuestionnaireAnswer{
+			ID:                     generateID(),
+			TenantID:               data.TenantID,
+			UserID:                 data.UserID,
+			ModelID:                data.ModelID,
+			QuestionnaireID:        answer.QuestionnaireID,
+			QuestionnaireQuestion:  answer.QuestionnaireQuestion,
+			QuestionnaireAnswerIDs: answer.QuestionnaireAnswerIDs,
+			QuestionnaireAnswers:   answer.QuestionnaireAnswers,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // DeleteInferenceModel deletes an inference model
 func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context, ID string) error {
 	// get inference model
@@ -100,25 +130,35 @@ func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context
 	return nil
 }
 
-// PredictInferenceModel predicts an inference model
-func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
+// RemoveOnboardingModelQuestionnaireAnswer removes an onboarding model questionnaire answer
+func (service *InferenceCommandService) RemoveOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error {
+	err := service.InferenceCommandRepositoryInterface.DeleteOnboardingModelQuestionnaireAnswer(ctx, ID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GenerateInferenceModelPredictRequest generates a predict request for inference model
+func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error) {
 	// get inference model
 	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
 	if err != nil {
-		return dockerInferenceTypes.PredictResponse{}, err
+		return dockerInferenceTypes.PredictRequest{}, "", err
 	}
 
 	// get container model info
 	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
 	if err != nil {
-		return dockerInferenceTypes.PredictResponse{}, err
+		return dockerInferenceTypes.PredictRequest{}, "", err
 	}
 
 	containerName := containerInfo.Name[1:] // remove "/" prefix
 
 	modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerName) // remove "/" prefix
 	if err != nil {
-		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerInferenceError)
+		return dockerInferenceTypes.PredictRequest{}, "", errors.New(apiError.DockerInferenceError)
 	}
 
 	seriesInstanceImages := map[int]map[int]string{}
@@ -209,13 +249,13 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 
 		// wait for all goroutines to finish
 		if err := eg.Wait(); err != nil {
-			return dockerInferenceTypes.PredictResponse{}, err
+			return dockerInferenceTypes.PredictRequest{}, "", err
 		}
 
 		// check if SeriesInstanceImages is empty
 		if len(seriesInstanceImages) == 0 {
 			log.Println("[predict] empty series instance images")
-			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InferenceError)
+			return dockerInferenceTypes.PredictRequest{}, "", errors.New(apiError.InferenceError)
 		}
 	} else {
 		/// ---------------------- for DICOM metadata
@@ -355,25 +395,44 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 
 		// wait for all goroutines to finish
 		if err := eg.Wait(); err != nil {
-			return dockerInferenceTypes.PredictResponse{}, err
+			return dockerInferenceTypes.PredictRequest{}, "", err
 		}
 
 		// check if SeriesInstanceMetadata is empty
 		if len(seriesInstanceMetadata) == 0 {
 			log.Println("[predict] empty series instance metadata")
-			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InferenceError)
+			return dockerInferenceTypes.PredictRequest{}, "", errors.New(apiError.InferenceError)
 		}
 	}
 
-	// TODO: remove this
-	predictionStartTime := time.Now()
-
-	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, dockerInferenceTypes.PredictRequest{
+	// create predict request
+	predictRequest := dockerInferenceTypes.PredictRequest{
 		SeriesInstanceImages:   seriesInstanceImages,
 		SeriesInstanceMetadata: seriesInstanceMetadata,
 		AdditionalMetadata:     data.AdditionalMetadata,
 		OutputMode:             dockerInferenceTypes.OutputMode(inferenceModel.OutputMode),
-	})
+	}
+
+	// override OutputMode to JSON if ForceJSON is true
+	if data.ForceJSON != nil && *data.ForceJSON {
+		predictRequest.OutputMode = dockerInferenceTypes.OutputModeJSON
+	}
+
+	return predictRequest, containerName, nil
+}
+
+// PredictInferenceModel predicts an inference model
+func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, tenantID, userID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
+	// TODO: remove this
+	predictionStartTime := time.Now()
+
+	predictRequest, containerName, err := service.GenerateInferenceModelPredictRequest(ctx, tenantID, containerID, data)
+	if err != nil {
+		return dockerInferenceTypes.PredictResponse{}, err
+	}
+
+	// predict
+	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, predictRequest)
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
@@ -382,7 +441,97 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	predictionEndTime := time.Since(predictionStartTime)
 	log.Printf("[prediction] predict call took %f seconds", predictionEndTime.Seconds())
 
+	// log to elasticsearch
+	go func() {
+		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, userID)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		// Get inference model data for logging
+		inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		// get model info
+		modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerName)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		modelID := modelInfo.Data.ModelID
+		if len(modelID) == 0 {
+			modelID = modelInfo.Data.ModelName
+		}
+
+		_, err = service.ElasticsearchCommandServiceInterface.CreatePredictInferenceModelLog(ctx, elasticsearchTypes.CreatePredictInferenceModelLog{
+			TenantID:           tenant.ID,
+			TenantName:         tenant.Name,
+			UserID:             user.ID,
+			Email:              user.Email,
+			Name:               user.Name,
+			ContainerID:        containerID,
+			ContainerName:      containerName,
+			InferenceModelID:   inferenceModel.ID,
+			InferenceModelName: inferenceModel.Name,
+			DockerImage:        inferenceModel.DockerImage,
+			Model:              fmt.Sprintf("%s-%s", modelID, modelInfo.Data.Version), // {modelID/modelName-version}
+			StudyInstanceUID:   data.StudyInstanceUID,
+			SeriesInstanceUIDs: data.SeriesInstanceUIDs,
+			AdditionalMetadata: data.AdditionalMetadata,
+		})
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	}()
+
 	return predictionResult, nil
+}
+
+// RemoveModelFeedback removes model feedback
+func (service *InferenceCommandService) RemoveModelFeedback(ctx context.Context, data types.RemoveModelFeedback) error {
+	// get model feedback
+	modelFeedback, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackByUserModelID(ctx, repositoryTypes.GetModelFeedbackByUserModelID{
+		TenantID: data.TenantID,
+		UserID:   data.UserID,
+		ModelID:  data.ModelID,
+	})
+	if err != nil {
+		return err
+	}
+
+	// delete model feedback
+	err = service.InferenceCommandRepositoryInterface.DeleteModelFeedback(ctx, modelFeedback.ID)
+	if err != nil {
+		return err
+	}
+
+	// get model feedback answers
+	modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, modelFeedback.ID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return err
+	}
+
+	// delete model feedback answers
+	for _, modelFeedbackAnswer := range modelFeedbackAnswers {
+		err = service.InferenceCommandRepositoryInterface.DeleteModelFeedbackAnswer(ctx, modelFeedbackAnswer.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // RestartInferenceModelContainer restarts an inference model container
@@ -437,6 +586,60 @@ func (service *InferenceCommandService) UpdateInferenceModelContainerID(ctx cont
 	err := service.InferenceCommandRepositoryInterface.UpdateInferenceModelContainerID(ctx, ID, containerID)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// UpdateModelFeedback updates model feedback
+func (service *InferenceCommandService) UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error {
+	modelFeedbackID := data.ID
+
+	if modelFeedbackID == nil {
+		modelFeedbackIDStr := generateID()
+		modelFeedbackID = &modelFeedbackIDStr
+	}
+
+	err := service.InferenceCommandRepositoryInterface.UpsertModelFeedback(ctx, repositoryTypes.UpsertModelFeedback{
+		ID:               *modelFeedbackID,
+		TenantID:         data.TenantID,
+		InferenceModelID: data.InferenceModelID,
+		UserID:           data.UserID,
+		ModelID:          data.ModelID,
+		FeedbackType:     data.FeedbackType,
+	})
+	if err != nil {
+		return err
+	}
+
+	// delete exiting feedback answers
+	// get model feedback answers
+	modelFeedbackAnswers, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackID(ctx, *modelFeedbackID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return err
+	}
+
+	// delete model feedback answers
+	for _, modelFeedbackAnswer := range modelFeedbackAnswers {
+		err = service.InferenceCommandRepositoryInterface.DeleteModelFeedbackAnswer(ctx, modelFeedbackAnswer.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	// add model feedback answers
+	for _, answer := range data.ModelFeedbackAnswers {
+		err = service.InferenceCommandRepositoryInterface.InsertModelFeedbackAnswer(ctx, repositoryTypes.AddModelFeedbackAnswer{
+			ID:                     generateID(),
+			ModelFeedbackID:        *modelFeedbackID,
+			QuestionnaireID:        answer.QuestionnaireID,
+			QuestionnaireQuestion:  answer.QuestionnaireQuestion,
+			QuestionnaireAnswerIDs: answer.QuestionnaireAnswerIDs,
+			QuestionnaireAnswers:   answer.QuestionnaireAnswers,
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

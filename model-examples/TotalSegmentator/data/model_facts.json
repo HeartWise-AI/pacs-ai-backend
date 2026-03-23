@@ -5,7 +5,7 @@
       "Description": "Segment organs on full-body CT scans.",
       "Developed_by": "",
       "Development_period": "",
-      "Version": "2.5.0"
+      "Version": "2.9.0"
     },
     "Mechanism": {
       "Outcome": "Image segmentation of organs",
@@ -13,7 +13,8 @@
       "Target_population": "",
       "Input_data_source": "computed tomography (CT)",
       "Input_data_type": "labelmap (Nifti)",
-      "Model_type": ""
+      "Model_type": "",
+      "Supported_DICOM_modalities": "CT, MRI"
     },
     "Model_Components": {
       "Segmentation_Model": {

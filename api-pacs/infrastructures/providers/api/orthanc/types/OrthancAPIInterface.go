@@ -30,12 +30,18 @@ type OrthancAPIInterface interface {
 	RetrieveModalityStudy(ctx context.Context, queryID string, answerIndex uint, request RetrieveQueryModalityAnswerRequest) (QueryModalityResponse, error)
 	// RetrieveModalityStudyBySeries retrieves modality study by series
 	RetrieveModalityStudyBySeries(ctx context.Context, modalityID, localAet, studyInstanceUID string) ([]QueryModalityResponse, error)
+	// RetrieveModalityStudyByInstances retrieves modality study by instances (for US modalities)
+	RetrieveModalityStudyByInstances(ctx context.Context, modalityID, localAet, studyInstanceUID string) ([]QueryModalityResponse, error)
 	// RetrieveDICOMWebInstanceFile retrieves DICOM web instance file
 	RetrieveDICOMWebInstanceFile(ctx context.Context, studyInstanceUID, seriesInstanceUID, sopInstanceUID string) ([]byte, error)
 	// RetrieveDICOMWebInstanceMetadata retrieves DICOM web instance metadata
 	RetrieveDICOMWebInstanceMetadata(ctx context.Context, studyInstanceUID, seriesInstanceUID, sopInstanceUID string) ([]map[string]interface{}, error)
+	// StraightDICOMStoreSCU straight DICOM store SCU
+	StraightDICOMStoreSCU(ctx context.Context, modalityID string, dicomInstances []byte) (StraightDICOMStoreSCUResponse, error)
 	// TriggerDICOMEchoSCU trigger dicom C-ECHO SCU
 	TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error
 	// UpdateDICOMModality updates a DICOM modality
 	UpdateDICOMModality(ctx context.Context, modalityID string, request UpdateDICOMModalityRequest) error
+	// UploadDICOMInstances uploads DICOM instances
+	UploadDICOMInstances(ctx context.Context, dicomInstances []byte) (UploadDICOMInstancesResponse, error)
 }

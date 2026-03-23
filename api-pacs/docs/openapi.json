@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "0.3.0"
+    "version": "0.23.2-beta"
   },
   "servers": [
     {
@@ -20,7 +20,7 @@
       "description": "Production MHI"
     },
     {
-      "url": "http://198.168.189.123/api/v1",
+      "url": "http://198.168.188.204/api/v1",
       "description": "Staging"
     },
     {
@@ -44,6 +44,10 @@
     {
       "name": "inference",
       "description": "Inference service"
+    },
+    {
+      "name": "lead",
+      "description": "Lead service"
     },
     {
       "name": "orthanc",
@@ -81,6 +85,7 @@
                 "logins",
                 "admin_members",
                 "find_modality_studies",
+                "predict_inference_models",
                 "retrieved_studies"
               ]
             }
@@ -262,6 +267,39 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AddInferenceModelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/onboarding-model-questionnaire-answers/add": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Add Onboarding Model Questionnaire Answers",
+        "description": "Add onboarding model questionnaire answers.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Add onboarding model questionnaire answer request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddOnboardingModelQuestionnaireAnswerRequest"
               }
             }
           }
@@ -573,11 +611,11 @@
         }
       }
     },
-    "/inference/model/{id}/remove": {
-      "delete": {
+    "/inference/model/{modelId}/feedback": {
+      "get": {
         "tags": ["inference"],
-        "summary": "Delete Inference Model",
-        "description": "Delete inference model.",
+        "summary": "Get Model Feedback By Model ID",
+        "description": "Get model feedback by model ID.",
         "security": [
           {
             "bearerAuth": []
@@ -585,9 +623,43 @@
         ],
         "parameters": [
           {
-            "name": "id",
+            "name": "modelId",
             "in": "path",
-            "description": "Inference model ID",
+            "description": "Model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/onboarding-model-questionnaire-answers": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Onboarding Model Questionnaire Answers",
+        "description": "Get onboarding model questionnaire answers.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modelId",
+            "in": "query",
+            "description": "Model ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -638,6 +710,231 @@
             }
           }
         },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/feedback/update": {
+      "put": {
+        "tags": ["inference"],
+        "summary": "Update Model Feedback",
+        "description": "Update model feedback.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update model feedback request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateModelFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/{id}/remove": {
+      "delete": {
+        "tags": ["inference"],
+        "summary": "Delete Inference Model",
+        "description": "Delete inference model.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Inference model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/model/{modelId}/feedback/remove": {
+      "delete": {
+        "tags": ["inference"],
+        "summary": "Remove Model Feedback",
+        "description": "Remove model feedback.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modelId",
+            "in": "path",
+            "description": "Model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/lead/contact-form": {
+      "post": {
+        "tags": ["lead"],
+        "summary": "Add Contact Form",
+        "description": "Add contact form.",
+        "requestBody": {
+          "description": "Add contact form request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddContactFormRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/lead/subscribe": {
+      "post": {
+        "tags": ["lead"],
+        "summary": "Subscribe to Newsletter",
+        "description": "Subscribe to newsletter.",
+        "requestBody": {
+          "description": "Subscribe request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscribeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/tenant/onboarding-questionnaire-answers/add": {
+      "post": {
+        "tags": ["tenant"],
+        "summary": "Add Onboarding Questionnaire Answers",
+        "description": "Add onboarding questionnaire answers.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Save onboarding questionnaire answer request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddOnboardingQuestionnaireAnswerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/tenant/onboarding-questionnaire-answers": {
+      "get": {
+        "tags": ["tenant"],
+        "summary": "Get Onboarding Questionnaire Answers",
+        "description": "Get onboarding questionnaire answers.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "questionnaireType",
+            "in": "query",
+            "description": "Onboarding questionnaire type",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["PRE_SURVEY", "POST_SURVEY"]
+            }
+          }
+        ],
         "responses": {
           "2xx": {
             "description": "Success"
@@ -776,6 +1073,90 @@
         }
       }
     },
+    "/orthanc/modality/{modalityID}/study/{studyInstanceUID}/series/store": {
+      "post": {
+        "tags": ["orthanc"],
+        "summary": "Store Study Custom Series",
+        "description": "Store study custom series and write to PACS.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modalityID",
+            "in": "path",
+            "description": "Modality ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "studyInstanceUID",
+            "in": "path",
+            "description": "Study Instance UID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Store study custom series request",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "seriesInstanceUIDs": {
+                    "type": "string",
+                    "description": "JSON stringified array of series instance UIDs"
+                  },
+                  "patientID": {
+                    "type": "string"
+                  },
+                  "patientName": {
+                    "type": "string"
+                  },
+                  "modelName": {
+                    "type": "string"
+                  },
+                  "modelVersion": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file",
+                  "seriesInstanceUIDs",
+                  "patientID",
+                  "patientName",
+                  "modelName",
+                  "modelVersion"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/orthanc/jobs": {
       "get": {
         "tags": ["orthanc"],
@@ -821,6 +1202,40 @@
         "security": [
           {
             "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/orthanc/modality/{modalityID}/linked/storage/enabled": {
+      "get": {
+        "tags": ["orthanc"],
+        "summary": "Get Linked DICOM Modality With Enabled C-Store",
+        "description": "Get linked DICOM modality with enabled C-Store.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modalityID",
+            "in": "path",
+            "description": "Modality ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1046,6 +1461,29 @@
         }
       }
     },
+    "/user/tutorial/reset": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Reset Tutorial",
+        "description": "Reset tutorial.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/all": {
       "get": {
         "tags": ["user"],
@@ -1097,6 +1535,29 @@
         "tags": ["user"],
         "summary": "Get Current Tenant User",
         "description": "Get current tenant user.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/metadata": {
+      "get": {
+        "tags": ["user"],
+        "summary": "Get User Metadata",
+        "description": "Get user metadata.",
         "security": [
           {
             "bearerAuth": []
@@ -1183,6 +1644,40 @@
         }
       }
     },
+    "/user/metadata/update": {
+      "put": {
+        "tags": ["user"],
+        "summary": "Update User Metadata",
+        "description": "Update user metadata.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update user metadata request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserMetadataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/{id}/remove": {
       "delete": {
         "tags": ["user"],
@@ -1233,6 +1728,109 @@
           "outputMode": {
             "type": "string",
             "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
+          }
+        }
+      },
+      "AddContactFormRequest": {
+        "required": ["token", "name", "email", "message"],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "AddOnboardingQuestionnaireAnswerRequest": {
+        "required": ["questionnaireType", "onboardingQuestionnaireAnswers"],
+        "type": "object",
+        "properties": {
+          "questionnaireType": {
+            "type": "string",
+            "enum": ["PRE_SURVEY", "POST_SURVEY"]
+          },
+          "onboardingQuestionnaireAnswers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["questionnaireId", "questionnaireQuestion"],
+              "properties": {
+                "questionnaireId": {
+                  "type": "string"
+                },
+                "questionnaireQuestion": {
+                  "type": "string"
+                },
+                "questionnaireAnswerIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "questionnaireAnswers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "AddOnboardingModelQuestionnaireAnswerRequest": {
+        "required": ["modelId", "onboardingModelQuestionnaireAnswers"],
+        "type": "object",
+        "properties": {
+          "modelId": {
+            "type": "string"
+          },
+          "onboardingModelQuestionnaireAnswers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["questionnaireId", "questionnaireQuestion"],
+              "properties": {
+                "questionnaireId": {
+                  "type": "string"
+                },
+                "questionnaireQuestion": {
+                  "type": "string"
+                },
+                "questionnaireAnswerIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "questionnaireAnswers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "SubscribeRequest": {
+        "required": ["token", "email"],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
           }
         }
       },
@@ -1408,6 +2006,83 @@
           }
         }
       },
+      "StoreStudyCustomSeriesRequest": {
+        "required": [
+          "modelName",
+          "modelVersion",
+          "encodedData",
+          "inputSeriesFileType"
+        ],
+        "type": "object",
+        "properties": {
+          "modelName": {
+            "type": "string"
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "encodedData": {
+            "type": "string"
+          },
+          "inputSeriesFileType": {
+            "type": "string",
+            "enum": ["PDF", "DCM"]
+          }
+        }
+      },
+      "UpdateModelFeedbackRequest": {
+        "required": ["inferenceModelId", "modelId", "feedbackType"],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "inferenceModelId": {
+            "type": "string"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "feedbackType": {
+            "type": "string",
+            "enum": ["APPROVE", "REJECT"]
+          },
+          "modelFeedbackAnswers": {
+            "required": [
+              "questionnaireId",
+              "questionnaireQuestion",
+              "questionnaireAnswerIds",
+              "questionnaireAnswers"
+            ],
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "object",
+              "properties": {
+                "questionnaireId": {
+                  "type": "string"
+                },
+                "questionnaireQuestion": {
+                  "type": "string"
+                },
+                "questionnaireAnswerIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "questionnaireAnswers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "UpdateTenantUserRequest": {
         "required": ["id", "role", "name", "licenseNo", "specialty"],
         "type": "object",
@@ -1474,6 +2149,23 @@
           "outputMode": {
             "type": "string",
             "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
+          }
+        }
+      },
+      "UpdateUserMetadataRequest": {
+        "type": "object",
+        "properties": {
+          "metadata": {
+            "type": "object"
+          }
+        }
+      },
+      "ValidateTurnstileTokenRequest": {
+        "required": ["token"],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
           }
         }
       },

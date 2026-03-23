@@ -11,10 +11,18 @@ import (
 type InferenceCommandServiceInterface interface {
 	// AddInferenceModel adds an inference model
 	AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error
+	// AddOnboardingModelQuestionnaireAnswers adds onboarding model questionnaire answers
+	AddOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
 	// DeleteInferenceModel deletes an inference model
 	DeleteInferenceModel(ctx context.Context, ID string) error
+	// GenerateInferenceModelPredictRequest generates the prediction request payload
+	GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error)
 	// PredictInferenceModel predicts an inference model
-	PredictInferenceModel(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
+	PredictInferenceModel(ctx context.Context, tenantID, userID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
+	// RemoveModelFeedback removes model feedback
+	RemoveModelFeedback(ctx context.Context, data types.RemoveModelFeedback) error
+	// RemoveOnboardingModelQuestionnaireAnswer removes an onboarding model questionnaire answer
+	RemoveOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error
 	// RestartInferenceModelContainer restarts an inference model container
 	RestartInferenceModelContainer(ctx context.Context, containerID string) error
 	// StartInferenceModelContainer starts an inference model container
@@ -23,4 +31,6 @@ type InferenceCommandServiceInterface interface {
 	StopInferenceModelContainer(ctx context.Context, containerID string) error
 	// UpdateInferenceModel updates an inference model
 	UpdateInferenceModel(ctx context.Context, data types.UpdateInferenceModel) error
+	// UpdateModelFeedback updates model feedback
+	UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error
 }

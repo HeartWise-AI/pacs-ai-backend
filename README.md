@@ -28,11 +28,17 @@ Before running this repository, ensure you have:
    git clone https://github.com/HeartWise-AI/pacs-ai-backend.git
    git clone https://github.com/HeartWise-AI/PACS-AI.git
 
+   # Clone agent codebase
+   cd pacs-ai-backend
+   git clone https://github.com/HeartWise-AI/cardio-agent.git
+   cd ..
+
    # Setup environment files
    cp PACS-AI/platform/app/.env.example PACS-AI/platform/app/.env
    cp pacs-ai-backend/api-pacs/.env.example pacs-ai-backend/api-pacs/.env
    cp pacs-ai-backend/orthanc/.env.example pacs-ai-backend/orthanc/.env
    cp pacs-ai-backend/nginx/.env.example pacs-ai-backend/nginx/.env
+   cp pacs-ai-backend/cardio-agent/.env.example pacs-ai-backend/cardio-agent/.env
    ```
 
 2. Create Docker network:
@@ -163,6 +169,7 @@ Update `api-pacs/.env` with the following variables:
 | `OPENAPI_DOCS_PASSWORD`     | Strong password for API documentation access                                        |
 | `ORTHANC_AET`               | Should be set to `PACS_AI`                                                          |
 | `ORTHANC_BASE_URL`          | Should be set to `http://orthanc:8042` or correct port                              |
+| `ORTHANC_LOCAL_CACHE_EXPIRATION_IN_HOURS`             | Should be set to `24` (default) or desired hour           |
 | `REDIS_HOST`                | Should be set to `redis`                                                            |
 | `REDIS_PORT`                | Should be set to `6379` (do not change)                                             |
 | `REDIS_PASSWORD`            | Should be set to `pacs.staging` (requires update in `redis/redis.conf` if changed)  |
@@ -222,6 +229,8 @@ Update `api-pacs/.env` with the following variables:
 | `API_NAME`                  | Should be set to `api-pacs` (do not change)                                                                               |
 | `API_URL_REST_PORT`         | Should be set to `8000` (do not change)                                                                                   |
 | `APP_URL`                   | Should be set to `http://localhost:3000`                                                                                  |
+| `CLOUDFLARE_SECRET_KEY`    | Your Cloudflare secret key                                                                                                 |
+| `CLOUDFLARE_TURNSTILE_BASE_URL` | Should be set to `https://challenges.cloudflare.com/turnstile/v0`                                                     |
 | `DOCKER_USERNAME`           | Your DockerHub username                                                                                                   |
 | `DOCKER_PASSWORD`           | Your DockerHub password                                                                                                   |
 | `DOCKER_NETWORK`            | Should be set to `pacs-net`                                                                                               |
@@ -230,12 +239,16 @@ Update `api-pacs/.env` with the following variables:
 | `FIREBASE_PROJECT_ID`       | Your Firebase project ID (same as in `PACS-AI/platform/app/.env`)                                                         |
 | `FIREBASE_SUPERUSER_KEY`    | Strong password for super user access (used for first user creation and API access)                                       |
 | `KIBANA_BASE_URL`           | Should be set to `http://localhost:5601`                                                                                  |
+| `MAILCHIMP_API_KEY`         | Your Mailchimp API key                                                                                                    |
+| `MAILCHIMP_BASE_URL`        | Should be set to `https://us14.api.mailchimp.com`                                                                         |
+| `MAILCHIMP_LIST_ID`         | Your Mailchimp list ID                                                                                                    |
 | `MAILGUN_API_KEY`           | Your Mailgun API key                                                                                                      |
 | `MAILGUN_DOMAIN`            | Your Mailgun domain                                                                                                       |
 | `MAILGUN_SENDER_EMAIL`      | Your sender email (e.g., `no-reply@MyDomain.com`)                                                                         |
 | `OPENAPI_DOCS_PASSWORD`     | Strong password for API documentation access                                                                              |
 | `ORTHANC_AET`               | Should be set to `PACS_AI`                                                                                                |
 | `ORTHANC_BASE_URL`          | Should be set to `http://orthanc:8042` or correct port                                                                    |
+| `ORTHANC_LOCAL_CACHE_EXPIRATION_IN_HOURS`             | Should be set to `24` (default) or desired hour                                                 |
 | `REDIS_HOST`                | Should be set to `localhost`                                                                                              |
 | `REDIS_PORT`                | Should be set to `6379` (do not change)                                                                                   |
 | `REDIS_PASSWORD`            | Should be set to `pacs.staging` (requires update in `redis/redis.conf` if changed)                                        |

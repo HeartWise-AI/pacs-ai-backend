@@ -1,6 +1,8 @@
 services:
   api-pacs:
+    env_file: .env
     build: .
+    image: pacs-ai-backend-api-pacs:latest
     container_name: api-pacs
     restart: unless-stopped
     networks:
@@ -8,6 +10,8 @@ services:
       - pacs-net
     expose:
       - ${API_URL_REST_PORT}
+    ports:
+      - ${API_URL_REST_PORT}:${API_URL_REST_PORT}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:

@@ -1,2 +1,7 @@
 .vscode
 .idea
+.venv
+**.dcm
+**.html
+**.csv
+*.txt

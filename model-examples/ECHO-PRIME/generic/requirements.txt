@@ -1,0 +1,9 @@
+fastapi==0.115.6
+uvicorn==0.34.0
+pydicom==3.0.1
+nibabel==5.3.2
+dicom2nifti==2.6.1
+
+pandas==2.2.3
+opencv-python-headless==4.5.5.64
+pytorch-lightning==2.2.0.post0

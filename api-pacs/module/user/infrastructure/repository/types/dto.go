@@ -39,3 +39,8 @@ type UpdateTenantUserPassword struct {
 	TenantID    string
 	NewPassword string
 }
+
+type UpsertUserMetadata struct {
+	UserID   string
+	Metadata string
+}

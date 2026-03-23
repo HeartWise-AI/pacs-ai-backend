@@ -98,6 +98,33 @@ func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertLoginLog(c
 	}
 }
 
+// InsertPredictInferenceModelLog decorator pattern to insert predict inference model log
+func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertPredictInferenceModelLog(ctx context.Context, data repositoryTypes.CreatePredictInferenceModelLog) (*index.Response, error) {
+	output := make(chan *index.Response, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("insert_predict_inference_model_log", config.Settings())
+	errors := hystrix.Go("insert_predict_inference_model_log", func() error {
+		predictInferenceModel, err := repository.ElasticsearchCommandRepositoryInterface.InsertPredictInferenceModelLog(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- predictInferenceModel
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errChan:
+		return nil, err
+	case err := <-errors:
+		return nil, err
+	}
+}
+
 // InsertRetrieveStudyLog decorator pattern to insert retrieved study log
 func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertRetrieveStudyLog(ctx context.Context, data repositoryTypes.CreateRetrieveStudyLog) (*index.Response, error) {
 	output := make(chan *index.Response, 1)
@@ -115,6 +142,31 @@ func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertRetrieveSt
 		return nil
 	}, nil)
 
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errChan:
+		return nil, err
+	case err := <-errors:
+		return nil, err
+	}
+}
+
+// InsertStoredCustomSeriesLog decorator pattern to insert stored custom series log
+func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertStoredCustomSeriesLog(ctx context.Context, data repositoryTypes.CreateStoredCustomSeriesLog) (*index.Response, error) {
+	output := make(chan *index.Response, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("insert_stored_custom_series_log", config.Settings())
+	errors := hystrix.Go("insert_stored_custom_series_log", func() error {
+		storedCustomSeries, err := repository.ElasticsearchCommandRepositoryInterface.InsertStoredCustomSeriesLog(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+		output <- storedCustomSeries
+		return nil
+	}, nil)
 	select {
 	case out := <-output:
 		return out, nil

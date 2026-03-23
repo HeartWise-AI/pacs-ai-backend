@@ -56,6 +56,10 @@ type UpdateTenantUserPasswordRequest struct {
 	NewPassword string `json:"newPassword" validate:"required"`
 }
 
+type UpdateUserMetadataRequest struct {
+	Metadata map[string]interface{} `json:"metadata"`
+}
+
 type CreateTenantUserResponse struct {
 	Password string `json:"password" validate:"required"`
 }
@@ -72,4 +76,11 @@ type GetTenantUserResponse struct {
 	IsAccountDisabled bool   `json:"isAccountDisabled"`
 	CreatedAt         uint   `json:"createdAt"`
 	UpdatedAt         uint   `json:"updatedAt"`
+}
+
+type GetUserMetadataResponse struct {
+	UserID    string                 `json:"userId"`
+	Metadata  map[string]interface{} `json:"metadata"`
+	CreatedAt uint64                 `json:"createdAt"`
+	UpdatedAt uint64                 `json:"updatedAt"`
 }

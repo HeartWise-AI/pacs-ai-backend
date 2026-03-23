@@ -1,7 +1,20 @@
 package rest
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+
+	"github.com/go-playground/validator/v10"
+
+	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
+	"api-pacs/interfaces/http/rest/viewmodels"
+	"api-pacs/internal/errors"
+	apiError "api-pacs/internal/errors"
 	"api-pacs/module/tenant/application"
+	"api-pacs/module/tenant/domain/entity"
+	serviceTypes "api-pacs/module/tenant/infrastructure/service/types"
+	types "api-pacs/module/tenant/interfaces/http"
 )
 
 // TenantCommandController request controller for record command
@@ -9,92 +22,114 @@ type TenantCommandController struct {
 	application.TenantCommandServiceInterface
 }
 
-// // CreateRecord request handler to create record
-// func (controller *RecordCommandController) CreateRecord(w http.ResponseWriter, r *http.Request) {
-// 	var request types.CreateRecordRequest
+// AddOnboardingQuestionnaireAnswers adds onboarding questionnaire answers
+func (controller *TenantCommandController) AddOnboardingQuestionnaireAnswers(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
-// 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-// 		response := viewmodels.HTTPResponseVM{
-// 			Status:    http.StatusBadRequest,
-// 			Success:   false,
-// 			Message:   "Invalid payload request.",
-// 			ErrorCode: apiError.InvalidRequestPayload,
-// 		}
+	var request types.AddOnboardingQuestionnaireAnswerRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
 
-// 		response.JSON(w)
-// 		return
-// 	}
+		response.JSON(w)
+		return
+	}
 
-// 	// validate request
-// 	err := types.Validate.Struct(request)
-// 	if err != nil {
-// 		errors := err.(validator.ValidationErrors)
-// 		if len(errors) > 0 {
-// 			response := viewmodels.HTTPResponseVM{
-// 				Status:    http.StatusBadRequest,
-// 				Success:   false,
-// 				Message:   types.ValidationErrors[errors[0].StructNamespace()],
-// 				ErrorCode: apiError.InvalidPayload,
-// 			}
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
 
-// 			response.JSON(w)
-// 			return
-// 		}
+			response.JSON(w)
+			return
+		}
 
-// 		response := viewmodels.HTTPResponseVM{
-// 			Status:    http.StatusBadRequest,
-// 			Success:   false,
-// 			Message:   "Invalid payload request.",
-// 			ErrorCode: apiError.InvalidRequestPayload,
-// 		}
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
 
-// 		response.JSON(w)
-// 		return
-// 	}
+		response.JSON(w)
+		return
+	}
 
-// 	record := serviceTypes.CreateRecord{
-// 		ID:   request.ID,
-// 		Data: request.Data,
-// 	}
+	// validate questionnaire type
+	if request.QuestionnaireType != entity.PreSurveyQuestionnaireType && request.QuestionnaireType != entity.PostSurveyQuestionnaireType {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid questionnaire type.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
 
-// 	res, err := controller.RecordCommandServiceInterface.CreateRecord(context.TODO(), record)
-// 	if err != nil {
-// 		var httpCode int
-// 		var errorMsg string
+		response.JSON(w)
+		return
+	}
 
-// 		switch err.Error() {
-// 		case errors.DatabaseError:
-// 			httpCode = http.StatusInternalServerError
-// 			errorMsg = "Error occurred while saving record."
-// 		case errors.DuplicateRecord:
-// 			httpCode = http.StatusConflict
-// 			errorMsg = "Record ID already exist."
-// 		default:
-// 			httpCode = http.StatusInternalServerError
-// 			errorMsg = "Please contact technical support."
-// 		}
+	var onboardingQuestionnaireAnswers []serviceTypes.OnboardingQuestionnaireAnswer
 
-// 		response := viewmodels.HTTPResponseVM{
-// 			Status:    httpCode,
-// 			Success:   false,
-// 			Message:   errorMsg,
-// 			ErrorCode: err.Error(),
-// 		}
+	if len(request.OnboardingQuestionnaireAnswers) > 0 {
+		for _, answer := range request.OnboardingQuestionnaireAnswers {
+			onboardingQuestionnaireAnswer := serviceTypes.OnboardingQuestionnaireAnswer{
+				QuestionnaireID:        answer.QuestionnaireID,
+				QuestionnaireQuestion:  answer.QuestionnaireQuestion,
+				QuestionnaireAnswerIDs: answer.QuestionnaireAnswerIDs,
+				QuestionnaireAnswers:   answer.QuestionnaireAnswers,
+			}
 
-// 		response.JSON(w)
-// 		return
-// 	}
+			onboardingQuestionnaireAnswers = append(onboardingQuestionnaireAnswers, onboardingQuestionnaireAnswer)
+		}
+	}
 
-// 	response := viewmodels.HTTPResponseVM{
-// 		Status:  http.StatusOK,
-// 		Success: true,
-// 		Message: "Successfully created record.",
-// 		Data: &types.RecordResponse{
-// 			ID:        res.ID,
-// 			Data:      res.Data,
-// 			CreatedAt: time.Now().Unix(),
-// 		},
-// 	}
+	err = controller.TenantCommandServiceInterface.AddOnboardingQuestionnaireAnswers(context.TODO(), serviceTypes.AddOnboardingQuestionnaireAnswer{
+		TenantID:                       tenantID,
+		UserID:                         userID,
+		QuestionnaireType:              request.QuestionnaireType,
+		OnboardingQuestionnaireAnswers: onboardingQuestionnaireAnswers,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
 
-// 	response.JSON(w)
-// }
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while saving onboarding questionnaire answer."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully saved onboarding questionnaire answer.",
+	}
+
+	response.JSON(w)
+}

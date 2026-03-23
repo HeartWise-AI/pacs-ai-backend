@@ -23,6 +23,11 @@ type GetTenantUser struct {
 	UpdatedAt         uint
 }
 
+type ResetTutorial struct {
+	TenantID string
+	UserID   string
+}
+
 type UpdateTenantUser struct {
 	ID        string
 	TenantID  string
@@ -36,4 +41,9 @@ type UpdateTenantUserPassword struct {
 	TenantID    string
 	ID          string
 	NewPassword string
+}
+
+type UpdateUserMetadata struct {
+	UserID   string
+	Metadata map[string]interface{}
 }

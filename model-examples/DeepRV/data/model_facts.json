@@ -1,0 +1,36 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "DeepRV",
+      "Description": "Assesses right ventricular function as normal or abnormal from coronary angiogram (XA) dicoms. Useful to access global cardiac function during coronary angiography",
+      "Developed_by": "Heartwise",
+      "Development_period": "2024-2025",
+      "Version": "1.0.0"
+    },
+    "Mechanism": {
+      "Outcome": "Classification of right ventricle function",
+      "Output": "Probability of right ventricle function",
+      "Target_population": "",
+      "Input_data_source": "angiograms",
+      "Input_data_type": "dicom",
+      "Model_type": "Deep Learning",
+      "Supported_DICOM_modalities": "XA"
+    },
+    "Model_Components": {
+      "Model": {
+        "Purpose": "Classify right ventricle function",
+        "Output": "Probability of right ventricle function"
+      }
+    },
+    "Uses_and_directions": {
+      "General_use": "This model can be used to classify right ventricle function as normal or abnormal from angiograms.",
+      "Target_population_and_use_case": "This model is intended for use in the cardiac imaging field to assist in the diagnosis of right ventricular dysfunction.",
+      "Before_using_this_model": "Before using this model, please ensure that the input data is in the correct format and that the model is trained on the appropriate data."
+    },
+    "Warnings_and_limitations": {
+      "Image_Quality": "The model requires high-quality angiograms with clear visualization of the right ventricle.",
+      "Multiple_Devices": "The model is designed to classify a single right ventricle in the video.",
+      "Confidence_Scores": "Current threshold applied on probability output for classification is 0.1"
+    }
+  }
+}

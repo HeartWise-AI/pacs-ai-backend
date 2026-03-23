@@ -1,0 +1,596 @@
+{
+    "lvp_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "LVp"
+    },
+    "lvp_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "LVp"
+    },
+    "prox_rca_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Proximal RCA"
+    },
+    "prox_rca_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Proximal RCA"
+    },
+    "mid_rca_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Mid RCA"
+    },
+    "mid_rca_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Mid RCA"
+    },
+    "dist_rca_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Distal RCA"
+    },
+    "dist_rca_stenosis_binary": {
+        "normal": 0,    
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Distal RCA"
+    },
+    "pda_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Posterior Descending Artery"
+    },
+    "pda_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Posterior Descending Artery"
+    },
+    "posterolateral_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Posterolateral Branch"
+    },
+    "posterolateral_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Posterolateral Branch"
+    },
+    "left_main_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Left Main Branch"
+    },
+    "left_main_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Left Main Branch"
+    },
+    "prox_lad_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Proximal LAD"
+    },
+    "prox_lad_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Proximal LAD"
+    },
+    "mid_lad_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Mid LAD"
+    },
+    "mid_lad_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Mid LAD"
+    },
+    "dist_lad_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Distal LAD"
+    },
+    "dist_lad_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Distal LAD"
+    },
+    "D1_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "D1 Branch"
+    },
+    "D1_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "D1 Branch"
+    },
+    "D2_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "D2 Branch"
+    },
+    "D2_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "D2 Branch"
+    },
+    "prox_lcx_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Proximal LCX"
+    },
+    "prox_lcx_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Proximal LCX"
+    },
+    "mid_lcx_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Mid LCX"
+    },
+    "mid_lcx_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Mid LCX"
+    },
+    "dist_lcx_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Distal LCX"
+    },
+    "dist_lcx_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Distal LCX"
+    },
+    "om1_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "OM1 (Obtuse Marginal 1)"
+    },
+    "om1_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "OM1 (Obtuse Marginal 1)"
+    },
+    "om2_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "OM2 (Obtuse Marginal 2)"
+    },
+    "om2_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "OM2 (Obtuse Marginal 2)"
+    },
+    "bx_stenosis": {
+        "regression": 0,
+        "head_dim": 1,
+        "name": "Branch Vessel"
+    },
+    "bx_stenosis_binary": {
+        "normal": 0,
+        "blocked": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Branch Vessel"
+    },
+    "prox_rca_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Proximal RCA"
+    },
+    "mid_rca_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Mid RCA"
+    },
+    "dist_rca_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Distal RCA"
+    },
+    "pda_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Posterior Descending Artery"
+    },
+    "posterolateral_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Posterolateral Branch"
+    },
+    "left_main_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Left Main Branch"
+    }, 
+    "prox_lad_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Proximal LAD"
+    },
+    "mid_lad_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Mid LAD"
+    },
+    "dist_lad_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Distal LAD"
+    },
+    "D1_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "D1 Branch"
+    },
+    "D2_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "D2 Branch"
+    },
+    "prox_lcx_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Proximal LCX"
+    },
+    "mid_lcx_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Mid LCX"
+    },
+    "dist_lcx_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Distal LCX"
+    },
+    "om1_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "OM1 (Obtuse Marginal 1)"
+    },
+    "om2_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "OM2 (Obtuse Marginal 2)"
+    },
+    "bx_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Branch Vessel"
+    },
+    "lvp_calcif_binary": {
+        "normal": 0,
+        "calcified": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "LVp"
+    },
+    "prox_rca_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Proximal RCA"
+    },
+    "mid_rca_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Mid RCA"
+    },
+    "dist_rca_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Distal RCA"
+    },
+    "pda_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Posterior Descending Artery"
+    },
+    "posterolateral_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Posterolateral Branch"
+    },
+    "left_main_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Left Main Branch"
+    },
+    "prox_lad_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Proximal LAD"
+    },
+    "mid_lad_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Mid LAD"
+    },
+    "dist_lad_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Distal LAD"
+    },
+    "D1_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "D1 Branch"
+    },
+    "D2_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "D2 Branch"
+    },
+    "prox_lcx_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Proximal LCX"
+    },
+    "mid_lcx_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Mid LCX"
+    },
+    "dist_lcx_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Distal LCX"
+    },
+    "om1_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "OM1 (Obtuse Marginal 1)"
+    },
+    "om2_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "OM2 (Obtuse Marginal 2)"
+    },
+    "bx_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Branch Vessel"
+    },
+    "lvp_cto": {
+        "normal": 0,
+        "cto": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "LVp"
+    },
+    "prox_rca_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Proximal RCA"
+    },
+    "mid_rca_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Mid RCA"
+    },
+    "dist_rca_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Distal RCA"
+    },
+    "pda_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Posterior Descending Artery"
+    },
+    "posterolateral_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Posterolateral Branch"
+    },
+    "left_main_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Left Main Branch"
+    },
+    "prox_lad_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Proximal LAD"
+    },
+    "mid_lad_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Mid LAD"
+    },
+    "dist_lad_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Distal LAD"
+    },
+    "D1_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "D1 Branch"
+    },
+    "D2_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "D2 Branch"
+    },
+    "prox_lcx_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Proximal LCX"
+    },
+    "mid_lcx_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Mid LCX"
+    },
+    "dist_lcx_thrombus": { 
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Distal LCX"
+    },
+    "om1_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "OM1 (Obtuse Marginal 1)"
+    },
+    "om2_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "OM2 (Obtuse Marginal 2)"
+    },
+    "bx_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "Branch Vessel"
+    },
+    "lvp_thrombus": {
+        "normal": 0,
+        "thrombus": 1,
+        "threshold": 0.5,
+        "head_dim": 1,
+        "name": "LVp"
+    }
+}

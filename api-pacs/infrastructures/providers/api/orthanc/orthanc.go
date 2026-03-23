@@ -453,6 +453,153 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modality
 	return results, nil
 }
 
+// RetrieveModalityStudyByInstances retrieve modality study by instances (for US modalities)
+func (o *OrthancAPI) RetrieveModalityStudyByInstances(ctx context.Context, modalityID, localAet, studyInstanceUID string) ([]types.QueryModalityResponse, error) {
+	// get modality series by study
+	queryModalitySeriesAnswersResponse, err := o.FindModalitySeriesByStudy(ctx, modalityID, localAet, studyInstanceUID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Initialize an empty slice to store results
+	var results []types.QueryModalityResponse
+
+	// Setup concurrency tools
+	var m = sync.Mutex{}
+	eg, _ := errgroup.WithContext(ctx)
+
+	// For each series, retrieve instances
+	for _, series := range queryModalitySeriesAnswersResponse {
+		// First, query for instances in this series
+		buf := new(bytes.Buffer)
+		err := json.NewEncoder(buf).Encode(map[string]interface{}{
+			"Level":     "Instance",
+			"LocalAet":  localAet,
+			"Normalize": true,
+			"Query": map[string]string{
+				"StudyInstanceUID":  series.StudyInstanceUID,
+				"SeriesInstanceUID": series.SeriesInstanceUID,
+			},
+			"Timeout": 0,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/query", o.BaseURL, modalityID), buf)
+		if err != nil {
+			return nil, err
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		var queryResponse types.QueryModalityResponse
+		if err := json.NewDecoder(resp.Body).Decode(&queryResponse); err != nil {
+			resp.Body.Close()
+			return nil, err
+		}
+		resp.Body.Close()
+
+		if len(queryResponse.ID) == 0 {
+			continue
+		}
+
+		// Get instances from the query results
+		var instancesResponse []map[string]interface{}
+		err = o.findQueryAnswers(queryResponse.ID, &instancesResponse)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(instancesResponse) == 0 {
+			continue
+		}
+
+		// Set limit for concurrency
+		eg.SetLimit(10) // Limit concurrent requests
+
+		// Retrieve each instance individually
+		for _, instance := range instancesResponse {
+			instanceCopy := instance // Create a copy for the closure
+			eg.Go(func() error {
+				// Extract SOPInstanceUID from instance
+				sopInstanceUID, ok := instanceCopy["SOPInstanceUID"].(string)
+				if !ok || sopInstanceUID == "" {
+					return nil // Skip this instance but don't fail the whole operation
+				}
+
+				// C-MOVE for this specific instance
+				moveBuf := new(bytes.Buffer)
+				err := json.NewEncoder(moveBuf).Encode(map[string]interface{}{
+					"Level": "Instance",
+					"Resources": []map[string]string{
+						{
+							"StudyInstanceUID":  series.StudyInstanceUID,
+							"SeriesInstanceUID": series.SeriesInstanceUID,
+							"SOPInstanceUID":    sopInstanceUID,
+						},
+					},
+					"Asynchronous": true,
+					"Full":         true,
+					"Permissive":   true,
+					"Priority":     0,
+					"Simplify":     true,
+					"Synchronous":  false,
+					"TargetAet":    localAet,
+					"Timeout":      0,
+				})
+				if err != nil {
+					return err
+				}
+
+				moveReq, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/move", o.BaseURL, modalityID), moveBuf)
+				if err != nil {
+					return err
+				}
+
+				moveResp, err := client.Do(moveReq)
+				if err != nil {
+					return err
+				}
+				defer moveResp.Body.Close()
+
+				if moveResp.StatusCode < 200 || moveResp.StatusCode > 299 {
+					_, err := io.ReadAll(moveResp.Body)
+					if err != nil {
+						return err
+					}
+					return errors.New(apiError.OrthancError)
+				}
+
+				var answerResponse types.QueryModalityResponse
+				if err := json.NewDecoder(moveResp.Body).Decode(&answerResponse); err != nil {
+					return err
+				}
+
+				m.Lock()
+				results = append(results, answerResponse)
+				m.Unlock()
+
+				return nil
+			})
+		}
+	}
+
+	// Wait for all goroutines to finish
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	if len(results) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return results, nil
+}
+
 // RetrieveDICOMWebInstanceFile retrieve DICOM web instance file
 func (o *OrthancAPI) RetrieveDICOMWebInstanceFile(ctx context.Context, studyInstanceUID, seriesInstanceUID, sopInstanceUID string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/dicom-web/studies/%s/series/%s/instances/%s", o.BaseURL, studyInstanceUID, seriesInstanceUID, sopInstanceUID), nil)
@@ -553,11 +700,47 @@ func (o *OrthancAPI) RetrieveDICOMWebInstanceMetadata(ctx context.Context, study
 	return instanceMetadata, nil
 }
 
+// StraightDICOMStoreSCU straight DICOM store SCU
+func (o *OrthancAPI) StraightDICOMStoreSCU(ctx context.Context, modalityID string, dicomInstances []byte) (types.StraightDICOMStoreSCUResponse, error) {
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/store-straight", o.BaseURL, modalityID), bytes.NewReader(dicomInstances))
+	if err != nil {
+		return types.StraightDICOMStoreSCUResponse{}, err
+	}
+
+	// set headers
+	req.Header.Set("Content-Type", "application/dicom")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return types.StraightDICOMStoreSCUResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return types.StraightDICOMStoreSCUResponse{}, err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return types.StraightDICOMStoreSCUResponse{}, errors.New(apiError.OrthancError)
+	}
+
+	var straightDICOMStoreSCUResponse types.StraightDICOMStoreSCUResponse
+	if err := json.NewDecoder(resp.Body).Decode(&straightDICOMStoreSCUResponse); err != nil {
+		log.Println("Error:", err)
+		return types.StraightDICOMStoreSCUResponse{}, err
+	}
+
+	return straightDICOMStoreSCUResponse, nil
+}
+
 // TriggerDICOMEchoSCU trigger dicom C-ECHO SCU
 func (o *OrthancAPI) TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error {
 	buf := new(bytes.Buffer)
 	err := json.NewEncoder(buf).Encode(map[string]interface{}{
-		"CheckFind": true,
+		"CheckFind": false,
 		"Timeout":   0,
 	})
 	if err != nil {
@@ -620,6 +803,42 @@ func (o *OrthancAPI) UpdateDICOMModality(ctx context.Context, modalityID string,
 	}
 
 	return nil
+}
+
+// UploadDICOMInstances upload dicom instances
+func (o *OrthancAPI) UploadDICOMInstances(ctx context.Context, dicomInstances []byte) (types.UploadDICOMInstancesResponse, error) {
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/instances", o.BaseURL), bytes.NewReader(dicomInstances))
+	if err != nil {
+		return types.UploadDICOMInstancesResponse{}, err
+	}
+
+	// set headers
+	req.Header.Set("Content-Type", "application/dicom")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return types.UploadDICOMInstancesResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return types.UploadDICOMInstancesResponse{}, err
+		}
+		errorMessage := string(response)
+
+		log.Println("Error:", errorMessage)
+		return types.UploadDICOMInstancesResponse{}, errors.New(apiError.OrthancError)
+	}
+
+	var uploadDICOMInstancesResponse types.UploadDICOMInstancesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&uploadDICOMInstancesResponse); err != nil {
+		log.Println("Error:", err)
+		return types.UploadDICOMInstancesResponse{}, err
+	}
+
+	return uploadDICOMInstancesResponse, nil
 }
 
 func (o *OrthancAPI) findLocalResources(request, response interface{}) error {
