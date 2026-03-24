@@ -328,6 +328,84 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 	response.JSON(w)
 }
 
+// GetInferenceIngestionJobs get inference ingestion jobs
+func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.ResponseWriter, r *http.Request) {
+	// tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	// inferenceModels, err := controller.InferenceQueryServiceInterface.GetInferenceModels(r.Context(), tenantID)
+	// if err != nil {
+	// 	var httpCode int
+	// 	var errorMsg string
+
+	// 	switch err.Error() {
+	// 	case apiError.FirestoreError:
+	// 		httpCode = http.StatusInternalServerError
+	// 		errorMsg = "Firestore service encountered an error."
+	// 	default:
+	// 		httpCode = http.StatusInternalServerError
+	// 		errorMsg = "Please contact technical support."
+	// 	}
+
+	// 	response := viewmodels.HTTPResponseVM{
+	// 		Status:    httpCode,
+	// 		Success:   false,
+	// 		Message:   errorMsg,
+	// 		ErrorCode: err.Error(),
+	// 	}
+
+	// 	response.JSON(w)
+	// 	return
+	// }
+
+	// inferenceModelsResponse := []types.GetInferenceModelResponse{}
+	// for _, inferenceModel := range inferenceModels {
+	// 	// set env to empty if nil
+	// 	envs := inferenceModel.Envs
+	// 	if envs == nil {
+	// 		envs = []string{}
+	// 	}
+
+	// 	// set disallowedDICOMTags to empty if nil
+	// 	disallowedDICOMTags := inferenceModel.DisallowedDICOMTags
+	// 	if disallowedDICOMTags == nil {
+	// 		disallowedDICOMTags = []string{}
+	// 	}
+
+	// 	inferenceModelsResponse = append(inferenceModelsResponse, types.GetInferenceModelResponse{
+	// 		ID:       inferenceModel.ID,
+	// 		TenantID: inferenceModel.TenantID,
+	// 		Container: types.GetContainerInfoResponse{
+	// 			ID:              inferenceModel.Container.ID,
+	// 			Name:            inferenceModel.Container.Name,
+	// 			Status:          inferenceModel.Container.Status,
+	// 			Running:         inferenceModel.Container.Running,
+	// 			StartedAt:       uint64(inferenceModel.Container.StartedAt.Unix()),
+	// 			FinishedAt:      uint64(inferenceModel.Container.FinishedAt.Unix()),
+	// 			CPUPercentUsage: inferenceModel.Container.CPUPercentUsage,
+	// 			MemoryInBytes:   inferenceModel.Container.MemoryInBytes,
+	// 		},
+	// 		Name:                inferenceModel.Name,
+	// 		DockerImage:         inferenceModel.DockerImage,
+	// 		Envs:                envs,
+	// 		DisallowedDICOMTags: disallowedDICOMTags,
+	// 		OutputMode:          inferenceModel.OutputMode,
+	// 		CreatedAt:           uint64(inferenceModel.CreatedAt.Unix()),
+	// 		UpdatedAt:           uint64(inferenceModel.UpdatedAt.Unix()),
+	// 	})
+	// }
+
+	inferenceIngestionJobs := []types.GetInferenceIngestionJobResponse{}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully retrieved inference ingestion jobs.",
+		Data:    inferenceIngestionJobs,
+	}
+
+	response.JSON(w)
+}
+
 // GetModelFeedbackByModelID gets the model feedback by model ID
 func (controller *InferenceQueryController) GetModelFeedbackByModelID(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)

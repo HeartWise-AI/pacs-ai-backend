@@ -142,7 +142,7 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Post("/add", inferenceCommandController.AddInferenceModel)
 							r.Get("/list", inferenceQueryController.GetInferenceModels)
 							r.Get("/{modelID}/feedback", inferenceQueryController.GetModelFeedbackByModelID)
-							r.Delete("/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
+							r.Delete("/{ID}/remove", inferenceCommandController.RemoveInferenceModel)
 							r.Put("/{ID}/update", inferenceCommandController.UpdateInferenceModel)
 							r.Put("/feedback/update", inferenceCommandController.UpdateModelFeedback)
 							r.Delete("/{modelID}/feedback/remove", inferenceCommandController.RemoveModelFeedback)
@@ -162,6 +162,20 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Get("/container/{containerID}/info", inferenceQueryController.GetInferenceModelInfo)
 							r.Get("/container/{containerID}/facts", inferenceQueryController.GetInferenceModelFacts)
 							r.Get("/available", inferenceQueryController.GetInferenceAvailableModels)
+						})
+					})
+
+					// inference ingestion jobs
+					r.Route("/ingestion", func(r chi.Router) {
+						r.Group(func(r chi.Router) {
+							r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+
+							r.Post("/job/create", inferenceCommandController.CreateInferenceIngestionJob)
+							r.Post("/job/{ID}/start", inferenceCommandController.StartInferenceIngestionJob)
+							r.Post("/job/{ID}/stop", inferenceCommandController.StopInferenceInferenceJob)
+							r.Get("/jobs", inferenceQueryController.GetInferenceIngestionJobs)
+							r.Put("/job/{ID}/update", inferenceCommandController.UpdateInferenceIngestionJob)
+							r.Delete("/job/{ID}/remove", inferenceCommandController.RemoveInferenceIngestionJob)
 						})
 					})
 				})

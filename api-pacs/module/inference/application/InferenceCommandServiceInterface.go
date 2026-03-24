@@ -13,12 +13,12 @@ type InferenceCommandServiceInterface interface {
 	AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error
 	// AddOnboardingModelQuestionnaireAnswers adds onboarding model questionnaire answers
 	AddOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
-	// DeleteInferenceModel deletes an inference model
-	DeleteInferenceModel(ctx context.Context, ID string) error
 	// GenerateInferenceModelPredictRequest generates the prediction request payload
 	GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error)
 	// PredictInferenceModel predicts an inference model
 	PredictInferenceModel(ctx context.Context, tenantID, userID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
+	// RemoveInferenceModel deletes an inference model
+	RemoveInferenceModel(ctx context.Context, ID string) error
 	// RemoveModelFeedback removes model feedback
 	RemoveModelFeedback(ctx context.Context, data types.RemoveModelFeedback) error
 	// RemoveOnboardingModelQuestionnaireAnswer removes an onboarding model questionnaire answer

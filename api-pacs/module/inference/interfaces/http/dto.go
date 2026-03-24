@@ -40,6 +40,18 @@ type AddOnboardingModelQuestionnaireAnswerRequest struct {
 	OnboardingModelQuestionnaireAnswers []OnboardingModelQuestionnaireAnswer `json:"onboardingModelQuestionnaireAnswers" validate:"required"`
 }
 
+type CreateInferenceIngestionJobRequest struct {
+	DICOMModality          string   `json:"dicomModality" validate:"required"`
+	ContainerID            string   `json:"containerId" validate:"required"`
+	ModelID                string   `json:"modelId" validate:"required"`
+	ModelName              string   `json:"modelName" validate:"required"`
+	ModelVersion           string   `json:"modelVersion" validate:"required"`
+	Modalities             []string `json:"modalities" validate:"required"`
+	IntervalInMinutes      uint     `json:"intervalInMinutes" validate:"required"`
+	ScheduleStartTimestamp uint64   `json:"scheduleStartTimestamp"`
+	ScheduleEndTimestamp   uint64   `json:"scheduleEndTimestamp"`
+}
+
 type PredictInferenceModelRequest struct {
 	StudyInstanceUID   string                 `json:"studyInstanceUID" validate:"required"`
 	SeriesInstanceUIDs []string               `json:"seriesInstanceUIDs" validate:"required"`
@@ -54,6 +66,13 @@ type UpdateInferenceModelRequest struct {
 
 type UpdateInferenceModelContainerRequest struct {
 	ContainerID string `json:"containerId" validate:"required"`
+}
+
+type UpdateInferenceIngestionJobRequest struct {
+	Modalities             []string `json:"modalities" validate:"required"`
+	IntervalInMinutes      uint     `json:"intervalInMinutes" validate:"required"`
+	ScheduleStartTimestamp uint64   `json:"scheduleStartTimestamp"`
+	ScheduleEndTimestamp   uint64   `json:"scheduleEndTimestamp"`
 }
 
 type UpdateModelFeedbackRequest struct {
@@ -105,6 +124,23 @@ type GetInferenceAvailableModelResponse struct {
 	RejectFeedbackQuestionnaires  []interface{}     `json:"rejectFeedbackQuestionnaires"`
 	OnboardingModelQuestionnaires []interface{}     `json:"onboardingModelQuestionnaires"`
 	OutputMode                    entity.OutputMode `json:"outputMode"`
+}
+
+type GetInferenceIngestionJobResponse struct {
+	ID                     string   `json:"id"`
+	TenantID               string   `json:"tenantId"`
+	DICOMModality          string   `json:"dicomModality"`
+	ContainerID            string   `json:"containerId"`
+	ModelID                string   `json:"modelId"`
+	ModelName              string   `json:"modelName"`
+	ModelVersion           string   `json:"modelVersion"`
+	Modalities             []string `json:"modalities"`
+	IntervalInMinutes      uint     `json:"intervalInMinutes"`
+	ScheduleStartTimestamp uint64   `json:"scheduleStartTimestamp"`
+	ScheduleEndTimestamp   uint64   `json:"scheduleEndTimestamp"`
+	Status                 string   `json:"status"`
+	CreatedAt              uint64   `json:"createdAt"`
+	UpdatedAt              uint64   `json:"updatedAt"`
 }
 
 type GetModelFeedbackResponse struct {

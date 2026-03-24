@@ -107,39 +107,6 @@ func (service *InferenceCommandService) AddOnboardingModelQuestionnaireAnswers(c
 	return nil
 }
 
-// DeleteInferenceModel deletes an inference model
-func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context, ID string) error {
-	// get inference model
-	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByID(ctx, ID)
-	if err != nil {
-		return err
-	}
-
-	// force remove container
-	err = service.DockerSDKInterface.RemoveContainer(ctx, inferenceModel.ContainerID)
-	if err != nil {
-		return errors.New(apiError.DockerError)
-	}
-
-	// delete inference model
-	err = service.InferenceCommandRepositoryInterface.DeleteInferenceModel(ctx, ID)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// RemoveOnboardingModelQuestionnaireAnswer removes an onboarding model questionnaire answer
-func (service *InferenceCommandService) RemoveOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error {
-	err := service.InferenceCommandRepositoryInterface.DeleteOnboardingModelQuestionnaireAnswer(ctx, ID)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // GenerateInferenceModelPredictRequest generates a predict request for inference model
 func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error) {
 	// get inference model
@@ -497,6 +464,39 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	}()
 
 	return predictionResult, nil
+}
+
+// RemoveInferenceModel deletes an inference model
+func (service *InferenceCommandService) RemoveInferenceModel(ctx context.Context, ID string) error {
+	// get inference model
+	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByID(ctx, ID)
+	if err != nil {
+		return err
+	}
+
+	// force remove container
+	err = service.DockerSDKInterface.RemoveContainer(ctx, inferenceModel.ContainerID)
+	if err != nil {
+		return errors.New(apiError.DockerError)
+	}
+
+	// delete inference model
+	err = service.InferenceCommandRepositoryInterface.DeleteInferenceModel(ctx, ID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemoveOnboardingModelQuestionnaireAnswer removes an onboarding model questionnaire answer
+func (service *InferenceCommandService) RemoveOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error {
+	err := service.InferenceCommandRepositoryInterface.DeleteOnboardingModelQuestionnaireAnswer(ctx, ID)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // RemoveModelFeedback removes model feedback
