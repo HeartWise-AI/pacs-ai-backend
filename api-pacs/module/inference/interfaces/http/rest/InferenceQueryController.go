@@ -426,7 +426,7 @@ func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.Res
 			Status:                 "RUNNING",
 			CreatedAt:              1774408898,
 			UpdatedAt:              1774408898,
-		}
+		},
 	}
 
 	response := viewmodels.HTTPResponseVM{
