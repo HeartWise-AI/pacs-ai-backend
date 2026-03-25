@@ -394,7 +394,40 @@ func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.Res
 	// 	})
 	// }
 
-	inferenceIngestionJobs := []types.GetInferenceIngestionJobResponse{}
+	inferenceIngestionJobs := []types.GetInferenceIngestionJobResponse{
+		{
+			ID:                     "3BQ6AdjJ1szfwd7GYyvi9ZziH1Y",
+			TenantID:               "mhi-quebec",
+			DICOMModality:          "PACS_QUERY",
+			ContainerID:            "3BQ6AdjJ1szfwd7GYyvi9ZziH1Y",
+			ModelID:                "model_template",
+			ModelName:              "Model Template",
+			ModelVersion:           "1.0.0",
+			Modalities:             []string{"XA", "US"},
+			IntervalInMinutes:      15,
+			ScheduleStartTimestamp: 0,
+			ScheduleEndTimestamp:   0,
+			Status:                 "RUNNING",
+			CreatedAt:              1774408898,
+			UpdatedAt:              1774408898,
+		},
+		{
+			ID:                     "4BQ6AdjJ1szfwd7GYyvi9ZziH1Y",
+			TenantID:               "mhi-quebec",
+			DICOMModality:          "PACS_QUERY",
+			ContainerID:            "3BQ6AdjJ1szfwd7GYyvi9ZziH1Y",
+			ModelID:                "model_template_1",
+			ModelName:              "Model Template 1",
+			ModelVersion:           "1.0.1",
+			Modalities:             []string{"XA"},
+			IntervalInMinutes:      5,
+			ScheduleStartTimestamp: 1774408898,
+			ScheduleEndTimestamp:   1777087379,
+			Status:                 "RUNNING",
+			CreatedAt:              1774408898,
+			UpdatedAt:              1774408898,
+		}
+	}
 
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
