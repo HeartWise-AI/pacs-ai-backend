@@ -19,6 +19,9 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 
+SERIES_TIME_TAG = (0x0008, 0x0031)
+
+
 class VideoMILWrapper(torch.nn.Module):
     def __init__(self, video_encoder, mil_model, num_videos: int):
         """Wrapper around *VideoEncoder* and *MultiInstanceLinearProbing*.
@@ -114,6 +117,9 @@ class VideoMILWrapper(torch.nn.Module):
 
 
 class CustomPredictionService(BasePredictionService):
+    DEFAULT_DATASET_MEAN = [122.09012603759766, 122.09012603759766, 122.09012603759766]
+    DEFAULT_DATASET_STD = [28.790834426879883, 28.790834426879883, 28.790834426879883]
+
     def load_model(self, config: Config):
         print("Loading model")
 
@@ -131,7 +137,7 @@ class CustomPredictionService(BasePredictionService):
             CustomPredictionService.model_config = json.load(fp)
             
         # Create and load the model
-        print(f"Model path: {CustomPredictionService.model_config["ModelStateDict"]["model_path"]}")
+        print(f"Model path: {CustomPredictionService.model_config['ModelStateDict']['model_path']}")
         try:
             print("Loading video encoder")
             video_encoder = VideoEncoder(
@@ -745,7 +751,7 @@ class CustomPredictionService(BasePredictionService):
             frame_count = 0
             compressedVideo = []
             capture = cv.VideoCapture(avi_path)
-            stride = CustomPredictionService.model_config["VideoMILWrapper"]["frame_stride"]
+            stride, _ = self._get_video_loading_config()
             try:
                 while True:
                     ret, frame = capture.read()
@@ -777,10 +783,52 @@ class CustomPredictionService(BasePredictionService):
             print(f"Error processing DICOM {dicom_name}: {e}")
             return None
 
+    def _get_video_loading_config(self) -> tuple[int, int]:
+        """Return (stride, resize) for service-side video loading."""
+        wrapper_cfg = CustomPredictionService.model_config.get("VideoMILWrapper", {})
+        stride = wrapper_cfg.get("stride")
+        if stride is None:
+            stride = wrapper_cfg.get("frame_stride", 1)
+        resize = wrapper_cfg.get("resize", 224)
+        return int(stride), int(resize)
+
+    def _get_dataset_normalization_stats(self) -> tuple[list[float], list[float]]:
+        """Return dataset normalization stats used by the deployment model."""
+        video_encoder_cfg = CustomPredictionService.model_config.get("VideoEncoder", {})
+        dataset_mean = video_encoder_cfg.get("dataset_mean")
+        dataset_std = video_encoder_cfg.get("dataset_std")
+
+        if dataset_mean is None:
+            dataset_mean = CustomPredictionService.model_config.get("dataset_mean")
+        if dataset_std is None:
+            dataset_std = CustomPredictionService.model_config.get("dataset_std")
+
+        if dataset_mean is None or dataset_std is None:
+            dataset_mean = self.DEFAULT_DATASET_MEAN
+            dataset_std = self.DEFAULT_DATASET_STD
+
+        return list(dataset_mean), list(dataset_std)
+
+    def _extract_series_time(self, dicom: pydicom.Dataset) -> float:
+        """Extract sortable series time from the DICOM; fallback to inf."""
+        try:
+            if SERIES_TIME_TAG in dicom:
+                raw_value = dicom[SERIES_TIME_TAG].value
+                if raw_value is not None:
+                    return float(str(raw_value))
+        except Exception:
+            pass
+        return float("inf")
+
     def _run_inference(self, dicoms: list[pydicom.Dataset]) -> dict[str, float] | None:
         try:
             videos = []
             max_videos = CustomPredictionService.model_config["VideoMILWrapper"]["num_videos"]
+            _, resize = self._get_video_loading_config()
+
+            # Match the external DeepCORO path: take the first N after sorting
+            # by series/acquisition time.
+            dicoms = sorted(dicoms, key=self._extract_series_time)
                         
             stop_pt = min(len(dicoms), max_videos)
             dicom_ok = 0
@@ -826,11 +874,11 @@ class CustomPredictionService(BasePredictionService):
                     video = video[indices]     
                                
                 # Resize the video
-                video = v2.Resize((224, 224), antialias=True)(video)                            
+                video = v2.Resize((resize, resize), antialias=True)(video)
 
-                # Normalize the video
-                mean = [105.24055480957031, 105.24055480957031, 105.24055480957031]
-                std = [39.24827194213867, 39.24827194213867, 39.24827194213867]              
+                # Normalize with the same training-set statistics used by the
+                # current DeepCORO inference configs.
+                mean, std = self._get_dataset_normalization_stats()
                 video = v2.Normalize(mean, std)(video)
                 
                 # Permute to [F,C,H,W]
@@ -841,7 +889,7 @@ class CustomPredictionService(BasePredictionService):
                 videos.append(video)
                 dicom_ok += 1
 
-            video_batch = torch.from_numpy(np.array(videos)).to(dtype=torch.float16)
+            video_batch = torch.from_numpy(np.array(videos)).to(dtype=torch.float32)
                         
             # Zero pad the video_batch if we have fewer videos than max_videos
             if video_batch.shape[0] < max_videos:
