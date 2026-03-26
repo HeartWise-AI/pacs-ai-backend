@@ -37,6 +37,7 @@ class MultiInstanceLinearProbing(nn.Module):
         num_attention_heads: int = 8,
         separate_video_attention: bool = True,
         normalization_strategy: str = "post_norm",
+        num_view_classes: int = 0,
     ) -> None:
         super().__init__()
 
@@ -60,6 +61,13 @@ class MultiInstanceLinearProbing(nn.Module):
         self.num_attention_heads = num_attention_heads
         self.separate_video_attention = separate_video_attention
         self.normalization_strategy = normalization_strategy
+        self.num_view_classes = num_view_classes
+
+        # Initialize view embedding (EchoJEPA-style angle embeddings)
+        if num_view_classes > 0:
+            # +1 for PAD class (missing/padded views)
+            self.view_embedding = nn.Embedding(num_view_classes + 1, embedding_dim)
+            self.view_pad_id = num_view_classes
 
         # Initialize cls_token if requested
         if self.use_cls_token:
@@ -123,7 +131,8 @@ class MultiInstanceLinearProbing(nn.Module):
     # Public API
     # ---------------------------------------------------------------------
     def forward(
-        self, x: torch.Tensor, mask: torch.Tensor | None = None
+        self, x: torch.Tensor, mask: torch.Tensor | None = None,
+        view_ids: torch.Tensor | None = None,
     ) -> Dict[str, torch.Tensor]:
         """Forward pass.
 
@@ -133,6 +142,11 @@ class MultiInstanceLinearProbing(nn.Module):
                sample and *D == embedding_dim*.
         mask:  Optional ``[B, N]`` boolean / binary mask indicating valid
                positions. If ``None``, all instances are considered valid.
+        view_ids: Optional ``[B, N]`` long tensor of view class IDs for
+                  each video.  When provided and ``num_view_classes > 0``,
+                  a learnable view embedding is added to the per-video
+                  representations before pooling (EchoJEPA-style angle
+                  embeddings).
 
         Returns
         -------
@@ -171,6 +185,13 @@ class MultiInstanceLinearProbing(nn.Module):
             raise ValueError(
                 f"Unsupported input shape {x.shape}; expected 3-D or 4-D tensor."
             )
+
+        # Add view embeddings if configured (EchoJEPA-style angle embeddings)
+        if view_ids is not None and self.num_view_classes > 0:
+            view_emb = self.view_embedding(view_ids)  # [B, N, D]
+            if x.ndim == 4:  # [B, N, L, D]
+                view_emb = view_emb.unsqueeze(2)  # [B, N, 1, D] — broadcast over L
+            x = x + view_emb
 
         pooled = self._pool_instances(x, mask)  # [B, D]
         return {name: head(pooled) for name, head in self.heads.items()}
