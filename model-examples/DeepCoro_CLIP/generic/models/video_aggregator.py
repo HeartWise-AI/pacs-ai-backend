@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Optional
 
 
 class TransformerBlock(nn.Module):
@@ -9,7 +10,6 @@ class TransformerBlock(nn.Module):
       - LayerNorm -> Multihead Attn -> Dropout -> Residual
       - LayerNorm -> MLP -> Dropout -> Residual
     """
-
     def __init__(self, embedding_dim, num_heads, dropout):
         super().__init__()
         self.norm1 = nn.LayerNorm(embedding_dim)
@@ -30,18 +30,28 @@ class TransformerBlock(nn.Module):
         )
         self.dropout2 = nn.Dropout(dropout)
 
-    def forward(self, x):
+    def forward(
+        self,
+        x: torch.Tensor,
+        key_padding_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         # Self-Attention
         residual = x
         x = self.norm1(x)
-        attn_out, _ = self.attn(x, x, x)  # shape: [B, N, D]
+        attn_out, _ = self.attn(
+            x,
+            x,
+            x,
+            key_padding_mask=key_padding_mask,
+        )  # shape: [B, N, D]
         x = residual + self.dropout1(attn_out)
 
         # MLP
         residual = x
         x = self.norm2(x)
         x = self.mlp(x)
-        return residual + self.dropout2(x)
+        x = residual + self.dropout2(x)
+        return x
 
 
 class EnhancedVideoAggregator(nn.Module):
@@ -56,7 +66,6 @@ class EnhancedVideoAggregator(nn.Module):
     Output:
       - [B, D]: aggregated embedding per sample in the batch.
     """
-
     def __init__(
         self,
         embedding_dim: int,
@@ -64,7 +73,7 @@ class EnhancedVideoAggregator(nn.Module):
         dropout: float = 0.1,
         use_positional_encoding: bool = True,
         aggregator_depth: int = 2,
-        max_segments: int = 1024,
+        max_segments: int = 1024
     ):
         super().__init__()
         self.embedding_dim = embedding_dim
@@ -81,9 +90,10 @@ class EnhancedVideoAggregator(nn.Module):
             self.pos_encoding = None
 
         # Stacked Transformer blocks
-        self.blocks = nn.ModuleList(
-            [TransformerBlock(embedding_dim, num_heads, dropout) for _ in range(aggregator_depth)]
-        )
+        self.blocks = nn.ModuleList([
+            TransformerBlock(embedding_dim, num_heads, dropout)
+            for _ in range(aggregator_depth)
+        ])
 
         # Final LayerNorm
         self.final_ln = nn.LayerNorm(embedding_dim)
@@ -92,12 +102,19 @@ class EnhancedVideoAggregator(nn.Module):
         self.attn_query = nn.Parameter(torch.randn(1, 1, embedding_dim))
         nn.init.normal_(self.attn_query, std=0.02)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """
         x: [B, N, D]
         Return: [B, D] aggregated representation.
         """
         B, N, D = x.shape
+
+        if mask is not None:
+            mask = mask.to(torch.bool)
 
         # Apply positional encoding if enabled
         if self.pos_encoding is not None:
@@ -106,18 +123,37 @@ class EnhancedVideoAggregator(nn.Module):
 
         # Pass through each Transformer block
         for block in self.blocks:
-            x = block(x)
+            x = block(x, key_padding_mask=mask)
 
         # Final LayerNorm
         x = self.final_ln(x)
 
+        if mask is not None:
+            x = x.masked_fill(mask.unsqueeze(-1), 0.0)
+
         # Learnable query-based attention
         # attn_query: [1, 1, D] => expand to [B, 1, D]
-        query = self.attn_query.expand(B, -1, -1)  # shape: [B, 1, D]
+        query = self.attn_query.expand(B, -1, -1)         # shape: [B, 1, D]
         # Dot-product => [B, 1, N]
         attn_scores = torch.matmul(query, x.transpose(1, 2))
-        # Normalize to get attention weights
-        attn_weights = F.softmax(attn_scores, dim=-1)  # shape: [B, 1, N]
+
+        if mask is not None:
+            attn_scores = attn_scores.masked_fill(mask.unsqueeze(1), float('-inf'))
+            attn_weights = F.softmax(attn_scores, dim=-1)
+            attn_weights = torch.nan_to_num(attn_weights, nan=0.0, posinf=0.0, neginf=0.0)
+            invalid_rows = attn_weights.sum(dim=-1, keepdim=True) <= 0
+            if invalid_rows.any():
+                valid = (~mask).float()
+                fallback = valid / valid.sum(dim=-1, keepdim=True).clamp(min=1e-6)
+                attn_weights = torch.where(
+                    invalid_rows,
+                    fallback.unsqueeze(1),
+                    attn_weights,
+                )
+        else:
+            # Normalize to get attention weights
+            attn_weights = F.softmax(attn_scores, dim=-1)     # shape: [B, 1, N]
 
         # Weighted sum of segments => [B, 1, D] => [B, D]
-        return torch.bmm(attn_weights, x).squeeze(1)  # shape: [B, D]
+        out = torch.bmm(attn_weights, x).squeeze(1)       # shape: [B, D]
+        return out
