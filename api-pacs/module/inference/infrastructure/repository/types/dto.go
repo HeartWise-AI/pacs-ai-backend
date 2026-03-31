@@ -1,6 +1,9 @@
 package types
 
-import "api-pacs/module/inference/domain/entity"
+import (
+	"api-pacs/module/inference/domain/entity"
+	"time"
+)
 
 type AddInferenceModel struct {
 	ID                  string
@@ -33,6 +36,21 @@ type AddOnboardingModelQuestionnaireAnswer struct {
 	QuestionnaireAnswers   []string
 }
 
+type CreateInferenceIngestionJob struct {
+	ID                     string
+	TenantID               string
+	DICOMModality          string
+	ContainerID            string
+	ModelID                string
+	ModelName              string
+	ModelVersion           string
+	Modalities             []string
+	IntervalInMinutes      uint
+	ScheduleStartTimestamp time.Time
+	ScheduleEndTimestamp   time.Time
+	Status                 entity.InferenceIngestionJobStatus
+}
+
 type GetModelFeedbackByUserModelID struct {
 	TenantID string
 	UserID   string
@@ -49,6 +67,14 @@ type UpdateInferenceModel struct {
 	ID                  string
 	DisallowedDICOMTags []string
 	OutputMode          entity.OutputMode
+}
+
+type UpdateInferenceIngestionJob struct {
+	ID                     string
+	Modalities             []string
+	IntervalInMinutes      uint
+	ScheduleStartTimestamp time.Time
+	ScheduleEndTimestamp   time.Time
 }
 
 type UpsertModelFeedback struct {

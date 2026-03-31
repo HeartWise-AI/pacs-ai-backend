@@ -1,8 +1,8 @@
 module api-pacs
 
-go 1.22
+go 1.23
 
-toolchain go1.22.9
+toolchain go1.23.7
 
 require (
 	cloud.google.com/go/firestore v1.15.0
@@ -15,6 +15,8 @@ require (
 	github.com/go-playground/validator/v10 v10.16.0
 	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/gocarina/gocsv v0.0.0-20240520201108-78e41c74b4b1
+	github.com/jackc/pgx/v5 v5.5.5
+	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.5.1
 	github.com/mailgun/mailgun-go/v4 v4.12.0
 	github.com/segmentio/ksuid v1.0.4
@@ -31,12 +33,16 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/elastic/elastic-transport-go/v8 v8.5.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
+	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.32.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.32.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

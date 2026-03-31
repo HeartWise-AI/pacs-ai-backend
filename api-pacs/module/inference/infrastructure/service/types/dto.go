@@ -23,6 +23,19 @@ type AddOnboardingModelQuestionnaireAnswer struct {
 	OnboardingModelQuestionnaireAnswers []OnboardingModelQuestionnaireAnswer
 }
 
+type CreateInferenceIngestionJob struct {
+	TenantID               string
+	DICOMModality          string
+	ContainerID            string
+	ModelID                string
+	ModelName              string
+	ModelVersion           string
+	Modalities             []string
+	IntervalInMinutes      uint
+	ScheduleStartTimestamp uint64
+	ScheduleEndTimestamp   uint64
+}
+
 type GetContainerInfoResult struct {
 	ID              string
 	Name            string
@@ -105,6 +118,14 @@ type UpdateInferenceModel struct {
 	ID                  string
 	DisallowedDICOMTags []string
 	OutputMode          entity.OutputMode
+}
+
+type UpdateInferenceIngestionJob struct {
+	ID                     string
+	Modalities             []string
+	IntervalInMinutes      uint
+	ScheduleStartTimestamp uint64
+	ScheduleEndTimestamp   uint64
 }
 
 type UpdateModelFeedback struct {

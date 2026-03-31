@@ -115,7 +115,7 @@ func (controller *InferenceCommandController) AddInferenceModel(w http.ResponseW
 
 // CreateInferenceIngestionJob creates a new inference ingestion job
 func (controller *InferenceCommandController) CreateInferenceIngestionJob(w http.ResponseWriter, r *http.Request) {
-	// tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
 	var request types.CreateInferenceIngestionJobRequest
 
@@ -158,39 +158,41 @@ func (controller *InferenceCommandController) CreateInferenceIngestionJob(w http
 		return
 	}
 
-	// err = controller.InferenceCommandServiceInterface.AddInferenceModel(context.TODO(), serviceTypes.AddInferenceModel{
-	// 	TenantID:    tenantID,
-	// 	Name:        request.Name,
-	// 	DockerImage: request.DockerImage,
-	// 	Envs:        request.Envs,
-	// 	OutputMode:  request.OutputMode,
-	// })
-	// if err != nil {
-	// 	var httpCode int
-	// 	var errorMsg string
+	err = controller.InferenceCommandServiceInterface.CreateInferenceIngestionJob(context.TODO(), serviceTypes.CreateInferenceIngestionJob{
+		TenantID:               tenantID,
+		DICOMModality:          request.DICOMModality,
+		ContainerID:            request.ContainerID,
+		ModelID:                request.ModelID,
+		ModelName:              request.ModelName,
+		ModelVersion:           request.ModelVersion,
+		Modalities:             request.Modalities,
+		IntervalInMinutes:      request.IntervalInMinutes,
+		ScheduleStartTimestamp: request.ScheduleStartTimestamp,
+		ScheduleEndTimestamp:   request.ScheduleEndTimestamp,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
 
-	// 	switch err.Error() {
-	// 	case apiError.DockerError:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Docker service encountered an error."
-	// 	case errors.DatabaseError:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Error occurred while saving inference model."
-	// 	default:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Please contact technical support."
-	// 	}
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while saving inference ingestion job."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
 
-	// 	response := viewmodels.HTTPResponseVM{
-	// 		Status:    httpCode,
-	// 		Success:   false,
-	// 		Message:   errorMsg,
-	// 		ErrorCode: err.Error(),
-	// 	}
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
 
-	// 	response.JSON(w)
-	// 	return
-	// }
+		response.JSON(w)
+		return
+	}
 
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusCreated,
@@ -495,33 +497,30 @@ func (controller *InferenceCommandController) RemoveInferenceIngestionJob(w http
 		return
 	}
 
-	// err := controller.InferenceCommandServiceInterface.RemoveInferenceModel(context.TODO(), ID)
-	// if err != nil {
-	// 	var httpCode int
-	// 	var errorMsg string
+	err := controller.InferenceCommandServiceInterface.RemoveInferenceIngestionJob(context.TODO(), ID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
 
-	// 	switch err.Error() {
-	// 	case apiError.DockerError:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Docker service encountered an error."
-	// 	case errors.DatabaseError:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Error occurred while saving inference model."
-	// 	default:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Please contact technical support."
-	// 	}
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while saving inference ingestion job."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
 
-	// 	response := viewmodels.HTTPResponseVM{
-	// 		Status:    httpCode,
-	// 		Success:   false,
-	// 		Message:   errorMsg,
-	// 		ErrorCode: err.Error(),
-	// 	}
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
 
-	// 	response.JSON(w)
-	// 	return
-	// }
+		response.JSON(w)
+		return
+	}
 
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
@@ -701,30 +700,30 @@ func (controller *InferenceCommandController) StartInferenceIngestionJob(w http.
 		return
 	}
 
-	// err := controller.InferenceCommandServiceInterface.StartInferenceIngestionJob(context.TODO(), containerID)
-	// if err != nil {
-	// 	var httpCode int
-	// 	var errorMsg string
+	err := controller.InferenceCommandServiceInterface.StartInferenceIngestionJob(context.TODO(), ID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
 
-	// 	switch err.Error() {
-	// 	case apiError.DockerError:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Docker service encountered an error."
-	// 	default:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Please contact technical support."
-	// 	}
+		switch err.Error() {
+		case apiError.DockerError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Docker service encountered an error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
 
-	// 	response := viewmodels.HTTPResponseVM{
-	// 		Status:    httpCode,
-	// 		Success:   false,
-	// 		Message:   errorMsg,
-	// 		ErrorCode: err.Error(),
-	// 	}
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
 
-	// 	response.JSON(w)
-	// 	return
-	// }
+		response.JSON(w)
+		return
+	}
 
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
@@ -799,30 +798,30 @@ func (controller *InferenceCommandController) StopInferenceInferenceJob(w http.R
 		return
 	}
 
-	// err := controller.InferenceCommandServiceInterface.StopInferenceIngestionJob(context.TODO(), jobID)
-	// if err != nil {
-	// 	var httpCode int
-	// 	var errorMsg string
+	err := controller.InferenceCommandServiceInterface.StopInferenceIngestionJob(context.TODO(), ID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
 
-	// 	switch err.Error() {
-	// 	case apiError.DockerError:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Docker service encountered an error."
-	// 	default:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Please contact technical support."
-	// 	}
+		switch err.Error() {
+		case apiError.DockerError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Docker service encountered an error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
 
-	// 	response := viewmodels.HTTPResponseVM{
-	// 		Status:    httpCode,
-	// 		Success:   false,
-	// 		Message:   errorMsg,
-	// 		ErrorCode: err.Error(),
-	// 	}
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
 
-	// 	response.JSON(w)
-	// 	return
-	// }
+		response.JSON(w)
+		return
+	}
 
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
@@ -986,37 +985,36 @@ func (controller *InferenceCommandController) UpdateInferenceIngestionJob(w http
 		return
 	}
 
-	// err = controller.InferenceCommandServiceInterface.UpdateInferenceModel(context.TODO(), serviceTypes.UpdateInferenceModel{
-	// 	ID:                  ID,
-	// 	DisallowedDICOMTags: request.DisallowedDICOMTags,
-	// 	OutputMode:          request.OutputMode,
-	// })
-	// if err != nil {
-	// 	var httpCode int
-	// 	var errorMsg string
+	err = controller.InferenceCommandServiceInterface.UpdateInferenceIngestionJob(context.TODO(), serviceTypes.UpdateInferenceIngestionJob{
+		ID:                     ID,
+		Modalities:             request.Modalities,
+		IntervalInMinutes:      request.IntervalInMinutes,
+		ScheduleStartTimestamp: request.ScheduleStartTimestamp,
+		ScheduleEndTimestamp:   request.ScheduleEndTimestamp,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
 
-	// 	switch err.Error() {
-	// 	case apiError.DockerError:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Docker service encountered an error."
-	// 	case errors.DatabaseError:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Error occurred while saving inference model."
-	// 	default:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Please contact technical support."
-	// 	}
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while saving inference ingestion job."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
 
-	// 	response := viewmodels.HTTPResponseVM{
-	// 		Status:    httpCode,
-	// 		Success:   false,
-	// 		Message:   errorMsg,
-	// 		ErrorCode: err.Error(),
-	// 	}
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
 
-	// 	response.JSON(w)
-	// 	return
-	// }
+		response.JSON(w)
+		return
+	}
 
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,

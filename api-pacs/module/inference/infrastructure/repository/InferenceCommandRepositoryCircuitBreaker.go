@@ -6,6 +6,7 @@ import (
 	"github.com/afex/hystrix-go/hystrix"
 
 	hystrix_config "api-pacs/configs/hystrix"
+	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
 	"api-pacs/module/inference/infrastructure/repository/types"
 )
@@ -25,6 +26,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteInferenceModel
 	hystrix.ConfigureCommand("delete_inference_model", config.Settings())
 	errors := hystrix.Go("delete_inference_model", func() error {
 		err := repository.InferenceCommandRepositoryInterface.DeleteInferenceModel(ctx, ID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// DeleteInferenceIngestionJob is the decorator for the inference command repository to delete inference ingestion job
+func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteInferenceIngestionJob(ID string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("delete_inference_ingestion_job", config.Settings())
+	errors := hystrix.Go("delete_inference_ingestion_job", func() error {
+		err := repository.InferenceCommandRepositoryInterface.DeleteInferenceIngestionJob(ID)
 		if err != nil {
 			errChan <- err
 			return nil
@@ -179,6 +207,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceModel
 	}
 }
 
+// InsertInferenceIngestionJob is the decorator for the inference command repository to insert inference ingestion job
+func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceIngestionJob(data types.CreateInferenceIngestionJob) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("insert_inference_ingestion_job", config.Settings())
+	errors := hystrix.Go("insert_inference_ingestion_job", func() error {
+		err := repository.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // InsertOnboardingModelQuestionnaireAnswer is the decorator for the inference command repository to insert onboarding model questionnaire answer
 func (repository *InferenceCommandRepositoryCircuitBreaker) InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error {
 	output := make(chan bool, 1)
@@ -214,6 +269,60 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceModel
 	hystrix.ConfigureCommand("update_inference_model", config.Settings())
 	errors := hystrix.Go("update_inference_model", func() error {
 		err := repository.InferenceCommandRepositoryInterface.UpdateInferenceModel(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// UpdateInferenceIngestionJob is the decorator for the inference command repository to update an inference ingestion job
+func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceIngestionJob(data types.UpdateInferenceIngestionJob) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("update_inference_ingestion_job", config.Settings())
+	errors := hystrix.Go("update_inference_ingestion_job", func() error {
+		err := repository.InferenceCommandRepositoryInterface.UpdateInferenceIngestionJob(data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// UpdateInferenceIngestionJobStatus is the decorator for the inference command repository to update the status of an inference ingestion job
+func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceIngestionJobStatus(ID string, status entity.InferenceIngestionJobStatus) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("update_inference_ingestion_job_status", config.Settings())
+	errors := hystrix.Go("update_inference_ingestion_job_status", func() error {
+		err := repository.InferenceCommandRepositoryInterface.UpdateInferenceIngestionJobStatus(ID, status)
 		if err != nil {
 			errChan <- err
 			return nil
