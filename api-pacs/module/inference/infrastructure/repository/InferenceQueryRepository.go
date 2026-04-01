@@ -122,7 +122,7 @@ func (repository *InferenceQueryRepository) SelectInferenceIngestionJobs(tenantI
 	var job entity.InferenceIngestionJob
 	var jobs []entity.InferenceIngestionJob
 
-	stmt := fmt.Sprintf("SELECT * FROM %s WHERE tenant_id=:tenant_id ORDER BY updated_at DESC", job.GetModelName())
+	stmt := fmt.Sprintf("SELECT * FROM %s WHERE tenant_id = :tenant_id ORDER BY updated_at DESC", job.GetModelName())
 
 	err := repository.PostgresSQLDBHandlerInterface.Query(stmt, map[string]interface{}{
 		"tenant_id": tenantID,
@@ -141,7 +141,7 @@ func (repository *InferenceQueryRepository) SelectInferenceIngestionJobs(tenantI
 func (repository *InferenceQueryRepository) SelectInferenceIngestionJobByID(ID string) (entity.InferenceIngestionJob, error) {
 	var job entity.InferenceIngestionJob
 
-	stmt := fmt.Sprintf("SELECT * FROM %s WHERE id=:id", job.GetModelName())
+	stmt := fmt.Sprintf("SELECT * FROM %s WHERE id = :id", job.GetModelName())
 
 	err := repository.PostgresSQLDBHandlerInterface.QueryRow(stmt, map[string]interface{}{
 		"id": ID,

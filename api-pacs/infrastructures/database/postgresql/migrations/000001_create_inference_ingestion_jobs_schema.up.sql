@@ -20,7 +20,7 @@ CREATE TABLE
     );
 
 -- function to update the updated_at column
-CREATE OR REPLACE FUNCTION update_updated_at_column()
+CREATE OR REPLACE FUNCTION func_update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
@@ -29,7 +29,7 @@ END;
 $$ language 'plpgsql';
 
 -- trigger to automatically update updated_at on row updates
-CREATE TRIGGER update_inference_ingestion_jobs_updated_at
+CREATE TRIGGER trigger_update_inference_ingestion_jobs_updated_at
     BEFORE UPDATE ON inference_ingestion_jobs
     FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+    EXECUTE FUNCTION func_update_updated_at();
