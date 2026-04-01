@@ -17,6 +17,7 @@ services:
     depends_on:
       - redis
       - elasticsearch
+      - postgresql
 
 networks:
   pacs-net:

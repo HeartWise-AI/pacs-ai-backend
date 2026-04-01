@@ -1,5 +1,5 @@
 services:
-  postgres:
+  postgresql:
     image: postgres:17.2
     container_name: postgresql
     cap_add:
