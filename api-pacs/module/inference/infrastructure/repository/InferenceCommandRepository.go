@@ -222,8 +222,8 @@ func (repository *InferenceCommandRepository) InsertInferenceIngestionJob(data t
 		Status:                 data.Status,
 	}
 
-	stmt := fmt.Sprintf("INSERT INTO %s (id, tenant_id, dicom_modality, container_id, model_id, model_name, model_version, interval_in_minutes, schedule_start_timestamp, schedule_end_timestamp, status) "+
-		"VALUES (:id, :tenant_id, :dicom_modality, :container_id, :model_id, :model_name, :model_version, :interval_in_minutes, :schedule_start_timestamp, :schedule_end_timestamp, :status)", job.GetModelName())
+	stmt := fmt.Sprintf("INSERT INTO %s (id, tenant_id, dicom_modality, container_id, model_id, model_name, model_version, modalities, interval_in_minutes, schedule_start_timestamp, schedule_end_timestamp, status) "+
+		"VALUES (:id, :tenant_id, :dicom_modality, :container_id, :model_id, :model_name, :model_version, :modalities, :interval_in_minutes, :schedule_start_timestamp, :schedule_end_timestamp, :status)", job.GetModelName())
 	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
 	if err != nil {
 		log.Println(err)
@@ -233,8 +233,6 @@ func (repository *InferenceCommandRepository) InsertInferenceIngestionJob(data t
 			if pgErr.Code == "23505" {
 				return errors.New(apiError.DuplicateRecord)
 			}
-
-			return nil
 		}
 
 		return errors.New(apiError.DatabaseError)

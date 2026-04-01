@@ -2,6 +2,8 @@ package entity
 
 import (
 	"time"
+
+	"github.com/lib/pq"
 )
 
 type InferenceIngestionJobStatus string
@@ -20,7 +22,7 @@ type InferenceIngestionJob struct {
 	ModelID                string `db:"model_id"`
 	ModelName              string `db:"model_name"`
 	ModelVersion           string `db:"model_version"`
-	Modalities             []string
+	Modalities             pq.StringArray
 	IntervalInMinutes      uint                        `db:"interval_in_minutes"`
 	ScheduleStartTimestamp time.Time                   `db:"schedule_start_timestamp"`
 	ScheduleEndTimestamp   time.Time                   `db:"schedule_end_timestamp"`

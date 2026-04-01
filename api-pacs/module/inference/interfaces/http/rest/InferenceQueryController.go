@@ -330,103 +330,52 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 
 // GetInferenceIngestionJobs get inference ingestion jobs
 func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.ResponseWriter, r *http.Request) {
-	// tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
-	// inferenceModels, err := controller.InferenceQueryServiceInterface.GetInferenceModels(r.Context(), tenantID)
-	// if err != nil {
-	// 	var httpCode int
-	// 	var errorMsg string
+	res, err := controller.InferenceQueryServiceInterface.GetInferenceIngestionJobs(r.Context(), tenantID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
 
-	// 	switch err.Error() {
-	// 	case apiError.FirestoreError:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Firestore service encountered an error."
-	// 	default:
-	// 		httpCode = http.StatusInternalServerError
-	// 		errorMsg = "Please contact technical support."
-	// 	}
+		switch err.Error() {
+		case apiError.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Firestore service encountered an error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
 
-	// 	response := viewmodels.HTTPResponseVM{
-	// 		Status:    httpCode,
-	// 		Success:   false,
-	// 		Message:   errorMsg,
-	// 		ErrorCode: err.Error(),
-	// 	}
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
 
-	// 	response.JSON(w)
-	// 	return
-	// }
+		response.JSON(w)
+		return
+	}
 
-	// inferenceModelsResponse := []types.GetInferenceModelResponse{}
-	// for _, inferenceModel := range inferenceModels {
-	// 	// set env to empty if nil
-	// 	envs := inferenceModel.Envs
-	// 	if envs == nil {
-	// 		envs = []string{}
-	// 	}
+	inferenceIngestionJobs := []types.GetInferenceIngestionJobResponse{}
 
-	// 	// set disallowedDICOMTags to empty if nil
-	// 	disallowedDICOMTags := inferenceModel.DisallowedDICOMTags
-	// 	if disallowedDICOMTags == nil {
-	// 		disallowedDICOMTags = []string{}
-	// 	}
-
-	// 	inferenceModelsResponse = append(inferenceModelsResponse, types.GetInferenceModelResponse{
-	// 		ID:       inferenceModel.ID,
-	// 		TenantID: inferenceModel.TenantID,
-	// 		Container: types.GetContainerInfoResponse{
-	// 			ID:              inferenceModel.Container.ID,
-	// 			Name:            inferenceModel.Container.Name,
-	// 			Status:          inferenceModel.Container.Status,
-	// 			Running:         inferenceModel.Container.Running,
-	// 			StartedAt:       uint64(inferenceModel.Container.StartedAt.Unix()),
-	// 			FinishedAt:      uint64(inferenceModel.Container.FinishedAt.Unix()),
-	// 			CPUPercentUsage: inferenceModel.Container.CPUPercentUsage,
-	// 			MemoryInBytes:   inferenceModel.Container.MemoryInBytes,
-	// 		},
-	// 		Name:                inferenceModel.Name,
-	// 		DockerImage:         inferenceModel.DockerImage,
-	// 		Envs:                envs,
-	// 		DisallowedDICOMTags: disallowedDICOMTags,
-	// 		OutputMode:          inferenceModel.OutputMode,
-	// 		CreatedAt:           uint64(inferenceModel.CreatedAt.Unix()),
-	// 		UpdatedAt:           uint64(inferenceModel.UpdatedAt.Unix()),
-	// 	})
-	// }
-
-	inferenceIngestionJobs := []types.GetInferenceIngestionJobResponse{
-		{
-			ID:                     "3BQ6AdjJ1szfwd7GYyvi9ZziH1Y",
-			TenantID:               "mhi-quebec",
-			DICOMModality:          "PACS_QUERY",
-			ContainerID:            "3BQ6AdjJ1szfwd7GYyvi9ZziH1Y",
-			ModelID:                "model_template",
-			ModelName:              "Model Template",
-			ModelVersion:           "1.0.0",
-			Modalities:             []string{"XA", "US"},
-			IntervalInMinutes:      15,
-			ScheduleStartTimestamp: 0,
-			ScheduleEndTimestamp:   0,
-			Status:                 "RUNNING",
-			CreatedAt:              1774408898,
-			UpdatedAt:              1774408898,
-		},
-		{
-			ID:                     "4BQ6AdjJ1szfwd7GYyvi9ZziH1Y",
-			TenantID:               "mhi-quebec",
-			DICOMModality:          "PACS_QUERY",
-			ContainerID:            "3BQ6AdjJ1szfwd7GYyvi9ZziH1Y",
-			ModelID:                "model_template_1",
-			ModelName:              "Model Template 1",
-			ModelVersion:           "1.0.1",
-			Modalities:             []string{"XA"},
-			IntervalInMinutes:      5,
-			ScheduleStartTimestamp: 1774408898,
-			ScheduleEndTimestamp:   1777087379,
-			Status:                 "RUNNING",
-			CreatedAt:              1774408898,
-			UpdatedAt:              1774408898,
-		},
+	for _, job := range res {
+		inferenceIngestionJobs = append(inferenceIngestionJobs, types.GetInferenceIngestionJobResponse{
+			ID:                     job.ID,
+			TenantID:               job.TenantID,
+			DICOMModality:          job.DICOMModality,
+			ContainerID:            job.ContainerID,
+			ModelID:                job.ModelID,
+			ModelName:              job.ModelName,
+			ModelVersion:           job.ModelVersion,
+			Modalities:             job.Modalities,
+			IntervalInMinutes:      job.IntervalInMinutes,
+			ScheduleStartTimestamp: uint64(job.ScheduleStartTimestamp.Unix()),
+			ScheduleEndTimestamp:   uint64(job.ScheduleEndTimestamp.Unix()),
+			Status:                 string(job.Status),
+			CreatedAt:              uint64(job.CreatedAt.Unix()),
+			UpdatedAt:              uint64(job.UpdatedAt.Unix()),
+		})
 	}
 
 	response := viewmodels.HTTPResponseVM{
