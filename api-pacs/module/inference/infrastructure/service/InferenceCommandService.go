@@ -159,7 +159,7 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 	// if supportedDicomTags = ["*"]
 	if len(modelInfo.Data.SupportedDicomTags) == 1 && modelInfo.Data.SupportedDicomTags[0] == "*" {
 		/// ---------------------- for DICOM images
-		// purposely re-implementing the series instances loop because of potential refactors and differences vs metadata
+		// purposely re-implementing the series ininstances loop because of potential refactors and differences vs metadata
 
 		// get series instances
 		var m = sync.Mutex{}
@@ -189,9 +189,6 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 					for _, instance := range instances {
 						func(instance map[string]interface{}) {
 							egInstance.Go(func() error {
-								mInstance.Lock()
-								defer mInstance.Unlock()
-
 								seriesNumber := int(instance["00200011"].(map[string]interface{})["Value"].([]interface{})[0].(float64))
 								sopInstanceUID := instance["00080018"].(map[string]interface{})["Value"].([]interface{})[0].(string)
 
@@ -221,7 +218,9 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 									return err
 								}
 
+								mInstance.Lock()
 								seriesInstanceImages[seriesNumber][sopInstanceNumber] = base64.StdEncoding.EncodeToString(instanceFile) // convert to base64
+								defer mInstance.Unlock()
 
 								return nil
 							})
