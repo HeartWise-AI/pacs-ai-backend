@@ -206,33 +206,35 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 	}
 
 	// logs to elasticsearch
-	go func() {
-		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, data.UserID)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+	if data.UserID != nil {
+		go func() {
+			user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, *data.UserID)
+			if err != nil {
+				log.Println(err)
+				return
+			}
 
-		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+			tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
+			if err != nil {
+				log.Println(err)
+				return
+			}
 
-		_, err = service.ElasticsearchCommandServiceInterface.CreateRetrieveStudyLog(ctx, elasticsearchTypes.CreateRetrieveStudyLog{
-			TenantID:         data.TenantID,
-			TenantName:       tenant.Name,
-			ModalityID:       data.ModalityID,
-			UserID:           data.UserID,
-			Email:            user.Email,
-			Name:             user.Name,
-			StudyInstanceUID: data.StudyInstanceUID,
-		})
-		if err != nil {
-			log.Println(err)
-			return
-		}
-	}()
+			_, err = service.ElasticsearchCommandServiceInterface.CreateRetrieveStudyLog(ctx, elasticsearchTypes.CreateRetrieveStudyLog{
+				TenantID:         data.TenantID,
+				TenantName:       tenant.Name,
+				ModalityID:       data.ModalityID,
+				UserID:           *data.UserID,
+				Email:            user.Email,
+				Name:             user.Name,
+				StudyInstanceUID: data.StudyInstanceUID,
+			})
+			if err != nil {
+				log.Println(err)
+				return
+			}
+		}()
+	}
 
 	return res, nil
 }

@@ -94,7 +94,6 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 	res, queryID, err := controller.OrthancQueryServiceInterface.FindModalityStudies(context.TODO(), serviceTypes.FindModalityStudies{
 		TenantID:                   tenantID,
 		ModalityID:                 request.ModalityID,
-		UserID:                     userID,
 		AccessionNumber:            request.AccessionNumber,
 		InstitutionName:            request.InstitutionName,
 		ModalitiesInStudy:          request.ModalitiesInStudy,
@@ -110,6 +109,7 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 		StudyID:                    request.StudyID,
 		StudyInstanceUID:           request.StudyInstanceUID,
 		StudyTime:                  request.StudyTime,
+		UserID:                     &userID,
 	})
 	if err != nil {
 		var httpCode int

@@ -24,6 +24,8 @@ type InferenceCommandRepositoryInterface interface {
 	InsertInferenceModel(ctx context.Context, data types.AddInferenceModel) error
 	// InsertInferenceIngestionJob inserts a new inference ingestion job
 	InsertInferenceIngestionJob(data types.CreateInferenceIngestionJob) error
+	// InsertInferenceIngestionRunResult inserts a new inference ingestion run result
+	InsertInferenceIngestionRunResult(data types.AddInferenceIngestionRunResult) error
 	// InsertOnboardingModelQuestionnaireAnswer inserts an onboarding model questionnaire answer
 	InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
 	// UpdateInferenceModel updates an inference model

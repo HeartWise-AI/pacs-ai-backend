@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,8 @@ import (
 	"api-pacs/module/inference/domain/repository"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
+	orthancApplication "api-pacs/module/orthanc/application"
+	orthancServiceTypes "api-pacs/module/orthanc/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
 	userApplication "api-pacs/module/user/application"
 )
@@ -34,6 +37,8 @@ type InferenceCommandService struct {
 	repository.InferenceQueryRepositoryInterface
 	tenantApplication.TenantQueryServiceInterface
 	userApplication.UserQueryServiceInterface
+	orthancApplication.OrthancCommandServiceInterface
+	orthancApplication.OrthancQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	dockerTypes.DockerSDKInterface
 	orthancAPITypes.OrthancAPIInterface
@@ -125,6 +130,232 @@ func (service *InferenceCommandService) CreateInferenceIngestionJob(ctx context.
 		Status:                 entity.InferenceIngestionJobStatusRunning, // default: RUNNING
 	})
 	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ExecuteInferenceIngestionRunner execute inference ingestion runner
+func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx context.Context) error {
+	/// step 1: get all inference ingestion jobs
+	jobs, err := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionJobs(nil) // all tenant
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return err
+	}
+
+	/// step 2: for each job, run inference model to target dicom modality and persist results
+	var m = sync.Mutex{}
+	eg, egCtx := errgroup.WithContext(ctx)
+
+	// set limit
+	eg.SetLimit(len(jobs))
+
+	for _, job := range jobs {
+		func(job entity.InferenceIngestionJob) {
+			eg.Go(func() error {
+				m.Lock()
+				defer m.Unlock()
+
+				// if not running, skip it
+				if job.Status != entity.InferenceIngestionJobStatusRunning {
+					return nil // skip
+				}
+
+				/// step 3: get studies by dicom modality (with filter)
+				studies, _, err := service.OrthancQueryServiceInterface.FindModalityStudies(egCtx, orthancServiceTypes.FindModalityStudies{
+					TenantID:                   job.TenantID,
+					ModalityID:                 job.DICOMModality,
+					AccessionNumber:            "",
+					InstitutionName:            "",
+					ModalitiesInStudy:          strings.Join(job.Modalities, `\\`), // e.g XA\\US
+					NumberOfStudyRelatedSeries: "",
+					PatientBirthDate:           "",
+					PatientID:                  "",
+					PatientName:                "",
+					PatientSex:                 "",
+					ReferringPhysicianName:     "",
+					RequestingPhysician:        "",
+					StudyDate:                  "",
+					StudyDescription:           "",
+					StudyID:                    "",
+					StudyInstanceUID:           "",
+					StudyTime:                  "",
+					UserID:                     nil,
+				})
+				if err != nil {
+					log.Println("[inference ingestion] cannot pull studies:", err)
+					return nil // skip
+				}
+
+				/// step 4: retrieve study (if not yet)
+				var mStudies = sync.Mutex{}
+				egStudies, egStudiesCtx := errgroup.WithContext(egCtx)
+
+				// set limit
+				egStudies.SetLimit(len(studies))
+
+				for _, study := range studies {
+					func(study orthancAPITypes.QueryModalityStudyAnswersResponse) {
+						egStudies.Go(func() error {
+							mStudies.Lock()
+							defer mStudies.Unlock()
+
+							retrieveJobs, err := service.OrthancCommandServiceInterface.RetrieveModalityStudyBySeries(egStudiesCtx, orthancServiceTypes.RetrieveModalityStudyBySeries{
+								TenantID:         job.TenantID,
+								ModalityID:       job.DICOMModality,
+								StudyInstanceUID: study.StudyInstanceUID,
+								ModalityType:     study.ModalitiesInStudy,
+							})
+							if err != nil && err.Error() != apiError.DuplicateRecord {
+								log.Println("[inference ingestion] cannot retrieve study by series:", err)
+								// save to inference ingestion result
+								errMessage := err.Error()
+								_ = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionRunResult(repositoryTypes.AddInferenceIngestionRunResult{
+									ID:               generateID(),
+									JobID:            job.ID,
+									StudyInstanceUID: study.StudyInstanceUID,
+									ErrorMessage:     &errMessage,
+									Status:           entity.IngestsionRunStatusFailed,
+								})
+								return nil // skip
+							}
+
+							// if already cached, skip checks
+							if err.Error() != apiError.DuplicateRecord {
+								var retrieveJobIDs []string
+								for _, retrieveJob := range retrieveJobs {
+									retrieveJobIDs = append(retrieveJobIDs, retrieveJob.ID)
+								}
+
+								// retry for fixed amount of time before deciding to abandon
+								var localStudyFound bool
+								retryMaxLimit := 36 // 1 retry = 5s, max 3 minutes (180 seconds)
+
+								for i := 0; i < retryMaxLimit; i++ {
+									time.Sleep(5 * time.Second) // 5s
+
+									retrieveJobStatuses, err := service.OrthancQueryServiceInterface.GetJobsInfo(egStudiesCtx, retrieveJobIDs)
+									if err != nil {
+										log.Println("[inference ingestion] cannot retrieve job statuses:", err)
+										// save to inference ingestion result
+										errMessage := err.Error()
+										_ = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionRunResult(repositoryTypes.AddInferenceIngestionRunResult{
+											ID:               generateID(),
+											JobID:            job.ID,
+											StudyInstanceUID: study.StudyInstanceUID,
+											ErrorMessage:     &errMessage,
+											Status:           entity.IngestsionRunStatusFailed,
+										})
+										return nil // skip
+									}
+
+									var notCompleted bool
+
+									for _, retrieveJobStatus := range retrieveJobStatuses {
+										if retrieveJobStatus.Progress != 100 { // if at least 1 not completed
+											notCompleted = true
+										}
+									}
+
+									if !notCompleted {
+										localStudyFound = true
+										break
+									}
+								}
+
+								// if retry limit reached and still not study found, abandon
+								if !localStudyFound {
+									errMessage := fmt.Sprintf("[inference ingestion] abandon retrieve for study instance uid:", study.StudyInstanceUID)
+									log.Println(errMessage)
+									// save to inference ingestion result
+									_ = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionRunResult(repositoryTypes.AddInferenceIngestionRunResult{
+										ID:               generateID(),
+										JobID:            job.ID,
+										StudyInstanceUID: study.StudyInstanceUID,
+										ErrorMessage:     &errMessage,
+										Status:           entity.IngestsionRunStatusFailed,
+									})
+									return nil // skip
+								}
+							}
+
+							/// step 5: if study found, apply prediction
+							// get series instance uids
+							localResources, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
+								Level: "Series",
+								Query: orthancAPITypes.QueryLocalResource{
+									StudyInstanceUID: study.StudyInstanceUID,
+								},
+								Expand: true,
+							})
+							if err != nil || len(localResources) == 0 {
+								errMessage := fmt.Sprintf("[inference ingestion] cannot retrieve study by series:", err.Error())
+								log.Println(errMessage)
+								// save to inference ingestion result
+								_ = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionRunResult(repositoryTypes.AddInferenceIngestionRunResult{
+									ID:               generateID(),
+									JobID:            job.ID,
+									StudyInstanceUID: study.StudyInstanceUID,
+									ErrorMessage:     &errMessage,
+									Status:           entity.IngestsionRunStatusFailed,
+								})
+								return nil // skip
+							}
+
+							var localSeries []string
+							for _, localResource := range localResources {
+								localSeries = append(localSeries, localResource.MainDICOMTags.SeriesInstanceUID)
+							}
+
+							forceJSONOutputMode := true // force JSON prediction result
+
+							predictionRes, err := service.PredictInferenceModel(egStudiesCtx, job.TenantID, job.ContainerID, nil, types.PredictInferenceModel{
+								StudyInstanceUID:   study.StudyInstanceUID,
+								SeriesInstanceUIDs: localSeries,
+								AdditionalMetadata: nil,
+								ForceJSON:          &forceJSONOutputMode, // force JSON
+							})
+							if err != nil {
+								log.Println("[inference ingestion] predict inference error:", err)
+								// save to inference ingestion result
+								errMessage := err.Error()
+								_ = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionRunResult(repositoryTypes.AddInferenceIngestionRunResult{
+									ID:               generateID(),
+									JobID:            job.ID,
+									StudyInstanceUID: study.StudyInstanceUID,
+									ErrorMessage:     &errMessage,
+									Status:           entity.IngestsionRunStatusFailed,
+								})
+								return nil // skip
+							}
+
+							/// step 6: save to inference ingestion result
+							_ = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionRunResult(repositoryTypes.AddInferenceIngestionRunResult{
+								ID:               generateID(),
+								JobID:            job.ID,
+								StudyInstanceUID: study.StudyInstanceUID,
+								InferenceOutput:  &predictionRes.Data,
+								Status:           entity.IngestionRunStatusSuccess,
+							})
+
+							return nil
+						})
+					}(study)
+				}
+
+				// wait for all goroutines to finish
+				if err := egStudies.Wait(); err != nil {
+					return err
+				}
+
+				return nil
+			})
+		}(job)
+	}
+
+	// wait for all goroutines to finish
+	if err := eg.Wait(); err != nil {
 		return err
 	}
 
@@ -412,7 +643,7 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 }
 
 // PredictInferenceModel predicts an inference model
-func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, tenantID, userID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
+func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, tenantID, containerID string, userID *string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
 	// TODO: remove this
 	predictionStartTime := time.Now()
 
@@ -432,59 +663,61 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	log.Printf("[prediction] predict call took %f seconds", predictionEndTime.Seconds())
 
 	// log to elasticsearch
-	go func() {
-		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, userID)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+	if userID != nil {
+		go func() {
+			user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, *userID)
+			if err != nil {
+				log.Println(err)
+				return
+			}
 
-		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+			tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
+			if err != nil {
+				log.Println(err)
+				return
+			}
 
-		// Get inference model data for logging
-		inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+			// Get inference model data for logging
+			inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
+			if err != nil {
+				log.Println(err)
+				return
+			}
 
-		// get model info
-		modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerName)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+			// get model info
+			modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerName)
+			if err != nil {
+				log.Println(err)
+				return
+			}
 
-		modelID := modelInfo.Data.ModelID
-		if len(modelID) == 0 {
-			modelID = modelInfo.Data.ModelName
-		}
+			modelID := modelInfo.Data.ModelID
+			if len(modelID) == 0 {
+				modelID = modelInfo.Data.ModelName
+			}
 
-		_, err = service.ElasticsearchCommandServiceInterface.CreatePredictInferenceModelLog(ctx, elasticsearchTypes.CreatePredictInferenceModelLog{
-			TenantID:           tenant.ID,
-			TenantName:         tenant.Name,
-			UserID:             user.ID,
-			Email:              user.Email,
-			Name:               user.Name,
-			ContainerID:        containerID,
-			ContainerName:      containerName,
-			InferenceModelID:   inferenceModel.ID,
-			InferenceModelName: inferenceModel.Name,
-			DockerImage:        inferenceModel.DockerImage,
-			Model:              fmt.Sprintf("%s-%s", modelID, modelInfo.Data.Version), // {modelID/modelName-version}
-			StudyInstanceUID:   data.StudyInstanceUID,
-			SeriesInstanceUIDs: data.SeriesInstanceUIDs,
-			AdditionalMetadata: data.AdditionalMetadata,
-		})
-		if err != nil {
-			log.Println(err)
-			return
-		}
-	}()
+			_, err = service.ElasticsearchCommandServiceInterface.CreatePredictInferenceModelLog(ctx, elasticsearchTypes.CreatePredictInferenceModelLog{
+				TenantID:           tenant.ID,
+				TenantName:         tenant.Name,
+				UserID:             user.ID,
+				Email:              user.Email,
+				Name:               user.Name,
+				ContainerID:        containerID,
+				ContainerName:      containerName,
+				InferenceModelID:   inferenceModel.ID,
+				InferenceModelName: inferenceModel.Name,
+				DockerImage:        inferenceModel.DockerImage,
+				Model:              fmt.Sprintf("%s-%s", modelID, modelInfo.Data.Version), // {modelID/modelName-version}
+				StudyInstanceUID:   data.StudyInstanceUID,
+				SeriesInstanceUIDs: data.SeriesInstanceUIDs,
+				AdditionalMetadata: data.AdditionalMetadata,
+			})
+			if err != nil {
+				log.Println(err)
+				return
+			}
+		}()
+	}
 
 	return predictionResult, nil
 }

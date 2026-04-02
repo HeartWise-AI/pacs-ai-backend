@@ -227,7 +227,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 
 // GetInferenceIngestionJobs gets the inference ingestion jobs
 func (controller *InferenceQueryService) GetInferenceIngestionJobs(ctx context.Context, tenantID string) ([]entity.InferenceIngestionJob, error) {
-	res, err := controller.InferenceQueryRepositoryInterface.SelectInferenceIngestionJobs(tenantID)
+	res, err := controller.InferenceQueryRepositoryInterface.SelectInferenceIngestionJobs(&tenantID)
 	if err != nil && err.Error() != apiError.MissingRecord {
 		return nil, err
 	}

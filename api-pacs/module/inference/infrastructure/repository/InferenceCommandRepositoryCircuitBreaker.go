@@ -234,6 +234,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceInges
 	}
 }
 
+// InsertInferenceIngestionRunResult is the decorator for the inference command repository to insert inference ingestion run result
+func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceIngestionRunResult(data types.AddInferenceIngestionRunResult) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("insert_inference_ingestion_run_result", config.Settings())
+	errors := hystrix.Go("insert_inference_ingestion_run_result", func() error {
+		err := repository.InferenceCommandRepositoryInterface.InsertInferenceIngestionRunResult(data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // InsertOnboardingModelQuestionnaireAnswer is the decorator for the inference command repository to insert onboarding model questionnaire answer
 func (repository *InferenceCommandRepositoryCircuitBreaker) InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error {
 	output := make(chan bool, 1)

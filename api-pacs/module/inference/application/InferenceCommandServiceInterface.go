@@ -15,10 +15,12 @@ type InferenceCommandServiceInterface interface {
 	AddOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
 	// CreateInferenceIngestionJob creates an inference ingestion job
 	CreateInferenceIngestionJob(ctx context.Context, data types.CreateInferenceIngestionJob) error
+	// ExecuteInferenceIngestionRunner execute inference ingestion runner
+	ExecuteInferenceIngestionRunner(ctx context.Context) error
 	// GenerateInferenceModelPredictRequest generates the prediction request payload
 	GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error)
 	// PredictInferenceModel predicts an inference model
-	PredictInferenceModel(ctx context.Context, tenantID, userID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
+	PredictInferenceModel(ctx context.Context, tenantID, containerID string, userID *string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
 	// RemoveInferenceModel deletes an inference model
 	RemoveInferenceModel(ctx context.Context, ID string) error
 	// RemoveInferenceIngestionJob removes an inference ingestion job

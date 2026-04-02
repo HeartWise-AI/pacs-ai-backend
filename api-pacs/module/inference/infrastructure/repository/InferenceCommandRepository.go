@@ -241,6 +241,36 @@ func (repository *InferenceCommandRepository) InsertInferenceIngestionJob(data t
 	return nil
 }
 
+// InsertInferenceIngestionRunResult inserts a new inference ingestion run result
+func (repository *InferenceCommandRepository) InsertInferenceIngestionRunResult(data types.AddInferenceIngestionRunResult) error {
+	result := entity.InferenceIngestionRunResult{
+		ID:               data.ID,
+		JobID:            data.JobID,
+		StudyInstanceUID: data.StudyInstanceUID,
+		InferenceOutput:  data.InferenceOutput,
+		ErrorMessage:     data.ErrorMessage,
+		Status:           data.Status,
+	}
+
+	stmt := fmt.Sprintf("INSERT INTO %s (id, job_id, study_instance_uid, inference_output, error_message, status) "+
+		"VALUES (:id, :job_id, :study_instance_uid, :inference_output, :error_message, :status)", result.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, result)
+	if err != nil {
+		log.Println(err)
+
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			if pgErr.Code == "23505" {
+				return errors.New(apiError.DuplicateRecord)
+			}
+		}
+
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
 // InsertOnboardingModelQuestionnaireAnswer inserts a onboarding model questionnaire answer
 func (repository *InferenceCommandRepository) InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error {
 	// firestore client
