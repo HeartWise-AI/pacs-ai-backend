@@ -1,3 +1,5 @@
+include .env
+
 default: run-dev
 
 .PHONY:	install
@@ -32,3 +34,24 @@ run:	build
 .PHONY:	run-dev
 run-dev:	build-dev
 	./bin/api-pacs
+
+.PHONY:	migrate-schema
+migrate-schema:
+	mkdir -p infrastructures/database/postgresql/migrations
+	migrate create -ext sql -dir infrastructures/database/postgresql/migrations -seq ${NAME}
+
+.PHONY: migrate-up
+migrate-up: 
+	migrate -path infrastructures/database/postgresql/migrations -database "postgresql://${POSTGRES_DB_USERNAME}:${POSTGRES_DB_PASSWORD}@${POSTGRES_DB_HOST}:${POSTGRES_DB_PORT}/${POSTGRES_DB_DATABASE}?sslmode=disable" -verbose up ${STEPS}
+
+.PHONY: migrate-down
+migrate-down:
+	migrate -path infrastructures/database/postgresql/migrations -database "postgresql://${POSTGRES_DB_USERNAME}:${POSTGRES_DB_PASSWORD}@${POSTGRES_DB_HOST}:${POSTGRES_DB_PORT}/${POSTGRES_DB_DATABASE}?sslmode=disable" -verbose down ${STEPS}
+
+.PHONY: migrate-version
+migrate-version:
+	migrate -path infrastructures/database/postgresql/migrations -database "postgresql://${POSTGRES_DB_USERNAME}:${POSTGRES_DB_PASSWORD}@${POSTGRES_DB_HOST}:${POSTGRES_DB_PORT}/${POSTGRES_DB_DATABASE}?sslmode=disable" version
+
+.PHONY: migrate-force
+migrate-force:
+	migrate -path infrastructures/database/postgresql/migrations -database "postgresql://${POSTGRES_DB_USERNAME}:${POSTGRES_DB_PASSWORD}@${POSTGRES_DB_HOST}:${POSTGRES_DB_PORT}/${POSTGRES_DB_DATABASE}?sslmode=disable" force ${STEPS}

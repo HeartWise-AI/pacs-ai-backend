@@ -225,6 +225,16 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 	return inferenceAvailableModels, nil
 }
 
+// GetInferenceIngestionJobs gets the inference ingestion jobs
+func (controller *InferenceQueryService) GetInferenceIngestionJobs(ctx context.Context, tenantID string) ([]entity.InferenceIngestionJob, error) {
+	res, err := controller.InferenceQueryRepositoryInterface.SelectInferenceIngestionJobs(tenantID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return nil, err
+	}
+
+	return res, nil
+}
+
 // GetModelFeedBackByUser gets the model feedback by user
 func (service *InferenceQueryService) GetModelFeedBackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (types.GetModelFeedbackResult, error) {
 	modelFeedback, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackByUserModelID(ctx, repositoryTypes.GetModelFeedbackByUserModelID{

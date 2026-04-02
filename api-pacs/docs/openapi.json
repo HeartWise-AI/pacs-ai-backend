@@ -463,6 +463,107 @@
         }
       }
     },
+    "/inference/ingestion/job/create": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Create Inference Ingestion Job",
+        "description": "Create inference ingestion job.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Create inference ingestion job request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInferenceIngestionJobRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/ingestion/job/{id}/start": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Start Inference Ingestion Job",
+        "description": "Start inference ingestion job.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Job ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/ingestion/job/{id}/stop": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Stop Inference Ingestion Job",
+        "description": "Stop inference ingestion job.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Job ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/inference/model/list": {
       "get": {
         "tags": ["inference"],
@@ -679,6 +780,29 @@
         }
       }
     },
+    "/inference/ingestion/jobs": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Inference Ingestion Jobs",
+        "description": "Get inference ingestion jobs.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/inference/model/{id}/update": {
       "put": {
         "tags": ["inference"],
@@ -756,6 +880,50 @@
         }
       }
     },
+    "/inference/ingestion/job/{id}/update": {
+      "put": {
+        "tags": ["inference"],
+        "summary": "Update Inference Ingestion Job",
+        "description": "Update inference ingestion job.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Inference ingestion sjob ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Update inference ingestion job request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInferenceIngestionJobRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/inference/model/{id}/remove": {
       "delete": {
         "tags": ["inference"],
@@ -805,6 +973,40 @@
             "name": "modelId",
             "in": "path",
             "description": "Model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/ingestion/job/{id}/remove": {
+      "delete": {
+        "tags": ["inference"],
+        "summary": "Delete Inference Ingestion Job",
+        "description": "Delete inference ingestion job.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Inference ingestion job ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -1822,18 +2024,6 @@
           }
         }
       },
-      "SubscribeRequest": {
-        "required": ["token", "email"],
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string"
-          },
-          "email": {
-            "type": "string"
-          }
-        }
-      },
       "CreateTenantOwnerRequest": {
         "required": [
           "tenantId",
@@ -1888,34 +2078,49 @@
           }
         }
       },
-      "PredictInferenceModelRequest": {
-        "required": ["studyInstanceUID", "seriesInstanceUIDs"],
+      "CreateInferenceIngestionJobRequest": {
+        "required": [
+          "dicomModality",
+          "containerId",
+          "modelId",
+          "modelName",
+          "modelVersion",
+          "modalities",
+          "intervalInMinutes",
+          "scheduleStartTimestamp",
+          "scheduleEndTimestamp"
+        ],
         "type": "object",
         "properties": {
-          "studyInstanceUID": {
+          "dicomModality": {
             "type": "string"
           },
-          "seriesInstanceUIDs": {
+          "containerId": {
+            "type": "string"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "modelName": {
+            "type": "string"
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "modalities": {
             "type": "array",
             "items": {
               "type": "string"
             }
           },
-          "additionalMetadata": {
-            "type": "object",
-            "nullable": true
-          }
-        }
-      },
-      "RetrieveModalityStudyRequest": {
-        "required": ["modalityId", "studyInstanceUID"],
-        "type": "object",
-        "properties": {
-          "modalityId": {
-            "type": "string"
+          "intervalInMinutes": {
+            "type": "integer"
           },
-          "studyInstanceUID": {
-            "type": "string"
+          "scheduleStartTimestamp": {
+            "type": "integer"
+          },
+          "scheduleEndTimestamp": {
+            "type": "integer"
           }
         }
       },
@@ -2002,6 +2207,49 @@
         "type": "object",
         "properties": {
           "queryId": {
+            "type": "string"
+          }
+        }
+      },
+      "PredictInferenceModelRequest": {
+        "required": ["studyInstanceUID", "seriesInstanceUIDs"],
+        "type": "object",
+        "properties": {
+          "studyInstanceUID": {
+            "type": "string"
+          },
+          "seriesInstanceUIDs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "additionalMetadata": {
+            "type": "object",
+            "nullable": true
+          }
+        }
+      },
+      "RetrieveModalityStudyRequest": {
+        "required": ["modalityId", "studyInstanceUID"],
+        "type": "object",
+        "properties": {
+          "modalityId": {
+            "type": "string"
+          },
+          "studyInstanceUID": {
+            "type": "string"
+          }
+        }
+      },
+      "SubscribeRequest": {
+        "required": ["token", "email"],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "email": {
             "type": "string"
           }
         }
@@ -2149,6 +2397,32 @@
           "outputMode": {
             "type": "string",
             "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
+          }
+        }
+      },
+      "UpdateInferenceIngestionJobRequest": {
+        "required": [
+          "modalities",
+          "intervalInMinutes",
+          "scheduleStartTimestamp",
+          "scheduleEndTimestamp"
+        ],
+        "type": "object",
+        "properties": {
+          "modalities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "intervalInMinutes": {
+            "type": "integer"
+          },
+          "scheduleStartTimestamp": {
+            "type": "integer"
+          },
+          "scheduleEndTimestamp": {
+            "type": "integer"
           }
         }
       },

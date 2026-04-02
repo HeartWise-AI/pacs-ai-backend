@@ -20,6 +20,7 @@ import (
 	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
@@ -107,32 +108,22 @@ func (service *InferenceCommandService) AddOnboardingModelQuestionnaireAnswers(c
 	return nil
 }
 
-// DeleteInferenceModel deletes an inference model
-func (service *InferenceCommandService) DeleteInferenceModel(ctx context.Context, ID string) error {
-	// get inference model
-	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByID(ctx, ID)
-	if err != nil {
-		return err
-	}
-
-	// force remove container
-	err = service.DockerSDKInterface.RemoveContainer(ctx, inferenceModel.ContainerID)
-	if err != nil {
-		return errors.New(apiError.DockerError)
-	}
-
-	// delete inference model
-	err = service.InferenceCommandRepositoryInterface.DeleteInferenceModel(ctx, ID)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// RemoveOnboardingModelQuestionnaireAnswer removes an onboarding model questionnaire answer
-func (service *InferenceCommandService) RemoveOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error {
-	err := service.InferenceCommandRepositoryInterface.DeleteOnboardingModelQuestionnaireAnswer(ctx, ID)
+// CreateInferenceIngestionJob creates a new inference ingestion job
+func (service *InferenceCommandService) CreateInferenceIngestionJob(ctx context.Context, data types.CreateInferenceIngestionJob) error {
+	err := service.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(repositoryTypes.CreateInferenceIngestionJob{
+		ID:                     generateID(),
+		TenantID:               data.TenantID,
+		DICOMModality:          data.DICOMModality,
+		ContainerID:            data.ContainerID,
+		ModelID:                data.ModelID,
+		ModelName:              data.ModelName,
+		ModelVersion:           data.ModelVersion,
+		Modalities:             data.Modalities,
+		IntervalInMinutes:      data.IntervalInMinutes,
+		ScheduleStartTimestamp: time.Unix(int64(data.ScheduleStartTimestamp), 0),
+		ScheduleEndTimestamp:   time.Unix(int64(data.ScheduleEndTimestamp), 0),
+		Status:                 entity.InferenceIngestionJobStatusRunning, // default: RUNNING
+	})
 	if err != nil {
 		return err
 	}
@@ -499,6 +490,49 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	return predictionResult, nil
 }
 
+// RemoveInferenceModel deletes an inference model
+func (service *InferenceCommandService) RemoveInferenceModel(ctx context.Context, ID string) error {
+	// get inference model
+	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByID(ctx, ID)
+	if err != nil {
+		return err
+	}
+
+	// force remove container
+	err = service.DockerSDKInterface.RemoveContainer(ctx, inferenceModel.ContainerID)
+	if err != nil {
+		return errors.New(apiError.DockerError)
+	}
+
+	// delete inference model
+	err = service.InferenceCommandRepositoryInterface.DeleteInferenceModel(ctx, ID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemoveInferenceIngestionJob removes an inference ingestion job
+func (service *InferenceCommandService) RemoveInferenceIngestionJob(ctx context.Context, ID string) error {
+	err := service.InferenceCommandRepositoryInterface.DeleteInferenceIngestionJob(ID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemoveOnboardingModelQuestionnaireAnswer removes an onboarding model questionnaire answer
+func (service *InferenceCommandService) RemoveOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error {
+	err := service.InferenceCommandRepositoryInterface.DeleteOnboardingModelQuestionnaireAnswer(ctx, ID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // RemoveModelFeedback removes model feedback
 func (service *InferenceCommandService) RemoveModelFeedback(ctx context.Context, data types.RemoveModelFeedback) error {
 	// get model feedback
@@ -554,11 +588,31 @@ func (service *InferenceCommandService) StartInferenceModelContainer(ctx context
 	return nil
 }
 
+// StartInferenceIngestionJob starts an inference ingestion job
+func (service *InferenceCommandService) StartInferenceIngestionJob(ctx context.Context, jobID string) error {
+	err := service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionJobStatus(jobID, entity.InferenceIngestionJobStatusRunning)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // StopInferenceModelContainer stops an inference model container
 func (service *InferenceCommandService) StopInferenceModelContainer(ctx context.Context, containerID string) error {
 	err := service.DockerSDKInterface.StopContainer(ctx, containerID)
 	if err != nil {
 		return errors.New(apiError.DockerError)
+	}
+
+	return nil
+}
+
+// StopInferenceIngestionJob stops an inference ingestion job
+func (service *InferenceCommandService) StopInferenceIngestionJob(ctx context.Context, jobID string) error {
+	err := service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionJobStatus(jobID, entity.InferenceIngestionJobStatusStopped)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -572,6 +626,22 @@ func (service *InferenceCommandService) UpdateInferenceModel(ctx context.Context
 		ID:                  data.ID,
 		DisallowedDICOMTags: data.DisallowedDICOMTags,
 		OutputMode:          data.OutputMode,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// UpdateInferenceIngestionJob updates an inference ingestion job
+func (service *InferenceCommandService) UpdateInferenceIngestionJob(ctx context.Context, data types.UpdateInferenceIngestionJob) error {
+	err := service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionJob(repositoryTypes.UpdateInferenceIngestionJob{
+		ID:                     data.ID,
+		Modalities:             data.Modalities,
+		IntervalInMinutes:      data.IntervalInMinutes,
+		ScheduleStartTimestamp: time.Unix(int64(data.ScheduleStartTimestamp), 0),
+		ScheduleEndTimestamp:   time.Unix(int64(data.ScheduleEndTimestamp), 0),
 	})
 	if err != nil {
 		return err

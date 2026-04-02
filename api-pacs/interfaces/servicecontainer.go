@@ -21,6 +21,8 @@ import (
 
 	"api-pacs/infrastructures/database/elasticsearch"
 	elasticsearchTypes "api-pacs/infrastructures/database/elasticsearch/types"
+	"api-pacs/infrastructures/database/postgresql"
+	postgresqlTypes "api-pacs/infrastructures/database/postgresql/types"
 	"api-pacs/infrastructures/database/redis"
 	cloudflare "api-pacs/infrastructures/providers/api/cloudflare"
 	"api-pacs/infrastructures/providers/api/dockerinference"
@@ -92,6 +94,7 @@ var (
 	containerOnce          sync.Once
 	elasticsearchDBHandler *elasticsearch.ElasticsearchDBHandler
 	redisIAMDBHandler      *redis.RedisDBHandler
+	postgresqlDBHanddler   *postgresql.PostgreSQLDBHandler
 	firebaseAdminSDK       *firebaseadmin.FirebaseAdminSDK
 	orthancAPI             *orthanc.OrthancAPI
 	kibanaAPI              *kibana.KibanaAPI
@@ -379,11 +382,13 @@ func (k *kernel) leadQueryServiceContainer() *leadService.LeadQueryService {
 
 func (k *kernel) inferenceCommandServiceContainer() *inferenceService.InferenceCommandService {
 	commandRepository := &inferenceRepository.InferenceCommandRepository{
-		FirebaseAdminSDK: firebaseAdminSDK,
+		FirebaseAdminSDK:              firebaseAdminSDK,
+		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
 	}
 
 	queryRepository := &inferenceRepository.InferenceQueryRepository{
-		FirebaseAdminSDK: firebaseAdminSDK,
+		FirebaseAdminSDK:              firebaseAdminSDK,
+		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
 	}
 
 	service := &inferenceService.InferenceCommandService{
@@ -406,7 +411,8 @@ func (k *kernel) inferenceCommandServiceContainer() *inferenceService.InferenceC
 
 func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQueryService {
 	repository := &inferenceRepository.InferenceQueryRepository{
-		FirebaseAdminSDK: firebaseAdminSDK,
+		FirebaseAdminSDK:              firebaseAdminSDK,
+		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
 	}
 
 	service := &inferenceService.InferenceQueryService{
@@ -537,6 +543,17 @@ func registerHandlers() {
 	if err != nil {
 		log.Fatalf("[SERVER] cannot create elasticsearch server: %v", err)
 	}
+
+	// create new postgresql connection
+	postgresqlDBHanddler = &postgresql.PostgreSQLDBHandler{}
+
+	err = postgresqlDBHanddler.Connect(postgresqlTypes.ConnectionParams{
+		DBHost:     os.Getenv("POSTGRES_DB_HOST"),
+		DBPort:     os.Getenv("POSTGRES_DB_PORT"),
+		DBDatabase: os.Getenv("POSTGRES_DB_DATABASE"),
+		DBUsername: os.Getenv("POSTGRES_DB_USERNAME"),
+		DBPassword: os.Getenv("POSTGRES_DB_PASSWORD"),
+	})
 
 	// init firebase admin sdk
 	firebaseAdminSDK, err = firebaseadmin.NewApp(context.Background(), os.Getenv("FIREBASE_CONFIG_FILE_PATH"), os.Getenv("FIREBASE_PROJECT_ID"))

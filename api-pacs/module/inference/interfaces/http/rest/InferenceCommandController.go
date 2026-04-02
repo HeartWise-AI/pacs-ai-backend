@@ -113,6 +113,96 @@ func (controller *InferenceCommandController) AddInferenceModel(w http.ResponseW
 	response.JSON(w)
 }
 
+// CreateInferenceIngestionJob creates a new inference ingestion job
+func (controller *InferenceCommandController) CreateInferenceIngestionJob(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	var request types.CreateInferenceIngestionJobRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err = controller.InferenceCommandServiceInterface.CreateInferenceIngestionJob(context.TODO(), serviceTypes.CreateInferenceIngestionJob{
+		TenantID:               tenantID,
+		DICOMModality:          request.DICOMModality,
+		ContainerID:            request.ContainerID,
+		ModelID:                request.ModelID,
+		ModelName:              request.ModelName,
+		ModelVersion:           request.ModelVersion,
+		Modalities:             request.Modalities,
+		IntervalInMinutes:      request.IntervalInMinutes,
+		ScheduleStartTimestamp: request.ScheduleStartTimestamp,
+		ScheduleEndTimestamp:   request.ScheduleEndTimestamp,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while saving inference ingestion job."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusCreated,
+		Success: true,
+		Message: "Successfully created inference ingestion job.",
+	}
+
+	response.JSON(w)
+}
+
 // AddOnboardingModelQuestionnaireAnswers adds onboarding model questionnaire answers
 func (controller *InferenceCommandController) AddOnboardingModelQuestionnaireAnswers(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
@@ -204,114 +294,6 @@ func (controller *InferenceCommandController) AddOnboardingModelQuestionnaireAns
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully added onboarding model questionnaire answers.",
-	}
-
-	response.JSON(w)
-}
-
-// DeleteInferenceModel delete an inference model
-func (controller *InferenceCommandController) DeleteInferenceModel(w http.ResponseWriter, r *http.Request) {
-	ID := chi.URLParam(r, "ID")
-	if len(ID) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid inference model ID.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	err := controller.InferenceCommandServiceInterface.DeleteInferenceModel(context.TODO(), ID)
-	if err != nil {
-		var httpCode int
-		var errorMsg string
-
-		switch err.Error() {
-		case apiError.DockerError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Docker service encountered an error."
-		case errors.DatabaseError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Error occurred while saving inference model."
-		default:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Please contact technical support."
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    httpCode,
-			Success:   false,
-			Message:   errorMsg,
-			ErrorCode: err.Error(),
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	response := viewmodels.HTTPResponseVM{
-		Status:  http.StatusOK,
-		Success: true,
-		Message: "Successfully deleted inference model.",
-	}
-
-	response.JSON(w)
-}
-
-// RemoveModelFeedback removes model feedback
-func (controller *InferenceCommandController) RemoveModelFeedback(w http.ResponseWriter, r *http.Request) {
-	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
-	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
-
-	modelID := chi.URLParam(r, "modelID")
-	if len(modelID) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Model id is required.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	err := controller.InferenceCommandServiceInterface.RemoveModelFeedback(context.TODO(), serviceTypes.RemoveModelFeedback{
-		TenantID: tenantID,
-		UserID:   userID,
-		ModelID:  modelID,
-	})
-	if err != nil {
-		var httpCode int
-		var errorMsg string
-
-		switch err.Error() {
-		case errors.DatabaseError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Error occurred while removing model feedback."
-		default:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Please contact technical support."
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    httpCode,
-			Success:   false,
-			Message:   errorMsg,
-			ErrorCode: err.Error(),
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	response := viewmodels.HTTPResponseVM{
-		Status:  http.StatusOK,
-		Success: true,
-		Message: "Successfully removed model feedback.",
 	}
 
 	response.JSON(w)
@@ -448,6 +430,163 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 	response.JSON(w)
 }
 
+// RemoveInferenceModel deletes an inference model
+func (controller *InferenceCommandController) RemoveInferenceModel(w http.ResponseWriter, r *http.Request) {
+	ID := chi.URLParam(r, "ID")
+	if len(ID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid inference model ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err := controller.InferenceCommandServiceInterface.RemoveInferenceModel(context.TODO(), ID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.DockerError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Docker service encountered an error."
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while saving inference model."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully deleted inference model.",
+	}
+
+	response.JSON(w)
+}
+
+// RemoveInferenceIngestionJob deletes an inference ingestion job
+func (controller *InferenceCommandController) RemoveInferenceIngestionJob(w http.ResponseWriter, r *http.Request) {
+	ID := chi.URLParam(r, "ID")
+	if len(ID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid inference model ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err := controller.InferenceCommandServiceInterface.RemoveInferenceIngestionJob(context.TODO(), ID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while saving inference ingestion job."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully deleted inference ingestion job.",
+	}
+
+	response.JSON(w)
+}
+
+// RemoveModelFeedback removes model feedback
+func (controller *InferenceCommandController) RemoveModelFeedback(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	modelID := chi.URLParam(r, "modelID")
+	if len(modelID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Model id is required.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err := controller.InferenceCommandServiceInterface.RemoveModelFeedback(context.TODO(), serviceTypes.RemoveModelFeedback{
+		TenantID: tenantID,
+		UserID:   userID,
+		ModelID:  modelID,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while removing model feedback."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully removed model feedback.",
+	}
+
+	response.JSON(w)
+}
+
 // RestartInferenceModelContainer restarts an inference model container
 func (controller *InferenceCommandController) RestartInferenceModelContainer(w http.ResponseWriter, r *http.Request) {
 	containerID := chi.URLParam(r, "containerID")
@@ -546,6 +685,55 @@ func (controller *InferenceCommandController) StartInferenceModelContainer(w htt
 	response.JSON(w)
 }
 
+// StartInferenceIngestionJob starts an inference ingestion job
+func (controller *InferenceCommandController) StartInferenceIngestionJob(w http.ResponseWriter, r *http.Request) {
+	ID := chi.URLParam(r, "ID")
+	if len(ID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid job ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err := controller.InferenceCommandServiceInterface.StartInferenceIngestionJob(context.TODO(), ID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.DockerError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Docker service encountered an error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully started inference ingestion job.",
+	}
+
+	response.JSON(w)
+}
+
 // StopInferenceModelContainer stops an inference model container
 func (controller *InferenceCommandController) StopInferenceModelContainer(w http.ResponseWriter, r *http.Request) {
 	containerID := chi.URLParam(r, "containerID")
@@ -590,6 +778,55 @@ func (controller *InferenceCommandController) StopInferenceModelContainer(w http
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully stopped inference model container.",
+	}
+
+	response.JSON(w)
+}
+
+// StopInferenceInferenceJob stops an inference ingestion job
+func (controller *InferenceCommandController) StopInferenceInferenceJob(w http.ResponseWriter, r *http.Request) {
+	ID := chi.URLParam(r, "ID")
+	if len(ID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid job ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err := controller.InferenceCommandServiceInterface.StopInferenceIngestionJob(context.TODO(), ID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.DockerError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Docker service encountered an error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully stopped inference ingestion job.",
 	}
 
 	response.JSON(w)
@@ -687,6 +924,102 @@ func (controller *InferenceCommandController) UpdateInferenceModel(w http.Respon
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully updated inference model.",
+	}
+
+	response.JSON(w)
+}
+
+// UpdateInferenceIngestionJob update an inference ingestion job
+func (controller *InferenceCommandController) UpdateInferenceIngestionJob(w http.ResponseWriter, r *http.Request) {
+	ID := chi.URLParam(r, "ID")
+	if len(ID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid job ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var request types.UpdateInferenceIngestionJobRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err = controller.InferenceCommandServiceInterface.UpdateInferenceIngestionJob(context.TODO(), serviceTypes.UpdateInferenceIngestionJob{
+		ID:                     ID,
+		Modalities:             request.Modalities,
+		IntervalInMinutes:      request.IntervalInMinutes,
+		ScheduleStartTimestamp: request.ScheduleStartTimestamp,
+		ScheduleEndTimestamp:   request.ScheduleEndTimestamp,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while saving inference ingestion job."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully updated inference ingestion job.",
 	}
 
 	response.JSON(w)

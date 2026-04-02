@@ -96,6 +96,60 @@ func (repository *InferenceQueryRepositoryCircuitBreaker) SelectInferenceModels(
 	}
 }
 
+// SelectInferenceIngestionJobs get inference ingestion jobs
+func (repository InferenceQueryRepositoryCircuitBreaker) SelectInferenceIngestionJobs(tenantID string) ([]entity.InferenceIngestionJob, error) {
+	output := make(chan []entity.InferenceIngestionJob, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_inference_ingestion_jobs", config.Settings())
+	errors := hystrix.Go("select_inference_ingestion_jobs", func() error {
+		jobs, err := repository.InferenceQueryRepositoryInterface.SelectInferenceIngestionJobs(tenantID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- jobs
+		return nil
+	}, nil)
+
+	select {
+	case jobs := <-output:
+		return jobs, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionJob{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionJob{}, err
+	}
+}
+
+// SelectInferenceIngestionJobByID get inference ingestion job by id
+func (repository InferenceQueryRepositoryCircuitBreaker) SelectInferenceIngestionJobByID(ID string) (entity.InferenceIngestionJob, error) {
+	output := make(chan entity.InferenceIngestionJob, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_inference_ingestion_job_by_id", config.Settings())
+	errors := hystrix.Go("select_inference_ingestion_job_by_id", func() error {
+		job, err := repository.InferenceQueryRepositoryInterface.SelectInferenceIngestionJobByID(ID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- job
+		return nil
+	}, nil)
+
+	select {
+	case job := <-output:
+		return job, nil
+	case err := <-errChan:
+		return entity.InferenceIngestionJob{}, err
+	case err := <-errors:
+		return entity.InferenceIngestionJob{}, err
+	}
+}
+
 // SelectModelFeedbackByUserModelID get model feedback by model ID
 func (repository InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
 	output := make(chan entity.ModelFeedback, 1)

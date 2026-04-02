@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	postgresqlTypes "api-pacs/infrastructures/database/postgresql/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
@@ -20,6 +22,7 @@ import (
 // InferenceCommandRepository handles the inference command repository logic
 type InferenceCommandRepository struct {
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
+	postgresqlTypes.PostgresSQLDBHandlerInterface
 }
 
 // DeleteInferenceModel deletes an inference model
@@ -41,6 +44,22 @@ func (repository *InferenceCommandRepository) DeleteInferenceModel(ctx context.C
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
+// DeleteInferenceIngestionJob deletes an inference ingestion job
+func (repository *InferenceCommandRepository) DeleteInferenceIngestionJob(ID string) error {
+	job := &entity.InferenceIngestionJob{
+		ID: ID,
+	}
+
+	stmt := fmt.Sprintf("DELETE FROM %s WHERE id = :id", job.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
 	}
 
 	return nil
@@ -186,6 +205,42 @@ func (repository *InferenceCommandRepository) InsertInferenceModel(ctx context.C
 	return nil
 }
 
+// InsertInferenceIngestionJob inserts a new inference ingestion job
+func (repository *InferenceCommandRepository) InsertInferenceIngestionJob(data types.CreateInferenceIngestionJob) error {
+	job := entity.InferenceIngestionJob{
+		ID:                     data.ID,
+		TenantID:               data.TenantID,
+		DICOMModality:          data.DICOMModality,
+		ContainerID:            data.ContainerID,
+		ModelID:                data.ModelID,
+		ModelName:              data.ModelName,
+		ModelVersion:           data.ModelVersion,
+		Modalities:             data.Modalities,
+		IntervalInMinutes:      data.IntervalInMinutes,
+		ScheduleStartTimestamp: data.ScheduleStartTimestamp,
+		ScheduleEndTimestamp:   data.ScheduleEndTimestamp,
+		Status:                 data.Status,
+	}
+
+	stmt := fmt.Sprintf("INSERT INTO %s (id, tenant_id, dicom_modality, container_id, model_id, model_name, model_version, modalities, interval_in_minutes, schedule_start_timestamp, schedule_end_timestamp, status) "+
+		"VALUES (:id, :tenant_id, :dicom_modality, :container_id, :model_id, :model_name, :model_version, :modalities, :interval_in_minutes, :schedule_start_timestamp, :schedule_end_timestamp, :status)", job.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
+	if err != nil {
+		log.Println(err)
+
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			if pgErr.Code == "23505" {
+				return errors.New(apiError.DuplicateRecord)
+			}
+		}
+
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
 // InsertOnboardingModelQuestionnaireAnswer inserts a onboarding model questionnaire answer
 func (repository *InferenceCommandRepository) InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error {
 	// firestore client
@@ -290,6 +345,44 @@ func (repository *InferenceCommandRepository) UpdateInferenceModelContainerID(ct
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
+// UpdateInferenceIngestionJob updates an inference ingestion job
+func (repository *InferenceCommandRepository) UpdateInferenceIngestionJob(data types.UpdateInferenceIngestionJob) error {
+	job := &entity.InferenceIngestionJob{
+		ID:                     data.ID,
+		Modalities:             data.Modalities,
+		IntervalInMinutes:      data.IntervalInMinutes,
+		ScheduleStartTimestamp: data.ScheduleStartTimestamp,
+		ScheduleEndTimestamp:   data.ScheduleEndTimestamp,
+	}
+
+	stmt := fmt.Sprintf("UPDATE %s SET modalities = :modalities, interval_in_minutes = :interval_in_minutes, "+
+		"schedule_start_timestamp = :schedule_start_timestamp, schedule_end_timestamp = :schedule_end_timestamp WHERE id = :id", job.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// UpdateInferenceIngestionJobStatus updates the status of an inference ingestion job
+func (repository *InferenceCommandRepository) UpdateInferenceIngestionJobStatus(ID string, status entity.InferenceIngestionJobStatus) error {
+	job := &entity.InferenceIngestionJob{
+		ID:     ID,
+		Status: status,
+	}
+
+	stmt := fmt.Sprintf("UPDATE %s SET status = :status WHERE id = :id", job.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
 	}
 
 	return nil

@@ -328,6 +328,66 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 	response.JSON(w)
 }
 
+// GetInferenceIngestionJobs get inference ingestion jobs
+func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	res, err := controller.InferenceQueryServiceInterface.GetInferenceIngestionJobs(r.Context(), tenantID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Firestore service encountered an error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	inferenceIngestionJobs := []types.GetInferenceIngestionJobResponse{}
+
+	for _, job := range res {
+		inferenceIngestionJobs = append(inferenceIngestionJobs, types.GetInferenceIngestionJobResponse{
+			ID:                     job.ID,
+			TenantID:               job.TenantID,
+			DICOMModality:          job.DICOMModality,
+			ContainerID:            job.ContainerID,
+			ModelID:                job.ModelID,
+			ModelName:              job.ModelName,
+			ModelVersion:           job.ModelVersion,
+			Modalities:             job.Modalities,
+			IntervalInMinutes:      job.IntervalInMinutes,
+			ScheduleStartTimestamp: uint64(job.ScheduleStartTimestamp.Unix()),
+			ScheduleEndTimestamp:   uint64(job.ScheduleEndTimestamp.Unix()),
+			Status:                 string(job.Status),
+			CreatedAt:              uint64(job.CreatedAt.Unix()),
+			UpdatedAt:              uint64(job.UpdatedAt.Unix()),
+		})
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully retrieved inference ingestion jobs.",
+		Data:    inferenceIngestionJobs,
+	}
+
+	response.JSON(w)
+}
+
 // GetModelFeedbackByModelID gets the model feedback by model ID
 func (controller *InferenceQueryController) GetModelFeedbackByModelID(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)

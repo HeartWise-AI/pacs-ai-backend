@@ -7,6 +7,7 @@ include:
   # - orthanc-pacs/docker-compose.yml # uncomment to launch othanc pacs for simulation
   - redis/docker-compose.yml
   - elasticsearch/docker-compose.yml
+  - postgresql/docker-compose.yml
   - api-pacs/docker-compose.yml
   - ../PACS-AI/docker-compose.yml
   - nginx/docker-compose.yml

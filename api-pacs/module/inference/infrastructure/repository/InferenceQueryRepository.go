@@ -2,9 +2,12 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 
+	postgresqlTypes "api-pacs/infrastructures/database/postgresql/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
@@ -14,6 +17,7 @@ import (
 // InferenceQueryRepository handles the inference query repository logic
 type InferenceQueryRepository struct {
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
+	postgresqlTypes.PostgresSQLDBHandlerInterface
 }
 
 // SelectInferenceModelByID get inference model by id
@@ -111,6 +115,47 @@ func (repository *InferenceQueryRepository) SelectInferenceModels(ctx context.Co
 	}
 
 	return inferenceModels, nil
+}
+
+// SelectInferenceIngestionJobs get inference ingestion jobs
+func (repository *InferenceQueryRepository) SelectInferenceIngestionJobs(tenantID string) ([]entity.InferenceIngestionJob, error) {
+	var job entity.InferenceIngestionJob
+	var jobs []entity.InferenceIngestionJob
+
+	stmt := fmt.Sprintf("SELECT * FROM %s WHERE tenant_id = :tenant_id ORDER BY updated_at DESC", job.GetModelName())
+
+	err := repository.PostgresSQLDBHandlerInterface.Query(stmt, map[string]interface{}{
+		"tenant_id": tenantID,
+	}, &jobs)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.DatabaseError)
+	} else if len(jobs) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return jobs, nil
+}
+
+// SelectInferenceIngestionJobByID get inference ingestion job by ID
+func (repository *InferenceQueryRepository) SelectInferenceIngestionJobByID(ID string) (entity.InferenceIngestionJob, error) {
+	var job entity.InferenceIngestionJob
+
+	stmt := fmt.Sprintf("SELECT * FROM %s WHERE id = :id", job.GetModelName())
+
+	err := repository.PostgresSQLDBHandlerInterface.QueryRow(stmt, map[string]interface{}{
+		"id": ID,
+	}, &job)
+	if err != nil {
+		log.Println(err)
+		if err == sql.ErrNoRows {
+			return entity.InferenceIngestionJob{}, errors.New(apiError.MissingRecord)
+		}
+
+		return entity.InferenceIngestionJob{}, errors.New(apiError.DatabaseError)
+	}
+
+	return job, nil
 }
 
 // SelectModelFeedbackByUserModelID get model feedback by model and user ID
