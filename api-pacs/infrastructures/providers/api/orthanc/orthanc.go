@@ -385,9 +385,6 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modality
 	for _, series := range queryModalitySeriesAnswersResponse {
 		func(series types.QueryModalitySeriesAnswersResponse) {
 			eg.Go(func() error {
-				m.Lock()
-				defer m.Unlock()
-
 				// retrieve by series (c-move)
 				buf := new(bytes.Buffer)
 				err := json.NewEncoder(buf).Encode(map[string]interface{}{
@@ -438,7 +435,10 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modality
 					return err
 				}
 
+				m.Lock()
 				results = append(results, answerResponse)
+				defer m.Unlock()
+
 				return nil
 			})
 		}(series)
@@ -461,16 +461,14 @@ func (o *OrthancAPI) RetrieveModalityStudyByInstances(ctx context.Context, modal
 		return nil, err
 	}
 
-	// Initialize an empty slice to store results
 	var results []types.QueryModalityResponse
 
-	// Setup concurrency tools
+	// setup concurrency tools
 	var m = sync.Mutex{}
 	eg, _ := errgroup.WithContext(ctx)
 
-	// For each series, retrieve instances
+	// for each series, retrieve instances
 	for _, series := range queryModalitySeriesAnswersResponse {
-		// First, query for instances in this series
 		buf := new(bytes.Buffer)
 		err := json.NewEncoder(buf).Encode(map[string]interface{}{
 			"Level":     "Instance",
@@ -507,7 +505,6 @@ func (o *OrthancAPI) RetrieveModalityStudyByInstances(ctx context.Context, modal
 			continue
 		}
 
-		// Get instances from the query results
 		var instancesResponse []map[string]interface{}
 		err = o.findQueryAnswers(queryResponse.ID, &instancesResponse)
 		if err != nil {
@@ -518,17 +515,18 @@ func (o *OrthancAPI) RetrieveModalityStudyByInstances(ctx context.Context, modal
 			continue
 		}
 
-		// Set limit for concurrency
-		eg.SetLimit(10) // Limit concurrent requests
+		// set limit for concurrency
+		eg.SetLimit(len(instancesResponse))
 
-		// Retrieve each instance individually
+		// retrieve each instance individually
 		for _, instance := range instancesResponse {
-			instanceCopy := instance // Create a copy for the closure
+			instanceCopy := instance // create a copy for the closure
+
 			eg.Go(func() error {
 				// Extract SOPInstanceUID from instance
 				sopInstanceUID, ok := instanceCopy["SOPInstanceUID"].(string)
 				if !ok || sopInstanceUID == "" {
-					return nil // Skip this instance but don't fail the whole operation
+					return nil // skip this instance but don't fail the whole operation
 				}
 
 				// C-MOVE for this specific instance
@@ -588,7 +586,7 @@ func (o *OrthancAPI) RetrieveModalityStudyByInstances(ctx context.Context, modal
 		}
 	}
 
-	// Wait for all goroutines to finish
+	// wait for all goroutines to finish
 	if err := eg.Wait(); err != nil {
 		return nil, err
 	}
