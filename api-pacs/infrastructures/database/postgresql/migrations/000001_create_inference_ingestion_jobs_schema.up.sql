@@ -14,6 +14,7 @@ CREATE TABLE
         schedule_start_timestamp timestamp NOT NULL,
         schedule_end_timestamp timestamp NOT NULL,
         status inference_ingestion_job_status NOT NULL,
+        last_executed_at timestamp NULL,
         created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id)

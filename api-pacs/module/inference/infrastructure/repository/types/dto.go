@@ -36,6 +36,15 @@ type AddOnboardingModelQuestionnaireAnswer struct {
 	QuestionnaireAnswers   []string
 }
 
+type AddInferenceIngestionRunResult struct {
+	ID               string
+	JobID            string
+	StudyInstanceUID string
+	InferenceOutput  *map[string]interface{}
+	ErrorMessage     *string
+	Status           entity.IngestionRunStatus
+}
+
 type CreateInferenceIngestionJob struct {
 	ID                     string
 	TenantID               string

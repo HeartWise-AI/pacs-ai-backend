@@ -70,31 +70,33 @@ func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, dat
 	}
 
 	// logs to elasticsearch
-	go func() {
-		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, data.UserID)
-		if err != nil {
-			return
-		}
+	if data.UserID != nil {
+		go func() {
+			user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, *data.UserID)
+			if err != nil {
+				return
+			}
 
-		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
-		if err != nil {
-			return
-		}
+			tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
+			if err != nil {
+				return
+			}
 
-		_, err = service.ElasticsearchCommandServiceInterface.CreateGetModalityStudyLog(ctx, elasticsearchTypes.CreateGetModalityStudyLog{
-			TenantID:   data.TenantID,
-			TenantName: tenant.Name,
-			ModalityID: data.ModalityID,
-			UserID:     data.UserID,
-			Email:      user.Email,
-			Name:       user.Name,
-			QueryID:    queryID,
-		})
-		if err != nil {
-			log.Println(err)
-			return
-		}
-	}()
+			_, err = service.ElasticsearchCommandServiceInterface.CreateGetModalityStudyLog(ctx, elasticsearchTypes.CreateGetModalityStudyLog{
+				TenantID:   data.TenantID,
+				TenantName: tenant.Name,
+				ModalityID: data.ModalityID,
+				UserID:     *data.UserID,
+				Email:      user.Email,
+				Name:       user.Name,
+				QueryID:    queryID,
+			})
+			if err != nil {
+				log.Println(err)
+				return
+			}
+		}()
+	}
 
 	return res, queryID, nil
 }

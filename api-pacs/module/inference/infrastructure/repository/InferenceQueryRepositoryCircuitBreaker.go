@@ -97,7 +97,7 @@ func (repository *InferenceQueryRepositoryCircuitBreaker) SelectInferenceModels(
 }
 
 // SelectInferenceIngestionJobs get inference ingestion jobs
-func (repository InferenceQueryRepositoryCircuitBreaker) SelectInferenceIngestionJobs(tenantID string) ([]entity.InferenceIngestionJob, error) {
+func (repository InferenceQueryRepositoryCircuitBreaker) SelectInferenceIngestionJobs(tenantID *string) ([]entity.InferenceIngestionJob, error) {
 	output := make(chan []entity.InferenceIngestionJob, 1)
 	errChan := make(chan error, 1)
 

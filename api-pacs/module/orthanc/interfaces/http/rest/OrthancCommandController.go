@@ -128,10 +128,10 @@ func (controller *OrthancCommandController) RetrieveModalityStudy(w http.Respons
 
 	res, err := controller.OrthancCommandServiceInterface.RetrieveModalityStudyBySeries(context.TODO(), serviceTypes.RetrieveModalityStudyBySeries{
 		TenantID:         tenantID,
-		UserID:           userID,
 		ModalityID:       request.ModalityID,
 		StudyInstanceUID: request.StudyInstanceUID,
 		ModalityType:     request.ModalityType,
+		UserID:           &userID,
 	})
 	if err != nil {
 		var httpCode int

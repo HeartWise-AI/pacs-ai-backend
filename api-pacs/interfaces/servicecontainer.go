@@ -275,6 +275,37 @@ func (k *kernel) RegisterUserRESTQueryController() userREST.UserQueryController 
 
 // ==========================================================================
 
+func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
+	commandRepository := &inferenceRepository.InferenceCommandRepository{
+		FirebaseAdminSDK:              firebaseAdminSDK,
+		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
+	}
+
+	queryRepository := &inferenceRepository.InferenceQueryRepository{
+		FirebaseAdminSDK:              firebaseAdminSDK,
+		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
+	}
+
+	service := &inferenceService.InferenceCommandService{
+		InferenceCommandRepositoryInterface: &inferenceRepository.InferenceCommandRepositoryCircuitBreaker{
+			InferenceCommandRepositoryInterface: commandRepository,
+		},
+		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
+			InferenceQueryRepositoryInterface: queryRepository,
+		},
+		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
+		UserQueryServiceInterface:            k.userQueryServiceContainer(),
+		OrthancCommandServiceInterface:       k.orthancCommandServiceContainer(),
+		OrthancQueryServiceInterface:         k.orthancQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		DockerSDKInterface:                   dockerSDK,
+		OrthancAPIInterface:                  orthancAPI,
+		DockerInferenceAPIInterface:          dockerInferenceAPI,
+	}
+
+	return service
+}
+
 func OrthancCommandServiceDI() *orthancService.OrthancCommandService {
 	m.Lock()
 	defer m.Unlock()
@@ -365,48 +396,8 @@ func (k *kernel) iamQueryServiceContainer() *iamService.IAMQueryService {
 	return service
 }
 
-func (k *kernel) leadCommandServiceContainer() *leadService.LeadCommandService {
-	service := &leadService.LeadCommandService{
-		MailchimpAPIInterface:  mailchimpAPI,
-		CloudflareAPIInterface: cloudflareAPI,
-	}
-
-	return service
-}
-
-func (k *kernel) leadQueryServiceContainer() *leadService.LeadQueryService {
-	service := &leadService.LeadQueryService{}
-
-	return service
-}
-
 func (k *kernel) inferenceCommandServiceContainer() *inferenceService.InferenceCommandService {
-	commandRepository := &inferenceRepository.InferenceCommandRepository{
-		FirebaseAdminSDK:              firebaseAdminSDK,
-		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
-	}
-
-	queryRepository := &inferenceRepository.InferenceQueryRepository{
-		FirebaseAdminSDK:              firebaseAdminSDK,
-		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
-	}
-
-	service := &inferenceService.InferenceCommandService{
-		InferenceCommandRepositoryInterface: &inferenceRepository.InferenceCommandRepositoryCircuitBreaker{
-			InferenceCommandRepositoryInterface: commandRepository,
-		},
-		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
-			InferenceQueryRepositoryInterface: queryRepository,
-		},
-		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
-		UserQueryServiceInterface:            k.userQueryServiceContainer(),
-		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
-		DockerSDKInterface:                   dockerSDK,
-		OrthancAPIInterface:                  orthancAPI,
-		DockerInferenceAPIInterface:          dockerInferenceAPI,
-	}
-
-	return service
+	return InferenceCommandServiceDI()
 }
 
 func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQueryService {
@@ -422,6 +413,21 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		DockerSDKInterface:          dockerSDK,
 		DockerInferenceAPIInterface: dockerInferenceAPI,
 	}
+
+	return service
+}
+
+func (k *kernel) leadCommandServiceContainer() *leadService.LeadCommandService {
+	service := &leadService.LeadCommandService{
+		MailchimpAPIInterface:  mailchimpAPI,
+		CloudflareAPIInterface: cloudflareAPI,
+	}
+
+	return service
+}
+
+func (k *kernel) leadQueryServiceContainer() *leadService.LeadQueryService {
+	service := &leadService.LeadQueryService{}
 
 	return service
 }
@@ -443,6 +449,20 @@ func (k *kernel) orthancQueryServiceContainer() *orthancService.OrthancQueryServ
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
 		UserQueryServiceInterface:            k.userQueryServiceContainer(),
+	}
+
+	return service
+}
+
+// orchestratorServiceContainer returns the orchestrator service with dependencies
+func (k *kernel) orchestratorServiceContainer() *orchestratorService.OrchestratorService {
+	// Configure orchestrator service
+	orchestratorAPIURL := os.Getenv("ORCHESTRATOR_API_URL")
+
+	service := &orchestratorService.OrchestratorService{
+		OrchestratorAPIURL: orchestratorAPIURL,
+		OrchestratorClient: &http.Client{Timeout: 5 * time.Minute},
+		ThreadsByID:        make(map[string]*entity.Thread),
 	}
 
 	return service
@@ -506,20 +526,6 @@ func (k *kernel) userQueryServiceContainer() *userService.UserQueryService {
 		UserQueryRepositoryInterface: &userRepository.UserQueryRepositoryCircuitBreaker{
 			UserQueryRepositoryInterface: repository,
 		},
-	}
-
-	return service
-}
-
-// orchestratorServiceContainer returns the orchestrator service with dependencies
-func (k *kernel) orchestratorServiceContainer() *orchestratorService.OrchestratorService {
-	// Configure orchestrator service
-	orchestratorAPIURL := os.Getenv("ORCHESTRATOR_API_URL")
-
-	service := &orchestratorService.OrchestratorService{
-		OrchestratorAPIURL: orchestratorAPIURL,
-		OrchestratorClient: &http.Client{Timeout: 5 * time.Minute},
-		ThreadsByID:        make(map[string]*entity.Thread),
 	}
 
 	return service
@@ -600,6 +606,7 @@ func registerHandlers() {
 	dockerInferenceAPI = &dockerinference.DockerInferenceAPI{}
 
 	// run event listeners and cron jobs
+	go RunInferenceIngestionServiceHandler()
 	go RunOrthancLocalStudiesCacheHandler()
 }
 

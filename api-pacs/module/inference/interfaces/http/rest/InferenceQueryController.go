@@ -373,6 +373,7 @@ func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.Res
 			ScheduleStartTimestamp: uint64(job.ScheduleStartTimestamp.Unix()),
 			ScheduleEndTimestamp:   uint64(job.ScheduleEndTimestamp.Unix()),
 			Status:                 string(job.Status),
+			LastExecutedAt:         uint64(job.LastExecutedAt.Unix()),
 			CreatedAt:              uint64(job.CreatedAt.Unix()),
 			UpdatedAt:              uint64(job.UpdatedAt.Unix()),
 		})

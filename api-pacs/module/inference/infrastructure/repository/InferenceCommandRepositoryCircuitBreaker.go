@@ -234,6 +234,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceInges
 	}
 }
 
+// InsertInferenceIngestionRunResult is the decorator for the inference command repository to insert inference ingestion run result
+func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceIngestionRunResult(data types.AddInferenceIngestionRunResult) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("insert_inference_ingestion_run_result", config.Settings())
+	errors := hystrix.Go("insert_inference_ingestion_run_result", func() error {
+		err := repository.InferenceCommandRepositoryInterface.InsertInferenceIngestionRunResult(data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // InsertOnboardingModelQuestionnaireAnswer is the decorator for the inference command repository to insert onboarding model questionnaire answer
 func (repository *InferenceCommandRepositoryCircuitBreaker) InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error {
 	output := make(chan bool, 1)
@@ -323,6 +350,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceInges
 	hystrix.ConfigureCommand("update_inference_ingestion_job_status", config.Settings())
 	errors := hystrix.Go("update_inference_ingestion_job_status", func() error {
 		err := repository.InferenceCommandRepositoryInterface.UpdateInferenceIngestionJobStatus(ID, status)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// UpdateInferenceIngestionJobLastExecutedAt is the decorator for the inference command repository to update last executed at of an inference ingestion job
+func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceIngestionJobLastExecutedAt(ID string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("update_inference_ingestion_job_last_executed_at", config.Settings())
+	errors := hystrix.Go("update_inference_ingestion_job_last_executed_at", func() error {
+		err := repository.InferenceCommandRepositoryInterface.UpdateInferenceIngestionJobLastExecutedAt(ID)
 		if err != nil {
 			errChan <- err
 			return nil

@@ -150,16 +150,13 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 		}
 	}
 
-	var res []orthancAPITypes.QueryModalityResponse
-	var err2 error
-
-	// Get modality type from study information
+	// get modality type from study information
 	var modalityType string
-	if data.ModalityType != "" {
+	if len(data.ModalityType) > 0 {
 		// If modality type is explicitly provided, use it
 		modalityType = data.ModalityType
 	} else {
-		// Otherwise, query for study details to get ModalitiesInStudy
+		// otherwise, query for study details to get ModalitiesInStudy
 		studyResults, _, err := service.OrthancAPIInterface.FindModalityStudies(ctx, data.ModalityID, orthancAPITypes.QueryModalitiesRequest{
 			Level:     "Study",
 			LocalAET:  os.Getenv("ORTHANC_AET"),
@@ -171,69 +168,73 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 		})
 		if err != nil {
 			log.Println("Error getting study information:", err)
-			// Default to non-US modality type if study info can't be retrieved
+			// default to non-US modality type if study info can't be retrieved
 			modalityType = "other"
 		} else if len(studyResults) > 0 {
-			// Extract modality type from ModalitiesInStudy field
+			// extract modality type from ModalitiesInStudy field
 			modalitiesInStudy := studyResults[0].ModalitiesInStudy
 			log.Println("ModalitiesInStudy:", modalitiesInStudy)
 
-			// Check if US is in the modalities
+			// check if US is in the modalities
 			if strings.Contains(modalitiesInStudy, "US") {
 				modalityType = "US"
 			} else {
 				modalityType = "other"
 			}
 		} else {
-			// Default to non-US modality type if no study info found
+			// default to non-US modality type if no study info found
 			modalityType = "other"
 		}
 	}
 
 	log.Println("Using modality type:", modalityType)
 
+	var res []orthancAPITypes.QueryModalityResponse
+
 	// Choose retrieval method based on modality type
 	if modalityType == "US" {
 		log.Println("Using instance-based retrieval for US modality")
-		res, err2 = service.OrthancAPIInterface.RetrieveModalityStudyByInstances(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID)
+		res, err = service.OrthancAPIInterface.RetrieveModalityStudyByInstances(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID)
 	} else {
 		log.Println("Using series-based retrieval for non-US modality")
-		res, err2 = service.OrthancAPIInterface.RetrieveModalityStudyBySeries(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID)
+		res, err = service.OrthancAPIInterface.RetrieveModalityStudyBySeries(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID)
 	}
 
-	if err2 != nil {
-		log.Println(err2)
-		return nil, err2
+	if err != nil {
+		log.Println(err)
+		return nil, err
 	}
 
 	// logs to elasticsearch
-	go func() {
-		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, data.UserID)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+	if data.UserID != nil {
+		go func() {
+			user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, *data.UserID)
+			if err != nil {
+				log.Println(err)
+				return
+			}
 
-		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+			tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
+			if err != nil {
+				log.Println(err)
+				return
+			}
 
-		_, err = service.ElasticsearchCommandServiceInterface.CreateRetrieveStudyLog(ctx, elasticsearchTypes.CreateRetrieveStudyLog{
-			TenantID:         data.TenantID,
-			TenantName:       tenant.Name,
-			ModalityID:       data.ModalityID,
-			UserID:           data.UserID,
-			Email:            user.Email,
-			Name:             user.Name,
-			StudyInstanceUID: data.StudyInstanceUID,
-		})
-		if err != nil {
-			log.Println(err)
-			return
-		}
-	}()
+			_, err = service.ElasticsearchCommandServiceInterface.CreateRetrieveStudyLog(ctx, elasticsearchTypes.CreateRetrieveStudyLog{
+				TenantID:         data.TenantID,
+				TenantName:       tenant.Name,
+				ModalityID:       data.ModalityID,
+				UserID:           *data.UserID,
+				Email:            user.Email,
+				Name:             user.Name,
+				StudyInstanceUID: data.StudyInstanceUID,
+			})
+			if err != nil {
+				log.Println(err)
+				return
+			}
+		}()
+	}
 
 	return res, nil
 }

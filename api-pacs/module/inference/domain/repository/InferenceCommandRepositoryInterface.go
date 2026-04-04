@@ -24,6 +24,8 @@ type InferenceCommandRepositoryInterface interface {
 	InsertInferenceModel(ctx context.Context, data types.AddInferenceModel) error
 	// InsertInferenceIngestionJob inserts a new inference ingestion job
 	InsertInferenceIngestionJob(data types.CreateInferenceIngestionJob) error
+	// InsertInferenceIngestionRunResult inserts a new inference ingestion run result
+	InsertInferenceIngestionRunResult(data types.AddInferenceIngestionRunResult) error
 	// InsertOnboardingModelQuestionnaireAnswer inserts an onboarding model questionnaire answer
 	InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
 	// UpdateInferenceModel updates an inference model
@@ -32,6 +34,8 @@ type InferenceCommandRepositoryInterface interface {
 	UpdateInferenceIngestionJob(data types.UpdateInferenceIngestionJob) error
 	// UpdateInferenceIngestionJobStatus updates the status of an inference ingestion job
 	UpdateInferenceIngestionJobStatus(ID string, status entity.InferenceIngestionJobStatus) error
+	// UpdateInferenceIngestionJobLastExecutedAt updates last executed at of infererence ingestion job
+	UpdateInferenceIngestionJobLastExecutedAt(ID string) error
 	// UpdateInferenceModelContainerID updates the container ID of an inference model
 	UpdateInferenceModelContainerID(ctx context.Context, ID, containerID string) error
 	// UpsertModelFeedback upserts model feedback

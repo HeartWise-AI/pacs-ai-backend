@@ -387,7 +387,7 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 		return lastPartI < lastPartJ
 	})
 
-	predictionResult, err := controller.InferenceCommandServiceInterface.PredictInferenceModel(context.TODO(), tenantID, userID, containerID, serviceTypes.PredictInferenceModel{
+	predictionResult, err := controller.InferenceCommandServiceInterface.PredictInferenceModel(context.TODO(), tenantID, containerID, &userID, serviceTypes.PredictInferenceModel{
 		StudyInstanceUID:   request.StudyInstanceUID,
 		SeriesInstanceUIDs: request.SeriesInstanceUIDs,
 		AdditionalMetadata: request.AdditionalMetadata,
