@@ -276,9 +276,6 @@ func (k *kernel) RegisterUserRESTQueryController() userREST.UserQueryController 
 // ==========================================================================
 
 func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
-	m.Lock()
-	defer m.Unlock()
-
 	commandRepository := &inferenceRepository.InferenceCommandRepository{
 		FirebaseAdminSDK:              firebaseAdminSDK,
 		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
