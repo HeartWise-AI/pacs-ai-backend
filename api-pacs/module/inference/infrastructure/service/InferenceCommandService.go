@@ -222,7 +222,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 							}
 
 							// if already cached, skip checks
-							if err.Error() != apiError.DuplicateRecord {
+							if err == nil {
 								var retrieveJobIDs []string
 								for _, retrieveJob := range retrieveJobs {
 									retrieveJobIDs = append(retrieveJobIDs, retrieveJob.ID)
@@ -233,7 +233,12 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 								retryMaxLimit := 36 // 1 retry = 5s, max 3 minutes (180 seconds)
 
 								for i := 0; i < retryMaxLimit; i++ {
-									time.Sleep(5 * time.Second) // 5s
+									// ctx aware checks
+									select {
+									case <-egStudiesCtx.Done():
+										return nil // skip
+									case <-time.After(5 * time.Second): // 5s
+									}
 
 									retrieveJobStatuses, err := service.OrthancQueryServiceInterface.GetJobsInfo(egStudiesCtx, retrieveJobIDs)
 									if err != nil {
@@ -266,7 +271,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 
 								// if retry limit reached and still not study found, abandon
 								if !localStudyFound {
-									errMessage := fmt.Sprintf("[inference ingestion] abandon retrieve for study instance uid:", study.StudyInstanceUID)
+									errMessage := fmt.Sprintf("[inference ingestion] abandon retrieve for study instance uid: %s", study.StudyInstanceUID)
 									log.Println(errMessage)
 									// save to inference ingestion result
 									_ = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionRunResult(repositoryTypes.AddInferenceIngestionRunResult{
@@ -282,7 +287,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 
 							/// step 5: if study found, apply prediction
 							// get series instance uids
-							localResources, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
+							localResources, err := service.OrthancAPIInterface.FindLocalResources(egStudiesCtx, orthancAPITypes.QueryLocalResourceRequest{
 								Level: "Series",
 								Query: orthancAPITypes.QueryLocalResource{
 									StudyInstanceUID: study.StudyInstanceUID,
@@ -290,9 +295,13 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 								Expand: true,
 							})
 							if err != nil || len(localResources) == 0 {
-								errMessage := fmt.Sprintf("[inference ingestion] cannot retrieve study by series:", err.Error())
-								log.Println(errMessage)
+								errMessage := "[inference ingestion] cannot retrieve study by series (empty)"
+								if err != nil {
+									errMessage = fmt.Sprintf("[inference ingestion] cannot retrieve study by series: %s", err.Error())
+								}
+
 								// save to inference ingestion result
+								log.Println(errMessage)
 								_ = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionRunResult(repositoryTypes.AddInferenceIngestionRunResult{
 									ID:               generateID(),
 									JobID:            job.ID,
@@ -300,6 +309,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 									ErrorMessage:     &errMessage,
 									Status:           entity.IngestsionRunStatusFailed,
 								})
+
 								return nil // skip
 							}
 
