@@ -39,6 +39,8 @@ Before running this repository, ensure you have:
    cp pacs-ai-backend/orthanc/.env.example pacs-ai-backend/orthanc/.env
    cp pacs-ai-backend/nginx/.env.example pacs-ai-backend/nginx/.env
    cp pacs-ai-backend/cardio-agent/.env.example pacs-ai-backend/cardio-agent/.env
+   cp pacs-ai backend/postgresql/.env.example pacs-ai backend/postgresql/.env
+   cp pacs-ai backend/redis/.env.example pacs-ai backend/redis/.env
    ```
 
 2. Create Docker network:
@@ -170,6 +172,11 @@ Update `api-pacs/.env` with the following variables:
 | `ORTHANC_AET`               | Should be set to `PACS_AI`                                                          |
 | `ORTHANC_BASE_URL`          | Should be set to `http://orthanc:8042` or correct port                              |
 | `ORTHANC_LOCAL_CACHE_EXPIRATION_IN_HOURS`             | Should be set to `24` (default) or desired hour           |
+| `POSTGRES_DB_HOST`          | Should be set to `postgresql`                                                       |
+| `POSTGRES_DB_PORT`          | Should be set to `5432`                                                             |
+| `POSTGRES_DB_DATABASE`      | Should be set to `db_pacs`                                                          |
+| `POSTGRES_DB_USERNAME`      | Should be set to `pacs`                                                             |
+| `POSTGRES_DB_PASSWORD`      | Should be set to `pacs.staging`                                                     |
 | `REDIS_HOST`                | Should be set to `redis`                                                            |
 | `REDIS_PORT`                | Should be set to `6379` (do not change)                                             |
 | `REDIS_PASSWORD`            | Should be set to `pacs.staging` (requires update in `redis/redis.conf` if changed)  |
@@ -249,10 +256,49 @@ Update `api-pacs/.env` with the following variables:
 | `ORTHANC_AET`               | Should be set to `PACS_AI`                                                                                                |
 | `ORTHANC_BASE_URL`          | Should be set to `http://orthanc:8042` or correct port                                                                    |
 | `ORTHANC_LOCAL_CACHE_EXPIRATION_IN_HOURS`             | Should be set to `24` (default) or desired hour                                                 |
+| `POSTGRES_DB_HOST`          | Should be set to `postgresql`                                                                                             |
+| `POSTGRES_DB_PORT`          | Should be set to `5432`                                                                                                   |
+| `POSTGRES_DB_DATABASE`      | Should be set to `db_pacs`                                                                                                |
+| `POSTGRES_DB_USERNAME`      | Should be set to `pacs`                                                                                                   |
+| `POSTGRES_DB_PASSWORD`      | Should be set to `pacs.staging`                                                                                           |
 | `REDIS_HOST`                | Should be set to `localhost`                                                                                              |
 | `REDIS_PORT`                | Should be set to `6379` (do not change)                                                                                   |
 | `REDIS_PASSWORD`            | Should be set to `pacs.staging` (requires update in `redis/redis.conf` if changed)                                        |
 | `REDIS_IAM_DB`              | Should be set to `1` (do not change)                                                                                      |
+
+#### Database Migrations
+
+Go API uses go-migrate (https://github.com/golang-migrate/migrate) to handle migration. Download and change your migrate database command accordingly.
+
+To create a schema, run:
+
+```bash
+NAME=<init_schema> make migrate-schema
+```
+
+To migrate up, run:
+
+```bash
+STEPS=<remove STEPS to apply all or specify step number> make migrate-up
+```
+
+To migrate down, run:
+
+```bash
+STEPS=<remove STEPS to apply all or specify step number> make migrate-down
+```
+
+To check migrate version, run:
+
+```bash
+make migrate-version
+```
+
+To force migrate, run:
+
+```bash
+STEPS=<specify step number> make migrate-force
+```
 
 #### DICOM Configuration
 
