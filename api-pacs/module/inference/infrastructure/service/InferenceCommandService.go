@@ -374,7 +374,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 					return err
 				}
 
-				// update job last execution time
+				/// step 7: update job last execution time
 				_ = service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionJobLastExecutedAt(job.ID)
 
 				return nil
