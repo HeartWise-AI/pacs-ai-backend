@@ -157,8 +157,23 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 				m.Lock()
 				defer m.Unlock()
 
-				// if not running, skip it
+				// if not running, skip
 				if job.Status != entity.InferenceIngestionJobStatusRunning {
+					return nil // skip
+				}
+
+				// if schedule start is set and not reached yet, skip
+				if job.ScheduleStartTimestamp.Unix() != 0 && time.Now().Before(job.ScheduleStartTimestamp) {
+					return nil // skip
+				}
+
+				// if schedule end is set and already passed, skip
+				if job.ScheduleEndTimestamp.Unix() != 0 && time.Now().After(job.ScheduleEndTimestamp) {
+					return nil // skip
+				}
+
+				// if interval hasn't elapsed since last execution, skip
+				if job.LastExecutedAt != nil && time.Now().Before(job.LastExecutedAt.Add(time.Duration(job.IntervalInMinutes)*time.Minute)) {
 					return nil // skip
 				}
 
@@ -358,6 +373,9 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 				if err := egStudies.Wait(); err != nil {
 					return err
 				}
+
+				// update job last execution time
+				_ = service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionJobLastExecutedAt(job.ID)
 
 				return nil
 			})

@@ -418,6 +418,25 @@ func (repository *InferenceCommandRepository) UpdateInferenceIngestionJobStatus(
 	return nil
 }
 
+// UpdateInferenceIngestionJobLastExecutedAt updates last executed at of infererence ingestion job
+func (repository *InferenceCommandRepository) UpdateInferenceIngestionJobLastExecutedAt(ID string) error {
+	now := time.Now()
+
+	job := &entity.InferenceIngestionJob{
+		ID:             ID,
+		LastExecutedAt: &now,
+	}
+
+	stmt := fmt.Sprintf("UPDATE %s SET last_executed_at = :last_executed_at WHERE id = :id", job.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
 // UpsertModelFeedback upserts model feedback
 func (repository *InferenceCommandRepository) UpsertModelFeedback(ctx context.Context, data types.UpsertModelFeedback) error {
 	var modelFeedback entity.ModelFeedback

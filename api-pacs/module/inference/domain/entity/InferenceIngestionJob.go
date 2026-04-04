@@ -27,6 +27,7 @@ type InferenceIngestionJob struct {
 	ScheduleStartTimestamp time.Time                   `db:"schedule_start_timestamp"`
 	ScheduleEndTimestamp   time.Time                   `db:"schedule_end_timestamp"`
 	Status                 InferenceIngestionJobStatus // enum
+	LastExecutedAt         *time.Time                  `db:"last_executed_at"`
 	CreatedAt              time.Time                   `db:"created_at"`
 	UpdatedAt              time.Time                   `db:"updated_at"`
 }

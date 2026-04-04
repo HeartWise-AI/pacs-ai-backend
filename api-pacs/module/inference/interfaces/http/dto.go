@@ -139,6 +139,7 @@ type GetInferenceIngestionJobResponse struct {
 	ScheduleStartTimestamp uint64   `json:"scheduleStartTimestamp"`
 	ScheduleEndTimestamp   uint64   `json:"scheduleEndTimestamp"`
 	Status                 string   `json:"status"`
+	LastExecutedAt         uint64   `json:"lastExecutedAt"`
 	CreatedAt              uint64   `json:"createdAt"`
 	UpdatedAt              uint64   `json:"updatedAt"`
 }

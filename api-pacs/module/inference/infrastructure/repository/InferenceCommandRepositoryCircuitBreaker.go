@@ -369,6 +369,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceInges
 	}
 }
 
+// UpdateInferenceIngestionJobLastExecutedAt is the decorator for the inference command repository to update last executed at of an inference ingestion job
+func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceIngestionJobLastExecutedAt(ID string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("update_inference_ingestion_job_last_executed_at", config.Settings())
+	errors := hystrix.Go("update_inference_ingestion_job_last_executed_at", func() error {
+		err := repository.InferenceCommandRepositoryInterface.UpdateInferenceIngestionJobLastExecutedAt(ID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // UpdateInferenceModelContainerID is the decorator for the inference command repository to update the container ID of an inference model
 func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceModelContainerID(ctx context.Context, ID, containerID string) error {
 	output := make(chan bool, 1)

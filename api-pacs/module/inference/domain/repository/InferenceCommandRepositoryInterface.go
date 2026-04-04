@@ -34,6 +34,8 @@ type InferenceCommandRepositoryInterface interface {
 	UpdateInferenceIngestionJob(data types.UpdateInferenceIngestionJob) error
 	// UpdateInferenceIngestionJobStatus updates the status of an inference ingestion job
 	UpdateInferenceIngestionJobStatus(ID string, status entity.InferenceIngestionJobStatus) error
+	// UpdateInferenceIngestionJobLastExecutedAt updates last executed at of infererence ingestion job
+	UpdateInferenceIngestionJobLastExecutedAt(ID string) error
 	// UpdateInferenceModelContainerID updates the container ID of an inference model
 	UpdateInferenceModelContainerID(ctx context.Context, ID, containerID string) error
 	// UpsertModelFeedback upserts model feedback
