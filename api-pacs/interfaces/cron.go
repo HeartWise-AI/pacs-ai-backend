@@ -12,7 +12,7 @@ import (
 func RunInferenceIngestionServiceHandler() {
 	inferenceCommandService := InferenceCommandServiceDI()
 
-	// run every 1hr
+	// run every 5 mins
 	tick := time.Tick(5 * time.Minute)
 	for range tick {
 		err := inferenceCommandService.ExecuteInferenceIngestionRunner(context.TODO())
