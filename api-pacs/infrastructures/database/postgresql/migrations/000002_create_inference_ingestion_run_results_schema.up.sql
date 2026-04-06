@@ -11,7 +11,7 @@ CREATE TABLE
         created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
-        FOREIGN KEY (job_id) REFERENCES inference_ingestion_jobs (id)
+        FOREIGN KEY (job_id) REFERENCES inference_ingestion_jobs (id) ON DELETE CASCADE
     );
 
 -- function to update the updated_at column
