@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -34,7 +35,7 @@ func (controller *InferenceQueryController) GetContainerInfo(w http.ResponseWrit
 		return
 	}
 
-	containerInfo, err := controller.InferenceQueryServiceInterface.GetContainerInfo(r.Context(), containerID)
+	containerInfo, err := controller.InferenceQueryServiceInterface.GetContainerInfo(context.TODO(), containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -80,7 +81,7 @@ func (controller *InferenceQueryController) GetContainerInfo(w http.ResponseWrit
 func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
-	inferenceModels, err := controller.InferenceQueryServiceInterface.GetInferenceModels(r.Context(), tenantID)
+	inferenceModels, err := controller.InferenceQueryServiceInterface.GetInferenceModels(context.TODO(), tenantID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -167,7 +168,7 @@ func (controller *InferenceQueryController) GetInferenceModelInfo(w http.Respons
 		return
 	}
 
-	modelInfo, err := controller.InferenceQueryServiceInterface.GetInferenceModelInfo(r.Context(), containerID)
+	modelInfo, err := controller.InferenceQueryServiceInterface.GetInferenceModelInfo(context.TODO(), containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -220,7 +221,7 @@ func (controller *InferenceQueryController) GetInferenceModelFacts(w http.Respon
 		return
 	}
 
-	modelFacts, err := controller.InferenceQueryServiceInterface.GetInferenceModelFacts(r.Context(), containerID)
+	modelFacts, err := controller.InferenceQueryServiceInterface.GetInferenceModelFacts(context.TODO(), containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -262,7 +263,7 @@ func (controller *InferenceQueryController) GetInferenceModelFacts(w http.Respon
 func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
-	inferenceAvailableModels, err := controller.InferenceQueryServiceInterface.GetInferenceAvailableModels(r.Context(), tenantID)
+	inferenceAvailableModels, err := controller.InferenceQueryServiceInterface.GetInferenceAvailableModels(context.TODO(), tenantID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -332,15 +333,15 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
-	res, err := controller.InferenceQueryServiceInterface.GetInferenceIngestionJobs(r.Context(), tenantID)
+	res, err := controller.InferenceQueryServiceInterface.GetInferenceIngestionJobs(context.TODO(), tenantID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
-		case apiError.FirestoreError:
+		case apiError.DatabaseError:
 			httpCode = http.StatusInternalServerError
-			errorMsg = "Firestore service encountered an error."
+			errorMsg = "Database error."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Please contact technical support."
@@ -360,6 +361,11 @@ func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.Res
 	inferenceIngestionJobs := []types.GetInferenceIngestionJobResponse{}
 
 	for _, job := range res {
+		var lastExecutedAt uint64
+		if job.LastExecutedAt != nil {
+			lastExecutedAt = uint64(job.LastExecutedAt.Unix())
+		}
+
 		inferenceIngestionJobs = append(inferenceIngestionJobs, types.GetInferenceIngestionJobResponse{
 			ID:                     job.ID,
 			TenantID:               job.TenantID,
@@ -373,7 +379,7 @@ func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.Res
 			ScheduleStartTimestamp: uint64(job.ScheduleStartTimestamp.Unix()),
 			ScheduleEndTimestamp:   uint64(job.ScheduleEndTimestamp.Unix()),
 			Status:                 string(job.Status),
-			LastExecutedAt:         uint64(job.LastExecutedAt.Unix()),
+			LastExecutedAt:         lastExecutedAt,
 			CreatedAt:              uint64(job.CreatedAt.Unix()),
 			UpdatedAt:              uint64(job.UpdatedAt.Unix()),
 		})
@@ -407,7 +413,7 @@ func (controller *InferenceQueryController) GetModelFeedbackByModelID(w http.Res
 		return
 	}
 
-	res, err := controller.InferenceQueryServiceInterface.GetModelFeedBackByUser(r.Context(), serviceTypes.GetModelFeedbackByUser{
+	res, err := controller.InferenceQueryServiceInterface.GetModelFeedBackByUser(context.TODO(), serviceTypes.GetModelFeedbackByUser{
 		TenantID: tenantID,
 		UserID:   userID,
 		ModelID:  modelID,
@@ -496,7 +502,7 @@ func (controller *InferenceQueryController) GetOnboardingModelQuestionnaireAnswe
 		return
 	}
 
-	res, err := controller.InferenceQueryServiceInterface.GetOnboardingModelQuestionnaireAnswers(r.Context(), serviceTypes.GetOnboardingModelQuestionnaireAnswer{
+	res, err := controller.InferenceQueryServiceInterface.GetOnboardingModelQuestionnaireAnswers(context.TODO(), serviceTypes.GetOnboardingModelQuestionnaireAnswer{
 		TenantID: tenantID,
 		UserID:   userID,
 		ModelID:  &modelID,
