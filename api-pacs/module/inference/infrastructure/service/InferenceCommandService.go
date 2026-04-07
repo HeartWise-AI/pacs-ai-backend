@@ -771,7 +771,7 @@ func (service *InferenceCommandService) RemoveInferenceModel(ctx context.Context
 	}
 
 	// delete inference ingestion jobs related
-	err = service.InferenceCommandRepositoryInterface.DeleteInferenceIngestionJobByTenantContainerID(inferenceModel.TenantID, inferenceModel.ContainerID)
+	err = service.InferenceCommandRepositoryInterface.DeleteInferenceIngestionJobByContainerID(inferenceModel.TenantID, inferenceModel.ContainerID)
 	if err != nil {
 		return err
 	}

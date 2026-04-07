@@ -65,8 +65,8 @@ func (repository *InferenceCommandRepository) DeleteInferenceIngestionJob(ID str
 	return nil
 }
 
-// DeleteInferenceIngestionJobByTenantContainerID deletes an inference ingestion job by tenant ID and container ID
-func (repository *InferenceCommandRepository) DeleteInferenceIngestionJobByTenantContainerID(tenantID, containerID string) error {
+// DeleteInferenceIngestionJobByContainerID deletes an inference ingestion job by container ID
+func (repository *InferenceCommandRepository) DeleteInferenceIngestionJobByContainerID(tenantID, containerID string) error {
 	job := &entity.InferenceIngestionJob{
 		TenantID:    tenantID,
 		ContainerID: containerID,

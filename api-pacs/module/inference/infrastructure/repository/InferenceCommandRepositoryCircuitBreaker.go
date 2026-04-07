@@ -72,14 +72,14 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteInferenceInges
 	}
 }
 
-// DeleteInferenceIngestionJobByTenantContainerID is the decorator for the inference command repository to delete inference ingestion jobs by tenant ID and container ID
-func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteInferenceIngestionJobByTenantContainerID(tenantID, containerID string) error {
+// DeleteInferenceIngestionJobByContainerID is the decorator for the inference command repository to delete inference ingestion jobs by container ID
+func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteInferenceIngestionJobByContainerID(tenantID, containerID string) error {
 	output := make(chan bool, 1)
 	errChan := make(chan error, 1)
 
-	hystrix.ConfigureCommand("delete_inference_ingestion_job_by_tenant_container_id", config.Settings())
-	errors := hystrix.Go("delete_inference_ingestion_job_by_tenant_container_id", func() error {
-		err := repository.InferenceCommandRepositoryInterface.DeleteInferenceIngestionJobByTenantContainerID(tenantID, containerID)
+	hystrix.ConfigureCommand("delete_inference_ingestion_job_by_container_id", config.Settings())
+	errors := hystrix.Go("delete_inference_ingestion_job_by_container_id", func() error {
+		err := repository.InferenceCommandRepositoryInterface.DeleteInferenceIngestionJobByContainerID(tenantID, containerID)
 		if err != nil {
 			errChan <- err
 			return nil
