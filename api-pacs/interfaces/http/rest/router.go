@@ -173,6 +173,7 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Post("/job/create", inferenceCommandController.CreateInferenceIngestionJob)
 							r.Post("/job/{ID}/start", inferenceCommandController.StartInferenceIngestionJob)
 							r.Post("/job/{ID}/stop", inferenceCommandController.StopInferenceInferenceJob)
+							r.Post("/job/csv/upload", inferenceCommandController.UploadInferenceIngestionJobsCSVFile)
 							r.Get("/jobs", inferenceQueryController.GetInferenceIngestionJobs)
 							r.Put("/job/{ID}/update", inferenceCommandController.UpdateInferenceIngestionJob)
 							r.Delete("/job/{ID}/remove", inferenceCommandController.RemoveInferenceIngestionJob)

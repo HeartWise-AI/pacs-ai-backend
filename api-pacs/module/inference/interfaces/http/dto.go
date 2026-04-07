@@ -193,3 +193,15 @@ type OnboardingModelQuestionnaireAnswer struct {
 	QuestionnaireAnswerIDs []string `json:"questionnaireAnswerIds"`
 	QuestionnaireAnswers   []string `json:"questionnaireAnswers"`
 }
+
+type UploadInferenceIngestionJob struct {
+	DICOMModality          string   `csv:"dicom_modality"`
+	ContainerID            string   `csv:"container_id"`
+	ModelID                string   `csv:"model_id"`
+	ModelName              string   `csv:"model_name"`
+	ModelVersion           string   `csv:"model_version"`
+	Modalities             []string `csv:"modalities"`
+	IntervalInMinutes      uint     `csv:"interval_in_minutes"`
+	ScheduleStartTimestamp uint64   `csv:"schedule_start_timestamp"`
+	ScheduleEndTimestamp   uint64   `csv:"schedule_end_timestamp"`
+}

@@ -45,4 +45,6 @@ type InferenceCommandServiceInterface interface {
 	UpdateInferenceIngestionJob(ctx context.Context, data types.UpdateInferenceIngestionJob) error
 	// UpdateModelFeedback updates model feedback
 	UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error
+	// UploadInferenceIngestionJobs uploads inference ingestion jobs
+	UploadInferenceIngestionJobs(ctx context.Context, data []types.CreateInferenceIngestionJob) error
 }

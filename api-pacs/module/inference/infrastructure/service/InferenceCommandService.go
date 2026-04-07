@@ -981,6 +981,32 @@ func (service *InferenceCommandService) UpdateModelFeedback(ctx context.Context,
 	return nil
 }
 
+// UploadInferenceIngestionJobs uploads inference ingestion jobs
+func (service *InferenceCommandService) UploadInferenceIngestionJobs(ctx context.Context, data []types.CreateInferenceIngestionJob) error {
+	// add inference ingestion jobs
+	for _, job := range data {
+		err := service.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(repositoryTypes.CreateInferenceIngestionJob{
+			ID:                     generateID(),
+			TenantID:               job.TenantID,
+			DICOMModality:          job.DICOMModality,
+			ContainerID:            job.ContainerID,
+			ModelID:                job.ModelID,
+			ModelName:              job.ModelName,
+			ModelVersion:           job.ModelVersion,
+			Modalities:             job.Modalities,
+			IntervalInMinutes:      job.IntervalInMinutes,
+			ScheduleStartTimestamp: time.Unix(int64(job.ScheduleStartTimestamp), 0),
+			ScheduleEndTimestamp:   time.Unix(int64(job.ScheduleEndTimestamp), 0),
+			Status:                 entity.InferenceIngestionJobStatusRunning, // default: RUNNING,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func generateID() string {
 	return ksuid.New().String()
 }

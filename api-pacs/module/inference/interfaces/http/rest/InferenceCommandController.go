@@ -3,6 +3,7 @@ package rest
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
+	"github.com/gocarina/gocsv"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
@@ -23,6 +25,12 @@ import (
 // InferenceCommandController request controller for inference command
 type InferenceCommandController struct {
 	application.InferenceCommandServiceInterface
+}
+
+var mediaMaxFileSize int64 = 20 * 1024 * 1024 // 20MB
+
+var mediaAllowedFileTypes = []string{
+	"text/csv", "application/csv",
 }
 
 // AddInferenceModel add a new inference model
@@ -1123,6 +1131,144 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully updated model feedback.",
+	}
+
+	response.JSON(w)
+}
+
+// UploadInferenceIngestionJobsCSVFile upload an inference ingestion jobs CSV file
+func (controller *InferenceCommandController) UploadInferenceIngestionJobsCSVFile(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	// define max upload size
+	r.Body = http.MaxBytesReader(w, r.Body, mediaMaxFileSize)
+	err := r.ParseMultipartForm(mediaMaxFileSize)
+	if err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Maximum file size reached.",
+			ErrorCode: errors.MaximumLimitReached,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	file, fileHeader, err := r.FormFile("file")
+	if err != nil {
+		log.Println("Cannot read file:", err)
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Cannot read file.",
+			ErrorCode: errors.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+	defer file.Close()
+
+	mimeType := fileHeader.Header.Get("Content-Type")
+
+	// limit allowed mime type only
+	var isMimeTypeAllowed bool
+	for _, allowedFileType := range mediaAllowedFileTypes {
+		if mimeType == allowedFileType {
+			isMimeTypeAllowed = true
+		}
+	}
+
+	if !isMimeTypeAllowed {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid file type.",
+			ErrorCode: errors.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// sanitize filename
+	filename := fileHeader.Filename
+	if len(filename) > 200 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid file name.",
+			ErrorCode: errors.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// Parse CSV using gocsv
+	var csvJobs []types.UploadInferenceIngestionJob
+	if err := gocsv.Unmarshal(file, &csvJobs); err != nil {
+		log.Println("Error parsing CSV:", err)
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid CSV format.",
+			ErrorCode: errors.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// Convert CSV data to service types
+	var jobs []serviceTypes.CreateInferenceIngestionJob
+	for _, csvJob := range csvJobs {
+		jobs = append(jobs, serviceTypes.CreateInferenceIngestionJob{
+			TenantID:               tenantID,
+			DICOMModality:          csvJob.DICOMModality,
+			ContainerID:            csvJob.ContainerID,
+			ModelID:                csvJob.ModelID,
+			ModelName:              csvJob.ModelName,
+			ModelVersion:           csvJob.ModelVersion,
+			Modalities:             csvJob.Modalities,
+			IntervalInMinutes:      csvJob.IntervalInMinutes,
+			ScheduleStartTimestamp: csvJob.ScheduleStartTimestamp,
+			ScheduleEndTimestamp:   csvJob.ScheduleEndTimestamp,
+		})
+	}
+
+	err = controller.InferenceCommandServiceInterface.UploadInferenceIngestionJobs(context.TODO(), jobs)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+		errorCode := err.Error()
+
+		switch errorCode {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "An error occurred while uploading inference ingestion jobs."
+		default:
+			httpCode = http.StatusBadRequest
+			errorMsg = "Please contact technical support."
+			errorCode = errors.ServerError
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: errorCode,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusCreated,
+		Success: true,
+		Message: "Successfully uploaded inference ingestion jobs CSV file.",
 	}
 
 	response.JSON(w)
