@@ -604,10 +604,6 @@ func registerHandlers() {
 
 	// init docker inference api
 	dockerInferenceAPI = &dockerinference.DockerInferenceAPI{}
-
-	// run event listeners and cron jobs
-	go RunInferenceIngestionServiceHandler()
-	go RunOrthancLocalStudiesCacheHandler()
 }
 
 // ServiceContainer export instantiated service container once
@@ -621,6 +617,10 @@ func ServiceContainer() ServiceContainerInterface {
 			registerHandlers()
 
 			k = &kernel{}
+
+			// run event listeners and cron jobs after all handlers are registered
+			go RunInferenceIngestionServiceHandler()
+			go RunOrthancLocalStudiesCacheHandler()
 		})
 	}
 	return k

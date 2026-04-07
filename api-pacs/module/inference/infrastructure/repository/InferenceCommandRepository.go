@@ -65,6 +65,23 @@ func (repository *InferenceCommandRepository) DeleteInferenceIngestionJob(ID str
 	return nil
 }
 
+// DeleteInferenceIngestionJobByContainerID deletes an inference ingestion job by container ID
+func (repository *InferenceCommandRepository) DeleteInferenceIngestionJobByContainerID(tenantID, containerID string) error {
+	job := &entity.InferenceIngestionJob{
+		TenantID:    tenantID,
+		ContainerID: containerID,
+	}
+
+	stmt := fmt.Sprintf("DELETE FROM %s WHERE tenant_id = :tenant_id AND container_id = :container_id", job.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
 // DeleteModelFeedback deletes model feedback
 func (repository *InferenceCommandRepository) DeleteModelFeedback(ctx context.Context, ID string) error {
 	// firestore client

@@ -72,6 +72,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteInferenceInges
 	}
 }
 
+// DeleteInferenceIngestionJobByContainerID is the decorator for the inference command repository to delete inference ingestion jobs by container ID
+func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteInferenceIngestionJobByContainerID(tenantID, containerID string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("delete_inference_ingestion_job_by_container_id", config.Settings())
+	errors := hystrix.Go("delete_inference_ingestion_job_by_container_id", func() error {
+		err := repository.InferenceCommandRepositoryInterface.DeleteInferenceIngestionJobByContainerID(tenantID, containerID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // DeleteModelFeedback is the decorator for the inference command repository to delete model feedback
 func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteModelFeedback(ctx context.Context, ID string) error {
 	output := make(chan bool, 1)
