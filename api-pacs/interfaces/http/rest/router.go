@@ -76,7 +76,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.24.1-beta",
+				"version": "v0.24.2-beta",
 			},
 		}
 
@@ -173,6 +173,7 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Post("/job/create", inferenceCommandController.CreateInferenceIngestionJob)
 							r.Post("/job/{ID}/start", inferenceCommandController.StartInferenceIngestionJob)
 							r.Post("/job/{ID}/stop", inferenceCommandController.StopInferenceInferenceJob)
+							r.Post("/jobs/import", inferenceCommandController.ImportInferenceIngestionJobsCSVFile)
 							r.Get("/jobs", inferenceQueryController.GetInferenceIngestionJobs)
 							r.Put("/job/{ID}/update", inferenceCommandController.UpdateInferenceIngestionJob)
 							r.Delete("/job/{ID}/remove", inferenceCommandController.RemoveInferenceIngestionJob)

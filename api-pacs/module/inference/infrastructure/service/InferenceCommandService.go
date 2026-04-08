@@ -670,6 +670,32 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 	return predictRequest, containerName, nil
 }
 
+// ImportInferenceIngestionJobs imports inference ingestion jobs
+func (service *InferenceCommandService) ImportInferenceIngestionJobs(ctx context.Context, data []types.CreateInferenceIngestionJob) error {
+	// add inference ingestion jobs
+	for _, job := range data {
+		err := service.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(repositoryTypes.CreateInferenceIngestionJob{
+			ID:                     generateID(),
+			TenantID:               job.TenantID,
+			DICOMModality:          job.DICOMModality,
+			ContainerID:            job.ContainerID,
+			ModelID:                job.ModelID,
+			ModelName:              job.ModelName,
+			ModelVersion:           job.ModelVersion,
+			Modalities:             job.Modalities,
+			IntervalInMinutes:      job.IntervalInMinutes,
+			ScheduleStartTimestamp: time.Unix(int64(job.ScheduleStartTimestamp), 0),
+			ScheduleEndTimestamp:   time.Unix(int64(job.ScheduleEndTimestamp), 0),
+			Status:                 entity.InferenceIngestionJobStatusRunning, // default: RUNNING,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // PredictInferenceModel predicts an inference model
 func (service *InferenceCommandService) PredictInferenceModel(ctx context.Context, tenantID, containerID string, userID *string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error) {
 	// TODO: remove this

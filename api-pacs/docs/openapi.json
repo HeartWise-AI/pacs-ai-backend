@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "0.24.1-beta"
+    "version": "0.24.2-beta"
   },
   "servers": [
     {
@@ -574,6 +574,46 @@
             "bearerAuth": []
           }
         ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/ingestion/jobs/import": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Import Ingestion Jobs CSV",
+        "description": "Import ingestion jobs from CSV file.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Upload csv file",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "2xx": {
             "description": "Success"
