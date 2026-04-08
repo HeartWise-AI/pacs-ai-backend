@@ -308,6 +308,176 @@ func (controller *InferenceCommandController) AddOnboardingModelQuestionnaireAns
 	response.JSON(w)
 }
 
+// ImportInferenceIngestionJobsCSVFile import an inference ingestion jobs CSV file
+func (controller *InferenceCommandController) ImportInferenceIngestionJobsCSVFile(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	// define max upload size
+	r.Body = http.MaxBytesReader(w, r.Body, mediaMaxFileSize)
+	err := r.ParseMultipartForm(mediaMaxFileSize)
+	if err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Maximum file size reached.",
+			ErrorCode: errors.MaximumLimitReached,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	file, fileHeader, err := r.FormFile("file")
+	if err != nil {
+		log.Println("Cannot read file:", err)
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Cannot read file.",
+			ErrorCode: errors.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+	defer file.Close()
+
+	mimeType := fileHeader.Header.Get("Content-Type")
+
+	// limit allowed mime type only
+	var isMimeTypeAllowed bool
+	for _, allowedFileType := range mediaAllowedFileTypes {
+		if mimeType == allowedFileType {
+			isMimeTypeAllowed = true
+		}
+	}
+
+	if !isMimeTypeAllowed {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid file type.",
+			ErrorCode: errors.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// sanitize filename
+	filename := fileHeader.Filename
+	if len(filename) > 200 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid file name.",
+			ErrorCode: errors.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var csvJobs []types.ImportInferenceIngestionJob
+	if err := gocsv.Unmarshal(file, &csvJobs); err != nil {
+		log.Println("Error parsing CSV:", err)
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid CSV format.",
+			ErrorCode: errors.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var jobs []serviceTypes.CreateInferenceIngestionJob
+	for _, csvJob := range csvJobs {
+		// handle modalities, split by comma and trim space
+		modalitiesStr := strings.Trim(csvJob.Modalities, `"`)
+		var modalities []string
+		if len(modalitiesStr) != 0 {
+			modalities = strings.Split(modalitiesStr, ",")
+			for i, modality := range modalities {
+				modalities[i] = strings.TrimSpace(modality)
+			}
+		}
+
+		startTime, err := time.Parse("2006-01-02 15:04:05", csvJob.ScheduleStartTimestamp)
+		if err != nil {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   "Invalid timestamp format.",
+				ErrorCode: errors.InvalidPayload,
+			}
+			response.JSON(w)
+			return
+		}
+
+		endTime, err := time.Parse("2006-01-02 15:04:05", csvJob.ScheduleEndTimestamp)
+		if err != nil {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   "Invalid timestamp format.",
+				ErrorCode: errors.InvalidPayload,
+			}
+			response.JSON(w)
+			return
+		}
+
+		jobs = append(jobs, serviceTypes.CreateInferenceIngestionJob{
+			TenantID:               tenantID,
+			DICOMModality:          csvJob.DICOMModality,
+			ContainerID:            csvJob.ContainerID,
+			ModelID:                csvJob.ModelID,
+			ModelName:              csvJob.ModelName,
+			ModelVersion:           csvJob.ModelVersion,
+			Modalities:             modalities,
+			IntervalInMinutes:      csvJob.IntervalInMinutes,
+			ScheduleStartTimestamp: uint64(startTime.Unix()),
+			ScheduleEndTimestamp:   uint64(endTime.Unix()),
+		})
+	}
+
+	err = controller.InferenceCommandServiceInterface.ImportInferenceIngestionJobs(context.TODO(), jobs)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+		errorCode := err.Error()
+
+		switch errorCode {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "An error occurred while importing inference ingestion jobs."
+		default:
+			httpCode = http.StatusBadRequest
+			errorMsg = "Please contact technical support."
+			errorCode = errors.ServerError
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: errorCode,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusCreated,
+		Success: true,
+		Message: "Successfully imported inference ingestion jobs CSV file.",
+	}
+
+	response.JSON(w)
+}
+
 // PredictInferenceModel predicts an inference model
 func (controller *InferenceCommandController) PredictInferenceModel(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
@@ -1132,176 +1302,6 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully updated model feedback.",
-	}
-
-	response.JSON(w)
-}
-
-// UploadInferenceIngestionJobsCSVFile upload an inference ingestion jobs CSV file
-func (controller *InferenceCommandController) UploadInferenceIngestionJobsCSVFile(w http.ResponseWriter, r *http.Request) {
-	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
-
-	// define max upload size
-	r.Body = http.MaxBytesReader(w, r.Body, mediaMaxFileSize)
-	err := r.ParseMultipartForm(mediaMaxFileSize)
-	if err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Maximum file size reached.",
-			ErrorCode: errors.MaximumLimitReached,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	file, fileHeader, err := r.FormFile("file")
-	if err != nil {
-		log.Println("Cannot read file:", err)
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Cannot read file.",
-			ErrorCode: errors.InvalidPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-	defer file.Close()
-
-	mimeType := fileHeader.Header.Get("Content-Type")
-
-	// limit allowed mime type only
-	var isMimeTypeAllowed bool
-	for _, allowedFileType := range mediaAllowedFileTypes {
-		if mimeType == allowedFileType {
-			isMimeTypeAllowed = true
-		}
-	}
-
-	if !isMimeTypeAllowed {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid file type.",
-			ErrorCode: errors.InvalidPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// sanitize filename
-	filename := fileHeader.Filename
-	if len(filename) > 200 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid file name.",
-			ErrorCode: errors.InvalidPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	var csvJobs []types.UploadInferenceIngestionJob
-	if err := gocsv.Unmarshal(file, &csvJobs); err != nil {
-		log.Println("Error parsing CSV:", err)
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid CSV format.",
-			ErrorCode: errors.InvalidPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	var jobs []serviceTypes.CreateInferenceIngestionJob
-	for _, csvJob := range csvJobs {
-		// handle modalities, split by comma and trim space
-		modalitiesStr := strings.Trim(csvJob.Modalities, `"`)
-		var modalities []string
-		if len(modalitiesStr) != 0 {
-			modalities = strings.Split(modalitiesStr, ",")
-			for i, modality := range modalities {
-				modalities[i] = strings.TrimSpace(modality)
-			}
-		}
-
-		startTime, err := time.Parse("2006-01-02 15:04:05", csvJob.ScheduleStartTimestamp)
-		if err != nil {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   "Invalid timestamp format.",
-				ErrorCode: errors.InvalidPayload,
-			}
-			response.JSON(w)
-			return
-		}
-
-		endTime, err := time.Parse("2006-01-02 15:04:05", csvJob.ScheduleEndTimestamp)
-		if err != nil {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   "Invalid timestamp format.",
-				ErrorCode: errors.InvalidPayload,
-			}
-			response.JSON(w)
-			return
-		}
-
-		jobs = append(jobs, serviceTypes.CreateInferenceIngestionJob{
-			TenantID:               tenantID,
-			DICOMModality:          csvJob.DICOMModality,
-			ContainerID:            csvJob.ContainerID,
-			ModelID:                csvJob.ModelID,
-			ModelName:              csvJob.ModelName,
-			ModelVersion:           csvJob.ModelVersion,
-			Modalities:             modalities,
-			IntervalInMinutes:      csvJob.IntervalInMinutes,
-			ScheduleStartTimestamp: uint64(startTime.Unix()),
-			ScheduleEndTimestamp:   uint64(endTime.Unix()),
-		})
-	}
-
-	err = controller.InferenceCommandServiceInterface.UploadInferenceIngestionJobs(context.TODO(), jobs)
-	if err != nil {
-		var httpCode int
-		var errorMsg string
-		errorCode := err.Error()
-
-		switch errorCode {
-		case errors.DatabaseError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "An error occurred while uploading inference ingestion jobs."
-		default:
-			httpCode = http.StatusBadRequest
-			errorMsg = "Please contact technical support."
-			errorCode = errors.ServerError
-		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    httpCode,
-			Success:   false,
-			Message:   errorMsg,
-			ErrorCode: errorCode,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	response := viewmodels.HTTPResponseVM{
-		Status:  http.StatusCreated,
-		Success: true,
-		Message: "Successfully uploaded inference ingestion jobs CSV file.",
 	}
 
 	response.JSON(w)

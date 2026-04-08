@@ -19,6 +19,8 @@ type InferenceCommandServiceInterface interface {
 	ExecuteInferenceIngestionRunner(ctx context.Context) error
 	// GenerateInferenceModelPredictRequest generates the prediction request payload
 	GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error)
+	// ImportInferenceIngestionJobs imports inference ingestion jobs
+	ImportInferenceIngestionJobs(ctx context.Context, data []types.CreateInferenceIngestionJob) error
 	// PredictInferenceModel predicts an inference model
 	PredictInferenceModel(ctx context.Context, tenantID, containerID string, userID *string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
 	// RemoveInferenceModel deletes an inference model
@@ -45,6 +47,4 @@ type InferenceCommandServiceInterface interface {
 	UpdateInferenceIngestionJob(ctx context.Context, data types.UpdateInferenceIngestionJob) error
 	// UpdateModelFeedback updates model feedback
 	UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error
-	// UploadInferenceIngestionJobs uploads inference ingestion jobs
-	UploadInferenceIngestionJobs(ctx context.Context, data []types.CreateInferenceIngestionJob) error
 }

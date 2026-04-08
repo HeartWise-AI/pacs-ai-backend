@@ -25,13 +25,13 @@ var (
 		"UpdateModelFeedbackRequest.InferenceModelID":                                                           "Inference Model ID is required.",
 		"UpdateModelFeedbackRequest.ModelID":                                                                    "Model ID is required.",
 		"UpdateModelFeedbackRequest.FeedbackType":                                                               "Feedback type is required.",
-		"UploadInferenceIngestionJob.DICOMModality":                                                             "DICOM modality is required.",
-		"UploadInferenceIngestionJob.ContainerID":                                                               "Container ID is required.",
-		"UploadInferenceIngestionJob.ModelID":                                                                   "Model ID is required.",
-		"UploadInferenceIngestionJob.ModelName":                                                                 "Model name is required.",
-		"UploadInferenceIngestionJob.ModelVersion":                                                              "Model version is required.",
-		"UploadInferenceIngestionJob.Modalities":                                                                "Modalities are required.",
-		"UploadInferenceIngestionJob.IntervalInMinutes":                                                         "Interval in minutes is required.",
+		"ImportInferenceIngestionJob.DICOMModality":                                                             "DICOM modality is required.",
+		"ImportInferenceIngestionJob.ContainerID":                                                               "Container ID is required.",
+		"ImportInferenceIngestionJob.ModelID":                                                                   "Model ID is required.",
+		"ImportInferenceIngestionJob.ModelName":                                                                 "Model name is required.",
+		"ImportInferenceIngestionJob.ModelVersion":                                                              "Model version is required.",
+		"ImportInferenceIngestionJob.Modalities":                                                                "Modalities are required.",
+		"ImportInferenceIngestionJob.IntervalInMinutes":                                                         "Interval in minutes is required.",
 	}
 )
 
@@ -201,7 +201,7 @@ type OnboardingModelQuestionnaireAnswer struct {
 	QuestionnaireAnswers   []string `json:"questionnaireAnswers"`
 }
 
-type UploadInferenceIngestionJob struct {
+type ImportInferenceIngestionJob struct {
 	DICOMModality          string `csv:"dicom_modality" validate:"required"`
 	ContainerID            string `csv:"container_id" validate:"required"`
 	ModelID                string `csv:"model_id" validate:"required"`

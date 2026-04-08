@@ -587,18 +587,18 @@
         }
       }
     },
-    "/inference/ingestion/job/csv/upload": {
+    "/inference/ingestion/jobs/import": {
       "post": {
         "tags": ["inference"],
-        "summary": "Upload CSV File",
-        "description": "Upload CSV file",
+        "summary": "Import Ingestion Jobs CSV",
+        "description": "Import ingestion jobs from CSV file.",
         "security": [
           {
             "bearerAuth": []
           }
         ],
         "requestBody": {
-          "description": "Upload a file",
+          "description": "Upload csv file",
           "content": {
             "multipart/form-data": {
               "schema": {
