@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -27,7 +28,7 @@ type InferenceCommandController struct {
 	application.InferenceCommandServiceInterface
 }
 
-var mediaMaxFileSize int64 = 20 * 1024 * 1024 // 20MB
+var mediaMaxFileSize int64 = 5 * 1024 * 1024 // 5MB
 
 var mediaAllowedFileTypes = []string{
 	"text/csv", "application/csv",
@@ -1206,7 +1207,6 @@ func (controller *InferenceCommandController) UploadInferenceIngestionJobsCSVFil
 		return
 	}
 
-	// Parse CSV using gocsv
 	var csvJobs []types.UploadInferenceIngestionJob
 	if err := gocsv.Unmarshal(file, &csvJobs); err != nil {
 		log.Println("Error parsing CSV:", err)
@@ -1221,9 +1221,42 @@ func (controller *InferenceCommandController) UploadInferenceIngestionJobsCSVFil
 		return
 	}
 
-	// Convert CSV data to service types
 	var jobs []serviceTypes.CreateInferenceIngestionJob
 	for _, csvJob := range csvJobs {
+		// handle modalities, split by comma and trim space
+		modalitiesStr := strings.Trim(csvJob.Modalities, `"`)
+		var modalities []string
+		if len(modalitiesStr) != 0 {
+			modalities = strings.Split(modalitiesStr, ",")
+			for i, modality := range modalities {
+				modalities[i] = strings.TrimSpace(modality)
+			}
+		}
+
+		startTime, err := time.Parse("2006-01-02 15:04:05", csvJob.ScheduleStartTimestamp)
+		if err != nil {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   "Invalid timestamp format.",
+				ErrorCode: errors.InvalidPayload,
+			}
+			response.JSON(w)
+			return
+		}
+
+		endTime, err := time.Parse("2006-01-02 15:04:05", csvJob.ScheduleEndTimestamp)
+		if err != nil {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   "Invalid timestamp format.",
+				ErrorCode: errors.InvalidPayload,
+			}
+			response.JSON(w)
+			return
+		}
+
 		jobs = append(jobs, serviceTypes.CreateInferenceIngestionJob{
 			TenantID:               tenantID,
 			DICOMModality:          csvJob.DICOMModality,
@@ -1231,10 +1264,10 @@ func (controller *InferenceCommandController) UploadInferenceIngestionJobsCSVFil
 			ModelID:                csvJob.ModelID,
 			ModelName:              csvJob.ModelName,
 			ModelVersion:           csvJob.ModelVersion,
-			Modalities:             csvJob.Modalities,
+			Modalities:             modalities,
 			IntervalInMinutes:      csvJob.IntervalInMinutes,
-			ScheduleStartTimestamp: csvJob.ScheduleStartTimestamp,
-			ScheduleEndTimestamp:   csvJob.ScheduleEndTimestamp,
+			ScheduleStartTimestamp: uint64(startTime.Unix()),
+			ScheduleEndTimestamp:   uint64(endTime.Unix()),
 		})
 	}
 

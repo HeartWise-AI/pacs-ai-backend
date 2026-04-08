@@ -25,6 +25,13 @@ var (
 		"UpdateModelFeedbackRequest.InferenceModelID":                                                           "Inference Model ID is required.",
 		"UpdateModelFeedbackRequest.ModelID":                                                                    "Model ID is required.",
 		"UpdateModelFeedbackRequest.FeedbackType":                                                               "Feedback type is required.",
+		"UploadInferenceIngestionJob.DICOMModality":                                                             "DICOM modality is required.",
+		"UploadInferenceIngestionJob.ContainerID":                                                               "Container ID is required.",
+		"UploadInferenceIngestionJob.ModelID":                                                                   "Model ID is required.",
+		"UploadInferenceIngestionJob.ModelName":                                                                 "Model name is required.",
+		"UploadInferenceIngestionJob.ModelVersion":                                                              "Model version is required.",
+		"UploadInferenceIngestionJob.Modalities":                                                                "Modalities are required.",
+		"UploadInferenceIngestionJob.IntervalInMinutes":                                                         "Interval in minutes is required.",
 	}
 )
 
@@ -195,13 +202,13 @@ type OnboardingModelQuestionnaireAnswer struct {
 }
 
 type UploadInferenceIngestionJob struct {
-	DICOMModality          string   `csv:"dicom_modality"`
-	ContainerID            string   `csv:"container_id"`
-	ModelID                string   `csv:"model_id"`
-	ModelName              string   `csv:"model_name"`
-	ModelVersion           string   `csv:"model_version"`
-	Modalities             []string `csv:"modalities"`
-	IntervalInMinutes      uint     `csv:"interval_in_minutes"`
-	ScheduleStartTimestamp uint64   `csv:"schedule_start_timestamp"`
-	ScheduleEndTimestamp   uint64   `csv:"schedule_end_timestamp"`
+	DICOMModality          string `csv:"dicom_modality" validate:"required"`
+	ContainerID            string `csv:"container_id" validate:"required"`
+	ModelID                string `csv:"model_id" validate:"required"`
+	ModelName              string `csv:"model_name" validate:"required"`
+	ModelVersion           string `csv:"model_version" validate:"required"`
+	Modalities             string `csv:"modalities" validate:"required"`
+	IntervalInMinutes      uint   `csv:"interval_in_minutes" validate:"required"`
+	ScheduleStartTimestamp string `csv:"schedule_start_timestamp"`
+	ScheduleEndTimestamp   string `csv:"schedule_end_timestamp"`
 }
