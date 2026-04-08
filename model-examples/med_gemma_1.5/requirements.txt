@@ -1,4 +1,4 @@
-torch==2.6.0
+torch==2.8.0
 torchvision==0.21.0
 pandas
 pillow
@@ -9,10 +9,10 @@ fvcore
 timm
 fastapi==0.115.6
 uvicorn==0.34.0
-pydicom==3.0.1
+pydicom==3.0.2
 nibabel==5.3.2
 pytorchvideo==0.1.5
-opencv-python-headless==4.10.0.84
+opencv-python-headless==4.13.0.92
 transformers
 huggingface_hub
 accelerate
