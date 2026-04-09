@@ -1,5 +1,6 @@
 services:
   postgresql:
+    env_file: .env
     image: postgres:17.2
     container_name: postgresql
     cap_add:
@@ -12,7 +13,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - 5432:5432
+      - 5433:5432
     healthcheck:
       test:
         ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pacs} -d ${POSTGRES_DATABASE:-db_pacs}"]
