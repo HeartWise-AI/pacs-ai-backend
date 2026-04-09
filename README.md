@@ -268,37 +268,27 @@ Update `api-pacs/.env` with the following variables:
 
 #### Database Migrations
 
-Go API uses go-migrate (https://github.com/golang-migrate/migrate) to handle migration. Download and change your migrate database command accordingly.
-
-To create a schema, run:
+##### Database Migrations using `psql` (no 3rd party required)
 
 ```bash
-NAME=<init_schema> make migrate-schema
+docker exec -i postgresql psql -U ${POSTGRES_DB_USERNAME} -d ${POSTGRES_DB_DATABASE} < /path/to/repo/pacs-ai-backend/api-pacs/infrastructures/database/postgresql/migrations/000001_create_inference_ingestion_jobs_schema.up.sql
+docker exec -i postgresql psql -U ${POSTGRES_DB_USERNAME} -d ${POSTGRES_DB_DATABASE} < /path/to/repo/pacs-ai-backend/api-pacs/infrastructures/database/postgresql/migrations/000002_create_inference_ingestion_run_results_schema.up.sql
 ```
 
-To migrate up, run:
+Then verify the tables were created:
 
 ```bash
-STEPS=<remove STEPS to apply all or specify step number> make migrate-up
+docker exec postgresql psql -U ${POSTGRES_DB_USERNAME} -d ${POSTGRES_DB_DATABASE} -c '\dt'
 ```
 
-To migrate down, run:
+Expected tables:
 
-```bash
-STEPS=<remove STEPS to apply all or specify step number> make migrate-down
-```
+- `inference_ingestion_jobs`
+- `inference_ingestion_run_results`
 
-To check migrate version, run:
+##### Database Migrations using Go / `migrate`
 
-```bash
-make migrate-version
-```
-
-To force migrate, run:
-
-```bash
-STEPS=<specify step number> make migrate-force
-```
+Go database migration instructions are documented in [postgresql/README.md](/home/pacs-ai/pacs-ai-backend/postgresql/README.md).
 
 #### DICOM Configuration
 
