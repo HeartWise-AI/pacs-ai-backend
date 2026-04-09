@@ -31,7 +31,7 @@ up-orthanc:
 	docker compose -f docker-compose-dev.yml up --build
 
 .PHONY: up-orthanc-pacs
-up-orthanc:
+up-orthanc-pacs:
 	cd orthanc-pacs
 	docker compose -f docker-compose-dev.yml up --build
 
