@@ -15,6 +15,12 @@ var (
 		"CreateTenantUserRequest.Specialty":           "Specialty is required.",
 		"DeleteTenantUserRequest.UserID":              "User ID is required.",
 		"SendTenantEmailInviteRequest.Email":          "Valid email is required.",
+		"RegisterTenantUserRequest.TenantID":          "Tenant ID is required.",
+		"RegisterTenantUserRequest.Role":              "Role is required.",
+		"RegisterTenantUserRequest.Name":              "Name is required.",
+		"RegisterTenantUserRequest.Email":             "Email is required.",
+		"RegisterTenantUserRequest.LicenseNo":         "License number is required.",
+		"RegisterTenantUserRequest.Specialty":         "Specialty is required.",
 		"ResendTenantEmailInviteRequest.ID":           "ID is required.",
 		"UpdateTenantUserRequest.ID":                  "ID is required.",
 		"UpdateTenantUserRequest.Role":                "Role is required.",
@@ -48,6 +54,16 @@ type DeleteTenantUserRequest struct {
 
 type SendTenantEmailInviteRequest struct {
 	Email string `json:"email" validate:"email"`
+}
+
+type RegisterTenantUserRequest struct {
+	TenantID  string  `json:"tenantId" validate:"required"`
+	Role      string  `json:"role" validate:"required"`
+	Code      *string `json:"code"`
+	Name      string  `json:"name" validate:"required"`
+	Email     string  `json:"email" validate:"required"`
+	LicenseNo string  `json:"licenseNo" validate:"required"`
+	Specialty string  `json:"specialty" validate:"required"`
 }
 
 type ResendTenantEmailInviteRequest struct {

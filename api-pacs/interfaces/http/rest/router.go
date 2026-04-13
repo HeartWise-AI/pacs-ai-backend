@@ -244,6 +244,8 @@ func (router *router) InitRouter() *chi.Mux {
 
 			// user module
 			r.Route("/user", func(r chi.Router) {
+				r.Post("/register", userCommandController.RegisterTenantUser)
+
 				// superuser only
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.FirebaseSuperUserGuard)

@@ -1805,6 +1805,35 @@
         }
       }
     },
+    "/user/register": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Register Tenant User",
+        "description": "Register tenant user.",
+        "requestBody": {
+          "description": "Register tenant user request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterTenantUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/invite/resend": {
       "post": {
         "tags": ["user"],
@@ -2403,6 +2432,34 @@
           "additionalMetadata": {
             "type": "object",
             "nullable": true
+          }
+        }
+      },
+      "RegisterTenantUserRequest": {
+        "required": ["tenantId","role", "name", "email", "licenseNo", "specialty"],
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "licenseNo": {
+            "type": "string"
+          },
+          "specialty": {
+            "type": "string"
           }
         }
       },

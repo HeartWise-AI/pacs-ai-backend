@@ -286,6 +286,113 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 	response.JSON(w)
 }
 
+// RegisterTenantUser registers a tenant user
+func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWriter, r *http.Request) {
+	var request types.RegisterTenantUserRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// check if role to be added is owner (only callable via CreateTenantOwner)
+	if request.Role == entity.OwnerRole {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusUnauthorized,
+			Success:   false,
+			Message:   "Unauthorized access.",
+			ErrorCode: apiError.UnauthorizedAccess,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	generatedPassword, err := controller.UserCommandServiceInterface.RegisterTenantUser(context.TODO(), serviceTypes.RegisterTenantUser{
+		TenantID:  request.TenantID,
+		Role:      request.Role,
+		Code:      request.Code,
+		Name:      request.Name,
+		Email:     strings.ToLower(request.Email),
+		LicenseNo: request.LicenseNo,
+		Specialty: request.Specialty,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while registering tenant user."
+		case errors.DuplicateRecord:
+			httpCode = http.StatusConflict
+			errorMsg = "User already exist."
+		case errors.UnauthorizedAccess:
+			httpCode = http.StatusUnauthorized
+			errorMsg = "Unauthorized access."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusCreated,
+		Success: true,
+		Message: "Successfully registered tenant user.",
+		Data: &types.CreateTenantUserResponse{
+			Password: generatedPassword,
+		},
+	}
+
+	response.JSON(w)
+}
+
 // ResetTutorial resets the tutorial onboarding questionnaires by user
 func (controller *UserCommandController) ResetTutorial(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)

@@ -42,9 +42,9 @@ type UserCommandService struct {
 
 const (
 	userSingleTenantLoginTemplate  string = "%s://%s/login"
-	userMultiTenantLoginTemplate   string = "%s://%s.%s/login"
-	userSingleTenantInviteTemplate string = "%s://%s/user/invite/?tenant=%s&email=%s&code=%s"
-	userMultiTenantsInviteTemplate string = "%s://%s/user/invite/?tenant=%s&email=%s&code=%s"
+	userMultiTenantLoginTemplate   string = "%s://%s/login"
+	userSingleTenantInviteTemplate string = "%s://%s/register?t=%s&email=%s&code=%s"
+	userMultiTenantsInviteTemplate string = "%s://%s/register?t=%s&email=%s&code=%s"
 )
 
 // CreateTenantUser add a new tenant user with random generated password
@@ -154,6 +154,64 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantI
 	}()
 
 	return nil
+}
+
+// RegisterTenantUser registers a tenant user
+func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data types.RegisterTenantUser) (string, error) {
+	// get tenant
+	tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
+	if err != nil {
+		return "", err
+	}
+
+	// check if registration is enabled
+	if !tenant.OnboardingEnableRegistration {
+		return "", errors.New(apiError.ForbiddenAccess)
+	}
+
+	// check if code is provided - from invite validate code and expiration
+	if data.Code != nil {
+		// get tenant email invite by email
+		emailInvite, err := service.UserQueryRepositoryInterface.SelectTenantUserEmailInviteByEmail(ctx, data.TenantID, data.Email)
+		if err != nil {
+			return "", errors.New(apiError.UnauthorizedAccess)
+		}
+
+		// check expiration
+		if time.Now().Unix() > int64(emailInvite.ExpiresAt) {
+			return "", errors.New(apiError.UnauthorizedAccess)
+		}
+
+		// validate code
+		if emailInvite.Code != *data.Code {
+			return "", errors.New(apiError.UnauthorizedAccess)
+		}
+
+		// update tenant user invite verified at
+		err = service.UserCommandRepositoryInterface.UpdateTenantUserEmailInviteVerifiedAt(ctx, emailInvite.ID)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	// generate random password
+	generatedPassword := generateID()
+
+	// insert tenant user
+	_, err = service.UserCommandRepositoryInterface.InsertTenantUser(ctx, repositoryTypes.CreateTenantUser{
+		TenantID:  data.TenantID,
+		Role:      data.Role,
+		Email:     data.Email,
+		Name:      data.Name,
+		Password:  generatedPassword,
+		LicenseNo: data.LicenseNo,
+		Specialty: data.Specialty,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return generatedPassword, nil
 }
 
 // ResetTutorial resets the tutorial for a user

@@ -24,6 +24,16 @@ type GetTenantUser struct {
 	UpdatedAt         uint
 }
 
+type RegisterTenantUser struct {
+	TenantID  string
+	Role      string
+	Code      *string
+	Name      string
+	Email     string
+	LicenseNo string
+	Specialty string
+}
+
 type ResetTutorial struct {
 	TenantID string
 	UserID   string
