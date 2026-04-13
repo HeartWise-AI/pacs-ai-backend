@@ -560,6 +560,9 @@ func registerHandlers() {
 		DBUsername: os.Getenv("POSTGRES_DB_USERNAME"),
 		DBPassword: os.Getenv("POSTGRES_DB_PASSWORD"),
 	})
+	if err != nil {
+		log.Fatalf("[SERVER] cannot connect to postgresql server: %v", err)
+	}
 
 	// init firebase admin sdk
 	firebaseAdminSDK, err = firebaseadmin.NewApp(context.Background(), os.Getenv("FIREBASE_CONFIG_FILE_PATH"), os.Getenv("FIREBASE_PROJECT_ID"))
