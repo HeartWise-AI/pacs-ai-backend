@@ -70,3 +70,57 @@ func (repository *TenantCommandRepositoryCircuitBreaker) InsertOnboardingQuestio
 		return err
 	}
 }
+
+// UpdateOnboardingEnableConsent is the decorator for the tenant command repository to update onboarding enable consent
+func (repository *TenantCommandRepositoryCircuitBreaker) UpdateOnboardingEnableConsent(ctx context.Context, data types.UpdateOnboardingEnableConsent) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("update_onboarding_enable_consent", config.Settings())
+	errors := hystrix.Go("update_onboarding_enable_consent", func() error {
+		err := repository.TenantCommandRepositoryInterface.UpdateOnboardingEnableConsent(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// UpdateOnboardingEnableRegistration is the decorator for the tenant command repository to update onboarding enable registration
+func (repository *TenantCommandRepositoryCircuitBreaker) UpdateOnboardingEnableRegistration(ctx context.Context, data types.UpdateOnboardingEnableRegistration) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("update_onboarding_enable_registration", config.Settings())
+	errors := hystrix.Go("update_onboarding_enable_registration", func() error {
+		err := repository.TenantCommandRepositoryInterface.UpdateOnboardingEnableRegistration(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}

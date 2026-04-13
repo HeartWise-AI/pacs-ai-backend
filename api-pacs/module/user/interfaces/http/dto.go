@@ -14,6 +14,8 @@ var (
 		"CreateTenantUserRequest.LicenseNo":           "License number is required.",
 		"CreateTenantUserRequest.Specialty":           "Specialty is required.",
 		"DeleteTenantUserRequest.UserID":              "User ID is required.",
+		"SendTenantEmailInviteRequest.Email":          "Valid email is required.",
+		"ResendTenantEmailInviteRequest.ID":           "ID is required.",
 		"UpdateTenantUserRequest.ID":                  "ID is required.",
 		"UpdateTenantUserRequest.Role":                "Role is required.",
 		"UpdateTenantUserRequest.Name":                "Name is required.",
@@ -42,6 +44,14 @@ type CreateTenantUserRequest struct {
 
 type DeleteTenantUserRequest struct {
 	UserID string `json:"userId" validate:"required"`
+}
+
+type SendTenantEmailInviteRequest struct {
+	Email string `json:"email" validate:"email"`
+}
+
+type ResendTenantEmailInviteRequest struct {
+	ID string `json:"id" validate:"required"`
 }
 
 type UpdateTenantUserRequest struct {
@@ -74,6 +84,7 @@ type GetTenantUserResponse struct {
 	Specialty         string `json:"specialty"`
 	IsEmailVerified   bool   `json:"isEmailVerified"`
 	IsAccountDisabled bool   `json:"isAccountDisabled"`
+	IsConsentSigned   bool   `json:"isConsentSigned"`
 	CreatedAt         uint   `json:"createdAt"`
 	UpdatedAt         uint   `json:"updatedAt"`
 }

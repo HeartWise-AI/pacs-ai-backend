@@ -23,6 +23,34 @@ type UserQueryRepository struct {
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
 }
 
+// SelectTenantUserByEmail get tenant user by email
+func (repository *UserQueryRepository) SelectTenantUserByEmail(ctx context.Context, tenantID, email string) error {
+	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	// tenant auth
+	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	// get firebase auth user by email
+	_, err = tenantAuth.GetUserByEmail(ctx, email)
+	if err != nil {
+		log.Println(err)
+		if status.Code(err) == codes.Unknown {
+			return errors.New(apiError.MissingRecord)
+		}
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	return nil
+}
+
 // SelectTenantUserByID get tenant user by id
 func (repository *UserQueryRepository) SelectTenantUserByID(ctx context.Context, tenantID, id string) (repositoryTypes.GetTenantUser, error) {
 	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
@@ -77,9 +105,72 @@ func (repository *UserQueryRepository) SelectTenantUserByID(ctx context.Context,
 		Specialty:         user.Specialty,
 		IsEmailVerified:   authUser.EmailVerified,
 		IsAccountDisabled: authUser.Disabled,
+		IsConsentSigned:   user.IsConsentSigned,
 		CreatedAt:         uint(user.CreatedAt),
 		UpdatedAt:         uint(user.UpdatedAt),
 	}, nil
+}
+
+// SelectTenantUserEmailInviteByEmail get tenant user email invite by email
+func (repository *UserQueryRepository) SelectTenantUserEmailInviteByEmail(ctx context.Context, tenantID, email string) (entity.UserEmailInvite, error) {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
+	}
+
+	// query tenant user email invite by email
+	var userEmailInvite entity.UserEmailInvite
+
+	firestoreRes, err := firestoreClient.Collection(userEmailInvite.GetModelName()).Where("tenant_id", "==", tenantID).Where("email", "==", email).Documents(ctx).GetAll()
+	if err != nil {
+		log.Println(err)
+		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
+	}
+
+	if len(firestoreRes) == 0 {
+		return entity.UserEmailInvite{}, errors.New(apiError.MissingRecord)
+	}
+
+	err = firestoreRes[0].DataTo(&userEmailInvite)
+	if err != nil {
+		log.Println(err)
+		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
+	}
+
+	return userEmailInvite, nil
+}
+
+// SelectTenantUserEmailInviteByID get tenant user email invite by id
+func (repository *UserQueryRepository) SelectTenantUserEmailInviteByID(ctx context.Context, tenantID, ID string) (entity.UserEmailInvite, error) {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
+	}
+
+	// query tenant user email invite by id
+	var userEmailInvite entity.UserEmailInvite
+
+	firestoreRes, err := firestoreClient.Collection(userEmailInvite.GetModelName()).Where("tenant_id", "==", tenantID).Where("_id", "==", ID).Documents(ctx).GetAll()
+	if err != nil {
+		log.Println(err)
+		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
+	}
+
+	if len(firestoreRes) == 0 {
+		return entity.UserEmailInvite{}, errors.New(apiError.MissingRecord)
+	}
+
+	err = firestoreRes[0].DataTo(&userEmailInvite)
+	if err != nil {
+		log.Println(err)
+		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
+	}
+
+	return userEmailInvite, nil
 }
 
 // SelectTenantUsers get tenant users

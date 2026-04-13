@@ -71,6 +71,33 @@ func (repository *UserCommandRepositoryCircuitBreaker) InsertTenantUser(ctx cont
 	}
 }
 
+// InsertTenantUserEmailInvite is the decorator for the user repository to insert tenant user email invite
+func (repository *UserCommandRepositoryCircuitBreaker) InsertTenantUserEmailInvite(ctx context.Context, data repositoryTypes.CreateTenantUserEmailInvite) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("insert_tenant_user_email_invite", config.Settings())
+	errors := hystrix.Go("insert_tenant_user_email_invite", func() error {
+		err := repository.UserCommandRepositoryInterface.InsertTenantUserEmailInvite(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // UpdateTenantUser decorator pattern to update tenant user
 func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUser(ctx context.Context, data repositoryTypes.UpdateTenantUser) error {
 	output := make(chan bool, 1)
@@ -79,6 +106,87 @@ func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUser(ctx cont
 	hystrix.ConfigureCommand("update_tenant_user", config.Settings())
 	errors := hystrix.Go("update_tenant_user", func() error {
 		err := repository.UserCommandRepositoryInterface.UpdateTenantUser(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// UpdateTenantUserConsent decorator pattern to update tenant user consent
+func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUserConsent(ctx context.Context, data repositoryTypes.UpdateTenantUserConsent) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("update_tenant_user_consent", config.Settings())
+	errors := hystrix.Go("update_tenant_user_consent", func() error {
+		err := repository.UserCommandRepositoryInterface.UpdateTenantUserConsent(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// UpdateTenantUserEmailInvite decorator pattern to update tenant user email invite
+func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUserEmailInvite(ctx context.Context, data repositoryTypes.UpdateTenantUserEmailInvite) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("update_tenant_user_email_invite", config.Settings())
+	errors := hystrix.Go("update_tenant_user_email_invite", func() error {
+		err := repository.UserCommandRepositoryInterface.UpdateTenantUserEmailInvite(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// UpdateTenantUserEmailInviteVerifiedAt decorator pattern to update tenant user email invite verified at
+func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUserEmailInviteVerifiedAt(ctx context.Context, ID string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("update_tenant_user_email_invite_verified_at", config.Settings())
+	errors := hystrix.Go("update_tenant_user_email_invite_verified_at", func() error {
+		err := repository.UserCommandRepositoryInterface.UpdateTenantUserEmailInviteVerifiedAt(ctx, ID)
 		if err != nil {
 			errChan <- err
 			return nil

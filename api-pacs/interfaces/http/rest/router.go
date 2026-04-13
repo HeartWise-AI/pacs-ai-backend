@@ -237,6 +237,8 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Post("/onboarding-questionnaire-answers/add", tenantCommandController.AddOnboardingQuestionnaireAnswers)
 					r.Get("/onboarding-questionnaire-answers", tenantQueryController.GetOnboardingQuestionnaireAnswers)
 					r.Get("/", tenantQueryController.GetTenantByID)
+					r.Put("/onboarding-consent/config/update", tenantCommandController.UpdateOnboardingConsentConfig)
+					r.Put("/onboarding-registration/config/update", tenantCommandController.UpdateOnboardingRegistrationConfig)
 				})
 			})
 
@@ -263,6 +265,8 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
 						r.Post("/add", userCommandController.CreateTenantUser)
+						r.Post("/invite", userCommandController.SendTenantEmailInvite)
+						r.Post("/invite/resend", userCommandController.ResendTenantEmailInvite)
 						r.Get("/all", userQueryController.GetTenantUsers)
 						r.Get("/specialties", userQueryController.GetDoctorSpecialties)
 						r.Put("/update", userCommandController.UpdateTenantUser)

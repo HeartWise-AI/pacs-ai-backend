@@ -62,6 +62,7 @@ func (controller *UserQueryController) GetCurrentTenantUser(w http.ResponseWrite
 			Specialty:         res.Specialty,
 			IsEmailVerified:   res.IsEmailVerified,
 			IsAccountDisabled: res.IsAccountDisabled,
+			IsConsentSigned:   res.IsConsentSigned,
 			CreatedAt:         res.CreatedAt,
 			UpdatedAt:         res.UpdatedAt,
 		},

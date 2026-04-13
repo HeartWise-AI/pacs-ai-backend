@@ -15,6 +15,33 @@ type UserQueryRepositoryCircuitBreaker struct {
 	repository.UserQueryRepositoryInterface
 }
 
+// SelectTenantUserByEmail is a decorator for the get tenant user by email
+func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUserByEmail(ctx context.Context, tenantID, email string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_tenant_user_by_email", config.Settings())
+	errors := hystrix.Go("select_tenant_user_by_email", func() error {
+		err := repository.UserQueryRepositoryInterface.SelectTenantUserByEmail(ctx, tenantID, email)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // SelectTenantUserByID is a decorator for the get tenant user by id
 func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUserByID(ctx context.Context, tenantID, id string) (repositoryTypes.GetTenantUser, error) {
 	output := make(chan repositoryTypes.GetTenantUser, 1)

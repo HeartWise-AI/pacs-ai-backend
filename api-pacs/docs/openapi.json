@@ -1635,6 +1635,74 @@
         }
       }
     },
+    "/tenant/onboarding-consent/config/update": {
+      "put": {
+        "tags": ["tenant"],
+        "summary": "Update Onboarding Consent Config",
+        "description": "Update onboarding consent configuration.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update onboarding consent configuration request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOnboardingConsentConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/tenant/onboarding-registration/config/update": {
+      "put": {
+        "tags": ["tenant"],
+        "summary": "Update Onboarding Registration Config",
+        "description": "Update onboarding registration configuration.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update onboarding registration configuration request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOnboardingRegistrationConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/owner/add": {
       "post": {
         "tags": ["user"],
@@ -1685,6 +1753,74 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CreateTenantUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/invite": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Invite Tenant User",
+        "description": "Invite tenant user. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Invite tenant user request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendTenantEmailInviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/invite/resend": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Resend Tenant Invitation",
+        "description": "Resend tenant user invitation. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Resend tenant user invitation request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendTenantEmailInviteRequest"
               }
             }
           },
@@ -2282,6 +2418,24 @@
           }
         }
       },
+      "ResendTenantEmailInviteRequest": {
+        "required": ["id"],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "SendTenantEmailInviteRequest": {
+        "required": ["email"],
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        }
+      },
       "SubscribeRequest": {
         "required": ["token", "email"],
         "type": "object",
@@ -2368,6 +2522,24 @@
                 }
               }
             }
+          }
+        }
+      },
+      "UpdateOnboardingConsentConfigRequest": {
+        "required": ["onboardingEnableConsent"],
+        "type": "object",
+        "properties": {
+          "onboardingEnableConsent": {
+            "type": "boolean"
+          }
+        }
+      },
+      "UpdateOnboardingRegistrationConfigRequest": {
+        "required": ["onboardingEnableRegistration"],
+        "type": "object",
+        "properties": {
+          "onboardingEnableRegistration": {
+            "type": "boolean"
           }
         }
       },

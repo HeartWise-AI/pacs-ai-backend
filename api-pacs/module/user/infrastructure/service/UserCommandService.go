@@ -3,9 +3,12 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/segmentio/ksuid"
 
@@ -27,6 +30,7 @@ import (
 // UserCommandService handles the User command service logic
 type UserCommandService struct {
 	repository.UserCommandRepositoryInterface
+	repository.UserQueryRepositoryInterface
 	userApplication.UserQueryServiceInterface
 	tenantApplication.TenantCommandServiceInterface
 	tenantApplication.TenantQueryServiceInterface
@@ -35,6 +39,13 @@ type UserCommandService struct {
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	mailgunTypes.MailgunSDKInterface
 }
+
+const (
+	userSingleTenantLoginTemplate  string = "%s://%s/login"
+	userMultiTenantLoginTemplate   string = "%s://%s.%s/login"
+	userSingleTenantInviteTemplate string = "%s://%s/user/invite/?tenant=%s&email=%s&code=%s"
+	userMultiTenantsInviteTemplate string = "%s://%s/user/invite/?tenant=%s&email=%s&code=%s"
+)
 
 // CreateTenantUser add a new tenant user with random generated password
 func (service *UserCommandService) CreateTenantUser(ctx context.Context, data types.CreateTenantUser) (string, error) {
@@ -179,6 +190,144 @@ func (service *UserCommandService) ResetTutorial(ctx context.Context, data types
 		if err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+// ResendTenantUserEmailInvite resends a tenant user email invite to the email
+func (service *UserCommandService) ResendTenantUserEmailInvite(ctx context.Context, data types.ResendTenantUserEmailInvite) error {
+	// get tenant
+	tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
+	if err != nil {
+		return err
+	}
+
+	// check if registration is enabled
+	if !tenant.OnboardingEnableRegistration {
+		return errors.New(apiError.ForbiddenAccess)
+	}
+
+	// get tenant user email invite by id
+	userInviteByID, err := service.UserQueryRepositoryInterface.SelectTenantUserEmailInviteByID(ctx, data.TenantID, data.ID)
+	if err != nil {
+		return err
+	}
+
+	// generate code
+	code := generateID()
+
+	// update tenant user invite code and expiration
+	err = service.UserCommandRepositoryInterface.UpdateTenantUserEmailInvite(ctx, repositoryTypes.UpdateTenantUserEmailInvite{
+		ID:        userInviteByID.ID,
+		Code:      code,
+		ExpiresAt: time.Now().Add(7 * 24 * time.Hour), // 7 days expiration
+	})
+	if err != nil {
+		return err
+	}
+
+	// generate url
+	var url string
+	if strings.EqualFold(os.Getenv("API_ENABLE_MULTI_TENANT"), "true") {
+		url = fmt.Sprintf(userMultiTenantsInviteTemplate, os.Getenv("APP_SCHEME"), os.Getenv("APP_HOST"), data.TenantID, userInviteByID.Email, code)
+	} else {
+		url = fmt.Sprintf(userSingleTenantInviteTemplate, os.Getenv("APP_SCHEME"), os.Getenv("APP_HOST"), data.TenantID, userInviteByID.Email, code)
+	}
+
+	// send to email
+	redirectURL := url
+
+	emailMessage := fmt.Sprintf("Hi %s, <br /><br />"+
+		"You have been invited to join PACS AI. Please click the link below to accept the invitation: <br /><br />"+
+		"<a href=\"%s\">%s</a> <br /><br />"+
+		"Thanks, <br /><br />"+
+		"Your PACS AI Team", userInviteByID.Email, redirectURL, redirectURL)
+
+	err = service.MailgunSDKInterface.SendEmail(ctx, mailgunTypes.MailgunSendEmailRequest{
+		Subject:       "[PACS AI]: Invitation to join workspace",
+		Recipient:     userInviteByID.Email,
+		PlainTextBody: emailMessage,
+	})
+	if err != nil {
+		log.Println("[error] cannot send verification code via mailgun", err)
+		return errors.New(apiError.MailgunError)
+	}
+
+	return nil
+}
+
+// SendTenantUserEmailInvite sends a tenant user email invite to the email
+func (service *UserCommandService) SendTenantUserEmailInvite(ctx context.Context, data types.SendTenantUserEmailInvite) error {
+	// get tenant
+	tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
+	if err != nil {
+		return err
+	}
+
+	// check if registration is enabled
+	if !tenant.OnboardingEnableRegistration {
+		return errors.New(apiError.ForbiddenAccess)
+	}
+
+	// check if email invite already exists
+	_, err = service.UserQueryRepositoryInterface.SelectTenantUserEmailInviteByEmail(ctx, data.TenantID, data.Email)
+	if err == nil {
+		return errors.New(apiError.DuplicateRecord)
+	} else if err.Error() != apiError.MissingRecord {
+		return err
+	}
+
+	// check if email already exists in users
+	err = service.UserQueryRepositoryInterface.SelectTenantUserByEmail(ctx, data.TenantID, data.Email)
+	if err == nil {
+		return errors.New(apiError.DuplicateRecord)
+	} else if err.Error() != apiError.MissingRecord {
+		return err
+	}
+
+	// generate code
+	code := generateID()
+
+	// insert tenant user invite
+	err = service.UserCommandRepositoryInterface.InsertTenantUserEmailInvite(ctx, repositoryTypes.CreateTenantUserEmailInvite{
+		ID:        generateID(),
+		TenantID:  data.TenantID,
+		Code:      code,
+		Email:     data.Email,
+		ExpiresAt: time.Now().Add(7 * 24 * time.Hour), // 7 days expiration
+	})
+	if err != nil {
+		return err
+	}
+
+	// TODO: log to elasticsearch
+
+	// generate url
+	var url string
+	if strings.EqualFold(os.Getenv("API_ENABLE_MULTI_TENANT"), "true") {
+		url = fmt.Sprintf(userMultiTenantsInviteTemplate, os.Getenv("APP_SCHEME"), os.Getenv("APP_HOST"), data.TenantID, data.Email, code)
+	} else {
+		url = fmt.Sprintf(userSingleTenantInviteTemplate, os.Getenv("APP_SCHEME"), os.Getenv("APP_HOST"), data.TenantID, data.Email, code)
+	}
+
+	// send to email
+	redirectURL := url
+
+	emailMessage := fmt.Sprintf("Hi %s, <br /><br />"+
+		"You have been invited to join PACS AI. Please click the link below to accept the invitation: <br /><br />"+
+		"<a href=\"%s\">%s</a> <br /><br />"+
+		"Thanks, <br /><br />"+
+		"Your PACS AI Team", data.Email, redirectURL, redirectURL)
+
+	err = service.MailgunSDKInterface.SendEmail(ctx, mailgunTypes.MailgunSendEmailRequest{
+		Subject:       "[PACS AI]: Invitation to join workspace",
+		Recipient:     data.Email,
+		PlainTextBody: emailMessage,
+	})
+	if err != nil {
+		log.Println("[error] cannot send verification code via mailgun", err)
+		return errors.New(apiError.MailgunError)
 	}
 
 	return nil

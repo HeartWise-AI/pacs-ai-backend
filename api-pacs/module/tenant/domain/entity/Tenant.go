@@ -2,12 +2,15 @@ package entity
 
 // Tenant holds the tenant entity fields
 type Tenant struct {
-	ID                       string  `firestore:"id,omitempty"`
-	Name                     string  `firestore:"name"`
-	Address                  string  `firestore:"address"`
-	OnboardingQuestionnaires *string `firestore:"onboarding_questionnaires"` // json
-	CreatedAt                int     `firestore:"created_at"`
-	UpdatedAt                int     `firestore:"updated_at"`
+	ID                           string  `firestore:"id,omitempty"`
+	Name                         string  `firestore:"name"`
+	Address                      string  `firestore:"address"`
+	OnboardingQuestionnaires     *string `firestore:"onboarding_questionnaires"` // json
+	OnboardingEnableRegistration bool    `firestore:"onboarding_enable_registration"`
+	OnboardingEnableConsent      bool    `firestore:"onboarding_enable_consent"`
+	OnboardingConsentLink        string  `firestore:"onboarding_consent_link"`
+	CreatedAt                    int     `firestore:"created_at"`
+	UpdatedAt                    int     `firestore:"updated_at"`
 }
 
 // GetModelName returns the model name of tenant entity that can be used for naming schemas

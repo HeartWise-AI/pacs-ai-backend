@@ -37,11 +37,14 @@ func (service *TenantQueryService) GetTenantByID(ctx context.Context, tenantID s
 	}
 
 	return types.GetTenant{
-		ID:                       tenant.ID,
-		Name:                     tenant.Name,
-		Address:                  tenant.Address,
-		OnboardingQuestionnaires: tenant.OnboardingQuestionnaires,
-		CreatedAt:                uint(tenant.CreatedAt),
-		UpdatedAt:                uint(tenant.UpdatedAt),
+		ID:                           tenant.ID,
+		Name:                         tenant.Name,
+		Address:                      tenant.Address,
+		OnboardingQuestionnaires:     tenant.OnboardingQuestionnaires,
+		OnboardingEnableConsent:      tenant.OnboardingEnableConsent,
+		OnboardingEnableRegistration: tenant.OnboardingEnableRegistration,
+		OnboardingConsentLink:        tenant.OnboardingConsentLink,
+		CreatedAt:                    uint(tenant.CreatedAt),
+		UpdatedAt:                    uint(tenant.UpdatedAt),
 	}, nil
 }
