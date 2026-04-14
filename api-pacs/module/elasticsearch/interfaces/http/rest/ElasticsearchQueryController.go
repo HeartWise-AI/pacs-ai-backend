@@ -90,10 +90,12 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 	isExport, _ := strconv.ParseBool(export)
 
 	var login entity.Login
+	var adminInvite entity.AdminInvite
 	var adminMember entity.AdminMember
 	var modalityStudy entity.ModalityStudy
 	var predictInferenceModel entity.PredictInferenceModel
 	var retrievedStudy entity.RetrievedStudy
+	var signedConsent entity.SignedConsent
 	var storedCustomSeries entity.StoredCustomSeries
 
 	searchDocument := serviceTypes.SearchDocument{
@@ -155,6 +157,46 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		logs = logins
 		message = "Successfully fetched search results for login logs."
 		indexName = login.GetModelName()
+	case adminInvite.GetModelName():
+		res, err := controller.ElasticsearchQueryServiceInterface.SearchAdminInviteLogs(context.TODO(), searchDocument)
+		if err != nil && err.Error() != errors.MissingRecord {
+			var httpCode int
+			var errorMsg string
+
+			switch err.Error() {
+			case errors.DatabaseError:
+				httpCode = http.StatusInternalServerError
+				errorMsg = "Database error."
+			default:
+				httpCode = http.StatusInternalServerError
+				errorMsg = "Database error."
+			}
+
+			response := viewmodels.HTTPResponseVM{
+				Status:    httpCode,
+				Success:   false,
+				Message:   errorMsg,
+				ErrorCode: err.Error(),
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		adminInvites := []types.AdminInviteLogResponse{}
+
+		for _, adminInvite := range res {
+			adminInvites = append(adminInvites, types.AdminInviteLogResponse{
+				TenantID:   adminInvite.TenantID,
+				TenantName: adminInvite.TenantName,
+				Email:      adminInvite.Email,
+				Timestamp:  adminInvite.Timestamp,
+			})
+		}
+
+		logs = adminInvites
+		message = "Successfully fetched search results for admin invite logs."
+		indexName = adminInvite.GetModelName()
 	case adminMember.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchAdminMemberLogs(context.TODO(), searchDocument)
 		if err != nil && err.Error() != errors.MissingRecord {
@@ -337,6 +379,47 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 		logs = retrievedStudies
 		message = "Successfully fetched search results for retrieved study logs."
 		indexName = retrievedStudy.GetModelName()
+	case signedConsent.GetModelName():
+		res, err := controller.ElasticsearchQueryServiceInterface.SearchSignedConsentLogs(context.TODO(), searchDocument)
+		if err != nil && err.Error() != errors.MissingRecord {
+			var httpCode int
+			var errorMsg string
+
+			switch err.Error() {
+			case errors.DatabaseError:
+				httpCode = http.StatusInternalServerError
+				errorMsg = "Database error."
+			default:
+				httpCode = http.StatusInternalServerError
+				errorMsg = "Database error."
+			}
+
+			response := viewmodels.HTTPResponseVM{
+				Status:    httpCode,
+				Success:   false,
+				Message:   errorMsg,
+				ErrorCode: err.Error(),
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		signedConsents := []types.SignedConsentLogResponse{}
+
+		for _, signedConsent := range res {
+			signedConsents = append(signedConsents, types.SignedConsentLogResponse{
+				TenantID:   signedConsent.TenantID,
+				TenantName: signedConsent.TenantName,
+				UserID:     signedConsent.UserID,
+				Email:      signedConsent.Email,
+				Timestamp:  signedConsent.Timestamp,
+			})
+		}
+
+		logs = signedConsents
+		message = "Successfully fetched search results for signed consent logs."
+		indexName = signedConsent.GetModelName()
 	case storedCustomSeries.GetModelName():
 		res, err := controller.ElasticsearchQueryServiceInterface.SearchStoredCustomSeriesLogs(context.TODO(), searchDocument)
 		if err != nil && err.Error() != errors.MissingRecord {

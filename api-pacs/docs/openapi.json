@@ -83,10 +83,12 @@
               "type": "string",
               "enum": [
                 "logins",
+                "admin_invites",
                 "admin_members",
                 "find_modality_studies",
                 "predict_inference_models",
-                "retrieved_studies"
+                "retrieved_studies",
+                "signed_consents"
               ]
             }
           },
@@ -2436,7 +2438,14 @@
         }
       },
       "RegisterTenantUserRequest": {
-        "required": ["tenantId","role", "name", "email", "licenseNo", "specialty"],
+        "required": [
+          "tenantId",
+          "role",
+          "name",
+          "email",
+          "licenseNo",
+          "specialty"
+        ],
         "type": "object",
         "properties": {
           "tenantId": {

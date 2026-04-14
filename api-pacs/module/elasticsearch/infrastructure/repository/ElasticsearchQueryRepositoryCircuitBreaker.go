@@ -43,6 +43,33 @@ func (repository *ElasticsearchQueryRepositoryCircuitBreaker) GetAllIndices() (i
 	}
 }
 
+// SearchAdminInviteLogs decorator pattern to search admin invite logs
+func (repository *ElasticsearchQueryRepositoryCircuitBreaker) SearchAdminInviteLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error) {
+	output := make(chan *search.Response, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("search_admin_invite_logs", config.Settings())
+	errors := hystrix.Go("search_admin_invite_logs", func() error {
+		adminInvite, err := repository.ElasticsearchQueryRepositoryInterface.SearchAdminInviteLogs(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- adminInvite
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errChan:
+		return nil, err
+	case err := <-errors:
+		return nil, err
+	}
+}
+
 // SearchAdminMemberLogs decorator pattern to search admin member logs
 func (repository *ElasticsearchQueryRepositoryCircuitBreaker) SearchAdminMemberLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error) {
 	output := make(chan *search.Response, 1)
@@ -165,6 +192,33 @@ func (repository *ElasticsearchQueryRepositoryCircuitBreaker) SearchRetrievedStu
 		}
 
 		output <- retrievedStudy
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errChan:
+		return nil, err
+	case err := <-errors:
+		return nil, err
+	}
+}
+
+// SearchSignedConsentLogs decorator pattern to search signed consent logs
+func (repository *ElasticsearchQueryRepositoryCircuitBreaker) SearchSignedConsentLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error) {
+	output := make(chan *search.Response, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("search_signed_consent_logs", config.Settings())
+	errors := hystrix.Go("search_signed_consent_logs", func() error {
+		signedConsent, err := repository.ElasticsearchQueryRepositoryInterface.SearchSignedConsentLogs(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- signedConsent
 		return nil
 	}, nil)
 

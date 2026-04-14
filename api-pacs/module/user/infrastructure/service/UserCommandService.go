@@ -359,7 +359,18 @@ func (service *UserCommandService) SendTenantUserEmailInvite(ctx context.Context
 		return err
 	}
 
-	// TODO: log to elasticsearch
+	// log to elasticsearch
+	go func() {
+		_, err = service.ElasticsearchCommandServiceInterface.CreateAdminInviteLog(ctx, elasticsearchTypes.CreateAdminInviteLog{
+			TenantID:   data.TenantID,
+			TenantName: tenant.Name,
+			Email:      data.Email,
+		})
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	}()
 
 	// generate url
 	var url string

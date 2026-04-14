@@ -43,6 +43,20 @@ func (service *ElasticsearchCommandService) SyncKibanaIndices(ctx context.Contex
 	return nil
 }
 
+// CreateAdminInviteLog add a new admin invite log
+func (service *ElasticsearchCommandService) CreateAdminInviteLog(ctx context.Context, data types.CreateAdminInviteLog) (*index.Response, error) {
+	res, err := service.ElasticsearchCommandRepositoryInterface.InsertAdminInviteLog(ctx, repositoryTypes.CreateAdminInviteLog{
+		TenantID:   data.TenantID,
+		TenantName: data.TenantName,
+		Email:      data.Email,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
 // CreateAdminMemberLog add a new admin member log
 func (service *ElasticsearchCommandService) CreateAdminMemberLog(ctx context.Context, data types.CreateAdminMemberLog) (*index.Response, error) {
 	res, err := service.ElasticsearchCommandRepositoryInterface.InsertAdminMemberLog(ctx, repositoryTypes.CreateAdminMemberLog{
@@ -135,6 +149,21 @@ func (service *ElasticsearchCommandService) CreateRetrieveStudyLog(ctx context.C
 		Email:            data.Email,
 		Name:             data.Name,
 		StudyInstanceUID: data.StudyInstanceUID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+// CreateSignedConsentLog add a signed consent log
+func (service *ElasticsearchCommandService) CreateSignedConsentLog(ctx context.Context, data types.CreateSignedConsentLog) (*index.Response, error) {
+	res, err := service.ElasticsearchCommandRepositoryInterface.InsertSignedConsentLog(ctx, repositoryTypes.CreateSignedConsentLog{
+		TenantID:   data.TenantID,
+		TenantName: data.TenantName,
+		UserID:     data.UserID,
+		Email:      data.Email,
 	})
 	if err != nil {
 		return nil, err

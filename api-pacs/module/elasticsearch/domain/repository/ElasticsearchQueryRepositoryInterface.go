@@ -12,6 +12,8 @@ import (
 type ElasticsearchQueryRepositoryInterface interface {
 	// GetAllIndices get all indices
 	GetAllIndices() (indices.Response, error)
+	// SearchAdminInviteLogs searches admin invite logs
+	SearchAdminInviteLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error)
 	// SearchAdminMemberLogs searches admin member logs
 	SearchAdminMemberLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error)
 	// SearchLoginLogs searches login logs
@@ -22,6 +24,8 @@ type ElasticsearchQueryRepositoryInterface interface {
 	SearchPredictInferenceModelLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error)
 	// SearchRetrievedStudyLogs searches retrieved study logs
 	SearchRetrievedStudyLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error)
+	// SearchSignedConsentLogs searches signed consent logs
+	SearchSignedConsentLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error)
 	// SearchStoredCustomSeriesLogs searches stored custom series logs
 	SearchStoredCustomSeriesLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error)
 }

@@ -10,7 +10,10 @@ import (
 	"time"
 
 	docusignTypes "api-pacs/infrastructures/providers/api/docusign/types"
+	elasticsearchAppliction "api-pacs/module/elasticsearch/application"
+	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
+	tenantTypes "api-pacs/module/tenant/infrastructure/service/types"
 	"api-pacs/module/user/domain/entity"
 	"api-pacs/module/user/domain/repository"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
@@ -22,6 +25,7 @@ type UserQueryService struct {
 	repository.UserQueryRepositoryInterface
 	repository.UserCommandRepositoryInterface
 	tenantApplication.TenantQueryServiceInterface
+	elasticsearchAppliction.ElasticsearchCommandServiceInterface
 	docusignTypes.DocusignAPIInterface
 }
 
@@ -57,7 +61,7 @@ func (service *UserQueryService) GetTenantUserByID(ctx context.Context, tenantID
 
 	// if consent is enabled and user haven't signed, update consent status
 	if tenant.OnboardingEnableConsent && !user.IsConsentSigned {
-		err := service.updateTenantUserConsentStatusByEmail(ctx, tenantID, ID)
+		err := service.updateTenantUserConsentStatusByEmail(ctx, ID, tenant)
 		if err != nil {
 			log.Println("Failed to update user consent status: ", err) // silent error
 		}
@@ -118,9 +122,9 @@ func (service *UserQueryService) GetUserMetadata(ctx context.Context, userID str
 }
 
 // updateTenantUserConsentStatusByEmail update tenant user consent status by email
-func (service *UserQueryService) updateTenantUserConsentStatusByEmail(ctx context.Context, tenantID, ID string) error {
+func (service *UserQueryService) updateTenantUserConsentStatusByEmail(ctx context.Context, ID string, tenant tenantTypes.GetTenant) error {
 	/// get user
-	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, tenantID, ID)
+	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, tenant.ID, ID)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -174,6 +178,20 @@ func (service *UserQueryService) updateTenantUserConsentStatusByEmail(ctx contex
 			log.Println("Failed to update user consent: ", err) // silent error
 			return err
 		}
+
+		// log to elasticsearch
+		go func() {
+			_, err := service.ElasticsearchCommandServiceInterface.CreateSignedConsentLog(ctx, elasticsearchTypes.CreateSignedConsentLog{
+				TenantID:   tenant.ID,
+				TenantName: tenant.Name,
+				UserID:     user.ID,
+				Email:      user.Email,
+			})
+			if err != nil {
+				log.Println(err)
+				return
+			}
+		}()
 	}
 
 	return nil

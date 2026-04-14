@@ -536,7 +536,9 @@ func (k *kernel) userQueryServiceContainer() *userService.UserQueryService {
 		UserQueryRepositoryInterface: &userRepository.UserQueryRepositoryCircuitBreaker{
 			UserQueryRepositoryInterface: repository,
 		},
-		TenantQueryServiceInterface: k.tenantQueryServiceContainer(),
+		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		DocusignAPIInterface:                 docusignAPI,
 	}
 
 	return service
