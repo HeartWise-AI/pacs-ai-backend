@@ -144,6 +144,7 @@ func (controller *UserQueryController) GetTenantUsers(w http.ResponseWriter, r *
 			Specialty:         user.Specialty,
 			IsEmailVerified:   user.IsEmailVerified,
 			IsAccountDisabled: user.IsAccountDisabled,
+			IsConsentSigned:   user.IsConsentSigned,
 			CreatedAt:         user.CreatedAt,
 			UpdatedAt:         user.UpdatedAt,
 		})

@@ -5,6 +5,8 @@ const (
 	DatabaseError string = "DATABASE_ERROR"
 	// DuplicateRecord is the code for duplicate records
 	DuplicateRecord string = "DUPLICATE_RECORD"
+	// ForbiddenAccess is the code for accessing forbidden resources
+	ForbiddenAccess string = "FORBIDDEN_ACCESS"
 	// HystrixTimeout is the code for hystrix timeouts
 	HystrixTimeout string = "HYSTRIX_TIMEOUT"
 	// InvalidRequestPayload is the code for binding errors
@@ -29,8 +31,6 @@ const (
 	SystemScriptFailed string = "SYSTEM_SCRIPT_FAILED"
 	// UnauthorizedAccess is the code for accessing restricted routes
 	UnauthorizedAccess string = "UNAUTHORIZED_ACCESS"
-	// ForbiddenAccess is the code for accessing forbidden resources
-	ForbiddenAccess string = "FORBIDDEN_ACCESS"
 
 	// Firebase-related errors
 	FirebaseAuthError            string = "FIREBASE_AUTH_ERROR"

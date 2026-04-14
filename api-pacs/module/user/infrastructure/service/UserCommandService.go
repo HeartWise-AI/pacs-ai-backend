@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/segmentio/ksuid"
@@ -21,7 +20,6 @@ import (
 	inferenceTypes "api-pacs/module/inference/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
 	tenantTypes "api-pacs/module/tenant/infrastructure/service/types"
-	userApplication "api-pacs/module/user/application"
 	"api-pacs/module/user/domain/repository"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
 	"api-pacs/module/user/infrastructure/service/types"
@@ -31,7 +29,6 @@ import (
 type UserCommandService struct {
 	repository.UserCommandRepositoryInterface
 	repository.UserQueryRepositoryInterface
-	userApplication.UserQueryServiceInterface
 	tenantApplication.TenantCommandServiceInterface
 	tenantApplication.TenantQueryServiceInterface
 	inferenceApplication.InferenceCommandServiceInterface
@@ -41,10 +38,7 @@ type UserCommandService struct {
 }
 
 const (
-	userSingleTenantLoginTemplate  string = "%s://%s/login"
-	userMultiTenantLoginTemplate   string = "%s://%s/login"
-	userSingleTenantInviteTemplate string = "%s://%s/register?t=%s&email=%s&code=%s"
-	userMultiTenantsInviteTemplate string = "%s://%s/register?t=%s&email=%s&code=%s"
+	userInviteTemplate string = "%s/register?t=%s&email=%s&code=%s"
 )
 
 // CreateTenantUser add a new tenant user with random generated password
@@ -118,7 +112,7 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 
 // DeleteTenantUser delete tenant user by id
 func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantID, id string) error {
-	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, id)
+	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, tenantID, id)
 	if err != nil {
 		return err
 	}
@@ -157,16 +151,24 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantI
 }
 
 // RegisterTenantUser registers a tenant user
-func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data types.RegisterTenantUser) (string, error) {
+func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data types.RegisterTenantUser) error {
 	// get tenant
 	tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	// check if registration is enabled
 	if !tenant.OnboardingEnableRegistration {
-		return "", errors.New(apiError.ForbiddenAccess)
+		return errors.New(apiError.ForbiddenAccess)
+	}
+
+	// check if email already exists
+	_, err = service.UserQueryRepositoryInterface.SelectTenantUserByEmail(ctx, data.TenantID, data.Email)
+	if err == nil {
+		return errors.New(apiError.DuplicateRecord)
+	} else if err.Error() != apiError.MissingRecord {
+		return err
 	}
 
 	// check if code is provided - from invite validate code and expiration
@@ -174,28 +176,25 @@ func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data 
 		// get tenant email invite by email
 		emailInvite, err := service.UserQueryRepositoryInterface.SelectTenantUserEmailInviteByEmail(ctx, data.TenantID, data.Email)
 		if err != nil {
-			return "", errors.New(apiError.UnauthorizedAccess)
+			return errors.New(apiError.UnauthorizedAccess)
 		}
 
 		// check expiration
 		if time.Now().Unix() > int64(emailInvite.ExpiresAt) {
-			return "", errors.New(apiError.UnauthorizedAccess)
+			return errors.New(apiError.UnauthorizedAccess)
 		}
 
 		// validate code
 		if emailInvite.Code != *data.Code {
-			return "", errors.New(apiError.UnauthorizedAccess)
+			return errors.New(apiError.UnauthorizedAccess)
 		}
 
 		// update tenant user invite verified at
 		err = service.UserCommandRepositoryInterface.UpdateTenantUserEmailInviteVerifiedAt(ctx, emailInvite.ID)
 		if err != nil {
-			return "", err
+			return err
 		}
 	}
-
-	// generate random password
-	generatedPassword := generateID()
 
 	// insert tenant user
 	_, err = service.UserCommandRepositoryInterface.InsertTenantUser(ctx, repositoryTypes.CreateTenantUser{
@@ -203,15 +202,15 @@ func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data 
 		Role:      data.Role,
 		Email:     data.Email,
 		Name:      data.Name,
-		Password:  generatedPassword,
+		Password:  data.Password,
 		LicenseNo: data.LicenseNo,
 		Specialty: data.Specialty,
 	})
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	return generatedPassword, nil
+	return nil
 }
 
 // ResetTutorial resets the tutorial for a user
@@ -255,17 +254,6 @@ func (service *UserCommandService) ResetTutorial(ctx context.Context, data types
 
 // ResendTenantUserEmailInvite resends a tenant user email invite to the email
 func (service *UserCommandService) ResendTenantUserEmailInvite(ctx context.Context, data types.ResendTenantUserEmailInvite) error {
-	// get tenant
-	tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
-	if err != nil {
-		return err
-	}
-
-	// check if registration is enabled
-	if !tenant.OnboardingEnableRegistration {
-		return errors.New(apiError.ForbiddenAccess)
-	}
-
 	// get tenant user email invite by id
 	userInviteByID, err := service.UserQueryRepositoryInterface.SelectTenantUserEmailInviteByID(ctx, data.TenantID, data.ID)
 	if err != nil {
@@ -285,21 +273,12 @@ func (service *UserCommandService) ResendTenantUserEmailInvite(ctx context.Conte
 		return err
 	}
 
-	// generate url
-	var url string
-	if strings.EqualFold(os.Getenv("API_ENABLE_MULTI_TENANT"), "true") {
-		url = fmt.Sprintf(userMultiTenantsInviteTemplate, os.Getenv("APP_SCHEME"), os.Getenv("APP_HOST"), data.TenantID, userInviteByID.Email, code)
-	} else {
-		url = fmt.Sprintf(userSingleTenantInviteTemplate, os.Getenv("APP_SCHEME"), os.Getenv("APP_HOST"), data.TenantID, userInviteByID.Email, code)
-	}
-
 	// send to email
-	redirectURL := url
+	redirectURL := fmt.Sprintf(userInviteTemplate, os.Getenv("APP_URL"), data.TenantID, userInviteByID.Email, code)
 
 	emailMessage := fmt.Sprintf("Hi %s, <br /><br />"+
 		"You have been invited to join PACS AI. Please click the link below to accept the invitation: <br /><br />"+
 		"<a href=\"%s\">%s</a> <br /><br />"+
-		"Thanks, <br /><br />"+
 		"Your PACS AI Team", userInviteByID.Email, redirectURL, redirectURL)
 
 	err = service.MailgunSDKInterface.SendEmail(ctx, mailgunTypes.MailgunSendEmailRequest{
@@ -317,19 +296,8 @@ func (service *UserCommandService) ResendTenantUserEmailInvite(ctx context.Conte
 
 // SendTenantUserEmailInvite sends a tenant user email invite to the email
 func (service *UserCommandService) SendTenantUserEmailInvite(ctx context.Context, data types.SendTenantUserEmailInvite) error {
-	// get tenant
-	tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
-	if err != nil {
-		return err
-	}
-
-	// check if registration is enabled
-	if !tenant.OnboardingEnableRegistration {
-		return errors.New(apiError.ForbiddenAccess)
-	}
-
 	// check if email invite already exists
-	_, err = service.UserQueryRepositoryInterface.SelectTenantUserEmailInviteByEmail(ctx, data.TenantID, data.Email)
+	_, err := service.UserQueryRepositoryInterface.SelectTenantUserEmailInviteByEmail(ctx, data.TenantID, data.Email)
 	if err == nil {
 		return errors.New(apiError.DuplicateRecord)
 	} else if err.Error() != apiError.MissingRecord {
@@ -337,7 +305,7 @@ func (service *UserCommandService) SendTenantUserEmailInvite(ctx context.Context
 	}
 
 	// check if email already exists in users
-	err = service.UserQueryRepositoryInterface.SelectTenantUserByEmail(ctx, data.TenantID, data.Email)
+	_, err = service.UserQueryRepositoryInterface.SelectTenantUserByEmail(ctx, data.TenantID, data.Email)
 	if err == nil {
 		return errors.New(apiError.DuplicateRecord)
 	} else if err.Error() != apiError.MissingRecord {
@@ -361,6 +329,12 @@ func (service *UserCommandService) SendTenantUserEmailInvite(ctx context.Context
 
 	// log to elasticsearch
 	go func() {
+		// get tenant
+		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
+		if err != nil {
+			return
+		}
+
 		_, err = service.ElasticsearchCommandServiceInterface.CreateAdminInviteLog(ctx, elasticsearchTypes.CreateAdminInviteLog{
 			TenantID:   data.TenantID,
 			TenantName: tenant.Name,
@@ -372,32 +346,25 @@ func (service *UserCommandService) SendTenantUserEmailInvite(ctx context.Context
 		}
 	}()
 
-	// generate url
-	var url string
-	if strings.EqualFold(os.Getenv("API_ENABLE_MULTI_TENANT"), "true") {
-		url = fmt.Sprintf(userMultiTenantsInviteTemplate, os.Getenv("APP_SCHEME"), os.Getenv("APP_HOST"), data.TenantID, data.Email, code)
-	} else {
-		url = fmt.Sprintf(userSingleTenantInviteTemplate, os.Getenv("APP_SCHEME"), os.Getenv("APP_HOST"), data.TenantID, data.Email, code)
-	}
-
 	// send to email
-	redirectURL := url
+	go func() {
+		redirectURL := fmt.Sprintf(userInviteTemplate, os.Getenv("APP_URL"), data.TenantID, data.Email, code)
 
-	emailMessage := fmt.Sprintf("Hi %s, <br /><br />"+
-		"You have been invited to join PACS AI. Please click the link below to accept the invitation: <br /><br />"+
-		"<a href=\"%s\">%s</a> <br /><br />"+
-		"Thanks, <br /><br />"+
-		"Your PACS AI Team", data.Email, redirectURL, redirectURL)
+		emailMessage := fmt.Sprintf("Hi %s, <br /><br />"+
+			"You have been invited to join PACS AI. Please click the link below to accept the invitation: <br /><br />"+
+			"<a href=\"%s\">%s</a> <br /><br />"+
+			"Your PACS AI Team", data.Email, redirectURL, redirectURL)
 
-	err = service.MailgunSDKInterface.SendEmail(ctx, mailgunTypes.MailgunSendEmailRequest{
-		Subject:       "[PACS AI]: Invitation to join workspace",
-		Recipient:     data.Email,
-		PlainTextBody: emailMessage,
-	})
-	if err != nil {
-		log.Println("[error] cannot send verification code via mailgun", err)
-		return errors.New(apiError.MailgunError)
-	}
+		err = service.MailgunSDKInterface.SendEmail(ctx, mailgunTypes.MailgunSendEmailRequest{
+			Subject:       "[PACS AI]: Invitation to join workspace",
+			Recipient:     data.Email,
+			PlainTextBody: emailMessage,
+		})
+		if err != nil {
+			log.Println("[error] cannot send verification code via mailgun", err)
+			return
+		}
+	}()
 
 	return nil
 }
@@ -417,7 +384,7 @@ func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data ty
 		return err
 	}
 
-	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, data.ID)
+	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, data.TenantID, data.ID)
 	if err != nil {
 		return err
 	}

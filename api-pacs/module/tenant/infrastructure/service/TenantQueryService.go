@@ -30,13 +30,13 @@ func (service *TenantQueryService) GetOnboardingQuestionnaireAnswers(ctx context
 }
 
 // GetTenantByID get tenant by id
-func (service *TenantQueryService) GetTenantByID(ctx context.Context, tenantID string) (types.GetTenant, error) {
+func (service *TenantQueryService) GetTenantByID(ctx context.Context, tenantID string) (types.GetTenantResult, error) {
 	tenant, err := service.TenantQueryRepositoryInterface.SelectTenantByID(ctx, tenantID)
 	if err != nil {
-		return types.GetTenant{}, err
+		return types.GetTenantResult{}, err
 	}
 
-	return types.GetTenant{
+	return types.GetTenantResult{
 		ID:                           tenant.ID,
 		Name:                         tenant.Name,
 		Address:                      tenant.Address,

@@ -16,7 +16,7 @@ type GetOnboardingQuestionnaireAnswer struct {
 	QuestionnaireType *entity.QuestionnaireType
 }
 
-type GetTenant struct {
+type GetTenantResult struct {
 	ID                           string
 	Name                         string
 	Address                      string

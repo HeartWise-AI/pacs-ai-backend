@@ -61,7 +61,7 @@ func (service *UserQueryService) GetTenantUserByID(ctx context.Context, tenantID
 
 	// if consent is enabled and user haven't signed, update consent status
 	if tenant.OnboardingEnableConsent && !user.IsConsentSigned {
-		err := service.updateTenantUserConsentStatusByEmail(ctx, ID, tenant)
+		err := service.updateTenantUserConsentStatusByUserID(ctx, ID, tenant)
 		if err != nil {
 			log.Println("Failed to update user consent status: ", err) // silent error
 		}
@@ -121,8 +121,8 @@ func (service *UserQueryService) GetUserMetadata(ctx context.Context, userID str
 	return userMetadata, nil
 }
 
-// updateTenantUserConsentStatusByEmail update tenant user consent status by email
-func (service *UserQueryService) updateTenantUserConsentStatusByEmail(ctx context.Context, ID string, tenant tenantTypes.GetTenant) error {
+// updateTenantUserConsentStatusByUserID update tenant user consent status by user id
+func (service *UserQueryService) updateTenantUserConsentStatusByUserID(ctx context.Context, ID string, tenant tenantTypes.GetTenantResult) error {
 	/// get user
 	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, tenant.ID, ID)
 	if err != nil {

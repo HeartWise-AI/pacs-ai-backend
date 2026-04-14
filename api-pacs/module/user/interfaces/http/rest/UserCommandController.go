@@ -342,14 +342,15 @@ func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWrite
 		return
 	}
 
-	generatedPassword, err := controller.UserCommandServiceInterface.RegisterTenantUser(context.TODO(), serviceTypes.RegisterTenantUser{
+	err = controller.UserCommandServiceInterface.RegisterTenantUser(context.TODO(), serviceTypes.RegisterTenantUser{
 		TenantID:  request.TenantID,
 		Role:      request.Role,
-		Code:      request.Code,
 		Name:      request.Name,
 		Email:     strings.ToLower(request.Email),
+		Password:  request.Password,
 		LicenseNo: request.LicenseNo,
 		Specialty: request.Specialty,
+		Code:      request.Code,
 	})
 	if err != nil {
 		var httpCode int
@@ -385,9 +386,6 @@ func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWrite
 		Status:  http.StatusCreated,
 		Success: true,
 		Message: "Successfully registered tenant user.",
-		Data: &types.CreateTenantUserResponse{
-			Password: generatedPassword,
-		},
 	}
 
 	response.JSON(w)

@@ -245,6 +245,7 @@ func (router *router) InitRouter() *chi.Mux {
 			// user module
 			r.Route("/user", func(r chi.Router) {
 				r.Post("/register", userCommandController.RegisterTenantUser)
+				r.Get("/specialties", userQueryController.GetDoctorSpecialties)
 
 				// superuser only
 				r.Group(func(r chi.Router) {
@@ -270,7 +271,6 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Post("/invite", userCommandController.SendTenantEmailInvite)
 						r.Post("/invite/resend", userCommandController.ResendTenantEmailInvite)
 						r.Get("/all", userQueryController.GetTenantUsers)
-						r.Get("/specialties", userQueryController.GetDoctorSpecialties)
 						r.Put("/update", userCommandController.UpdateTenantUser)
 						r.Delete("/{ID}/remove", userCommandController.DeleteTenantUser)
 					})

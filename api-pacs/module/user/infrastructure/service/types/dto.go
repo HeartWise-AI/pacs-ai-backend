@@ -27,11 +27,12 @@ type GetTenantUser struct {
 type RegisterTenantUser struct {
 	TenantID  string
 	Role      string
-	Code      *string
 	Name      string
 	Email     string
+	Password  string
 	LicenseNo string
 	Specialty string
+	Code      *string
 }
 
 type ResetTutorial struct {

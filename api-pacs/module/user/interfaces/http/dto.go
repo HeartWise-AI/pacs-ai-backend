@@ -19,6 +19,7 @@ var (
 		"RegisterTenantUserRequest.Role":              "Role is required.",
 		"RegisterTenantUserRequest.Name":              "Name is required.",
 		"RegisterTenantUserRequest.Email":             "Email is required.",
+		"RegisterTenantUserRequest.Password":          "Password is required.",
 		"RegisterTenantUserRequest.LicenseNo":         "License number is required.",
 		"RegisterTenantUserRequest.Specialty":         "Specialty is required.",
 		"ResendTenantEmailInviteRequest.ID":           "ID is required.",
@@ -59,11 +60,12 @@ type SendTenantEmailInviteRequest struct {
 type RegisterTenantUserRequest struct {
 	TenantID  string  `json:"tenantId" validate:"required"`
 	Role      string  `json:"role" validate:"required"`
-	Code      *string `json:"code"`
 	Name      string  `json:"name" validate:"required"`
 	Email     string  `json:"email" validate:"required"`
+	Password  string  `json:"password" validate:"required"`
 	LicenseNo string  `json:"licenseNo" validate:"required"`
 	Specialty string  `json:"specialty" validate:"required"`
+	Code      *string `json:"code"`
 }
 
 type ResendTenantEmailInviteRequest struct {

@@ -13,7 +13,6 @@ type User struct {
 	IsEmailVerified   bool   `firestore:"is_email_verified,omitempty"`   // firebase auth
 	IsAccountDisabled bool   `firestore:"is_account_disabled,omitempty"` // firebase auth
 	IsConsentSigned   bool   `firestore:"is_consent_signed,omitempty"`
-	ExpiresAt         int    `firestore:"expires_at,omitempty"`
 	CreatedAt         int    `firestore:"created_at,omitempty"`
 	UpdatedAt         int    `firestore:"updated_at"`
 }

@@ -1921,11 +1921,6 @@
         "tags": ["user"],
         "summary": "Get Doctor Specialties",
         "description": "Get doctor specialties.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
         "responses": {
           "2xx": {
             "description": "Success"
@@ -2443,6 +2438,7 @@
           "role",
           "name",
           "email",
+          "password",
           "licenseNo",
           "specialty"
         ],
@@ -2454,21 +2450,25 @@
           "role": {
             "type": "string"
           },
-          "code": {
-            "type": "string",
-            "nullable": true
-          },
           "name": {
             "type": "string"
           },
           "email": {
             "type": "string"
           },
+          "password": {
+            "type": "string"
+          },
+
           "licenseNo": {
             "type": "string"
           },
           "specialty": {
             "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
           }
         }
       },
