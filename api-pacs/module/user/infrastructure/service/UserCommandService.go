@@ -182,6 +182,8 @@ func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data 
 		return err
 	}
 
+	var emailInviteID string
+
 	// check if code is provided - from invite validate code and expiration
 	if data.Code != nil {
 		// get tenant email invite by email
@@ -200,15 +202,11 @@ func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data 
 			return errors.New(apiError.UnauthorizedAccess)
 		}
 
-		// update tenant user invite verified at
-		err = service.UserCommandRepositoryInterface.UpdateTenantUserEmailInviteVerifiedAt(ctx, emailInvite.ID)
-		if err != nil {
-			return err
-		}
+		emailInviteID = emailInvite.ID
 	}
 
 	// insert tenant user
-	_, err = service.UserCommandRepositoryInterface.InsertTenantUser(ctx, repositoryTypes.CreateTenantUser{
+	userID, err := service.UserCommandRepositoryInterface.InsertTenantUser(ctx, repositoryTypes.CreateTenantUser{
 		TenantID:  data.TenantID,
 		Role:      data.Role,
 		Email:     data.Email,
@@ -219,6 +217,21 @@ func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data 
 	})
 	if err != nil {
 		return err
+	}
+
+	// check if code is provided - from invite update verified and admin created
+	if data.Code != nil && len(emailInviteID) > 0 {
+		// update tenant user invite verified at
+		err = service.UserCommandRepositoryInterface.UpdateTenantUserEmailInviteVerifiedAt(ctx, emailInviteID)
+		if err != nil {
+			return err
+		}
+
+		// update tenant user email verified
+		err = service.UserCommandRepositoryInterface.UpdateTenantUserEmailVerified(ctx, data.TenantID, userID)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

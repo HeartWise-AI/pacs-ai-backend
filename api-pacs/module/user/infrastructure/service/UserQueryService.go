@@ -79,6 +79,7 @@ func (service *UserQueryService) GetTenantUserByID(ctx context.Context, tenantID
 		IsEmailVerified:   user.IsEmailVerified,
 		IsAccountDisabled: user.IsAccountDisabled,
 		IsConsentSigned:   user.IsConsentSigned,
+		IsAdminCreated:    user.IsAdminCreated,
 		CreatedAt:         uint(user.CreatedAt),
 		UpdatedAt:         uint(user.UpdatedAt),
 	}, nil
@@ -104,6 +105,7 @@ func (service *UserQueryService) GetTenantUsers(ctx context.Context, tenantID st
 			Specialty:         user.Specialty,
 			IsEmailVerified:   user.IsEmailVerified,
 			IsAccountDisabled: user.IsAccountDisabled,
+			IsAdminCreated:    user.IsAdminCreated,
 			CreatedAt:         user.CreatedAt,
 			UpdatedAt:         user.UpdatedAt,
 		})

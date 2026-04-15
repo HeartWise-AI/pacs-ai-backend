@@ -206,6 +206,33 @@ func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUserEmailInvi
 	}
 }
 
+// UpdateTenantUserEmailVerified decorator pattern to update tenant user email verified
+func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUserEmailVerified(ctx context.Context, tenantID, ID string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("update_tenant_user_email_verified", config.Settings())
+	errors := hystrix.Go("update_tenant_user_email_verified", func() error {
+		err := repository.UserCommandRepositoryInterface.UpdateTenantUserEmailVerified(ctx, tenantID, ID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // UpdateTenantUserEmailInviteVerifiedAt decorator pattern to update tenant user email invite verified at
 func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUserEmailInviteVerifiedAt(ctx context.Context, ID string) error {
 	output := make(chan bool, 1)

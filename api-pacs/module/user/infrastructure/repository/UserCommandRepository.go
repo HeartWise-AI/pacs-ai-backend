@@ -297,6 +297,57 @@ func (repository *UserCommandRepository) UpdateTenantUserEmailInvite(ctx context
 	return nil
 }
 
+// UpdateTenantUserEmailVerified update tenant user email verified for tenant
+func (repository *UserCommandRepository) UpdateTenantUserEmailVerified(ctx context.Context, tenantID, ID string) error {
+	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	// tenant auth
+	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	params := (&auth.UserToUpdate{}).
+		EmailVerified(true)
+
+	_, err = tenantAuth.UpdateUser(ctx, ID, params)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	var user entity.User
+
+	// update user in firestore
+	updateTenantUser := []firestore.Update{
+		{Path: "is_admin_created", Value: true},
+		{Path: "updated_at", Value: int(time.Now().Unix())},
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", user.GetModelName(), ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Update(ctx, updateTenantUser)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
 // UpdateTenantUserEmailInviteVerifiedAt update tenant user email invite verified at
 func (repository *UserCommandRepository) UpdateTenantUserEmailInviteVerifiedAt(ctx context.Context, ID string) error {
 	// firestore client

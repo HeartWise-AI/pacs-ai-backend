@@ -31,6 +31,7 @@ type GetTenantUser struct {
 	IsEmailVerified   bool
 	IsAccountDisabled bool
 	IsConsentSigned   bool
+	IsAdminCreated    bool
 	CreatedAt         uint
 	UpdatedAt         uint
 }

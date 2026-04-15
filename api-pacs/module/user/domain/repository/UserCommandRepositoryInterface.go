@@ -23,6 +23,8 @@ type UserCommandRepositoryInterface interface {
 	UpdateTenantUserConsent(ctx context.Context, data repositoryTypes.UpdateTenantUserConsent) error
 	// UpdateTenantUserEmailInvite updates a tenant user email invite
 	UpdateTenantUserEmailInvite(ctx context.Context, data repositoryTypes.UpdateTenantUserEmailInvite) error
+	// UpdateTenantUserEmailVerified updates a tenant user email verified
+	UpdateTenantUserEmailVerified(ctx context.Context, tenantID, ID string) error
 	// UpdateTenantUserEmailInviteVerifiedAt updates the user email invite verified at
 	UpdateTenantUserEmailInviteVerifiedAt(ctx context.Context, ID string) error
 	// UpsertUserMetadata upserts user metadata
