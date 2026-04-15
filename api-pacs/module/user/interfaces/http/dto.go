@@ -103,6 +103,7 @@ type GetTenantUserResponse struct {
 	IsEmailVerified   bool   `json:"isEmailVerified"`
 	IsAccountDisabled bool   `json:"isAccountDisabled"`
 	IsConsentSigned   bool   `json:"isConsentSigned"`
+	IsAdminCreated    bool   `json:"isAdminCreated"`
 	CreatedAt         uint   `json:"createdAt"`
 	UpdatedAt         uint   `json:"updatedAt"`
 }

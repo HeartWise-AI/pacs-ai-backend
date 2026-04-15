@@ -47,13 +47,14 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 	generatedPassword := generateID()
 
 	uid, err := service.UserCommandRepositoryInterface.InsertTenantUser(ctx, repositoryTypes.CreateTenantUser{
-		TenantID:  data.TenantID,
-		Role:      data.Role,
-		Name:      data.Name,
-		Email:     data.Email,
-		Password:  generatedPassword,
-		LicenseNo: data.LicenseNo,
-		Specialty: data.Specialty,
+		TenantID:       data.TenantID,
+		Role:           data.Role,
+		Name:           data.Name,
+		Email:          data.Email,
+		Password:       generatedPassword,
+		LicenseNo:      data.LicenseNo,
+		Specialty:      data.Specialty,
+		IsAdminCreated: true, // admin created user
 	})
 	if err != nil {
 		return "", err
@@ -182,6 +183,8 @@ func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data 
 		return err
 	}
 
+	var isEmailVerified bool
+
 	// check if code is provided - from invite validate code and expiration
 	if data.Code != nil {
 		// get tenant email invite by email
@@ -205,17 +208,21 @@ func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data 
 		if err != nil {
 			return err
 		}
+
+		// set email verified to true
+		isEmailVerified = true
 	}
 
 	// insert tenant user
 	_, err = service.UserCommandRepositoryInterface.InsertTenantUser(ctx, repositoryTypes.CreateTenantUser{
-		TenantID:  data.TenantID,
-		Role:      data.Role,
-		Email:     data.Email,
-		Name:      data.Name,
-		Password:  data.Password,
-		LicenseNo: data.LicenseNo,
-		Specialty: data.Specialty,
+		TenantID:        data.TenantID,
+		Role:            data.Role,
+		Email:           data.Email,
+		Name:            data.Name,
+		Password:        data.Password,
+		LicenseNo:       data.LicenseNo,
+		Specialty:       data.Specialty,
+		IsEmailVerified: isEmailVerified,
 	})
 	if err != nil {
 		return err
