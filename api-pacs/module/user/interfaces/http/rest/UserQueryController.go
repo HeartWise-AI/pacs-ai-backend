@@ -217,7 +217,7 @@ func (controller *UserQueryController) GetTenantUserEmailInvites(w http.Response
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully fetched tenant user email invites.",
-		Data:    userEmailIvites,
+		Data:    userEmailInvites,
 	}
 
 	response.JSON(w)
