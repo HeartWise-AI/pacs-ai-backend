@@ -15,6 +15,8 @@ type UserQueryServiceInterface interface {
 	GetTenantUserByID(ctx context.Context, tenantID, id string) (types.GetTenantUser, error)
 	// GetTenantUsers gets tenant users
 	GetTenantUsers(ctx context.Context, tenantID string) ([]types.GetTenantUser, error)
+	// GetTenantUserEmailInvites gets tenant user email invites
+	GetTenantUserEmailInvites(ctx context.Context, tenantID string) ([]entity.UserEmailInvite, error)
 	// GetUserMetadata gets user metadata
 	GetUserMetadata(ctx context.Context, userID string) (entity.UserMetadata, error)
 }

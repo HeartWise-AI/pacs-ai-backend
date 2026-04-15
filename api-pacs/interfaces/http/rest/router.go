@@ -76,7 +76,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.25.0-beta",
+				"version": "v0.25.1-beta",
 			},
 		}
 
@@ -271,8 +271,10 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Post("/invite", userCommandController.SendTenantEmailInvite)
 						r.Post("/invite/resend", userCommandController.ResendTenantEmailInvite)
 						r.Get("/all", userQueryController.GetTenantUsers)
+						r.Get("/invites", userQueryController.GetTenantUserEmailInvites)
 						r.Put("/update", userCommandController.UpdateTenantUser)
 						r.Delete("/{ID}/remove", userCommandController.DeleteTenantUser)
+						r.Delete("/invite/{ID}/remove", userCommandController.RemoveTenantUserEmailInvite)
 					})
 				})
 			})

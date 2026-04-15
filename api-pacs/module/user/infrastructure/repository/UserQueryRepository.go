@@ -150,68 +150,6 @@ func (repository *UserQueryRepository) SelectTenantUserByID(ctx context.Context,
 	}, nil
 }
 
-// SelectTenantUserEmailInviteByEmail get tenant user email invite by email
-func (repository *UserQueryRepository) SelectTenantUserEmailInviteByEmail(ctx context.Context, tenantID, email string) (entity.UserEmailInvite, error) {
-	// firestore client
-	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
-	if err != nil {
-		log.Println(err)
-		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
-	}
-
-	// query tenant user email invite by email
-	var userEmailInvite entity.UserEmailInvite
-
-	firestoreRes, err := firestoreClient.Collection(userEmailInvite.GetModelName()).Where("tenant_id", "==", tenantID).Where("email", "==", email).Documents(ctx).GetAll()
-	if err != nil {
-		log.Println(err)
-		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
-	}
-
-	if len(firestoreRes) == 0 {
-		return entity.UserEmailInvite{}, errors.New(apiError.MissingRecord)
-	}
-
-	err = firestoreRes[0].DataTo(&userEmailInvite)
-	if err != nil {
-		log.Println(err)
-		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
-	}
-
-	return userEmailInvite, nil
-}
-
-// SelectTenantUserEmailInviteByID get tenant user email invite by id
-func (repository *UserQueryRepository) SelectTenantUserEmailInviteByID(ctx context.Context, tenantID, ID string) (entity.UserEmailInvite, error) {
-	// firestore client
-	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
-	if err != nil {
-		log.Println(err)
-		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
-	}
-
-	// query tenant user email invite by id
-	var userEmailInvite entity.UserEmailInvite
-
-	firestoreRes, err := firestoreClient.Collection(userEmailInvite.GetModelName()).Doc(ID).Get(ctx)
-	if err != nil {
-		log.Println(err)
-		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
-	}
-
-	if !firestoreRes.Exists() {
-		return entity.UserEmailInvite{}, errors.New(apiError.MissingRecord)
-	}
-
-	err = firestoreRes.DataTo(&userEmailInvite)
-	if err != nil {
-		log.Println(err)
-		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
-	}
-
-	return userEmailInvite, nil
-}
-
 // SelectTenantUsers get tenant users
 func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, tenantID string) ([]repositoryTypes.GetTenantUser, error) {
 	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
@@ -296,6 +234,122 @@ func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, te
 	}
 
 	return users, nil
+}
+
+// SelectTenantUserEmailInviteByEmail get tenant user email invite by email
+func (repository *UserQueryRepository) SelectTenantUserEmailInviteByEmail(ctx context.Context, tenantID, email string) (entity.UserEmailInvite, error) {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
+	}
+
+	// query tenant user email invite by email
+	var userEmailInvite entity.UserEmailInvite
+
+	firestoreRes, err := firestoreClient.Collection(userEmailInvite.GetModelName()).Where("tenant_id", "==", tenantID).Where("email", "==", email).Documents(ctx).GetAll()
+	if err != nil {
+		log.Println(err)
+		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
+	}
+
+	if len(firestoreRes) == 0 {
+		return entity.UserEmailInvite{}, errors.New(apiError.MissingRecord)
+	}
+
+	err = firestoreRes[0].DataTo(&userEmailInvite)
+	if err != nil {
+		log.Println(err)
+		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
+	}
+
+	return userEmailInvite, nil
+}
+
+// SelectTenantUserEmailInviteByID get tenant user email invite by id
+func (repository *UserQueryRepository) SelectTenantUserEmailInviteByID(ctx context.Context, tenantID, ID string) (entity.UserEmailInvite, error) {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
+	}
+
+	// query tenant user email invite by id
+	var userEmailInvite entity.UserEmailInvite
+
+	firestoreRes, err := firestoreClient.Collection(userEmailInvite.GetModelName()).Doc(ID).Get(ctx)
+	if err != nil {
+		log.Println(err)
+		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
+	}
+
+	if !firestoreRes.Exists() {
+		return entity.UserEmailInvite{}, errors.New(apiError.MissingRecord)
+	}
+
+	err = firestoreRes.DataTo(&userEmailInvite)
+	if err != nil {
+		log.Println(err)
+		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
+	}
+
+	return userEmailInvite, nil
+}
+
+// SelectTenantUserEmailInvites selects user email invites
+func (repository *UserQueryRepository) SelectTenantUserEmailInvites(ctx context.Context, tenantID string) ([]entity.UserEmailInvite, error) {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return []entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
+	}
+
+	var userEmailInvites []entity.UserEmailInvite
+
+	var m = sync.Mutex{}
+	eg, egCtx := errgroup.WithContext(ctx)
+
+	eg.Go(func() error {
+		m.Lock()
+		defer m.Unlock()
+
+		var userEmailInvite entity.UserEmailInvite
+
+		iter := firestoreClient.Collection(userEmailInvite.GetModelName()).Where("tenant_id", "==", tenantID).Documents(egCtx)
+		for {
+			doc, err := iter.Next()
+			if err == iterator.Done {
+				break
+			}
+			if err != nil {
+				log.Println(err)
+				return errors.New(apiError.FirestoreError)
+			}
+
+			err = doc.DataTo(&userEmailInvite)
+			if err != nil {
+				log.Println(err)
+				return errors.New(apiError.FirestoreError)
+			}
+
+			userEmailInvites = append(userEmailInvites, userEmailInvite)
+		}
+
+		return nil
+	})
+
+	if err := eg.Wait(); err != nil {
+		return []entity.UserEmailInvite{}, err
+	}
+
+	if len(userEmailInvites) == 0 {
+		return []entity.UserEmailInvite{}, errors.New(apiError.MissingRecord)
+	}
+
+	return userEmailInvites, nil
 }
 
 // SelectUserMetadataByID get user metadata by id

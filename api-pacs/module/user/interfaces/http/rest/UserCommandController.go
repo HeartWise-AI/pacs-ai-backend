@@ -433,6 +433,55 @@ func (controller *UserCommandController) ResetTutorial(w http.ResponseWriter, r 
 	response.JSON(w)
 }
 
+// RemoveTenantUserEmailInvite removes a tenant user email invite
+func (controller *UserCommandController) RemoveTenantUserEmailInvite(w http.ResponseWriter, r *http.Request) {
+	emailInviteID := chi.URLParam(r, "ID")
+	if len(emailInviteID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid email invite ID.",
+			ErrorCode: errors.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err := controller.UserCommandServiceInterface.DeleteTenantUserEmailInvite(context.TODO(), emailInviteID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while removing tenant user email invite."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully removed tenant user email invite.",
+	}
+
+	response.JSON(w)
+}
+
 // ResendTenantEmailInvite resends a tenant email invite
 func (controller *UserCommandController) ResendTenantEmailInvite(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)

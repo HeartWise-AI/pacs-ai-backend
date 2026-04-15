@@ -150,6 +150,17 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantI
 	return nil
 }
 
+// DeleteTenantUserEmailInvite delete tenant user email invite by id
+func (service *UserCommandService) DeleteTenantUserEmailInvite(ctx context.Context, ID string) error {
+	err := service.UserCommandRepositoryInterface.DeleteTenantUserEmailInvite(ctx, ID)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	return nil
+}
+
 // RegisterTenantUser registers a tenant user
 func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data types.RegisterTenantUser) error {
 	// get tenant

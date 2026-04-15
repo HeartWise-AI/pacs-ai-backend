@@ -12,6 +12,8 @@ type UserCommandServiceInterface interface {
 	CreateTenantUser(ctx context.Context, data types.CreateTenantUser) (string, error)
 	// DeleteTenantUser deletes a tenant user
 	DeleteTenantUser(ctx context.Context, tenantID, id string) error
+	// DeleteTenantUserEmailInvite deletes a tenant user email invite
+	DeleteTenantUserEmailInvite(ctx context.Context, ID string) error
 	// ResetTutorial resets the tutorial for a user
 	ResetTutorial(ctx context.Context, data types.ResetTutorial) error
 	// ResendTenantUserEmailInvite resends a tenant user email invite

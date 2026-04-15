@@ -68,6 +68,29 @@ func (repository *UserCommandRepository) DeleteTenantUser(ctx context.Context, t
 	return nil
 }
 
+// DeleteTenantUserEmailInvite deletes a tenant user email invite
+func (repository *UserCommandRepository) DeleteTenantUserEmailInvite(ctx context.Context, ID string) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	var emailInvite entity.UserEmailInvite
+
+	collectionPath := fmt.Sprintf("%s/%s", emailInvite.GetModelName(), ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Delete(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
 // InsertTenantUser creates a new tenant user for tenant
 func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, data repositoryTypes.CreateTenantUser) (string, error) {
 	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
@@ -146,6 +169,8 @@ func (repository *UserCommandRepository) InsertTenantUserEmailInvite(ctx context
 		Code:      data.Code,
 		Email:     data.Email,
 		ExpiresAt: int(data.ExpiresAt.Unix()),
+		CreatedAt: int(time.Now().Unix()),
+		UpdatedAt: int(time.Now().Unix()),
 	}
 
 	collectionPath := fmt.Sprintf("%s/%s", emailInvite.GetModelName(), data.ID)
@@ -257,6 +282,7 @@ func (repository *UserCommandRepository) UpdateTenantUserEmailInvite(ctx context
 	updateEmailInvite := []firestore.Update{
 		{Path: "code", Value: data.Code},
 		{Path: "expires_at", Value: int(data.ExpiresAt.Unix())},
+		{Path: "updated_at", Value: int(time.Now().Unix())},
 	}
 
 	collectionPath := fmt.Sprintf("%s/%s", emailInvite.GetModelName(), data.ID)
