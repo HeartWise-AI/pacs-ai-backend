@@ -130,6 +130,36 @@ func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, d
 	return authUser.UID, nil
 }
 
+// InsertTenantUserEmailInvite creates a new tenant user email invite
+func (repository *UserCommandRepository) InsertTenantUserEmailInvite(ctx context.Context, data repositoryTypes.CreateTenantUserEmailInvite) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	// create user email invite in firestore
+	emailInvite := entity.UserEmailInvite{
+		ID:        data.ID,
+		TenantID:  data.TenantID,
+		Code:      data.Code,
+		Email:     data.Email,
+		ExpiresAt: int(data.ExpiresAt.Unix()),
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", emailInvite.GetModelName(), data.ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Create(ctx, emailInvite)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
 // UpdateTenantUser update tenant user for tenant
 func (repository *UserCommandRepository) UpdateTenantUser(ctx context.Context, data repositoryTypes.UpdateTenantUser) error {
 	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
@@ -175,6 +205,92 @@ func (repository *UserCommandRepository) UpdateTenantUser(ctx context.Context, d
 	docRef := firestoreClient.Doc(collectionPath)
 
 	_, err = docRef.Update(ctx, updateTenantUser)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
+// UpdateTenantUserConsent update tenant user consent for tenant
+func (repository *UserCommandRepository) UpdateTenantUserConsent(ctx context.Context, data repositoryTypes.UpdateTenantUserConsent) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	var user entity.User
+
+	// update user in firestore
+	updateTenantUser := []firestore.Update{
+		{Path: "is_consent_signed", Value: data.IsConsentSigned},
+		{Path: "updated_at", Value: int(time.Now().Unix())},
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", user.GetModelName(), data.ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Update(ctx, updateTenantUser)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
+// UpdateTenantUserEmailInvite update tenant user email invite
+func (repository *UserCommandRepository) UpdateTenantUserEmailInvite(ctx context.Context, data repositoryTypes.UpdateTenantUserEmailInvite) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	var emailInvite entity.UserEmailInvite
+
+	// update user email invite in firestore
+	updateEmailInvite := []firestore.Update{
+		{Path: "code", Value: data.Code},
+		{Path: "expires_at", Value: int(data.ExpiresAt.Unix())},
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", emailInvite.GetModelName(), data.ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Update(ctx, updateEmailInvite)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
+// UpdateTenantUserEmailInviteVerifiedAt update tenant user email invite verified at
+func (repository *UserCommandRepository) UpdateTenantUserEmailInviteVerifiedAt(ctx context.Context, ID string) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	var emailInvite entity.UserEmailInvite
+
+	// update user email invite in firestore
+	updateEmailInvite := []firestore.Update{
+		{Path: "verified_at", Value: int(time.Now().Unix())},
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", emailInvite.GetModelName(), ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Update(ctx, updateEmailInvite)
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.FirestoreError)

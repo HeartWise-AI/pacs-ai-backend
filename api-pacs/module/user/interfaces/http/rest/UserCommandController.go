@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -285,6 +286,111 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 	response.JSON(w)
 }
 
+// RegisterTenantUser registers a tenant user
+func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWriter, r *http.Request) {
+	var request types.RegisterTenantUserRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// check if role to be added is owner (only callable via CreateTenantOwner)
+	if request.Role == entity.OwnerRole {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusUnauthorized,
+			Success:   false,
+			Message:   "Unauthorized access.",
+			ErrorCode: apiError.UnauthorizedAccess,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err = controller.UserCommandServiceInterface.RegisterTenantUser(context.TODO(), serviceTypes.RegisterTenantUser{
+		TenantID:  request.TenantID,
+		Role:      request.Role,
+		Name:      request.Name,
+		Email:     strings.ToLower(request.Email),
+		Password:  request.Password,
+		LicenseNo: request.LicenseNo,
+		Specialty: request.Specialty,
+		Code:      request.Code,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while registering tenant user."
+		case errors.DuplicateRecord:
+			httpCode = http.StatusConflict
+			errorMsg = "User already exist."
+		case errors.UnauthorizedAccess:
+			httpCode = http.StatusUnauthorized
+			errorMsg = "Unauthorized access."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusCreated,
+		Success: true,
+		Message: "Successfully registered tenant user.",
+	}
+
+	response.JSON(w)
+}
+
 // ResetTutorial resets the tutorial onboarding questionnaires by user
 func (controller *UserCommandController) ResetTutorial(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
@@ -322,6 +428,176 @@ func (controller *UserCommandController) ResetTutorial(w http.ResponseWriter, r 
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully reset tutorial.",
+	}
+
+	response.JSON(w)
+}
+
+// ResendTenantEmailInvite resends a tenant email invite
+func (controller *UserCommandController) ResendTenantEmailInvite(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	var request types.ResendTenantEmailInviteRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err = controller.UserCommandServiceInterface.ResendTenantUserEmailInvite(context.TODO(), serviceTypes.ResendTenantUserEmailInvite{
+		ID:       request.ID,
+		TenantID: tenantID,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.MissingRecord:
+			httpCode = http.StatusUnauthorized
+			errorMsg = "Unauthorized access."
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while resending tenant user invite."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully resent tenant user invite.",
+	}
+
+	response.JSON(w)
+}
+
+// SendTenantEmailInvite sends a tenant email invite
+func (controller *UserCommandController) SendTenantEmailInvite(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	var request types.SendTenantEmailInviteRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	// validate request
+	err := types.Validate.Struct(request)
+	if err != nil {
+		errors := err.(validator.ValidationErrors)
+		if len(errors) > 0 {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err = controller.UserCommandServiceInterface.SendTenantUserEmailInvite(context.TODO(), serviceTypes.SendTenantUserEmailInvite{
+		TenantID: tenantID,
+		Email:    strings.ToLower(request.Email),
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while sending tenant email invite."
+		case errors.DuplicateRecord:
+			httpCode = http.StatusConflict
+			errorMsg = "Email already invited or joined."
+		default:
+			httpCode = http.StatusUnauthorized
+			errorMsg = "Unauthorized access."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusCreated,
+		Success: true,
+		Message: "Successfully sent tenant email invite.",
 	}
 
 	response.JSON(w)

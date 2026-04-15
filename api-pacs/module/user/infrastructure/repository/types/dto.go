@@ -1,5 +1,7 @@
 package types
 
+import "time"
+
 type CreateTenantUser struct {
 	TenantID  string
 	Role      string
@@ -8,6 +10,14 @@ type CreateTenantUser struct {
 	Name      string
 	LicenseNo string
 	Specialty string
+}
+
+type CreateTenantUserEmailInvite struct {
+	ID        string
+	TenantID  string
+	Code      string
+	Email     string
+	ExpiresAt time.Time
 }
 
 type GetTenantUser struct {
@@ -20,6 +30,7 @@ type GetTenantUser struct {
 	Specialty         string
 	IsEmailVerified   bool
 	IsAccountDisabled bool
+	IsConsentSigned   bool
 	CreatedAt         uint
 	UpdatedAt         uint
 }
@@ -32,6 +43,22 @@ type UpdateTenantUser struct {
 	LicenseNo string
 	Specialty string
 	UpdatedAt uint
+}
+
+type UpdateTenantUserEmailInvite struct {
+	ID        string
+	Code      string
+	ExpiresAt time.Time
+}
+
+type UpdateTenantUserEmailInviteVerifiedAt struct {
+	ID         string
+	VerifiedAt time.Time
+}
+
+type UpdateTenantUserConsent struct {
+	ID              string
+	IsConsentSigned bool
 }
 
 type UpdateTenantUserPassword struct {

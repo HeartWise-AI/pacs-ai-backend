@@ -13,6 +13,8 @@ var (
 		"AddOnboardingQuestionnaireAnswerRequest.OnboardingQuestionnaireAnswers":                       "Onboarding questionnaire answers are required.",
 		"AddOnboardingQuestionnaireAnswerRequest.OnboardingQuestionnaireAnswers.QuestionnaireID":       "Questionnaire ID is required.",
 		"AddOnboardingQuestionnaireAnswerRequest.OnboardingQuestionnaireAnswers.QuestionnaireQuestion": "Questionnaire question is required.",
+		"UpdateOnboardingConsentConfigRequest.OnboardingEnableConsent":                                 "Onboarding enable consent is required.",
+		"UpdateOnboardingRegistrationConfigRequest.OnboardingEnableRegistration":                       "Onboarding enable registration is required.",
 	}
 )
 
@@ -35,12 +37,15 @@ type GetOnboardingQuestionnaireAnswerResponse struct {
 }
 
 type GetTenantResponse struct {
-	ID                       string                                `json:"id"`
-	Name                     string                                `json:"name"`
-	Address                  string                                `json:"address"`
-	OnboardingQuestionnaires *map[string][]OnboardingQuestionnaire `json:"onboardingQuestionnaires"`
-	CreatedAt                uint                                  `json:"createdAt"`
-	UpdatedAt                uint                                  `json:"updatedAt"`
+	ID                           string                                `json:"id"`
+	Name                         string                                `json:"name"`
+	Address                      string                                `json:"address"`
+	OnboardingQuestionnaires     *map[string][]OnboardingQuestionnaire `json:"onboardingQuestionnaires"`
+	OnboardingEnableConsent      bool                                  `json:"onboardingEnableConsent"`
+	OnboardingEnableRegistration bool                                  `json:"onboardingEnableRegistration"`
+	OnboardingConsentLink        string                                `json:"onboardingConsentLink"`
+	CreatedAt                    uint                                  `json:"createdAt"`
+	UpdatedAt                    uint                                  `json:"updatedAt"`
 }
 
 type GetPublicTenantResponse struct {
@@ -63,6 +68,14 @@ type OnboardingQuestionnaire struct {
 	QuestionFr      string         `json:"questionFr"`
 	AnswerOptionsEn []AnswerOption `json:"answerOptionsEn"`
 	AnswerOptionsFr []AnswerOption `json:"answerOptionsFr"`
+}
+
+type UpdateOnboardingConsentConfigRequest struct {
+	OnboardingEnableConsent bool `json:"onboardingEnableConsent" validate:"boolean"`
+}
+
+type UpdateOnboardingRegistrationConfigRequest struct {
+	OnboardingEnableRegistration bool `json:"onboardingEnableRegistration" validate:"boolean"`
 }
 
 type AnswerOption struct {

@@ -15,6 +15,38 @@ type ElasticsearchQueryService struct {
 	repository.ElasticsearchQueryRepositoryInterface
 }
 
+// SearchAdminInviteLogs search admin invite logs
+func (service *ElasticsearchQueryService) SearchAdminInviteLogs(ctx context.Context, data types.SearchDocument) ([]entity.AdminInvite, error) {
+	res, err := service.ElasticsearchQueryRepositoryInterface.SearchAdminInviteLogs(ctx, repositoryTypes.SearchDocument{
+		TenantID:  data.TenantID,
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var adminInvites []entity.AdminInvite
+
+	for count := range res.Hits.Hits {
+		jsonData, err := json.Marshal(res.Hits.Hits[count].Source_)
+		if err != nil {
+			return nil, err
+		}
+
+		var adminInvite entity.AdminInvite
+		err = json.Unmarshal([]byte(jsonData), &adminInvite)
+		if err != nil {
+			return nil, err
+		}
+
+		adminInvites = append(adminInvites, adminInvite)
+	}
+
+	return adminInvites, nil
+}
+
 // SearchAdminMemberLogs search admin member logs
 func (service *ElasticsearchQueryService) SearchAdminMemberLogs(ctx context.Context, data types.SearchDocument) ([]entity.AdminMember, error) {
 	res, err := service.ElasticsearchQueryRepositoryInterface.SearchAdminMemberLogs(ctx, repositoryTypes.SearchDocument{
@@ -173,6 +205,38 @@ func (service *ElasticsearchQueryService) SearchRetrievedStudyLogs(ctx context.C
 	}
 
 	return retrievedStudies, nil
+}
+
+// SearchSignedConsentLogs search signed consent logs
+func (service *ElasticsearchQueryService) SearchSignedConsentLogs(ctx context.Context, data types.SearchDocument) ([]entity.SignedConsent, error) {
+	res, err := service.ElasticsearchQueryRepositoryInterface.SearchSignedConsentLogs(ctx, repositoryTypes.SearchDocument{
+		TenantID:  data.TenantID,
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var signedConsents []entity.SignedConsent
+
+	for count := range res.Hits.Hits {
+		jsonData, err := json.Marshal(res.Hits.Hits[count].Source_)
+		if err != nil {
+			return nil, err
+		}
+
+		var signedConsent entity.SignedConsent
+		err = json.Unmarshal([]byte(jsonData), &signedConsent)
+		if err != nil {
+			return nil, err
+		}
+
+		signedConsents = append(signedConsents, signedConsent)
+	}
+
+	return signedConsents, nil
 }
 
 // SearchStoredCustomSeriesLogs search stored custom series logs

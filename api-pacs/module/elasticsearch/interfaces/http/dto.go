@@ -31,6 +31,13 @@ type VerifyTenantUserEmailRequest struct {
 	Email    string `json:"email" validate:"required"`
 }
 
+type AdminInviteLogResponse struct {
+	TenantID   string `json:"tenantId" csv:"tenant_id"`
+	TenantName string `json:"tenantName" csv:"tenant_name"`
+	Email      string `json:"email" csv:"email"`
+	Timestamp  uint   `json:"timestamp" csv:"timestamp"`
+}
+
 type AdminMemberLogResponse struct {
 	TenantID   string `json:"sessionId" csv:"tenant_id"`
 	TenantName string `json:"tenantName" csv:"tenant_name"`
@@ -96,6 +103,14 @@ type RetrievedStudyLogResponse struct {
 	QueryID          string `json:"queryId" csv:"query_id"`
 	AnswerIndex      uint   `json:"answerIndex" csv:"answer_index"`
 	Timestamp        uint   `json:"timestamp" csv:"timestamp"`
+}
+
+type SignedConsentLogResponse struct {
+	TenantID   string `json:"tenantId" csv:"tenant_id"`
+	TenantName string `json:"tenantName" csv:"tenant_name"`
+	UserID     string `json:"userId" csv:"user_id"`
+	Email      string `json:"email" csv:"email"`
+	Timestamp  uint   `json:"timestamp" csv:"timestamp"`
 }
 
 type StoredCustomSeriesLogResponse struct {

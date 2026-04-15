@@ -9,6 +9,8 @@ import (
 
 // TenantQueryServiceInterface holds the implementable methods for the tenant query service
 type TenantQueryServiceInterface interface {
+	// GetOnboardingQuestionnaireAnswers gets the onboarding questionnaire answers
 	GetOnboardingQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingQuestionnaireAnswer) ([]entity.OnboardingQuestionnaireAnswer, error)
-	GetTenantByID(ctx context.Context, tenantID string) (types.GetTenant, error)
+	// GetTenantByID gets tenant by id
+	GetTenantByID(ctx context.Context, tenantID string) (types.GetTenantResult, error)
 }

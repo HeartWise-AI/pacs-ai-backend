@@ -16,13 +16,16 @@ type GetOnboardingQuestionnaireAnswer struct {
 	QuestionnaireType *entity.QuestionnaireType
 }
 
-type GetTenant struct {
-	ID                       string
-	Name                     string
-	Address                  string
-	OnboardingQuestionnaires *string
-	CreatedAt                uint
-	UpdatedAt                uint
+type GetTenantResult struct {
+	ID                           string
+	Name                         string
+	Address                      string
+	OnboardingQuestionnaires     *string
+	OnboardingEnableConsent      bool
+	OnboardingEnableRegistration bool
+	OnboardingConsentLink        string
+	CreatedAt                    uint
+	UpdatedAt                    uint
 }
 
 type OnboardingQuestionnaireAnswer struct {
@@ -30,6 +33,16 @@ type OnboardingQuestionnaireAnswer struct {
 	QuestionnaireQuestion  string
 	QuestionnaireAnswerIDs []string
 	QuestionnaireAnswers   []string
+}
+
+type UpdateOnboardingConsentConfig struct {
+	TenantID                string
+	OnboardingEnableConsent bool
+}
+
+type UpdateOnboardingRegistrationConfig struct {
+	TenantID                     string
+	OnboardingEnableRegistration bool
 }
 
 type AnswerOption struct {

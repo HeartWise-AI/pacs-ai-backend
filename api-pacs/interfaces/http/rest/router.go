@@ -76,7 +76,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.24.2-beta",
+				"version": "v0.25.0-beta",
 			},
 		}
 
@@ -237,11 +237,16 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Post("/onboarding-questionnaire-answers/add", tenantCommandController.AddOnboardingQuestionnaireAnswers)
 					r.Get("/onboarding-questionnaire-answers", tenantQueryController.GetOnboardingQuestionnaireAnswers)
 					r.Get("/", tenantQueryController.GetTenantByID)
+					r.Put("/onboarding-consent/config/update", tenantCommandController.UpdateOnboardingConsentConfig)
+					r.Put("/onboarding-registration/config/update", tenantCommandController.UpdateOnboardingRegistrationConfig)
 				})
 			})
 
 			// user module
 			r.Route("/user", func(r chi.Router) {
+				r.Post("/register", userCommandController.RegisterTenantUser)
+				r.Get("/specialties", userQueryController.GetDoctorSpecialties)
+
 				// superuser only
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.FirebaseSuperUserGuard)
@@ -263,8 +268,9 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
 						r.Post("/add", userCommandController.CreateTenantUser)
+						r.Post("/invite", userCommandController.SendTenantEmailInvite)
+						r.Post("/invite/resend", userCommandController.ResendTenantEmailInvite)
 						r.Get("/all", userQueryController.GetTenantUsers)
-						r.Get("/specialties", userQueryController.GetDoctorSpecialties)
 						r.Put("/update", userCommandController.UpdateTenantUser)
 						r.Delete("/{ID}/remove", userCommandController.DeleteTenantUser)
 					})

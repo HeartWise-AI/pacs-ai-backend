@@ -26,6 +26,8 @@ import (
 	"api-pacs/infrastructures/database/redis"
 	cloudflare "api-pacs/infrastructures/providers/api/cloudflare"
 	"api-pacs/infrastructures/providers/api/dockerinference"
+	"api-pacs/infrastructures/providers/api/docusign"
+	docusignTypes "api-pacs/infrastructures/providers/api/docusign/types"
 	"api-pacs/infrastructures/providers/api/kibana"
 	"api-pacs/infrastructures/providers/api/mailchimp"
 	mailchimpTypes "api-pacs/infrastructures/providers/api/mailchimp/types"
@@ -103,6 +105,7 @@ var (
 	mailgunSDK             *mailgun.MailgunSDK
 	dockerSDK              *docker.DockerSDK
 	dockerInferenceAPI     *dockerinference.DockerInferenceAPI
+	docusignAPI            *docusign.DocusignAPI
 )
 
 // ================================= REST ===================================
@@ -501,11 +504,17 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 		FirebaseAdminSDK: firebaseAdminSDK,
 	}
 
+	queryRepository := &userRepository.UserQueryRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
 	service := &userService.UserCommandService{
 		UserCommandRepositoryInterface: &userRepository.UserCommandRepositoryCircuitBreaker{
 			UserCommandRepositoryInterface: repository,
 		},
-		UserQueryServiceInterface:            k.userQueryServiceContainer(),
+		UserQueryRepositoryInterface: &userRepository.UserQueryRepositoryCircuitBreaker{
+			UserQueryRepositoryInterface: queryRepository,
+		},
 		TenantCommandServiceInterface:        k.tenantCommandServiceContainer(),
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		InferenceCommandServiceInterface:     k.inferenceCommandServiceContainer(),
@@ -522,10 +531,20 @@ func (k *kernel) userQueryServiceContainer() *userService.UserQueryService {
 		FirebaseAdminSDK: firebaseAdminSDK,
 	}
 
+	commandRepository := &userRepository.UserCommandRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
 	service := &userService.UserQueryService{
 		UserQueryRepositoryInterface: &userRepository.UserQueryRepositoryCircuitBreaker{
 			UserQueryRepositoryInterface: repository,
 		},
+		UserCommandRepositoryInterface: &userRepository.UserCommandRepositoryCircuitBreaker{
+			UserCommandRepositoryInterface: commandRepository,
+		},
+		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		DocusignAPIInterface:                 docusignAPI,
 	}
 
 	return service
@@ -607,6 +626,16 @@ func registerHandlers() {
 
 	// init docker inference api
 	dockerInferenceAPI = &dockerinference.DockerInferenceAPI{}
+
+	// init docusign API
+	docusignAPI = docusign.Init(docusignTypes.Credential{
+		IntegrationKey: os.Getenv("DOCUSIGN_INTEGRATION_KEY"),
+		UserID:         os.Getenv("DOCUSIGN_USER_ID"),
+		AccountBaseURI: os.Getenv("DOCUSIGN_ACCOUNT_BASE_URI"),
+		AuthServer:     os.Getenv("DOCUSIGN_AUTH_SERVER"),
+		PrivateKey:     os.Getenv("DOCUSIGN_PRIVATE_KEY"),
+		AccountID:      os.Getenv("DOCUSIGN_ACCOUNT_ID"),
+	})
 }
 
 // ServiceContainer export instantiated service container once

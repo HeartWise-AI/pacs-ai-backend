@@ -12,4 +12,8 @@ type TenantCommandServiceInterface interface {
 	AddOnboardingQuestionnaireAnswers(ctx context.Context, data types.AddOnboardingQuestionnaireAnswer) error
 	// RemoveOnboardingQuestionnaireAnswer removes an onboarding questionnaire answer
 	RemoveOnboardingQuestionnaireAnswer(ctx context.Context, ID string) error
+	// UpdateOnboardingConsentConfig updates the onboarding consent configuration
+	UpdateOnboardingConsentConfig(ctx context.Context, data types.UpdateOnboardingConsentConfig) error
+	// UpdateOnboardingRegistrationConfig updates the onboarding registration configuration
+	UpdateOnboardingRegistrationConfig(ctx context.Context, data types.UpdateOnboardingRegistrationConfig) error
 }

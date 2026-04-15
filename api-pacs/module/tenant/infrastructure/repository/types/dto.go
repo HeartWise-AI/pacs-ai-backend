@@ -20,10 +20,23 @@ type GetOnboardingQuestionnaireAnswer struct {
 }
 
 type GetTenant struct {
-	ID                       string
-	Name                     string
-	Address                  string
-	OnboardingQuestionnaires *string
-	CreatedAt                uint
-	UpdatedAt                uint
+	ID                           string
+	Name                         string
+	Address                      string
+	OnboardingQuestionnaires     *string
+	OnboardingEnableConsent      bool
+	OnboardingEnableRegistration bool
+	OnboardingConsentLink        string
+	CreatedAt                    uint
+	UpdatedAt                    uint
+}
+
+type UpdateOnboardingEnableConsent struct {
+	TenantID                string
+	OnboardingEnableConsent bool
+}
+
+type UpdateOnboardingEnableRegistration struct {
+	TenantID                     string
+	OnboardingEnableRegistration bool
 }

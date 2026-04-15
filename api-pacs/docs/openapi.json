@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "0.24.2-beta"
+    "version": "0.25.0-beta"
   },
   "servers": [
     {
@@ -83,10 +83,12 @@
               "type": "string",
               "enum": [
                 "logins",
+                "admin_invites",
                 "admin_members",
                 "find_modality_studies",
                 "predict_inference_models",
-                "retrieved_studies"
+                "retrieved_studies",
+                "signed_consents"
               ]
             }
           },
@@ -1635,6 +1637,74 @@
         }
       }
     },
+    "/tenant/onboarding-consent/config/update": {
+      "put": {
+        "tags": ["tenant"],
+        "summary": "Update Onboarding Consent Config",
+        "description": "Update onboarding consent configuration.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update onboarding consent configuration request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOnboardingConsentConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/tenant/onboarding-registration/config/update": {
+      "put": {
+        "tags": ["tenant"],
+        "summary": "Update Onboarding Registration Config",
+        "description": "Update onboarding registration configuration.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update onboarding registration configuration request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOnboardingRegistrationConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/owner/add": {
       "post": {
         "tags": ["user"],
@@ -1685,6 +1755,103 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CreateTenantUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/invite": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Invite Tenant User",
+        "description": "Invite tenant user. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Invite tenant user request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendTenantEmailInviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/register": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Register Tenant User",
+        "description": "Register tenant user.",
+        "requestBody": {
+          "description": "Register tenant user request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterTenantUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/invite/resend": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Resend Tenant Invitation",
+        "description": "Resend tenant user invitation. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Resend tenant user invitation request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendTenantEmailInviteRequest"
               }
             }
           },
@@ -1754,11 +1921,6 @@
         "tags": ["user"],
         "summary": "Get Doctor Specialties",
         "description": "Get doctor specialties.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
         "responses": {
           "2xx": {
             "description": "Success"
@@ -2270,6 +2432,46 @@
           }
         }
       },
+      "RegisterTenantUserRequest": {
+        "required": [
+          "tenantId",
+          "role",
+          "name",
+          "email",
+          "password",
+          "licenseNo",
+          "specialty"
+        ],
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+
+          "licenseNo": {
+            "type": "string"
+          },
+          "specialty": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
       "RetrieveModalityStudyRequest": {
         "required": ["modalityId", "studyInstanceUID"],
         "type": "object",
@@ -2278,6 +2480,24 @@
             "type": "string"
           },
           "studyInstanceUID": {
+            "type": "string"
+          }
+        }
+      },
+      "ResendTenantEmailInviteRequest": {
+        "required": ["id"],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "SendTenantEmailInviteRequest": {
+        "required": ["email"],
+        "type": "object",
+        "properties": {
+          "email": {
             "type": "string"
           }
         }
@@ -2368,6 +2588,24 @@
                 }
               }
             }
+          }
+        }
+      },
+      "UpdateOnboardingConsentConfigRequest": {
+        "required": ["onboardingEnableConsent"],
+        "type": "object",
+        "properties": {
+          "onboardingEnableConsent": {
+            "type": "boolean"
+          }
+        }
+      },
+      "UpdateOnboardingRegistrationConfigRequest": {
+        "required": ["onboardingEnableRegistration"],
+        "type": "object",
+        "properties": {
+          "onboardingEnableRegistration": {
+            "type": "boolean"
           }
         }
       },

@@ -47,6 +47,32 @@ func (service *TenantCommandService) RemoveOnboardingQuestionnaireAnswer(ctx con
 	return nil
 }
 
+// UpdateOnboardingConsentConfig updates the onboarding consent configuration
+func (service *TenantCommandService) UpdateOnboardingConsentConfig(ctx context.Context, data types.UpdateOnboardingConsentConfig) error {
+	err := service.TenantCommandRepositoryInterface.UpdateOnboardingEnableConsent(ctx, repositoryTypes.UpdateOnboardingEnableConsent{
+		TenantID:                data.TenantID,
+		OnboardingEnableConsent: data.OnboardingEnableConsent,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// UpdateOnboardingRegistrationConfig updates the onboarding registration configuration
+func (service *TenantCommandService) UpdateOnboardingRegistrationConfig(ctx context.Context, data types.UpdateOnboardingRegistrationConfig) error {
+	err := service.TenantCommandRepositoryInterface.UpdateOnboardingEnableRegistration(ctx, repositoryTypes.UpdateOnboardingEnableRegistration{
+		TenantID:                     data.TenantID,
+		OnboardingEnableRegistration: data.OnboardingEnableRegistration,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func generateID() string {
 	return ksuid.New().String()
 }

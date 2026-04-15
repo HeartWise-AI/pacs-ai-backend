@@ -147,12 +147,15 @@ func (controller *TenantQueryController) GetTenantByID(w http.ResponseWriter, r 
 		Success: true,
 		Message: "Successfully fetched tenant by id.",
 		Data: &types.GetTenantResponse{
-			ID:                       res.ID,
-			Name:                     res.Name,
-			Address:                  res.Address,
-			OnboardingQuestionnaires: onboardingQuestionnaires,
-			CreatedAt:                res.CreatedAt,
-			UpdatedAt:                res.UpdatedAt,
+			ID:                           res.ID,
+			Name:                         res.Name,
+			Address:                      res.Address,
+			OnboardingQuestionnaires:     onboardingQuestionnaires,
+			OnboardingEnableConsent:      res.OnboardingEnableConsent,
+			OnboardingEnableRegistration: res.OnboardingEnableRegistration,
+			OnboardingConsentLink:        res.OnboardingConsentLink,
+			CreatedAt:                    res.CreatedAt,
+			UpdatedAt:                    res.UpdatedAt,
 		},
 	}
 
