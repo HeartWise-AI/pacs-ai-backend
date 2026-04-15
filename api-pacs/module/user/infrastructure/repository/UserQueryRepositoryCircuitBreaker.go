@@ -69,6 +69,33 @@ func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUserByID(ctx co
 	}
 }
 
+// SelectTenantUsers is a decorator for the select tenant users
+func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUsers(ctx context.Context, tenantID string) ([]repositoryTypes.GetTenantUser, error) {
+	output := make(chan []repositoryTypes.GetTenantUser, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_tenant_users", config.Settings())
+	errors := hystrix.Go("select_tenant_users", func() error {
+		points, err := repository.UserQueryRepositoryInterface.SelectTenantUsers(ctx, tenantID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- points
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errChan:
+		return []repositoryTypes.GetTenantUser{}, err
+	case err := <-errors:
+		return []repositoryTypes.GetTenantUser{}, err
+	}
+}
+
 // SelectTenantUserEmailInviteByEmail is a decorator for the get tenant user email invite by email
 func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUserEmailInviteByEmail(ctx context.Context, tenantID, email string) (entity.UserEmailInvite, error) {
 	output := make(chan entity.UserEmailInvite, 1)
@@ -123,20 +150,20 @@ func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUserEmailInvite
 	}
 }
 
-// SelectTenantUsers is a decorator for the select tenant users
-func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUsers(ctx context.Context, tenantID string) ([]repositoryTypes.GetTenantUser, error) {
-	output := make(chan []repositoryTypes.GetTenantUser, 1)
+// SelectTenantUserEmailInvites is a decorator for the select tenant user email invites
+func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUserEmailInvites(ctx context.Context, tenantID string) ([]entity.UserEmailInvite, error) {
+	output := make(chan []entity.UserEmailInvite, 1)
 	errChan := make(chan error, 1)
 
-	hystrix.ConfigureCommand("select_tenant_users", config.Settings())
-	errors := hystrix.Go("select_tenant_users", func() error {
-		points, err := repository.UserQueryRepositoryInterface.SelectTenantUsers(ctx, tenantID)
+	hystrix.ConfigureCommand("select_tenant_user_email_invites", config.Settings())
+	errors := hystrix.Go("select_tenant_user_email_invites", func() error {
+		userEmailInvites, err := repository.UserQueryRepositoryInterface.SelectTenantUserEmailInvites(ctx, tenantID)
 		if err != nil {
 			errChan <- err
 			return nil
 		}
 
-		output <- points
+		output <- userEmailInvites
 		return nil
 	}, nil)
 
@@ -144,9 +171,9 @@ func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUsers(ctx conte
 	case out := <-output:
 		return out, nil
 	case err := <-errChan:
-		return []repositoryTypes.GetTenantUser{}, err
+		return []entity.UserEmailInvite{}, err
 	case err := <-errors:
-		return []repositoryTypes.GetTenantUser{}, err
+		return []entity.UserEmailInvite{}, err
 	}
 }
 

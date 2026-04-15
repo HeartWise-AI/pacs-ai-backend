@@ -1916,6 +1916,29 @@
         }
       }
     },
+    "/user/invites": {
+      "get": {
+        "tags": ["user"],
+        "summary": "Get Tenant User Email Invites",
+        "description": "Get tenant user email invites. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/specialties": {
       "get": {
         "tags": ["user"],
@@ -2097,6 +2120,34 @@
             "name": "id",
             "in": "path",
             "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": { "description": "Success" },
+          "4xx": { "description": "Client side errors" },
+          "5xx": { "description": "Server side errors" }
+        }
+      }
+    },
+    "/user/invite/{id}/remove": {
+      "delete": {
+        "tags": ["user"],
+        "summary": "Remove Tenant User Email Invite",
+        "description": "Remove tenant user email invite. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Email invite ID",
             "required": true,
             "schema": {
               "type": "string"

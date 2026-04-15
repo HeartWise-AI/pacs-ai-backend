@@ -10,6 +10,7 @@ import (
 	"time"
 
 	docusignTypes "api-pacs/infrastructures/providers/api/docusign/types"
+	apiError "api-pacs/internal/errors"
 	elasticsearchAppliction "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
@@ -109,6 +110,16 @@ func (service *UserQueryService) GetTenantUsers(ctx context.Context, tenantID st
 	}
 
 	return users, nil
+}
+
+// GetTenantUserEmailInvites get tenant user email invites
+func (service *UserQueryService) GetTenantUserEmailInvites(ctx context.Context, tenantID string) ([]entity.UserEmailInvite, error) {
+	emailInvites, err := service.UserQueryRepositoryInterface.SelectTenantUserEmailInvites(ctx, tenantID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return []entity.UserEmailInvite{}, err
+	}
+
+	return emailInvites, nil
 }
 
 // GetUserMetadata get user metadata

@@ -107,6 +107,17 @@ type GetTenantUserResponse struct {
 	UpdatedAt         uint   `json:"updatedAt"`
 }
 
+type GetTenantUserEmailInviteResponse struct {
+	ID         string  `json:"id"`
+	TenantID   string  `json:"tenantId"`
+	Code       string  `json:"code"`
+	Email      string  `json:"email"`
+	ExpiresAt  uint64  `json:"expiresAt"`
+	VerifiedAt *uint64 `json:"verifiedAt"`
+	CreatedAt  uint64  `json:"createdAt"`
+	UpdatedAt  uint64  `json:"updatedAt"`
+}
+
 type GetUserMetadataResponse struct {
 	UserID    string                 `json:"userId"`
 	Metadata  map[string]interface{} `json:"metadata"`

@@ -44,6 +44,33 @@ func (repository *UserCommandRepositoryCircuitBreaker) DeleteTenantUser(ctx cont
 	}
 }
 
+// DeleteTenantUserEmailInvite is the decorator for the user repository to delete tenant user email invite
+func (repository *UserCommandRepositoryCircuitBreaker) DeleteTenantUserEmailInvite(ctx context.Context, ID string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("delete_tenant_user_email_invite", config.Settings())
+	errors := hystrix.Go("delete_tenant_user_email_invite", func() error {
+		err := repository.UserCommandRepositoryInterface.DeleteTenantUserEmailInvite(ctx, ID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // InsertTenantUser is the decorator for the user repository to insert tenant user
 func (repository *UserCommandRepositoryCircuitBreaker) InsertTenantUser(ctx context.Context, data repositoryTypes.CreateTenantUser) (string, error) {
 	output := make(chan string, 1)
