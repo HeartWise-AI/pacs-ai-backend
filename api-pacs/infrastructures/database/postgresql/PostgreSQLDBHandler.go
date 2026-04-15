@@ -2,7 +2,6 @@ package postgresql
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
@@ -18,24 +17,9 @@ type PostgreSQLDBHandler struct {
 	Conn *sqlx.DB
 }
 
-var errPostgreSQLConnectionNotInitialized = errors.New("[SERVER] postgresql connection is not initialized")
-
-func (h *PostgreSQLDBHandler) connection() (*sqlx.DB, error) {
-	if h == nil || h.Conn == nil {
-		return nil, errPostgreSQLConnectionNotInitialized
-	}
-
-	return h.Conn, nil
-}
-
 // Begin starts a new transaction
 func (h *PostgreSQLDBHandler) Begin() (*sqlx.Tx, error) {
-	conn, err := h.connection()
-	if err != nil {
-		return nil, err
-	}
-
-	tx, err := conn.Beginx()
+	tx, err := h.Conn.Beginx()
 	if err != nil {
 		return nil, err
 	}
@@ -72,12 +56,7 @@ func (h *PostgreSQLDBHandler) Connect(params types.ConnectionParams) error {
 // Execute executes the postgresql statement following NamedExec
 // It requires a valid sql statement and its struct
 func (h *PostgreSQLDBHandler) Execute(stmt string, model interface{}) (sql.Result, error) {
-	conn, err := h.connection()
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := conn.NamedExec(stmt, model)
+	res, err := h.Conn.NamedExec(stmt, model)
 	if err != nil {
 		return nil, err
 	}
@@ -88,12 +67,7 @@ func (h *PostgreSQLDBHandler) Execute(stmt string, model interface{}) (sql.Resul
 // Query selects rows given by the sql statement
 // It requires the statement, the model to bind the statement, and the target bind model for the results
 func (h *PostgreSQLDBHandler) Query(qstmt string, model interface{}, bindModel interface{}) error {
-	conn, err := h.connection()
-	if err != nil {
-		return err
-	}
-
-	nstmt, err := conn.PrepareNamed(qstmt)
+	nstmt, err := h.Conn.PrepareNamed(qstmt)
 	if err != nil {
 		return err
 	}
@@ -105,12 +79,7 @@ func (h *PostgreSQLDBHandler) Query(qstmt string, model interface{}, bindModel i
 // QueryRow selects a row given by the sql statement
 // It requires the statement, the model to bind the statement, and the target bind model for the result
 func (h *PostgreSQLDBHandler) QueryRow(qstmt string, model interface{}, bindModel interface{}) error {
-	conn, err := h.connection()
-	if err != nil {
-		return err
-	}
-
-	nstmt, err := conn.PrepareNamed(qstmt)
+	nstmt, err := h.Conn.PrepareNamed(qstmt)
 	if err != nil {
 		return err
 	}
