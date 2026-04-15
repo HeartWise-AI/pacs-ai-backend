@@ -85,6 +85,7 @@ func (repository *UserQueryRepository) SelectTenantUserByEmail(ctx context.Conte
 		IsEmailVerified:   authUser.EmailVerified,
 		IsAccountDisabled: authUser.Disabled,
 		IsConsentSigned:   user.IsConsentSigned,
+		IsAdminCreated:    user.IsAdminCreated,
 		CreatedAt:         uint(user.CreatedAt),
 		UpdatedAt:         uint(user.UpdatedAt),
 	}, nil
@@ -145,6 +146,7 @@ func (repository *UserQueryRepository) SelectTenantUserByID(ctx context.Context,
 		IsEmailVerified:   authUser.EmailVerified,
 		IsAccountDisabled: authUser.Disabled,
 		IsConsentSigned:   user.IsConsentSigned,
+		IsAdminCreated:    user.IsAdminCreated,
 		CreatedAt:         uint(user.CreatedAt),
 		UpdatedAt:         uint(user.UpdatedAt),
 	}, nil
@@ -217,6 +219,7 @@ func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, te
 				IsEmailVerified:   authUser.EmailVerified,
 				IsAccountDisabled: authUser.Disabled,
 				IsConsentSigned:   user.IsConsentSigned,
+				IsAdminCreated:    user.IsAdminCreated,
 				CreatedAt:         uint(user.CreatedAt),
 				UpdatedAt:         uint(user.UpdatedAt),
 			})

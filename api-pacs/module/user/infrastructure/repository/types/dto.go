@@ -3,13 +3,15 @@ package types
 import "time"
 
 type CreateTenantUser struct {
-	TenantID  string
-	Role      string
-	Email     string
-	Password  string
-	Name      string
-	LicenseNo string
-	Specialty string
+	TenantID        string
+	Role            string
+	Email           string
+	Password        string
+	Name            string
+	LicenseNo       string
+	Specialty       string
+	IsEmailVerified bool
+	IsAdminCreated  bool
 }
 
 type CreateTenantUserEmailInvite struct {
@@ -31,6 +33,7 @@ type GetTenantUser struct {
 	IsEmailVerified   bool
 	IsAccountDisabled bool
 	IsConsentSigned   bool
+	IsAdminCreated    bool
 	CreatedAt         uint
 	UpdatedAt         uint
 }

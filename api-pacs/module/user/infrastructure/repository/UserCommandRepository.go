@@ -116,7 +116,7 @@ func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, d
 	// create user in firebase auth
 	params := (&auth.UserToCreate{}).
 		Email(data.Email).
-		EmailVerified(false).
+		EmailVerified(data.IsEmailVerified).
 		Password(data.Password).
 		DisplayName(data.Name).
 		Disabled(false)
@@ -133,12 +133,13 @@ func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, d
 
 	// create user in firestore
 	user := entity.User{
-		TenantID:  data.TenantID,
-		Role:      data.Role,
-		LicenseNo: data.LicenseNo,
-		Specialty: data.Specialty,
-		CreatedAt: int(time.Now().Unix()),
-		UpdatedAt: int(time.Now().Unix()),
+		TenantID:       data.TenantID,
+		Role:           data.Role,
+		LicenseNo:      data.LicenseNo,
+		Specialty:      data.Specialty,
+		IsAdminCreated: data.IsAdminCreated,
+		CreatedAt:      int(time.Now().Unix()),
+		UpdatedAt:      int(time.Now().Unix()),
 	}
 
 	collectionPath := fmt.Sprintf("%s/%s", user.GetModelName(), authUser.UID)
