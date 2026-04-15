@@ -192,7 +192,7 @@ func (controller *UserQueryController) GetTenantUserEmailInvites(w http.Response
 		return
 	}
 
-	var userEmailIvites []types.GetTenantUserEmailInviteResponse
+	var userEmailInvites []types.GetTenantUserEmailInviteResponse
 
 	for _, invite := range res {
 		var verifiedAt *uint64
@@ -201,7 +201,7 @@ func (controller *UserQueryController) GetTenantUserEmailInvites(w http.Response
 			verifiedAt = &verifiedAtVal
 		}
 
-		userEmailIvites = append(userEmailIvites, types.GetTenantUserEmailInviteResponse{
+		userEmailInvites = append(userEmailInvites, types.GetTenantUserEmailInviteResponse{
 			ID:         invite.ID,
 			TenantID:   invite.TenantID,
 			Code:       invite.Code,

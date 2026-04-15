@@ -435,8 +435,6 @@ func (controller *UserCommandController) ResetTutorial(w http.ResponseWriter, r 
 
 // RemoveTenantUserEmailInvite removes a tenant user email invite
 func (controller *UserCommandController) RemoveTenantUserEmailInvite(w http.ResponseWriter, r *http.Request) {
-	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
-
 	emailInviteID := chi.URLParam(r, "ID")
 	if len(emailInviteID) == 0 {
 		response := viewmodels.HTTPResponseVM{
@@ -450,7 +448,7 @@ func (controller *UserCommandController) RemoveTenantUserEmailInvite(w http.Resp
 		return
 	}
 
-	err := controller.UserCommandServiceInterface.DeleteTenantUserEmailInvite(context.TODO(), tenantID, emailInviteID)
+	err := controller.UserCommandServiceInterface.DeleteTenantUserEmailInvite(context.TODO(), emailInviteID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
