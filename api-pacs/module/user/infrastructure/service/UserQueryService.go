@@ -122,9 +122,9 @@ func (service *UserQueryService) GetUserMetadata(ctx context.Context, userID str
 }
 
 // updateTenantUserConsentStatus update tenant user consent status by user id
-func (service *UserQueryService) updateTenantUserConsentStatus(ctx context.Context, tenant tenantTypes.GetTenantResult, ID string) error {
+func (service *UserQueryService) updateTenantUserConsentStatus(ctx context.Context, tenant tenantTypes.GetTenantResult, userID string) error {
 	/// get user
-	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, tenant.ID, ID)
+	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, tenant.ID, userID)
 	if err != nil {
 		log.Println(err)
 		return err
