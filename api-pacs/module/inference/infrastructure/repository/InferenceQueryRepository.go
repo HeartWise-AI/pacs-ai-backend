@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	postgresqlTypes "api-pacs/infrastructures/database/postgresql/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
@@ -163,6 +164,48 @@ func (repository *InferenceQueryRepository) SelectInferenceIngestionJobByID(ID s
 	}
 
 	return job, nil
+}
+
+// ListCandidatesByJob lists ingestion candidates by ingestion job ID
+func (repository *InferenceQueryRepository) ListCandidatesByJob(ingestionJobID string) ([]entity.InferenceIngestionCandidate, error) {
+	var candidate entity.InferenceIngestionCandidate
+	var candidates []entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf("SELECT * FROM %s WHERE ingestion_job_id = :ingestion_job_id ORDER BY updated_at DESC", candidate.GetModelName())
+
+	err := repository.PostgresSQLDBHandlerInterface.Query(stmt, map[string]interface{}{
+		"ingestion_job_id": ingestionJobID,
+	}, &candidates)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.DatabaseError)
+	} else if len(candidates) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return candidates, nil
+}
+
+// ListCandidatesReadyForRetrieval lists stable ingestion candidates ready for retrieval
+func (repository *InferenceQueryRepository) ListCandidatesReadyForRetrieval(ingestionJobID string, stableBefore time.Time) ([]entity.InferenceIngestionCandidate, error) {
+	var candidate entity.InferenceIngestionCandidate
+	var candidates []entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf("SELECT * FROM %s WHERE ingestion_job_id = :ingestion_job_id AND status = :status AND last_changed_at <= :stable_before ORDER BY last_changed_at ASC", candidate.GetModelName())
+
+	err := repository.PostgresSQLDBHandlerInterface.Query(stmt, map[string]interface{}{
+		"ingestion_job_id": ingestionJobID,
+		"status":           entity.InferenceIngestionCandidateStatusStable,
+		"stable_before":    stableBefore,
+	}, &candidates)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.DatabaseError)
+	} else if len(candidates) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return candidates, nil
 }
 
 // SelectModelFeedbackByUserModelID get model feedback by model and user ID
