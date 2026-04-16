@@ -209,9 +209,10 @@ func (controller *TenantQueryController) GetPublicTenantByID(w http.ResponseWrit
 		Success: true,
 		Message: "Successfully fetched public tenant.",
 		Data: &types.GetPublicTenantResponse{
-			ID:      res.ID,
-			Name:    res.Name,
-			Address: res.Address,
+			ID:                           res.ID,
+			Name:                         res.Name,
+			Address:                      res.Address,
+			OnboardingEnableRegistration: res.OnboardingEnableRegistration,
 		},
 	}
 

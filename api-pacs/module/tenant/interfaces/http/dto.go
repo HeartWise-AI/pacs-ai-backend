@@ -49,9 +49,10 @@ type GetTenantResponse struct {
 }
 
 type GetPublicTenantResponse struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Address string `json:"address"`
+	ID                           string `json:"id"`
+	Name                         string `json:"name"`
+	Address                      string `json:"address"`
+	OnboardingEnableRegistration bool   `json:"onboardingEnableRegistration"`
 }
 
 type OnboardingQuestionnaireAnswer struct {
