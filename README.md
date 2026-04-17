@@ -273,6 +273,7 @@ Update `api-pacs/.env` with the following variables:
 ```bash
 docker exec -i postgresql psql -U ${POSTGRES_DB_USERNAME} -d ${POSTGRES_DB_DATABASE} < /path/to/repo/pacs-ai-backend/api-pacs/infrastructures/database/postgresql/migrations/000001_create_inference_ingestion_jobs_schema.up.sql
 docker exec -i postgresql psql -U ${POSTGRES_DB_USERNAME} -d ${POSTGRES_DB_DATABASE} < /path/to/repo/pacs-ai-backend/api-pacs/infrastructures/database/postgresql/migrations/000002_create_inference_ingestion_run_results_schema.up.sql
+docker exec -i postgresql psql -U ${POSTGRES_DB_USERNAME} -d ${POSTGRES_DB_DATABASE} < /path/to/repo/pacs-ai-backend/api-pacs/infrastructures/database/postgresql/migrations/000003_create_inference_ingestion_candidates_schema.up.sql
 ```
 
 Then verify the tables were created:
@@ -285,6 +286,7 @@ Expected tables:
 
 - `inference_ingestion_jobs`
 - `inference_ingestion_run_results`
+- `inference_ingestion_candidates`
 
 ##### Database Migrations using Go / `migrate`
 
