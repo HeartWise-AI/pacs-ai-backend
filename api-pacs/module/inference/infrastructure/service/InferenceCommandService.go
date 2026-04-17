@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -47,6 +48,25 @@ type InferenceCommandService struct {
 }
 
 const inferenceIngestionStabilityWindow = 10 * time.Minute
+const inferenceIngestionRetrievalTimeout = 1 * time.Minute
+const inferenceIngestionRetrievalPollInterval = 2 * time.Second
+
+type candidateRetrievalOutcome string
+
+const (
+	candidateRetrievalOutcomeLocal   candidateRetrievalOutcome = "local"
+	candidateRetrievalOutcomeSuccess candidateRetrievalOutcome = "success"
+	candidateRetrievalOutcomeFailure candidateRetrievalOutcome = "failure"
+	candidateRetrievalOutcomeTimeout candidateRetrievalOutcome = "timeout"
+)
+
+type candidateRetrievalResult struct {
+	Outcome                  candidateRetrievalOutcome
+	OrthancJobIDs            []string
+	LastRetrievalState       *string
+	LastRetrievalError       *string
+	LastRetrievalErrorDetails *string
+}
 
 // AddInferenceModel adds an inference model
 func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error {
@@ -325,6 +345,88 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 					}
 				}
 
+				readyCandidates, err := service.InferenceQueryRepositoryInterface.ListCandidatesReadyForRetrieval(job.ID, time.Now().Add(-inferenceIngestionStabilityWindow))
+				if err != nil && err.Error() != apiError.MissingRecord {
+					log.Println("[inference ingestion] cannot list stable candidates ready for retrieval:", err)
+					return nil // skip
+				}
+
+				for _, candidate := range readyCandidates {
+					isLocal, err := service.isStudyPresentLocally(egCtx, candidate.StudyInstanceUID)
+					if err != nil {
+						log.Println("[inference ingestion] cannot determine if stable ingestion candidate is already local:", err)
+						continue
+					}
+
+					if isLocal {
+						err = service.InferenceCommandRepositoryInterface.MarkCandidateRetrievedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
+							ID:                 candidate.ID,
+							LastRetrievalState: stringPointer(string(candidateRetrievalOutcomeLocal)),
+						})
+						if err != nil {
+							log.Println("[inference ingestion] cannot mark already-local ingestion candidate retrieved:", err)
+						}
+						continue
+					}
+
+					err = service.InferenceCommandRepositoryInterface.MarkCandidateRetrievalQueued(candidate.ID)
+					if err != nil {
+						log.Println("[inference ingestion] cannot mark ingestion candidate retrieval queued:", err)
+						continue
+					}
+
+					retrievalResult, err := service.retrieveStableCandidate(egCtx, job, candidate)
+					if err != nil {
+						log.Println("[inference ingestion] cannot retrieve stable ingestion candidate:", err)
+						markErr := service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
+							ID:                 candidate.ID,
+							LastRetrievalState: stringPointer("error"),
+							LastRetrievalError: stringPointer(err.Error()),
+						})
+						if markErr != nil {
+							log.Println("[inference ingestion] cannot persist retrieval error for ingestion candidate:", markErr)
+						}
+						continue
+					}
+
+					retrievalState := stringPointer(string(retrievalResult.Outcome))
+					switch retrievalResult.Outcome {
+					case candidateRetrievalOutcomeLocal, candidateRetrievalOutcomeSuccess:
+						err = service.InferenceCommandRepositoryInterface.MarkCandidateRetrievedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
+							ID:                        candidate.ID,
+							OrthancJobIDs:             retrievalResult.OrthancJobIDs,
+							LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
+							LastRetrievalError:        retrievalResult.LastRetrievalError,
+							LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
+						})
+						if err != nil {
+							log.Println("[inference ingestion] cannot mark ingestion candidate retrieved:", err)
+						}
+					case candidateRetrievalOutcomeFailure:
+						err = service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
+							ID:                        candidate.ID,
+							OrthancJobIDs:             retrievalResult.OrthancJobIDs,
+							LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
+							LastRetrievalError:        coalesceStringPointer(retrievalResult.LastRetrievalError, stringPointer("Orthanc retrieval failed")),
+							LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
+						})
+						if err != nil {
+							log.Println("[inference ingestion] cannot mark ingestion candidate failed:", err)
+						}
+					case candidateRetrievalOutcomeTimeout:
+						err = service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
+							ID:                        candidate.ID,
+							OrthancJobIDs:             retrievalResult.OrthancJobIDs,
+							LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
+							LastRetrievalError:        coalesceStringPointer(retrievalResult.LastRetrievalError, stringPointer("Orthanc retrieval timed out")),
+							LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
+						})
+						if err != nil {
+							log.Println("[inference ingestion] cannot persist retrieval timeout for ingestion candidate:", err)
+						}
+					}
+				}
+
 				/// step 4: update job last execution time
 				_ = service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionJobLastExecutedAt(job.ID)
 
@@ -396,6 +498,258 @@ func shouldTrackCandidateMissing(status entity.InferenceIngestionCandidateStatus
 func shouldMarkCandidateStable(status entity.InferenceIngestionCandidateStatus) bool {
 	return status == entity.InferenceIngestionCandidateStatusDiscovered ||
 		status == entity.InferenceIngestionCandidateStatusGrowing
+}
+
+func (service *InferenceCommandService) retrieveStableCandidate(ctx context.Context, job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate) (candidateRetrievalResult, error) {
+	isLocal, err := service.isStudyPresentLocally(ctx, candidate.StudyInstanceUID)
+	if err != nil {
+		return candidateRetrievalResult{}, err
+	}
+
+	if isLocal {
+		return candidateRetrievalResult{
+			Outcome:            candidateRetrievalOutcomeLocal,
+			LastRetrievalState: stringPointer(string(candidateRetrievalOutcomeLocal)),
+		}, nil
+	}
+
+	retrieveResponses, err := service.OrthancCommandServiceInterface.RetrieveModalityStudyBySeries(ctx, orthancServiceTypes.RetrieveModalityStudyBySeries{
+		TenantID:         job.TenantID,
+		ModalityID:       job.DICOMModality,
+		StudyInstanceUID: candidate.StudyInstanceUID,
+		ModalityType:     inferCandidateModalityType(candidate.ModalitiesInStudy),
+		UserID:           nil,
+	})
+	if err != nil {
+		if err.Error() == apiError.DuplicateRecord {
+			isLocal, localErr := service.isStudyPresentLocally(ctx, candidate.StudyInstanceUID)
+			if localErr != nil {
+				return candidateRetrievalResult{}, localErr
+			}
+
+			if isLocal {
+				return candidateRetrievalResult{
+					Outcome:            candidateRetrievalOutcomeLocal,
+					LastRetrievalState: stringPointer(string(candidateRetrievalOutcomeLocal)),
+				}, nil
+			}
+		}
+
+		return candidateRetrievalResult{}, err
+	}
+
+	jobIDs := extractOrthancJobIDs(retrieveResponses)
+	if len(jobIDs) == 0 {
+		return candidateRetrievalResult{
+			Outcome:            candidateRetrievalOutcomeFailure,
+			LastRetrievalState: stringPointer(string(candidateRetrievalOutcomeFailure)),
+			LastRetrievalError: stringPointer("Orthanc retrieve did not return any job IDs"),
+		}, nil
+	}
+
+	err = service.InferenceCommandRepositoryInterface.SaveCandidateOrthancJobIDs(candidate.ID, jobIDs)
+	if err != nil {
+		return candidateRetrievalResult{}, err
+	}
+
+	return service.waitForCandidateRetrieval(ctx, candidate.StudyInstanceUID, jobIDs)
+}
+
+func (service *InferenceCommandService) waitForCandidateRetrieval(ctx context.Context, studyInstanceUID string, orthancJobIDs []string) (candidateRetrievalResult, error) {
+	deadline := time.Now().Add(inferenceIngestionRetrievalTimeout)
+
+	for {
+		isLocal, err := service.isStudyPresentLocally(ctx, studyInstanceUID)
+		if err != nil {
+			return candidateRetrievalResult{}, err
+		}
+
+		if isLocal {
+			return candidateRetrievalResult{
+				Outcome:            candidateRetrievalOutcomeLocal,
+				OrthancJobIDs:      orthancJobIDs,
+				LastRetrievalState: stringPointer(string(candidateRetrievalOutcomeLocal)),
+			}, nil
+		}
+
+		jobs, err := service.OrthancQueryServiceInterface.GetJobsInfo(ctx, orthancJobIDs)
+		if err != nil {
+			return candidateRetrievalResult{}, err
+		}
+
+		if hasOrthancFailure(jobs) {
+			return candidateRetrievalResult{
+				Outcome:                  candidateRetrievalOutcomeFailure,
+				OrthancJobIDs:            orthancJobIDs,
+				LastRetrievalState:       stringPointer(string(candidateRetrievalOutcomeFailure)),
+				LastRetrievalError:       orthancFailureDescription(jobs),
+				LastRetrievalErrorDetails: marshalOrthancJobs(failedOrthancJobs(jobs)),
+			}, nil
+		}
+
+		if hasOrthancSuccess(jobs) {
+			isLocalAfterSuccess, localErr := service.isStudyPresentLocally(ctx, studyInstanceUID)
+			if localErr != nil {
+				return candidateRetrievalResult{}, localErr
+			}
+
+			outcome := candidateRetrievalOutcomeSuccess
+			if isLocalAfterSuccess {
+				outcome = candidateRetrievalOutcomeLocal
+			}
+
+			return candidateRetrievalResult{
+				Outcome:                  outcome,
+				OrthancJobIDs:            orthancJobIDs,
+				LastRetrievalState:       stringPointer(string(outcome)),
+				LastRetrievalErrorDetails: marshalOrthancJobs(jobs),
+			}, nil
+		}
+
+		if time.Now().After(deadline) {
+			return candidateRetrievalResult{
+				Outcome:                  candidateRetrievalOutcomeTimeout,
+				OrthancJobIDs:            orthancJobIDs,
+				LastRetrievalState:       stringPointer(string(candidateRetrievalOutcomeTimeout)),
+				LastRetrievalError:       stringPointer("Orthanc retrieval timed out"),
+				LastRetrievalErrorDetails: marshalOrthancJobs(jobs),
+			}, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return candidateRetrievalResult{}, ctx.Err()
+		case <-time.After(inferenceIngestionRetrievalPollInterval):
+		}
+	}
+}
+
+func (service *InferenceCommandService) isStudyPresentLocally(ctx context.Context, studyInstanceUID string) (bool, error) {
+	localResources, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
+		Level: "Study",
+		Query: orthancAPITypes.QueryLocalResource{
+			StudyInstanceUID: studyInstanceUID,
+		},
+		Expand: true,
+	})
+	if err != nil {
+		if err.Error() == apiError.MissingRecord {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	return len(localResources) > 0, nil
+}
+
+func extractOrthancJobIDs(responses []orthancAPITypes.QueryModalityResponse) []string {
+	jobIDs := make([]string, 0, len(responses))
+	seenJobIDs := make(map[string]struct{}, len(responses))
+
+	for _, response := range responses {
+		if strings.TrimSpace(response.ID) == "" {
+			continue
+		}
+
+		if _, seen := seenJobIDs[response.ID]; seen {
+			continue
+		}
+
+		seenJobIDs[response.ID] = struct{}{}
+		jobIDs = append(jobIDs, response.ID)
+	}
+
+	return jobIDs
+}
+
+func inferCandidateModalityType(modalitiesInStudy *string) string {
+	if modalitiesInStudy == nil {
+		return ""
+	}
+
+	if strings.Contains(*modalitiesInStudy, "US") {
+		return "US"
+	}
+
+	return "other"
+}
+
+func hasOrthancFailure(jobs []orthancAPITypes.GetJobResponse) bool {
+	for _, job := range jobs {
+		if job.State == string(orthancAPITypes.JobFailure) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasOrthancSuccess(jobs []orthancAPITypes.GetJobResponse) bool {
+	if len(jobs) == 0 {
+		return false
+	}
+
+	for _, job := range jobs {
+		if job.State != string(orthancAPITypes.JobSuccess) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func failedOrthancJobs(jobs []orthancAPITypes.GetJobResponse) []orthancAPITypes.GetJobResponse {
+	failedJobs := make([]orthancAPITypes.GetJobResponse, 0, len(jobs))
+
+	for _, job := range jobs {
+		if job.State == string(orthancAPITypes.JobFailure) {
+			failedJobs = append(failedJobs, job)
+		}
+	}
+
+	return failedJobs
+}
+
+func orthancFailureDescription(jobs []orthancAPITypes.GetJobResponse) *string {
+	for _, job := range jobs {
+		if job.State != string(orthancAPITypes.JobFailure) {
+			continue
+		}
+
+		description := strings.TrimSpace(job.ErrorDescription)
+		if description != "" {
+			return &description
+		}
+	}
+
+	return stringPointer("Orthanc retrieval failed")
+}
+
+func marshalOrthancJobs(jobs []orthancAPITypes.GetJobResponse) *string {
+	if len(jobs) == 0 {
+		return nil
+	}
+
+	jobBytes, err := json.Marshal(jobs)
+	if err != nil {
+		return nil
+	}
+
+	jobDetails := string(jobBytes)
+	return &jobDetails
+}
+
+func coalesceStringPointer(value, fallback *string) *string {
+	if value != nil {
+		return value
+	}
+
+	return fallback
+}
+
+func stringPointer(value string) *string {
+	return &value
 }
 
 // GenerateInferenceModelPredictRequest generates a predict request for inference model
