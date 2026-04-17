@@ -48,7 +48,7 @@ type InferenceCommandService struct {
 }
 
 const inferenceIngestionStabilityWindow = 10 * time.Minute
-const inferenceIngestionRetrievalTimeout = 1 * time.Minute
+const inferenceIngestionRetrievalTimeout = 3 * time.Minute
 const inferenceIngestionRetrievalPollInterval = 2 * time.Second
 
 type candidateRetrievalOutcome string
