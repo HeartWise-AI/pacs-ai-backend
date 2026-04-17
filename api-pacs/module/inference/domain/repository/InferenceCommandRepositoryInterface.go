@@ -40,6 +40,20 @@ type InferenceCommandRepositoryInterface interface {
 	UpdateInferenceIngestionJobLastExecutedAt(ID string) error
 	// UpdateInferenceModelContainerID updates the container ID of an inference model
 	UpdateInferenceModelContainerID(ctx context.Context, ID, containerID string) error
+	// UpsertIngestionCandidate upserts an ingestion candidate
+	UpsertIngestionCandidate(data types.UpsertIngestionCandidate) error
+	// UpdateCandidateStatus updates the status of an ingestion candidate
+	UpdateCandidateStatus(ID string, status entity.InferenceIngestionCandidateStatus) error
+	// MarkCandidateRetrievalQueued marks an ingestion candidate as retrieval queued
+	MarkCandidateRetrievalQueued(ID string) error
+	// MarkCandidateRetrieved marks an ingestion candidate as retrieved
+	MarkCandidateRetrieved(ID string) error
+	// MarkCandidateDisappeared marks an ingestion candidate as disappeared
+	MarkCandidateDisappeared(ID string) error
+	// MarkCandidateFailed marks an ingestion candidate as failed
+	MarkCandidateFailed(ID string) error
+	// IncrementCandidateMissingPolls increments missing polls of an ingestion candidate
+	IncrementCandidateMissingPolls(ID string) error
 	// UpsertModelFeedback upserts model feedback
 	UpsertModelFeedback(ctx context.Context, data types.UpsertModelFeedback) error
 }

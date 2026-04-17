@@ -1,0 +1,52 @@
+CREATE TYPE inference_ingestion_candidate_status AS ENUM (
+    'DISCOVERED',
+    'GROWING',
+    'STABLE',
+    'RETRIEVAL_QUEUED',
+    'RETRIEVED',
+    'DISAPPEARED',
+    'FAILED'
+);
+
+CREATE TABLE inference_ingestion_candidates (
+    id varchar(50) NOT NULL,
+    tenant_id varchar(50) NOT NULL,
+    ingestion_job_id varchar(50) NOT NULL,
+    study_instance_uid varchar(255) NOT NULL,
+    study_date varchar(20) NULL,
+    study_time varchar(20) NULL,
+    modalities_in_study varchar(255) NULL,
+    patient_id varchar(255) NULL,
+    accession_number varchar(255) NULL,
+    series_count int NULL,
+    instance_count int NULL,
+    first_seen_at timestamp NOT NULL,
+    last_seen_at timestamp NOT NULL,
+    last_changed_at timestamp NOT NULL,
+    missing_polls int NOT NULL DEFAULT 0,
+    status inference_ingestion_candidate_status NOT NULL,
+    retrieval_queued_at timestamp NULL,
+    retrieved_at timestamp NULL,
+    created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_inference_ingestion_candidates_job_study
+        UNIQUE (ingestion_job_id, study_instance_uid),
+    CONSTRAINT fk_inference_ingestion_candidates_job
+        FOREIGN KEY (ingestion_job_id)
+        REFERENCES inference_ingestion_jobs (id)
+        ON DELETE CASCADE
+);
+
+CREATE OR REPLACE FUNCTION func_ingestion_candidates_update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER trigger_update_inference_ingestion_candidates_updated_at
+    BEFORE UPDATE ON inference_ingestion_candidates
+    FOR EACH ROW
+    EXECUTE FUNCTION func_ingestion_candidates_update_updated_at();

@@ -94,3 +94,17 @@ type UpsertModelFeedback struct {
 	ModelID          string
 	FeedbackType     entity.FeedbackType
 }
+
+type UpsertIngestionCandidate struct {
+	ID                string
+	TenantID          string
+	IngestionJobID    string
+	StudyInstanceUID  string
+	StudyDate         *string
+	StudyTime         *string
+	ModalitiesInStudy *string
+	PatientID         *string
+	AccessionNumber   *string
+	SeriesCount       *int
+	InstanceCount     *int
+}
