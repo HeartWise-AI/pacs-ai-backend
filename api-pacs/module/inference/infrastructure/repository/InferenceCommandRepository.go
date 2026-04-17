@@ -354,13 +354,13 @@ func (repository *InferenceCommandRepository) UpsertIngestionCandidate(data type
 		"tenant_id":           data.TenantID,
 		"ingestion_job_id":    data.IngestionJobID,
 		"study_instance_uid":  data.StudyInstanceUID,
-		"study_date":          data.StudyDate,
-		"study_time":          data.StudyTime,
-		"modalities_in_study": data.ModalitiesInStudy,
-		"patient_id":          data.PatientID,
-		"accession_number":    data.AccessionNumber,
-		"series_count":        data.SeriesCount,
-		"instance_count":      data.InstanceCount,
+		"study_date":          nullableStringValue(data.StudyDate),
+		"study_time":          nullableStringValue(data.StudyTime),
+		"modalities_in_study": nullableStringValue(data.ModalitiesInStudy),
+		"patient_id":          nullableStringValue(data.PatientID),
+		"accession_number":    nullableStringValue(data.AccessionNumber),
+		"series_count":        nullableIntValue(data.SeriesCount),
+		"instance_count":      nullableIntValue(data.InstanceCount),
 	})
 	if err != nil {
 		log.Println(err)
@@ -690,4 +690,20 @@ func (repository *InferenceCommandRepository) UpsertModelFeedback(ctx context.Co
 	}
 
 	return nil
+}
+
+func nullableStringValue(value *string) interface{} {
+	if value == nil {
+		return nil
+	}
+
+	return *value
+}
+
+func nullableIntValue(value *int) interface{} {
+	if value == nil {
+		return nil
+	}
+
+	return *value
 }
