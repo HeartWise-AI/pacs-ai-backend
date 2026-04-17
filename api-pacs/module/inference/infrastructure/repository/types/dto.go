@@ -1,8 +1,9 @@
 package types
 
 import (
-	"api-pacs/module/inference/domain/entity"
 	"time"
+
+	"api-pacs/module/inference/domain/entity"
 )
 
 type AddInferenceModel struct {
@@ -107,4 +108,12 @@ type UpsertIngestionCandidate struct {
 	AccessionNumber   *string
 	SeriesCount       *int
 	InstanceCount     *int
+}
+
+type UpdateCandidateRetrievalState struct {
+	ID                        string
+	OrthancJobIDs             []string
+	LastRetrievalState        *string
+	LastRetrievalError        *string
+	LastRetrievalErrorDetails *string
 }
