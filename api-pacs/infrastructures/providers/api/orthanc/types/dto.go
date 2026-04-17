@@ -72,10 +72,19 @@ type UpdateDICOMModalityRequest struct {
 }
 
 type GetJobResponse struct {
-	ID       string `json:"ID"`
-	Priority uint   `json:"Priority"`
-	Progress uint   `json:"Progress"`
-	State    string `json:"State"`
+	CompletionTime   string                 `json:"CompletionTime"`
+	Content          map[string]interface{} `json:"Content"`
+	CreationTime     string                 `json:"CreationTime"`
+	EffectiveRuntime float64                `json:"EffectiveRuntime"`
+	ErrorCode        int                    `json:"ErrorCode"`
+	ErrorDescription string                 `json:"ErrorDescription"`
+	ErrorDetails     interface{}            `json:"ErrorDetails"`
+	ID               string                 `json:"ID"`
+	Priority         uint                   `json:"Priority"`
+	Progress         uint                   `json:"Progress"`
+	State            string                 `json:"State"`
+	Timestamp        string                 `json:"Timestamp"`
+	Type             string                 `json:"Type"`
 }
 
 type GetLocalResourceResponse struct {
