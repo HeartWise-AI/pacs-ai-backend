@@ -517,7 +517,7 @@ func (service *InferenceCommandService) retrieveStableCandidate(ctx context.Cont
 		TenantID:         job.TenantID,
 		ModalityID:       job.DICOMModality,
 		StudyInstanceUID: candidate.StudyInstanceUID,
-		ModalityType:     inferCandidateModalityType(candidate.ModalitiesInStudy),
+		ModalityType:     "",
 		UserID:           nil,
 	})
 	if err != nil {
@@ -661,18 +661,6 @@ func extractOrthancJobIDs(responses []orthancAPITypes.QueryModalityResponse) []s
 	}
 
 	return jobIDs
-}
-
-func inferCandidateModalityType(modalitiesInStudy *string) string {
-	if modalitiesInStudy == nil {
-		return ""
-	}
-
-	if strings.Contains(*modalitiesInStudy, "US") {
-		return "US"
-	}
-
-	return "other"
 }
 
 func hasOrthancFailure(jobs []orthancAPITypes.GetJobResponse) bool {
