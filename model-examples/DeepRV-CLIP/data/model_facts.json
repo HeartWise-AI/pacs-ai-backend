@@ -1,0 +1,37 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "DeepRV-CLIP",
+      "Description": "DeepCORO-CLIP based binary classifier for right ventricular systolic function (normal vs abnormal) from coronary angiograms.",
+      "Developed_by": "HeartWise.AI / MHI",
+      "Development_period": "2024-2026",
+      "Version": "1.0.0"
+    },
+    "Mechanism": {
+      "Outcome": "Binary RV systolic function (0 = normal, 1 = abnormal)",
+      "Output": "Outcome: probability of abnormal RV function after sigmoid",
+      "Target_population": "Adults undergoing coronary angiography at MHI (TTE-matched within +/-30 days)",
+      "Input_data_source": "Left and right coronary diagnostic angiograms",
+      "Input_data_type": "dicom",
+      "Model_type": "Deep Learning (MViT encoder + MIL linear-probing with separate within/across video attention)",
+      "Supported_DICOM_modalities": "XA"
+    },
+    "Model_Components": {
+      "Model": {
+        "Purpose": "Predict the probability of abnormal RV systolic function from coronary angiograms",
+        "Output": "P(abnormal RV)"
+      }
+    },
+    "Uses_and_directions": {
+      "General_use": "Research preview for RV systolic function screening from coronary angiograms.",
+      "Target_population_and_use_case": "Adults with L and R coronary diagnostic angiograms; input is restricted to main_structure in {Left Coronary, Right Coronary} and status=diagnostic.",
+      "Before_using_this_model": "Validated on MHI data only (AUC 0.820). Not validated for clinical use outside MHI."
+    },
+    "Warnings_and_limitations": {
+      "Image_Quality": "Requires diagnostic-quality coronary angiograms.",
+      "Number_of_videos": "Uses up to 6 videos per study (3 Left + 3 Right typical); extra videos are ignored.",
+      "Class_Imbalance": "Training set was ~8% abnormal. Calibration may differ in other populations.",
+      "Confidence_Scores": "Abnormal-RV threshold defaults to 0.5 on sigmoid probability and is tracked in class_mapping.json."
+    }
+  }
+}
