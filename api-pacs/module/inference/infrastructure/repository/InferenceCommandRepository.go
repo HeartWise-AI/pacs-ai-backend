@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"github.com/lib/pq"
 	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -553,6 +554,49 @@ func (repository *InferenceCommandRepository) UpdateCandidateStatus(ID string, s
 	return nil
 }
 
+// SaveCandidateOrthancJobIDs stores Orthanc job IDs for an ingestion candidate
+func (repository *InferenceCommandRepository) SaveCandidateOrthancJobIDs(ID string, orthancJobIDs []string) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf("UPDATE %s SET orthanc_job_ids = :orthanc_job_ids, last_retrieval_checked_at = CURRENT_TIMESTAMP WHERE id = :id", candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":              ID,
+		"orthanc_job_ids": nullableStringArrayValue(orthancJobIDs),
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// UpdateCandidateRetrievalState stores retrieval state and error details for an ingestion candidate
+func (repository *InferenceCommandRepository) UpdateCandidateRetrievalState(data types.UpdateCandidateRetrievalState) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf(`UPDATE %s
+SET orthanc_job_ids = COALESCE(:orthanc_job_ids, orthanc_job_ids),
+	last_retrieval_state = COALESCE(:last_retrieval_state, last_retrieval_state),
+	last_retrieval_error = COALESCE(:last_retrieval_error, last_retrieval_error),
+	last_retrieval_error_details = COALESCE(:last_retrieval_error_details, last_retrieval_error_details),
+	last_retrieval_checked_at = CURRENT_TIMESTAMP
+WHERE id = :id`, candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":                           data.ID,
+		"orthanc_job_ids":              nullableStringArrayValue(data.OrthancJobIDs),
+		"last_retrieval_state":         nullableStringValue(data.LastRetrievalState),
+		"last_retrieval_error":         nullableStringValue(data.LastRetrievalError),
+		"last_retrieval_error_details": nullableStringValue(data.LastRetrievalErrorDetails),
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
 // MarkCandidateRetrievalQueued marks an ingestion candidate as retrieval queued
 func (repository *InferenceCommandRepository) MarkCandidateRetrievalQueued(ID string) error {
 	var candidate entity.InferenceIngestionCandidate
@@ -574,10 +618,39 @@ func (repository *InferenceCommandRepository) MarkCandidateRetrievalQueued(ID st
 func (repository *InferenceCommandRepository) MarkCandidateRetrieved(ID string) error {
 	var candidate entity.InferenceIngestionCandidate
 
-	stmt := fmt.Sprintf("UPDATE %s SET status = :status, retrieved_at = CURRENT_TIMESTAMP WHERE id = :id", candidate.GetModelName())
+	stmt := fmt.Sprintf("UPDATE %s SET status = :status, retrieved_at = CURRENT_TIMESTAMP, last_retrieval_checked_at = CURRENT_TIMESTAMP WHERE id = :id", candidate.GetModelName())
 	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
 		"id":     ID,
 		"status": entity.InferenceIngestionCandidateStatusRetrieved,
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// MarkCandidateRetrievedWithContext marks an ingestion candidate as retrieved with retrieval context
+func (repository *InferenceCommandRepository) MarkCandidateRetrievedWithContext(data types.UpdateCandidateRetrievalState) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf(`UPDATE %s
+SET status = :status,
+	retrieved_at = CURRENT_TIMESTAMP,
+	orthanc_job_ids = COALESCE(:orthanc_job_ids, orthanc_job_ids),
+	last_retrieval_state = COALESCE(:last_retrieval_state, last_retrieval_state),
+	last_retrieval_error = COALESCE(:last_retrieval_error, last_retrieval_error),
+	last_retrieval_error_details = COALESCE(:last_retrieval_error_details, last_retrieval_error_details),
+	last_retrieval_checked_at = CURRENT_TIMESTAMP
+WHERE id = :id`, candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":                           data.ID,
+		"status":                       entity.InferenceIngestionCandidateStatusRetrieved,
+		"orthanc_job_ids":              nullableStringArrayValue(data.OrthancJobIDs),
+		"last_retrieval_state":         nullableStringValue(data.LastRetrievalState),
+		"last_retrieval_error":         nullableStringValue(data.LastRetrievalError),
+		"last_retrieval_error_details": nullableStringValue(data.LastRetrievalErrorDetails),
 	})
 	if err != nil {
 		log.Println(err)
@@ -608,10 +681,38 @@ func (repository *InferenceCommandRepository) MarkCandidateDisappeared(ID string
 func (repository *InferenceCommandRepository) MarkCandidateFailed(ID string) error {
 	var candidate entity.InferenceIngestionCandidate
 
-	stmt := fmt.Sprintf("UPDATE %s SET status = :status WHERE id = :id", candidate.GetModelName())
+	stmt := fmt.Sprintf("UPDATE %s SET status = :status, last_retrieval_checked_at = CURRENT_TIMESTAMP WHERE id = :id", candidate.GetModelName())
 	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
 		"id":     ID,
 		"status": entity.InferenceIngestionCandidateStatusFailed,
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// MarkCandidateFailedWithContext marks an ingestion candidate as failed with retrieval context
+func (repository *InferenceCommandRepository) MarkCandidateFailedWithContext(data types.UpdateCandidateRetrievalState) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf(`UPDATE %s
+SET status = :status,
+	orthanc_job_ids = COALESCE(:orthanc_job_ids, orthanc_job_ids),
+	last_retrieval_state = COALESCE(:last_retrieval_state, last_retrieval_state),
+	last_retrieval_error = COALESCE(:last_retrieval_error, last_retrieval_error),
+	last_retrieval_error_details = COALESCE(:last_retrieval_error_details, last_retrieval_error_details),
+	last_retrieval_checked_at = CURRENT_TIMESTAMP
+WHERE id = :id`, candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":                           data.ID,
+		"status":                       entity.InferenceIngestionCandidateStatusFailed,
+		"orthanc_job_ids":              nullableStringArrayValue(data.OrthancJobIDs),
+		"last_retrieval_state":         nullableStringValue(data.LastRetrievalState),
+		"last_retrieval_error":         nullableStringValue(data.LastRetrievalError),
+		"last_retrieval_error_details": nullableStringValue(data.LastRetrievalErrorDetails),
 	})
 	if err != nil {
 		log.Println(err)
@@ -706,4 +807,12 @@ func nullableIntValue(value *int) interface{} {
 	}
 
 	return *value
+}
+
+func nullableStringArrayValue(value []string) interface{} {
+	if len(value) == 0 {
+		return nil
+	}
+
+	return pq.Array(value)
 }
