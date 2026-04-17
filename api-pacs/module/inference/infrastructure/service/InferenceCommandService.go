@@ -46,6 +46,8 @@ type InferenceCommandService struct {
 	dockerInferenceTypes.DockerInferenceAPIInterface
 }
 
+const inferenceIngestionStabilityWindow = 10 * time.Minute
+
 // AddInferenceModel adds an inference model
 func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error {
 	// pull docker image
@@ -297,6 +299,32 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 					}
 				}
 
+				refreshedCandidates, err := service.InferenceQueryRepositoryInterface.ListCandidatesByJob(job.ID)
+				if err != nil && err.Error() != apiError.MissingRecord {
+					log.Println("[inference ingestion] cannot refresh ingestion candidates:", err)
+					return nil // skip
+				}
+
+				stableBefore := time.Now().Add(-inferenceIngestionStabilityWindow)
+				for _, candidate := range refreshedCandidates {
+					if !shouldMarkCandidateStable(candidate.Status) {
+						continue
+					}
+
+					if candidate.MissingPolls > 0 {
+						continue
+					}
+
+					if candidate.LastChangedAt.After(stableBefore) {
+						continue
+					}
+
+					err = service.InferenceCommandRepositoryInterface.UpdateCandidateStatus(candidate.ID, entity.InferenceIngestionCandidateStatusStable)
+					if err != nil {
+						log.Println("[inference ingestion] cannot update ingestion candidate status to stable:", err)
+					}
+				}
+
 				/// step 4: update job last execution time
 				_ = service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionJobLastExecutedAt(job.ID)
 
@@ -363,6 +391,11 @@ func shouldTrackCandidateMissing(status entity.InferenceIngestionCandidateStatus
 		status != entity.InferenceIngestionCandidateStatusRetrievalQueued &&
 		status != entity.InferenceIngestionCandidateStatusRetrieved &&
 		status != entity.InferenceIngestionCandidateStatusFailed
+}
+
+func shouldMarkCandidateStable(status entity.InferenceIngestionCandidateStatus) bool {
+	return status == entity.InferenceIngestionCandidateStatusDiscovered ||
+		status == entity.InferenceIngestionCandidateStatusGrowing
 }
 
 // GenerateInferenceModelPredictRequest generates a predict request for inference model
