@@ -197,11 +197,6 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 					return nil // skip
 				}
 
-				// if interval hasn't elapsed since last execution, skip
-				if job.LastExecutedAt != nil && time.Now().Before(job.LastExecutedAt.Add(time.Duration(job.IntervalInMinutes)*time.Minute)) {
-					return nil // skip
-				}
-
 				existingCandidates, err := service.InferenceQueryRepositoryInterface.ListCandidatesByJob(job.ID)
 				if err != nil && err.Error() != apiError.MissingRecord {
 					log.Println("[inference ingestion] cannot list ingestion candidates:", err)
