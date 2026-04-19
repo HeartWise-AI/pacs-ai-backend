@@ -31,7 +31,11 @@ type CreateInferenceIngestionJob struct {
 	ModelName              string
 	ModelVersion           string
 	Modalities             []string
-	IntervalInMinutes      uint
+	StabilityMinutes       uint
+	RecentWindowMinutes    uint
+	MissingPollsThreshold  uint
+	StudyTimeStart         string
+	StudyTimeEnd           string
 	ScheduleStartTimestamp uint64
 	ScheduleEndTimestamp   uint64
 }
@@ -123,7 +127,11 @@ type UpdateInferenceModel struct {
 type UpdateInferenceIngestionJob struct {
 	ID                     string
 	Modalities             []string
-	IntervalInMinutes      uint
+	StabilityMinutes       uint
+	RecentWindowMinutes    uint
+	MissingPollsThreshold  uint
+	StudyTimeStart         string
+	StudyTimeEnd           string
 	ScheduleStartTimestamp uint64
 	ScheduleEndTimestamp   uint64
 }
