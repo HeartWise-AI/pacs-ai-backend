@@ -55,7 +55,11 @@ type CreateInferenceIngestionJob struct {
 	ModelName              string
 	ModelVersion           string
 	Modalities             []string
-	IntervalInMinutes      uint
+	StabilityMinutes       uint
+	RecentWindowMinutes    uint
+	MissingPollsThreshold  uint
+	StudyTimeStart         *string
+	StudyTimeEnd           *string
 	ScheduleStartTimestamp time.Time
 	ScheduleEndTimestamp   time.Time
 	Status                 entity.InferenceIngestionJobStatus
@@ -82,7 +86,11 @@ type UpdateInferenceModel struct {
 type UpdateInferenceIngestionJob struct {
 	ID                     string
 	Modalities             []string
-	IntervalInMinutes      uint
+	StabilityMinutes       uint
+	RecentWindowMinutes    uint
+	MissingPollsThreshold  uint
+	StudyTimeStart         *string
+	StudyTimeEnd           *string
 	ScheduleStartTimestamp time.Time
 	ScheduleEndTimestamp   time.Time
 }
