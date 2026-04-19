@@ -31,7 +31,7 @@ var (
 		"ImportInferenceIngestionJob.ModelName":                                                                 "Model name is required.",
 		"ImportInferenceIngestionJob.ModelVersion":                                                              "Model version is required.",
 		"ImportInferenceIngestionJob.Modalities":                                                                "Modalities are required.",
-		"ImportInferenceIngestionJob.IntervalInMinutes":                                                         "Interval in minutes is required.",
+		"ImportInferenceIngestionJob.StabilityMinutes":                                                          "Stability minutes is required.",
 	}
 )
 
@@ -54,7 +54,12 @@ type CreateInferenceIngestionJobRequest struct {
 	ModelName              string   `json:"modelName" validate:"required"`
 	ModelVersion           string   `json:"modelVersion" validate:"required"`
 	Modalities             []string `json:"modalities" validate:"required"`
-	IntervalInMinutes      uint     `json:"intervalInMinutes" validate:"required"`
+	StabilityMinutes       uint     `json:"stabilityMinutes"`
+	IntervalInMinutes      uint     `json:"intervalInMinutes,omitempty"`
+	RecentWindowMinutes    uint     `json:"recentWindowMinutes,omitempty"`
+	MissingPollsThreshold  uint     `json:"missingPollsThreshold,omitempty"`
+	StudyTimeStart         string   `json:"studyTimeStart,omitempty"`
+	StudyTimeEnd           string   `json:"studyTimeEnd,omitempty"`
 	ScheduleStartTimestamp uint64   `json:"scheduleStartTimestamp"`
 	ScheduleEndTimestamp   uint64   `json:"scheduleEndTimestamp"`
 }
@@ -77,7 +82,12 @@ type UpdateInferenceModelContainerRequest struct {
 
 type UpdateInferenceIngestionJobRequest struct {
 	Modalities             []string `json:"modalities" validate:"required"`
-	IntervalInMinutes      uint     `json:"intervalInMinutes" validate:"required"`
+	StabilityMinutes       uint     `json:"stabilityMinutes"`
+	IntervalInMinutes      uint     `json:"intervalInMinutes,omitempty"`
+	RecentWindowMinutes    uint     `json:"recentWindowMinutes,omitempty"`
+	MissingPollsThreshold  uint     `json:"missingPollsThreshold,omitempty"`
+	StudyTimeStart         string   `json:"studyTimeStart,omitempty"`
+	StudyTimeEnd           string   `json:"studyTimeEnd,omitempty"`
 	ScheduleStartTimestamp uint64   `json:"scheduleStartTimestamp"`
 	ScheduleEndTimestamp   uint64   `json:"scheduleEndTimestamp"`
 }
@@ -142,7 +152,11 @@ type GetInferenceIngestionJobResponse struct {
 	ModelName              string   `json:"modelName"`
 	ModelVersion           string   `json:"modelVersion"`
 	Modalities             []string `json:"modalities"`
-	IntervalInMinutes      uint     `json:"intervalInMinutes"`
+	StabilityMinutes       uint     `json:"stabilityMinutes"`
+	RecentWindowMinutes    uint     `json:"recentWindowMinutes"`
+	MissingPollsThreshold  uint     `json:"missingPollsThreshold"`
+	StudyTimeStart         string   `json:"studyTimeStart"`
+	StudyTimeEnd           string   `json:"studyTimeEnd"`
 	ScheduleStartTimestamp uint64   `json:"scheduleStartTimestamp"`
 	ScheduleEndTimestamp   uint64   `json:"scheduleEndTimestamp"`
 	Status                 string   `json:"status"`
@@ -208,7 +222,11 @@ type ImportInferenceIngestionJob struct {
 	ModelName              string `csv:"model_name" validate:"required"`
 	ModelVersion           string `csv:"model_version" validate:"required"`
 	Modalities             string `csv:"modalities" validate:"required"`
-	IntervalInMinutes      uint   `csv:"interval_in_minutes" validate:"required"`
+	StabilityMinutes       uint   `csv:"stability_minutes" validate:"required"`
+	RecentWindowMinutes    uint   `csv:"recent_window_minutes"`
+	MissingPollsThreshold  uint   `csv:"missing_polls_threshold"`
+	StudyTimeStart         string `csv:"study_time_start"`
+	StudyTimeEnd           string `csv:"study_time_end"`
 	ScheduleStartTimestamp string `csv:"schedule_start_timestamp"`
 	ScheduleEndTimestamp   string `csv:"schedule_end_timestamp"`
 }
