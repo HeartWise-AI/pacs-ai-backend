@@ -375,7 +375,11 @@ func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.Res
 			ModelName:              job.ModelName,
 			ModelVersion:           job.ModelVersion,
 			Modalities:             job.Modalities,
-			IntervalInMinutes:      job.IntervalInMinutes,
+			StabilityMinutes:       job.StabilityMinutes,
+			RecentWindowMinutes:    job.RecentWindowMinutes,
+			MissingPollsThreshold:  job.MissingPollsThreshold,
+			StudyTimeStart:         dereferenceString(job.StudyTimeStart),
+			StudyTimeEnd:           dereferenceString(job.StudyTimeEnd),
 			ScheduleStartTimestamp: uint64(job.ScheduleStartTimestamp.Unix()),
 			ScheduleEndTimestamp:   uint64(job.ScheduleEndTimestamp.Unix()),
 			Status:                 string(job.Status),
@@ -393,6 +397,14 @@ func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.Res
 	}
 
 	response.JSON(w)
+}
+
+func dereferenceString(value *string) string {
+	if value == nil {
+		return ""
+	}
+
+	return *value
 }
 
 // GetModelFeedbackByModelID gets the model feedback by model ID
