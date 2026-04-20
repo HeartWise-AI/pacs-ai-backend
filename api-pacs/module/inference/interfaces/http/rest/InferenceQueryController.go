@@ -3,6 +3,7 @@ package rest
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -380,8 +381,8 @@ func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.Res
 			MissingPollsThreshold:  job.MissingPollsThreshold,
 			StudyTimeStart:         dereferenceString(job.StudyTimeStart),
 			StudyTimeEnd:           dereferenceString(job.StudyTimeEnd),
-			ScheduleStartTimestamp: uint64(job.ScheduleStartTimestamp.Unix()),
-			ScheduleEndTimestamp:   uint64(job.ScheduleEndTimestamp.Unix()),
+			ScheduleStartTimestamp: scheduleTimestampUnix(job.ScheduleStartTimestamp),
+			ScheduleEndTimestamp:   scheduleTimestampUnix(job.ScheduleEndTimestamp),
 			Status:                 string(job.Status),
 			LastExecutedAt:         lastExecutedAt,
 			CreatedAt:              uint64(job.CreatedAt.Unix()),
@@ -405,6 +406,14 @@ func dereferenceString(value *string) string {
 	}
 
 	return *value
+}
+
+func scheduleTimestampUnix(value time.Time) uint64 {
+	if value.Year() < 1971 {
+		return 0
+	}
+
+	return uint64(value.Unix())
 }
 
 // GetModelFeedbackByModelID gets the model feedback by model ID
