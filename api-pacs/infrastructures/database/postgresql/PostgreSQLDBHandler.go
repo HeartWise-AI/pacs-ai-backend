@@ -34,6 +34,7 @@ func (h *PostgreSQLDBHandler) Connect(params types.ConnectionParams) error {
 	if err != nil {
 		return fmt.Errorf("[SERVER] Failed to parse database config: %w", err)
 	}
+	config.RuntimeParams["timezone"] = "America/Toronto"
 
 	db := sqlx.NewDb(stdlib.OpenDB(*config), "pgx")
 
