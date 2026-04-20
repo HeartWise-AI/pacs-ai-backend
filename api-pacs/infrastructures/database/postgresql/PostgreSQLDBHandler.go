@@ -3,6 +3,7 @@ package postgresql
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -34,7 +35,7 @@ func (h *PostgreSQLDBHandler) Connect(params types.ConnectionParams) error {
 	if err != nil {
 		return fmt.Errorf("[SERVER] Failed to parse database config: %w", err)
 	}
-	config.RuntimeParams["timezone"] = "America/Toronto"
+	config.RuntimeParams["timezone"] = configuredTimezone()
 
 	db := sqlx.NewDb(stdlib.OpenDB(*config), "pgx")
 
@@ -52,6 +53,15 @@ func (h *PostgreSQLDBHandler) Connect(params types.ConnectionParams) error {
 	fmt.Println("[SERVER] Database connected successfully")
 
 	return nil
+}
+
+func configuredTimezone() string {
+	value := os.Getenv("APP_TIMEZONE")
+	if value == "" {
+		return "America/Toronto"
+	}
+
+	return value
 }
 
 // Execute executes the postgresql statement following NamedExec
