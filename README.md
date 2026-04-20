@@ -156,6 +156,7 @@ Update `api-pacs/.env` with the following variables:
 | --------------------------- | ----------------------------------------------------------------------------------- |
 | `API_NAME`                  | Should be set to `api-pacs` (do not change)                                         |
 | `API_URL_REST_PORT`         | Should be set to `8000` (do not change)                                             |
+| `APP_TIMEZONE`              | Deployment timezone for API logs, ingestion windows, and PostgreSQL sessions (e.g., `America/Toronto`, `Asia/Dubai`)    |
 | `APP_URL`                   | Your domain URL (e.g., `https://MyDomain.com`)                                      |
 | `DOCKER_USERNAME`           | Your DockerHub username                                                             |
 | `DOCKER_PASSWORD`           | Your DockerHub password                                                             |
@@ -188,6 +189,7 @@ Update `pacs-ai-backend/orthanc/.env` with appropriate port and AET settings:
 
 - Consult with PACS admins for proper port configuration if you are unsure
 - The AET (Application Entity Title) must be unique in your PACS network
+- Change `APP_TIMEZONE` for each deployment region instead of modifying code. For example, use `America/Toronto` for Eastern time or `Asia/Dubai` for Abu Dhabi.
 
 #### Network Configuration
 
@@ -235,6 +237,7 @@ Update `api-pacs/.env` with the following variables:
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `API_NAME`                  | Should be set to `api-pacs` (do not change)                                                                               |
 | `API_URL_REST_PORT`         | Should be set to `8000` (do not change)                                                                                   |
+| `APP_TIMEZONE`              | Deployment timezone for API logs, ingestion windows, and PostgreSQL sessions (default: `America/Toronto`)                |
 | `APP_URL`                   | Should be set to `http://localhost:3000`                                                                                  |
 | `CLOUDFLARE_SECRET_KEY`    | Your Cloudflare secret key                                                                                                 |
 | `CLOUDFLARE_TURNSTILE_BASE_URL` | Should be set to `https://challenges.cloudflare.com/turnstile/v0`                                                     |
