@@ -251,7 +251,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 				}
 
 				// if schedule start is set and not reached yet, skip
-				if job.ScheduleStartTimestamp.Unix() != 0 && jobNow.Before(job.ScheduleStartTimestamp) {
+				if !isDisabledScheduleTimestamp(job.ScheduleStartTimestamp) && jobNow.Before(job.ScheduleStartTimestamp) {
 					log.Printf("[inference ingestion] skipping job_id=%s reason=schedule_start_not_reached schedule_start_timestamp=%s now=%s",
 						job.ID,
 						formatEasternTime(job.ScheduleStartTimestamp),
@@ -261,7 +261,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 				}
 
 				// if schedule end is set and already passed, skip
-				if job.ScheduleEndTimestamp.Unix() != 0 && jobNow.After(job.ScheduleEndTimestamp) {
+				if !isDisabledScheduleTimestamp(job.ScheduleEndTimestamp) && jobNow.After(job.ScheduleEndTimestamp) {
 					log.Printf("[inference ingestion] skipping job_id=%s reason=schedule_end_passed schedule_end_timestamp=%s now=%s",
 						job.ID,
 						formatEasternTime(job.ScheduleEndTimestamp),
@@ -876,11 +876,15 @@ func nullableTimeLogValue(value *time.Time) string {
 }
 
 func formatOptionalEasternTime(value time.Time) string {
-	if value.Unix() == 0 {
+	if isDisabledScheduleTimestamp(value) {
 		return ""
 	}
 
 	return formatEasternTime(value)
+}
+
+func isDisabledScheduleTimestamp(value time.Time) bool {
+	return value.Year() < 1971
 }
 
 func formatEasternTime(value time.Time) string {
