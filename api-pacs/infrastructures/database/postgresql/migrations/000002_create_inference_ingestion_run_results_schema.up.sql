@@ -8,8 +8,8 @@ CREATE TABLE
         inference_output JSON NULL,
         error_message varchar(500) NULL,
         status inference_ingestion_run_status NOT NULL,
-        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         FOREIGN KEY (job_id) REFERENCES inference_ingestion_jobs (id) ON DELETE CASCADE
     );
