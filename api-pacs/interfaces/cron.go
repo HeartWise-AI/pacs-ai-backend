@@ -34,6 +34,7 @@ func inferenceIngestionRunnerInterval() time.Duration {
 
 	value := strings.TrimSpace(os.Getenv("INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES"))
 	if value == "" {
+		log.Printf("[Ingestion] INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES not set, using default minutes=%d", defaultIntervalMinutes)
 		return defaultIntervalMinutes * time.Minute
 	}
 
@@ -43,6 +44,7 @@ func inferenceIngestionRunnerInterval() time.Duration {
 		return defaultIntervalMinutes * time.Minute
 	}
 
+	log.Printf("[Ingestion] using INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES=%d", minutes)
 	return time.Duration(minutes) * time.Minute
 }
 
