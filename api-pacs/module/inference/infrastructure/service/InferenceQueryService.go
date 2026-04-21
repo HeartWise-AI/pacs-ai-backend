@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -233,6 +234,49 @@ func (controller *InferenceQueryService) GetInferenceIngestionJobs(ctx context.C
 	}
 
 	return res, nil
+}
+
+// GetInferenceIngestionCandidates gets ingestion candidates for debugging and operations
+func (service *InferenceQueryService) GetInferenceIngestionCandidates(ctx context.Context, data types.GetInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error) {
+	var status *entity.InferenceIngestionCandidateStatus
+	if data.Status != nil {
+		parsedStatus, ok := parseInferenceIngestionCandidateStatus(*data.Status)
+		if !ok {
+			return nil, errors.New(apiError.InvalidPayload)
+		}
+
+		status = &parsedStatus
+	}
+
+	res, err := service.InferenceQueryRepositoryInterface.ListInferenceIngestionCandidates(repositoryTypes.ListInferenceIngestionCandidates{
+		TenantID:           data.TenantID,
+		IngestionJobID:     data.IngestionJobID,
+		StudyInstanceUID:   data.StudyInstanceUID,
+		Status:             status,
+		RetrievalFailures:  data.RetrievalFailures,
+	})
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+func parseInferenceIngestionCandidateStatus(status string) (entity.InferenceIngestionCandidateStatus, bool) {
+	normalizedStatus := strings.ToUpper(status)
+
+	switch entity.InferenceIngestionCandidateStatus(normalizedStatus) {
+	case entity.InferenceIngestionCandidateStatusDiscovered,
+		entity.InferenceIngestionCandidateStatusGrowing,
+		entity.InferenceIngestionCandidateStatusStable,
+		entity.InferenceIngestionCandidateStatusRetrievalQueued,
+		entity.InferenceIngestionCandidateStatusRetrieved,
+		entity.InferenceIngestionCandidateStatusDisappeared,
+		entity.InferenceIngestionCandidateStatusFailed:
+		return entity.InferenceIngestionCandidateStatus(normalizedStatus), true
+	default:
+		return "", false
+	}
 }
 
 // GetModelFeedBackByUser gets the model feedback by user
