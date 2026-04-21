@@ -162,7 +162,7 @@ type UploadDICOMInstancesResponse struct {
 
 type QueryStudy struct {
 	AccessionNumber               string `json:"AccessionNumber"`
-	InstitutionName               string `json:"InstitutionName"`
+	InstitutionName               string `json:"InstitutionName,omitempty"`
 	ModalitiesInStudy             string `json:"ModalitiesInStudy"`
 	NumberOfStudyRelatedSeries    string `json:"NumberOfStudyRelatedSeries"`
 	NumberOfStudyRelatedInstances string `json:"NumberOfStudyRelatedInstances"`
@@ -171,7 +171,7 @@ type QueryStudy struct {
 	PatientName                   string `json:"PatientName"`
 	PatientSex                    string `json:"PatientSex"`
 	ReferringPhysicianName        string `json:"ReferringPhysicianName"`
-	RequestingPhysician           string `json:"RequestingPhysician"`
+	RequestingPhysician           string `json:"RequestingPhysician,omitempty"`
 	StudyDate                     string `json:"StudyDate"`
 	StudyDescription              string `json:"StudyDescription"`
 	StudyID                       string `json:"StudyID"`
