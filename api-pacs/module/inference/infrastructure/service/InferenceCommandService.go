@@ -214,36 +214,40 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 		)
 	}
 
-	/// step 2: for each job, run inference model to target dicom modality and persist results
-	var m = sync.Mutex{}
-	eg, egCtx := errgroup.WithContext(ctx)
-
-	// set limit
-	eg.SetLimit(len(jobs))
-
+	/// step 2: process each ingestion job sequentially
 	for _, job := range jobs {
-		func(job entity.InferenceIngestionJob) {
-			eg.Go(func() error {
-				m.Lock()
-				defer m.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 
-				jobNow := time.Now()
-				recentWindowMinutes := resolvedRecentWindowMinutes(job.RecentWindowMinutes)
-				stabilityMinutes := resolvedStabilityMinutes(job.StabilityMinutes)
-				missingPollsThreshold := int(resolvedMissingPollsThreshold(job.MissingPollsThreshold))
-				log.Printf("[Ingestion service] evaluating job_id=%s now=%s resolved_stability_minutes=%d resolved_recent_window_minutes=%d resolved_missing_polls_threshold=%d",
-					job.ID,
-					formatEasternTime(jobNow),
-					stabilityMinutes,
-					recentWindowMinutes,
-					missingPollsThreshold,
-				)
-				queryWindows, err := buildIngestionQueryWindows(jobNow, recentWindowMinutes, job.StudyTimeStart, job.StudyTimeEnd)
-				log.Printf("[Ingestion service] built query windows job_id=%s query_windows=%v", job.ID, queryWindows)
-				if err != nil {
-					log.Printf("[Ingestion service] invalid job query window config job_id=%s err=%v", job.ID, err)
-					return nil // skip
-				}
+		if err := service.executeInferenceIngestionJob(ctx, job); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (service *InferenceCommandService) executeInferenceIngestionJob(ctx context.Context, job entity.InferenceIngestionJob) error {
+	jobNow := time.Now()
+	recentWindowMinutes := resolvedRecentWindowMinutes(job.RecentWindowMinutes)
+	stabilityMinutes := resolvedStabilityMinutes(job.StabilityMinutes)
+	missingPollsThreshold := int(resolvedMissingPollsThreshold(job.MissingPollsThreshold))
+	log.Printf("[Ingestion service] evaluating job_id=%s now=%s resolved_stability_minutes=%d resolved_recent_window_minutes=%d resolved_missing_polls_threshold=%d",
+		job.ID,
+		formatEasternTime(jobNow),
+		stabilityMinutes,
+		recentWindowMinutes,
+		missingPollsThreshold,
+	)
+	queryWindows, err := buildIngestionQueryWindows(jobNow, recentWindowMinutes, job.StudyTimeStart, job.StudyTimeEnd)
+	log.Printf("[Ingestion service] built query windows job_id=%s query_windows=%v", job.ID, queryWindows)
+	if err != nil {
+		log.Printf("[Ingestion service] invalid job query window config job_id=%s err=%v", job.ID, err)
+		return nil // skip
+	}
 
 				// if not running, skip
 				if job.Status != entity.InferenceIngestionJobStatusRunning {
@@ -297,7 +301,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 						stabilityMinutes,
 						missingPollsThreshold,
 					)
-					queryStudies, _, err := service.OrthancQueryServiceInterface.FindModalityStudies(egCtx, orthancServiceTypes.FindModalityStudies{
+					queryStudies, _, err := service.OrthancQueryServiceInterface.FindModalityStudies(ctx, orthancServiceTypes.FindModalityStudies{
 						TenantID:                      job.TenantID,
 						ModalityID:                    job.DICOMModality,
 						AccessionNumber:               "",
@@ -354,7 +358,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 				seenStudyUIDs := map[string]struct{}{}
 				for _, study := range studies {
 					select {
-					case <-egCtx.Done():
+					case <-ctx.Done():
 						return nil // skip
 					default:
 					}
@@ -516,7 +520,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 				)
 
 				for _, candidate := range readyCandidates {
-					isLocal, err := service.isStudyPresentLocally(egCtx, candidate.StudyInstanceUID)
+					isLocal, err := service.isStudyPresentLocally(ctx, candidate.StudyInstanceUID)
 					if err != nil {
 						log.Println("[Ingestion service] cannot determine if stable ingestion candidate is already local:", err)
 						continue
@@ -539,7 +543,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 						continue
 					}
 
-					retrievalResult, err := service.retrieveStableCandidate(egCtx, job, candidate)
+					retrievalResult, err := service.retrieveStableCandidate(ctx, job, candidate)
 					if err != nil {
 						log.Println("[Ingestion service] cannot retrieve stable ingestion candidate:", err)
 						markErr := service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
@@ -599,16 +603,6 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 					len(refreshedCandidates),
 					len(readyCandidates),
 				)
-
-				return nil
-			})
-		}(job)
-	}
-
-	// wait for all goroutines to finish
-	if err := eg.Wait(); err != nil {
-		return err
-	}
 
 	return nil
 }
