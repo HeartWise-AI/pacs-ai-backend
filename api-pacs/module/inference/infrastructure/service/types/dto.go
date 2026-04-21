@@ -83,6 +83,14 @@ type GetInferenceAvailableModelResult struct {
 	OutputMode                    entity.OutputMode
 }
 
+type GetInferenceIngestionCandidates struct {
+	TenantID           string
+	IngestionJobID     *string
+	StudyInstanceUID   *string
+	Status             *string
+	RetrievalFailures  bool
+}
+
 type GetModelFeedbackByUser struct {
 	TenantID string
 	UserID   string
