@@ -3,6 +3,9 @@ package interfaces
 import (
 	"context"
 	"log"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	apiError "api-pacs/internal/errors"
@@ -11,9 +14,11 @@ import (
 // RunInferenceIngestionServiceHandler run inference ingestion service handler
 func RunInferenceIngestionServiceHandler() {
 	inferenceCommandService := InferenceCommandServiceDI()
+	interval := inferenceIngestionRunnerInterval()
 
-	// run every 5 mins
-	tick := time.Tick(5 * time.Minute)
+	log.Printf("[Ingestion] runner interval configured minutes=%d", int(interval.Minutes()))
+
+	tick := time.Tick(interval)
 	for range tick {
 		err := inferenceCommandService.ExecuteInferenceIngestionRunner(context.TODO())
 		if err == nil || err.Error() == apiError.MissingRecord {
@@ -22,6 +27,23 @@ func RunInferenceIngestionServiceHandler() {
 			log.Println("[Ingestion] error while executing inference ingestion runner:", err)
 		}
 	}
+}
+
+func inferenceIngestionRunnerInterval() time.Duration {
+	const defaultIntervalMinutes = 5
+
+	value := strings.TrimSpace(os.Getenv("INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES"))
+	if value == "" {
+		return defaultIntervalMinutes * time.Minute
+	}
+
+	minutes, err := strconv.Atoi(value)
+	if err != nil || minutes <= 0 {
+		log.Printf("[Ingestion] invalid INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES=%q, using default minutes=%d", value, defaultIntervalMinutes)
+		return defaultIntervalMinutes * time.Minute
+	}
+
+	return time.Duration(minutes) * time.Minute
 }
 
 // RunOrthancLocalStudiesCacheHandler run orthanc local studies cache handler
