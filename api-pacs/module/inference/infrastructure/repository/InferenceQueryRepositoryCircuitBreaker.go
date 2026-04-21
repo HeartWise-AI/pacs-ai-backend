@@ -151,6 +151,33 @@ func (repository InferenceQueryRepositoryCircuitBreaker) SelectInferenceIngestio
 	}
 }
 
+// ListInferenceIngestionCandidates lists ingestion candidates for debugging and operations
+func (repository InferenceQueryRepositoryCircuitBreaker) ListInferenceIngestionCandidates(data types.ListInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error) {
+	output := make(chan []entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_inference_ingestion_candidates", config.Settings())
+	errors := hystrix.Go("list_inference_ingestion_candidates", func() error {
+		candidates, err := repository.InferenceQueryRepositoryInterface.ListInferenceIngestionCandidates(data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidates
+		return nil
+	}, nil)
+
+	select {
+	case candidates := <-output:
+		return candidates, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionCandidate{}, err
+	}
+}
+
 // ListCandidatesByJob lists ingestion candidates by ingestion job ID
 func (repository InferenceQueryRepositoryCircuitBreaker) ListCandidatesByJob(ingestionJobID string) ([]entity.InferenceIngestionCandidate, error) {
 	output := make(chan []entity.InferenceIngestionCandidate, 1)

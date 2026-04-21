@@ -19,6 +19,8 @@ type InferenceQueryRepositoryInterface interface {
 	SelectInferenceIngestionJobs(tenantID *string) ([]entity.InferenceIngestionJob, error)
 	// SelectInferenceIngestionJobByID get inference ingestion job by id
 	SelectInferenceIngestionJobByID(ID string) (entity.InferenceIngestionJob, error)
+	// ListInferenceIngestionCandidates lists ingestion candidates for debugging and operations
+	ListInferenceIngestionCandidates(data types.ListInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error)
 	// ListCandidatesByJob lists ingestion candidates by ingestion job ID
 	ListCandidatesByJob(ingestionJobID string) ([]entity.InferenceIngestionCandidate, error)
 	// ListCandidatesReadyForRetrieval lists stable ingestion candidates ready for retrieval
