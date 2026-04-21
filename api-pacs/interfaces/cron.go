@@ -30,7 +30,7 @@ func RunInferenceIngestionServiceHandler() {
 }
 
 func inferenceIngestionRunnerInterval() time.Duration {
-	const defaultIntervalMinutes = 5
+	const defaultIntervalMinutes = 1
 
 	value := strings.TrimSpace(os.Getenv("INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES"))
 	if value == "" {
