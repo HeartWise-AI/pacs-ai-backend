@@ -497,57 +497,11 @@ func (service *InferenceCommandService) executeInferenceIngestionJob(ctx context
 			log.Println("[Ingestion service] cannot mark ingestion candidate retrieval queued:", err)
 			continue
 		}
-
-		retrievalResult, err := service.retrieveStableCandidate(ctx, job, candidate)
-		if err != nil {
-			log.Println("[Ingestion service] cannot retrieve stable ingestion candidate:", err)
-			markErr := service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
-				ID:                 candidate.ID,
-				LastRetrievalState: stringPointer("error"),
-				LastRetrievalError: stringPointer(err.Error()),
-			})
-			if markErr != nil {
-				log.Println("[Ingestion service] cannot persist retrieval error for ingestion candidate:", markErr)
-			}
-			continue
-		}
-
-		retrievalState := stringPointer(string(retrievalResult.Outcome))
-		switch retrievalResult.Outcome {
-		case candidateRetrievalOutcomeLocal, candidateRetrievalOutcomeSuccess:
-			err = service.InferenceCommandRepositoryInterface.MarkCandidateRetrievedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
-				ID:                        candidate.ID,
-				OrthancJobIDs:             retrievalResult.OrthancJobIDs,
-				LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
-				LastRetrievalError:        retrievalResult.LastRetrievalError,
-				LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
-			})
-			if err != nil {
-				log.Println("[Ingestion service] cannot mark ingestion candidate retrieved:", err)
-			}
-		case candidateRetrievalOutcomeFailure:
-			err = service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
-				ID:                        candidate.ID,
-				OrthancJobIDs:             retrievalResult.OrthancJobIDs,
-				LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
-				LastRetrievalError:        coalesceStringPointer(retrievalResult.LastRetrievalError, stringPointer("Orthanc retrieval failed")),
-				LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
-			})
-			if err != nil {
-				log.Println("[Ingestion service] cannot mark ingestion candidate failed:", err)
-			}
-		case candidateRetrievalOutcomeTimeout:
-			err = service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
-				ID:                        candidate.ID,
-				OrthancJobIDs:             retrievalResult.OrthancJobIDs,
-				LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
-				LastRetrievalError:        coalesceStringPointer(retrievalResult.LastRetrievalError, stringPointer("Orthanc retrieval timed out")),
-				LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
-			})
-			if err != nil {
-				log.Println("[Ingestion service] cannot persist retrieval timeout for ingestion candidate:", err)
-			}
-		}
+		log.Printf("[Ingestion service] queued candidate retrieval job_id=%s candidate_id=%s study_instance_uid=%s",
+			job.ID,
+			candidate.ID,
+			candidate.StudyInstanceUID,
+		)
 	}
 
 	/// step 4: update job last execution time
@@ -558,6 +512,54 @@ func (service *InferenceCommandService) executeInferenceIngestionJob(ctx context
 		len(refreshedCandidates),
 		len(readyCandidates),
 	)
+
+	return nil
+}
+
+// ExecuteInferenceIngestionRetrievalWorker retrieves studies that were queued by the ingestion runner.
+func (service *InferenceCommandService) ExecuteInferenceIngestionRetrievalWorker(ctx context.Context) error {
+	candidates, err := service.InferenceQueryRepositoryInterface.ListCandidatesQueuedForRetrieval()
+	if err != nil {
+		return err
+	}
+
+	log.Printf("[Ingestion retrieval worker] queued candidates count=%d", len(candidates))
+	for _, candidate := range candidates {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		job, err := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionJobByID(candidate.IngestionJobID)
+		if err != nil {
+			log.Printf("[Ingestion retrieval worker] cannot load ingestion job candidate_id=%s ingestion_job_id=%s err=%v",
+				candidate.ID,
+				candidate.IngestionJobID,
+				err,
+			)
+			continue
+		}
+
+		if job.Status != entity.InferenceIngestionJobStatusRunning {
+			log.Printf("[Ingestion retrieval worker] skipping queued candidate because ingestion job is not running candidate_id=%s ingestion_job_id=%s study_instance_uid=%s status=%s",
+				candidate.ID,
+				candidate.IngestionJobID,
+				candidate.StudyInstanceUID,
+				job.Status,
+			)
+			continue
+		}
+
+		err = service.retrieveQueuedIngestionCandidate(ctx, job, candidate)
+		if err != nil {
+			log.Printf("[Ingestion retrieval worker] cannot process queued candidate candidate_id=%s study_instance_uid=%s err=%v",
+				candidate.ID,
+				candidate.StudyInstanceUID,
+				err,
+			)
+		}
+	}
 
 	return nil
 }
@@ -980,6 +982,75 @@ func shouldMarkCandidateStable(status entity.InferenceIngestionCandidateStatus) 
 		status == entity.InferenceIngestionCandidateStatusGrowing
 }
 
+func (service *InferenceCommandService) retrieveQueuedIngestionCandidate(ctx context.Context, job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate) error {
+	log.Printf("[Ingestion retrieval worker] retrieving candidate job_id=%s candidate_id=%s study_instance_uid=%s",
+		job.ID,
+		candidate.ID,
+		candidate.StudyInstanceUID,
+	)
+
+	retrievalResult, err := service.retrieveStableCandidate(ctx, job, candidate)
+	if err != nil {
+		log.Println("[Ingestion retrieval worker] cannot retrieve queued ingestion candidate:", err)
+		markErr := service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
+			ID:                 candidate.ID,
+			LastRetrievalState: stringPointer("error"),
+			LastRetrievalError: stringPointer(err.Error()),
+		})
+		if markErr != nil {
+			log.Println("[Ingestion retrieval worker] cannot persist retrieval error for ingestion candidate:", markErr)
+			return markErr
+		}
+		return nil
+	}
+
+	return service.persistCandidateRetrievalResult(candidate.ID, retrievalResult)
+}
+
+func (service *InferenceCommandService) persistCandidateRetrievalResult(candidateID string, retrievalResult candidateRetrievalResult) error {
+	retrievalState := stringPointer(string(retrievalResult.Outcome))
+	switch retrievalResult.Outcome {
+	case candidateRetrievalOutcomeLocal, candidateRetrievalOutcomeSuccess:
+		err := service.InferenceCommandRepositoryInterface.MarkCandidateRetrievedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
+			ID:                        candidateID,
+			OrthancJobIDs:             retrievalResult.OrthancJobIDs,
+			LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
+			LastRetrievalError:        retrievalResult.LastRetrievalError,
+			LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
+		})
+		if err != nil {
+			log.Println("[Ingestion retrieval worker] cannot mark ingestion candidate retrieved:", err)
+		}
+		return err
+	case candidateRetrievalOutcomeFailure:
+		err := service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
+			ID:                        candidateID,
+			OrthancJobIDs:             retrievalResult.OrthancJobIDs,
+			LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
+			LastRetrievalError:        coalesceStringPointer(retrievalResult.LastRetrievalError, stringPointer("Orthanc retrieval failed")),
+			LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
+		})
+		if err != nil {
+			log.Println("[Ingestion retrieval worker] cannot mark ingestion candidate failed:", err)
+		}
+		return err
+	case candidateRetrievalOutcomeTimeout:
+		err := service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
+			ID:                        candidateID,
+			OrthancJobIDs:             retrievalResult.OrthancJobIDs,
+			LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
+			LastRetrievalError:        coalesceStringPointer(retrievalResult.LastRetrievalError, stringPointer("Orthanc retrieval timed out")),
+			LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
+		})
+		if err != nil {
+			log.Println("[Ingestion retrieval worker] cannot persist retrieval timeout for ingestion candidate:", err)
+		}
+		return err
+	}
+
+	return nil
+}
+
 func (service *InferenceCommandService) retrieveStableCandidate(ctx context.Context, job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate) (candidateRetrievalResult, error) {
 	isLocal, err := service.isStudyPresentLocally(ctx, candidate.StudyInstanceUID)
 	if err != nil {
@@ -991,6 +1062,10 @@ func (service *InferenceCommandService) retrieveStableCandidate(ctx context.Cont
 			Outcome:            candidateRetrievalOutcomeLocal,
 			LastRetrievalState: stringPointer(string(candidateRetrievalOutcomeLocal)),
 		}, nil
+	}
+
+	if len(candidate.OrthancJobIDs) > 0 {
+		return service.waitForCandidateRetrieval(ctx, candidate.StudyInstanceUID, []string(candidate.OrthancJobIDs))
 	}
 
 	retrieveResponses, err := service.OrthancCommandServiceInterface.RetrieveModalityStudyBySeries(ctx, orthancServiceTypes.RetrieveModalityStudyBySeries{

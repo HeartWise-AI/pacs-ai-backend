@@ -652,6 +652,7 @@ func ServiceContainer() ServiceContainerInterface {
 
 			// run event listeners and cron jobs after all handlers are registered
 			go RunInferenceIngestionServiceHandler()
+			go RunInferenceIngestionRetrievalWorkerHandler()
 			go RunOrthancLocalStudiesCacheHandler()
 		})
 	}

@@ -17,6 +17,8 @@ type InferenceCommandServiceInterface interface {
 	CreateInferenceIngestionJob(ctx context.Context, data types.CreateInferenceIngestionJob) error
 	// ExecuteInferenceIngestionRunner execute inference ingestion runner
 	ExecuteInferenceIngestionRunner(ctx context.Context) error
+	// ExecuteInferenceIngestionRetrievalWorker executes queued ingestion retrievals
+	ExecuteInferenceIngestionRetrievalWorker(ctx context.Context) error
 	// GenerateInferenceModelPredictRequest generates the prediction request payload
 	GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error)
 	// ImportInferenceIngestionJobs imports inference ingestion jobs
