@@ -251,6 +251,26 @@ func (repository *InferenceQueryRepository) ListCandidatesReadyForRetrieval(inge
 	return candidates, nil
 }
 
+// ListCandidatesQueuedForRetrieval lists ingestion candidates queued for retrieval
+func (repository *InferenceQueryRepository) ListCandidatesQueuedForRetrieval() ([]entity.InferenceIngestionCandidate, error) {
+	var candidate entity.InferenceIngestionCandidate
+	var candidates []entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf("SELECT * FROM %s WHERE status = :status ORDER BY retrieval_queued_at ASC NULLS LAST, updated_at ASC", candidate.GetModelName())
+
+	err := repository.PostgresSQLDBHandlerInterface.Query(stmt, map[string]interface{}{
+		"status": entity.InferenceIngestionCandidateStatusRetrievalQueued,
+	}, &candidates)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.DatabaseError)
+	} else if len(candidates) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return candidates, nil
+}
+
 // SelectModelFeedbackByUserModelID get model feedback by model and user ID
 func (repository *InferenceQueryRepository) SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
 	// firestore client
