@@ -151,6 +151,33 @@ func (repository InferenceQueryRepositoryCircuitBreaker) SelectInferenceIngestio
 	}
 }
 
+// ListInferenceIngestionCandidates lists ingestion candidates for debugging and operations
+func (repository InferenceQueryRepositoryCircuitBreaker) ListInferenceIngestionCandidates(data types.ListInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error) {
+	output := make(chan []entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_inference_ingestion_candidates", config.Settings())
+	errors := hystrix.Go("list_inference_ingestion_candidates", func() error {
+		candidates, err := repository.InferenceQueryRepositoryInterface.ListInferenceIngestionCandidates(data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidates
+		return nil
+	}, nil)
+
+	select {
+	case candidates := <-output:
+		return candidates, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionCandidate{}, err
+	}
+}
+
 // ListCandidatesByJob lists ingestion candidates by ingestion job ID
 func (repository InferenceQueryRepositoryCircuitBreaker) ListCandidatesByJob(ingestionJobID string) ([]entity.InferenceIngestionCandidate, error) {
 	output := make(chan []entity.InferenceIngestionCandidate, 1)
@@ -186,6 +213,33 @@ func (repository InferenceQueryRepositoryCircuitBreaker) ListCandidatesReadyForR
 	hystrix.ConfigureCommand("list_candidates_ready_for_retrieval", config.Settings())
 	errors := hystrix.Go("list_candidates_ready_for_retrieval", func() error {
 		candidates, err := repository.InferenceQueryRepositoryInterface.ListCandidatesReadyForRetrieval(ingestionJobID, stableBefore)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidates
+		return nil
+	}, nil)
+
+	select {
+	case candidates := <-output:
+		return candidates, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionCandidate{}, err
+	}
+}
+
+// ListCandidatesQueuedForRetrieval lists ingestion candidates queued for retrieval
+func (repository InferenceQueryRepositoryCircuitBreaker) ListCandidatesQueuedForRetrieval() ([]entity.InferenceIngestionCandidate, error) {
+	output := make(chan []entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_candidates_queued_for_retrieval", config.Settings())
+	errors := hystrix.Go("list_candidates_queued_for_retrieval", func() error {
+		candidates, err := repository.InferenceQueryRepositoryInterface.ListCandidatesQueuedForRetrieval()
 		if err != nil {
 			errChan <- err
 			return nil

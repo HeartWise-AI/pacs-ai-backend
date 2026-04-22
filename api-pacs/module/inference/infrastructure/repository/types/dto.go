@@ -71,6 +71,14 @@ type GetModelFeedbackByUserModelID struct {
 	ModelID  string
 }
 
+type ListInferenceIngestionCandidates struct {
+	TenantID          string
+	IngestionJobID    *string
+	StudyInstanceUID  *string
+	Status            *entity.InferenceIngestionCandidateStatus
+	RetrievalFailures bool
+}
+
 type GetOnboardingModelQuestionnaireAnswer struct {
 	TenantID string
 	UserID   string

@@ -12,6 +12,7 @@ import (
 	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/application"
+	"api-pacs/module/inference/domain/entity"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 	types "api-pacs/module/inference/interfaces/http"
 )
@@ -400,12 +401,195 @@ func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.Res
 	response.JSON(w)
 }
 
+// GetInferenceIngestionCandidates gets ingestion candidates for debugging and operations
+func (controller *InferenceQueryController) GetInferenceIngestionCandidates(w http.ResponseWriter, r *http.Request) {
+	controller.getInferenceIngestionCandidates(w, r, nil, nil, false)
+}
+
+// GetInferenceIngestionJobCandidates gets ingestion candidates for one job
+func (controller *InferenceQueryController) GetInferenceIngestionJobCandidates(w http.ResponseWriter, r *http.Request) {
+	ingestionJobID := chi.URLParam(r, "ID")
+	if len(ingestionJobID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid ingestion job ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	controller.getInferenceIngestionCandidates(w, r, &ingestionJobID, nil, false)
+}
+
+// GetInferenceIngestionCandidateByStudyUID gets candidate state for one study in a job
+func (controller *InferenceQueryController) GetInferenceIngestionCandidateByStudyUID(w http.ResponseWriter, r *http.Request) {
+	ingestionJobID := chi.URLParam(r, "ID")
+	if len(ingestionJobID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid ingestion job ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	studyInstanceUID := chi.URLParam(r, "studyInstanceUID")
+	if len(studyInstanceUID) == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid study instance UID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	controller.getInferenceIngestionCandidates(w, r, &ingestionJobID, &studyInstanceUID, false)
+}
+
+// GetInferenceIngestionRetrievalFailures gets candidates with failed retrieval state
+func (controller *InferenceQueryController) GetInferenceIngestionRetrievalFailures(w http.ResponseWriter, r *http.Request) {
+	controller.getInferenceIngestionCandidates(w, r, nil, nil, true)
+}
+
+func (controller *InferenceQueryController) getInferenceIngestionCandidates(w http.ResponseWriter, r *http.Request, ingestionJobID *string, studyInstanceUID *string, retrievalFailures bool) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	if ingestionJobID == nil {
+		queryJobID := r.URL.Query().Get("jobId")
+		if len(queryJobID) > 0 {
+			ingestionJobID = &queryJobID
+		}
+	}
+
+	if studyInstanceUID == nil {
+		queryStudyInstanceUID := r.URL.Query().Get("studyInstanceUID")
+		if len(queryStudyInstanceUID) > 0 {
+			studyInstanceUID = &queryStudyInstanceUID
+		}
+	}
+
+	var status *string
+	queryStatus := r.URL.Query().Get("status")
+	if len(queryStatus) > 0 {
+		status = &queryStatus
+	}
+
+	res, err := controller.InferenceQueryServiceInterface.GetInferenceIngestionCandidates(context.TODO(), serviceTypes.GetInferenceIngestionCandidates{
+		TenantID:           tenantID,
+		IngestionJobID:     ingestionJobID,
+		StudyInstanceUID:   studyInstanceUID,
+		Status:             status,
+		RetrievalFailures:  retrievalFailures,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case apiError.InvalidPayload:
+			httpCode = http.StatusBadRequest
+			errorMsg = "Invalid ingestion candidate status."
+		case apiError.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Database error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully retrieved inference ingestion candidates.",
+		Data:    buildInferenceIngestionCandidateResponses(res),
+	}
+
+	response.JSON(w)
+}
+
+func buildInferenceIngestionCandidateResponses(candidates []entity.InferenceIngestionCandidate) []types.GetInferenceIngestionCandidateResponse {
+	response := []types.GetInferenceIngestionCandidateResponse{}
+
+	for _, candidate := range candidates {
+		orthancJobIDs := []string{}
+		if candidate.OrthancJobIDs != nil {
+			orthancJobIDs = []string(candidate.OrthancJobIDs)
+		}
+
+		response = append(response, types.GetInferenceIngestionCandidateResponse{
+			ID:                        candidate.ID,
+			TenantID:                  candidate.TenantID,
+			IngestionJobID:            candidate.IngestionJobID,
+			StudyInstanceUID:          candidate.StudyInstanceUID,
+			StudyDate:                 dereferenceString(candidate.StudyDate),
+			StudyTime:                 dereferenceString(candidate.StudyTime),
+			ModalitiesInStudy:         dereferenceString(candidate.ModalitiesInStudy),
+			PatientID:                 dereferenceString(candidate.PatientID),
+			AccessionNumber:           dereferenceString(candidate.AccessionNumber),
+			SeriesCount:               dereferenceInt(candidate.SeriesCount),
+			InstanceCount:             dereferenceInt(candidate.InstanceCount),
+			FirstSeenAt:               uint64(candidate.FirstSeenAt.Unix()),
+			LastSeenAt:                uint64(candidate.LastSeenAt.Unix()),
+			LastChangedAt:             uint64(candidate.LastChangedAt.Unix()),
+			MissingPolls:              candidate.MissingPolls,
+			Status:                    string(candidate.Status),
+			RetrievalQueuedAt:         nullableTimestampUnix(candidate.RetrievalQueuedAt),
+			RetrievedAt:               nullableTimestampUnix(candidate.RetrievedAt),
+			OrthancJobIDs:             orthancJobIDs,
+			LastRetrievalState:        dereferenceString(candidate.LastRetrievalState),
+			LastRetrievalError:        dereferenceString(candidate.LastRetrievalError),
+			LastRetrievalErrorDetails: dereferenceString(candidate.LastRetrievalErrorDetails),
+			LastRetrievalCheckedAt:    nullableTimestampUnix(candidate.LastRetrievalCheckedAt),
+			CreatedAt:                 uint64(candidate.CreatedAt.Unix()),
+			UpdatedAt:                 uint64(candidate.UpdatedAt.Unix()),
+		})
+	}
+
+	return response
+}
+
 func dereferenceString(value *string) string {
 	if value == nil {
 		return ""
 	}
 
 	return *value
+}
+
+func dereferenceInt(value *int) int {
+	if value == nil {
+		return 0
+	}
+
+	return *value
+}
+
+func nullableTimestampUnix(value *time.Time) uint64 {
+	if value == nil {
+		return 0
+	}
+
+	return scheduleTimestampUnix(*value)
 }
 
 func scheduleTimestampUnix(value time.Time) uint64 {

@@ -165,6 +165,34 @@ type GetInferenceIngestionJobResponse struct {
 	UpdatedAt              uint64   `json:"updatedAt"`
 }
 
+type GetInferenceIngestionCandidateResponse struct {
+	ID                        string   `json:"id"`
+	TenantID                  string   `json:"tenantId"`
+	IngestionJobID            string   `json:"ingestionJobId"`
+	StudyInstanceUID          string   `json:"studyInstanceUID"`
+	StudyDate                 string   `json:"studyDate"`
+	StudyTime                 string   `json:"studyTime"`
+	ModalitiesInStudy         string   `json:"modalitiesInStudy"`
+	PatientID                 string   `json:"patientId"`
+	AccessionNumber           string   `json:"accessionNumber"`
+	SeriesCount               int      `json:"seriesCount"`
+	InstanceCount             int      `json:"instanceCount"`
+	FirstSeenAt               uint64   `json:"firstSeenAt"`
+	LastSeenAt                uint64   `json:"lastSeenAt"`
+	LastChangedAt             uint64   `json:"lastChangedAt"`
+	MissingPolls              int      `json:"missingPolls"`
+	Status                    string   `json:"status"`
+	RetrievalQueuedAt         uint64   `json:"retrievalQueuedAt"`
+	RetrievedAt               uint64   `json:"retrievedAt"`
+	OrthancJobIDs             []string `json:"orthancJobIds"`
+	LastRetrievalState        string   `json:"lastRetrievalState"`
+	LastRetrievalError        string   `json:"lastRetrievalError"`
+	LastRetrievalErrorDetails string   `json:"lastRetrievalErrorDetails"`
+	LastRetrievalCheckedAt    uint64   `json:"lastRetrievalCheckedAt"`
+	CreatedAt                 uint64   `json:"createdAt"`
+	UpdatedAt                 uint64   `json:"updatedAt"`
+}
+
 type GetModelFeedbackResponse struct {
 	ID                   string                      `json:"id"`
 	TenantID             string                      `json:"tenantId"`

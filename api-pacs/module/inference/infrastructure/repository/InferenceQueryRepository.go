@@ -166,6 +166,49 @@ func (repository *InferenceQueryRepository) SelectInferenceIngestionJobByID(ID s
 	return job, nil
 }
 
+// ListInferenceIngestionCandidates lists ingestion candidates with operator debug filters
+func (repository *InferenceQueryRepository) ListInferenceIngestionCandidates(data types.ListInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error) {
+	var candidate entity.InferenceIngestionCandidate
+	var candidates []entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf("SELECT * FROM %s WHERE tenant_id = :tenant_id", candidate.GetModelName())
+	args := map[string]interface{}{
+		"tenant_id": data.TenantID,
+	}
+
+	if data.IngestionJobID != nil {
+		stmt = fmt.Sprintf("%s AND ingestion_job_id = :ingestion_job_id", stmt)
+		args["ingestion_job_id"] = *data.IngestionJobID
+	}
+
+	if data.StudyInstanceUID != nil {
+		stmt = fmt.Sprintf("%s AND study_instance_uid = :study_instance_uid", stmt)
+		args["study_instance_uid"] = *data.StudyInstanceUID
+	}
+
+	if data.Status != nil {
+		stmt = fmt.Sprintf("%s AND status = :status", stmt)
+		args["status"] = *data.Status
+	}
+
+	if data.RetrievalFailures {
+		stmt = fmt.Sprintf("%s AND (status = :failed_status OR last_retrieval_error IS NOT NULL)", stmt)
+		args["failed_status"] = entity.InferenceIngestionCandidateStatusFailed
+	}
+
+	stmt = fmt.Sprintf("%s ORDER BY updated_at DESC", stmt)
+
+	err := repository.PostgresSQLDBHandlerInterface.Query(stmt, args, &candidates)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.DatabaseError)
+	} else if len(candidates) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return candidates, nil
+}
+
 // ListCandidatesByJob lists ingestion candidates by ingestion job ID
 func (repository *InferenceQueryRepository) ListCandidatesByJob(ingestionJobID string) ([]entity.InferenceIngestionCandidate, error) {
 	var candidate entity.InferenceIngestionCandidate
@@ -197,6 +240,26 @@ func (repository *InferenceQueryRepository) ListCandidatesReadyForRetrieval(inge
 		"ingestion_job_id": ingestionJobID,
 		"status":           entity.InferenceIngestionCandidateStatusStable,
 		"stable_before":    stableBefore,
+	}, &candidates)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.DatabaseError)
+	} else if len(candidates) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return candidates, nil
+}
+
+// ListCandidatesQueuedForRetrieval lists ingestion candidates queued for retrieval
+func (repository *InferenceQueryRepository) ListCandidatesQueuedForRetrieval() ([]entity.InferenceIngestionCandidate, error) {
+	var candidate entity.InferenceIngestionCandidate
+	var candidates []entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf("SELECT * FROM %s WHERE status = :status ORDER BY retrieval_queued_at ASC NULLS LAST, updated_at ASC", candidate.GetModelName())
+
+	err := repository.PostgresSQLDBHandlerInterface.Query(stmt, map[string]interface{}{
+		"status": entity.InferenceIngestionCandidateStatusRetrievalQueued,
 	}, &candidates)
 	if err != nil {
 		log.Println(err)
