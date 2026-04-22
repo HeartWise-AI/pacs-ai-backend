@@ -66,10 +66,11 @@ orthanc/.env
 nginx/.env
 ```
 
-For example, the ingestion runner interval belongs in `api-pacs/.env`:
+For example, the ingestion runner and retrieval worker intervals belong in `api-pacs/.env`:
 
 ```env
 INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES=1
+INFERENCE_INGESTION_RETRIEVAL_WORKER_INTERVAL_MINUTES=1
 ```
 
 If a variable appears in both a service `env_file` and an explicit compose `environment` block, the explicit `environment` value takes precedence.
@@ -199,6 +200,7 @@ Update `api-pacs/.env` with the following variables:
 | `ORTHANC_BASE_URL`          | Should be set to `http://orthanc:8042` or correct port                              |
 | `ORTHANC_LOCAL_CACHE_EXPIRATION_IN_HOURS`             | Should be set to `24` (default) or desired hour           |
 | `INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES` | Ingestion scheduler interval in minutes. Defaults to `1` if missing or invalid |
+| `INFERENCE_INGESTION_RETRIEVAL_WORKER_INTERVAL_MINUTES` | Ingestion retrieval worker interval in minutes. Defaults to `1` if missing or invalid |
 | `POSTGRES_DB_HOST`          | Should be set to `postgresql`                                                       |
 | `POSTGRES_DB_PORT`          | Should be set to `5432`                                                             |
 | `POSTGRES_DB_DATABASE`      | Should be set to `db_pacs`                                                          |
