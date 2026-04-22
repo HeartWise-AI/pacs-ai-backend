@@ -215,6 +215,8 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 	}
 
 	/// step 2: process each ingestion job sequentially
+	runnerNow := time.Now()
+	cFindCache := map[string][]orthancAPITypes.QueryModalityStudyAnswersResponse{}
 	for _, job := range jobs {
 		select {
 		case <-ctx.Done():
@@ -222,7 +224,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 		default:
 		}
 
-		if err := service.executeInferenceIngestionJob(ctx, job); err != nil {
+		if err := service.executeInferenceIngestionJob(ctx, job, runnerNow, cFindCache); err != nil {
 			return err
 		}
 	}
@@ -230,8 +232,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRunner(ctx cont
 	return nil
 }
 
-func (service *InferenceCommandService) executeInferenceIngestionJob(ctx context.Context, job entity.InferenceIngestionJob) error {
-	jobNow := time.Now()
+func (service *InferenceCommandService) executeInferenceIngestionJob(ctx context.Context, job entity.InferenceIngestionJob, jobNow time.Time, cFindCache map[string][]orthancAPITypes.QueryModalityStudyAnswersResponse) error {
 	recentWindowMinutes := resolvedRecentWindowMinutes(job.RecentWindowMinutes)
 	stabilityMinutes := resolvedStabilityMinutes(job.StabilityMinutes)
 	missingPollsThreshold := int(resolvedMissingPollsThreshold(job.MissingPollsThreshold))
@@ -249,362 +250,426 @@ func (service *InferenceCommandService) executeInferenceIngestionJob(ctx context
 		return nil // skip
 	}
 
-				// if not running, skip
-				if job.Status != entity.InferenceIngestionJobStatusRunning {
-					log.Printf("[Ingestion service] skipping job_id=%s reason=job_not_running status=%s", job.ID, job.Status)
-					return nil // skip
-				}
+	// if not running, skip
+	if job.Status != entity.InferenceIngestionJobStatusRunning {
+		log.Printf("[Ingestion service] skipping job_id=%s reason=job_not_running status=%s", job.ID, job.Status)
+		return nil // skip
+	}
 
-				// if schedule start is set and not reached yet, skip
-				if !isDisabledScheduleTimestamp(job.ScheduleStartTimestamp) && jobNow.Before(job.ScheduleStartTimestamp) {
-					log.Printf("[Ingestion service] skipping job_id=%s reason=schedule_start_not_reached schedule_start_timestamp=%s now=%s",
-						job.ID,
-						formatEasternTime(job.ScheduleStartTimestamp),
-						formatEasternTime(jobNow),
-					)
-					return nil // skip
-				}
+	// if schedule start is set and not reached yet, skip
+	if !isDisabledScheduleTimestamp(job.ScheduleStartTimestamp) && jobNow.Before(job.ScheduleStartTimestamp) {
+		log.Printf("[Ingestion service] skipping job_id=%s reason=schedule_start_not_reached schedule_start_timestamp=%s now=%s",
+			job.ID,
+			formatEasternTime(job.ScheduleStartTimestamp),
+			formatEasternTime(jobNow),
+		)
+		return nil // skip
+	}
 
-				// if schedule end is set and already passed, skip
-				if !isDisabledScheduleTimestamp(job.ScheduleEndTimestamp) && jobNow.After(job.ScheduleEndTimestamp) {
-					log.Printf("[Ingestion service] skipping job_id=%s reason=schedule_end_passed schedule_end_timestamp=%s now=%s",
-						job.ID,
-						formatEasternTime(job.ScheduleEndTimestamp),
-						formatEasternTime(jobNow),
-					)
-					return nil // skip
-				}
+	// if schedule end is set and already passed, skip
+	if !isDisabledScheduleTimestamp(job.ScheduleEndTimestamp) && jobNow.After(job.ScheduleEndTimestamp) {
+		log.Printf("[Ingestion service] skipping job_id=%s reason=schedule_end_passed schedule_end_timestamp=%s now=%s",
+			job.ID,
+			formatEasternTime(job.ScheduleEndTimestamp),
+			formatEasternTime(jobNow),
+		)
+		return nil // skip
+	}
 
-				existingCandidates, err := service.InferenceQueryRepositoryInterface.ListCandidatesByJob(job.ID)
-				if err != nil && err.Error() != apiError.MissingRecord {
-					log.Println("[Ingestion service] cannot list ingestion candidates:", err)
-					return nil // skip
-				}
-				log.Printf("[Ingestion service] loaded existing candidates job_id=%s count=%d", job.ID, len(existingCandidates))
+	existingCandidates, err := service.InferenceQueryRepositoryInterface.ListCandidatesByJob(job.ID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		log.Println("[Ingestion service] cannot list ingestion candidates:", err)
+		return nil // skip
+	}
+	log.Printf("[Ingestion service] loaded existing candidates job_id=%s count=%d", job.ID, len(existingCandidates))
 
-				existingCandidateMap := map[string]entity.InferenceIngestionCandidate{}
-				for _, candidate := range existingCandidates {
-					existingCandidateMap[candidate.StudyInstanceUID] = candidate
-				}
+	existingCandidateMap := map[string]entity.InferenceIngestionCandidate{}
+	for _, candidate := range existingCandidates {
+		existingCandidateMap[candidate.StudyInstanceUID] = candidate
+	}
 
-				/// step 3: get studies by dicom modality (with filter) - Can have two query windows for midnight boundary
-				studies := make([]orthancAPITypes.QueryModalityStudyAnswersResponse, 0)
-				seenStudyWindowUIDs := map[string]struct{}{}
-				for index, queryWindow := range queryWindows {
-					log.Printf("[Ingestion service] querying studies job_id=%s query_index=%d query_total=%d study_date=%s study_time=%s recent_window_minutes=%d stability_minutes=%d missing_polls_threshold=%d",
-						job.ID,
-						index+1,
-						len(queryWindows),
-						queryWindow.StudyDate,
-						queryWindow.StudyTime,
-						recentWindowMinutes,
-						stabilityMinutes,
-						missingPollsThreshold,
-					)
-					queryStudies, _, err := service.OrthancQueryServiceInterface.FindModalityStudies(ctx, orthancServiceTypes.FindModalityStudies{
-						TenantID:                      job.TenantID,
-						ModalityID:                    job.DICOMModality,
-						AccessionNumber:               "",
-						InstitutionName:               "",
-						ModalitiesInStudy:             strings.Join(job.Modalities, `\\`), // e.g XA\\US
-						NumberOfStudyRelatedSeries:    "",
-						NumberOfStudyRelatedInstances: "",
-						PatientBirthDate:              "",
-						PatientID:                     "",
-						PatientName:                   "",
-						PatientSex:                    "",
-						ReferringPhysicianName:        "",
-						RequestingPhysician:           "",
-						StudyDate:                     queryWindow.StudyDate,
-						StudyDescription:              "",
-						StudyID:                       "",
-						StudyInstanceUID:              "",
-						StudyTime:                     queryWindow.StudyTime,
-						UserID:                        nil,
-					})
-					if err != nil {
-						log.Println("[Ingestion service] cannot pull studies:", err)
-						return nil // skip
-					}
-					log.Printf("[Ingestion service] c-find returned studies job_id=%s query_index=%d count=%d",
-						job.ID,
-						index+1,
-						len(queryStudies),
-					)
-					for _, study := range queryStudies {
-						if _, seen := seenStudyWindowUIDs[study.StudyInstanceUID]; seen {
-							continue
-						}
-						seenStudyWindowUIDs[study.StudyInstanceUID] = struct{}{}
-						studies = append(studies, study)
-					}
-				}
-				log.Printf("[Ingestion service] c-find unique studies job_id=%s count=%d", job.ID, len(studies))
-				log.Printf("[Ingestion service] c-find unique studies job_id=%s studies=%v", job.ID, studies)
+	/// step 3: get studies by dicom modality (with filter) - Can have two query windows for midnight boundary
+	studies, err := service.findIngestionStudiesWithCache(ctx, job, queryWindows, recentWindowMinutes, stabilityMinutes, missingPollsThreshold, cFindCache)
+	if err != nil {
+		log.Println("[Ingestion service] cannot pull studies:", err)
+		return nil // skip
+	}
+	log.Printf("[Ingestion service] c-find unique studies job_id=%s count=%d", job.ID, len(studies))
+	log.Printf("[Ingestion service] c-find unique studies job_id=%s studies=%v", job.ID, studies)
 
-				windowStart := jobNow.Add(-time.Duration(recentWindowMinutes) * time.Minute)
-				filteredStudies, skippedStudies := filterStudiesByRecentWindow(studies, windowStart, jobNow)
-				if skippedStudies > 0 {
-					log.Printf("[Ingestion service] excluded studies outside recent window job_id=%s skipped=%d window_start=%s window_end=%s",
-						job.ID,
-						skippedStudies,
-						formatEasternTime(windowStart),
-						formatEasternTime(jobNow),
-					)
-				}
-				studies = filteredStudies
-				log.Printf("[Ingestion service] studies after local recent-window filter job_id=%s count=%d", job.ID, len(studies))
+	windowStart := jobNow.Add(-time.Duration(recentWindowMinutes) * time.Minute)
+	filteredStudies, skippedStudies := filterStudiesByRecentWindow(studies, windowStart, jobNow)
+	if skippedStudies > 0 {
+		log.Printf("[Ingestion service] excluded studies outside recent window job_id=%s skipped=%d window_start=%s window_end=%s",
+			job.ID,
+			skippedStudies,
+			formatEasternTime(windowStart),
+			formatEasternTime(jobNow),
+		)
+	}
+	studies = filteredStudies
+	log.Printf("[Ingestion service] studies after local recent-window filter job_id=%s count=%d", job.ID, len(studies))
 
-				seenStudyUIDs := map[string]struct{}{}
-				for _, study := range studies {
-					select {
-					case <-ctx.Done():
-						return nil // skip
-					default:
-					}
+	seenStudyUIDs := map[string]struct{}{}
+	for _, study := range studies {
+		select {
+		case <-ctx.Done():
+			return nil // skip
+		default:
+		}
 
-					seenStudyUIDs[study.StudyInstanceUID] = struct{}{}
+		seenStudyUIDs[study.StudyInstanceUID] = struct{}{}
 
-					studyDate := nullableString(study.StudyDate)
-					studyTime := nullableString(study.StudyTime)
-					modalitiesInStudy := nullableString(study.ModalitiesInStudy)
-					patientID := nullableString(study.PatientID)
-					accessionNumber := nullableString(study.AccessionNumber)
+		studyDate := nullableString(study.StudyDate)
+		studyTime := nullableString(study.StudyTime)
+		modalitiesInStudy := nullableString(study.ModalitiesInStudy)
+		patientID := nullableString(study.PatientID)
+		accessionNumber := nullableString(study.AccessionNumber)
 
-					seriesCount, parseSeriesErr := parseNullableInt(study.NumberOfStudyRelatedSeries)
-					if parseSeriesErr != nil {
-						log.Printf("[Ingestion service] cannot parse series count for study %s: %v", study.StudyInstanceUID, parseSeriesErr)
-					}
+		seriesCount, parseSeriesErr := parseNullableInt(study.NumberOfStudyRelatedSeries)
+		if parseSeriesErr != nil {
+			log.Printf("[Ingestion service] cannot parse series count for study %s: %v", study.StudyInstanceUID, parseSeriesErr)
+		}
 
-					instanceCount, parseInstanceErr := parseNullableInt(study.NumberOfStudyRelatedInstances)
-					if parseInstanceErr != nil {
-						log.Printf("[Ingestion service] cannot parse instance count for study %s: %v", study.StudyInstanceUID, parseInstanceErr)
-					}
+		instanceCount, parseInstanceErr := parseNullableInt(study.NumberOfStudyRelatedInstances)
+		if parseInstanceErr != nil {
+			log.Printf("[Ingestion service] cannot parse instance count for study %s: %v", study.StudyInstanceUID, parseInstanceErr)
+		}
 
-					priorCandidate, hasPriorCandidate := existingCandidateMap[study.StudyInstanceUID]
-					log.Printf("[Ingestion service] processing study job_id=%s study_instance_uid=%s study_date=%s study_time=%s modalities_in_study=%s series_count=%s instance_count=%s has_prior_candidate=%t prior_status=%s",
-						job.ID,
-						study.StudyInstanceUID,
-						nullableStringLogValue(studyDate),
-						nullableStringLogValue(studyTime),
-						nullableStringLogValue(modalitiesInStudy),
-						nullableIntLogValue(seriesCount),
-						nullableIntLogValue(instanceCount),
-						hasPriorCandidate,
-						candidateStatusLogValue(priorCandidate.Status, hasPriorCandidate),
-					)
+		priorCandidate, hasPriorCandidate := existingCandidateMap[study.StudyInstanceUID]
+		log.Printf("[Ingestion service] processing study job_id=%s study_instance_uid=%s study_date=%s study_time=%s modalities_in_study=%s series_count=%s instance_count=%s has_prior_candidate=%t prior_status=%s",
+			job.ID,
+			study.StudyInstanceUID,
+			nullableStringLogValue(studyDate),
+			nullableStringLogValue(studyTime),
+			nullableStringLogValue(modalitiesInStudy),
+			nullableIntLogValue(seriesCount),
+			nullableIntLogValue(instanceCount),
+			hasPriorCandidate,
+			candidateStatusLogValue(priorCandidate.Status, hasPriorCandidate),
+		)
 
-					err = service.InferenceCommandRepositoryInterface.UpsertIngestionCandidate(repositoryTypes.UpsertIngestionCandidate{
-						ID:                generateID(),
-						TenantID:          job.TenantID,
-						IngestionJobID:    job.ID,
-						StudyInstanceUID:  study.StudyInstanceUID,
-						StudyDate:         studyDate,
-						StudyTime:         studyTime,
-						ModalitiesInStudy: modalitiesInStudy,
-						PatientID:         patientID,
-						AccessionNumber:   accessionNumber,
-						SeriesCount:       seriesCount,
-						InstanceCount:     instanceCount,
-					})
-					if err != nil {
-						log.Println("[Ingestion service] cannot upsert ingestion candidate:", err)
-						continue
-					}
+		err = service.InferenceCommandRepositoryInterface.UpsertIngestionCandidate(repositoryTypes.UpsertIngestionCandidate{
+			ID:                generateID(),
+			TenantID:          job.TenantID,
+			IngestionJobID:    job.ID,
+			StudyInstanceUID:  study.StudyInstanceUID,
+			StudyDate:         studyDate,
+			StudyTime:         studyTime,
+			ModalitiesInStudy: modalitiesInStudy,
+			PatientID:         patientID,
+			AccessionNumber:   accessionNumber,
+			SeriesCount:       seriesCount,
+			InstanceCount:     instanceCount,
+		})
+		if err != nil {
+			log.Println("[Ingestion service] cannot upsert ingestion candidate:", err)
+			continue
+		}
 
-					if hasPriorCandidate &&
-						candidateCountsChanged(priorCandidate.SeriesCount, seriesCount, priorCandidate.InstanceCount, instanceCount) &&
-						shouldMarkCandidateGrowing(priorCandidate.Status) {
-						log.Printf("[Ingestion service] candidate growing job_id=%s candidate_id=%s study_instance_uid=%s previous_series_count=%s new_series_count=%s previous_instance_count=%s new_instance_count=%s previous_status=%s",
-							job.ID,
-							priorCandidate.ID,
-							study.StudyInstanceUID,
-							nullableIntLogValue(priorCandidate.SeriesCount),
-							nullableIntLogValue(seriesCount),
-							nullableIntLogValue(priorCandidate.InstanceCount),
-							nullableIntLogValue(instanceCount),
-							priorCandidate.Status,
-						)
-						err = service.InferenceCommandRepositoryInterface.UpdateCandidateStatus(priorCandidate.ID, entity.InferenceIngestionCandidateStatusGrowing)
-						if err != nil {
-							log.Println("[Ingestion service] cannot update ingestion candidate status to growing:", err)
-						}
-					}
-				}
+		if hasPriorCandidate &&
+			candidateCountsChanged(priorCandidate.SeriesCount, seriesCount, priorCandidate.InstanceCount, instanceCount) &&
+			shouldMarkCandidateGrowing(priorCandidate.Status) {
+			log.Printf("[Ingestion service] candidate growing job_id=%s candidate_id=%s study_instance_uid=%s previous_series_count=%s new_series_count=%s previous_instance_count=%s new_instance_count=%s previous_status=%s",
+				job.ID,
+				priorCandidate.ID,
+				study.StudyInstanceUID,
+				nullableIntLogValue(priorCandidate.SeriesCount),
+				nullableIntLogValue(seriesCount),
+				nullableIntLogValue(priorCandidate.InstanceCount),
+				nullableIntLogValue(instanceCount),
+				priorCandidate.Status,
+			)
+			err = service.InferenceCommandRepositoryInterface.UpdateCandidateStatus(priorCandidate.ID, entity.InferenceIngestionCandidateStatusGrowing)
+			if err != nil {
+				log.Println("[Ingestion service] cannot update ingestion candidate status to growing:", err)
+			}
+		}
+	}
 
-				// Find candidates that are missing from the current poll
-				for _, candidate := range existingCandidates {
-					if _, seen := seenStudyUIDs[candidate.StudyInstanceUID]; seen {
-						continue
-					}
+	// Find candidates that are missing from the current poll
+	for _, candidate := range existingCandidates {
+		if _, seen := seenStudyUIDs[candidate.StudyInstanceUID]; seen {
+			continue
+		}
 
-					if !shouldTrackCandidateMissing(candidate.Status) {
-						continue
-					}
+		if !shouldTrackCandidateMissing(candidate.Status) {
+			continue
+		}
 
-					err = service.InferenceCommandRepositoryInterface.IncrementCandidateMissingPolls(candidate.ID)
-					if err != nil {
-						log.Println("[Ingestion service] cannot increment ingestion candidate missing polls:", err)
-						continue
-					}
-					log.Printf("[Ingestion service] candidate missing from current poll job_id=%s candidate_id=%s study_instance_uid=%s new_missing_polls=%d threshold=%d current_status=%s",
-						job.ID,
-						candidate.ID,
-						candidate.StudyInstanceUID,
-						candidate.MissingPolls+1,
-						missingPollsThreshold,
-						candidate.Status,
-					)
+		err = service.InferenceCommandRepositoryInterface.IncrementCandidateMissingPolls(candidate.ID)
+		if err != nil {
+			log.Println("[Ingestion service] cannot increment ingestion candidate missing polls:", err)
+			continue
+		}
+		log.Printf("[Ingestion service] candidate missing from current poll job_id=%s candidate_id=%s study_instance_uid=%s new_missing_polls=%d threshold=%d current_status=%s",
+			job.ID,
+			candidate.ID,
+			candidate.StudyInstanceUID,
+			candidate.MissingPolls+1,
+			missingPollsThreshold,
+			candidate.Status,
+		)
 
-					if candidate.MissingPolls+1 >= missingPollsThreshold {
-						log.Printf("[Ingestion service] candidate disappeared job_id=%s candidate_id=%s study_instance_uid=%s missing_polls=%d threshold=%d",
-							job.ID,
-							candidate.ID,
-							candidate.StudyInstanceUID,
-							candidate.MissingPolls+1,
-							missingPollsThreshold,
-						)
-						err = service.InferenceCommandRepositoryInterface.MarkCandidateDisappeared(candidate.ID)
-						if err != nil {
-							log.Println("[Ingestion service] cannot mark ingestion candidate disappeared:", err)
-						}
-					}
-				}
+		if candidate.MissingPolls+1 >= missingPollsThreshold {
+			log.Printf("[Ingestion service] candidate disappeared job_id=%s candidate_id=%s study_instance_uid=%s missing_polls=%d threshold=%d",
+				job.ID,
+				candidate.ID,
+				candidate.StudyInstanceUID,
+				candidate.MissingPolls+1,
+				missingPollsThreshold,
+			)
+			err = service.InferenceCommandRepositoryInterface.MarkCandidateDisappeared(candidate.ID)
+			if err != nil {
+				log.Println("[Ingestion service] cannot mark ingestion candidate disappeared:", err)
+			}
+		}
+	}
 
-				// Find candidates that are stable
-				refreshedCandidates, err := service.InferenceQueryRepositoryInterface.ListCandidatesByJob(job.ID)
-				if err != nil && err.Error() != apiError.MissingRecord {
-					log.Println("[Ingestion service] cannot refresh ingestion candidates:", err)
-					return nil // skip
-				}
+	// Find candidates that are stable
+	refreshedCandidates, err := service.InferenceQueryRepositoryInterface.ListCandidatesByJob(job.ID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		log.Println("[Ingestion service] cannot refresh ingestion candidates:", err)
+		return nil // skip
+	}
 
-				stableBefore := jobNow.Add(-time.Duration(stabilityMinutes) * time.Minute)
-				for _, candidate := range refreshedCandidates {
-					if !shouldMarkCandidateStable(candidate.Status) {
-						continue
-					}
+	stableBefore := jobNow.Add(-time.Duration(stabilityMinutes) * time.Minute)
+	for _, candidate := range refreshedCandidates {
+		if !shouldMarkCandidateStable(candidate.Status) {
+			continue
+		}
 
-					if candidate.MissingPolls > 0 {
-						continue
-					}
+		if candidate.MissingPolls > 0 {
+			continue
+		}
 
-					if candidate.LastChangedAt.After(stableBefore) {
-						continue
-					}
+		if candidate.LastChangedAt.After(stableBefore) {
+			continue
+		}
 
-					log.Printf("[Ingestion service] candidate stable job_id=%s candidate_id=%s study_instance_uid=%s last_changed_at=%s stable_before=%s series_count=%s instance_count=%s previous_status=%s",
-						job.ID,
-						candidate.ID,
-						candidate.StudyInstanceUID,
-						formatEasternTime(candidate.LastChangedAt),
-						formatEasternTime(stableBefore),
-						nullableIntLogValue(candidate.SeriesCount),
-						nullableIntLogValue(candidate.InstanceCount),
-						candidate.Status,
-					)
-					err = service.InferenceCommandRepositoryInterface.UpdateCandidateStatus(candidate.ID, entity.InferenceIngestionCandidateStatusStable)
-					if err != nil {
-						log.Println("[Ingestion service] cannot update ingestion candidate status to stable:", err)
-					}
-				}
+		log.Printf("[Ingestion service] candidate stable job_id=%s candidate_id=%s study_instance_uid=%s last_changed_at=%s stable_before=%s series_count=%s instance_count=%s previous_status=%s",
+			job.ID,
+			candidate.ID,
+			candidate.StudyInstanceUID,
+			formatEasternTime(candidate.LastChangedAt),
+			formatEasternTime(stableBefore),
+			nullableIntLogValue(candidate.SeriesCount),
+			nullableIntLogValue(candidate.InstanceCount),
+			candidate.Status,
+		)
+		err = service.InferenceCommandRepositoryInterface.UpdateCandidateStatus(candidate.ID, entity.InferenceIngestionCandidateStatusStable)
+		if err != nil {
+			log.Println("[Ingestion service] cannot update ingestion candidate status to stable:", err)
+		}
+	}
 
-				readyCandidates, err := service.InferenceQueryRepositoryInterface.ListCandidatesReadyForRetrieval(job.ID, stableBefore)
-				if err != nil && err.Error() != apiError.MissingRecord {
-					log.Println("[Ingestion service] cannot list stable candidates ready for retrieval:", err)
-					return nil // skip
-				}
-				log.Printf("[Ingestion service] ready candidates for retrieval job_id=%s count=%d stable_before=%s",
-					job.ID,
-					len(readyCandidates),
-					formatEasternTime(stableBefore),
-				)
+	readyCandidates, err := service.InferenceQueryRepositoryInterface.ListCandidatesReadyForRetrieval(job.ID, stableBefore)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		log.Println("[Ingestion service] cannot list stable candidates ready for retrieval:", err)
+		return nil // skip
+	}
+	log.Printf("[Ingestion service] ready candidates for retrieval job_id=%s count=%d stable_before=%s",
+		job.ID,
+		len(readyCandidates),
+		formatEasternTime(stableBefore),
+	)
 
-				for _, candidate := range readyCandidates {
-					isLocal, err := service.isStudyPresentLocally(ctx, candidate.StudyInstanceUID)
-					if err != nil {
-						log.Println("[Ingestion service] cannot determine if stable ingestion candidate is already local:", err)
-						continue
-					}
+	for _, candidate := range readyCandidates {
+		isLocal, err := service.isStudyPresentLocally(ctx, candidate.StudyInstanceUID)
+		if err != nil {
+			log.Println("[Ingestion service] cannot determine if stable ingestion candidate is already local:", err)
+			continue
+		}
 
-					if isLocal {
-						err = service.InferenceCommandRepositoryInterface.MarkCandidateRetrievedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
-							ID:                 candidate.ID,
-							LastRetrievalState: stringPointer(string(candidateRetrievalOutcomeLocal)),
-						})
-						if err != nil {
-							log.Println("[Ingestion service] cannot mark already-local ingestion candidate retrieved:", err)
-						}
-						continue
-					}
+		if isLocal {
+			err = service.InferenceCommandRepositoryInterface.MarkCandidateRetrievedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
+				ID:                 candidate.ID,
+				LastRetrievalState: stringPointer(string(candidateRetrievalOutcomeLocal)),
+			})
+			if err != nil {
+				log.Println("[Ingestion service] cannot mark already-local ingestion candidate retrieved:", err)
+			}
+			continue
+		}
 
-					err = service.InferenceCommandRepositoryInterface.MarkCandidateRetrievalQueued(candidate.ID)
-					if err != nil {
-						log.Println("[Ingestion service] cannot mark ingestion candidate retrieval queued:", err)
-						continue
-					}
+		err = service.InferenceCommandRepositoryInterface.MarkCandidateRetrievalQueued(candidate.ID)
+		if err != nil {
+			log.Println("[Ingestion service] cannot mark ingestion candidate retrieval queued:", err)
+			continue
+		}
 
-					retrievalResult, err := service.retrieveStableCandidate(ctx, job, candidate)
-					if err != nil {
-						log.Println("[Ingestion service] cannot retrieve stable ingestion candidate:", err)
-						markErr := service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
-							ID:                 candidate.ID,
-							LastRetrievalState: stringPointer("error"),
-							LastRetrievalError: stringPointer(err.Error()),
-						})
-						if markErr != nil {
-							log.Println("[Ingestion service] cannot persist retrieval error for ingestion candidate:", markErr)
-						}
-						continue
-					}
+		retrievalResult, err := service.retrieveStableCandidate(ctx, job, candidate)
+		if err != nil {
+			log.Println("[Ingestion service] cannot retrieve stable ingestion candidate:", err)
+			markErr := service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
+				ID:                 candidate.ID,
+				LastRetrievalState: stringPointer("error"),
+				LastRetrievalError: stringPointer(err.Error()),
+			})
+			if markErr != nil {
+				log.Println("[Ingestion service] cannot persist retrieval error for ingestion candidate:", markErr)
+			}
+			continue
+		}
 
-					retrievalState := stringPointer(string(retrievalResult.Outcome))
-					switch retrievalResult.Outcome {
-					case candidateRetrievalOutcomeLocal, candidateRetrievalOutcomeSuccess:
-						err = service.InferenceCommandRepositoryInterface.MarkCandidateRetrievedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
-							ID:                        candidate.ID,
-							OrthancJobIDs:             retrievalResult.OrthancJobIDs,
-							LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
-							LastRetrievalError:        retrievalResult.LastRetrievalError,
-							LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
-						})
-						if err != nil {
-							log.Println("[Ingestion service] cannot mark ingestion candidate retrieved:", err)
-						}
-					case candidateRetrievalOutcomeFailure:
-						err = service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
-							ID:                        candidate.ID,
-							OrthancJobIDs:             retrievalResult.OrthancJobIDs,
-							LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
-							LastRetrievalError:        coalesceStringPointer(retrievalResult.LastRetrievalError, stringPointer("Orthanc retrieval failed")),
-							LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
-						})
-						if err != nil {
-							log.Println("[Ingestion service] cannot mark ingestion candidate failed:", err)
-						}
-					case candidateRetrievalOutcomeTimeout:
-						err = service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
-							ID:                        candidate.ID,
-							OrthancJobIDs:             retrievalResult.OrthancJobIDs,
-							LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
-							LastRetrievalError:        coalesceStringPointer(retrievalResult.LastRetrievalError, stringPointer("Orthanc retrieval timed out")),
-							LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
-						})
-						if err != nil {
-							log.Println("[Ingestion service] cannot persist retrieval timeout for ingestion candidate:", err)
-						}
-					}
-				}
+		retrievalState := stringPointer(string(retrievalResult.Outcome))
+		switch retrievalResult.Outcome {
+		case candidateRetrievalOutcomeLocal, candidateRetrievalOutcomeSuccess:
+			err = service.InferenceCommandRepositoryInterface.MarkCandidateRetrievedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
+				ID:                        candidate.ID,
+				OrthancJobIDs:             retrievalResult.OrthancJobIDs,
+				LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
+				LastRetrievalError:        retrievalResult.LastRetrievalError,
+				LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
+			})
+			if err != nil {
+				log.Println("[Ingestion service] cannot mark ingestion candidate retrieved:", err)
+			}
+		case candidateRetrievalOutcomeFailure:
+			err = service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
+				ID:                        candidate.ID,
+				OrthancJobIDs:             retrievalResult.OrthancJobIDs,
+				LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
+				LastRetrievalError:        coalesceStringPointer(retrievalResult.LastRetrievalError, stringPointer("Orthanc retrieval failed")),
+				LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
+			})
+			if err != nil {
+				log.Println("[Ingestion service] cannot mark ingestion candidate failed:", err)
+			}
+		case candidateRetrievalOutcomeTimeout:
+			err = service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
+				ID:                        candidate.ID,
+				OrthancJobIDs:             retrievalResult.OrthancJobIDs,
+				LastRetrievalState:        coalesceStringPointer(retrievalResult.LastRetrievalState, retrievalState),
+				LastRetrievalError:        coalesceStringPointer(retrievalResult.LastRetrievalError, stringPointer("Orthanc retrieval timed out")),
+				LastRetrievalErrorDetails: retrievalResult.LastRetrievalErrorDetails,
+			})
+			if err != nil {
+				log.Println("[Ingestion service] cannot persist retrieval timeout for ingestion candidate:", err)
+			}
+		}
+	}
 
-				/// step 4: update job last execution time
-				_ = service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionJobLastExecutedAt(job.ID)
-				log.Printf("[Ingestion service] finished job_id=%s seen_studies=%d refreshed_candidates=%d ready_candidates=%d",
-					job.ID,
-					len(seenStudyUIDs),
-					len(refreshedCandidates),
-					len(readyCandidates),
-				)
+	/// step 4: update job last execution time
+	_ = service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionJobLastExecutedAt(job.ID)
+	log.Printf("[Ingestion service] finished job_id=%s seen_studies=%d refreshed_candidates=%d ready_candidates=%d",
+		job.ID,
+		len(seenStudyUIDs),
+		len(refreshedCandidates),
+		len(readyCandidates),
+	)
 
 	return nil
+}
+
+func (service *InferenceCommandService) findIngestionStudiesWithCache(
+	ctx context.Context,
+	job entity.InferenceIngestionJob,
+	queryWindows []ingestionQueryWindow,
+	recentWindowMinutes uint,
+	stabilityMinutes uint,
+	missingPollsThreshold int,
+	cFindCache map[string][]orthancAPITypes.QueryModalityStudyAnswersResponse,
+) ([]orthancAPITypes.QueryModalityStudyAnswersResponse, error) {
+	studies := make([]orthancAPITypes.QueryModalityStudyAnswersResponse, 0)
+	seenStudyWindowUIDs := map[string]struct{}{}
+	modalitiesInStudy := ingestionModalitiesFilter([]string(job.Modalities))
+
+	for index, queryWindow := range queryWindows {
+		cacheKey := ingestionCFindCacheKey(job.TenantID, job.DICOMModality, modalitiesInStudy, queryWindow)
+		queryStudies, ok := cFindCache[cacheKey]
+		if ok {
+			log.Printf("[Ingestion service] c-find cache hit job_id=%s query_index=%d query_total=%d modality_id=%s modalities_in_study=%s study_date=%s study_time=%s count=%d",
+				job.ID,
+				index+1,
+				len(queryWindows),
+				job.DICOMModality,
+				modalitiesInStudy,
+				queryWindow.StudyDate,
+				queryWindow.StudyTime,
+				len(queryStudies),
+			)
+		} else {
+			log.Printf("[Ingestion service] querying studies job_id=%s query_index=%d query_total=%d modality_id=%s modalities_in_study=%s study_date=%s study_time=%s recent_window_minutes=%d stability_minutes=%d missing_polls_threshold=%d",
+				job.ID,
+				index+1,
+				len(queryWindows),
+				job.DICOMModality,
+				modalitiesInStudy,
+				queryWindow.StudyDate,
+				queryWindow.StudyTime,
+				recentWindowMinutes,
+				stabilityMinutes,
+				missingPollsThreshold,
+			)
+			var err error
+			queryStudies, _, err = service.OrthancQueryServiceInterface.FindModalityStudies(ctx, orthancServiceTypes.FindModalityStudies{
+				TenantID:                      job.TenantID,
+				ModalityID:                    job.DICOMModality,
+				AccessionNumber:               "",
+				InstitutionName:               "",
+				ModalitiesInStudy:             modalitiesInStudy,
+				NumberOfStudyRelatedSeries:    "",
+				NumberOfStudyRelatedInstances: "",
+				PatientBirthDate:              "",
+				PatientID:                     "",
+				PatientName:                   "",
+				PatientSex:                    "",
+				ReferringPhysicianName:        "",
+				RequestingPhysician:           "",
+				StudyDate:                     queryWindow.StudyDate,
+				StudyDescription:              "",
+				StudyID:                       "",
+				StudyInstanceUID:              "",
+				StudyTime:                     queryWindow.StudyTime,
+				UserID:                        nil,
+			})
+			if err != nil {
+				return nil, err
+			}
+			cFindCache[cacheKey] = queryStudies
+			log.Printf("[Ingestion service] c-find returned studies job_id=%s query_index=%d count=%d",
+				job.ID,
+				index+1,
+				len(queryStudies),
+			)
+		}
+
+		for _, study := range queryStudies {
+			if _, seen := seenStudyWindowUIDs[study.StudyInstanceUID]; seen {
+				continue
+			}
+			seenStudyWindowUIDs[study.StudyInstanceUID] = struct{}{}
+			studies = append(studies, study)
+		}
+	}
+
+	return studies, nil
+}
+
+func ingestionModalitiesFilter(modalities []string) string {
+	normalizedModalities := make([]string, 0, len(modalities))
+	for _, modality := range modalities {
+		modality = strings.TrimSpace(modality)
+		if modality == "" {
+			continue
+		}
+
+		normalizedModalities = append(normalizedModalities, modality)
+	}
+
+	slices.Sort(normalizedModalities)
+	return strings.Join(normalizedModalities, `\\`)
+}
+
+func ingestionCFindCacheKey(tenantID, modalityID, modalitiesInStudy string, queryWindow ingestionQueryWindow) string {
+	return strings.Join([]string{
+		tenantID,
+		modalityID,
+		modalitiesInStudy,
+		queryWindow.StudyDate,
+		queryWindow.StudyTime,
+	}, "\x1f")
 }
 
 func nullableString(value string) *string {
@@ -994,10 +1059,10 @@ func (service *InferenceCommandService) waitForCandidateRetrieval(ctx context.Co
 
 		if hasOrthancFailure(jobs) {
 			return candidateRetrievalResult{
-				Outcome:                  candidateRetrievalOutcomeFailure,
-				OrthancJobIDs:            orthancJobIDs,
-				LastRetrievalState:       stringPointer(string(candidateRetrievalOutcomeFailure)),
-				LastRetrievalError:       orthancFailureDescription(jobs),
+				Outcome:                   candidateRetrievalOutcomeFailure,
+				OrthancJobIDs:             orthancJobIDs,
+				LastRetrievalState:        stringPointer(string(candidateRetrievalOutcomeFailure)),
+				LastRetrievalError:        orthancFailureDescription(jobs),
 				LastRetrievalErrorDetails: marshalOrthancJobs(failedOrthancJobs(jobs)),
 			}, nil
 		}
@@ -1014,19 +1079,19 @@ func (service *InferenceCommandService) waitForCandidateRetrieval(ctx context.Co
 			}
 
 			return candidateRetrievalResult{
-				Outcome:                  outcome,
-				OrthancJobIDs:            orthancJobIDs,
-				LastRetrievalState:       stringPointer(string(outcome)),
+				Outcome:                   outcome,
+				OrthancJobIDs:             orthancJobIDs,
+				LastRetrievalState:        stringPointer(string(outcome)),
 				LastRetrievalErrorDetails: marshalOrthancJobs(jobs),
 			}, nil
 		}
 
 		if time.Now().After(deadline) {
 			return candidateRetrievalResult{
-				Outcome:                  candidateRetrievalOutcomeTimeout,
-				OrthancJobIDs:            orthancJobIDs,
-				LastRetrievalState:       stringPointer(string(candidateRetrievalOutcomeTimeout)),
-				LastRetrievalError:       stringPointer("Orthanc retrieval timed out"),
+				Outcome:                   candidateRetrievalOutcomeTimeout,
+				OrthancJobIDs:             orthancJobIDs,
+				LastRetrievalState:        stringPointer(string(candidateRetrievalOutcomeTimeout)),
+				LastRetrievalError:        stringPointer("Orthanc retrieval timed out"),
 				LastRetrievalErrorDetails: marshalOrthancJobs(jobs),
 			}, nil
 		}
