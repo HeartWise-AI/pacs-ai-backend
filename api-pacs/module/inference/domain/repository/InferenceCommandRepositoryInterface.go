@@ -44,14 +44,22 @@ type InferenceCommandRepositoryInterface interface {
 	UpsertIngestionCandidate(data types.UpsertIngestionCandidate) error
 	// UpdateCandidateStatus updates the status of an ingestion candidate
 	UpdateCandidateStatus(ID string, status entity.InferenceIngestionCandidateStatus) error
+	// SaveCandidateOrthancJobIDs stores Orthanc job IDs for an ingestion candidate
+	SaveCandidateOrthancJobIDs(ID string, orthancJobIDs []string) error
+	// UpdateCandidateRetrievalState stores retrieval state and error details for an ingestion candidate
+	UpdateCandidateRetrievalState(data types.UpdateCandidateRetrievalState) error
 	// MarkCandidateRetrievalQueued marks an ingestion candidate as retrieval queued
 	MarkCandidateRetrievalQueued(ID string) error
 	// MarkCandidateRetrieved marks an ingestion candidate as retrieved
 	MarkCandidateRetrieved(ID string) error
+	// MarkCandidateRetrievedWithContext marks an ingestion candidate as retrieved with retrieval context
+	MarkCandidateRetrievedWithContext(data types.UpdateCandidateRetrievalState) error
 	// MarkCandidateDisappeared marks an ingestion candidate as disappeared
 	MarkCandidateDisappeared(ID string) error
 	// MarkCandidateFailed marks an ingestion candidate as failed
 	MarkCandidateFailed(ID string) error
+	// MarkCandidateFailedWithContext marks an ingestion candidate as failed with retrieval context
+	MarkCandidateFailedWithContext(data types.UpdateCandidateRetrievalState) error
 	// IncrementCandidateMissingPolls increments missing polls of an ingestion candidate
 	IncrementCandidateMissingPolls(ID string) error
 	// UpsertModelFeedback upserts model feedback

@@ -22,6 +22,8 @@ type InferenceQueryServiceInterface interface {
 	GetInferenceAvailableModels(ctx context.Context, tenantID string) ([]types.GetInferenceAvailableModelResult, error)
 	// GetInferenceIngestionJobs gets the inference ingestion jobs
 	GetInferenceIngestionJobs(ctx context.Context, tenantID string) ([]entity.InferenceIngestionJob, error)
+	// GetInferenceIngestionCandidates gets ingestion candidates for debugging and operations
+	GetInferenceIngestionCandidates(ctx context.Context, data types.GetInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error)
 	// GetModelFeedBackByUser gets the model feedback by user
 	GetModelFeedBackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (types.GetModelFeedbackResult, error)
 	// GetOnboardingModelQuestionnaireAnswers gets the onboarding model questionnaire answers

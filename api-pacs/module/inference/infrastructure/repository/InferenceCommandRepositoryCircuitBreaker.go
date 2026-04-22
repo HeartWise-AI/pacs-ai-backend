@@ -477,6 +477,60 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateCandidateStatu
 	}
 }
 
+// SaveCandidateOrthancJobIDs is the decorator for the inference command repository to store Orthanc job IDs
+func (repository *InferenceCommandRepositoryCircuitBreaker) SaveCandidateOrthancJobIDs(ID string, orthancJobIDs []string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("save_candidate_orthanc_job_ids", config.Settings())
+	errors := hystrix.Go("save_candidate_orthanc_job_ids", func() error {
+		err := repository.InferenceCommandRepositoryInterface.SaveCandidateOrthancJobIDs(ID, orthancJobIDs)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// UpdateCandidateRetrievalState is the decorator for the inference command repository to store retrieval state
+func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateCandidateRetrievalState(data types.UpdateCandidateRetrievalState) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("update_candidate_retrieval_state", config.Settings())
+	errors := hystrix.Go("update_candidate_retrieval_state", func() error {
+		err := repository.InferenceCommandRepositoryInterface.UpdateCandidateRetrievalState(data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // UpdateInferenceModelContainerID is the decorator for the inference command repository to update the container ID of an inference model
 func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceModelContainerID(ctx context.Context, ID, containerID string) error {
 	output := make(chan bool, 1)
@@ -558,6 +612,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) MarkCandidateRetriev
 	}
 }
 
+// MarkCandidateRetrievedWithContext is the decorator for the inference command repository to mark ingestion candidate retrieved with retrieval context
+func (repository *InferenceCommandRepositoryCircuitBreaker) MarkCandidateRetrievedWithContext(data types.UpdateCandidateRetrievalState) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("mark_candidate_retrieved_with_context", config.Settings())
+	errors := hystrix.Go("mark_candidate_retrieved_with_context", func() error {
+		err := repository.InferenceCommandRepositoryInterface.MarkCandidateRetrievedWithContext(data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // MarkCandidateDisappeared is the decorator for the inference command repository to mark ingestion candidate disappeared
 func (repository *InferenceCommandRepositoryCircuitBreaker) MarkCandidateDisappeared(ID string) error {
 	output := make(chan bool, 1)
@@ -593,6 +674,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) MarkCandidateFailed(
 	hystrix.ConfigureCommand("mark_candidate_failed", config.Settings())
 	errors := hystrix.Go("mark_candidate_failed", func() error {
 		err := repository.InferenceCommandRepositoryInterface.MarkCandidateFailed(ID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// MarkCandidateFailedWithContext is the decorator for the inference command repository to mark ingestion candidate failed with retrieval context
+func (repository *InferenceCommandRepositoryCircuitBreaker) MarkCandidateFailedWithContext(data types.UpdateCandidateRetrievalState) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("mark_candidate_failed_with_context", config.Settings())
+	errors := hystrix.Go("mark_candidate_failed_with_context", func() error {
+		err := repository.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(data)
 		if err != nil {
 			errChan <- err
 			return nil
