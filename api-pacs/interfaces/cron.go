@@ -29,6 +29,24 @@ func RunInferenceIngestionServiceHandler() {
 	}
 }
 
+// RunInferenceIngestionRetrievalWorkerHandler run inference ingestion retrieval worker handler
+func RunInferenceIngestionRetrievalWorkerHandler() {
+	inferenceCommandService := InferenceCommandServiceDI()
+	interval := inferenceIngestionRetrievalWorkerInterval()
+
+	log.Printf("[Ingestion retrieval worker] interval configured minutes=%d", int(interval.Minutes()))
+
+	tick := time.Tick(interval)
+	for range tick {
+		err := inferenceCommandService.ExecuteInferenceIngestionRetrievalWorker(context.TODO())
+		if err == nil || err.Error() == apiError.MissingRecord {
+			log.Println("[Ingestion retrieval worker] executed queued retrieval worker")
+		} else {
+			log.Println("[Ingestion retrieval worker] error while executing queued retrieval worker:", err)
+		}
+	}
+}
+
 func inferenceIngestionRunnerInterval() time.Duration {
 	const defaultIntervalMinutes = 1
 
@@ -45,6 +63,25 @@ func inferenceIngestionRunnerInterval() time.Duration {
 	}
 
 	log.Printf("[Ingestion] using INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES=%d", minutes)
+	return time.Duration(minutes) * time.Minute
+}
+
+func inferenceIngestionRetrievalWorkerInterval() time.Duration {
+	const defaultIntervalMinutes = 1
+
+	value := strings.TrimSpace(os.Getenv("INFERENCE_INGESTION_RETRIEVAL_WORKER_INTERVAL_MINUTES"))
+	if value == "" {
+		log.Printf("[Ingestion retrieval worker] INFERENCE_INGESTION_RETRIEVAL_WORKER_INTERVAL_MINUTES not set, using default minutes=%d", defaultIntervalMinutes)
+		return defaultIntervalMinutes * time.Minute
+	}
+
+	minutes, err := strconv.Atoi(value)
+	if err != nil || minutes <= 0 {
+		log.Printf("[Ingestion retrieval worker] invalid INFERENCE_INGESTION_RETRIEVAL_WORKER_INTERVAL_MINUTES=%q, using default minutes=%d", value, defaultIntervalMinutes)
+		return defaultIntervalMinutes * time.Minute
+	}
+
+	log.Printf("[Ingestion retrieval worker] using INFERENCE_INGESTION_RETRIEVAL_WORKER_INTERVAL_MINUTES=%d", minutes)
 	return time.Duration(minutes) * time.Minute
 }
 

@@ -232,6 +232,33 @@ func (repository InferenceQueryRepositoryCircuitBreaker) ListCandidatesReadyForR
 	}
 }
 
+// ListCandidatesQueuedForRetrieval lists ingestion candidates queued for retrieval
+func (repository InferenceQueryRepositoryCircuitBreaker) ListCandidatesQueuedForRetrieval() ([]entity.InferenceIngestionCandidate, error) {
+	output := make(chan []entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_candidates_queued_for_retrieval", config.Settings())
+	errors := hystrix.Go("list_candidates_queued_for_retrieval", func() error {
+		candidates, err := repository.InferenceQueryRepositoryInterface.ListCandidatesQueuedForRetrieval()
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidates
+		return nil
+	}, nil)
+
+	select {
+	case candidates := <-output:
+		return candidates, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionCandidate{}, err
+	}
+}
+
 // SelectModelFeedbackByUserModelID get model feedback by model ID
 func (repository InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
 	output := make(chan entity.ModelFeedback, 1)
