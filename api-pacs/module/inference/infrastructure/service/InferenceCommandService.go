@@ -541,6 +541,16 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRetrievalWorker
 			continue
 		}
 
+		if job.Status != entity.InferenceIngestionJobStatusRunning {
+			log.Printf("[Ingestion retrieval worker] skipping queued candidate because ingestion job is not running candidate_id=%s ingestion_job_id=%s study_instance_uid=%s status=%s",
+				candidate.ID,
+				candidate.IngestionJobID,
+				candidate.StudyInstanceUID,
+				job.Status,
+			)
+			continue
+		}
+
 		err = service.retrieveQueuedIngestionCandidate(ctx, job, candidate)
 		if err != nil {
 			log.Printf("[Ingestion retrieval worker] cannot process queued candidate candidate_id=%s study_instance_uid=%s err=%v",
