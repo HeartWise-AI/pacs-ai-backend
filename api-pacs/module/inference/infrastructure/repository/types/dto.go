@@ -55,7 +55,11 @@ type CreateInferenceIngestionJob struct {
 	ModelName              string
 	ModelVersion           string
 	Modalities             []string
-	IntervalInMinutes      uint
+	StabilityMinutes       uint
+	RecentWindowMinutes    uint
+	MissingPollsThreshold  uint
+	StudyTimeStart         *string
+	StudyTimeEnd           *string
 	ScheduleStartTimestamp time.Time
 	ScheduleEndTimestamp   time.Time
 	Status                 entity.InferenceIngestionJobStatus
@@ -65,6 +69,14 @@ type GetModelFeedbackByUserModelID struct {
 	TenantID string
 	UserID   string
 	ModelID  string
+}
+
+type ListInferenceIngestionCandidates struct {
+	TenantID          string
+	IngestionJobID    *string
+	StudyInstanceUID  *string
+	Status            *entity.InferenceIngestionCandidateStatus
+	RetrievalFailures bool
 }
 
 type GetOnboardingModelQuestionnaireAnswer struct {
@@ -82,7 +94,11 @@ type UpdateInferenceModel struct {
 type UpdateInferenceIngestionJob struct {
 	ID                     string
 	Modalities             []string
-	IntervalInMinutes      uint
+	StabilityMinutes       uint
+	RecentWindowMinutes    uint
+	MissingPollsThreshold  uint
+	StudyTimeStart         *string
+	StudyTimeEnd           *string
 	ScheduleStartTimestamp time.Time
 	ScheduleEndTimestamp   time.Time
 }

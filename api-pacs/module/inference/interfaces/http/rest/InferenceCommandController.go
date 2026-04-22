@@ -167,6 +167,19 @@ func (controller *InferenceCommandController) CreateInferenceIngestionJob(w http
 		return
 	}
 
+	stabilityMinutes := resolveStabilityMinutes(request.StabilityMinutes, request.IntervalInMinutes)
+	if stabilityMinutes == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
 	err = controller.InferenceCommandServiceInterface.CreateInferenceIngestionJob(context.TODO(), serviceTypes.CreateInferenceIngestionJob{
 		TenantID:               tenantID,
 		DICOMModality:          request.DICOMModality,
@@ -175,7 +188,11 @@ func (controller *InferenceCommandController) CreateInferenceIngestionJob(w http
 		ModelName:              request.ModelName,
 		ModelVersion:           request.ModelVersion,
 		Modalities:             request.Modalities,
-		IntervalInMinutes:      request.IntervalInMinutes,
+		StabilityMinutes:       stabilityMinutes,
+		RecentWindowMinutes:    request.RecentWindowMinutes,
+		MissingPollsThreshold:  request.MissingPollsThreshold,
+		StudyTimeStart:         request.StudyTimeStart,
+		StudyTimeEnd:           request.StudyTimeEnd,
 		ScheduleStartTimestamp: request.ScheduleStartTimestamp,
 		ScheduleEndTimestamp:   request.ScheduleEndTimestamp,
 	})
@@ -184,6 +201,9 @@ func (controller *InferenceCommandController) CreateInferenceIngestionJob(w http
 		var errorMsg string
 
 		switch err.Error() {
+		case errors.InvalidPayload:
+			httpCode = http.StatusBadRequest
+			errorMsg = "Invalid payload request."
 		case errors.DatabaseError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Error occurred while saving inference ingestion job."
@@ -404,7 +424,7 @@ func (controller *InferenceCommandController) ImportInferenceIngestionJobsCSVFil
 			}
 		}
 
-		startTime, err := time.Parse("2006-01-02 15:04:05", csvJob.ScheduleStartTimestamp)
+		startTimestamp, err := parseOptionalCSVTimestamp(csvJob.ScheduleStartTimestamp)
 		if err != nil {
 			response := viewmodels.HTTPResponseVM{
 				Status:    http.StatusBadRequest,
@@ -416,7 +436,7 @@ func (controller *InferenceCommandController) ImportInferenceIngestionJobsCSVFil
 			return
 		}
 
-		endTime, err := time.Parse("2006-01-02 15:04:05", csvJob.ScheduleEndTimestamp)
+		endTimestamp, err := parseOptionalCSVTimestamp(csvJob.ScheduleEndTimestamp)
 		if err != nil {
 			response := viewmodels.HTTPResponseVM{
 				Status:    http.StatusBadRequest,
@@ -436,9 +456,13 @@ func (controller *InferenceCommandController) ImportInferenceIngestionJobsCSVFil
 			ModelName:              csvJob.ModelName,
 			ModelVersion:           csvJob.ModelVersion,
 			Modalities:             modalities,
-			IntervalInMinutes:      csvJob.IntervalInMinutes,
-			ScheduleStartTimestamp: uint64(startTime.Unix()),
-			ScheduleEndTimestamp:   uint64(endTime.Unix()),
+			StabilityMinutes:       csvJob.StabilityMinutes,
+			RecentWindowMinutes:    csvJob.RecentWindowMinutes,
+			MissingPollsThreshold:  csvJob.MissingPollsThreshold,
+			StudyTimeStart:         csvJob.StudyTimeStart,
+			StudyTimeEnd:           csvJob.StudyTimeEnd,
+			ScheduleStartTimestamp: startTimestamp,
+			ScheduleEndTimestamp:   endTimestamp,
 		})
 	}
 
@@ -1164,10 +1188,27 @@ func (controller *InferenceCommandController) UpdateInferenceIngestionJob(w http
 		return
 	}
 
+	stabilityMinutes := resolveStabilityMinutes(request.StabilityMinutes, request.IntervalInMinutes)
+	if stabilityMinutes == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
 	err = controller.InferenceCommandServiceInterface.UpdateInferenceIngestionJob(context.TODO(), serviceTypes.UpdateInferenceIngestionJob{
 		ID:                     ID,
 		Modalities:             request.Modalities,
-		IntervalInMinutes:      request.IntervalInMinutes,
+		StabilityMinutes:       stabilityMinutes,
+		RecentWindowMinutes:    request.RecentWindowMinutes,
+		MissingPollsThreshold:  request.MissingPollsThreshold,
+		StudyTimeStart:         request.StudyTimeStart,
+		StudyTimeEnd:           request.StudyTimeEnd,
 		ScheduleStartTimestamp: request.ScheduleStartTimestamp,
 		ScheduleEndTimestamp:   request.ScheduleEndTimestamp,
 	})
@@ -1176,6 +1217,9 @@ func (controller *InferenceCommandController) UpdateInferenceIngestionJob(w http
 		var errorMsg string
 
 		switch err.Error() {
+		case errors.InvalidPayload:
+			httpCode = http.StatusBadRequest
+			errorMsg = "Invalid payload request."
 		case errors.DatabaseError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Error occurred while saving inference ingestion job."
@@ -1202,6 +1246,28 @@ func (controller *InferenceCommandController) UpdateInferenceIngestionJob(w http
 	}
 
 	response.JSON(w)
+}
+
+func parseOptionalCSVTimestamp(value string) (uint64, error) {
+	trimmedValue := strings.TrimSpace(value)
+	if trimmedValue == "" {
+		return 0, nil
+	}
+
+	parsedTime, err := time.Parse("2006-01-02 15:04:05", trimmedValue)
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(parsedTime.Unix()), nil
+}
+
+func resolveStabilityMinutes(stabilityMinutes, intervalInMinutes uint) uint {
+	if stabilityMinutes != 0 {
+		return stabilityMinutes
+	}
+
+	return intervalInMinutes
 }
 
 // UpdateModelFeedback updates model feedback

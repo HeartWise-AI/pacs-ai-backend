@@ -31,7 +31,11 @@ type CreateInferenceIngestionJob struct {
 	ModelName              string
 	ModelVersion           string
 	Modalities             []string
-	IntervalInMinutes      uint
+	StabilityMinutes       uint
+	RecentWindowMinutes    uint
+	MissingPollsThreshold  uint
+	StudyTimeStart         string
+	StudyTimeEnd           string
 	ScheduleStartTimestamp uint64
 	ScheduleEndTimestamp   uint64
 }
@@ -79,6 +83,14 @@ type GetInferenceAvailableModelResult struct {
 	OutputMode                    entity.OutputMode
 }
 
+type GetInferenceIngestionCandidates struct {
+	TenantID           string
+	IngestionJobID     *string
+	StudyInstanceUID   *string
+	Status             *string
+	RetrievalFailures  bool
+}
+
 type GetModelFeedbackByUser struct {
 	TenantID string
 	UserID   string
@@ -123,7 +135,11 @@ type UpdateInferenceModel struct {
 type UpdateInferenceIngestionJob struct {
 	ID                     string
 	Modalities             []string
-	IntervalInMinutes      uint
+	StabilityMinutes       uint
+	RecentWindowMinutes    uint
+	MissingPollsThreshold  uint
+	StudyTimeStart         string
+	StudyTimeEnd           string
 	ScheduleStartTimestamp uint64
 	ScheduleEndTimestamp   uint64
 }
