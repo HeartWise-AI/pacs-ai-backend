@@ -34,6 +34,7 @@ Before running this repository, ensure you have:
    cd ..
 
    # Setup environment files
+   cp pacs-ai-backend/.env.example pacs-ai-backend/.env
    cp PACS-AI/platform/app/.env.example PACS-AI/platform/app/.env
    cp pacs-ai-backend/api-pacs/.env.example pacs-ai-backend/api-pacs/.env
    cp pacs-ai-backend/orthanc/.env.example pacs-ai-backend/orthanc/.env
@@ -47,6 +48,32 @@ Before running this repository, ensure you have:
    ```bash
    docker network create pacs-net
    ```
+
+### Environment Files
+
+The root `.env` file is used by Docker Compose for shared values that apply across multiple services. Keep deployment-wide values here, such as:
+
+```env
+APP_TIMEZONE=America/Toronto
+```
+
+Service-specific `.env` files are loaded by their own compose files and should contain runtime settings and secrets for that service:
+
+```text
+api-pacs/.env
+postgresql/.env
+orthanc/.env
+nginx/.env
+```
+
+For example, the ingestion runner and retrieval worker intervals belong in `api-pacs/.env`:
+
+```env
+INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES=1
+INFERENCE_INGESTION_RETRIEVAL_WORKER_INTERVAL_MINUTES=1
+```
+
+If a variable appears in both a service `env_file` and an explicit compose `environment` block, the explicit `environment` value takes precedence.
 
 ### 2. External Services Setup
 
@@ -172,6 +199,8 @@ Update `api-pacs/.env` with the following variables:
 | `ORTHANC_AET`               | Should be set to `PACS_AI`                                                          |
 | `ORTHANC_BASE_URL`          | Should be set to `http://orthanc:8042` or correct port                              |
 | `ORTHANC_LOCAL_CACHE_EXPIRATION_IN_HOURS`             | Should be set to `24` (default) or desired hour           |
+| `INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES` | Ingestion scheduler interval in minutes. Defaults to `1` if missing or invalid |
+| `INFERENCE_INGESTION_RETRIEVAL_WORKER_INTERVAL_MINUTES` | Ingestion retrieval worker interval in minutes. Defaults to `1` if missing or invalid |
 | `POSTGRES_DB_HOST`          | Should be set to `postgresql`                                                       |
 | `POSTGRES_DB_PORT`          | Should be set to `5432`                                                             |
 | `POSTGRES_DB_DATABASE`      | Should be set to `db_pacs`                                                          |
@@ -188,6 +217,7 @@ Update `pacs-ai-backend/orthanc/.env` with appropriate port and AET settings:
 
 - Consult with PACS admins for proper port configuration if you are unsure
 - The AET (Application Entity Title) must be unique in your PACS network
+- Change `APP_TIMEZONE` for each deployment region instead of modifying code. For example, use `America/Toronto` for Eastern time or `Asia/Dubai` for Abu Dhabi.
 
 #### Network Configuration
 
@@ -235,6 +265,7 @@ Update `api-pacs/.env` with the following variables:
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `API_NAME`                  | Should be set to `api-pacs` (do not change)                                                                               |
 | `API_URL_REST_PORT`         | Should be set to `8000` (do not change)                                                                                   |
+| `APP_TIMEZONE`              | Deployment timezone for API logs, ingestion windows, and PostgreSQL sessions (default: `America/Toronto`)                |
 | `APP_URL`                   | Should be set to `http://localhost:3000`                                                                                  |
 | `CLOUDFLARE_SECRET_KEY`    | Your Cloudflare secret key                                                                                                 |
 | `CLOUDFLARE_TURNSTILE_BASE_URL` | Should be set to `https://challenges.cloudflare.com/turnstile/v0`                                                     |
@@ -273,6 +304,7 @@ Update `api-pacs/.env` with the following variables:
 ```bash
 docker exec -i postgresql psql -U ${POSTGRES_DB_USERNAME} -d ${POSTGRES_DB_DATABASE} < /path/to/repo/pacs-ai-backend/api-pacs/infrastructures/database/postgresql/migrations/000001_create_inference_ingestion_jobs_schema.up.sql
 docker exec -i postgresql psql -U ${POSTGRES_DB_USERNAME} -d ${POSTGRES_DB_DATABASE} < /path/to/repo/pacs-ai-backend/api-pacs/infrastructures/database/postgresql/migrations/000002_create_inference_ingestion_run_results_schema.up.sql
+docker exec -i postgresql psql -U ${POSTGRES_DB_USERNAME} -d ${POSTGRES_DB_DATABASE} < /path/to/repo/pacs-ai-backend/api-pacs/infrastructures/database/postgresql/migrations/000003_create_inference_ingestion_candidates_schema.up.sql
 ```
 
 Then verify the tables were created:
@@ -285,6 +317,7 @@ Expected tables:
 
 - `inference_ingestion_jobs`
 - `inference_ingestion_run_results`
+- `inference_ingestion_candidates`
 
 ##### Database Migrations using Go / `migrate`
 
