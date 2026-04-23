@@ -1,6 +1,9 @@
 services:
   api-pacs:
     env_file: .env
+    environment:
+      APP_TIMEZONE: ${APP_TIMEZONE:-America/Toronto}
+      TZ: ${APP_TIMEZONE:-America/Toronto}
     build: .
     image: pacs-ai-backend-api-pacs:latest
     container_name: api-pacs

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/infrastructure/repository/types"
@@ -18,6 +19,14 @@ type InferenceQueryRepositoryInterface interface {
 	SelectInferenceIngestionJobs(tenantID *string) ([]entity.InferenceIngestionJob, error)
 	// SelectInferenceIngestionJobByID get inference ingestion job by id
 	SelectInferenceIngestionJobByID(ID string) (entity.InferenceIngestionJob, error)
+	// ListInferenceIngestionCandidates lists ingestion candidates for debugging and operations
+	ListInferenceIngestionCandidates(data types.ListInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error)
+	// ListCandidatesByJob lists ingestion candidates by ingestion job ID
+	ListCandidatesByJob(ingestionJobID string) ([]entity.InferenceIngestionCandidate, error)
+	// ListCandidatesReadyForRetrieval lists stable ingestion candidates ready for retrieval
+	ListCandidatesReadyForRetrieval(ingestionJobID string, stableBefore time.Time) ([]entity.InferenceIngestionCandidate, error)
+	// ListCandidatesQueuedForRetrieval lists ingestion candidates queued for retrieval
+	ListCandidatesQueuedForRetrieval() ([]entity.InferenceIngestionCandidate, error)
 	// SelectModelFeedbackByUserModelID get model feedback by user and model ID
 	SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error)
 	// SelectModelFeedbackAnswersByFeedbackID get model feedback answers by feedback ID

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/afex/hystrix-go/hystrix"
 
@@ -147,6 +148,114 @@ func (repository InferenceQueryRepositoryCircuitBreaker) SelectInferenceIngestio
 		return entity.InferenceIngestionJob{}, err
 	case err := <-errors:
 		return entity.InferenceIngestionJob{}, err
+	}
+}
+
+// ListInferenceIngestionCandidates lists ingestion candidates for debugging and operations
+func (repository InferenceQueryRepositoryCircuitBreaker) ListInferenceIngestionCandidates(data types.ListInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error) {
+	output := make(chan []entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_inference_ingestion_candidates", config.Settings())
+	errors := hystrix.Go("list_inference_ingestion_candidates", func() error {
+		candidates, err := repository.InferenceQueryRepositoryInterface.ListInferenceIngestionCandidates(data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidates
+		return nil
+	}, nil)
+
+	select {
+	case candidates := <-output:
+		return candidates, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionCandidate{}, err
+	}
+}
+
+// ListCandidatesByJob lists ingestion candidates by ingestion job ID
+func (repository InferenceQueryRepositoryCircuitBreaker) ListCandidatesByJob(ingestionJobID string) ([]entity.InferenceIngestionCandidate, error) {
+	output := make(chan []entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_candidates_by_job", config.Settings())
+	errors := hystrix.Go("list_candidates_by_job", func() error {
+		candidates, err := repository.InferenceQueryRepositoryInterface.ListCandidatesByJob(ingestionJobID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidates
+		return nil
+	}, nil)
+
+	select {
+	case candidates := <-output:
+		return candidates, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionCandidate{}, err
+	}
+}
+
+// ListCandidatesReadyForRetrieval lists stable ingestion candidates ready for retrieval
+func (repository InferenceQueryRepositoryCircuitBreaker) ListCandidatesReadyForRetrieval(ingestionJobID string, stableBefore time.Time) ([]entity.InferenceIngestionCandidate, error) {
+	output := make(chan []entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_candidates_ready_for_retrieval", config.Settings())
+	errors := hystrix.Go("list_candidates_ready_for_retrieval", func() error {
+		candidates, err := repository.InferenceQueryRepositoryInterface.ListCandidatesReadyForRetrieval(ingestionJobID, stableBefore)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidates
+		return nil
+	}, nil)
+
+	select {
+	case candidates := <-output:
+		return candidates, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionCandidate{}, err
+	}
+}
+
+// ListCandidatesQueuedForRetrieval lists ingestion candidates queued for retrieval
+func (repository InferenceQueryRepositoryCircuitBreaker) ListCandidatesQueuedForRetrieval() ([]entity.InferenceIngestionCandidate, error) {
+	output := make(chan []entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_candidates_queued_for_retrieval", config.Settings())
+	errors := hystrix.Go("list_candidates_queued_for_retrieval", func() error {
+		candidates, err := repository.InferenceQueryRepositoryInterface.ListCandidatesQueuedForRetrieval()
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidates
+		return nil
+	}, nil)
+
+	select {
+	case candidates := <-output:
+		return candidates, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionCandidate{}, err
 	}
 }
 

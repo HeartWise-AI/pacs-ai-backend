@@ -61,10 +61,19 @@ type FindModalityStudiesResponse struct {
 }
 
 type GetJobInfoResponse struct {
-	ID       string `json:"id"`
-	Priority uint   `json:"priority"`
-	Progress uint   `json:"progress"`
-	State    string `json:"state"`
+	CompletionTime   string                 `json:"completionTime"`
+	Content          map[string]interface{} `json:"content"`
+	CreationTime     string                 `json:"creationTime"`
+	EffectiveRuntime float64                `json:"effectiveRuntime"`
+	ErrorCode        int                    `json:"errorCode"`
+	ErrorDescription string                 `json:"errorDescription"`
+	ErrorDetails     interface{}            `json:"errorDetails"`
+	ID               string                 `json:"id"`
+	Priority         uint                   `json:"priority"`
+	Progress         uint                   `json:"progress"`
+	State            string                 `json:"state"`
+	Timestamp        string                 `json:"timestamp"`
+	Type             string                 `json:"type"`
 }
 
 type GetDICOMModalityResponse struct {

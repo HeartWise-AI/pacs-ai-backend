@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"github.com/lib/pq"
 	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -233,14 +234,18 @@ func (repository *InferenceCommandRepository) InsertInferenceIngestionJob(data t
 		ModelName:              data.ModelName,
 		ModelVersion:           data.ModelVersion,
 		Modalities:             data.Modalities,
-		IntervalInMinutes:      data.IntervalInMinutes,
+		StabilityMinutes:       data.StabilityMinutes,
+		RecentWindowMinutes:    data.RecentWindowMinutes,
+		MissingPollsThreshold:  data.MissingPollsThreshold,
+		StudyTimeStart:         data.StudyTimeStart,
+		StudyTimeEnd:           data.StudyTimeEnd,
 		ScheduleStartTimestamp: data.ScheduleStartTimestamp,
 		ScheduleEndTimestamp:   data.ScheduleEndTimestamp,
 		Status:                 data.Status,
 	}
 
-	stmt := fmt.Sprintf("INSERT INTO %s (id, tenant_id, dicom_modality, container_id, model_id, model_name, model_version, modalities, interval_in_minutes, schedule_start_timestamp, schedule_end_timestamp, status) "+
-		"VALUES (:id, :tenant_id, :dicom_modality, :container_id, :model_id, :model_name, :model_version, :modalities, :interval_in_minutes, :schedule_start_timestamp, :schedule_end_timestamp, :status)", job.GetModelName())
+	stmt := fmt.Sprintf("INSERT INTO %s (id, tenant_id, dicom_modality, container_id, model_id, model_name, model_version, modalities, stability_minutes, recent_window_minutes, missing_polls_threshold, study_time_start, study_time_end, schedule_start_timestamp, schedule_end_timestamp, status) "+
+		"VALUES (:id, :tenant_id, :dicom_modality, :container_id, :model_id, :model_name, :model_version, :modalities, :stability_minutes, :recent_window_minutes, :missing_polls_threshold, :study_time_start, :study_time_end, :schedule_start_timestamp, :schedule_end_timestamp, :status)", job.GetModelName())
 	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
 	if err != nil {
 		log.Println(err)
@@ -282,6 +287,88 @@ func (repository *InferenceCommandRepository) InsertInferenceIngestionRunResult(
 			}
 		}
 
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// UpsertIngestionCandidate upserts an ingestion candidate
+func (repository *InferenceCommandRepository) UpsertIngestionCandidate(data types.UpsertIngestionCandidate) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf(`INSERT INTO %s (
+		id,
+		tenant_id,
+		ingestion_job_id,
+		study_instance_uid,
+		study_date,
+		study_time,
+		modalities_in_study,
+		patient_id,
+		accession_number,
+		series_count,
+		instance_count,
+		first_seen_at,
+		last_seen_at,
+		last_changed_at,
+		missing_polls,
+		status
+	) VALUES (
+		:id,
+		:tenant_id,
+		:ingestion_job_id,
+		:study_instance_uid,
+		:study_date,
+		:study_time,
+		:modalities_in_study,
+		:patient_id,
+		:accession_number,
+		:series_count,
+		:instance_count,
+		CURRENT_TIMESTAMP,
+		CURRENT_TIMESTAMP,
+		CURRENT_TIMESTAMP,
+		0,
+		'DISCOVERED'
+	)
+	ON CONFLICT (ingestion_job_id, study_instance_uid)
+	DO UPDATE SET
+		study_date = EXCLUDED.study_date,
+		study_time = EXCLUDED.study_time,
+		modalities_in_study = EXCLUDED.modalities_in_study,
+		patient_id = EXCLUDED.patient_id,
+		accession_number = EXCLUDED.accession_number,
+		series_count = EXCLUDED.series_count,
+		instance_count = EXCLUDED.instance_count,
+		last_seen_at = CURRENT_TIMESTAMP,
+		last_changed_at = CASE
+			WHEN %s.series_count IS DISTINCT FROM EXCLUDED.series_count
+				OR %s.instance_count IS DISTINCT FROM EXCLUDED.instance_count
+			THEN CURRENT_TIMESTAMP
+			ELSE %s.last_changed_at
+		END,
+		missing_polls = 0,
+		status = CASE
+			WHEN %s.status = 'DISAPPEARED' THEN 'DISCOVERED'
+			ELSE %s.status
+		END`, candidate.GetModelName(), candidate.GetModelName(), candidate.GetModelName(), candidate.GetModelName(), candidate.GetModelName(), candidate.GetModelName())
+
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":                  data.ID,
+		"tenant_id":           data.TenantID,
+		"ingestion_job_id":    data.IngestionJobID,
+		"study_instance_uid":  data.StudyInstanceUID,
+		"study_date":          nullableStringValue(data.StudyDate),
+		"study_time":          nullableStringValue(data.StudyTime),
+		"modalities_in_study": nullableStringValue(data.ModalitiesInStudy),
+		"patient_id":          nullableStringValue(data.PatientID),
+		"accession_number":    nullableStringValue(data.AccessionNumber),
+		"series_count":        nullableIntValue(data.SeriesCount),
+		"instance_count":      nullableIntValue(data.InstanceCount),
+	})
+	if err != nil {
+		log.Println(err)
 		return errors.New(apiError.DatabaseError)
 	}
 
@@ -402,12 +489,18 @@ func (repository *InferenceCommandRepository) UpdateInferenceIngestionJob(data t
 	job := &entity.InferenceIngestionJob{
 		ID:                     data.ID,
 		Modalities:             data.Modalities,
-		IntervalInMinutes:      data.IntervalInMinutes,
+		StabilityMinutes:       data.StabilityMinutes,
+		RecentWindowMinutes:    data.RecentWindowMinutes,
+		MissingPollsThreshold:  data.MissingPollsThreshold,
+		StudyTimeStart:         data.StudyTimeStart,
+		StudyTimeEnd:           data.StudyTimeEnd,
 		ScheduleStartTimestamp: data.ScheduleStartTimestamp,
 		ScheduleEndTimestamp:   data.ScheduleEndTimestamp,
 	}
 
-	stmt := fmt.Sprintf("UPDATE %s SET modalities = :modalities, interval_in_minutes = :interval_in_minutes, "+
+	stmt := fmt.Sprintf("UPDATE %s SET modalities = :modalities, stability_minutes = :stability_minutes, "+
+		"recent_window_minutes = :recent_window_minutes, "+
+		"missing_polls_threshold = :missing_polls_threshold, study_time_start = :study_time_start, study_time_end = :study_time_end, "+
 		"schedule_start_timestamp = :schedule_start_timestamp, schedule_end_timestamp = :schedule_end_timestamp WHERE id = :id", job.GetModelName())
 	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
 	if err != nil {
@@ -446,6 +539,207 @@ func (repository *InferenceCommandRepository) UpdateInferenceIngestionJobLastExe
 
 	stmt := fmt.Sprintf("UPDATE %s SET last_executed_at = :last_executed_at WHERE id = :id", job.GetModelName())
 	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// UpdateCandidateStatus updates the status of an ingestion candidate
+func (repository *InferenceCommandRepository) UpdateCandidateStatus(ID string, status entity.InferenceIngestionCandidateStatus) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf("UPDATE %s SET status = :status WHERE id = :id", candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":     ID,
+		"status": status,
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// SaveCandidateOrthancJobIDs stores Orthanc job IDs for an ingestion candidate
+func (repository *InferenceCommandRepository) SaveCandidateOrthancJobIDs(ID string, orthancJobIDs []string) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf("UPDATE %s SET orthanc_job_ids = :orthanc_job_ids, last_retrieval_checked_at = CURRENT_TIMESTAMP WHERE id = :id", candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":              ID,
+		"orthanc_job_ids": nullableStringArrayValue(orthancJobIDs),
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// UpdateCandidateRetrievalState stores retrieval state and error details for an ingestion candidate
+func (repository *InferenceCommandRepository) UpdateCandidateRetrievalState(data types.UpdateCandidateRetrievalState) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf(`UPDATE %s
+SET orthanc_job_ids = COALESCE(:orthanc_job_ids, orthanc_job_ids),
+	last_retrieval_state = COALESCE(:last_retrieval_state, last_retrieval_state),
+	last_retrieval_error = COALESCE(:last_retrieval_error, last_retrieval_error),
+	last_retrieval_error_details = COALESCE(:last_retrieval_error_details, last_retrieval_error_details),
+	last_retrieval_checked_at = CURRENT_TIMESTAMP
+WHERE id = :id`, candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":                           data.ID,
+		"orthanc_job_ids":              nullableStringArrayValue(data.OrthancJobIDs),
+		"last_retrieval_state":         nullableStringValue(data.LastRetrievalState),
+		"last_retrieval_error":         nullableStringValue(data.LastRetrievalError),
+		"last_retrieval_error_details": nullableStringValue(data.LastRetrievalErrorDetails),
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// MarkCandidateRetrievalQueued marks an ingestion candidate as retrieval queued
+func (repository *InferenceCommandRepository) MarkCandidateRetrievalQueued(ID string) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf("UPDATE %s SET status = :status, retrieval_queued_at = CURRENT_TIMESTAMP WHERE id = :id", candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":     ID,
+		"status": entity.InferenceIngestionCandidateStatusRetrievalQueued,
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// MarkCandidateRetrieved marks an ingestion candidate as retrieved
+func (repository *InferenceCommandRepository) MarkCandidateRetrieved(ID string) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf("UPDATE %s SET status = :status, retrieved_at = CURRENT_TIMESTAMP, last_retrieval_checked_at = CURRENT_TIMESTAMP WHERE id = :id", candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":     ID,
+		"status": entity.InferenceIngestionCandidateStatusRetrieved,
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// MarkCandidateRetrievedWithContext marks an ingestion candidate as retrieved with retrieval context
+func (repository *InferenceCommandRepository) MarkCandidateRetrievedWithContext(data types.UpdateCandidateRetrievalState) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf(`UPDATE %s
+SET status = :status,
+	retrieved_at = CURRENT_TIMESTAMP,
+	orthanc_job_ids = COALESCE(:orthanc_job_ids, orthanc_job_ids),
+	last_retrieval_state = COALESCE(:last_retrieval_state, last_retrieval_state),
+	last_retrieval_error = COALESCE(:last_retrieval_error, last_retrieval_error),
+	last_retrieval_error_details = COALESCE(:last_retrieval_error_details, last_retrieval_error_details),
+	last_retrieval_checked_at = CURRENT_TIMESTAMP
+WHERE id = :id`, candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":                           data.ID,
+		"status":                       entity.InferenceIngestionCandidateStatusRetrieved,
+		"orthanc_job_ids":              nullableStringArrayValue(data.OrthancJobIDs),
+		"last_retrieval_state":         nullableStringValue(data.LastRetrievalState),
+		"last_retrieval_error":         nullableStringValue(data.LastRetrievalError),
+		"last_retrieval_error_details": nullableStringValue(data.LastRetrievalErrorDetails),
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// MarkCandidateDisappeared marks an ingestion candidate as disappeared
+func (repository *InferenceCommandRepository) MarkCandidateDisappeared(ID string) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf("UPDATE %s SET status = :status WHERE id = :id", candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":     ID,
+		"status": entity.InferenceIngestionCandidateStatusDisappeared,
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// MarkCandidateFailed marks an ingestion candidate as failed
+func (repository *InferenceCommandRepository) MarkCandidateFailed(ID string) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf("UPDATE %s SET status = :status, last_retrieval_checked_at = CURRENT_TIMESTAMP WHERE id = :id", candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":     ID,
+		"status": entity.InferenceIngestionCandidateStatusFailed,
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// MarkCandidateFailedWithContext marks an ingestion candidate as failed with retrieval context
+func (repository *InferenceCommandRepository) MarkCandidateFailedWithContext(data types.UpdateCandidateRetrievalState) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf(`UPDATE %s
+SET status = :status,
+	orthanc_job_ids = COALESCE(:orthanc_job_ids, orthanc_job_ids),
+	last_retrieval_state = COALESCE(:last_retrieval_state, last_retrieval_state),
+	last_retrieval_error = COALESCE(:last_retrieval_error, last_retrieval_error),
+	last_retrieval_error_details = COALESCE(:last_retrieval_error_details, last_retrieval_error_details),
+	last_retrieval_checked_at = CURRENT_TIMESTAMP
+WHERE id = :id`, candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":                           data.ID,
+		"status":                       entity.InferenceIngestionCandidateStatusFailed,
+		"orthanc_job_ids":              nullableStringArrayValue(data.OrthancJobIDs),
+		"last_retrieval_state":         nullableStringValue(data.LastRetrievalState),
+		"last_retrieval_error":         nullableStringValue(data.LastRetrievalError),
+		"last_retrieval_error_details": nullableStringValue(data.LastRetrievalErrorDetails),
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// IncrementCandidateMissingPolls increments missing polls of an ingestion candidate
+func (repository *InferenceCommandRepository) IncrementCandidateMissingPolls(ID string) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf("UPDATE %s SET missing_polls = missing_polls + 1 WHERE id = :id", candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id": ID,
+	})
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.DatabaseError)
@@ -507,4 +801,28 @@ func (repository *InferenceCommandRepository) UpsertModelFeedback(ctx context.Co
 	}
 
 	return nil
+}
+
+func nullableStringValue(value *string) interface{} {
+	if value == nil {
+		return nil
+	}
+
+	return *value
+}
+
+func nullableIntValue(value *int) interface{} {
+	if value == nil {
+		return nil
+	}
+
+	return *value
+}
+
+func nullableStringArrayValue(value []string) interface{} {
+	if len(value) == 0 {
+		return nil
+	}
+
+	return pq.Array(value)
 }
