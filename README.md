@@ -160,6 +160,12 @@ Update `api-pacs/.env` with the following variables:
 | `DOCKER_USERNAME`           | Your DockerHub username                                                             |
 | `DOCKER_PASSWORD`           | Your DockerHub password                                                             |
 | `DOCKER_NETWORK`            | Should be set to `pacs-net`                                                         |
+| 'DOCUSIGN_INTEGRATION_KEY'  | Docusign integration key                                                            |
+| 'DOCUSIGN_USER_ID'          | Docusign user id                                                                    |
+| 'DOCUSIGN_ACCOUNT_BASE_URI' | Docusign account base uri                                                           |
+| 'DOCUSIGN_AUTH_SERVER'      | Docusign auth server                                                                |
+| 'DOCUSIGN_PRIVATE_KEY'      | Docusign private key                                                                |
+| 'DOCUSIGN_ACCOUNT_ID'       | Docusign account id                                                                 |
 | `ELASTICSEARCH_URL`         | Should be set to `http://elasticsearch:9200`                                        |
 | `FIREBASE_CONFIG_FILE_PATH` | Should be set to `/app/build/configs/firebase/pacs-ai-firebase-admin.json`          |
 | `FIREBASE_PROJECT_ID`       | Your Firebase project ID (same as in `PACS-AI/platform/app/.env`)                   |
@@ -241,6 +247,12 @@ Update `api-pacs/.env` with the following variables:
 | `DOCKER_USERNAME`           | Your DockerHub username                                                                                                   |
 | `DOCKER_PASSWORD`           | Your DockerHub password                                                                                                   |
 | `DOCKER_NETWORK`            | Should be set to `pacs-net`                                                                                               |
+| 'DOCUSIGN_INTEGRATION_KEY'  | Docusign integration key                                                                                                  |
+| 'DOCUSIGN_USER_ID'          | Docusign user id                                                                                                          |
+| 'DOCUSIGN_ACCOUNT_BASE_URI' | Docusign account base uri                                                                                                 |
+| 'DOCUSIGN_AUTH_SERVER'      | Docusign auth server                                                                                                      |
+| 'DOCUSIGN_PRIVATE_KEY'      | Docusign private key                                                                                                      |
+| 'DOCUSIGN_ACCOUNT_ID'       | Docusign account id                                                                                                       |
 | `ELASTICSEARCH_URL`         | Should be set to `http://localhost:9200`                                                                                  |
 | `FIREBASE_CONFIG_FILE_PATH` | Should be set to `pacs-ai-backend/api-pacs/configs/firebase/pacs-ai-firebase-admin.json`, make sure it's the correct path |
 | `FIREBASE_PROJECT_ID`       | Your Firebase project ID (same as in `PACS-AI/platform/app/.env`)                                                         |
