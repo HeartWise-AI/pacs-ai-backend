@@ -62,10 +62,13 @@ func (service *UserQueryService) GetTenantUserByID(ctx context.Context, tenantID
 
 	// if consent is enabled and user haven't signed, update consent status
 	if tenant.OnboardingEnableConsent && !user.IsConsentSigned {
-		err := service.updateTenantUserConsentStatus(ctx, tenant, ID)
+		isConsentSigned, err := service.updateTenantUserConsentStatus(ctx, tenant, ID)
 		if err != nil {
 			log.Println("Failed to update user consent status: ", err) // silent error
 		}
+
+		// override user result
+		user.IsConsentSigned = isConsentSigned
 	}
 
 	return types.GetTenantUser{
@@ -135,19 +138,18 @@ func (service *UserQueryService) GetUserMetadata(ctx context.Context, userID str
 	return userMetadata, nil
 }
 
-// updateTenantUserConsentStatus update tenant user consent status by user id
-func (service *UserQueryService) updateTenantUserConsentStatus(ctx context.Context, tenant tenantTypes.GetTenantResult, userID string) error {
+func (service *UserQueryService) updateTenantUserConsentStatus(ctx context.Context, tenant tenantTypes.GetTenantResult, userID string) (bool, error) {
 	/// get user
 	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, tenant.ID, userID)
 	if err != nil {
 		log.Println(err)
-		return err
+		return false, err
 	}
 
 	/// check from docusign
 	accessToken, err := service.DocusignAPIInterface.GetAccessToken()
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// get docusign envelopes
@@ -159,7 +161,7 @@ func (service *UserQueryService) updateTenantUserConsentStatus(ctx context.Conte
 		Include:    "recipients", // https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopes/liststatuschanges/
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// check email and status from envelopes
@@ -190,7 +192,7 @@ func (service *UserQueryService) updateTenantUserConsentStatus(ctx context.Conte
 		})
 		if err != nil {
 			log.Println("Failed to update user consent: ", err) // silent error
-			return err
+			return false, err
 		}
 
 		// log to elasticsearch
@@ -208,5 +210,5 @@ func (service *UserQueryService) updateTenantUserConsentStatus(ctx context.Conte
 		}()
 	}
 
-	return nil
+	return userFound, nil
 }
