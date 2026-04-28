@@ -8,7 +8,6 @@ services:
     container_name: api-pacs
     restart: unless-stopped
     networks:
-      - default
       - pacs-net
     ports:
       - ${API_URL_REST_PORT}:${API_URL_REST_PORT}

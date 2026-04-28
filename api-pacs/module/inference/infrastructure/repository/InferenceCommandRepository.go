@@ -497,7 +497,6 @@ func (repository *InferenceCommandRepository) UpdateInferenceIngestionJob(data t
 		ScheduleStartTimestamp: data.ScheduleStartTimestamp,
 		ScheduleEndTimestamp:   data.ScheduleEndTimestamp,
 	}
-
 	stmt := fmt.Sprintf("UPDATE %s SET modalities = :modalities, stability_minutes = :stability_minutes, "+
 		"recent_window_minutes = :recent_window_minutes, "+
 		"missing_polls_threshold = :missing_polls_threshold, study_time_start = :study_time_start, study_time_end = :study_time_end, "+

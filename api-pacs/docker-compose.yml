@@ -9,7 +9,6 @@ services:
     container_name: api-pacs
     restart: unless-stopped
     networks:
-      - default
       - pacs-net
     expose:
       - ${API_URL_REST_PORT}
