@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -304,6 +305,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		DockerSDKInterface:                   dockerSDK,
 		OrthancAPIInterface:                  orthancAPI,
 		DockerInferenceAPIInterface:          dockerInferenceAPI,
+		StudyServiceDispatchSemaphore:        make(chan struct{}, configuredStudyServiceDispatchConcurrency()),
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
 			StudyServiceBaseURL:     os.Getenv("STUDY_SERVICE_BASE_URL"),
 			StudyServiceIngestToken: os.Getenv("STUDY_SERVICE_INGEST_TOKEN"),
@@ -313,6 +315,22 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 	}
 
 	return service
+}
+
+func configuredStudyServiceDispatchConcurrency() int {
+	const defaultConcurrency = 16
+
+	value := strings.TrimSpace(os.Getenv("STUDY_SERVICE_DISPATCH_CONCURRENCY"))
+	if value == "" {
+		return defaultConcurrency
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return defaultConcurrency
+	}
+
+	return parsed
 }
 
 func OrthancCommandServiceDI() *orthancService.OrthancCommandService {
