@@ -151,6 +151,60 @@ func (repository InferenceQueryRepositoryCircuitBreaker) SelectInferenceIngestio
 	}
 }
 
+// SelectInferenceIngestionCandidateByID gets one ingestion candidate by id
+func (repository InferenceQueryRepositoryCircuitBreaker) SelectInferenceIngestionCandidateByID(ID string) (entity.InferenceIngestionCandidate, error) {
+	output := make(chan entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_inference_ingestion_candidate_by_id", config.Settings())
+	errors := hystrix.Go("select_inference_ingestion_candidate_by_id", func() error {
+		candidate, err := repository.InferenceQueryRepositoryInterface.SelectInferenceIngestionCandidateByID(ID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidate
+		return nil
+	}, nil)
+
+	select {
+	case candidate := <-output:
+		return candidate, nil
+	case err := <-errChan:
+		return entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return entity.InferenceIngestionCandidate{}, err
+	}
+}
+
+// SelectInferenceIngestionProcessingJobByCandidateModel gets one processing job by candidate/model
+func (repository InferenceQueryRepositoryCircuitBreaker) SelectInferenceIngestionProcessingJobByCandidateModel(candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error) {
+	output := make(chan entity.InferenceIngestionProcessingJob, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_inference_ingestion_processing_job_by_candidate_model", config.Settings())
+	errors := hystrix.Go("select_inference_ingestion_processing_job_by_candidate_model", func() error {
+		processingJob, err := repository.InferenceQueryRepositoryInterface.SelectInferenceIngestionProcessingJobByCandidateModel(candidateID, modelName)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- processingJob
+		return nil
+	}, nil)
+
+	select {
+	case processingJob := <-output:
+		return processingJob, nil
+	case err := <-errChan:
+		return entity.InferenceIngestionProcessingJob{}, err
+	case err := <-errors:
+		return entity.InferenceIngestionProcessingJob{}, err
+	}
+}
+
 // ListInferenceIngestionCandidates lists ingestion candidates for debugging and operations
 func (repository InferenceQueryRepositoryCircuitBreaker) ListInferenceIngestionCandidates(data types.ListInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error) {
 	output := make(chan []entity.InferenceIngestionCandidate, 1)

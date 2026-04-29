@@ -298,6 +298,37 @@ func (repository *InferenceCommandRepository) InsertInferenceIngestionProcessing
 	return nil
 }
 
+// UpdateInferenceIngestionProcessingJob updates an inference ingestion processing job
+func (repository *InferenceCommandRepository) UpdateInferenceIngestionProcessingJob(data types.UpdateInferenceIngestionProcessingJob) error {
+	var processingJob entity.InferenceIngestionProcessingJob
+
+	stmt := fmt.Sprintf(`UPDATE %s
+SET status = :status,
+	model_version = COALESCE(:model_version, model_version),
+	modality = COALESCE(:modality, modality),
+	study_service_job_id = COALESCE(:study_service_job_id, study_service_job_id),
+	error_message = :error_message,
+	started_at = COALESCE(:started_at, started_at),
+	completed_at = COALESCE(:completed_at, completed_at)
+WHERE id = :id`, processingJob.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":                   data.ID,
+		"status":               data.Status,
+		"model_version":        nullableStringValue(data.ModelVersion),
+		"modality":             nullableStringValue(data.Modality),
+		"study_service_job_id": nullableStringValue(data.StudyServiceJobID),
+		"error_message":        nullableStringValue(data.ErrorMessage),
+		"started_at":           nullableTimeValue(data.StartedAt),
+		"completed_at":         nullableTimeValue(data.CompletedAt),
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
 // UpsertIngestionCandidate upserts an ingestion candidate
 func (repository *InferenceCommandRepository) UpsertIngestionCandidate(data types.UpsertIngestionCandidate) error {
 	var candidate entity.InferenceIngestionCandidate
@@ -611,6 +642,27 @@ WHERE id = :id`, candidate.GetModelName())
 	return nil
 }
 
+// UpdateCandidateDispatchState stores study-service dispatch state for an ingestion candidate
+func (repository *InferenceCommandRepository) UpdateCandidateDispatchState(data types.UpdateCandidateDispatchState) error {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf(`UPDATE %s
+SET last_dispatch_error = :last_dispatch_error,
+	last_dispatch_attempted_at = COALESCE(:last_dispatch_attempted_at, CURRENT_TIMESTAMP)
+WHERE id = :id`, candidate.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":                        data.ID,
+		"last_dispatch_error":       nullableStringValue(data.LastDispatchError),
+		"last_dispatch_attempted_at": nullableTimeValue(data.LastDispatchAttemptedAt),
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
 // MarkCandidateRetrievalQueued marks an ingestion candidate as retrieval queued
 func (repository *InferenceCommandRepository) MarkCandidateRetrievalQueued(ID string) error {
 	var candidate entity.InferenceIngestionCandidate
@@ -829,4 +881,12 @@ func nullableStringArrayValue(value []string) interface{} {
 	}
 
 	return pq.Array(value)
+}
+
+func nullableTimeValue(value *time.Time) interface{} {
+	if value == nil {
+		return nil
+	}
+
+	return *value
 }

@@ -166,6 +166,49 @@ func (repository *InferenceQueryRepository) SelectInferenceIngestionJobByID(ID s
 	return job, nil
 }
 
+// SelectInferenceIngestionCandidateByID gets one ingestion candidate by ID
+func (repository *InferenceQueryRepository) SelectInferenceIngestionCandidateByID(ID string) (entity.InferenceIngestionCandidate, error) {
+	var candidate entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf("SELECT * FROM %s WHERE id = :id", candidate.GetModelName())
+
+	err := repository.PostgresSQLDBHandlerInterface.QueryRow(stmt, map[string]interface{}{
+		"id": ID,
+	}, &candidate)
+	if err != nil {
+		log.Println(err)
+		if err == sql.ErrNoRows {
+			return entity.InferenceIngestionCandidate{}, errors.New(apiError.MissingRecord)
+		}
+
+		return entity.InferenceIngestionCandidate{}, errors.New(apiError.DatabaseError)
+	}
+
+	return candidate, nil
+}
+
+// SelectInferenceIngestionProcessingJobByCandidateModel gets one processing job by candidate/model
+func (repository *InferenceQueryRepository) SelectInferenceIngestionProcessingJobByCandidateModel(candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error) {
+	var processingJob entity.InferenceIngestionProcessingJob
+
+	stmt := fmt.Sprintf("SELECT * FROM %s WHERE candidate_id = :candidate_id AND model_name = :model_name", processingJob.GetModelName())
+
+	err := repository.PostgresSQLDBHandlerInterface.QueryRow(stmt, map[string]interface{}{
+		"candidate_id": candidateID,
+		"model_name":   modelName,
+	}, &processingJob)
+	if err != nil {
+		log.Println(err)
+		if err == sql.ErrNoRows {
+			return entity.InferenceIngestionProcessingJob{}, errors.New(apiError.MissingRecord)
+		}
+
+		return entity.InferenceIngestionProcessingJob{}, errors.New(apiError.DatabaseError)
+	}
+
+	return processingJob, nil
+}
+
 // ListInferenceIngestionCandidates lists ingestion candidates with operator debug filters
 func (repository *InferenceQueryRepository) ListInferenceIngestionCandidates(data types.ListInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error) {
 	var candidate entity.InferenceIngestionCandidate

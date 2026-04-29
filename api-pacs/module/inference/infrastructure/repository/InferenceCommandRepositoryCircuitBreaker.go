@@ -288,6 +288,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceInges
 	}
 }
 
+// UpdateInferenceIngestionProcessingJob is the decorator for the inference command repository to update inference ingestion processing job
+func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceIngestionProcessingJob(data types.UpdateInferenceIngestionProcessingJob) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("update_inference_ingestion_processing_job", config.Settings())
+	errors := hystrix.Go("update_inference_ingestion_processing_job", func() error {
+		err := repository.InferenceCommandRepositoryInterface.UpdateInferenceIngestionProcessingJob(data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // UpsertIngestionCandidate is the decorator for the inference command repository to upsert ingestion candidate
 func (repository *InferenceCommandRepositoryCircuitBreaker) UpsertIngestionCandidate(data types.UpsertIngestionCandidate) error {
 	output := make(chan bool, 1)
@@ -512,6 +539,33 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateCandidateRetri
 	hystrix.ConfigureCommand("update_candidate_retrieval_state", config.Settings())
 	errors := hystrix.Go("update_candidate_retrieval_state", func() error {
 		err := repository.InferenceCommandRepositoryInterface.UpdateCandidateRetrievalState(data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
+// UpdateCandidateDispatchState is the decorator for the inference command repository to store dispatch state
+func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateCandidateDispatchState(data types.UpdateCandidateDispatchState) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("update_candidate_dispatch_state", config.Settings())
+	errors := hystrix.Go("update_candidate_dispatch_state", func() error {
+		err := repository.InferenceCommandRepositoryInterface.UpdateCandidateDispatchState(data)
 		if err != nil {
 			errChan <- err
 			return nil
