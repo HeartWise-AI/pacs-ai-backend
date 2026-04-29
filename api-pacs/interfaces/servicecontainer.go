@@ -304,6 +304,12 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		DockerSDKInterface:                   dockerSDK,
 		OrthancAPIInterface:                  orthancAPI,
 		DockerInferenceAPIInterface:          dockerInferenceAPI,
+		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
+			StudyServiceBaseURL:     os.Getenv("STUDY_SERVICE_BASE_URL"),
+			StudyServiceIngestToken: os.Getenv("STUDY_SERVICE_INGEST_TOKEN"),
+			StudyServiceClient:      &http.Client{Timeout: 5 * time.Second},
+			OrthancAPIInterface:     orthancAPI,
+		},
 	}
 
 	return service

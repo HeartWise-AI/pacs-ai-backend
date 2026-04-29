@@ -22,6 +22,7 @@ import (
 	dicomUtils "api-pacs/internal/dicom"
 	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
+	inferenceApplication "api-pacs/module/inference/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
@@ -45,6 +46,7 @@ type InferenceCommandService struct {
 	dockerTypes.DockerSDKInterface
 	orthancAPITypes.OrthancAPIInterface
 	dockerInferenceTypes.DockerInferenceAPIInterface
+	inferenceApplication.ProcessingDispatcherInterface
 }
 
 const inferenceIngestionRetrievalTimeout = 3 * time.Minute
@@ -79,6 +81,16 @@ type normalizedIngestionJobConfig struct {
 	MissingPollsThreshold uint
 	StudyTimeStart        *string
 	StudyTimeEnd          *string
+}
+
+// BuildStudyServiceDispatchRequest resolves the study-service ingest payload for one job/candidate pair.
+func (service *InferenceCommandService) BuildStudyServiceDispatchRequest(ctx context.Context, data types.BuildStudyServiceDispatchRequestInput) (types.DispatchStudyRequest, error) {
+	return service.ProcessingDispatcherInterface.BuildDispatchStudyRequest(ctx, data)
+}
+
+// DispatchStudy sends a POST /ingest/study request to study-service.
+func (service *InferenceCommandService) DispatchStudy(ctx context.Context, data types.DispatchStudyRequest) (types.DispatchStudyResponse, error) {
+	return service.ProcessingDispatcherInterface.DispatchStudy(ctx, data)
 }
 
 // AddInferenceModel adds an inference model
