@@ -23,6 +23,8 @@ type InferenceCommandServiceInterface interface {
 	BuildStudyServiceDispatchRequest(ctx context.Context, data types.BuildStudyServiceDispatchRequestInput) (types.DispatchStudyRequest, error)
 	// DispatchStudy sends a POST /ingest/study request to study-service
 	DispatchStudy(ctx context.Context, data types.DispatchStudyRequest) (types.DispatchStudyResponse, error)
+	// HandleStudyServiceProcessingCallback persists a study-service processing callback
+	HandleStudyServiceProcessingCallback(ctx context.Context, data types.HandleStudyServiceProcessingCallback) (types.HandleStudyServiceProcessingCallbackResult, error)
 	// GenerateInferenceModelPredictRequest generates the prediction request payload
 	GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error)
 	// ImportInferenceIngestionJobs imports inference ingestion jobs
