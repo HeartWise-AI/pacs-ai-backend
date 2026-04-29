@@ -37,7 +37,7 @@ execution.
   configuration.
 - `inference_ingestion_candidates`: discovered remote studies and retrieval
   status.
-- `inference_ingestion_run_results`: legacy run-result storage.
+- `inference_ingestion_processing_jobs`: per-model processing lifecycle storage.
 - A discovery runner that polls remote PACS and marks candidates stable.
 - A retrieval worker that issues C-MOVE, waits for local Orthanc presence, and
   marks candidates `RETRIEVED` or `FAILED`.

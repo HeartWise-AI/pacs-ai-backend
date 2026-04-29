@@ -261,14 +261,14 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceInges
 	}
 }
 
-// InsertInferenceIngestionRunResult is the decorator for the inference command repository to insert inference ingestion run result
-func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceIngestionRunResult(data types.AddInferenceIngestionRunResult) error {
+// InsertInferenceIngestionProcessingJob is the decorator for the inference command repository to insert inference ingestion processing job
+func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceIngestionProcessingJob(data types.AddInferenceIngestionProcessingJob) error {
 	output := make(chan bool, 1)
 	errChan := make(chan error, 1)
 
-	hystrix.ConfigureCommand("insert_inference_ingestion_run_result", config.Settings())
-	errors := hystrix.Go("insert_inference_ingestion_run_result", func() error {
-		err := repository.InferenceCommandRepositoryInterface.InsertInferenceIngestionRunResult(data)
+	hystrix.ConfigureCommand("insert_inference_ingestion_processing_job", config.Settings())
+	errors := hystrix.Go("insert_inference_ingestion_processing_job", func() error {
+		err := repository.InferenceCommandRepositoryInterface.InsertInferenceIngestionProcessingJob(data)
 		if err != nil {
 			errChan <- err
 			return nil

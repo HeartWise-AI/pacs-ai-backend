@@ -37,13 +37,18 @@ type AddOnboardingModelQuestionnaireAnswer struct {
 	QuestionnaireAnswers   []string
 }
 
-type AddInferenceIngestionRunResult struct {
-	ID               string
-	JobID            string
-	StudyInstanceUID string
-	InferenceOutput  *map[string]interface{}
-	ErrorMessage     *string
-	Status           entity.IngestionRunStatus
+type AddInferenceIngestionProcessingJob struct {
+	ID                string
+	CandidateID       string
+	TenantID          string
+	ModelName         string
+	ModelVersion      *string
+	Modality          *string
+	Status            entity.InferenceIngestionProcessingJobStatus
+	StudyServiceJobID *string
+	ErrorMessage      *string
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
 }
 
 type CreateInferenceIngestionJob struct {
