@@ -67,6 +67,24 @@ type DispatchStudyResponse struct {
 	StatusCode     int    `json:"-"`
 }
 
+type HandleStudyServiceProcessingCallback struct {
+	CandidateID       string
+	RequestID         string
+	StudyInstanceUID  string
+	ModelName         string
+	ModelVersion      string
+	Modality          string
+	Status            string
+	ErrorMessage      *string
+	StudyServiceJobID string
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
+}
+
+type HandleStudyServiceProcessingCallbackResult struct {
+	Outcome string
+}
+
 type GetContainerInfoResult struct {
 	ID              string
 	Name            string

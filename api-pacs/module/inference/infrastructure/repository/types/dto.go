@@ -51,6 +51,17 @@ type AddInferenceIngestionProcessingJob struct {
 	CompletedAt       *time.Time
 }
 
+type UpdateInferenceIngestionProcessingJob struct {
+	ID                string
+	Status            entity.InferenceIngestionProcessingJobStatus
+	ModelVersion      *string
+	Modality          *string
+	StudyServiceJobID *string
+	ErrorMessage      *string
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
+}
+
 type CreateInferenceIngestionJob struct {
 	ID                     string
 	TenantID               string
@@ -137,4 +148,10 @@ type UpdateCandidateRetrievalState struct {
 	LastRetrievalState        *string
 	LastRetrievalError        *string
 	LastRetrievalErrorDetails *string
+}
+
+type UpdateCandidateDispatchState struct {
+	ID                      string
+	LastDispatchError       *string
+	LastDispatchAttemptedAt *time.Time
 }

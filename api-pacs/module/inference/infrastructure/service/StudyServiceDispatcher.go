@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	"api-pacs/module/inference/domain/entity"
@@ -25,6 +27,7 @@ var (
 type DispatchStudyHTTPError struct {
 	StatusCode int
 	Body       string
+	RetryAfter time.Duration
 }
 
 func (err *DispatchStudyHTTPError) Error() string {
@@ -128,6 +131,7 @@ func (service *StudyServiceDispatcher) DispatchStudy(ctx context.Context, data s
 		return serviceTypes.DispatchStudyResponse{}, &DispatchStudyHTTPError{
 			StatusCode: resp.StatusCode,
 			Body:       string(body),
+			RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After")),
 		}
 	}
 
@@ -248,4 +252,27 @@ func trimmedPointerValue(value *string) string {
 	}
 
 	return strings.TrimSpace(*value)
+}
+
+func parseRetryAfterHeader(value string) time.Duration {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return 0
+	}
+
+	if seconds, err := strconv.Atoi(trimmed); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+
+	retryAt, err := http.ParseTime(trimmed)
+	if err != nil {
+		return 0
+	}
+
+	delay := time.Until(retryAt)
+	if delay < 0 {
+		return 0
+	}
+
+	return delay
 }
