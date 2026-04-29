@@ -263,20 +263,25 @@ func (repository *InferenceCommandRepository) InsertInferenceIngestionJob(data t
 	return nil
 }
 
-// InsertInferenceIngestionRunResult inserts a new inference ingestion run result
-func (repository *InferenceCommandRepository) InsertInferenceIngestionRunResult(data types.AddInferenceIngestionRunResult) error {
-	result := entity.InferenceIngestionRunResult{
-		ID:               data.ID,
-		JobID:            data.JobID,
-		StudyInstanceUID: data.StudyInstanceUID,
-		InferenceOutput:  data.InferenceOutput,
-		ErrorMessage:     data.ErrorMessage,
-		Status:           data.Status,
+// InsertInferenceIngestionProcessingJob inserts a new inference ingestion processing job
+func (repository *InferenceCommandRepository) InsertInferenceIngestionProcessingJob(data types.AddInferenceIngestionProcessingJob) error {
+	processingJob := entity.InferenceIngestionProcessingJob{
+		ID:                data.ID,
+		CandidateID:       data.CandidateID,
+		TenantID:          data.TenantID,
+		ModelName:         data.ModelName,
+		ModelVersion:      data.ModelVersion,
+		Modality:          data.Modality,
+		Status:            data.Status,
+		StudyServiceJobID: data.StudyServiceJobID,
+		ErrorMessage:      data.ErrorMessage,
+		StartedAt:         data.StartedAt,
+		CompletedAt:       data.CompletedAt,
 	}
 
-	stmt := fmt.Sprintf("INSERT INTO %s (id, job_id, study_instance_uid, inference_output, error_message, status) "+
-		"VALUES (:id, :job_id, :study_instance_uid, :inference_output, :error_message, :status)", result.GetModelName())
-	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, result)
+	stmt := fmt.Sprintf("INSERT INTO %s (id, candidate_id, tenant_id, model_name, model_version, modality, status, study_service_job_id, error_message, started_at, completed_at) "+
+		"VALUES (:id, :candidate_id, :tenant_id, :model_name, :model_version, :modality, :status, :study_service_job_id, :error_message, :started_at, :completed_at)", processingJob.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, processingJob)
 	if err != nil {
 		log.Println(err)
 

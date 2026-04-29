@@ -26,8 +26,8 @@ type InferenceCommandRepositoryInterface interface {
 	InsertInferenceIngestionJob(data types.CreateInferenceIngestionJob) error
 	// DeleteInferenceIngestionJobByContainerID deletes inference ingestion jobs by container ID
 	DeleteInferenceIngestionJobByContainerID(tenantID, containerID string) error
-	// InsertInferenceIngestionRunResult inserts a new inference ingestion run result
-	InsertInferenceIngestionRunResult(data types.AddInferenceIngestionRunResult) error
+	// InsertInferenceIngestionProcessingJob inserts a new inference ingestion processing job
+	InsertInferenceIngestionProcessingJob(data types.AddInferenceIngestionProcessingJob) error
 	// InsertOnboardingModelQuestionnaireAnswer inserts an onboarding model questionnaire answer
 	InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
 	// UpdateInferenceModel updates an inference model
