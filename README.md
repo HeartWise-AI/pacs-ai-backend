@@ -386,6 +386,16 @@ STUDY_SERVICE_CALLBACK_TOKEN=<second hex string>
 
 > Use a different pair per environment (dev / staging / prod), never commit the populated `.env` files, and rotate by restarting both services together.
 
+### Ingestion Defaults
+
+`api-pacs/.env` can provide a default recent search window for ingestion jobs that do not set `recent_window_minutes` explicitly:
+
+```env
+INFERENCE_INGESTION_DEFAULT_RECENT_WINDOW_MINUTES=240
+```
+
+Per-job `recent_window_minutes` still overrides this value when present.
+
 ## Support
 
 Maintained with ❤️ by [Nuxify](https://nuxify.tech) and [HeartWise AI](https://heartwise.ai)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -830,6 +831,15 @@ func normalizeIngestionJobConfig(stabilityMinutes, recentWindowMinutes, missingP
 
 func resolvedRecentWindowMinutes(value uint) uint {
 	if value == 0 {
+		if configured := strings.TrimSpace(os.Getenv("INFERENCE_INGESTION_DEFAULT_RECENT_WINDOW_MINUTES")); configured != "" {
+			if parsed, err := strconv.ParseUint(configured, 10, 64); err == nil && parsed > 0 {
+				return uint(parsed)
+			}
+			log.Printf("[Ingestion service] invalid INFERENCE_INGESTION_DEFAULT_RECENT_WINDOW_MINUTES=%q, using fallback=%d",
+				configured,
+				defaultRecentWindowMinutes,
+			)
+		}
 		return defaultRecentWindowMinutes
 	}
 
