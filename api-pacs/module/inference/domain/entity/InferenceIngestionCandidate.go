@@ -62,5 +62,5 @@ type InferenceIngestionCandidate struct {
 
 // GetModelName returns the model name of inference ingestion candidate entity that can be used for naming schemas
 func (entity *InferenceIngestionCandidate) GetModelName() string {
-	return "inference_ingestion_candidates"
+	return "ingestion_candidates"
 }

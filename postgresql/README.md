@@ -65,6 +65,6 @@ docker exec postgresql psql -U iam_inference_db -d inference_db -c '\dt'
 
 Expected tables:
 
-- `inference_ingestion_jobs`
-- `inference_ingestion_candidates`
-- `inference_ingestion_processing_jobs`
+- `ingestion_jobs`
+- `ingestion_candidates`
+- `ingestion_processing_jobs`
