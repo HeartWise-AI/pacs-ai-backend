@@ -354,6 +354,38 @@ make up # This will start the application in local mode
 make down # This will stop the application
 ```
 
+## Recipes
+
+### Generating tokens for `api-pacs` ↔ `study-service` auth
+
+The Go backend (`api-pacs`) and the Python `study-service` authenticate each other with two separate bearer tokens — one per direction:
+
+- `STUDY_SERVICE_INGEST_TOKEN` — Go signs outbound dispatch calls; `study-service` verifies.
+- `STUDY_SERVICE_CALLBACK_TOKEN` — `study-service` signs outbound processing callbacks; Go verifies.
+
+Generate one random value per token:
+
+```bash
+openssl rand -hex 32   # → STUDY_SERVICE_INGEST_TOKEN
+openssl rand -hex 32   # → STUDY_SERVICE_CALLBACK_TOKEN
+```
+
+Set **both** values in **both** services' `.env` files (each side needs to sign one direction and verify the other):
+
+```env
+# api-pacs/.env
+STUDY_SERVICE_INGEST_TOKEN=<first hex string>
+STUDY_SERVICE_CALLBACK_TOKEN=<second hex string>
+```
+
+```env
+# cardio-agent/study-service/.env
+STUDY_SERVICE_INGEST_TOKEN=<first hex string>
+STUDY_SERVICE_CALLBACK_TOKEN=<second hex string>
+```
+
+> Use a different pair per environment (dev / staging / prod), never commit the populated `.env` files, and rotate by restarting both services together.
+
 ## Support
 
 Maintained with ❤️ by [Nuxify](https://nuxify.tech) and [HeartWise AI](https://heartwise.ai)
