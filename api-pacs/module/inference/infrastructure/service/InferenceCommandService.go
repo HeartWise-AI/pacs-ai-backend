@@ -403,7 +403,6 @@ func (service *InferenceCommandService) executeInferenceIngestionJob(ctx context
 		return nil // skip
 	}
 	log.Printf("[Ingestion service] c-find unique studies job_id=%s count=%d", job.ID, len(studies))
-	log.Printf("[Ingestion service] c-find unique studies job_id=%s studies=%v", job.ID, studies)
 
 	windowStart := jobNow.Add(-time.Duration(recentWindowMinutes) * time.Minute)
 	filteredStudies, skippedStudies := filterStudiesByRecentWindow(studies, windowStart, jobNow)
@@ -590,12 +589,12 @@ func (service *InferenceCommandService) executeInferenceIngestionJob(ctx context
 		}
 
 		if isLocal {
-			err = service.InferenceCommandRepositoryInterface.MarkCandidateRetrievedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
-				ID:                 candidate.ID,
+			err = service.persistCandidateRetrievalResult(job, candidate, candidateRetrievalResult{
+				Outcome:            candidateRetrievalOutcomeLocal,
 				LastRetrievalState: stringPointer(string(candidateRetrievalOutcomeLocal)),
 			})
 			if err != nil {
-				log.Println("[Ingestion service] cannot mark already-local ingestion candidate retrieved:", err)
+				log.Println("[Ingestion service] cannot persist already-local ingestion candidate retrieval result:", err)
 			}
 			continue
 		}
@@ -1292,6 +1291,7 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 						candidate.ID, job.ID, requestID, persistErr,
 					)
 				}
+				service.recordFailedProcessingDispatch(candidate, job, dispatchRequest, dispatchErr)
 				return dispatchErr
 			}
 
@@ -1317,6 +1317,7 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 					candidate.ID, job.ID, requestID, persistErr,
 				)
 			}
+			service.recordFailedProcessingDispatch(candidate, job, dispatchRequest, dispatchErr)
 			return dispatchErr
 		}
 
@@ -1350,11 +1351,98 @@ func (service *InferenceCommandService) recordQueuedProcessingDispatch(candidate
 		Status:            entity.InferenceIngestionProcessingJobStatusQueued,
 		StudyServiceJobID: nonEmptyStringPointer(strings.TrimSpace(dispatchResponse.JobID)),
 	})
-	if err == nil || err.Error() == apiError.DuplicateRecord {
+	if err == nil {
+		return
+	}
+
+	if err.Error() == apiError.DuplicateRecord {
+		existing, queryErr := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionProcessingJobByCandidateModel(candidate.ID, job.ModelName)
+		if queryErr != nil {
+			log.Printf("[Ingestion dispatch] cannot load duplicate queued processing dispatch candidate_id=%s ingestion_job_id=%s err=%v",
+				candidate.ID,
+				job.ID,
+				queryErr,
+			)
+			return
+		}
+
+		if existing.Status != entity.InferenceIngestionProcessingJobStatusFailed && existing.StudyServiceJobID != nil {
+			return
+		}
+
+		updateErr := service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionProcessingJob(repositoryTypes.UpdateInferenceIngestionProcessingJob{
+			ID:                existing.ID,
+			Status:            entity.InferenceIngestionProcessingJobStatusQueued,
+			ModelVersion:      nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
+			Modality:          nonEmptyStringPointer(strings.TrimSpace(dispatchRequest.Modality)),
+			StudyServiceJobID: nonEmptyStringPointer(strings.TrimSpace(dispatchResponse.JobID)),
+			ErrorMessage:      nil,
+		})
+		if updateErr != nil {
+			log.Printf("[Ingestion dispatch] cannot update duplicate queued processing dispatch candidate_id=%s ingestion_job_id=%s err=%v",
+				candidate.ID,
+				job.ID,
+				updateErr,
+			)
+		}
 		return
 	}
 
 	log.Printf("[Ingestion dispatch] cannot persist queued processing dispatch candidate_id=%s ingestion_job_id=%s err=%v",
+		candidate.ID,
+		job.ID,
+		err,
+	)
+}
+
+func (service *InferenceCommandService) recordFailedProcessingDispatch(candidate entity.InferenceIngestionCandidate, job entity.InferenceIngestionJob, dispatchRequest types.DispatchStudyRequest, dispatchErr error) {
+	err := service.InferenceCommandRepositoryInterface.InsertInferenceIngestionProcessingJob(repositoryTypes.AddInferenceIngestionProcessingJob{
+		ID:           generateID(),
+		CandidateID:  candidate.ID,
+		TenantID:     candidate.TenantID,
+		ModelName:    job.ModelName,
+		ModelVersion: nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
+		Modality:     nonEmptyStringPointer(strings.TrimSpace(dispatchRequest.Modality)),
+		Status:       entity.InferenceIngestionProcessingJobStatusFailed,
+		ErrorMessage: stringPointer(dispatchErr.Error()),
+	})
+	if err == nil {
+		return
+	}
+
+	if err.Error() == apiError.DuplicateRecord {
+		existing, queryErr := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionProcessingJobByCandidateModel(candidate.ID, job.ModelName)
+		if queryErr != nil {
+			log.Printf("[Ingestion dispatch] cannot load duplicate failed processing dispatch candidate_id=%s ingestion_job_id=%s err=%v",
+				candidate.ID,
+				job.ID,
+				queryErr,
+			)
+			return
+		}
+
+		if existing.Status != entity.InferenceIngestionProcessingJobStatusFailed && existing.StudyServiceJobID != nil {
+			return
+		}
+
+		updateErr := service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionProcessingJob(repositoryTypes.UpdateInferenceIngestionProcessingJob{
+			ID:           existing.ID,
+			Status:       entity.InferenceIngestionProcessingJobStatusFailed,
+			ModelVersion: nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
+			Modality:     nonEmptyStringPointer(strings.TrimSpace(dispatchRequest.Modality)),
+			ErrorMessage: stringPointer(dispatchErr.Error()),
+		})
+		if updateErr != nil {
+			log.Printf("[Ingestion dispatch] cannot update duplicate failed processing dispatch candidate_id=%s ingestion_job_id=%s err=%v",
+				candidate.ID,
+				job.ID,
+				updateErr,
+			)
+		}
+		return
+	}
+
+	log.Printf("[Ingestion dispatch] cannot persist failed processing dispatch candidate_id=%s ingestion_job_id=%s err=%v",
 		candidate.ID,
 		job.ID,
 		err,
