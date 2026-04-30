@@ -8,7 +8,15 @@ CREATE TYPE inference_ingestion_candidate_status AS ENUM (
     'FAILED'
 );
 
-CREATE TABLE inference_ingestion_candidates (
+CREATE TYPE inference_ingestion_candidate_processing_status AS ENUM (
+    'queued',
+    'running',
+    'completed',
+    'partial',
+    'failed'
+);
+
+CREATE TABLE ingestion_candidates (
     id varchar(50) NOT NULL,
     tenant_id varchar(50) NOT NULL,
     ingestion_job_id varchar(50) NOT NULL,
@@ -32,6 +40,10 @@ CREATE TABLE inference_ingestion_candidates (
     last_retrieval_error text NULL,
     last_retrieval_error_details text NULL,
     last_retrieval_checked_at timestamptz NULL,
+    processing_status inference_ingestion_candidate_processing_status NULL,
+    processing_status_at timestamptz NULL,
+    last_dispatch_error text NULL,
+    last_dispatch_attempted_at timestamptz NULL,
     created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -39,7 +51,7 @@ CREATE TABLE inference_ingestion_candidates (
         UNIQUE (ingestion_job_id, study_instance_uid),
     CONSTRAINT fk_inference_ingestion_candidates_job
         FOREIGN KEY (ingestion_job_id)
-        REFERENCES inference_ingestion_jobs (id)
+        REFERENCES ingestion_jobs (id)
         ON DELETE CASCADE
 );
 
@@ -52,6 +64,9 @@ END;
 $$ language 'plpgsql';
 
 CREATE TRIGGER trigger_update_inference_ingestion_candidates_updated_at
-    BEFORE UPDATE ON inference_ingestion_candidates
+    BEFORE UPDATE ON ingestion_candidates
     FOR EACH ROW
     EXECUTE FUNCTION func_ingestion_candidates_update_updated_at();
+
+CREATE INDEX idx_inference_ingestion_candidates_processing_status
+    ON ingestion_candidates (processing_status);

@@ -1,7 +1,7 @@
 CREATE TYPE inference_ingestion_job_status AS ENUM ('RUNNING', 'STOPPED');
 
 CREATE TABLE
-    inference_ingestion_jobs (
+    ingestion_jobs (
         id varchar(50) NOT NULL,
         tenant_id varchar(50) NOT NULL,
         dicom_modality varchar(255) NOT NULL,
@@ -35,6 +35,6 @@ $$ language 'plpgsql';
 
 -- trigger to automatically update updated_at on row updates
 CREATE TRIGGER trigger_update_inference_ingestion_jobs_updated_at
-    BEFORE UPDATE ON inference_ingestion_jobs
+    BEFORE UPDATE ON ingestion_jobs
     FOR EACH ROW
     EXECUTE FUNCTION func_update_updated_at();

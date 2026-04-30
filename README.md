@@ -327,9 +327,9 @@ docker exec postgresql psql -U ${POSTGRES_DB_USERNAME} -d ${POSTGRES_DB_DATABASE
 
 Expected tables:
 
-- `inference_ingestion_jobs`
-- `inference_ingestion_candidates`
-- `inference_ingestion_processing_jobs`
+- `ingestion_jobs`
+- `ingestion_candidates`
+- `ingestion_processing_jobs`
 
 ##### Database Migrations using Go / `migrate`
 
