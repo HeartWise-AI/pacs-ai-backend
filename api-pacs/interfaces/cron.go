@@ -47,6 +47,24 @@ func RunInferenceIngestionRetrievalWorkerHandler() {
 	}
 }
 
+// RunInferenceIngestionReconciliationWorkerHandler reconciles stale processing state against study-service.
+func RunInferenceIngestionReconciliationWorkerHandler() {
+	inferenceCommandService := InferenceCommandServiceDI()
+	interval := inferenceIngestionReconciliationWorkerInterval()
+
+	log.Printf("[Ingestion reconciliation worker] interval configured minutes=%d", int(interval.Minutes()))
+
+	tick := time.Tick(interval)
+	for range tick {
+		err := inferenceCommandService.ExecuteInferenceIngestionReconciliationWorker(context.TODO())
+		if err == nil || err.Error() == apiError.MissingRecord {
+			log.Println("[Ingestion reconciliation worker] executed stale processing reconciliation worker")
+		} else {
+			log.Println("[Ingestion reconciliation worker] error while executing stale processing reconciliation worker:", err)
+		}
+	}
+}
+
 func inferenceIngestionRunnerInterval() time.Duration {
 	const defaultIntervalMinutes = 1
 
@@ -82,6 +100,25 @@ func inferenceIngestionRetrievalWorkerInterval() time.Duration {
 	}
 
 	log.Printf("[Ingestion retrieval worker] using INFERENCE_INGESTION_RETRIEVAL_WORKER_INTERVAL_MINUTES=%d", minutes)
+	return time.Duration(minutes) * time.Minute
+}
+
+func inferenceIngestionReconciliationWorkerInterval() time.Duration {
+	const defaultIntervalMinutes = 5
+
+	value := strings.TrimSpace(os.Getenv("INFERENCE_INGESTION_RECONCILIATION_INTERVAL_MINUTES"))
+	if value == "" {
+		log.Printf("[Ingestion reconciliation worker] INFERENCE_INGESTION_RECONCILIATION_INTERVAL_MINUTES not set, using default minutes=%d", defaultIntervalMinutes)
+		return defaultIntervalMinutes * time.Minute
+	}
+
+	minutes, err := strconv.Atoi(value)
+	if err != nil || minutes <= 0 {
+		log.Printf("[Ingestion reconciliation worker] invalid INFERENCE_INGESTION_RECONCILIATION_INTERVAL_MINUTES=%q, using default minutes=%d", value, defaultIntervalMinutes)
+		return defaultIntervalMinutes * time.Minute
+	}
+
+	log.Printf("[Ingestion reconciliation worker] using INFERENCE_INGESTION_RECONCILIATION_INTERVAL_MINUTES=%d", minutes)
 	return time.Duration(minutes) * time.Minute
 }
 
