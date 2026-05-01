@@ -358,33 +358,49 @@ make down # This will stop the application
 
 ### Generating tokens for `api-pacs` ↔ `study-service` auth
 
-The Go backend (`api-pacs`) and the Python `study-service` authenticate each other with two separate bearer tokens — one per direction:
+The Go backend (`api-pacs`) and the Python `study-service` now use three separate bearer tokens:
 
-- `STUDY_SERVICE_INGEST_TOKEN` — Go signs outbound dispatch calls; `study-service` verifies.
+- `STUDY_SERVICE_INGEST_TOKEN` — Go signs outbound `POST /ingest/study` calls; `study-service` verifies.
+- `STUDY_SERVICE_OPERATOR_TOKEN` — PACS-AI signs study-service job/control-plane reads; `study-service` verifies.
 - `STUDY_SERVICE_CALLBACK_TOKEN` — `study-service` signs outbound processing callbacks; Go verifies.
 
 Generate one random value per token:
 
 ```bash
 openssl rand -hex 32   # → STUDY_SERVICE_INGEST_TOKEN
+openssl rand -hex 32   # → STUDY_SERVICE_OPERATOR_TOKEN
 openssl rand -hex 32   # → STUDY_SERVICE_CALLBACK_TOKEN
 ```
 
-Set **both** values in **both** services' `.env` files (each side needs to sign one direction and verify the other):
+Copy them as:
+
+- first generated value -> `STUDY_SERVICE_INGEST_TOKEN`
+- second generated value -> `STUDY_SERVICE_OPERATOR_TOKEN`
+- third generated value -> `STUDY_SERVICE_CALLBACK_TOKEN`
+
+Set all three values in both services' `.env` files. PACS-AI needs them to sign ingest requests, reconciliation/job API reads, and verify callbacks. Study-service needs them to verify ingest/job API requests and sign callbacks.
 
 ```env
 # api-pacs/.env
 STUDY_SERVICE_INGEST_TOKEN=<first hex string>
-STUDY_SERVICE_CALLBACK_TOKEN=<second hex string>
+STUDY_SERVICE_OPERATOR_TOKEN=<second hex string>
+STUDY_SERVICE_CALLBACK_TOKEN=<third hex string>
 ```
 
 ```env
 # cardio-agent/study-service/.env
 STUDY_SERVICE_INGEST_TOKEN=<first hex string>
-STUDY_SERVICE_CALLBACK_TOKEN=<second hex string>
+STUDY_SERVICE_OPERATOR_TOKEN=<second hex string>
+STUDY_SERVICE_CALLBACK_TOKEN=<third hex string>
 ```
 
-> Use a different pair per environment (dev / staging / prod), never commit the populated `.env` files, and rotate by restarting both services together.
+Recommended use:
+
+- `STUDY_SERVICE_INGEST_TOKEN` is only for PACS-AI -> study-service ingest dispatch.
+- `STUDY_SERVICE_OPERATOR_TOKEN` is only for study-service job/control routes such as `/jobs`, `/settings`, `/health`, `/health/detailed`, `/metrics`, and `/jobs/stream`.
+- `STUDY_SERVICE_CALLBACK_TOKEN` is only for study-service -> PACS-AI callbacks.
+
+> Use a different set per environment (dev / staging / prod), never commit the populated `.env` files, and rotate by restarting both services together.
 
 ### Ingestion Defaults
 
