@@ -10,6 +10,7 @@
 package rest
 
 import (
+	"expvar"
 	"fmt"
 	"log"
 	"net/http"
@@ -92,6 +93,7 @@ func (router *router) InitRouter() *chi.Mux {
 		workDir, _ := os.Getwd()
 		docsDir := http.Dir(filepath.Join(workDir, "docs"))
 		FileServer(r, "/docs", docsDir)
+		r.Handle("/debug/vars", expvar.Handler())
 
 		// orthanc openapi
 		orthancDocsDir := http.Dir(filepath.Join(workDir, "docs", "orthanc"))
@@ -183,6 +185,12 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Delete("/job/{ID}/remove", inferenceCommandController.RemoveInferenceIngestionJob)
 						})
 					})
+				})
+			})
+
+			r.Route("/internal", func(r chi.Router) {
+				r.Route("/inference", func(r chi.Router) {
+					r.Post("/ingestion/candidates/{candidate_id}/processing", inferenceCommandController.StudyServiceProcessingCallback)
 				})
 			})
 

@@ -560,6 +560,10 @@ func buildInferenceIngestionCandidateResponses(candidates []entity.InferenceInge
 			LastRetrievalError:        dereferenceString(candidate.LastRetrievalError),
 			LastRetrievalErrorDetails: dereferenceString(candidate.LastRetrievalErrorDetails),
 			LastRetrievalCheckedAt:    nullableTimestampUnix(candidate.LastRetrievalCheckedAt),
+			ProcessingStatus:          dereferenceCandidateProcessingStatus(candidate.ProcessingStatus),
+			ProcessingStatusAt:        nullableTimestampUnix(candidate.ProcessingStatusAt),
+			LastDispatchError:         dereferenceString(candidate.LastDispatchError),
+			LastDispatchAttemptedAt:   nullableTimestampUnix(candidate.LastDispatchAttemptedAt),
 			CreatedAt:                 uint64(candidate.CreatedAt.Unix()),
 			UpdatedAt:                 uint64(candidate.UpdatedAt.Unix()),
 		})
@@ -590,6 +594,14 @@ func nullableTimestampUnix(value *time.Time) uint64 {
 	}
 
 	return scheduleTimestampUnix(*value)
+}
+
+func dereferenceCandidateProcessingStatus(value *entity.InferenceIngestionCandidateProcessingStatus) string {
+	if value == nil {
+		return ""
+	}
+
+	return string(*value)
 }
 
 func scheduleTimestampUnix(value time.Time) uint64 {

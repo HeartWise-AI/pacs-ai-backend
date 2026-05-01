@@ -32,6 +32,12 @@ var (
 		"ImportInferenceIngestionJob.ModelVersion":                                                              "Model version is required.",
 		"ImportInferenceIngestionJob.Modalities":                                                                "Modalities are required.",
 		"ImportInferenceIngestionJob.StabilityMinutes":                                                          "Stability minutes is required.",
+		"StudyServiceProcessingCallbackRequest.StudyInstanceUID":                                                "Study Instance UID is required.",
+		"StudyServiceProcessingCallbackRequest.ModelName":                                                       "Model name is required.",
+		"StudyServiceProcessingCallbackRequest.ModelVersion":                                                    "Model version is required.",
+		"StudyServiceProcessingCallbackRequest.Modality":                                                        "Modality is required.",
+		"StudyServiceProcessingCallbackRequest.Status":                                                          "Status is required.",
+		"StudyServiceProcessingCallbackRequest.StudyServiceJobID":                                               "Study-service job ID is required.",
 	}
 )
 
@@ -98,6 +104,18 @@ type UpdateModelFeedbackRequest struct {
 	ModelID              string                `json:"modelId" validate:"required"`
 	FeedbackType         entity.FeedbackType   `json:"feedbackType" validate:"required"`
 	ModelFeedbackAnswers []ModelFeedbackAnswer `json:"modelFeedbackAnswers"`
+}
+
+type StudyServiceProcessingCallbackRequest struct {
+	StudyInstanceUID  string  `json:"study_instance_uid" validate:"required"`
+	ModelName         string  `json:"model_name" validate:"required"`
+	ModelVersion      string  `json:"model_version" validate:"required"`
+	Modality          string  `json:"modality" validate:"required"`
+	Status            string  `json:"status" validate:"required"`
+	ErrorMessage      *string `json:"error_message"`
+	StudyServiceJobID string  `json:"study_service_job_id" validate:"required"`
+	StartedAt         *string `json:"started_at"`
+	CompletedAt       *string `json:"completed_at"`
 }
 
 type GetContainerInfoResponse struct {
@@ -189,6 +207,10 @@ type GetInferenceIngestionCandidateResponse struct {
 	LastRetrievalError        string   `json:"lastRetrievalError"`
 	LastRetrievalErrorDetails string   `json:"lastRetrievalErrorDetails"`
 	LastRetrievalCheckedAt    uint64   `json:"lastRetrievalCheckedAt"`
+	ProcessingStatus          string   `json:"processingStatus"`
+	ProcessingStatusAt        uint64   `json:"processingStatusAt"`
+	LastDispatchError         string   `json:"lastDispatchError"`
+	LastDispatchAttemptedAt   uint64   `json:"lastDispatchAttemptedAt"`
 	CreatedAt                 uint64   `json:"createdAt"`
 	UpdatedAt                 uint64   `json:"updatedAt"`
 }

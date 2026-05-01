@@ -7,6 +7,7 @@ import (
 )
 
 type InferenceIngestionCandidateStatus string
+type InferenceIngestionCandidateProcessingStatus string
 
 const (
 	InferenceIngestionCandidateStatusDiscovered      InferenceIngestionCandidateStatus = "DISCOVERED"
@@ -16,6 +17,14 @@ const (
 	InferenceIngestionCandidateStatusRetrieved       InferenceIngestionCandidateStatus = "RETRIEVED"
 	InferenceIngestionCandidateStatusDisappeared     InferenceIngestionCandidateStatus = "DISAPPEARED"
 	InferenceIngestionCandidateStatusFailed          InferenceIngestionCandidateStatus = "FAILED"
+)
+
+const (
+	InferenceIngestionCandidateProcessingStatusQueued    InferenceIngestionCandidateProcessingStatus = "queued"
+	InferenceIngestionCandidateProcessingStatusRunning   InferenceIngestionCandidateProcessingStatus = "running"
+	InferenceIngestionCandidateProcessingStatusCompleted InferenceIngestionCandidateProcessingStatus = "completed"
+	InferenceIngestionCandidateProcessingStatusPartial   InferenceIngestionCandidateProcessingStatus = "partial"
+	InferenceIngestionCandidateProcessingStatusFailed    InferenceIngestionCandidateProcessingStatus = "failed"
 )
 
 // InferenceIngestionCandidate holds the ingestion candidate entity fields
@@ -43,11 +52,15 @@ type InferenceIngestionCandidate struct {
 	LastRetrievalError        *string `db:"last_retrieval_error"`
 	LastRetrievalErrorDetails *string `db:"last_retrieval_error_details"`
 	LastRetrievalCheckedAt    *time.Time `db:"last_retrieval_checked_at"`
+	ProcessingStatus          *InferenceIngestionCandidateProcessingStatus `db:"processing_status"`
+	ProcessingStatusAt        *time.Time `db:"processing_status_at"`
+	LastDispatchError         *string `db:"last_dispatch_error"`
+	LastDispatchAttemptedAt   *time.Time `db:"last_dispatch_attempted_at"`
 	CreatedAt                 time.Time `db:"created_at"`
 	UpdatedAt                 time.Time `db:"updated_at"`
 }
 
 // GetModelName returns the model name of inference ingestion candidate entity that can be used for naming schemas
 func (entity *InferenceIngestionCandidate) GetModelName() string {
-	return "inference_ingestion_candidates"
+	return "ingestion_candidates"
 }

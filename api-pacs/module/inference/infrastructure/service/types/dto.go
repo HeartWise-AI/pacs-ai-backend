@@ -40,6 +40,51 @@ type CreateInferenceIngestionJob struct {
 	ScheduleEndTimestamp   uint64
 }
 
+type BuildStudyServiceDispatchRequestInput struct {
+	IngestionJob       entity.InferenceIngestionJob
+	Candidate          entity.InferenceIngestionCandidate
+	OrthancStudyID     *string
+	RetrievalAttemptID *string
+	RequestID          *string
+}
+
+type DispatchStudyRequest struct {
+	XRequestID         string  `json:"-"`
+	TenantID           *string `json:"tenant_id"`
+	IngestionJobID     *string `json:"ingestion_job_id"`
+	CandidateID        *string `json:"candidate_id"`
+	RetrievalAttemptID *string `json:"retrieval_attempt_id"`
+	StudyInstanceUID   string  `json:"study_instance_uid"`
+	OrthancStudyID     string  `json:"orthanc_study_id"`
+	Modality           string  `json:"modality"`
+	ModelName          string  `json:"model_name"`
+	ModelVersion       string  `json:"model_version"`
+}
+
+type DispatchStudyResponse struct {
+	JobID          string `json:"job_id"`
+	AlreadyPresent bool   `json:"already_present"`
+	StatusCode     int    `json:"-"`
+}
+
+type HandleStudyServiceProcessingCallback struct {
+	CandidateID       string
+	RequestID         string
+	StudyInstanceUID  string
+	ModelName         string
+	ModelVersion      string
+	Modality          string
+	Status            string
+	ErrorMessage      *string
+	StudyServiceJobID string
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
+}
+
+type HandleStudyServiceProcessingCallbackResult struct {
+	Outcome string
+}
+
 type GetContainerInfoResult struct {
 	ID              string
 	Name            string

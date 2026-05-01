@@ -38,5 +38,5 @@ type InferenceIngestionJob struct {
 
 // GetModelName returns the model name of inference ingestion jobs entity that can be used for naming schemas
 func (entity *InferenceIngestionJob) GetModelName() string {
-	return "inference_ingestion_jobs"
+	return "ingestion_jobs"
 }

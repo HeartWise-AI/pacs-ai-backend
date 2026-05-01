@@ -28,6 +28,8 @@ type InferenceCommandRepositoryInterface interface {
 	DeleteInferenceIngestionJobByContainerID(tenantID, containerID string) error
 	// InsertInferenceIngestionProcessingJob inserts a new inference ingestion processing job
 	InsertInferenceIngestionProcessingJob(data types.AddInferenceIngestionProcessingJob) error
+	// UpdateInferenceIngestionProcessingJob updates an inference ingestion processing job
+	UpdateInferenceIngestionProcessingJob(data types.UpdateInferenceIngestionProcessingJob) error
 	// InsertOnboardingModelQuestionnaireAnswer inserts an onboarding model questionnaire answer
 	InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
 	// UpdateInferenceModel updates an inference model
@@ -48,6 +50,8 @@ type InferenceCommandRepositoryInterface interface {
 	SaveCandidateOrthancJobIDs(ID string, orthancJobIDs []string) error
 	// UpdateCandidateRetrievalState stores retrieval state and error details for an ingestion candidate
 	UpdateCandidateRetrievalState(data types.UpdateCandidateRetrievalState) error
+	// UpdateCandidateDispatchState stores study-service dispatch state for an ingestion candidate
+	UpdateCandidateDispatchState(data types.UpdateCandidateDispatchState) error
 	// MarkCandidateRetrievalQueued marks an ingestion candidate as retrieval queued
 	MarkCandidateRetrievalQueued(ID string) error
 	// MarkCandidateRetrieved marks an ingestion candidate as retrieved
