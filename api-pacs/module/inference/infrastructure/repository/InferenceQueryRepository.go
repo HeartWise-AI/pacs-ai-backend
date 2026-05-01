@@ -314,6 +314,32 @@ func (repository *InferenceQueryRepository) ListCandidatesQueuedForRetrieval() (
 	return candidates, nil
 }
 
+// ListStaleProcessingCandidates lists candidates whose queued/running processing state has gone stale.
+func (repository *InferenceQueryRepository) ListStaleProcessingCandidates(staleBefore time.Time) ([]entity.InferenceIngestionCandidate, error) {
+	var candidate entity.InferenceIngestionCandidate
+	var candidates []entity.InferenceIngestionCandidate
+
+	stmt := fmt.Sprintf(`SELECT * FROM %s
+WHERE processing_status IN (:queued_status, :running_status)
+	AND processing_status_at IS NOT NULL
+	AND processing_status_at <= :stale_before
+ORDER BY processing_status_at ASC, updated_at ASC`, candidate.GetModelName())
+
+	err := repository.PostgresSQLDBHandlerInterface.Query(stmt, map[string]interface{}{
+		"queued_status":  entity.InferenceIngestionCandidateProcessingStatusQueued,
+		"running_status": entity.InferenceIngestionCandidateProcessingStatusRunning,
+		"stale_before":   staleBefore,
+	}, &candidates)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.DatabaseError)
+	} else if len(candidates) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return candidates, nil
+}
+
 // SelectModelFeedbackByUserModelID get model feedback by model and user ID
 func (repository *InferenceQueryRepository) SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
 	// firestore client

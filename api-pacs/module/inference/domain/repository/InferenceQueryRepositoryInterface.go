@@ -31,6 +31,8 @@ type InferenceQueryRepositoryInterface interface {
 	ListCandidatesReadyForRetrieval(ingestionJobID string, stableBefore time.Time) ([]entity.InferenceIngestionCandidate, error)
 	// ListCandidatesQueuedForRetrieval lists ingestion candidates queued for retrieval
 	ListCandidatesQueuedForRetrieval() ([]entity.InferenceIngestionCandidate, error)
+	// ListStaleProcessingCandidates lists candidates whose processing state appears stale.
+	ListStaleProcessingCandidates(staleBefore time.Time) ([]entity.InferenceIngestionCandidate, error)
 	// SelectModelFeedbackByUserModelID get model feedback by user and model ID
 	SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error)
 	// SelectModelFeedbackAnswersByFeedbackID get model feedback answers by feedback ID

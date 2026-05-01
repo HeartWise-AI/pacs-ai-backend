@@ -60,6 +60,7 @@ const (
 	defaultRecentWindowMinutes   uint = 240
 	defaultStabilityMinutes      uint = 10
 	defaultMissingPollsThreshold uint = 3
+	defaultReconciliationStaleMinutes uint = 15
 )
 
 var studyServiceDispatchRetrySchedule = []time.Duration{
@@ -669,6 +670,106 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRetrievalWorker
 	}
 
 	return nil
+}
+
+// ExecuteInferenceIngestionReconciliationWorker reconciles stale processing candidates against study-service job truth.
+func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationWorker(ctx context.Context) error {
+	staleMinutes := configuredProcessingReconciliationStaleMinutes()
+	staleBefore := time.Now().Add(-time.Duration(staleMinutes) * time.Minute)
+
+	candidates, err := service.InferenceQueryRepositoryInterface.ListStaleProcessingCandidates(staleBefore)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("[Ingestion reconciliation worker] stale candidates count=%d stale_before=%s stale_minutes=%d",
+		len(candidates),
+		formatEasternTime(staleBefore),
+		staleMinutes,
+	)
+
+	for _, candidate := range candidates {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		if err := service.reconcileStaleProcessingCandidate(ctx, candidate); err != nil {
+			log.Printf("[Ingestion reconciliation worker] cannot reconcile candidate_id=%s tenant_id=%s study_instance_uid=%s err=%v",
+				candidate.ID,
+				candidate.TenantID,
+				candidate.StudyInstanceUID,
+				err,
+			)
+		}
+	}
+
+	return nil
+}
+
+func (service *InferenceCommandService) reconcileStaleProcessingCandidate(ctx context.Context, candidate entity.InferenceIngestionCandidate) error {
+	jobs, err := service.ProcessingDispatcherInterface.GetJobsByCandidate(ctx, candidate.TenantID, candidate.ID)
+	if err != nil {
+		return err
+	}
+
+	if len(jobs) == 0 {
+		log.Printf("[Ingestion reconciliation worker] no study-service jobs returned candidate_id=%s tenant_id=%s study_instance_uid=%s",
+			candidate.ID,
+			candidate.TenantID,
+			candidate.StudyInstanceUID,
+		)
+		return nil
+	}
+
+	for _, job := range jobs {
+		if job.CandidateID != nil && strings.TrimSpace(*job.CandidateID) != "" && strings.TrimSpace(*job.CandidateID) != strings.TrimSpace(candidate.ID) {
+			continue
+		}
+
+		result, err := service.HandleStudyServiceProcessingCallback(ctx, types.HandleStudyServiceProcessingCallback{
+			CandidateID:       candidate.ID,
+			RequestID:         fmt.Sprintf("reconcile:%s:%s", strings.TrimSpace(candidate.ID), strings.TrimSpace(job.JobID)),
+			StudyInstanceUID:  strings.TrimSpace(job.StudyInstanceUID),
+			ModelName:         strings.TrimSpace(job.ModelName),
+			ModelVersion:      trimmedPointerValue(job.ModelVersion),
+			Modality:          strings.TrimSpace(job.Modality),
+			Status:            strings.TrimSpace(job.Status),
+			ErrorMessage:      job.ErrorMessage,
+			StudyServiceJobID: strings.TrimSpace(job.JobID),
+			StartedAt:         job.StartedAt,
+			CompletedAt:       job.CompletedAt,
+		})
+		if err != nil {
+			return err
+		}
+
+		log.Printf("[Ingestion reconciliation worker] reconciled candidate_id=%s tenant_id=%s study_service_job_id=%s model_name=%s outcome=%s status=%s",
+			candidate.ID,
+			candidate.TenantID,
+			job.JobID,
+			job.ModelName,
+			result.Outcome,
+			job.Status,
+		)
+	}
+
+	return nil
+}
+
+func configuredProcessingReconciliationStaleMinutes() uint {
+	value := strings.TrimSpace(os.Getenv("INFERENCE_INGESTION_RECONCILIATION_STALE_MINUTES"))
+	if value == "" {
+		return defaultReconciliationStaleMinutes
+	}
+
+	minutes, err := strconv.Atoi(value)
+	if err != nil || minutes <= 0 {
+		return defaultReconciliationStaleMinutes
+	}
+
+	return uint(minutes)
 }
 
 func (service *InferenceCommandService) findIngestionStudiesWithCache(

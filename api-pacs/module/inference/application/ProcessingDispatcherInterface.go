@@ -12,4 +12,6 @@ type ProcessingDispatcherInterface interface {
 	BuildDispatchStudyRequest(ctx context.Context, data serviceTypes.BuildStudyServiceDispatchRequestInput) (serviceTypes.DispatchStudyRequest, error)
 	// DispatchStudy sends a POST /ingest/study request to study-service.
 	DispatchStudy(ctx context.Context, data serviceTypes.DispatchStudyRequest) (serviceTypes.DispatchStudyResponse, error)
+	// GetJobsByCandidate fetches tenant-scoped study-service jobs for one ingestion candidate.
+	GetJobsByCandidate(ctx context.Context, tenantID, candidateID string) ([]serviceTypes.StudyServiceJob, error)
 }
