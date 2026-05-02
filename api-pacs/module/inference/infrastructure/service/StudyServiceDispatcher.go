@@ -41,9 +41,10 @@ func (err *DispatchStudyHTTPError) Error() string {
 
 // StudyServiceDispatcher builds and emits explicit study-service ingest requests.
 type StudyServiceDispatcher struct {
-	StudyServiceBaseURL     string
-	StudyServiceIngestToken string
-	StudyServiceClient      *http.Client
+	StudyServiceBaseURL      string
+	StudyServiceIngestToken  string
+	StudyServiceOperatorToken string
+	StudyServiceClient       *http.Client
 	orthancAPITypes.OrthancAPIInterface
 }
 
@@ -112,10 +113,7 @@ func (service *StudyServiceDispatcher) DispatchStudy(ctx context.Context, data s
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Request-ID", data.XRequestID)
-
-	if token := strings.TrimSpace(service.StudyServiceIngestToken); token != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	}
+	service.applyBearerToken(req, service.StudyServiceIngestToken)
 
 	resp, err := service.StudyServiceClient.Do(req)
 	if err != nil {
@@ -142,6 +140,55 @@ func (service *StudyServiceDispatcher) DispatchStudy(ctx context.Context, data s
 	response.StatusCode = resp.StatusCode
 
 	return response, nil
+}
+
+// GetJobsByCandidate fetches tenant-scoped operator-visible jobs for one candidate.
+func (service *StudyServiceDispatcher) GetJobsByCandidate(ctx context.Context, tenantID, candidateID string) ([]serviceTypes.StudyServiceJob, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(service.StudyServiceBaseURL), "/")
+	if baseURL == "" {
+		return nil, errStudyServiceBaseURLMissing
+	}
+
+	requestID := generateID()
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("%s/jobs/by-candidate/%s?page=1&page_size=250", baseURL, candidateID),
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Request-ID", requestID)
+	req.Header.Set("X-Tenant-ID", strings.TrimSpace(tenantID))
+	service.applyBearerToken(req, service.StudyServiceOperatorToken)
+
+	resp, err := service.StudyServiceClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, readErr
+		}
+		return nil, fmt.Errorf("study-service job lookup failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var response serviceTypes.StudyServiceJobsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, err
+	}
+
+	return response.Jobs, nil
+}
+
+func (service *StudyServiceDispatcher) applyBearerToken(req *http.Request, token string) {
+	if trimmed := strings.TrimSpace(token); trimmed != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", trimmed))
+	}
 }
 
 func (service *StudyServiceDispatcher) resolveLocalOrthancStudyID(ctx context.Context, studyInstanceUID string) (string, error) {

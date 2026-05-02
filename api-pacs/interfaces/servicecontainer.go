@@ -307,10 +307,11 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		DockerInferenceAPIInterface:          dockerInferenceAPI,
 		StudyServiceDispatchSemaphore:        make(chan struct{}, configuredStudyServiceDispatchConcurrency()),
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
-			StudyServiceBaseURL:     os.Getenv("STUDY_SERVICE_BASE_URL"),
-			StudyServiceIngestToken: os.Getenv("STUDY_SERVICE_INGEST_TOKEN"),
-			StudyServiceClient:      &http.Client{Timeout: 5 * time.Second},
-			OrthancAPIInterface:     orthancAPI,
+			StudyServiceBaseURL:      os.Getenv("STUDY_SERVICE_BASE_URL"),
+			StudyServiceIngestToken:  os.Getenv("STUDY_SERVICE_INGEST_TOKEN"),
+			StudyServiceOperatorToken: os.Getenv("STUDY_SERVICE_OPERATOR_TOKEN"),
+			StudyServiceClient:       &http.Client{Timeout: 5 * time.Second},
+			OrthancAPIInterface:      orthancAPI,
 		},
 	}
 
@@ -677,6 +678,7 @@ func ServiceContainer() ServiceContainerInterface {
 			// run event listeners and cron jobs after all handlers are registered
 			go RunInferenceIngestionServiceHandler()
 			go RunInferenceIngestionRetrievalWorkerHandler()
+			go RunInferenceIngestionReconciliationWorkerHandler()
 			go RunOrthancLocalStudiesCacheHandler()
 		})
 	}

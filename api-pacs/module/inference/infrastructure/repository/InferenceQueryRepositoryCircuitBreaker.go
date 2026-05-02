@@ -313,6 +313,33 @@ func (repository InferenceQueryRepositoryCircuitBreaker) ListCandidatesQueuedFor
 	}
 }
 
+// ListStaleProcessingCandidates lists candidates whose processing state appears stale.
+func (repository InferenceQueryRepositoryCircuitBreaker) ListStaleProcessingCandidates(staleBefore time.Time) ([]entity.InferenceIngestionCandidate, error) {
+	output := make(chan []entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_stale_processing_candidates", config.Settings())
+	errors := hystrix.Go("list_stale_processing_candidates", func() error {
+		candidates, err := repository.InferenceQueryRepositoryInterface.ListStaleProcessingCandidates(staleBefore)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidates
+		return nil
+	}, nil)
+
+	select {
+	case candidates := <-output:
+		return candidates, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionCandidate{}, err
+	}
+}
+
 // SelectModelFeedbackByUserModelID get model feedback by model ID
 func (repository InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
 	output := make(chan entity.ModelFeedback, 1)
