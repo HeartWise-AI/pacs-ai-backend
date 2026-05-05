@@ -26,8 +26,10 @@ type InferenceCommandRepositoryInterface interface {
 	InsertInferenceIngestionJob(data types.CreateInferenceIngestionJob) error
 	// DeleteInferenceIngestionJobByContainerID deletes inference ingestion jobs by container ID
 	DeleteInferenceIngestionJobByContainerID(tenantID, containerID string) error
-	// InsertInferenceIngestionRunResult inserts a new inference ingestion run result
-	InsertInferenceIngestionRunResult(data types.AddInferenceIngestionRunResult) error
+	// InsertInferenceIngestionProcessingJob inserts a new inference ingestion processing job
+	InsertInferenceIngestionProcessingJob(data types.AddInferenceIngestionProcessingJob) error
+	// UpdateInferenceIngestionProcessingJob updates an inference ingestion processing job
+	UpdateInferenceIngestionProcessingJob(data types.UpdateInferenceIngestionProcessingJob) error
 	// InsertOnboardingModelQuestionnaireAnswer inserts an onboarding model questionnaire answer
 	InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
 	// UpdateInferenceModel updates an inference model
@@ -40,6 +42,30 @@ type InferenceCommandRepositoryInterface interface {
 	UpdateInferenceIngestionJobLastExecutedAt(ID string) error
 	// UpdateInferenceModelContainerID updates the container ID of an inference model
 	UpdateInferenceModelContainerID(ctx context.Context, ID, containerID string) error
+	// UpsertIngestionCandidate upserts an ingestion candidate
+	UpsertIngestionCandidate(data types.UpsertIngestionCandidate) error
+	// UpdateCandidateStatus updates the status of an ingestion candidate
+	UpdateCandidateStatus(ID string, status entity.InferenceIngestionCandidateStatus) error
+	// SaveCandidateOrthancJobIDs stores Orthanc job IDs for an ingestion candidate
+	SaveCandidateOrthancJobIDs(ID string, orthancJobIDs []string) error
+	// UpdateCandidateRetrievalState stores retrieval state and error details for an ingestion candidate
+	UpdateCandidateRetrievalState(data types.UpdateCandidateRetrievalState) error
+	// UpdateCandidateDispatchState stores study-service dispatch state for an ingestion candidate
+	UpdateCandidateDispatchState(data types.UpdateCandidateDispatchState) error
+	// MarkCandidateRetrievalQueued marks an ingestion candidate as retrieval queued
+	MarkCandidateRetrievalQueued(ID string) error
+	// MarkCandidateRetrieved marks an ingestion candidate as retrieved
+	MarkCandidateRetrieved(ID string) error
+	// MarkCandidateRetrievedWithContext marks an ingestion candidate as retrieved with retrieval context
+	MarkCandidateRetrievedWithContext(data types.UpdateCandidateRetrievalState) error
+	// MarkCandidateDisappeared marks an ingestion candidate as disappeared
+	MarkCandidateDisappeared(ID string) error
+	// MarkCandidateFailed marks an ingestion candidate as failed
+	MarkCandidateFailed(ID string) error
+	// MarkCandidateFailedWithContext marks an ingestion candidate as failed with retrieval context
+	MarkCandidateFailedWithContext(data types.UpdateCandidateRetrievalState) error
+	// IncrementCandidateMissingPolls increments missing polls of an ingestion candidate
+	IncrementCandidateMissingPolls(ID string) error
 	// UpsertModelFeedback upserts model feedback
 	UpsertModelFeedback(ctx context.Context, data types.UpsertModelFeedback) error
 }

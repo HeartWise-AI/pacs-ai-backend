@@ -23,7 +23,11 @@ type InferenceIngestionJob struct {
 	ModelName              string `db:"model_name"`
 	ModelVersion           string `db:"model_version"`
 	Modalities             pq.StringArray
-	IntervalInMinutes      uint                        `db:"interval_in_minutes"`
+	StabilityMinutes       uint                        `db:"stability_minutes"`
+	RecentWindowMinutes    uint                        `db:"recent_window_minutes"`
+	MissingPollsThreshold  uint                        `db:"missing_polls_threshold"`
+	StudyTimeStart         *string                     `db:"study_time_start"`
+	StudyTimeEnd           *string                     `db:"study_time_end"`
 	ScheduleStartTimestamp time.Time                   `db:"schedule_start_timestamp"`
 	ScheduleEndTimestamp   time.Time                   `db:"schedule_end_timestamp"`
 	Status                 InferenceIngestionJobStatus // enum
@@ -34,5 +38,5 @@ type InferenceIngestionJob struct {
 
 // GetModelName returns the model name of inference ingestion jobs entity that can be used for naming schemas
 func (entity *InferenceIngestionJob) GetModelName() string {
-	return "inference_ingestion_jobs"
+	return "ingestion_jobs"
 }

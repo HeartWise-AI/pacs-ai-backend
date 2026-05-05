@@ -72,10 +72,19 @@ type UpdateDICOMModalityRequest struct {
 }
 
 type GetJobResponse struct {
-	ID       string `json:"ID"`
-	Priority uint   `json:"Priority"`
-	Progress uint   `json:"Progress"`
-	State    string `json:"State"`
+	CompletionTime   string                 `json:"CompletionTime"`
+	Content          map[string]interface{} `json:"Content"`
+	CreationTime     string                 `json:"CreationTime"`
+	EffectiveRuntime float64                `json:"EffectiveRuntime"`
+	ErrorCode        int                    `json:"ErrorCode"`
+	ErrorDescription string                 `json:"ErrorDescription"`
+	ErrorDetails     interface{}            `json:"ErrorDetails"`
+	ID               string                 `json:"ID"`
+	Priority         uint                   `json:"Priority"`
+	Progress         uint                   `json:"Progress"`
+	State            string                 `json:"State"`
+	Timestamp        string                 `json:"Timestamp"`
+	Type             string                 `json:"Type"`
 }
 
 type GetLocalResourceResponse struct {
@@ -108,22 +117,23 @@ type QueryModalityResponse struct {
 }
 
 type QueryModalityStudyAnswersResponse struct {
-	AccessionNumber            string `json:"AccessionNumber"`
-	ModalitiesInStudy          string `json:"ModalitiesInStudy"`
-	NumberOfStudyRelatedSeries string `json:"NumberOfStudyRelatedSeries"`
-	PatientBirthDate           string `json:"PatientBirthDate"`
-	PatientID                  string `json:"PatientID"`
-	PatientName                string `json:"PatientName"`
-	PatientSex                 string `json:"PatientSex"`
-	QueryRetrieveLevel         string `json:"QueryRetrieveLevel"`
-	ReferringPhysicianName     string `json:"ReferringPhysicianName"`
-	RetrieveAETitle            string `json:"RetrieveAETitle"`
-	SpecificCharacterSet       string `json:"SpecificCharacterSet"`
-	StudyDate                  string `json:"StudyDate"`
-	StudyDescription           string `json:"StudyDescription"`
-	StudyID                    string `json:"StudyID"`
-	StudyInstanceUID           string `json:"StudyInstanceUID"`
-	StudyTime                  string `json:"StudyTime"`
+	AccessionNumber               string `json:"AccessionNumber"`
+	ModalitiesInStudy             string `json:"ModalitiesInStudy"`
+	NumberOfStudyRelatedSeries    string `json:"NumberOfStudyRelatedSeries"`
+	NumberOfStudyRelatedInstances string `json:"NumberOfStudyRelatedInstances"`
+	PatientBirthDate              string `json:"PatientBirthDate"`
+	PatientID                  	  string `json:"PatientID"`
+	PatientName                   string `json:"PatientName"`
+	PatientSex                    string `json:"PatientSex"`
+	QueryRetrieveLevel            string `json:"QueryRetrieveLevel"`
+	ReferringPhysicianName        string `json:"ReferringPhysicianName"`
+	RetrieveAETitle               string `json:"RetrieveAETitle"`
+	SpecificCharacterSet          string `json:"SpecificCharacterSet"`
+	StudyDate                     string `json:"StudyDate"`
+	StudyDescription              string `json:"StudyDescription"`
+	StudyID                       string `json:"StudyID"`
+	StudyInstanceUID              string `json:"StudyInstanceUID"`
+	StudyTime                     string `json:"StudyTime"`
 }
 
 type QueryModalitySeriesAnswersResponse struct {
@@ -151,21 +161,22 @@ type UploadDICOMInstancesResponse struct {
 }
 
 type QueryStudy struct {
-	AccessionNumber            string `json:"AccessionNumber"`
-	InstitutionName            string `json:"InstitutionName"`
-	ModalitiesInStudy          string `json:"ModalitiesInStudy"`
-	NumberOfStudyRelatedSeries string `json:"NumberOfStudyRelatedSeries"`
-	PatientBirthDate           string `json:"PatientBirthDate"`
-	PatientID                  string `json:"PatientID"`
-	PatientName                string `json:"PatientName"`
-	PatientSex                 string `json:"PatientSex"`
-	ReferringPhysicianName     string `json:"ReferringPhysicianName"`
-	RequestingPhysician        string `json:"RequestingPhysician"`
-	StudyDate                  string `json:"StudyDate"`
-	StudyDescription           string `json:"StudyDescription"`
-	StudyID                    string `json:"StudyID"`
-	StudyInstanceUID           string `json:"StudyInstanceUID"`
-	StudyTime                  string `json:"StudyTime"`
+	AccessionNumber               string `json:"AccessionNumber"`
+	InstitutionName               string `json:"InstitutionName,omitempty"`
+	ModalitiesInStudy             string `json:"ModalitiesInStudy"`
+	NumberOfStudyRelatedSeries    string `json:"NumberOfStudyRelatedSeries"`
+	NumberOfStudyRelatedInstances string `json:"NumberOfStudyRelatedInstances"`
+	PatientBirthDate              string `json:"PatientBirthDate"`
+	PatientID                     string `json:"PatientID"`
+	PatientName                   string `json:"PatientName"`
+	PatientSex                    string `json:"PatientSex"`
+	ReferringPhysicianName        string `json:"ReferringPhysicianName"`
+	RequestingPhysician           string `json:"RequestingPhysician,omitempty"`
+	StudyDate                     string `json:"StudyDate"`
+	StudyDescription              string `json:"StudyDescription"`
+	StudyID                       string `json:"StudyID"`
+	StudyInstanceUID              string `json:"StudyInstanceUID"`
+	StudyTime                     string `json:"StudyTime"`
 }
 
 type QueryLocalResource struct {

@@ -1,0 +1,7 @@
+{
+  "terminal.integrated.env.linux": {
+    "GIT_ASKPASS": null,
+    "SSH_ASKPASS": null,
+    "GIT_TERMINAL_PROMPT": "1"
+  }
+}

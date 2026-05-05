@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/afex/hystrix-go/hystrix"
 
@@ -147,6 +148,195 @@ func (repository InferenceQueryRepositoryCircuitBreaker) SelectInferenceIngestio
 		return entity.InferenceIngestionJob{}, err
 	case err := <-errors:
 		return entity.InferenceIngestionJob{}, err
+	}
+}
+
+// SelectInferenceIngestionCandidateByID gets one ingestion candidate by id
+func (repository InferenceQueryRepositoryCircuitBreaker) SelectInferenceIngestionCandidateByID(ID string) (entity.InferenceIngestionCandidate, error) {
+	output := make(chan entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_inference_ingestion_candidate_by_id", config.Settings())
+	errors := hystrix.Go("select_inference_ingestion_candidate_by_id", func() error {
+		candidate, err := repository.InferenceQueryRepositoryInterface.SelectInferenceIngestionCandidateByID(ID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidate
+		return nil
+	}, nil)
+
+	select {
+	case candidate := <-output:
+		return candidate, nil
+	case err := <-errChan:
+		return entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return entity.InferenceIngestionCandidate{}, err
+	}
+}
+
+// SelectInferenceIngestionProcessingJobByCandidateModel gets one processing job by candidate/model
+func (repository InferenceQueryRepositoryCircuitBreaker) SelectInferenceIngestionProcessingJobByCandidateModel(candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error) {
+	output := make(chan entity.InferenceIngestionProcessingJob, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_inference_ingestion_processing_job_by_candidate_model", config.Settings())
+	errors := hystrix.Go("select_inference_ingestion_processing_job_by_candidate_model", func() error {
+		processingJob, err := repository.InferenceQueryRepositoryInterface.SelectInferenceIngestionProcessingJobByCandidateModel(candidateID, modelName)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- processingJob
+		return nil
+	}, nil)
+
+	select {
+	case processingJob := <-output:
+		return processingJob, nil
+	case err := <-errChan:
+		return entity.InferenceIngestionProcessingJob{}, err
+	case err := <-errors:
+		return entity.InferenceIngestionProcessingJob{}, err
+	}
+}
+
+// ListInferenceIngestionCandidates lists ingestion candidates for debugging and operations
+func (repository InferenceQueryRepositoryCircuitBreaker) ListInferenceIngestionCandidates(data types.ListInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error) {
+	output := make(chan []entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_inference_ingestion_candidates", config.Settings())
+	errors := hystrix.Go("list_inference_ingestion_candidates", func() error {
+		candidates, err := repository.InferenceQueryRepositoryInterface.ListInferenceIngestionCandidates(data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidates
+		return nil
+	}, nil)
+
+	select {
+	case candidates := <-output:
+		return candidates, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionCandidate{}, err
+	}
+}
+
+// ListCandidatesByJob lists ingestion candidates by ingestion job ID
+func (repository InferenceQueryRepositoryCircuitBreaker) ListCandidatesByJob(ingestionJobID string) ([]entity.InferenceIngestionCandidate, error) {
+	output := make(chan []entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_candidates_by_job", config.Settings())
+	errors := hystrix.Go("list_candidates_by_job", func() error {
+		candidates, err := repository.InferenceQueryRepositoryInterface.ListCandidatesByJob(ingestionJobID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidates
+		return nil
+	}, nil)
+
+	select {
+	case candidates := <-output:
+		return candidates, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionCandidate{}, err
+	}
+}
+
+// ListCandidatesReadyForRetrieval lists stable ingestion candidates ready for retrieval
+func (repository InferenceQueryRepositoryCircuitBreaker) ListCandidatesReadyForRetrieval(ingestionJobID string, stableBefore time.Time) ([]entity.InferenceIngestionCandidate, error) {
+	output := make(chan []entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_candidates_ready_for_retrieval", config.Settings())
+	errors := hystrix.Go("list_candidates_ready_for_retrieval", func() error {
+		candidates, err := repository.InferenceQueryRepositoryInterface.ListCandidatesReadyForRetrieval(ingestionJobID, stableBefore)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidates
+		return nil
+	}, nil)
+
+	select {
+	case candidates := <-output:
+		return candidates, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionCandidate{}, err
+	}
+}
+
+// ListCandidatesQueuedForRetrieval lists ingestion candidates queued for retrieval
+func (repository InferenceQueryRepositoryCircuitBreaker) ListCandidatesQueuedForRetrieval() ([]entity.InferenceIngestionCandidate, error) {
+	output := make(chan []entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_candidates_queued_for_retrieval", config.Settings())
+	errors := hystrix.Go("list_candidates_queued_for_retrieval", func() error {
+		candidates, err := repository.InferenceQueryRepositoryInterface.ListCandidatesQueuedForRetrieval()
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidates
+		return nil
+	}, nil)
+
+	select {
+	case candidates := <-output:
+		return candidates, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionCandidate{}, err
+	}
+}
+
+// ListStaleProcessingCandidates lists candidates whose processing state appears stale.
+func (repository InferenceQueryRepositoryCircuitBreaker) ListStaleProcessingCandidates(staleBefore time.Time) ([]entity.InferenceIngestionCandidate, error) {
+	output := make(chan []entity.InferenceIngestionCandidate, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_stale_processing_candidates", config.Settings())
+	errors := hystrix.Go("list_stale_processing_candidates", func() error {
+		candidates, err := repository.InferenceQueryRepositoryInterface.ListStaleProcessingCandidates(staleBefore)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- candidates
+		return nil
+	}, nil)
+
+	select {
+	case candidates := <-output:
+		return candidates, nil
+	case err := <-errChan:
+		return []entity.InferenceIngestionCandidate{}, err
+	case err := <-errors:
+		return []entity.InferenceIngestionCandidate{}, err
 	}
 }
 

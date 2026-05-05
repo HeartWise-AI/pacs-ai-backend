@@ -31,9 +31,82 @@ type CreateInferenceIngestionJob struct {
 	ModelName              string
 	ModelVersion           string
 	Modalities             []string
-	IntervalInMinutes      uint
+	StabilityMinutes       uint
+	RecentWindowMinutes    uint
+	MissingPollsThreshold  uint
+	StudyTimeStart         string
+	StudyTimeEnd           string
 	ScheduleStartTimestamp uint64
 	ScheduleEndTimestamp   uint64
+}
+
+type BuildStudyServiceDispatchRequestInput struct {
+	IngestionJob       entity.InferenceIngestionJob
+	Candidate          entity.InferenceIngestionCandidate
+	OrthancStudyID     *string
+	RetrievalAttemptID *string
+	RequestID          *string
+}
+
+type DispatchStudyRequest struct {
+	XRequestID         string  `json:"-"`
+	TenantID           *string `json:"tenant_id"`
+	IngestionJobID     *string `json:"ingestion_job_id"`
+	CandidateID        *string `json:"candidate_id"`
+	RetrievalAttemptID *string `json:"retrieval_attempt_id"`
+	StudyInstanceUID   string  `json:"study_instance_uid"`
+	OrthancStudyID     string  `json:"orthanc_study_id"`
+	Modality           string  `json:"modality"`
+	ModelName          string  `json:"model_name"`
+	ModelVersion       string  `json:"model_version"`
+}
+
+type DispatchStudyResponse struct {
+	JobID          string `json:"job_id"`
+	AlreadyPresent bool   `json:"already_present"`
+	StatusCode     int    `json:"-"`
+}
+
+type StudyServiceJob struct {
+	JobID              string     `json:"job_id"`
+	StudyInstanceUID   string     `json:"study_instance_uid"`
+	PatientID          string     `json:"patient_id"`
+	TenantID           *string    `json:"tenant_id"`
+	IngestionJobID     *string    `json:"ingestion_job_id"`
+	CandidateID        *string    `json:"candidate_id"`
+	RetrievalAttemptID *string    `json:"retrieval_attempt_id"`
+	Modality           string     `json:"modality"`
+	ModelName          string     `json:"model_name"`
+	ModelVersion       *string    `json:"model_version"`
+	Status             string     `json:"status"`
+	ErrorMessage       *string    `json:"error_message"`
+	CreatedAt          *time.Time `json:"created_at"`
+	StartedAt          *time.Time `json:"started_at"`
+	CompletedAt        *time.Time `json:"completed_at"`
+}
+
+type StudyServiceJobsResponse struct {
+	Jobs     []StudyServiceJob `json:"jobs"`
+	Page     int               `json:"page"`
+	PageSize int               `json:"page_size"`
+}
+
+type HandleStudyServiceProcessingCallback struct {
+	CandidateID       string
+	RequestID         string
+	StudyInstanceUID  string
+	ModelName         string
+	ModelVersion      string
+	Modality          string
+	Status            string
+	ErrorMessage      *string
+	StudyServiceJobID string
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
+}
+
+type HandleStudyServiceProcessingCallbackResult struct {
+	Outcome string
 }
 
 type GetContainerInfoResult struct {
@@ -77,6 +150,14 @@ type GetInferenceAvailableModelResult struct {
 	RejectFeedbackQuestionnaires  []interface{}
 	OnboardingModelQuestionnaires []interface{}
 	OutputMode                    entity.OutputMode
+}
+
+type GetInferenceIngestionCandidates struct {
+	TenantID           string
+	IngestionJobID     *string
+	StudyInstanceUID   *string
+	Status             *string
+	RetrievalFailures  bool
 }
 
 type GetModelFeedbackByUser struct {
@@ -123,7 +204,11 @@ type UpdateInferenceModel struct {
 type UpdateInferenceIngestionJob struct {
 	ID                     string
 	Modalities             []string
-	IntervalInMinutes      uint
+	StabilityMinutes       uint
+	RecentWindowMinutes    uint
+	MissingPollsThreshold  uint
+	StudyTimeStart         string
+	StudyTimeEnd           string
 	ScheduleStartTimestamp uint64
 	ScheduleEndTimestamp   uint64
 }

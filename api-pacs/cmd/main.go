@@ -14,11 +14,14 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/joho/godotenv"
 
 	"api-pacs/interfaces/http/rest"
 )
+
+const defaultAppTimezone = "America/Toronto"
 
 func init() {
 	// load our environmental variables.
@@ -28,6 +31,12 @@ func init() {
 }
 
 func main() {
+	location, err := time.LoadLocation(configuredTimezone())
+	if err != nil {
+		log.Fatalf("[SERVER] Invalid timezone: %v", err)
+	}
+	time.Local = location
+
 	// rest port
 	restPort, err := strconv.Atoi(os.Getenv("API_URL_REST_PORT"))
 	if err != nil {
@@ -39,4 +48,13 @@ func main() {
 
 	// serve rest server
 	rest.ChiRouter().Serve(restPort)
+}
+
+func configuredTimezone() string {
+	value := os.Getenv("APP_TIMEZONE")
+	if value == "" {
+		return defaultAppTimezone
+	}
+
+	return value
 }

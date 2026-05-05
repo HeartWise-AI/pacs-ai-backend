@@ -3,6 +3,9 @@ package interfaces
 import (
 	"context"
 	"log"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	apiError "api-pacs/internal/errors"
@@ -11,9 +14,11 @@ import (
 // RunInferenceIngestionServiceHandler run inference ingestion service handler
 func RunInferenceIngestionServiceHandler() {
 	inferenceCommandService := InferenceCommandServiceDI()
+	interval := inferenceIngestionRunnerInterval()
 
-	// run every 5 mins
-	tick := time.Tick(5 * time.Minute)
+	log.Printf("[Ingestion] runner interval configured minutes=%d", int(interval.Minutes()))
+
+	tick := time.Tick(interval)
 	for range tick {
 		err := inferenceCommandService.ExecuteInferenceIngestionRunner(context.TODO())
 		if err == nil || err.Error() == apiError.MissingRecord {
@@ -22,6 +27,99 @@ func RunInferenceIngestionServiceHandler() {
 			log.Println("[Ingestion] error while executing inference ingestion runner:", err)
 		}
 	}
+}
+
+// RunInferenceIngestionRetrievalWorkerHandler run inference ingestion retrieval worker handler
+func RunInferenceIngestionRetrievalWorkerHandler() {
+	inferenceCommandService := InferenceCommandServiceDI()
+	interval := inferenceIngestionRetrievalWorkerInterval()
+
+	log.Printf("[Ingestion retrieval worker] interval configured minutes=%d", int(interval.Minutes()))
+
+	tick := time.Tick(interval)
+	for range tick {
+		err := inferenceCommandService.ExecuteInferenceIngestionRetrievalWorker(context.TODO())
+		if err == nil || err.Error() == apiError.MissingRecord {
+			log.Println("[Ingestion retrieval worker] executed queued retrieval worker")
+		} else {
+			log.Println("[Ingestion retrieval worker] error while executing queued retrieval worker:", err)
+		}
+	}
+}
+
+// RunInferenceIngestionReconciliationWorkerHandler reconciles stale processing state against study-service.
+func RunInferenceIngestionReconciliationWorkerHandler() {
+	inferenceCommandService := InferenceCommandServiceDI()
+	interval := inferenceIngestionReconciliationWorkerInterval()
+
+	log.Printf("[Ingestion reconciliation worker] interval configured minutes=%d", int(interval.Minutes()))
+
+	tick := time.Tick(interval)
+	for range tick {
+		err := inferenceCommandService.ExecuteInferenceIngestionReconciliationWorker(context.TODO())
+		if err == nil || err.Error() == apiError.MissingRecord {
+			log.Println("[Ingestion reconciliation worker] executed stale processing reconciliation worker")
+		} else {
+			log.Println("[Ingestion reconciliation worker] error while executing stale processing reconciliation worker:", err)
+		}
+	}
+}
+
+func inferenceIngestionRunnerInterval() time.Duration {
+	const defaultIntervalMinutes = 1
+
+	value := strings.TrimSpace(os.Getenv("INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES"))
+	if value == "" {
+		log.Printf("[Ingestion] INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES not set, using default minutes=%d", defaultIntervalMinutes)
+		return defaultIntervalMinutes * time.Minute
+	}
+
+	minutes, err := strconv.Atoi(value)
+	if err != nil || minutes <= 0 {
+		log.Printf("[Ingestion] invalid INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES=%q, using default minutes=%d", value, defaultIntervalMinutes)
+		return defaultIntervalMinutes * time.Minute
+	}
+
+	log.Printf("[Ingestion] using INFERENCE_INGESTION_RUNNER_INTERVAL_MINUTES=%d", minutes)
+	return time.Duration(minutes) * time.Minute
+}
+
+func inferenceIngestionRetrievalWorkerInterval() time.Duration {
+	const defaultIntervalMinutes = 1
+
+	value := strings.TrimSpace(os.Getenv("INFERENCE_INGESTION_RETRIEVAL_WORKER_INTERVAL_MINUTES"))
+	if value == "" {
+		log.Printf("[Ingestion retrieval worker] INFERENCE_INGESTION_RETRIEVAL_WORKER_INTERVAL_MINUTES not set, using default minutes=%d", defaultIntervalMinutes)
+		return defaultIntervalMinutes * time.Minute
+	}
+
+	minutes, err := strconv.Atoi(value)
+	if err != nil || minutes <= 0 {
+		log.Printf("[Ingestion retrieval worker] invalid INFERENCE_INGESTION_RETRIEVAL_WORKER_INTERVAL_MINUTES=%q, using default minutes=%d", value, defaultIntervalMinutes)
+		return defaultIntervalMinutes * time.Minute
+	}
+
+	log.Printf("[Ingestion retrieval worker] using INFERENCE_INGESTION_RETRIEVAL_WORKER_INTERVAL_MINUTES=%d", minutes)
+	return time.Duration(minutes) * time.Minute
+}
+
+func inferenceIngestionReconciliationWorkerInterval() time.Duration {
+	const defaultIntervalMinutes = 5
+
+	value := strings.TrimSpace(os.Getenv("INFERENCE_INGESTION_RECONCILIATION_INTERVAL_MINUTES"))
+	if value == "" {
+		log.Printf("[Ingestion reconciliation worker] INFERENCE_INGESTION_RECONCILIATION_INTERVAL_MINUTES not set, using default minutes=%d", defaultIntervalMinutes)
+		return defaultIntervalMinutes * time.Minute
+	}
+
+	minutes, err := strconv.Atoi(value)
+	if err != nil || minutes <= 0 {
+		log.Printf("[Ingestion reconciliation worker] invalid INFERENCE_INGESTION_RECONCILIATION_INTERVAL_MINUTES=%q, using default minutes=%d", value, defaultIntervalMinutes)
+		return defaultIntervalMinutes * time.Minute
+	}
+
+	log.Printf("[Ingestion reconciliation worker] using INFERENCE_INGESTION_RECONCILIATION_INTERVAL_MINUTES=%d", minutes)
+	return time.Duration(minutes) * time.Minute
 }
 
 // RunOrthancLocalStudiesCacheHandler run orthanc local studies cache handler

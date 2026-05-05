@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -190,7 +191,12 @@ func (d *DocusignAPI) GetEnvelopeRecipients(accessToken, envelopeID string) ([]t
 }
 
 func (d *DocusignAPI) generateJWT() (string, error) {
-	privateKeyBytes := []byte(d.PrivateKey)
+	// cleanup private key
+	rawKey := d.PrivateKey
+	rawKey = strings.Trim(rawKey, "\"")
+	rawKey = strings.ReplaceAll(rawKey, "\\n", "\n")
+
+	privateKeyBytes := []byte(rawKey)
 	privateKey, err := jwt.ParseRSAPrivateKeyFromPEM(privateKeyBytes)
 	if err != nil {
 		return "", err

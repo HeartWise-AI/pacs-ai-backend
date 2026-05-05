@@ -215,10 +215,19 @@ func (controller *OrthancQueryController) GetJobsInfo(w http.ResponseWriter, r *
 
 	for _, job := range res {
 		jobs = append(jobs, types.GetJobInfoResponse{
-			ID:       job.ID,
-			Priority: job.Priority,
-			Progress: job.Progress,
-			State:    job.State,
+			CompletionTime:   job.CompletionTime,
+			Content:          job.Content,
+			CreationTime:     job.CreationTime,
+			EffectiveRuntime: job.EffectiveRuntime,
+			ErrorCode:        job.ErrorCode,
+			ErrorDescription: job.ErrorDescription,
+			ErrorDetails:     job.ErrorDetails,
+			ID:               job.ID,
+			Priority:         job.Priority,
+			Progress:         job.Progress,
+			State:            job.State,
+			Timestamp:        job.Timestamp,
+			Type:             job.Type,
 		})
 	}
 

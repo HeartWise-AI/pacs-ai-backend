@@ -1,4 +1,0 @@
-DROP TRIGGER IF EXISTS trigger_update_inference_ingestion_run_results_updated_at ON inference_ingestion_run_results;
-DROP FUNCTION IF EXISTS func_ingestion_result_update_updated_at();
-DROP TABLE IF EXISTS inference_ingestion_run_results;
-DROP TYPE IF EXISTS inference_ingestion_run_status;

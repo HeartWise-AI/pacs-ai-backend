@@ -10,6 +10,7 @@
 package rest
 
 import (
+	"expvar"
 	"fmt"
 	"log"
 	"net/http"
@@ -76,7 +77,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.26.1-beta",
+				"version": "v0.26.2-beta",
 			},
 		}
 
@@ -92,6 +93,7 @@ func (router *router) InitRouter() *chi.Mux {
 		workDir, _ := os.Getwd()
 		docsDir := http.Dir(filepath.Join(workDir, "docs"))
 		FileServer(r, "/docs", docsDir)
+		r.Handle("/debug/vars", expvar.Handler())
 
 		// orthanc openapi
 		orthancDocsDir := http.Dir(filepath.Join(workDir, "docs", "orthanc"))
@@ -175,10 +177,20 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Post("/job/{ID}/stop", inferenceCommandController.StopInferenceInferenceJob)
 							r.Post("/jobs/import", inferenceCommandController.ImportInferenceIngestionJobsCSVFile)
 							r.Get("/jobs", inferenceQueryController.GetInferenceIngestionJobs)
+							r.Get("/candidates", inferenceQueryController.GetInferenceIngestionCandidates)
+							r.Get("/retrieval-failures", inferenceQueryController.GetInferenceIngestionRetrievalFailures)
+							r.Get("/job/{ID}/candidates", inferenceQueryController.GetInferenceIngestionJobCandidates)
+							r.Get("/job/{ID}/study/{studyInstanceUID}", inferenceQueryController.GetInferenceIngestionCandidateByStudyUID)
 							r.Put("/job/{ID}/update", inferenceCommandController.UpdateInferenceIngestionJob)
 							r.Delete("/job/{ID}/remove", inferenceCommandController.RemoveInferenceIngestionJob)
 						})
 					})
+				})
+			})
+
+			r.Route("/internal", func(r chi.Router) {
+				r.Route("/inference", func(r chi.Router) {
+					r.Post("/ingestion/candidates/{candidate_id}/processing", inferenceCommandController.StudyServiceProcessingCallback)
 				})
 			})
 

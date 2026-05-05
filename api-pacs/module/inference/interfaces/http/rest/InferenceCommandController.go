@@ -2,9 +2,11 @@ package rest
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,6 +21,7 @@ import (
 	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/application"
+	inferenceService "api-pacs/module/inference/infrastructure/service"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 	types "api-pacs/module/inference/interfaces/http"
 )
@@ -167,6 +170,19 @@ func (controller *InferenceCommandController) CreateInferenceIngestionJob(w http
 		return
 	}
 
+	stabilityMinutes := resolveStabilityMinutes(request.StabilityMinutes, request.IntervalInMinutes)
+	if stabilityMinutes == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
 	err = controller.InferenceCommandServiceInterface.CreateInferenceIngestionJob(context.TODO(), serviceTypes.CreateInferenceIngestionJob{
 		TenantID:               tenantID,
 		DICOMModality:          request.DICOMModality,
@@ -175,7 +191,11 @@ func (controller *InferenceCommandController) CreateInferenceIngestionJob(w http
 		ModelName:              request.ModelName,
 		ModelVersion:           request.ModelVersion,
 		Modalities:             request.Modalities,
-		IntervalInMinutes:      request.IntervalInMinutes,
+		StabilityMinutes:       stabilityMinutes,
+		RecentWindowMinutes:    request.RecentWindowMinutes,
+		MissingPollsThreshold:  request.MissingPollsThreshold,
+		StudyTimeStart:         request.StudyTimeStart,
+		StudyTimeEnd:           request.StudyTimeEnd,
 		ScheduleStartTimestamp: request.ScheduleStartTimestamp,
 		ScheduleEndTimestamp:   request.ScheduleEndTimestamp,
 	})
@@ -184,6 +204,9 @@ func (controller *InferenceCommandController) CreateInferenceIngestionJob(w http
 		var errorMsg string
 
 		switch err.Error() {
+		case errors.InvalidPayload:
+			httpCode = http.StatusBadRequest
+			errorMsg = "Invalid payload request."
 		case errors.DatabaseError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Error occurred while saving inference ingestion job."
@@ -207,6 +230,207 @@ func (controller *InferenceCommandController) CreateInferenceIngestionJob(w http
 		Status:  http.StatusCreated,
 		Success: true,
 		Message: "Successfully created inference ingestion job.",
+	}
+
+	response.JSON(w)
+}
+
+// StudyServiceProcessingCallback ingests internal processing callbacks from study-service.
+func (controller *InferenceCommandController) StudyServiceProcessingCallback(w http.ResponseWriter, r *http.Request) {
+	callbackToken := strings.TrimSpace(os.Getenv("STUDY_SERVICE_CALLBACK_TOKEN"))
+	if callbackToken == "" {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusServiceUnavailable,
+			Success:   false,
+			Message:   "Study-service callback auth is not configured.",
+			ErrorCode: apiError.MissingConfiguration,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
+	if authorization == "" {
+		inferenceService.ObserveStudyServiceProcessingCallback("unknown", "unauthorized")
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusUnauthorized,
+			Success:   false,
+			Message:   "Missing Authorization header.",
+			ErrorCode: apiError.UnauthorizedAccess,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	scheme, token, found := strings.Cut(authorization, " ")
+	if !found || !strings.EqualFold(strings.TrimSpace(scheme), "Bearer") || subtle.ConstantTimeCompare([]byte(strings.TrimSpace(token)), []byte(callbackToken)) != 1 {
+		inferenceService.ObserveStudyServiceProcessingCallback("unknown", "unauthorized")
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusUnauthorized,
+			Success:   false,
+			Message:   "Invalid Authorization header.",
+			ErrorCode: apiError.UnauthorizedAccess,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	requestID := strings.TrimSpace(r.Header.Get("X-Request-ID"))
+	if requestID == "" {
+		inferenceService.ObserveStudyServiceProcessingCallback("unknown", "invalid_request")
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "X-Request-ID header is required.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	candidateID := chi.URLParam(r, "candidate_id")
+	if strings.TrimSpace(candidateID) == "" {
+		inferenceService.ObserveStudyServiceProcessingCallback("unknown", "invalid_request")
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid candidate ID.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var request types.StudyServiceProcessingCallbackRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		inferenceService.ObserveStudyServiceProcessingCallback("unknown", "invalid_request")
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	err := types.Validate.Struct(request)
+	if err != nil {
+		validationErrors := err.(validator.ValidationErrors)
+		if len(validationErrors) > 0 {
+			inferenceService.ObserveStudyServiceProcessingCallback(request.Status, "invalid_payload")
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   types.ValidationErrors[validationErrors[0].StructNamespace()],
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+
+		inferenceService.ObserveStudyServiceProcessingCallback(request.Status, "invalid_request")
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidRequestPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	startedAt, err := parseRFC3339Pointer(request.StartedAt)
+	if err != nil {
+		inferenceService.ObserveStudyServiceProcessingCallback(request.Status, "invalid_payload")
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid started_at timestamp.",
+			ErrorCode: apiError.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	completedAt, err := parseRFC3339Pointer(request.CompletedAt)
+	if err != nil {
+		inferenceService.ObserveStudyServiceProcessingCallback(request.Status, "invalid_payload")
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid completed_at timestamp.",
+			ErrorCode: apiError.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	result, err := controller.InferenceCommandServiceInterface.HandleStudyServiceProcessingCallback(context.TODO(), serviceTypes.HandleStudyServiceProcessingCallback{
+		CandidateID:       candidateID,
+		RequestID:         requestID,
+		StudyInstanceUID:  request.StudyInstanceUID,
+		ModelName:         request.ModelName,
+		ModelVersion:      request.ModelVersion,
+		Modality:          request.Modality,
+		Status:            request.Status,
+		ErrorMessage:      request.ErrorMessage,
+		StudyServiceJobID: request.StudyServiceJobID,
+		StartedAt:         startedAt,
+		CompletedAt:       completedAt,
+	})
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+		outcome := "error"
+
+		switch err.Error() {
+		case apiError.InvalidPayload:
+			httpCode = http.StatusBadRequest
+			errorMsg = "Invalid payload request."
+			outcome = "invalid_payload"
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "Ingestion candidate not found."
+			outcome = "not_found"
+		case apiError.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Database error."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
+		inferenceService.ObserveStudyServiceProcessingCallback(request.Status, outcome)
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	inferenceService.ObserveStudyServiceProcessingCallback(request.Status, result.Outcome)
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully processed study-service callback.",
+		Data: map[string]string{
+			"outcome": result.Outcome,
+		},
 	}
 
 	response.JSON(w)
@@ -404,7 +628,7 @@ func (controller *InferenceCommandController) ImportInferenceIngestionJobsCSVFil
 			}
 		}
 
-		startTime, err := time.Parse("2006-01-02 15:04:05", csvJob.ScheduleStartTimestamp)
+		startTimestamp, err := parseOptionalCSVTimestamp(csvJob.ScheduleStartTimestamp)
 		if err != nil {
 			response := viewmodels.HTTPResponseVM{
 				Status:    http.StatusBadRequest,
@@ -416,7 +640,7 @@ func (controller *InferenceCommandController) ImportInferenceIngestionJobsCSVFil
 			return
 		}
 
-		endTime, err := time.Parse("2006-01-02 15:04:05", csvJob.ScheduleEndTimestamp)
+		endTimestamp, err := parseOptionalCSVTimestamp(csvJob.ScheduleEndTimestamp)
 		if err != nil {
 			response := viewmodels.HTTPResponseVM{
 				Status:    http.StatusBadRequest,
@@ -436,9 +660,13 @@ func (controller *InferenceCommandController) ImportInferenceIngestionJobsCSVFil
 			ModelName:              csvJob.ModelName,
 			ModelVersion:           csvJob.ModelVersion,
 			Modalities:             modalities,
-			IntervalInMinutes:      csvJob.IntervalInMinutes,
-			ScheduleStartTimestamp: uint64(startTime.Unix()),
-			ScheduleEndTimestamp:   uint64(endTime.Unix()),
+			StabilityMinutes:       csvJob.StabilityMinutes,
+			RecentWindowMinutes:    csvJob.RecentWindowMinutes,
+			MissingPollsThreshold:  csvJob.MissingPollsThreshold,
+			StudyTimeStart:         csvJob.StudyTimeStart,
+			StudyTimeEnd:           csvJob.StudyTimeEnd,
+			ScheduleStartTimestamp: startTimestamp,
+			ScheduleEndTimestamp:   endTimestamp,
 		})
 	}
 
@@ -1164,10 +1392,27 @@ func (controller *InferenceCommandController) UpdateInferenceIngestionJob(w http
 		return
 	}
 
+	stabilityMinutes := resolveStabilityMinutes(request.StabilityMinutes, request.IntervalInMinutes)
+	if stabilityMinutes == 0 {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid payload request.",
+			ErrorCode: apiError.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
 	err = controller.InferenceCommandServiceInterface.UpdateInferenceIngestionJob(context.TODO(), serviceTypes.UpdateInferenceIngestionJob{
 		ID:                     ID,
 		Modalities:             request.Modalities,
-		IntervalInMinutes:      request.IntervalInMinutes,
+		StabilityMinutes:       stabilityMinutes,
+		RecentWindowMinutes:    request.RecentWindowMinutes,
+		MissingPollsThreshold:  request.MissingPollsThreshold,
+		StudyTimeStart:         request.StudyTimeStart,
+		StudyTimeEnd:           request.StudyTimeEnd,
 		ScheduleStartTimestamp: request.ScheduleStartTimestamp,
 		ScheduleEndTimestamp:   request.ScheduleEndTimestamp,
 	})
@@ -1176,6 +1421,9 @@ func (controller *InferenceCommandController) UpdateInferenceIngestionJob(w http
 		var errorMsg string
 
 		switch err.Error() {
+		case errors.InvalidPayload:
+			httpCode = http.StatusBadRequest
+			errorMsg = "Invalid payload request."
 		case errors.DatabaseError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Error occurred while saving inference ingestion job."
@@ -1202,6 +1450,28 @@ func (controller *InferenceCommandController) UpdateInferenceIngestionJob(w http
 	}
 
 	response.JSON(w)
+}
+
+func parseOptionalCSVTimestamp(value string) (uint64, error) {
+	trimmedValue := strings.TrimSpace(value)
+	if trimmedValue == "" {
+		return 0, nil
+	}
+
+	parsedTime, err := time.Parse("2006-01-02 15:04:05", trimmedValue)
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(parsedTime.Unix()), nil
+}
+
+func resolveStabilityMinutes(stabilityMinutes, intervalInMinutes uint) uint {
+	if stabilityMinutes != 0 {
+		return stabilityMinutes
+	}
+
+	return intervalInMinutes
 }
 
 // UpdateModelFeedback updates model feedback
@@ -1305,4 +1575,17 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 	}
 
 	response.JSON(w)
+}
+
+func parseRFC3339Pointer(value *string) (*time.Time, error) {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return nil, nil
+	}
+
+	parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(*value))
+	if err != nil {
+		return nil, err
+	}
+
+	return &parsed, nil
 }

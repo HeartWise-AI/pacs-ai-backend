@@ -1,8 +1,9 @@
 package types
 
 import (
-	"api-pacs/module/inference/domain/entity"
 	"time"
+
+	"api-pacs/module/inference/domain/entity"
 )
 
 type AddInferenceModel struct {
@@ -36,13 +37,29 @@ type AddOnboardingModelQuestionnaireAnswer struct {
 	QuestionnaireAnswers   []string
 }
 
-type AddInferenceIngestionRunResult struct {
-	ID               string
-	JobID            string
-	StudyInstanceUID string
-	InferenceOutput  *map[string]interface{}
-	ErrorMessage     *string
-	Status           entity.IngestionRunStatus
+type AddInferenceIngestionProcessingJob struct {
+	ID                string
+	CandidateID       string
+	TenantID          string
+	ModelName         string
+	ModelVersion      *string
+	Modality          *string
+	Status            entity.InferenceIngestionProcessingJobStatus
+	StudyServiceJobID *string
+	ErrorMessage      *string
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
+}
+
+type UpdateInferenceIngestionProcessingJob struct {
+	ID                string
+	Status            entity.InferenceIngestionProcessingJobStatus
+	ModelVersion      *string
+	Modality          *string
+	StudyServiceJobID *string
+	ErrorMessage      *string
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
 }
 
 type CreateInferenceIngestionJob struct {
@@ -54,7 +71,11 @@ type CreateInferenceIngestionJob struct {
 	ModelName              string
 	ModelVersion           string
 	Modalities             []string
-	IntervalInMinutes      uint
+	StabilityMinutes       uint
+	RecentWindowMinutes    uint
+	MissingPollsThreshold  uint
+	StudyTimeStart         *string
+	StudyTimeEnd           *string
 	ScheduleStartTimestamp time.Time
 	ScheduleEndTimestamp   time.Time
 	Status                 entity.InferenceIngestionJobStatus
@@ -64,6 +85,14 @@ type GetModelFeedbackByUserModelID struct {
 	TenantID string
 	UserID   string
 	ModelID  string
+}
+
+type ListInferenceIngestionCandidates struct {
+	TenantID          string
+	IngestionJobID    *string
+	StudyInstanceUID  *string
+	Status            *entity.InferenceIngestionCandidateStatus
+	RetrievalFailures bool
 }
 
 type GetOnboardingModelQuestionnaireAnswer struct {
@@ -81,7 +110,11 @@ type UpdateInferenceModel struct {
 type UpdateInferenceIngestionJob struct {
 	ID                     string
 	Modalities             []string
-	IntervalInMinutes      uint
+	StabilityMinutes       uint
+	RecentWindowMinutes    uint
+	MissingPollsThreshold  uint
+	StudyTimeStart         *string
+	StudyTimeEnd           *string
 	ScheduleStartTimestamp time.Time
 	ScheduleEndTimestamp   time.Time
 }
@@ -93,4 +126,32 @@ type UpsertModelFeedback struct {
 	InferenceModelID string
 	ModelID          string
 	FeedbackType     entity.FeedbackType
+}
+
+type UpsertIngestionCandidate struct {
+	ID                string
+	TenantID          string
+	IngestionJobID    string
+	StudyInstanceUID  string
+	StudyDate         *string
+	StudyTime         *string
+	ModalitiesInStudy *string
+	PatientID         *string
+	AccessionNumber   *string
+	SeriesCount       *int
+	InstanceCount     *int
+}
+
+type UpdateCandidateRetrievalState struct {
+	ID                        string
+	OrthancJobIDs             []string
+	LastRetrievalState        *string
+	LastRetrievalError        *string
+	LastRetrievalErrorDetails *string
+}
+
+type UpdateCandidateDispatchState struct {
+	ID                      string
+	LastDispatchError       *string
+	LastDispatchAttemptedAt *time.Time
 }
