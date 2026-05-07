@@ -21,3 +21,5 @@ To run the docker image locally for debugging with the pacs network, run the fol
 ```
 docker run -it --network pacs-net --gpus all --entrypoint /bin/bash heartwisehub/pacs-ai-pan-echo:1.0
 ```
+
+`PanEcho` can now optionally run the `ECHO-PRIME` view classifier internally before inference. If you want that filtering enabled in-container, place `best_model_pretrained_echoprime_updated.pth` under [weights](/home/jdelfrate/pacs-ai-backend/model-examples/PanEcho/weights); otherwise PanEcho will keep its current fallback behavior and score all extracted multi-frame clips.
