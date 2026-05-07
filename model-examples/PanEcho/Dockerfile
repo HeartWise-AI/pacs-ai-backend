@@ -22,6 +22,7 @@ COPY data/ ./data/
 COPY docs/ ./docs/
 COPY content/ ./content/
 COPY models/ ./models/
+COPY weights/ ./weights/
 COPY utils/ ./utils/
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY supervisord.conf /etc/supervisord.conf
