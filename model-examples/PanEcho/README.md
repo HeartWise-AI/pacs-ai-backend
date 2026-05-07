@@ -7,6 +7,8 @@ docker build -t heartwisehub/pacs-ai-pan-echo:1.0 .
 docker push heartwisehub/pacs-ai-pan-echo:1.0
 ```
 
+`PanEcho` can now optionally run the `ECHO-PRIME` view classifier internally before inference. The classifier will be active when `best_model_pretrained_echoprime_updated.pth` exists under [weights](/home/jdelfrate/pacs-ai-backend/model-examples/PanEcho/weights), either because it was downloaded at build time or placed there manually.
+
 To build with the optional ECHO-PRIME view-classifier weights included, enable the build arg and pass the Hugging Face token as a BuildKit secret:
 
 ```bash
@@ -30,5 +32,3 @@ To run the docker image locally for debugging with the pacs network, run the fol
 ```
 docker run -it --network pacs-net --gpus all --entrypoint /bin/bash heartwisehub/pacs-ai-pan-echo:1.0
 ```
-
-`PanEcho` can now optionally run the `ECHO-PRIME` view classifier internally before inference. The classifier will be active when `best_model_pretrained_echoprime_updated.pth` exists under [weights](/home/jdelfrate/pacs-ai-backend/model-examples/PanEcho/weights), either because it was downloaded at build time or placed there manually.
