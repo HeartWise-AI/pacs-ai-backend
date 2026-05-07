@@ -1,0 +1,22 @@
+{
+  "1": "OTHER",
+  "0": "PSAX",
+  "12": "RVINF",
+  "13": "A2C_LV",
+  "5": "PLAX",
+  "17": "A3C_ZOOM",
+  "11": "A3C",
+  "7": "A4C_ZOOM",
+  "14": "A4C_LV",
+  "6": "A2C",
+  "2": "A4C",
+  "10": "SUBCOSTAL",
+  "16": "SUPRASTERNAL",
+  "9": "PLAX_DEEP",
+  "19": "PSAX_AV",
+  "4": "A5C",
+  "18": "A2C_ZOOM",
+  "3": "PLAX_ZOOM",
+  "15": "A5C_ZOOM",
+  "8": "A3C_LV"
+}
