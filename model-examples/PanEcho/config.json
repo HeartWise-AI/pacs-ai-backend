@@ -10,7 +10,9 @@
       "tasks": "all",
       "activations": false,
       "clip_len": 16,
-      "normalization": "imagenet"
+      "normalization": "imagenet",
+      "view_classifier_model_path": "/app/weights/best_model_pretrained_echoprime_updated.pth",
+      "view_classifier_class_mapping_path": "models/view_classifier_class_mapping.json"
     }
   }
 }
