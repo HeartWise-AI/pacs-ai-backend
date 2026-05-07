@@ -39,6 +39,8 @@ def matches_selected_view(pred_class: Optional[str]) -> bool:
 
 
 class CustomPredictionService(BasePredictionService):
+    _view_classifier_batch_size = 8
+
     def load_model(self, config: Config):        
         if CustomPredictionService.is_initialized:
             print("Models already loaded, skipping initialization")
@@ -432,25 +434,25 @@ class CustomPredictionService(BasePredictionService):
         
         return filtered_dicoms
 
-    def _run_view_classifier_inference(
+    def _prepare_view_classifier_video(
         self, dicom: pydicom.Dataset
-    ) -> Tuple[Optional[str], Optional[np.ndarray], str]:
+    ) -> Tuple[Optional[torch.Tensor], str]:
         try:
             im_array = dicom.pixel_array
         except Exception:
-            return None, None, "has no pixel data"
+            return None, "has no pixel data"
 
         im_array = handle_colorspace(im_array, dicom)
 
         if len(im_array.shape) != 4:
-            return None, None, "is image"
+            return None, "is image"
 
         if im_array.shape[0] <= 5:
-            return None, None, "too few frames"
+            return None, "too few frames"
 
         cropped = mask_and_crop(im_array)
         if isinstance(cropped, str) and cropped == "failed to detect motion":
-            return None, None, "failed to detect motion"
+            return None, "failed to detect motion"
 
         cropped_tensor = torch.from_numpy(cropped).permute(0, 3, 1, 2)
         resized = torchvision.transforms.Resize((224, 224))(cropped_tensor)
@@ -471,16 +473,32 @@ class CustomPredictionService(BasePredictionService):
         indices = period * np.arange(length)
         video = video[:, indices, :, :]
 
+        return video, "success"
+
+    def _run_view_classifier_batch_inference(
+        self, prepared_videos: List[torch.Tensor]
+    ) -> List[Tuple[str, np.ndarray, str]]:
+        if not prepared_videos:
+            return []
+
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        video = video.unsqueeze(0).to(device)
+        batch_size = self._view_classifier_batch_size
+        results: List[Tuple[str, np.ndarray, str]] = []
 
-        with torch.no_grad():
-            outputs = CustomPredictionService.models["view_classifier"](video)
-            probs = torch.softmax(outputs, dim=-1).cpu()
-            pred_idx = torch.argmax(probs, dim=-1).item()
-            pred_class = CustomPredictionService._view_classifier_class_mapping[str(pred_idx)]
+        for batch_start in range(0, len(prepared_videos), batch_size):
+            batch_videos = prepared_videos[batch_start:batch_start + batch_size]
+            batch_tensor = torch.stack(batch_videos).to(device)
 
-        return pred_class, probs.numpy(), "success"
+            with torch.no_grad():
+                outputs = CustomPredictionService.models["view_classifier"](batch_tensor)
+                probs = torch.softmax(outputs, dim=-1).cpu()
+                pred_indices = torch.argmax(probs, dim=-1).tolist()
+
+            for pred_idx, prob in zip(pred_indices, probs.numpy()):
+                pred_class = CustomPredictionService._view_classifier_class_mapping[str(pred_idx)]
+                results.append((pred_class, prob, "success"))
+
+        return results
 
     def _generate_view_classifier_metadata(
         self, dicoms: List[pydicom.Dataset]
@@ -491,9 +509,26 @@ class CustomPredictionService(BasePredictionService):
             return None
 
         metadata: Dict[str, Dict[str, Any]] = {}
+        prepared_videos: List[torch.Tensor] = []
+        prepared_dicom_names: List[str] = []
+
         for dicom in dicoms:
             dicom_name = str(dicom.SeriesInstanceUID)
-            pred_class, probs, status = self._run_view_classifier_inference(dicom)
+            video, status = self._prepare_view_classifier_video(dicom)
+            if video is None:
+                metadata[dicom_name] = {
+                    "predicted_class": None,
+                    "probabilities": None,
+                    "status": status,
+                }
+                continue
+
+            prepared_dicom_names.append(dicom_name)
+            prepared_videos.append(video)
+
+        batch_results = self._run_view_classifier_batch_inference(prepared_videos)
+
+        for dicom_name, (pred_class, probs, status) in zip(prepared_dicom_names, batch_results):
             metadata[dicom_name] = {
                 "predicted_class": pred_class,
                 "probabilities": probs.tolist() if probs is not None else None,
