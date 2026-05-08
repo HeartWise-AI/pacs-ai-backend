@@ -19,6 +19,8 @@ class Config(BaseModel):
         activations: bool
         clip_len: int
         normalization: str
+        view_classifier_model_path: Optional[str] = None
+        view_classifier_class_mapping_path: Optional[str] = None
     
     modelDirectory: str
     models: Dict[str, ModelConfig]
