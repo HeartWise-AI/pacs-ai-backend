@@ -19,10 +19,11 @@ def handle_colorspace(im_array: np.ndarray, dicom_ds: pydicom.Dataset) -> np.nda
         numpy array of the image in RGB format
     """
     cspace = dicom_ds[(0x0028, 0x0004)].value
-    if cspace in ['YBR_FULL', 'YBR_FULL_422']:
-        recolored = pydicom.pixel_data_handlers.convert_color_space(im_array, cspace, 'RGB')
-    elif cspace in ['RGB']:
-        recolored = pydicom.pixel_data_handlers.convert_color_space(im_array, cspace, cspace)
+    if cspace in ['YBR_FULL', 'YBR_FULL_422', 'RGB']:
+        return im_array
+        # recolored = pydicom.pixel_data_handlers.convert_color_space(im_array, cspace, 'RGB')
+    # elif cspace in ['RGB']:
+    #     recolored = pydicom.pixel_data_handlers.convert_color_space(im_array, cspace, cspace)
     elif cspace in ['PALETTE COLOR']:
         recolored = to_uint8(pydicom.pixel_data_handlers.util.apply_color_lut(im_array, dicom_ds))
     elif cspace in ['MONOCHROME1', 'MONOCHROME2']:
