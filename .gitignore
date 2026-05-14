@@ -7,3 +7,5 @@
 **.html
 **.csv
 *.txt
+!**/requirements.txt
+!**/requirements_*.txt
