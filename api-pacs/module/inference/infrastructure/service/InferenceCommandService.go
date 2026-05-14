@@ -445,17 +445,17 @@ func (service *InferenceCommandService) executeInferenceIngestionJob(ctx context
 		}
 
 		priorCandidate, hasPriorCandidate := existingCandidateMap[study.StudyInstanceUID]
-		log.Printf("[Ingestion service] processing study job_id=%s study_instance_uid=%s study_date=%s study_time=%s modalities_in_study=%s series_count=%s instance_count=%s has_prior_candidate=%t prior_status=%s",
-			job.ID,
-			study.StudyInstanceUID,
-			nullableStringLogValue(studyDate),
-			nullableStringLogValue(studyTime),
-			nullableStringLogValue(modalitiesInStudy),
-			nullableIntLogValue(seriesCount),
-			nullableIntLogValue(instanceCount),
-			hasPriorCandidate,
-			candidateStatusLogValue(priorCandidate.Status, hasPriorCandidate),
-		)
+		// log.Printf("[Ingestion service] processing study job_id=%s study_instance_uid=%s study_date=%s study_time=%s modalities_in_study=%s series_count=%s instance_count=%s has_prior_candidate=%t prior_status=%s",
+		// 	job.ID,
+		// 	study.StudyInstanceUID,
+		// 	nullableStringLogValue(studyDate),
+		// 	nullableStringLogValue(studyTime),
+		// 	nullableStringLogValue(modalitiesInStudy),
+		// 	nullableIntLogValue(seriesCount),
+		// 	nullableIntLogValue(instanceCount),
+		// 	hasPriorCandidate,
+		// 	candidateStatusLogValue(priorCandidate.Status, hasPriorCandidate),
+		// )
 
 		err = service.InferenceCommandRepositoryInterface.UpsertIngestionCandidate(repositoryTypes.UpsertIngestionCandidate{
 			ID:                generateID(),

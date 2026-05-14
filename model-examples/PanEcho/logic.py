@@ -1,20 +1,19 @@
 import os
-import uuid
 import json
 import torch
 import base64
 import pydicom
-import cv2 as cv
 import numpy as np
-import torch.nn as nn
+import torchvision
 
 from io import BytesIO
 from torchvision import tv_tensors
-from collections import defaultdict
 from torchvision.transforms import v2
-from typing import List, Dict, Union, Tuple, Optional
+from typing import Any, List, Dict, Union, Tuple, Optional
 
 from models.pan_echo import PanEcho
+from models.echo_prime_view_classifier import EchoPrimeViewClassifier
+from models.view_classifier_utils import handle_colorspace, mask_and_crop
 from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
@@ -40,6 +39,8 @@ def matches_selected_view(pred_class: Optional[str]) -> bool:
 
 
 class CustomPredictionService(BasePredictionService):
+    _view_classifier_batch_size = 8
+
     def load_model(self, config: Config):        
         if CustomPredictionService.is_initialized:
             print("Models already loaded, skipping initialization")
@@ -66,15 +67,64 @@ class CustomPredictionService(BasePredictionService):
             print("Setting model to evaluation mode")
             CustomPredictionService.models['pan_echo'].eval()
             CustomPredictionService.models['pan_echo'].to('cuda' if torch.cuda.is_available() else 'cpu')
-            CustomPredictionService.is_initialized = True   
         except Exception as e:
             print(f"Error setting model to evaluation mode: {e}")
             raise e
+
+        view_classifier_weights_path = config.models["pan_echo"].view_classifier_model_path
+        class_mapping_path = (
+            config.models["pan_echo"].view_classifier_class_mapping_path
+            or os.path.join("models", "view_classifier_class_mapping.json")
+        )
+        try:
+            if class_mapping_path and os.path.exists(class_mapping_path):
+                with open(class_mapping_path, "r") as fp:
+                    CustomPredictionService._view_classifier_class_mapping = json.load(fp)
+            else:
+                print(f"View classifier class mapping not found at {class_mapping_path}")
+
+            if view_classifier_weights_path and os.path.exists(view_classifier_weights_path):
+                print("Loading PanEcho view classifier")
+                view_classifier = EchoPrimeViewClassifier(view_classifier_weights_path)
+                view_classifier.eval()
+                view_classifier.to("cuda" if torch.cuda.is_available() else "cpu")
+                CustomPredictionService.models["view_classifier"] = view_classifier
+                print("Successfully loaded PanEcho view classifier")
+            else:
+                print(
+                    "View classifier weights not found; PanEcho will fall back to "
+                    "request metadata or unfiltered inference"
+                )
+        except Exception as e:
+            print(f"Error loading view classifier, continuing without it: {e}")
+
+        CustomPredictionService.is_initialized = True   
         
         # Keep config in class
         self.config = config
         
         print('Model loaded')
+
+    def _is_valid_base64(self, dicom_base64):
+        try:
+            if isinstance(dicom_base64, str):
+                base64.b64decode(dicom_base64)
+                return True
+            return False
+        except Exception:
+            return False
+
+    def _is_valid_dicom(self, dicom):
+        try:
+            if len(dicom) < 132:
+                return False
+            if dicom[128:132] == b"DICM":
+                return True
+            if dicom[:4] == b"DICM":
+                return True
+            return False
+        except Exception:
+            return False
 
     def _interpret_regression_value(self, value: float, head_cfg: dict, sex: str = None) -> str:
         """Interpret a regression value using clinical thresholds from the mapping.
@@ -383,6 +433,134 @@ class CustomPredictionService(BasePredictionService):
             filtered_dicoms.append(dicom)
         
         return filtered_dicoms
+
+    def _prepare_view_classifier_video(
+        self, dicom: pydicom.Dataset
+    ) -> Tuple[Optional[torch.Tensor], str]:
+        try:
+            im_array = dicom.pixel_array
+        except Exception:
+            return None, "has no pixel data"
+
+        im_array = handle_colorspace(im_array, dicom)
+
+        if len(im_array.shape) != 4:
+            return None, "is image"
+
+        if im_array.shape[0] <= 5:
+            return None, "too few frames"
+
+        cropped = mask_and_crop(im_array)
+        if isinstance(cropped, str) and cropped == "failed to detect motion":
+            return None, "failed to detect motion"
+
+        cropped_tensor = torch.from_numpy(cropped).permute(0, 3, 1, 2)
+        resized = torchvision.transforms.Resize((224, 224))(cropped_tensor)
+
+        mean = [24.277523040771484, 22.14891242980957, 22.404890060424805]
+        std = [47.2259521484375, 44.02793502807617, 43.90631103515625]
+        video = resized.float()
+        video = torchvision.transforms.Normalize(mean, std)(video)
+
+        video = video.permute(1, 0, 2, 3)
+        c, f, h, w = video.shape
+        length = 16
+        period = 2
+
+        if f < length * period:
+            video = torch.cat([video, torch.zeros(c, length * period - f, h, w)], dim=1)
+
+        indices = period * np.arange(length)
+        video = video[:, indices, :, :]
+
+        return video, "success"
+
+    def _run_view_classifier_batch_inference(
+        self, prepared_videos: List[torch.Tensor]
+    ) -> List[Tuple[str, np.ndarray, str]]:
+        if not prepared_videos:
+            return []
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        batch_size = self._view_classifier_batch_size
+        results: List[Tuple[str, np.ndarray, str]] = []
+
+        for batch_start in range(0, len(prepared_videos), batch_size):
+            batch_videos = prepared_videos[batch_start:batch_start + batch_size]
+            batch_tensor = torch.stack(batch_videos).to(device)
+
+            with torch.no_grad():
+                outputs = CustomPredictionService.models["view_classifier"](batch_tensor)
+                probs = torch.softmax(outputs, dim=-1).cpu()
+                pred_indices = torch.argmax(probs, dim=-1).tolist()
+
+            for pred_idx, prob in zip(pred_indices, probs.numpy()):
+                pred_class = CustomPredictionService._view_classifier_class_mapping[str(pred_idx)]
+                results.append((pred_class, prob, "success"))
+
+        return results
+
+    def _generate_view_classifier_metadata(
+        self, dicoms: List[pydicom.Dataset]
+    ) -> Optional[Dict[str, Dict[str, Any]]]:
+        if "view_classifier" not in CustomPredictionService.models:
+            return None
+        if not hasattr(CustomPredictionService, "_view_classifier_class_mapping"):
+            return None
+
+        metadata: Dict[str, Dict[str, Any]] = {}
+        prepared_videos: List[torch.Tensor] = []
+        prepared_dicom_names: List[str] = []
+
+        for dicom in dicoms:
+            dicom_name = str(dicom.SeriesInstanceUID)
+            video, status = self._prepare_view_classifier_video(dicom)
+            if video is None:
+                metadata[dicom_name] = {
+                    "predicted_class": None,
+                    "probabilities": None,
+                    "status": status,
+                }
+                continue
+
+            prepared_dicom_names.append(dicom_name)
+            prepared_videos.append(video)
+
+        batch_results = self._run_view_classifier_batch_inference(prepared_videos)
+
+        for dicom_name, (pred_class, probs, status) in zip(prepared_dicom_names, batch_results):
+            metadata[dicom_name] = {
+                "predicted_class": pred_class,
+                "probabilities": probs.tolist() if probs is not None else None,
+                "status": status,
+            }
+
+        return metadata
+
+    def _prepare_dicoms_for_inference(
+        self, dicoms: List[pydicom.Dataset], request_metadata: Optional[Dict[str, Any]]
+    ) -> List[pydicom.Dataset]:
+        metadata = request_metadata
+        metadata_source = "request.additionalMetadata"
+
+        if not metadata:
+            metadata = self._generate_view_classifier_metadata(dicoms)
+            metadata_source = "PanEcho view classifier"
+
+        if metadata:
+            filtered_dicoms = self._filter_dicoms_with_metadata(dicoms, metadata)
+            print(
+                f"Filtering via {metadata_source}: {len(dicoms)} total DICOMs, "
+                f"{len(filtered_dicoms)} matched selected views "
+                f"({', '.join(sorted(SELECTED_VIEWS))})"
+            )
+            if filtered_dicoms:
+                return filtered_dicoms
+            print(f"No selected view matches from {metadata_source}, using all {len(dicoms)} DICOMs")
+        else:
+            print("No view metadata available, using all DICOMs")
+
+        return dicoms
         
     def _extract_dicoms(self, request: PredictRequest) -> list:
         """Extract and filter multi-frame DICOMs from the request payload."""
@@ -423,6 +601,7 @@ class CustomPredictionService(BasePredictionService):
     async def _handle_html_output(self, request: PredictRequest):
         try:
             dicoms = self._extract_dicoms(request)
+            dicoms = self._prepare_dicoms_for_inference(dicoms, request.additionalMetadata)
         except Exception as e:
             error_msg = f"Error in _handle_html_output: {e}"
             print(error_msg)
@@ -511,6 +690,7 @@ class CustomPredictionService(BasePredictionService):
 
         try:
             dicoms = self._extract_dicoms(request)
+            dicoms = self._prepare_dicoms_for_inference(dicoms, request.additionalMetadata)
         except Exception as e:
             error_msg = f"Error in _handle_json_output: {e}"
             print(error_msg)
@@ -523,21 +703,6 @@ class CustomPredictionService(BasePredictionService):
                     "presentable": True,
                 }
             }
-
-        # Filter DICOMs by selected views from metadata
-        if request.additionalMetadata:
-            filtered_dicoms = self._filter_dicoms_with_metadata(
-                dicoms,
-                request.additionalMetadata
-            )
-            print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched selected views ({', '.join(sorted(SELECTED_VIEWS))})")
-            if filtered_dicoms:
-                dicoms = filtered_dicoms
-                print(f"Using {len(dicoms)} filtered DICOMs")
-            else:
-                print(f"No matches, using all {len(dicoms)} DICOMs")
-        else:
-            print("No additional metadata, using all DICOMs")
 
         try:
             probability = self._run_inference(dicoms=dicoms)
