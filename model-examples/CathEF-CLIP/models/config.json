@@ -19,7 +19,7 @@
     "dropout": 0.2937411487340935,
     "use_cls_token": true,
     "num_attention_heads": 4,
-    "separate_video_attention": false,
+    "separate_video_attention": true,
     "normalization_strategy": "pre_norm"
   },
   "VideoMILWrapper": {
