@@ -77,7 +77,7 @@ func (service *OrchestratorService) CreateThread(ctx context.Context, request ty
 	defer resp.Body.Close()
 
 	// Check response status
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return types.CreateThreadResponse{}, fmt.Errorf("external API returned status: %d", resp.StatusCode)
 	}
 
