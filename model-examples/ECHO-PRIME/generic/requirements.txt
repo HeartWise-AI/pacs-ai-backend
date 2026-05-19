@@ -6,4 +6,4 @@ dicom2nifti==2.6.1
 
 pandas==2.2.3
 opencv-python-headless==4.8.1.78
-pytorch-lightning==2.4.0
+pytorch-lightning==2.6.1
