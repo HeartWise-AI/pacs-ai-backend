@@ -1,11 +1,11 @@
-python-dotenv==1.1.0
+python-dotenv==1.2.2
 transformers==5.0.0rc3
 uvicorn==0.34.2
 fastapi==0.115.12
 langgraph==1.0.10rc1
 docker==7.1.0
 langchain-ollama==0.3.3
-langchain-openai==0.3.17
+langchain-openai==1.1.14
 langchain-tavily==0.2.7
 langchain-community==0.3.27
 openai==1.79.0
