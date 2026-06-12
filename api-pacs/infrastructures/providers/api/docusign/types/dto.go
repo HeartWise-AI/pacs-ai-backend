@@ -12,10 +12,11 @@ const (
 )
 
 type GetEnvelopeRequest struct {
-	FromDate   string `json:"from_date"`
-	SearchText string `json:"search_text,omitempty"`
-	Include    string `json:"include,omitempty"`
-	Email      string `json:"email,omitempty"`
+	FromDate     string `json:"from_date"`
+	SearchText   string `json:"search_text,omitempty"`
+	Include      string `json:"include,omitempty"`
+	Email        string `json:"email,omitempty"`
+	PowerFormIDs string `json:"powerformids,omitempty"` // comma-separated ids
 }
 
 type GetEnvelopeRecipientResponse struct {

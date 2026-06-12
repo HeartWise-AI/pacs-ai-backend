@@ -122,6 +122,7 @@ func (d *DocusignAPI) GetEnvelopes(accessToken string, request types.GetEnvelope
 	query.Add("from_date", request.FromDate)
 	query.Add("search_text", request.SearchText)
 	query.Add("include", request.Include)
+	query.Add("powerformids", request.PowerFormIDs)
 	req.URL.RawQuery = query.Encode()
 
 	resp, err := client.Do(req)
