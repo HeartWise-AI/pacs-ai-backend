@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -152,13 +154,27 @@ func (service *UserQueryService) updateTenantUserConsentStatus(ctx context.Conte
 		return false, err
 	}
 
+	// get the consent powerform id
+	var powerFormID string
+
+	if len(tenant.OnboardingConsentLink) > 0 {
+		parsedConsentURL, err := url.Parse(tenant.OnboardingConsentLink)
+		if err != nil {
+			log.Println(err)
+			return false, err
+		}
+
+		powerFormID = path.Base(parsedConsentURL.Path)
+	}
+
 	// get docusign envelopes
-	// FIXME: this defaults to 5 years ago with from_date (apparently it is required)
-	fromDate := time.Now().AddDate(-5, 0, 0).Format("2006-01-02")
+	// FIXME: this defaults to 10 years ago with from_date (apparently it is required but negligible in terms of request time)
+	fromDate := time.Now().AddDate(-10, 0, 0).Format("2006-01-02")
 	envelopes, err := service.DocusignAPIInterface.GetEnvelopes(accessToken, docusignTypes.GetEnvelopeRequest{
-		FromDate:   fromDate,
-		SearchText: user.Email,
-		Include:    "recipients", // https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopes/liststatuschanges/
+		FromDate:     fromDate,
+		SearchText:   user.Email,
+		Include:      "recipients", // https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopes/liststatuschanges/
+		PowerFormIDs: powerFormID,
 	})
 	if err != nil {
 		return false, err
