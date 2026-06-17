@@ -98,6 +98,33 @@ func (repository *UserCommandRepositoryCircuitBreaker) InsertTenantUser(ctx cont
 	}
 }
 
+// GenerateTenantUserEmailVerificationLink is the decorator for generating a Firebase email verification link.
+func (repository *UserCommandRepositoryCircuitBreaker) GenerateTenantUserEmailVerificationLink(ctx context.Context, tenantID, email string) (string, error) {
+	output := make(chan string, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("generate_tenant_user_email_verification_link", config.Settings())
+	errors := hystrix.Go("generate_tenant_user_email_verification_link", func() error {
+		link, err := repository.UserCommandRepositoryInterface.GenerateTenantUserEmailVerificationLink(ctx, tenantID, email)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- link
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errChan:
+		return "", err
+	case err := <-errors:
+		return "", err
+	}
+}
+
 // InsertTenantUserEmailInvite is the decorator for the user repository to insert tenant user email invite
 func (repository *UserCommandRepositoryCircuitBreaker) InsertTenantUserEmailInvite(ctx context.Context, data repositoryTypes.CreateTenantUserEmailInvite) error {
 	output := make(chan bool, 1)
