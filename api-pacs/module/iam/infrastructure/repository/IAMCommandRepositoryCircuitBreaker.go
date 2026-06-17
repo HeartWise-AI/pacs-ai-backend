@@ -42,6 +42,60 @@ func (repository *IAMCommandRepositoryCircuitBreaker) DeleteTokenSession(key str
 	}
 }
 
+// IsEmailVerificationCooldownActive is the decorator for checking email verification cooldown.
+func (repository *IAMCommandRepositoryCircuitBreaker) IsEmailVerificationCooldownActive(key string) (bool, error) {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("is_email_verification_cooldown_active", config.Settings())
+	errors := hystrix.Go("is_email_verification_cooldown_active", func() error {
+		active, err := repository.IAMCommandRepositoryInterface.IsEmailVerificationCooldownActive(key)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- active
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errChan:
+		return false, err
+	case err := <-errors:
+		return false, err
+	}
+}
+
+// SetEmailVerificationCooldown is the decorator for setting email verification cooldown.
+func (repository *IAMCommandRepositoryCircuitBreaker) SetEmailVerificationCooldown(key string) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("set_email_verification_cooldown", config.Settings())
+	errors := hystrix.Go("set_email_verification_cooldown", func() error {
+		err := repository.IAMCommandRepositoryInterface.SetEmailVerificationCooldown(key)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // SetTokenSession is the decorator for the user repository to set token session
 func (repository *IAMCommandRepositoryCircuitBreaker) SetTokenSession(data repositoryTypes.SetTokenSession) error {
 	output := make(chan bool, 1)
