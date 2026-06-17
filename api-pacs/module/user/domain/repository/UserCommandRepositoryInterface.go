@@ -13,6 +13,8 @@ type UserCommandRepositoryInterface interface {
 	DeleteTenantUserEmailInvite(ctx context.Context, ID string) error
 	// InsertTenantUser inserts a tenant user and returns the inserted ID
 	InsertTenantUser(ctx context.Context, data repositoryTypes.CreateTenantUser) (string, error)
+	// GenerateTenantUserEmailVerificationLink generates a Firebase email verification link
+	GenerateTenantUserEmailVerificationLink(ctx context.Context, tenantID, email string) (string, error)
 	// InsertTenantUserEmailInvite inserts a tenant user email invite
 	InsertTenantUserEmailInvite(ctx context.Context, data repositoryTypes.CreateTenantUserEmailInvite) error
 	// UpdateTenantUser updates a tenant user
