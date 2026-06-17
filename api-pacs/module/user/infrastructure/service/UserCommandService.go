@@ -227,6 +227,39 @@ func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data 
 	if err != nil {
 		return err
 	}
+	if !isEmailVerified {
+		go func() {
+			if err := service.SendTenantUserEmailVerification(ctx, data.TenantID, data.Email); err != nil {
+				log.Println("[error] cannot send verification email after registration", err)
+			}
+		}()
+	}
+
+	return nil
+}
+
+// SendTenantUserEmailVerification sends a Firebase email verification link to a tenant user.
+func (service *UserCommandService) SendTenantUserEmailVerification(ctx context.Context, tenantID, email string) error {
+	verifyLink, err := service.UserCommandRepositoryInterface.GenerateTenantUserEmailVerificationLink(ctx, tenantID, email)
+	if err != nil {
+		return err
+	}
+
+	emailMessage := fmt.Sprintf("Hello,<br /><br />"+
+		"Follow this link to verify your PACS AI email address for your %s account:<br /><br />"+
+		"<a href=\"%s\">%s</a><br /><br />"+
+		"If you did not create a PACS AI account, you can ignore this email.<br /><br />"+
+		"Thanks,<br />"+
+		"Your PACS AI team", email, verifyLink, verifyLink)
+
+	err = service.MailgunSDKInterface.SendEmail(ctx, mailgunTypes.MailgunSendEmailRequest{
+		Subject:       "[PACS AI]: Verify your email",
+		Recipient:     email,
+		PlainTextBody: emailMessage,
+	})
+	if err != nil {
+		return errors.New(apiError.MailgunError)
+	}
 
 	return nil
 }
