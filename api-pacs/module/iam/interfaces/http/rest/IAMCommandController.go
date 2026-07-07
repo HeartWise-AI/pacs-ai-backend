@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-playground/validator/v10"
 
@@ -151,6 +152,9 @@ func (controller *IAMCommandController) LoginTenantUser(w http.ResponseWriter, r
 		case errors.UnauthorizedAccess:
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Unauthorized access."
+		case errors.FirebaseAuthEmailNotVerified:
+			httpCode = http.StatusUnauthorized
+			errorMsg = "Email is not verified."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Please contact technical support."
@@ -222,12 +226,27 @@ func (controller *IAMCommandController) VerifyTenantUserEmail(w http.ResponseWri
 		return
 	}
 
-	err = controller.IAMCommandServiceInterface.VerifyTenantUserEmail(context.TODO(), request.TenantID, request.Email)
+	err = controller.IAMCommandServiceInterface.VerifyTenantUserEmail(context.TODO(), request.TenantID, strings.ToLower(request.Email))
 	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.MailgunError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while sending verify email request."
+		case errors.MaximumLimitReached:
+			httpCode = http.StatusTooManyRequests
+			errorMsg = "Please wait before requesting another verification email."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Please contact technical support."
+		}
+
 		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusInternalServerError,
+			Status:    httpCode,
 			Success:   false,
-			Message:   "Please contact technical support.",
+			Message:   errorMsg,
 			ErrorCode: err.Error(),
 		}
 
