@@ -484,11 +484,11 @@ func (controller *InferenceQueryController) getInferenceIngestionCandidates(w ht
 	}
 
 	res, err := controller.InferenceQueryServiceInterface.GetInferenceIngestionCandidates(context.TODO(), serviceTypes.GetInferenceIngestionCandidates{
-		TenantID:           tenantID,
-		IngestionJobID:     ingestionJobID,
-		StudyInstanceUID:   studyInstanceUID,
-		Status:             status,
-		RetrievalFailures:  retrievalFailures,
+		TenantID:          tenantID,
+		IngestionJobID:    ingestionJobID,
+		StudyInstanceUID:  studyInstanceUID,
+		Status:            status,
+		RetrievalFailures: retrievalFailures,
 	})
 	if err != nil {
 		var httpCode int
