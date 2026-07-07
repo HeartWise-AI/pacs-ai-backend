@@ -29,7 +29,6 @@ class VideoMILWrapper(torch.nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        video_indices: torch.Tensor | None = None,
         video_mask: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
         embeddings: torch.Tensor = self.video_encoder(x)
@@ -51,13 +50,14 @@ class VideoMILWrapper(torch.nn.Module):
         else:
             B, N, _ = embeddings.shape
 
-        # Only the real videos are valid instances. Zero-padded slots (added to
-        # reach num_videos) must be masked out; otherwise their constant encoder
-        # embedding pollutes the attention/CLS pooling and collapses predictions.
-        if video_mask is not None:
+        # Mask out zero-padded video slots so their constant encoder embedding
+        # can't pollute the attention/CLS pooling and collapse predictions. Only
+        # apply the caller mask when it lines up with the actual instance count N;
+        # encoder modes that collapse N (e.g. aggregated study features) fall back
+        # to the MIL model's all-valid default (mask=None).
+        attention_mask = None
+        if video_mask is not None and video_mask.shape[-1] == N:
             attention_mask = video_mask.to(device=embeddings.device, dtype=torch.bool)
-        else:
-            attention_mask = torch.ones((B, N), dtype=torch.bool, device=embeddings.device)
         return self.mil_model(embeddings, mask=attention_mask)
 
 

@@ -113,7 +113,7 @@ class VideoMILWrapper(torch.nn.Module):
         self.num_videos: int = num_videos
 
     def forward(
-        self, x: torch.Tensor, video_indices: torch.Tensor | None = None
+        self, x: torch.Tensor, video_mask: torch.Tensor | None = None
     ) -> dict[str, torch.Tensor]:
         """Wrapper forward pass."""
 
@@ -138,7 +138,13 @@ class VideoMILWrapper(torch.nn.Module):
         else:
             B, N, _ = embeddings.shape
 
-        attention_mask = torch.ones((B, N), dtype=torch.bool, device=embeddings.device)
+        # Mask out zero-padded video slots so their constant encoder embedding
+        # can't pollute the attention/CLS pooling and collapse predictions. Apply
+        # the caller mask only when it lines up with the actual instance count N;
+        # otherwise fall back to the MIL model's all-valid default (mask=None).
+        attention_mask = None
+        if video_mask is not None and video_mask.shape[-1] == N:
+            attention_mask = video_mask.to(device=embeddings.device, dtype=torch.bool)
 
         return self.mil_model(embeddings, mask=attention_mask)
 
@@ -577,6 +583,7 @@ class CustomPredictionService(BasePredictionService):
                 dicom_ok += 1
 
             video_batch = torch.from_numpy(np.array(videos)).to(dtype=torch.float16)
+            num_real_videos = video_batch.shape[0]
 
             if video_batch.shape[0] < max_videos:
                 single_video_shape = video_batch.shape[1:]
@@ -584,15 +591,18 @@ class CustomPredictionService(BasePredictionService):
                 zero_padding = torch.zeros(padding_shape, dtype=video_batch.dtype, device=video_batch.device)
                 video_batch = torch.cat([video_batch, zero_padding], dim=0)
 
-            video_batch = video_batch.unsqueeze(0).to(
-                "cuda" if torch.cuda.is_available() else "cpu"
-            )
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            video_batch = video_batch.unsqueeze(0).to(device)
+
+            # Mark only the real videos as valid; padded slots stay False.
+            video_mask = torch.zeros((1, max_videos), dtype=torch.bool, device=device)
+            video_mask[:, :num_real_videos] = True
 
             model = CustomPredictionService.models["video_mil_wrapper"]
             model.eval()
 
             with torch.no_grad():
-                outputs: torch.Tensor = model(video_batch)
+                outputs: torch.Tensor = model(video_batch, video_mask=video_mask)
 
             for key in outputs:
                 if "category" in key:
