@@ -40,7 +40,8 @@ func NewClient(config types.Config) (*DockerSDK, error) {
 	}
 	encodedJSON, err := json.Marshal(authConfig)
 	if err != nil {
-		log.Fatalf("[docker] error:", err)
+		log.Println("[docker] error:", err)
+		return nil, err
 	}
 	authStr := base64.URLEncoding.EncodeToString(encodedJSON)
 

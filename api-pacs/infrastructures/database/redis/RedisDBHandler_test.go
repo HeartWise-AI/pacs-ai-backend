@@ -47,14 +47,23 @@ func TestWriteRead(t *testing.T) {
 			return
 		}
 
-		// read
-		data, err := db.Get("reply")
+		// write the key this subtest reads so it can run in isolation
+		err = db.Set("title", "hi", 0)
 		if err != nil {
 			t.Error(err)
 			return
 		}
 
-		t.Log(data)
+		// read
+		data, err := db.Get("title")
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		if data != "hi" {
+			t.Errorf("expected %q, got %q", "hi", data)
+		}
 	})
 }
 
