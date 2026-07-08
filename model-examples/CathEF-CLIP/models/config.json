@@ -18,9 +18,9 @@
     "attention_hidden": 128,
     "dropout": 0.2937411487340935,
     "use_cls_token": true,
-    "num_attention_heads": 4,
+    "num_attention_heads": 8,
     "separate_video_attention": true,
-    "normalization_strategy": "pre_norm"
+    "normalization_strategy": "post_norm"
   },
   "VideoMILWrapper": {
     "num_videos": 4,
