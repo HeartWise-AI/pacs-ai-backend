@@ -10,7 +10,7 @@
   "dicomUploadMax": 4,
   "supportedDicomModalities": ["XA"],
   "supportedDicomTags": ["*"],
-  "supportedAdditionalMetadata": ["main_structure", "status"],
+  "supportedAdditionalMetadata": [],
   "supportedOutputModes": ["HTML", "JSON"],
   "approveFeedbackQuestionnaires": [
     {

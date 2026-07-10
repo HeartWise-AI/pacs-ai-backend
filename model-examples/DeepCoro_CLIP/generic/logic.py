@@ -43,7 +43,7 @@ class VideoMILWrapper(torch.nn.Module):
         self.num_videos: int = num_videos
 
     def forward(
-        self, x: torch.Tensor, video_indices: torch.Tensor | None = None
+        self, x: torch.Tensor, video_mask: torch.Tensor | None = None
     ) -> dict[str, torch.Tensor]:
         """Wrapper forward pass.
 
@@ -51,10 +51,10 @@ class VideoMILWrapper(torch.nn.Module):
         always receives a 3-D tensor of shape ``[B, N, D]`` where *N* is the
         number of video segments associated with each sample.
 
-        In the typical *single-video* case, ``video_indices`` will be ``None``
-        and the underlying ``VideoEncoder`` already returns a tensor of shape
-        ``[B, D]`` (aggregated representation).  We therefore unsqueeze a
-        singleton *N* dimension so that it becomes ``[B, 1, D]``.
+        In the typical *single-video* case the underlying ``VideoEncoder``
+        already returns a tensor of shape ``[B, D]`` (aggregated
+        representation).  We therefore unsqueeze a singleton *N* dimension so
+        that it becomes ``[B, 1, D]``.
 
         When ``multi_video=True`` the dataloader supplies inputs of shape
         ``[B, N, C, F, H, W]``.  If the encoder is configured with
@@ -64,6 +64,10 @@ class VideoMILWrapper(torch.nn.Module):
         the *N* dimension and output ``[B, D]``.  In this scenario we again
         expand the aggregated vector so that downstream MIL logic continues
         to work (with ``N = 1``).
+
+        ``video_mask`` optionally marks which of the *N* video slots are real
+        (vs. zero-padding added to reach ``num_videos``); it is applied only
+        when its length matches the actual instance count.
         """
 
         # ------------------------------------------------------------------
@@ -105,10 +109,13 @@ class VideoMILWrapper(torch.nn.Module):
         else:
             B, N, _ = embeddings.shape  # type: ignore[misc]
 
-        # Build a simple boolean mask that marks every video as valid.  In the
-        # future we could incorporate ``video_indices`` to create selective
-        # masks, e.g. when some videos are padded.
-        attention_mask = torch.ones((B, N), dtype=torch.bool, device=embeddings.device)
+        # Mask out zero-padded video slots so their constant encoder embedding
+        # can't pollute the attention/CLS pooling and collapse predictions. Apply
+        # the caller mask only when it lines up with the actual instance count N;
+        # otherwise fall back to the MIL model's all-valid default (mask=None).
+        attention_mask = None
+        if video_mask is not None and video_mask.shape[-1] == N:
+            attention_mask = video_mask.to(device=embeddings.device, dtype=torch.bool)
 
         # ------------------------------------------------------------------
         # 4) Forward through the MIL head(s)
@@ -890,7 +897,8 @@ class CustomPredictionService(BasePredictionService):
                 dicom_ok += 1
 
             video_batch = torch.from_numpy(np.array(videos)).to(dtype=torch.float32)
-                        
+            num_real_videos = video_batch.shape[0]
+
             # Zero pad the video_batch if we have fewer videos than max_videos
             if video_batch.shape[0] < max_videos:
                 # Get the shape of a single video (after permute)
@@ -900,17 +908,20 @@ class CustomPredictionService(BasePredictionService):
                 zero_padding = torch.zeros(padding_shape, dtype=video_batch.dtype, device=video_batch.device)
                 # Concatenate the original videos with zero padding
                 video_batch = torch.cat([video_batch, zero_padding], dim=0)
-            
-            video_batch = video_batch.unsqueeze(0).to(
-                "cuda" if torch.cuda.is_available() else "cpu"
-            )
-            
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            video_batch = video_batch.unsqueeze(0).to(device)
+
+            # Mark only the real videos as valid; padded slots stay False.
+            video_mask = torch.zeros((1, max_videos), dtype=torch.bool, device=device)
+            video_mask[:, :num_real_videos] = True
+
             model = CustomPredictionService.models["video_mil_wrapper"]
             model.eval()
-            
+
             with torch.no_grad():
                 outputs: torch.Tensor = model(
-                    video_batch
+                    video_batch, video_mask=video_mask
                 )
 
             # Normalize the output
