@@ -413,15 +413,18 @@ class EchoPrimeInference:
         preds = {}
         for s_dx, section in enumerate(self.non_empty_sections):
             for pheno in self.section_to_phenotypes[section]:
-                preds[pheno] = np.nanmean(
-                    [
-                        self.candidate_labels[pheno][self.candidate_studies[c_ids]]
-                        for c_ids in top_candidate_ids[
-                            s_dx
-                        ].cpu()  # Move indices to CPU for numpy operations
-                        if self.candidate_studies[c_ids] in self.candidate_labels[pheno]
-                    ]
-                )
+                values = [
+                    self.candidate_labels[pheno][self.candidate_studies[c_ids]]
+                    for c_ids in top_candidate_ids[
+                        s_dx
+                    ].cpu()  # Move indices to CPU for numpy operations
+                    if self.candidate_studies[c_ids] in self.candidate_labels[pheno]
+                ]
+                if not values:
+                    preds[pheno] = None
+                    continue
+                mean = np.nanmean(values)
+                preds[pheno] = None if np.isnan(mean) else float(mean)
 
         return preds
 
