@@ -142,7 +142,7 @@ def generate_html_report(
     # First section: Continuous measurements
     # Handle PAP first
     for metric, value in metrics.items():
-        if metric == "pulmonary_artery_pressure_continuous":
+        if metric == "pulmonary_artery_pressure_continuous" and value is not None:
             formatted_name = metric.replace("_", " ").title()
             formatted_value = f"{value:.1f} mmHg"
             name_class = "metric-name small-text"
@@ -158,7 +158,7 @@ def generate_html_report(
     continuous_metrics = [
         (m, v)
         for m, v in metrics.items()
-        if m not in THRESHOLDS and m != "pulmonary_artery_pressure_continuous"
+        if m not in THRESHOLDS and m != "pulmonary_artery_pressure_continuous" and v is not None
     ]
 
     # Sort by value (converting to percentage if needed)
@@ -189,7 +189,7 @@ def generate_html_report(
     # Get all binary predictions and their status
     binary_predictions = []
     for metric, value in metrics.items():
-        if metric in THRESHOLDS:
+        if metric in THRESHOLDS and value is not None:
             formatted_name = metric.replace("_", " ").title()
             is_positive = value >= THRESHOLDS[metric]
             binary_predictions.append((metric, formatted_name, is_positive))
