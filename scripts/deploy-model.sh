@@ -139,8 +139,8 @@ authenticate() {
   local firebase_resp id_token login_resp
   firebase_resp=$(curl -sS -X POST \
     -H "Content-Type: application/json" \
-    -d "$(jq -n --arg e "$PACS_ADMIN_EMAIL" --arg p "$PACS_ADMIN_PASSWORD" \
-          '{email:$e, password:$p, returnSecureToken:true}')" \
+    -d "$(jq -n --arg e "$PACS_ADMIN_EMAIL" --arg p "$PACS_ADMIN_PASSWORD" --arg t "$TENANT_ID" \
+          '{email:$e, password:$p, tenantId:$t, returnSecureToken:true}')" \
     "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$FIREBASE_API_KEY")
   id_token=$(jq -r '.idToken // empty' <<<"$firebase_resp")
   [[ -n "$id_token" ]] || die "Firebase sign-in failed: $(jq -r '.error.message // .' <<<"$firebase_resp")"
