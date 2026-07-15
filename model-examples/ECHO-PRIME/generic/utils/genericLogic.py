@@ -431,6 +431,8 @@ class BasePredictionService:
         try:
             handler = getattr(self, handler_method_name)
             result = await handler(request)
+            if result is None:
+                return False, self._handle_no_valid_dicom()
             return True, result
         except AttributeError:
             return False, self._handle_missing_handler(output_mode, handler_method_name, supported_modes)
@@ -526,4 +528,12 @@ class BasePredictionService:
                 "requestedMode": output_mode,
                 "modelInfo": self.__class__.get_model_info()
             }
+        ).to_response()
+
+    def _handle_no_valid_dicom(self):
+        return HTTPResponse(
+            status=400,
+            success=False,
+            message="No valid DICOM files found",
+            error_code="NO_VALID_DICOM",
         ).to_response()
