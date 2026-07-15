@@ -271,7 +271,8 @@ deploy_model() {
   while true; do
     info_resp=$(api GET "/v1/inference/model/proxy/container/$new_container_id/info" || true)
     if [[ "$(jq -r '.success' <<<"$info_resp" 2>/dev/null)" == "true" ]]; then
-      reported_version=$(jq -r '.data[0].version // "unknown"' <<<"$info_resp")
+      # models return .data as an object or an array of objects — handle both
+      reported_version=$(jq -r '(.data | if type == "array" then .[0] else . end | .version?) // "unknown"' <<<"$info_resp" 2>/dev/null || echo "unknown")
       log "Container is healthy (model reports version $reported_version)."
       break
     fi
