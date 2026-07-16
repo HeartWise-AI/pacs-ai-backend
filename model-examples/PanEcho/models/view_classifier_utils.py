@@ -12,6 +12,28 @@ def to_uint8(array: np.ndarray) -> np.ndarray:
     return np.uint8(array)
 
 
+def load_pixel_array(dcm: pydicom.Dataset) -> np.ndarray:
+    """Decode DICOM pixels, correcting mislabeled YBR_FULL_422 when needed.
+
+    Some echo vendors tag PhotometricInterpretation as YBR_FULL_422 while the
+    native PixelData buffer is full YBR_FULL/RGB sized (1/3 larger). Retag
+    before .pixel_array for that case; leave encapsulated payloads to pylibjpeg.
+    """
+    pi = getattr(dcm, "PhotometricInterpretation", None)
+    if pi == "YBR_FULL_422" and hasattr(dcm, "PixelData"):
+        rows = int(dcm.Rows)
+        cols = int(dcm.Columns)
+        frames = int(getattr(dcm, "NumberOfFrames", 1) or 1)
+        samples = int(getattr(dcm, "SamplesPerPixel", 3) or 3)
+        expected_full = rows * cols * frames * samples
+        try:
+            if len(dcm.PixelData) >= expected_full:
+                dcm.PhotometricInterpretation = "YBR_FULL"
+        except TypeError:
+            pass
+    return dcm.pixel_array
+
+
 def handle_colorspace(im_array: np.ndarray, dicom_ds: pydicom.Dataset) -> np.ndarray:
     cspace = dicom_ds[(0x0028, 0x0004)].value
     if cspace in ["YBR_FULL", "YBR_FULL_422", "RGB"]:

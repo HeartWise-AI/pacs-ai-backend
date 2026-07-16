@@ -519,6 +519,7 @@ class BasePredictionService:
     
     def _handle_processing_error(self, output_mode: str, error_message: str):
         """Handle processing error"""
+        print(f"Error processing {output_mode} output: {error_message}")
         return HTTPResponse(
             status=500,
             success=False,
