@@ -13,7 +13,7 @@ from typing import Any, List, Dict, Union, Tuple, Optional
 
 from models.pan_echo import PanEcho
 from models.echo_prime_view_classifier import EchoPrimeViewClassifier
-from models.view_classifier_utils import handle_colorspace, mask_and_crop
+from models.view_classifier_utils import handle_colorspace, load_pixel_array, mask_and_crop
 from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
@@ -438,7 +438,7 @@ class CustomPredictionService(BasePredictionService):
         self, dicom: pydicom.Dataset
     ) -> Tuple[Optional[torch.Tensor], str]:
         try:
-            im_array = dicom.pixel_array
+            im_array = load_pixel_array(dicom)
         except Exception:
             return None, "has no pixel data"
 
@@ -845,7 +845,11 @@ class CustomPredictionService(BasePredictionService):
                 batch_clips = []
 
                 for i, dicom in enumerate(batch_dicoms):
-                    pixel_array: np.ndarray = dicom.pixel_array
+                    try:
+                        pixel_array: np.ndarray = load_pixel_array(dicom)
+                    except Exception as e:
+                        print(f"Skipping DICOM {batch_start + i}: {e}")
+                        continue
                     if pixel_array.ndim < 3:
                         print(f"Skipping DICOM {batch_start + i} with invalid dimensions: {pixel_array.shape}")
                         continue
