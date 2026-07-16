@@ -276,9 +276,8 @@ class EchoPrimeInference:
             out_logits = view_classifier(stack_of_first_frames)
         out_views = torch.argmax(out_logits, dim=1)
         view_list = [self.COARSE_VIEWS[v] for v in out_views]
-        stack_of_view_encodings = (
-            torch.stack([torch.nn.functional.one_hot(out_views, 11)]).squeeze().to(self.DEVICE)
-        )
+        # Keep batch dim: squeeze() collapses N=1 from [1,11] to [11] and breaks torch.cat.
+        stack_of_view_encodings = torch.nn.functional.one_hot(out_views, 11).to(self.DEVICE)
 
         if visualize:
             self._visualize_views(stack_of_first_frames, view_list)
@@ -473,7 +472,7 @@ class EchoPrimeInference:
             Preprocessed pixel array
         """
         dcm = pydicom.dcmread(dicom_path)
-        pixels = dcm.pixel_array
+        pixels = video_utils.load_pixel_array(dcm)
 
         # Exclude images like (600,800) or (600,800,3)
         if pixels.ndim < 3 or pixels.shape[2] == 3:
@@ -684,7 +683,7 @@ class EchoPrimeInference:
                         print(f"Skipping single-frame DICOM for series {series_number} instance {instance_number}")
                         continue
 
-                    pixels = dcm.pixel_array
+                    pixels = video_utils.load_pixel_array(dcm)
 
                     # Exclude images like (600,800) or (600,800,3)
                     if pixels.ndim < 3 or pixels.shape[2] == 3:
