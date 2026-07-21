@@ -1,0 +1,68 @@
+# model-examples — adding an inference model to PACS-AI
+
+Each subdirectory is a **self-contained FastAPI container** for one model. The Go backend (`api-pacs`)
+ingests DICOMs and calls the model's `/predict`. Copy an existing model (e.g. **`CathEF-CLIP`**) as your
+template.
+
+> **AI agents:** a machine-readable version of this guide lives at
+> [`.claude/skills/pacs-ai-model-mapping/SKILL.md`](../.claude/skills/pacs-ai-model-mapping/SKILL.md)
+> (Claude Code auto-loads it; Codex/others see [`AGENTS.md`](../AGENTS.md)).
+
+## File layout
+```
+model-examples/<ModelName>/
+  logic.py             # CustomPredictionService(BasePredictionService) — you write
+  main.py, config.json # entrypoint + app config — copy verbatim
+  requirements.txt, Dockerfile, download_model.py, nginx.conf, supervisord.conf
+  data/model_info.json # PACS-AI UI/ingestion contract  ← you write
+  data/model_facts.json
+  models/config.json           # architecture + checkpoint + normalization  ← you write
+  models/class_mapping.json    # output heads                                ← you write
+  models/*.py                  # video_encoder, multi_instance_linear_probing, … — copy
+  models/<checkpoint>.pt       # pulled from HF at build (not committed)
+  utils/*.py                   # BasePredictionService etc. — copy verbatim
+```
+
+## The three files you author
+
+**`models/config.json`** — `VideoEncoder` (mvit, 16 frames, output 512), `MultiInstanceLinearProbing`
+(attention+cls_token), `VideoMILWrapper` (`num_videos`, `stride`, `resize`), `ModelStateDict.model_path`
+(the `.pt` filename inside the HF repo), and **`dataset_mean`/`dataset_std`** (per-model, must match
+training — CathEF≈96.6/44.8, DeepRV≈134.0/27.3, DeepCoro stenosis≈122.1/28.8).
+
+**`models/class_mapping.json`** — each output head → `{head_dim, task, name, threshold?}`, where `task` is
+`regression` (clamp 0–100) or `binary_classification` (sigmoid). Head names must match the checkpoint keys
+`mil_model.module.heads.<name>.*`.
+
+**`data/model_info.json`** — `modelId/modelName/modality`, `dicomUploadMin`/`dicomUploadMax` (= `num_videos`
+for CLIP models), `supportedOutputModes`, feedback questionnaires, and **`supportedAdditionalMetadata`**.
+
+## Two things that bite people
+
+### 1. `supportedAdditionalMetadata` → the Step-2 "variables" page
+A non-empty list (e.g. `["main_structure","status"]`) makes PACS-AI show a **second page** asking the user
+to tag each DICOM before inference; **`[]` shows no page**. **After changing this field you must rebuild and
+redeploy the model image** — a running container built before the change keeps the old UI. (DeepRV-CLIP kept
+asking for variables after PR #242 because its deployed image predated the change, while CathEF-CLIP had
+been redeployed.)
+
+### 2. The zero-padding attention mask (PR #242 — correctness bug)
+CLIP models pad each study up to `num_videos` with **zero videos**. The MIL attention+CLS pooling must
+exclude the padded slots, or their constant embedding dominates pooling and collapses the head (EF saturates
+~100%, RV mis-calls). `logic.py`'s `_run_inference` builds a real-video boolean `video_mask` and
+`VideoMILWrapper.forward` applies it when it matches the instance count. **Test:** holding the real video
+fixed and changing the padding content must move the logit by exactly **0.0**.
+
+## Weights (HuggingFace)
+Weights live in a **gated** repo `heartwise/<ModelName>` (e.g. `heartwise/CathEF_CLIP`,
+`heartwise/DeepRV_CLIP`), downloaded at build time:
+```bash
+docker build --secret id=hf_token,src=./hf_token.txt -t heartwisehub/<model>:<v> .
+```
+Keep `hf_token.txt` gitignored. Gated repos return 401 anonymously.
+
+## Reproduce a deployed prediction locally
+`snapshot_download("heartwise/<ModelName>", token=…)`, rebuild the model from `models/config.json` +
+`class_mapping.json` (expect **0 missing / 0 unexpected** keys), select the **first `dicomUploadMax` videos
+by SeriesTime**, preprocess and mask exactly as `logic.py` does. A ~0.01 gap is the DICOM-vs-mp4 decode path;
+a large gap means wrong video selection or wrong `dataset_mean/std`.

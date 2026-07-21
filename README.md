@@ -412,6 +412,18 @@ INFERENCE_INGESTION_DEFAULT_RECENT_WINDOW_MINUTES=240
 
 Per-job `recent_window_minutes` still overrides this value when present.
 
+## Adding an inference model
+
+Each model is a self-contained FastAPI container under [`model-examples/`](model-examples/). To add,
+port, or debug one, see **[`model-examples/README.md`](model-examples/README.md)** — it covers the file
+layout, the `config.json` / `class_mapping.json` / `model_info.json` schemas, the zero-padding attention-mask
+contract (PR #242), the `supportedAdditionalMetadata` → Step-2 variables page, HuggingFace-gated checkpoint
+wiring, and how to reproduce a deployed prediction locally.
+
+AI coding agents: the same guidance is available machine-readable at
+[`.claude/skills/pacs-ai-model-mapping/SKILL.md`](.claude/skills/pacs-ai-model-mapping/SKILL.md) (Claude Code)
+and summarized in [`AGENTS.md`](AGENTS.md) (Codex/others).
+
 ## Support
 
 Maintained with ❤️ by [Nuxify](https://nuxify.tech) and [HeartWise AI](https://heartwise.ai)
