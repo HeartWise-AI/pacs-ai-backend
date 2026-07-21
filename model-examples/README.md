@@ -61,6 +61,17 @@ docker build --secret id=hf_token,src=./hf_token.txt -t heartwisehub/<model>:<v>
 ```
 Keep `hf_token.txt` gitignored. Gated repos return 401 anonymously.
 
+## Publish the image to Docker Hub
+```bash
+docker login
+docker push heartwisehub/<model>:<version>
+```
+Images live under the **`heartwisehub`** Docker Hub org, so pushing requires **membership**. If you get
+`denied: requested access to the resource is denied`, run `docker login` and have a `heartwisehub` org owner
+invite your Docker Hub account (Docker Hub → Organizations → heartwisehub → Members → *Invite member*). After
+pushing a new tag, **repoint the deployment to it and redeploy** — a running container keeps its old image
+and `model_info.json` (the cause of stale Step-2 pages).
+
 ## Reproduce a deployed prediction locally
 `snapshot_download("heartwise/<ModelName>", token=…)`, rebuild the model from `models/config.json` +
 `class_mapping.json` (expect **0 missing / 0 unexpected** keys), select the **first `dicomUploadMax` videos

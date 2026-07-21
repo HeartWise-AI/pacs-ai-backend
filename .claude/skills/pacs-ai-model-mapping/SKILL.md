@@ -134,3 +134,28 @@ zero-padding content must shift the logit by **exactly 0.0**.
 - [ ] `num_videos` == `dicomUploadMax`; head names match checkpoint.
 - [ ] `model_path` matches the `.pt` in the HF repo; weights gated behind `hf_token`.
 - [ ] Deployed image rebuilt from current `main` (deployment skew hides config fixes).
+- [ ] Image built with the `hf_token` secret, pushed to `heartwisehub`, deployment repointed to the new tag.
+
+## Build & publish the image (Docker Hub)
+```bash
+# 1. build — pulls the gated HF weights via the hf_token build secret
+docker build --secret id=hf_token,src=./hf_token.txt -t heartwisehub/<model>:<version> .
+
+# 2. authenticate to Docker Hub
+docker login
+
+# 3. push to the heartwisehub organization
+docker push heartwisehub/<model>:<version>
+```
+- Model images are published under the **`heartwisehub`** Docker Hub org. Pushing requires **membership in
+  that org**. If you see:
+  ```
+  denied: requested access to the resource is denied
+  ```
+  you are either not logged in (`docker login`) or your Docker Hub account is not a member of `heartwisehub`.
+  **Fix:** `docker login`, then have a `heartwisehub` org owner invite your Docker Hub account
+  (Docker Hub → Organizations → heartwisehub → Members → *Invite member*). Org invitation is a Docker Hub
+  admin action — it cannot be done from this repo or by an AI agent.
+- After pushing a new tag you MUST **repoint the deployment to it and redeploy** the model container — a
+  running container keeps its old image (and its baked `model_info.json`), which is exactly what causes the
+  stale Step-2 variables page described above.
