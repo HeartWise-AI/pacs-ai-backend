@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/segmentio/ksuid"
 
@@ -113,6 +114,9 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 	if err != nil {
 		return "", err
 	}
+	if !user.IsEmailVerified && !user.IsAdminCreated {
+		return "", errors.New(apiError.FirebaseAuthEmailNotVerified)
+	}
 
 	err = service.SetTokenSession(ctx, types.SetTokenSession{
 		SessionID:           sessionToken,
@@ -169,6 +173,16 @@ func (service *IAMCommandService) SetTokenSession(ctx context.Context, data type
 
 // VerifyTenantUserEmail verifies tenant user email
 func (service *IAMCommandService) VerifyTenantUserEmail(ctx context.Context, tenantID, email string) error {
+	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
+	cooldownKey := fmt.Sprintf("email_verification:%s:%s", tenantID, normalizedEmail)
+	cooldownActive, err := service.IAMCommandRepositoryInterface.IsEmailVerificationCooldownActive(cooldownKey)
+	if err != nil {
+		return err
+	}
+	if cooldownActive {
+		return errors.New(apiError.MaximumLimitReached)
+	}
+
 	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
 	if err != nil {
 		log.Println(err)
@@ -182,15 +196,33 @@ func (service *IAMCommandService) VerifyTenantUserEmail(ctx context.Context, ten
 		return errors.New(apiError.FirebaseAuthError)
 	}
 
-	_, err = tenantAuth.EmailVerificationLink(ctx, email)
+	verifyLink, err := tenantAuth.EmailVerificationLink(ctx, normalizedEmail)
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.FirebaseAuthError)
 	}
 
-	// TODO: send to email
+	if err := service.IAMCommandRepositoryInterface.SetEmailVerificationCooldown(cooldownKey); err != nil {
+		return err
+	}
 
-	return err
+	textMessage := fmt.Sprintf("Hello,<br /><br />"+
+		"Follow this link to verify your PACS AI email address for your %s account:<br /><br />"+
+		"<a href=\"%s\">%s</a><br /><br />"+
+		"If you did not create a PACS AI account, you can ignore this email.<br /><br />"+
+		"Thanks,<br />"+
+		"Your PACS AI team", normalizedEmail, verifyLink, verifyLink)
+	err = service.MailgunSDK.SendEmail(ctx, mailgunTypes.MailgunSendEmailRequest{
+		Subject:       "[PACS AI]: Verify your email",
+		Recipient:     normalizedEmail,
+		PlainTextBody: textMessage,
+	})
+	if err != nil {
+		log.Println("[error] cannot send verification email via mailgun", err)
+		return errors.New(apiError.MailgunError)
+	}
+
+	return nil
 }
 
 // generateID generates unique id

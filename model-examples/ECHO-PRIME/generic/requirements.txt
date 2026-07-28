@@ -1,6 +1,8 @@
 fastapi==0.115.6
 uvicorn==0.34.0
 pydicom==3.0.2
+pylibjpeg
+pylibjpeg-libjpeg
 nibabel==5.3.2
 dicom2nifti==2.6.1
 numpy==1.26.4

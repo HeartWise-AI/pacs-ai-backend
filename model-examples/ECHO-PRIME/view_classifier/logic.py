@@ -13,7 +13,7 @@ from datetime import time
 from utils.html_parser import generate_html_report
 from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
-from models.utils import handle_colorspace, mask_and_crop
+from models.utils import handle_colorspace, load_pixel_array, mask_and_crop
 from models.echo_prime_view_classifier import EchoPrimeViewClassifier
 
 
@@ -92,8 +92,8 @@ class CustomPredictionService(BasePredictionService):
         """
         # 1. Check for pixel data (filters PDFs, SR docs, waveforms)
         try:
-            im_array = dcm_ds.pixel_array
-        except:
+            im_array = load_pixel_array(dcm_ds)
+        except Exception:
             return None, None, "has no pixel data"
         
         # 2. Handle colorspace

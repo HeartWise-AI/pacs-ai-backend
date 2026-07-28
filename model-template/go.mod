@@ -3,7 +3,7 @@ module pacs-model-template
 go 1.24.0
 
 require (
-	github.com/go-chi/chi/v5 v5.2.2
+	github.com/go-chi/chi/v5 v5.2.4
 	github.com/go-playground/validator/v10 v10.22.1
 	github.com/joho/godotenv v1.5.1
 )

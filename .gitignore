@@ -9,3 +9,6 @@
 *.txt
 !**/requirements.txt
 !**/requirements_*.txt
+
+# deploy script credentials
+scripts/.env.deploy

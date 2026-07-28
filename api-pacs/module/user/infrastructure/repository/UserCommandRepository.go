@@ -154,6 +154,29 @@ func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, d
 	return authUser.UID, nil
 }
 
+// GenerateTenantUserEmailVerificationLink generates a Firebase email verification link.
+func (repository *UserCommandRepository) GenerateTenantUserEmailVerificationLink(ctx context.Context, tenantID, email string) (string, error) {
+	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
+	if err != nil {
+		log.Println(err)
+		return "", errors.New(apiError.FirebaseAuthError)
+	}
+
+	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
+	if err != nil {
+		log.Println(err)
+		return "", errors.New(apiError.FirebaseAuthError)
+	}
+
+	verifyLink, err := tenantAuth.EmailVerificationLink(ctx, email)
+	if err != nil {
+		log.Println(err)
+		return "", errors.New(apiError.FirebaseAuthError)
+	}
+
+	return verifyLink, nil
+}
+
 // InsertTenantUserEmailInvite creates a new tenant user email invite
 func (repository *UserCommandRepository) InsertTenantUserEmailInvite(ctx context.Context, data repositoryTypes.CreateTenantUserEmailInvite) error {
 	// firestore client
