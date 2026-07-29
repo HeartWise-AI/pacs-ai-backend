@@ -1,0 +1,34 @@
+{
+  "jcto_blunt_stump": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Blunt / flush stump",
+    "threshold": 0.5
+  },
+  "jcto_calcification": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Calcification at occlusion",
+    "threshold": 0.5
+  },
+  "jcto_bending_gt45": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Bending > 45°",
+    "threshold": 0.5
+  },
+  "jcto_occlusion_length_gt20": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Occlusion length ≥ 20 mm",
+    "threshold": 0.5
+  },
+  "jcto_score": {
+    "head_dim": 1,
+    "task": "regression",
+    "name": "J-CTO score",
+    "unit": "points",
+    "min": 0,
+    "max": 4
+  }
+}
