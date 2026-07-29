@@ -416,9 +416,11 @@ Per-job `recent_window_minutes` still overrides this value when present.
 
 Each model is a self-contained FastAPI container under [`model-examples/`](model-examples/). To add,
 port, or debug one, see **[`model-examples/README.md`](model-examples/README.md)** — it covers the file
-layout, the `config.json` / `class_mapping.json` / `model_info.json` schemas, the zero-padding attention-mask
-contract (PR #242), the `supportedAdditionalMetadata` → Step-2 variables page, HuggingFace-gated checkpoint
-wiring, and how to reproduce a deployed prediction locally.
+layout, the model-specific files to edit (`config.json` / `class_mapping.json` / `model_info.json` /
+`logic.py` / `download_model.py`), the zero-padding attention-mask contract (PR #242), the
+`supportedAdditionalMetadata` → Step-2 variables page, HuggingFace-gated checkpoint wiring,
+`scripts/deploy-model.sh` registration/`outputMode` notes, and how to reproduce a deployed prediction
+locally.
 
 AI coding agents: the same guidance is available machine-readable at
 [`.claude/skills/pacs-ai-model-mapping/SKILL.md`](.claude/skills/pacs-ai-model-mapping/SKILL.md) (Claude Code)

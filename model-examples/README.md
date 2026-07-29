@@ -11,31 +11,43 @@ template.
 ## File layout
 ```
 model-examples/<ModelName>/
-  logic.py             # CustomPredictionService(BasePredictionService) — you write
+  logic.py             # CustomPredictionService(BasePredictionService) — you write (model-specific)
+  download_model.py    # HF snapshot_download — you set this model's repo_id
   main.py, config.json # entrypoint + app config — copy verbatim
-  requirements.txt, Dockerfile, download_model.py, nginx.conf, supervisord.conf
+  requirements.txt, Dockerfile, nginx.conf, supervisord.conf
   data/model_info.json # PACS-AI UI/ingestion contract  ← you write
   data/model_facts.json
   models/config.json           # architecture + checkpoint + normalization  ← you write
   models/class_mapping.json    # output heads                                ← you write
   models/*.py                  # video_encoder, multi_instance_linear_probing, … — copy
   models/<checkpoint>.pt       # pulled from HF at build (not committed)
-  utils/*.py                   # BasePredictionService etc. — copy verbatim
+  utils/*.py                   # BasePredictionService etc. — copy helpers you need
 ```
 
-## The three files you author
+## The files you author
 
 **`models/config.json`** — `VideoEncoder` (mvit, 16 frames, output 512), `MultiInstanceLinearProbing`
 (attention+cls_token), `VideoMILWrapper` (`num_videos`, `stride`, `resize`), `ModelStateDict.model_path`
 (the `.pt` filename inside the HF repo), and **`dataset_mean`/`dataset_std`** (per-model, must match
 training — CathEF≈96.6/44.8, DeepRV≈134.0/27.3, DeepCoro stenosis≈122.1/28.8).
 
-**`models/class_mapping.json`** — each output head → `{head_dim, task, name, threshold?}`, where `task` is
-`regression` (clamp 0–100) or `binary_classification` (sigmoid). Head names must match the checkpoint keys
-`mil_model.module.heads.<name>.*`.
+**`models/class_mapping.json`** — each output head → `{head_dim, task, name, threshold?, min?, max?}`,
+where `task` is `regression` (clamp using mapping bounds) or `binary_classification` (sigmoid). Head names
+must match the checkpoint keys `mil_model.module.heads.<name>.*`.
 
-**`data/model_info.json`** — `modelId/modelName/modality`, `dicomUploadMin`/`dicomUploadMax` (= `num_videos`
-for CLIP models), `supportedOutputModes`, feedback questionnaires, and **`supportedAdditionalMetadata`**.
+**`data/model_info.json`** — `modelId/modelName/modality`, upload bounds, `supportedOutputModes`, feedback
+questionnaires, and **`supportedAdditionalMetadata`**.
+
+**`logic.py`** — required. Owns head post-process, JSON/HTML reports, SeriesTime sort + truncate,
+padding `video_mask`, and optional metadata filters. Do not ship a copied sibling model's `logic.py`
+unchanged.
+
+**`download_model.py`** — required. Set this model's gated HF `repo_id` (template copies still point at
+another model).
+
+### Upload bounds
+Existing CLIP models use **`dicomUploadMin: 1`** and **`dicomUploadMax: num_videos`**. Short studies are
+zero-padded. Only set min = `num_videos` if the model truly requires exactly N uploads.
 
 ## Two things that bite people
 
@@ -54,14 +66,19 @@ exclude the padded slots, or their constant embedding dominates pooling and coll
 fixed and changing the padding content must move the logit by exactly **0.0**.
 
 ## Weights (HuggingFace)
-Weights live in a **gated** repo `heartwise/<ModelName>` (e.g. `heartwise/CathEF_CLIP`,
-`heartwise/DeepRV_CLIP`), downloaded at build time:
+Weights live in a **gated** repo (e.g. `heartwise/CathEF_CLIP`, `heartwise/DeepRV_CLIP`), downloaded at
+build time. Set the correct `repo_id` in `download_model.py`:
 ```bash
 docker build --secret id=hf_token,src=./hf_token.txt -t heartwisehub/<model>:<v> .
 ```
 Keep `hf_token.txt` gitignored. Gated repos return 401 anonymously.
 
-## Publish the image to Docker Hub
+## Publish / register
+Preferred:
+```bash
+DEFAULT_OUTPUT_MODE=HTML ./scripts/deploy-model.sh model-examples/<ModelName> --hf-token-file hf_token.txt
+```
+Or manually:
 ```bash
 docker login
 docker push heartwisehub/<model>:<version>
@@ -72,8 +89,15 @@ invite your Docker Hub account (Docker Hub → Organizations → heartwisehub �
 pushing a new tag, **repoint the deployment to it and redeploy** — a running container keeps its old image
 and `model_info.json` (the cause of stale Step-2 pages).
 
+**`outputMode` note:** `supportedOutputModes` in `model_info.json` lists what the container can serve.
+The mode api-pacs actually calls is the registered model `outputMode`. `DEFAULT_OUTPUT_MODE` in
+`deploy-model.sh` applies only to **new** registrations; redeploying an existing model keeps its prior mode
+(update via admin UI or `PUT /v1/inference/model/{id}/update`).
+
 ## Reproduce a deployed prediction locally
-`snapshot_download("heartwise/<ModelName>", token=…)`, rebuild the model from `models/config.json` +
-`class_mapping.json` (expect **0 missing / 0 unexpected** keys), select the **first `dicomUploadMax` videos
-by SeriesTime**, preprocess and mask exactly as `logic.py` does. A ~0.01 gap is the DICOM-vs-mp4 decode path;
-a large gap means wrong video selection or wrong `dataset_mean/std`.
+`snapshot_download` the gated checkpoint, rebuild the model from `models/config.json` +
+`class_mapping.json` (expect **0 missing / 0 unexpected** keys), then select videos the same way
+`logic.py` does: **sort by SeriesTime** (the Go backend sorts by UID suffix, not SeriesTime), apply any
+metadata filter when `additionalMetadata` is present, take the first `dicomUploadMax`, preprocess and mask.
+A ~0.01 gap is the DICOM-vs-mp4 decode path; a large gap means wrong video selection or wrong
+`dataset_mean/std`.
