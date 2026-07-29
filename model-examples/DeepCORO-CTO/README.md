@@ -1,9 +1,11 @@
 # DeepCORO-CTO
 
-DeepCORO-CLIP based **J-CTO scorer** for chronic total occlusions on coronary angiography.
-From up to 8 videos per study it predicts the four J-CTO morphological components and the
-aggregate J-CTO score (0-4). The model is **view-aware**: each video's angiographic view class
-is inferred at inference time from the DICOM positioner primary/secondary angles
+DeepCORO-CLIP based **imaging J-CTO scorer** for chronic total occlusions on coronary angiography.
+From up to 8 videos per study it predicts the four morphological J-CTO components and an
+aggregate imaging score clamped to `[0, 4]`. This is **not** the classic Morino J-CTO score
+(0–5): the fifth point for a previously failed crossing attempt is not available from imaging
+and is not predicted. The model is **view-aware**: each video's angiographic view class is
+inferred at inference time from the DICOM positioner primary/secondary angles
 (same rule as `DeepCORO_CLIP_DATASET/classify_angles.py`) and fed to a view embedding.
 
 Model weights are hosted on HuggingFace at [heartwise/DeepCORO_CTO](https://huggingface.co/heartwise/DeepCORO_CTO)
@@ -42,9 +44,19 @@ docker run -it --network pacs-net --gpus all --entrypoint /bin/bash heartwisehub
 ## Outputs
 
 - `JSON` and `HTML` output modes.
-- `predictions.jctoScore.predicted` — J-CTO score (regression, clamped to [0, 4]).
+- `predictions.jctoScore.predicted` — imaging J-CTO score (regression, clamped to [0, 4]).
+- `predictions.jctoScore.componentsAboveThreshold` — count of morphological heads with
+  probability ≥ threshold (may differ from the regression score).
 - `predictions.components.<head>.probability` — P(component present) after sigmoid, for
   `jcto_blunt_stump`, `jcto_calcification`, `jcto_bending_gt45`, `jcto_occlusion_length_gt20`.
+
+## Deploy
+
+```
+./scripts/deploy-model.sh model-examples/DeepCORO-CTO
+```
+
+Uses `scripts/.env.deploy` and an HF token file for the gated weight download.
 
 ## Validation (MHI held-out, 99 studies, epoch 24)
 

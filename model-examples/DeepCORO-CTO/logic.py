@@ -238,11 +238,11 @@ class CustomPredictionService(BasePredictionService):
                 "present": bool(prob >= threshold),
             }
         score_value = float(preds.get(self.SCORE_HEAD, 0.0))
-        n_present = sum(1 for c in components.values() if c["present"])
+        n_above = sum(1 for c in components.values() if c["present"])
         return {
             "jctoScore": {
                 "predicted": round(score_value, 2),
-                "componentsPresent": n_present,
+                "componentsAboveThreshold": n_above,
                 "difficulty": self._difficulty_band(score_value),
             },
             "components": components,
@@ -274,15 +274,19 @@ class CustomPredictionService(BasePredictionService):
         band = self._difficulty_band(score)
         return {
             "en": (
-                f"<strong>Predicted J-CTO score {score:.1f} ({band}).</strong> "
-                "The J-CTO score estimates the difficulty of successful guidewire crossing "
-                "within 30 minutes. Higher scores indicate greater procedural complexity and "
-                "may favour a hybrid or retrograde strategy and dedicated operator/lab planning. "
-                "This is a research preview and must be confirmed by an operator review of the angiogram."
+                f"<strong>Predicted imaging J-CTO score {score:.1f} ({band}).</strong> "
+                "This is the four morphological imaging components only (range 0–4); it does not "
+                "include the classic fifth point for a previously failed attempt. The score estimates "
+                "the difficulty of successful guidewire crossing within 30 minutes. Higher scores "
+                "indicate greater procedural complexity and may favour a hybrid or retrograde strategy "
+                "and dedicated operator/lab planning. This is a research preview and must be confirmed "
+                "by an operator review of the angiogram."
             ),
             "fr": (
-                f"<strong>Score J-CTO prédit {score:.1f} ({band}).</strong> "
-                "Le score J-CTO estime la difficulté du franchissement du guide en moins de 30 minutes. "
+                f"<strong>Score J-CTO morphologique prédit {score:.1f} ({band}).</strong> "
+                "Il s'agit des quatre composantes morphologiques d'imagerie seulement (plage 0–4); "
+                "le cinquième point classique pour une tentative antérieure échouée n'est pas inclus. "
+                "Le score estime la difficulté du franchissement du guide en moins de 30 minutes. "
                 "Un score plus élevé indique une complexité procédurale accrue et peut orienter vers une "
                 "stratégie hybride ou rétrograde. Il s'agit d'un aperçu de recherche qui doit être confirmé "
                 "par la revue de l'angiogramme par l'opérateur."
@@ -336,7 +340,7 @@ class CustomPredictionService(BasePredictionService):
  <h1>DeepCORO-CTO J-CTO Assessment</h1>
  <div class=\"subtitle\">DeepCORO-CLIP linear-probe J-CTO scoring from coronary angiograms</div>
  <div class=\"metric\">
-   <div><div class=\"val\">{score}</div><div class=\"lbl\">Predicted J-CTO score (0-4)</div></div>
+   <div><div class=\"val\">{score}</div><div class=\"lbl\">Imaging J-CTO score (0-4; no prior-failure point)</div></div>
    <div style=\"flex:1;text-align:right;\"><span class=\"badge\">{band.title()}</span></div>
  </div>
  <table>
