@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -44,9 +46,11 @@ func (repository *guardedDispatchCommandRepository) UpdateInferenceIngestionProc
 }
 
 type guardedProcessingDispatcher struct {
-	buildCalls    int
-	dispatchCalls int
-	response      serviceTypes.DispatchStudyResponse
+	buildCalls        int
+	dispatchCalls     int
+	response          serviceTypes.DispatchStudyResponse
+	dispatchResponses []serviceTypes.DispatchStudyResponse
+	dispatchErrors    []error
 }
 
 func (dispatcher *guardedProcessingDispatcher) BuildDispatchStudyRequest(_ context.Context, data serviceTypes.BuildStudyServiceDispatchRequestInput) (serviceTypes.DispatchStudyRequest, error) {
@@ -59,7 +63,14 @@ func (dispatcher *guardedProcessingDispatcher) BuildDispatchStudyRequest(_ conte
 }
 
 func (dispatcher *guardedProcessingDispatcher) DispatchStudy(context.Context, serviceTypes.DispatchStudyRequest) (serviceTypes.DispatchStudyResponse, error) {
+	index := dispatcher.dispatchCalls
 	dispatcher.dispatchCalls++
+	if index < len(dispatcher.dispatchErrors) && dispatcher.dispatchErrors[index] != nil {
+		return serviceTypes.DispatchStudyResponse{}, dispatcher.dispatchErrors[index]
+	}
+	if index < len(dispatcher.dispatchResponses) {
+		return dispatcher.dispatchResponses[index], nil
+	}
 	return dispatcher.response, nil
 }
 
@@ -182,4 +193,79 @@ func TestAcceptedDispatchReturnsErrorWhenJobCorrelationCannotBePersisted(t *test
 	require.Len(t, runRepository.updates, 1)
 	require.True(t, runRepository.updates[0].AttentionRequired)
 	require.Equal(t, entity.InferenceIngestionProcessingRunAttentionDispatchFailed, runRepository.updates[0].AttentionReasons[0].Code)
+}
+
+func TestDispatchRetriesTransientResponseAndPersistsAcceptedJob(t *testing.T) {
+	originalRetrySchedule := studyServiceDispatchRetrySchedule
+	studyServiceDispatchRetrySchedule = []time.Duration{0, 0}
+	t.Cleanup(func() { studyServiceDispatchRetrySchedule = originalRetrySchedule })
+
+	runRepository := &committedExecutionRepository{execution: entity.InferenceIngestionProcessingJob{
+		ID: "execution-1", Status: entity.InferenceIngestionProcessingJobStatusPending,
+	}}
+	commandRepository := &guardedDispatchCommandRepository{}
+	dispatcher := &guardedProcessingDispatcher{
+		dispatchResponses: []serviceTypes.DispatchStudyResponse{{}, {JobID: "study-job-1"}},
+		dispatchErrors: []error{
+			&DispatchStudyHTTPError{StatusCode: http.StatusServiceUnavailable},
+			nil,
+		},
+	}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+
+	err := service.dispatchRetrievedCandidateToStudyService(
+		context.Background(),
+		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		"run-1",
+		"request-1",
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 2, dispatcher.dispatchCalls)
+	require.Len(t, commandRepository.executionUpdates, 1)
+	require.Equal(t, "study-job-1", *commandRepository.executionUpdates[0].StudyServiceJobID)
+}
+
+func TestDispatchDoesNotRetryPermanentResponse(t *testing.T) {
+	processingRunID := "run-1"
+	runRepository := &processingRunCallbackRunRepository{
+		selectedExecution: entity.InferenceIngestionProcessingJob{
+			ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusPending,
+		},
+		processingRunAggregationRepository: &processingRunAggregationRepository{
+			runs: []entity.InferenceIngestionProcessingRun{{ID: processingRunID, TenantID: "tenant-a", Version: 1}},
+			executions: []entity.InferenceIngestionProcessingJob{{
+				ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusFailed,
+			}},
+		},
+	}
+	commandRepository := &guardedDispatchCommandRepository{}
+	dispatcher := &guardedProcessingDispatcher{dispatchErrors: []error{
+		&DispatchStudyHTTPError{StatusCode: http.StatusBadRequest, Body: "invalid model"},
+	}}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+
+	err := service.dispatchRetrievedCandidateToStudyService(
+		context.Background(),
+		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		processingRunID,
+		"request-1",
+	)
+
+	require.Error(t, err)
+	require.Equal(t, 1, dispatcher.dispatchCalls)
+	require.Len(t, commandRepository.executionUpdates, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, commandRepository.executionUpdates[0].Status)
+	require.Len(t, runRepository.updates, 1)
+	require.True(t, runRepository.updates[0].AttentionRequired)
 }
