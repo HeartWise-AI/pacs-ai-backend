@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -42,6 +43,55 @@ type processingRunPlannerRepository struct {
 	activeErr        error
 	activeExecutions []entity.InferenceIngestionProcessingJob
 	create           func(repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error)
+}
+
+type concurrentProcessingRunPlannerRepository struct {
+	domainRepository.InferenceProcessingRunRepositoryInterface
+	mu         sync.Mutex
+	activeRun  *entity.InferenceIngestionProcessingRun
+	executions []entity.InferenceIngestionProcessingJob
+	created    int
+}
+
+func (repository *concurrentProcessingRunPlannerRepository) SelectActiveProcessingRun(_ context.Context, _, _ string) (entity.InferenceIngestionProcessingRun, error) {
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	if repository.activeRun == nil {
+		return entity.InferenceIngestionProcessingRun{}, errors.New(apiError.MissingRecord)
+	}
+	return *repository.activeRun, nil
+}
+
+func (repository *concurrentProcessingRunPlannerRepository) ListProcessingRunExecutions(_ context.Context, _, _ string) ([]entity.InferenceIngestionProcessingJob, error) {
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	return append([]entity.InferenceIngestionProcessingJob(nil), repository.executions...), nil
+}
+
+func (repository *concurrentProcessingRunPlannerRepository) CreateProcessingRunPlan(_ context.Context, data repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error) {
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	if repository.activeRun != nil {
+		return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{
+			Run: *repository.activeRun, Executions: append([]entity.InferenceIngestionProcessingJob(nil), repository.executions...), Created: false,
+		}, nil
+	}
+
+	run := entity.InferenceIngestionProcessingRun{
+		ID: data.Run.ID, TenantID: data.Run.TenantID, StudyInstanceUID: data.Run.StudyInstanceUID,
+		RunNumber: 1, RunTrigger: data.Run.RunTrigger, Phase: data.Run.Phase,
+	}
+	executions := make([]entity.InferenceIngestionProcessingJob, 0, len(data.Executions))
+	for _, expected := range data.Executions {
+		executions = append(executions, entity.InferenceIngestionProcessingJob{
+			ID: expected.ID, ProcessingRunID: &run.ID, CandidateID: expected.CandidateID,
+			TenantID: run.TenantID, ModelName: expected.ModelName, Status: entity.InferenceIngestionProcessingJobStatusPending,
+		})
+	}
+	repository.activeRun = &run
+	repository.executions = executions
+	repository.created++
+	return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{Run: run, Executions: executions, Created: true}, nil
 }
 
 func (repository *processingRunPlannerRepository) SelectActiveProcessingRun(_ context.Context, _, _ string) (entity.InferenceIngestionProcessingRun, error) {
@@ -178,4 +228,58 @@ func TestCreateStudyProcessingRunRejectsEmptyExpectedPlan(t *testing.T) {
 	})
 
 	require.EqualError(t, err, apiError.MissingRecord)
+}
+
+func TestConcurrentAutomaticSchedulingConvergesOnOneFrozenPlan(t *testing.T) {
+	queryRepository := &processingRunPlannerQueryRepository{
+		candidates: []entity.InferenceIngestionCandidate{{
+			ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: "job-a",
+			StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved,
+		}},
+		jobs: map[string]entity.InferenceIngestionJob{
+			"job-a": {ID: "job-a", TenantID: "tenant-a", ModelName: "AlphaModel"},
+		},
+	}
+	runRepository := &concurrentProcessingRunPlannerRepository{}
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface:         queryRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+	}
+
+	const callers = 8
+	results := make(chan serviceTypes.CreateStudyProcessingRunResult, callers)
+	errorsChannel := make(chan error, callers)
+	var waitGroup sync.WaitGroup
+	for range callers {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			result, err := service.CreateAutomaticStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
+				TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+			})
+			results <- result
+			errorsChannel <- err
+		}()
+	}
+	waitGroup.Wait()
+	close(results)
+	close(errorsChannel)
+
+	for err := range errorsChannel {
+		require.NoError(t, err)
+	}
+	created := 0
+	runID := ""
+	for result := range results {
+		if result.Created {
+			created++
+		}
+		if runID == "" {
+			runID = result.Run.ID
+		}
+		require.Equal(t, runID, result.Run.ID)
+		require.Len(t, result.Executions, 1)
+	}
+	require.Equal(t, 1, created)
+	require.Equal(t, 1, runRepository.created)
 }
