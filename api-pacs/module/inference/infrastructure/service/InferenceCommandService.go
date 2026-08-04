@@ -118,6 +118,21 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		return types.CreateStudyProcessingRunResult{}, errors.New(apiError.InvalidPayload)
 	}
 
+	activeRun, activeErr := service.InferenceProcessingRunRepositoryInterface.SelectActiveProcessingRun(ctx, tenantID, studyInstanceUID)
+	if activeErr == nil {
+		if trigger != entity.InferenceIngestionProcessingRunTriggerAuto {
+			return types.CreateStudyProcessingRunResult{}, errors.New(apiError.DuplicateRecord)
+		}
+		executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, tenantID, activeRun.ID)
+		if err != nil {
+			return types.CreateStudyProcessingRunResult{}, err
+		}
+		return types.CreateStudyProcessingRunResult{Run: activeRun, Executions: executions, Created: false}, nil
+	}
+	if activeErr.Error() != apiError.MissingRecord {
+		return types.CreateStudyProcessingRunResult{}, activeErr
+	}
+
 	candidates, err := service.InferenceQueryRepositoryInterface.ListInferenceIngestionCandidates(repositoryTypes.ListInferenceIngestionCandidates{
 		TenantID:         tenantID,
 		StudyInstanceUID: &studyInstanceUID,

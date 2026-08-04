@@ -38,7 +38,24 @@ func (repository *processingRunPlannerQueryRepository) SelectInferenceIngestionJ
 
 type processingRunPlannerRepository struct {
 	domainRepository.InferenceProcessingRunRepositoryInterface
-	create func(repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error)
+	activeRun        *entity.InferenceIngestionProcessingRun
+	activeErr        error
+	activeExecutions []entity.InferenceIngestionProcessingJob
+	create           func(repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error)
+}
+
+func (repository *processingRunPlannerRepository) SelectActiveProcessingRun(_ context.Context, _, _ string) (entity.InferenceIngestionProcessingRun, error) {
+	if repository.activeErr != nil {
+		return entity.InferenceIngestionProcessingRun{}, repository.activeErr
+	}
+	if repository.activeRun == nil {
+		return entity.InferenceIngestionProcessingRun{}, errors.New(apiError.MissingRecord)
+	}
+	return *repository.activeRun, nil
+}
+
+func (repository *processingRunPlannerRepository) ListProcessingRunExecutions(_ context.Context, _, _ string) ([]entity.InferenceIngestionProcessingJob, error) {
+	return repository.activeExecutions, nil
 }
 
 func (repository *processingRunPlannerRepository) CreateProcessingRunPlan(_ context.Context, data repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error) {
@@ -94,23 +111,16 @@ func TestCreateAutomaticStudyProcessingRunFreezesAllKnownModels(t *testing.T) {
 }
 
 func TestCreateManualStudyProcessingRunPropagatesActiveRunConflict(t *testing.T) {
-	queryRepository := &processingRunPlannerQueryRepository{
-		candidates: []entity.InferenceIngestionCandidate{{
-			ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: "job-a",
-			StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved,
-		}},
-		jobs: map[string]entity.InferenceIngestionJob{
-			"job-a": {ID: "job-a", TenantID: "tenant-a", ModelName: "AlphaModel"},
-		},
-	}
+	activeRun := entity.InferenceIngestionProcessingRun{ID: "run-1"}
 	runRepository := &processingRunPlannerRepository{
+		activeRun: &activeRun,
 		create: func(data repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error) {
-			require.Equal(t, entity.InferenceIngestionProcessingRunTriggerManualReprocess, data.Run.RunTrigger)
-			return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{}, errors.New(apiError.DuplicateRecord)
+			t.Fatal("repository create must not be called while a run is active")
+			return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{}, nil
 		},
 	}
 	service := &InferenceCommandService{
-		InferenceQueryRepositoryInterface:         queryRepository,
+		InferenceQueryRepositoryInterface:         &processingRunPlannerQueryRepository{},
 		InferenceProcessingRunRepositoryInterface: runRepository,
 	}
 
@@ -119,6 +129,31 @@ func TestCreateManualStudyProcessingRunPropagatesActiveRunConflict(t *testing.T)
 	})
 
 	require.EqualError(t, err, apiError.DuplicateRecord)
+}
+
+func TestCreateAutomaticStudyProcessingRunReusesFrozenActivePlan(t *testing.T) {
+	activeRun := entity.InferenceIngestionProcessingRun{ID: "run-1", RunNumber: 1}
+	runRepository := &processingRunPlannerRepository{
+		activeRun:        &activeRun,
+		activeExecutions: []entity.InferenceIngestionProcessingJob{{ID: "execution-a"}},
+		create: func(repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error) {
+			t.Fatal("repository create must not be called while an automatic run is active")
+			return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{}, nil
+		},
+	}
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface:         &processingRunPlannerQueryRepository{err: errors.New("candidate state must not be reloaded")},
+		InferenceProcessingRunRepositoryInterface: runRepository,
+	}
+
+	result, err := service.CreateAutomaticStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
+		TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+	})
+
+	require.NoError(t, err)
+	require.False(t, result.Created)
+	require.Equal(t, "run-1", result.Run.ID)
+	require.Len(t, result.Executions, 1)
 }
 
 func TestCreateStudyProcessingRunRejectsEmptyExpectedPlan(t *testing.T) {
