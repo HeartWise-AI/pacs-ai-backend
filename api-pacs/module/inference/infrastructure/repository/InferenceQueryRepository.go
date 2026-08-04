@@ -187,11 +187,15 @@ func (repository *InferenceQueryRepository) SelectInferenceIngestionCandidateByI
 	return candidate, nil
 }
 
-// SelectInferenceIngestionProcessingJobByCandidateModel gets one processing job by candidate/model
+// SelectInferenceIngestionProcessingJobByCandidateModel gets the latest run-aware processing job by candidate/model.
 func (repository *InferenceQueryRepository) SelectInferenceIngestionProcessingJobByCandidateModel(candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error) {
 	var processingJob entity.InferenceIngestionProcessingJob
 
-	stmt := fmt.Sprintf("SELECT * FROM %s WHERE candidate_id = :candidate_id AND model_name = :model_name", processingJob.GetModelName())
+	stmt := fmt.Sprintf(`SELECT jobs.* FROM %s jobs
+LEFT JOIN ingestion_processing_runs runs ON runs.id = jobs.processing_run_id
+WHERE jobs.candidate_id = :candidate_id AND jobs.model_name = :model_name
+ORDER BY runs.run_number DESC NULLS LAST, jobs.updated_at DESC, jobs.id DESC
+LIMIT 1`, processingJob.GetModelName())
 
 	err := repository.PostgresSQLDBHandlerInterface.QueryRow(stmt, map[string]interface{}{
 		"candidate_id": candidateID,

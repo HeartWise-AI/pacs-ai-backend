@@ -316,6 +316,9 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 			strings.TrimSpace(data.RequestID),
 			status,
 		)
+		if err := service.recalculateProcessingRunForExecution(ctx, candidate, existing); err != nil {
+			return types.HandleStudyServiceProcessingCallbackResult{}, err
+		}
 		return types.HandleStudyServiceProcessingCallbackResult{Outcome: "replayed"}, nil
 	}
 
@@ -332,8 +335,23 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 	if err != nil {
 		return types.HandleStudyServiceProcessingCallbackResult{}, err
 	}
+	if err := service.recalculateProcessingRunForExecution(ctx, candidate, existing); err != nil {
+		return types.HandleStudyServiceProcessingCallbackResult{}, err
+	}
 
 	return types.HandleStudyServiceProcessingCallbackResult{Outcome: "applied"}, nil
+}
+
+func (service *InferenceCommandService) recalculateProcessingRunForExecution(ctx context.Context, candidate entity.InferenceIngestionCandidate, execution entity.InferenceIngestionProcessingJob) error {
+	if execution.ProcessingRunID == nil || strings.TrimSpace(*execution.ProcessingRunID) == "" {
+		return nil
+	}
+
+	_, err := service.RecalculateStudyProcessingRun(ctx, types.RecalculateStudyProcessingRun{
+		TenantID:        candidate.TenantID,
+		ProcessingRunID: *execution.ProcessingRunID,
+	})
+	return err
 }
 
 // AddInferenceModel adds an inference model
