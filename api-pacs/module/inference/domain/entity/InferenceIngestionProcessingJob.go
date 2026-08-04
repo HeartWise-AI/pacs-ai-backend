@@ -19,6 +19,72 @@ const (
 	InferenceIngestionProcessingJobStatusCancelled InferenceIngestionProcessingJobStatus = "cancelled"
 )
 
+// IsValid reports whether the status is part of the processing-execution contract.
+func (status InferenceIngestionProcessingJobStatus) IsValid() bool {
+	switch status {
+	case InferenceIngestionProcessingJobStatusPending,
+		InferenceIngestionProcessingJobStatusQueued,
+		InferenceIngestionProcessingJobStatusRunning,
+		InferenceIngestionProcessingJobStatusCompleted,
+		InferenceIngestionProcessingJobStatusFailed,
+		InferenceIngestionProcessingJobStatusSkipped,
+		InferenceIngestionProcessingJobStatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseInferenceIngestionProcessingJobStatus normalizes an external status and validates it.
+func ParseInferenceIngestionProcessingJobStatus(value string) (InferenceIngestionProcessingJobStatus, bool) {
+	status := InferenceIngestionProcessingJobStatus(strings.ToLower(strings.TrimSpace(value)))
+	return status, status.IsValid()
+}
+
+// IsTerminal reports whether no later non-replayed transition is allowed.
+func (status InferenceIngestionProcessingJobStatus) IsTerminal() bool {
+	switch status {
+	case InferenceIngestionProcessingJobStatusCompleted,
+		InferenceIngestionProcessingJobStatusFailed,
+		InferenceIngestionProcessingJobStatusSkipped,
+		InferenceIngestionProcessingJobStatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanTransitionTo applies the authoritative execution-state machine.
+// Equal valid statuses are accepted as idempotent replays.
+func (status InferenceIngestionProcessingJobStatus) CanTransitionTo(next InferenceIngestionProcessingJobStatus) bool {
+	if !status.IsValid() || !next.IsValid() {
+		return false
+	}
+	if status == next {
+		return true
+	}
+
+	switch status {
+	case InferenceIngestionProcessingJobStatusPending:
+		return next == InferenceIngestionProcessingJobStatusQueued ||
+			next == InferenceIngestionProcessingJobStatusSkipped ||
+			next == InferenceIngestionProcessingJobStatusFailed ||
+			next == InferenceIngestionProcessingJobStatusCancelled
+	case InferenceIngestionProcessingJobStatusQueued:
+		return next == InferenceIngestionProcessingJobStatusRunning ||
+			next == InferenceIngestionProcessingJobStatusFailed ||
+			next == InferenceIngestionProcessingJobStatusCancelled ||
+			next == InferenceIngestionProcessingJobStatusSkipped
+	case InferenceIngestionProcessingJobStatusRunning:
+		return next == InferenceIngestionProcessingJobStatusCompleted ||
+			next == InferenceIngestionProcessingJobStatusFailed ||
+			next == InferenceIngestionProcessingJobStatusCancelled ||
+			next == InferenceIngestionProcessingJobStatusSkipped
+	default:
+		return false
+	}
+}
+
 const (
 	InferenceIngestionProcessingJobSkipReasonNoUsableDICOM         InferenceIngestionProcessingJobSkipReasonCode = "NO_USABLE_DICOM"
 	InferenceIngestionProcessingJobSkipReasonUnsupportedModality   InferenceIngestionProcessingJobSkipReasonCode = "UNSUPPORTED_MODALITY"

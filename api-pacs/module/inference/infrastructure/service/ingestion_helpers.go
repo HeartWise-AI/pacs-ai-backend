@@ -370,38 +370,6 @@ func shouldMarkCandidateStable(status entity.InferenceIngestionCandidateStatus) 
 		status == entity.InferenceIngestionCandidateStatusGrowing
 }
 
-func parseInferenceIngestionProcessingJobStatus(status string) (entity.InferenceIngestionProcessingJobStatus, bool) {
-	normalizedStatus := strings.ToLower(strings.TrimSpace(status))
-
-	switch entity.InferenceIngestionProcessingJobStatus(normalizedStatus) {
-	case entity.InferenceIngestionProcessingJobStatusQueued,
-		entity.InferenceIngestionProcessingJobStatusRunning,
-		entity.InferenceIngestionProcessingJobStatusCompleted,
-		entity.InferenceIngestionProcessingJobStatusFailed:
-		return entity.InferenceIngestionProcessingJobStatus(normalizedStatus), true
-	default:
-		return "", false
-	}
-}
-
-func isAllowedInferenceIngestionProcessingTransition(current, next entity.InferenceIngestionProcessingJobStatus) bool {
-	if current == next {
-		return true
-	}
-
-	switch current {
-	case entity.InferenceIngestionProcessingJobStatusQueued:
-		return next == entity.InferenceIngestionProcessingJobStatusRunning ||
-			next == entity.InferenceIngestionProcessingJobStatusCompleted ||
-			next == entity.InferenceIngestionProcessingJobStatusFailed
-	case entity.InferenceIngestionProcessingJobStatusRunning:
-		return next == entity.InferenceIngestionProcessingJobStatusCompleted ||
-			next == entity.InferenceIngestionProcessingJobStatusFailed
-	default:
-		return false
-	}
-}
-
 func shouldRetryStudyServiceDispatchHTTPError(err DispatchStudyHTTPError) bool {
 	if err.StatusCode == http.StatusTooManyRequests {
 		return true

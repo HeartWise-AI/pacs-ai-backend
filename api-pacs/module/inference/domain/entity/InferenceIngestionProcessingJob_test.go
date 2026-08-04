@@ -1,10 +1,89 @@
 package entity
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestInferenceIngestionProcessingJobStatusTransitionMatrix(t *testing.T) {
+	statuses := []InferenceIngestionProcessingJobStatus{
+		InferenceIngestionProcessingJobStatusPending,
+		InferenceIngestionProcessingJobStatusQueued,
+		InferenceIngestionProcessingJobStatusRunning,
+		InferenceIngestionProcessingJobStatusCompleted,
+		InferenceIngestionProcessingJobStatusFailed,
+		InferenceIngestionProcessingJobStatusSkipped,
+		InferenceIngestionProcessingJobStatusCancelled,
+	}
+	allowed := map[InferenceIngestionProcessingJobStatus]map[InferenceIngestionProcessingJobStatus]bool{
+		InferenceIngestionProcessingJobStatusPending: {
+			InferenceIngestionProcessingJobStatusQueued:    true,
+			InferenceIngestionProcessingJobStatusSkipped:   true,
+			InferenceIngestionProcessingJobStatusFailed:    true,
+			InferenceIngestionProcessingJobStatusCancelled: true,
+		},
+		InferenceIngestionProcessingJobStatusQueued: {
+			InferenceIngestionProcessingJobStatusRunning:   true,
+			InferenceIngestionProcessingJobStatusFailed:    true,
+			InferenceIngestionProcessingJobStatusSkipped:   true,
+			InferenceIngestionProcessingJobStatusCancelled: true,
+		},
+		InferenceIngestionProcessingJobStatusRunning: {
+			InferenceIngestionProcessingJobStatusCompleted: true,
+			InferenceIngestionProcessingJobStatusFailed:    true,
+			InferenceIngestionProcessingJobStatusSkipped:   true,
+			InferenceIngestionProcessingJobStatusCancelled: true,
+		},
+	}
+
+	for _, current := range statuses {
+		for _, next := range statuses {
+			t.Run(fmt.Sprintf("%s_to_%s", current, next), func(t *testing.T) {
+				expected := current == next || allowed[current][next]
+				require.Equal(t, expected, current.CanTransitionTo(next))
+			})
+		}
+	}
+
+	unknown := InferenceIngestionProcessingJobStatus("unknown")
+	require.False(t, unknown.CanTransitionTo(unknown))
+	require.False(t, InferenceIngestionProcessingJobStatusPending.CanTransitionTo(unknown))
+	require.False(t, unknown.CanTransitionTo(InferenceIngestionProcessingJobStatusQueued))
+}
+
+func TestInferenceIngestionProcessingJobStatusTerminalStates(t *testing.T) {
+	require.False(t, InferenceIngestionProcessingJobStatusPending.IsTerminal())
+	require.False(t, InferenceIngestionProcessingJobStatusQueued.IsTerminal())
+	require.False(t, InferenceIngestionProcessingJobStatusRunning.IsTerminal())
+	require.True(t, InferenceIngestionProcessingJobStatusCompleted.IsTerminal())
+	require.True(t, InferenceIngestionProcessingJobStatusFailed.IsTerminal())
+	require.True(t, InferenceIngestionProcessingJobStatusSkipped.IsTerminal())
+	require.True(t, InferenceIngestionProcessingJobStatusCancelled.IsTerminal())
+	require.False(t, InferenceIngestionProcessingJobStatus("unknown").IsTerminal())
+}
+
+func TestParseInferenceIngestionProcessingJobStatusNormalizesAllStates(t *testing.T) {
+	statuses := []InferenceIngestionProcessingJobStatus{
+		InferenceIngestionProcessingJobStatusPending,
+		InferenceIngestionProcessingJobStatusQueued,
+		InferenceIngestionProcessingJobStatusRunning,
+		InferenceIngestionProcessingJobStatusCompleted,
+		InferenceIngestionProcessingJobStatusFailed,
+		InferenceIngestionProcessingJobStatusSkipped,
+		InferenceIngestionProcessingJobStatusCancelled,
+	}
+	for _, expected := range statuses {
+		status, ok := ParseInferenceIngestionProcessingJobStatus("  " + strings.ToUpper(string(expected)) + "  ")
+		require.True(t, ok)
+		require.Equal(t, expected, status)
+	}
+
+	_, ok := ParseInferenceIngestionProcessingJobStatus("not-a-status")
+	require.False(t, ok)
+}
 
 func TestInferenceIngestionProcessingJobSkipReasonCodesAreValid(t *testing.T) {
 	codes := []InferenceIngestionProcessingJobSkipReasonCode{

@@ -217,7 +217,7 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
 	}
 
-	status, ok := parseInferenceIngestionProcessingJobStatus(data.Status)
+	status, ok := entity.ParseInferenceIngestionProcessingJobStatus(data.Status)
 	if !ok {
 		return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
 	}
@@ -254,7 +254,7 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		return types.HandleStudyServiceProcessingCallbackResult{Outcome: "applied"}, nil
 	}
 
-	if !isAllowedInferenceIngestionProcessingTransition(existing.Status, status) {
+	if !existing.Status.CanTransitionTo(status) {
 		log.Printf("[Ingestion callback] ignoring out-of-order callback candidate_id=%s model_name=%s request_id=%s current_status=%s incoming_status=%s",
 			candidate.ID,
 			modelName,
