@@ -1134,6 +1134,20 @@ func (service *InferenceCommandService) scheduleStudyServiceDispatch(job entity.
 }
 
 func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService(ctx context.Context, job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate, processingRunID, requestID string) error {
+	shouldDispatch, err := service.shouldDispatchCommittedProcessingExecution(ctx, candidate, job, processingRunID)
+	if err != nil {
+		ObserveStudyServiceDispatchAttempt("permanent_error", 0)
+		if persistErr := service.persistDispatchFailure(candidate.ID, err); persistErr != nil {
+			log.Printf("[Ingestion dispatch] cannot persist pre-dispatch correlation failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
+				candidate.ID, job.ID, requestID, persistErr,
+			)
+		}
+		return err
+	}
+	if !shouldDispatch {
+		return nil
+	}
+
 	dispatchRequest, err := service.BuildStudyServiceDispatchRequest(ctx, types.BuildStudyServiceDispatchRequestInput{
 		IngestionJob:    job,
 		Candidate:       candidate,
@@ -1238,6 +1252,26 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 	}
 
 	return nil
+}
+
+func (service *InferenceCommandService) shouldDispatchCommittedProcessingExecution(ctx context.Context, candidate entity.InferenceIngestionCandidate, job entity.InferenceIngestionJob, processingRunID string) (bool, error) {
+	processingRunID = strings.TrimSpace(processingRunID)
+	if processingRunID == "" {
+		return true, nil
+	}
+
+	execution, err := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(
+		ctx,
+		strings.TrimSpace(candidate.TenantID),
+		processingRunID,
+		strings.TrimSpace(candidate.ID),
+		strings.TrimSpace(job.ModelName),
+	)
+	if err != nil {
+		return false, fmt.Errorf("cannot dispatch execution outside committed processing run: %w", err)
+	}
+
+	return execution.Status == entity.InferenceIngestionProcessingJobStatusPending, nil
 }
 
 func (service *InferenceCommandService) persistDispatchFailure(candidateID string, dispatchErr error) error {
