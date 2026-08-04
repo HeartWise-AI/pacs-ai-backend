@@ -38,14 +38,30 @@ func (handler *processingRunTestHandler) QueryRow(query string, model interface{
 	return handler.queryRow(query, model, target)
 }
 
-func processingRunRows(now time.Time) *sqlmock.Rows {
+func emptyProcessingRunRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"id", "tenant_id", "study_instance_uid", "run_number", "run_trigger", "phase",
 		"outcome", "attention_required", "attention_reasons", "version", "started_at",
 		"completed_at", "created_at", "updated_at",
-	}).AddRow(
+	})
+}
+
+func processingRunRows(now time.Time) *sqlmock.Rows {
+	return emptyProcessingRunRows().AddRow(
 		"run-2", "tenant-a", "1.2.3", 2, "AUTO", "QUEUED",
 		nil, false, []byte("[]"), int64(1), nil, nil, now, now,
+	)
+}
+
+func processingExecutionRows(now time.Time) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "processing_run_id", "candidate_id", "tenant_id", "model_name", "model_version",
+		"modality", "status", "study_service_job_id", "error_message", "skip_reason_code",
+		"skip_reason_message", "last_event_id", "last_event_sequence", "started_at", "completed_at",
+		"created_at", "updated_at",
+	}).AddRow(
+		"execution-1", "run-2", "candidate-1", "tenant-a", "EchoModel", "v1",
+		"US", "pending", nil, nil, nil, nil, nil, nil, nil, nil, now, now,
 	)
 }
 
@@ -99,6 +115,139 @@ func TestCreateProcessingRunMapsActiveRunConflict(t *testing.T) {
 	})
 
 	require.EqualError(t, err, apiError.DuplicateRecord)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCreateProcessingRunPlanCreatesRunAndExecutionsAtomically(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { database.Close() })
+	now := time.Now()
+
+	mock.ExpectBegin()
+	mock.ExpectExec("pg_advisory_xact_lock").
+		WithArgs("tenant-a\x001.2.3").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_runs").
+		WithArgs("tenant-a", "1.2.3").
+		WillReturnRows(emptyProcessingRunRows())
+	mock.ExpectQuery("SELECT COALESCE\\(MAX\\(run_number\\), 0\\) \\+ 1").
+		WithArgs("tenant-a", "1.2.3").
+		WillReturnRows(sqlmock.NewRows([]string{"run_number"}).AddRow(2))
+	mock.ExpectQuery("INSERT INTO ingestion_processing_runs").
+		WithArgs("run-2", "tenant-a", "1.2.3", 2, entity.InferenceIngestionProcessingRunTriggerAuto, entity.InferenceIngestionProcessingRunPhaseQueued).
+		WillReturnRows(processingRunRows(now))
+	mock.ExpectQuery("INSERT INTO ingestion_processing_jobs").
+		WithArgs("execution-1", "run-2", "candidate-1", "tenant-a", "EchoModel", "v1", "US", entity.InferenceIngestionProcessingJobStatusPending).
+		WillReturnRows(processingExecutionRows(now))
+	mock.ExpectCommit()
+
+	repository := InferenceProcessingRunRepository{PostgresSQLDBHandlerInterface: &processingRunTestHandler{db: sqlx.NewDb(database, "sqlmock")}}
+	modelVersion := "v1"
+	modality := "US"
+	result, err := repository.CreateProcessingRunPlan(context.Background(), types.CreateInferenceIngestionProcessingRunPlan{
+		Run: types.CreateInferenceIngestionProcessingRun{
+			ID: "run-2", TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+			RunTrigger: entity.InferenceIngestionProcessingRunTriggerAuto,
+			Phase:      entity.InferenceIngestionProcessingRunPhaseQueued,
+		},
+		Executions: []types.CreateInferenceIngestionProcessingExecution{{
+			ID: "execution-1", CandidateID: "candidate-1", ModelName: "EchoModel",
+			ModelVersion: &modelVersion, Modality: &modality,
+		}},
+	})
+
+	require.NoError(t, err)
+	require.True(t, result.Created)
+	require.Equal(t, "run-2", result.Run.ID)
+	require.Len(t, result.Executions, 1)
+	require.Equal(t, "execution-1", result.Executions[0].ID)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCreateProcessingRunPlanReusesActiveAutomaticPlan(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { database.Close() })
+	now := time.Now()
+
+	mock.ExpectBegin()
+	mock.ExpectExec("pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_runs").
+		WithArgs("tenant-a", "1.2.3").
+		WillReturnRows(processingRunRows(now))
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_jobs").
+		WithArgs("run-2").
+		WillReturnRows(processingExecutionRows(now))
+	mock.ExpectCommit()
+
+	repository := InferenceProcessingRunRepository{PostgresSQLDBHandlerInterface: &processingRunTestHandler{db: sqlx.NewDb(database, "sqlmock")}}
+	result, err := repository.CreateProcessingRunPlan(context.Background(), types.CreateInferenceIngestionProcessingRunPlan{
+		Run: types.CreateInferenceIngestionProcessingRun{
+			ID: "unused", TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+			RunTrigger: entity.InferenceIngestionProcessingRunTriggerAuto,
+			Phase:      entity.InferenceIngestionProcessingRunPhaseQueued,
+		},
+	})
+
+	require.NoError(t, err)
+	require.False(t, result.Created)
+	require.Equal(t, "run-2", result.Run.ID)
+	require.Len(t, result.Executions, 1)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCreateProcessingRunPlanRejectsManualRunWhileActive(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { database.Close() })
+
+	mock.ExpectBegin()
+	mock.ExpectExec("pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_runs").
+		WillReturnRows(processingRunRows(time.Now()))
+	mock.ExpectRollback()
+
+	repository := InferenceProcessingRunRepository{PostgresSQLDBHandlerInterface: &processingRunTestHandler{db: sqlx.NewDb(database, "sqlmock")}}
+	_, err = repository.CreateProcessingRunPlan(context.Background(), types.CreateInferenceIngestionProcessingRunPlan{
+		Run: types.CreateInferenceIngestionProcessingRun{
+			ID: "run-3", TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+			RunTrigger: entity.InferenceIngestionProcessingRunTriggerManualReprocess,
+			Phase:      entity.InferenceIngestionProcessingRunPhaseQueued,
+		},
+	})
+
+	require.EqualError(t, err, apiError.DuplicateRecord)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCreateProcessingRunPlanRollsBackWhenExecutionInsertFails(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { database.Close() })
+	now := time.Now()
+
+	mock.ExpectBegin()
+	mock.ExpectExec("pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_runs").WillReturnRows(emptyProcessingRunRows())
+	mock.ExpectQuery("SELECT COALESCE").WillReturnRows(sqlmock.NewRows([]string{"run_number"}).AddRow(2))
+	mock.ExpectQuery("INSERT INTO ingestion_processing_runs").WillReturnRows(processingRunRows(now))
+	mock.ExpectQuery("INSERT INTO ingestion_processing_jobs").WillReturnError(errors.New("insert failed"))
+	mock.ExpectRollback()
+
+	repository := InferenceProcessingRunRepository{PostgresSQLDBHandlerInterface: &processingRunTestHandler{db: sqlx.NewDb(database, "sqlmock")}}
+	_, err = repository.CreateProcessingRunPlan(context.Background(), types.CreateInferenceIngestionProcessingRunPlan{
+		Run: types.CreateInferenceIngestionProcessingRun{
+			ID: "run-2", TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+			RunTrigger: entity.InferenceIngestionProcessingRunTriggerAuto,
+			Phase:      entity.InferenceIngestionProcessingRunPhaseQueued,
+		},
+		Executions: []types.CreateInferenceIngestionProcessingExecution{{
+			ID: "execution-1", CandidateID: "candidate-1", ModelName: "EchoModel",
+		}},
+	})
+
+	require.EqualError(t, err, apiError.DatabaseError)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

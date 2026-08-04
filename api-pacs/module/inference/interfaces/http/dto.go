@@ -70,6 +70,14 @@ type CreateInferenceIngestionJobRequest struct {
 	ScheduleEndTimestamp   uint64   `json:"scheduleEndTimestamp"`
 }
 
+type CreateStudyProcessingRunResponse struct {
+	RunID          string                                        `json:"runId"`
+	RunNumber      int                                           `json:"runNumber"`
+	Trigger        entity.InferenceIngestionProcessingRunTrigger `json:"trigger"`
+	Phase          entity.InferenceIngestionProcessingRunPhase   `json:"phase"`
+	ExpectedModels int                                           `json:"expectedModels"`
+}
+
 type PredictInferenceModelRequest struct {
 	StudyInstanceUID   string                 `json:"studyInstanceUID" validate:"required"`
 	SeriesInstanceUIDs []string               `json:"seriesInstanceUIDs" validate:"required"`

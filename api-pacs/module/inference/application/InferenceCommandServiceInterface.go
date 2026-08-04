@@ -15,6 +15,10 @@ type InferenceCommandServiceInterface interface {
 	AddOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
 	// CreateInferenceIngestionJob creates an inference ingestion job
 	CreateInferenceIngestionJob(ctx context.Context, data types.CreateInferenceIngestionJob) error
+	// CreateAutomaticStudyProcessingRun creates or reuses an automatic study-processing plan.
+	CreateAutomaticStudyProcessingRun(ctx context.Context, data types.CreateStudyProcessingRun) (types.CreateStudyProcessingRunResult, error)
+	// CreateManualStudyProcessingRun creates a new manual study-processing plan when no run is active.
+	CreateManualStudyProcessingRun(ctx context.Context, data types.CreateStudyProcessingRun) (types.CreateStudyProcessingRunResult, error)
 	// ExecuteInferenceIngestionRunner execute inference ingestion runner
 	ExecuteInferenceIngestionRunner(ctx context.Context) error
 	// ExecuteInferenceIngestionRetrievalWorker executes queued ingestion retrievals

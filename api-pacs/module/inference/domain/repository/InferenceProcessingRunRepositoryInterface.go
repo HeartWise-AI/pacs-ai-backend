@@ -11,6 +11,9 @@ import (
 type InferenceProcessingRunRepositoryInterface interface {
 	// CreateProcessingRun atomically allocates the next study-local run number and inserts the run.
 	CreateProcessingRun(ctx context.Context, data types.CreateInferenceIngestionProcessingRun) (entity.InferenceIngestionProcessingRun, error)
+	// CreateProcessingRunPlan atomically freezes a run and its expected executions.
+	// Automatic requests reuse the active plan; manual requests conflict while a run is active.
+	CreateProcessingRunPlan(ctx context.Context, data types.CreateInferenceIngestionProcessingRunPlan) (types.CreateInferenceIngestionProcessingRunPlanResult, error)
 	// SelectActiveProcessingRun returns the tenant-scoped non-terminal run for a study.
 	SelectActiveProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error)
 	// SelectLatestProcessingRun returns the newest tenant-scoped run for a study.

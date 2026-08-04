@@ -133,6 +133,67 @@ func (controller *InferenceCommandController) CreateInferenceIngestionJob(w http
 	response.JSON(w)
 }
 
+// ReprocessStudy creates a new manual processing run for one tenant-scoped study.
+func (controller *InferenceCommandController) ReprocessStudy(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	studyInstanceUID := strings.TrimSpace(chi.URLParam(r, "studyInstanceUID"))
+	if studyInstanceUID == "" {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid Study Instance UID.",
+			ErrorCode: apiError.InvalidPayload,
+		}
+		response.JSON(w)
+		return
+	}
+
+	result, err := controller.InferenceCommandServiceInterface.CreateManualStudyProcessingRun(r.Context(), serviceTypes.CreateStudyProcessingRun{
+		TenantID:         tenantID,
+		StudyInstanceUID: studyInstanceUID,
+	})
+	if err != nil {
+		httpCode := http.StatusInternalServerError
+		errorMessage := "Please contact technical support."
+		switch err.Error() {
+		case apiError.InvalidPayload:
+			httpCode = http.StatusBadRequest
+			errorMessage = "Invalid Study Instance UID."
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMessage = "No processing candidates were found for this study."
+		case apiError.DuplicateRecord:
+			httpCode = http.StatusConflict
+			errorMessage = "This study already has an active processing run."
+		case apiError.DatabaseError:
+			errorMessage = "Database error."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMessage,
+			ErrorCode: err.Error(),
+		}
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusCreated,
+		Success: true,
+		Message: "Successfully created manual study processing run.",
+		Data: &types.CreateStudyProcessingRunResponse{
+			RunID:          result.Run.ID,
+			RunNumber:      result.Run.RunNumber,
+			Trigger:        result.Run.RunTrigger,
+			Phase:          result.Run.Phase,
+			ExpectedModels: len(result.Executions),
+		},
+	}
+	response.JSON(w)
+}
+
 // StudyServiceProcessingCallback ingests internal processing callbacks from study-service.
 func (controller *InferenceCommandController) StudyServiceProcessingCallback(w http.ResponseWriter, r *http.Request) {
 	callbackToken := strings.TrimSpace(os.Getenv("STUDY_SERVICE_CALLBACK_TOKEN"))

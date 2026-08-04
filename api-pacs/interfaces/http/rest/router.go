@@ -185,6 +185,11 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Delete("/job/{ID}/remove", inferenceCommandController.RemoveInferenceIngestionJob)
 						})
 					})
+
+					r.Group(func(r chi.Router) {
+						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+						r.Post("/worklist/studies/{studyInstanceUID}/reprocess", inferenceCommandController.ReprocessStudy)
+					})
 				})
 			})
 

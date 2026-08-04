@@ -61,6 +61,28 @@ type CreateInferenceIngestionProcessingRun struct {
 	Phase            entity.InferenceIngestionProcessingRunPhase   `db:"phase"`
 }
 
+// CreateInferenceIngestionProcessingExecution contains one frozen expected-model execution.
+type CreateInferenceIngestionProcessingExecution struct {
+	ID           string
+	CandidateID  string
+	ModelName    string
+	ModelVersion *string
+	Modality     *string
+}
+
+// CreateInferenceIngestionProcessingRunPlan creates a run and its expected executions as one unit.
+type CreateInferenceIngestionProcessingRunPlan struct {
+	Run        CreateInferenceIngestionProcessingRun
+	Executions []CreateInferenceIngestionProcessingExecution
+}
+
+// CreateInferenceIngestionProcessingRunPlanResult reports whether a plan was created or reused.
+type CreateInferenceIngestionProcessingRunPlanResult struct {
+	Run        entity.InferenceIngestionProcessingRun
+	Executions []entity.InferenceIngestionProcessingJob
+	Created    bool
+}
+
 // ListInferenceIngestionProcessingRuns scopes a paginated study run-history query.
 type ListInferenceIngestionProcessingRuns struct {
 	TenantID         string `db:"tenant_id"`
