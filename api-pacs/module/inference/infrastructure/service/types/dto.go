@@ -51,6 +51,17 @@ type CreateStudyProcessingRunResult struct {
 	Created    bool
 }
 
+type RecalculateStudyProcessingRun struct {
+	TenantID          string
+	ProcessingRunID   string
+	WholeRunCancelled bool
+}
+
+type RecalculateStudyProcessingRunResult struct {
+	Run    entity.InferenceIngestionProcessingRun
+	Counts entity.InferenceIngestionProcessingRunExecutionCounts
+}
+
 type BuildStudyServiceDispatchRequestInput struct {
 	IngestionJob       entity.InferenceIngestionJob
 	Candidate          entity.InferenceIngestionCandidate

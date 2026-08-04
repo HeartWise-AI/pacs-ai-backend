@@ -177,6 +177,18 @@ func (repository *InferenceProcessingRunRepository) SelectActiveProcessingRun(ct
 	return repository.selectStudyRun(ctx, tenantID, studyInstanceUID, "AND phase <> 'TERMINAL' ORDER BY run_number DESC LIMIT 1")
 }
 
+// SelectProcessingRun returns one tenant-scoped processing run by ID.
+func (repository *InferenceProcessingRunRepository) SelectProcessingRun(ctx context.Context, tenantID, processingRunID string) (entity.InferenceIngestionProcessingRun, error) {
+	var run entity.InferenceIngestionProcessingRun
+	err := repository.PostgresSQLDBHandlerInterface.QueryRow(`
+		SELECT * FROM ingestion_processing_runs
+		WHERE tenant_id = :tenant_id AND id = :processing_run_id
+	`, map[string]interface{}{
+		"tenant_id": tenantID, "processing_run_id": processingRunID,
+	}, &run)
+	return run, processingRunError(err)
+}
+
 // SelectLatestProcessingRun returns the newest tenant-scoped run for a study.
 func (repository *InferenceProcessingRunRepository) SelectLatestProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error) {
 	return repository.selectStudyRun(ctx, tenantID, studyInstanceUID, "ORDER BY run_number DESC LIMIT 1")

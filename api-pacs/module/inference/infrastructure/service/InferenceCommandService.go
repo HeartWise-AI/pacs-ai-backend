@@ -52,6 +52,7 @@ type InferenceCommandService struct {
 const inferenceIngestionRetrievalTimeout = 3 * time.Minute
 const inferenceIngestionRetrievalPollInterval = 2 * time.Second
 const studyServiceDispatchAttemptTimeout = 2 * time.Second
+const processingRunAggregateUpdateAttempts = 3
 
 const (
 	defaultRecentWindowMinutes        uint = 240
@@ -109,6 +110,49 @@ func (service *InferenceCommandService) CreateAutomaticStudyProcessingRun(ctx co
 // CreateManualStudyProcessingRun freezes a new manual plan when no run is active.
 func (service *InferenceCommandService) CreateManualStudyProcessingRun(ctx context.Context, data types.CreateStudyProcessingRun) (types.CreateStudyProcessingRunResult, error) {
 	return service.createStudyProcessingRun(ctx, data, entity.InferenceIngestionProcessingRunTriggerManualReprocess)
+}
+
+// RecalculateStudyProcessingRun calculates and persists one authoritative run aggregate.
+func (service *InferenceCommandService) RecalculateStudyProcessingRun(ctx context.Context, data types.RecalculateStudyProcessingRun) (types.RecalculateStudyProcessingRunResult, error) {
+	tenantID := strings.TrimSpace(data.TenantID)
+	processingRunID := strings.TrimSpace(data.ProcessingRunID)
+	if tenantID == "" || processingRunID == "" {
+		return types.RecalculateStudyProcessingRunResult{}, errors.New(apiError.InvalidPayload)
+	}
+
+	for attempt := 0; attempt < processingRunAggregateUpdateAttempts; attempt++ {
+		run, err := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRun(ctx, tenantID, processingRunID)
+		if err != nil {
+			return types.RecalculateStudyProcessingRunResult{}, err
+		}
+		executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, tenantID, processingRunID)
+		if err != nil {
+			return types.RecalculateStudyProcessingRunResult{}, err
+		}
+
+		aggregate := entity.AggregateInferenceIngestionProcessingRun(entity.InferenceIngestionProcessingRunAggregationInput{
+			Run: run, Executions: executions, WholeRunCancelled: data.WholeRunCancelled,
+		})
+		updated, err := service.InferenceProcessingRunRepositoryInterface.UpdateProcessingRunAggregate(ctx, repositoryTypes.UpdateInferenceIngestionProcessingRunAggregate{
+			ID:                run.ID,
+			TenantID:          tenantID,
+			ExpectedVersion:   run.Version,
+			Phase:             aggregate.Phase,
+			Outcome:           aggregate.Outcome,
+			AttentionRequired: aggregate.AttentionRequired,
+			AttentionReasons:  aggregate.AttentionReasons,
+			StartedAt:         aggregate.StartedAt,
+			CompletedAt:       aggregate.CompletedAt,
+		})
+		if err == nil {
+			return types.RecalculateStudyProcessingRunResult{Run: updated, Counts: aggregate.Counts}, nil
+		}
+		if err.Error() != apiError.DuplicateRecord {
+			return types.RecalculateStudyProcessingRunResult{}, err
+		}
+	}
+
+	return types.RecalculateStudyProcessingRunResult{}, errors.New(apiError.DuplicateRecord)
 }
 
 func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Context, data types.CreateStudyProcessingRun, trigger entity.InferenceIngestionProcessingRunTrigger) (types.CreateStudyProcessingRunResult, error) {

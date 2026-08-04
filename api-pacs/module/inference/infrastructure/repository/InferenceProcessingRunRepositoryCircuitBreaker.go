@@ -61,6 +61,12 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) SelectActivePr
 	})
 }
 
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) SelectProcessingRun(ctx context.Context, tenantID, processingRunID string) (entity.InferenceIngestionProcessingRun, error) {
+	return withProcessingRunCircuit("select_processing_run", func() (entity.InferenceIngestionProcessingRun, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.SelectProcessingRun(ctx, tenantID, processingRunID)
+	})
+}
+
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) SelectLatestProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error) {
 	return withProcessingRunCircuit("select_latest_processing_run", func() (entity.InferenceIngestionProcessingRun, error) {
 		return repository.InferenceProcessingRunRepositoryInterface.SelectLatestProcessingRun(ctx, tenantID, studyInstanceUID)
