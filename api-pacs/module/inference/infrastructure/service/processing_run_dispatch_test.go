@@ -33,6 +33,8 @@ type guardedDispatchCommandRepository struct {
 	dispatchStateUpdates []repositoryTypes.UpdateCandidateDispatchState
 	executionUpdates     []repositoryTypes.UpdateInferenceIngestionProcessingJob
 	executionUpdateErr   error
+	executionInserts     []repositoryTypes.AddInferenceIngestionProcessingJob
+	executionInsertErr   error
 }
 
 func (repository *guardedDispatchCommandRepository) UpdateCandidateDispatchState(data repositoryTypes.UpdateCandidateDispatchState) error {
@@ -43,6 +45,11 @@ func (repository *guardedDispatchCommandRepository) UpdateCandidateDispatchState
 func (repository *guardedDispatchCommandRepository) UpdateInferenceIngestionProcessingJob(data repositoryTypes.UpdateInferenceIngestionProcessingJob) error {
 	repository.executionUpdates = append(repository.executionUpdates, data)
 	return repository.executionUpdateErr
+}
+
+func (repository *guardedDispatchCommandRepository) InsertInferenceIngestionProcessingJob(data repositoryTypes.AddInferenceIngestionProcessingJob) error {
+	repository.executionInserts = append(repository.executionInserts, data)
+	return repository.executionInsertErr
 }
 
 type guardedProcessingDispatcher struct {
@@ -268,4 +275,30 @@ func TestDispatchDoesNotRetryPermanentResponse(t *testing.T) {
 	require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, commandRepository.executionUpdates[0].Status)
 	require.Len(t, runRepository.updates, 1)
 	require.True(t, runRepository.updates[0].AttentionRequired)
+}
+
+func TestLegacyDispatchWithoutProcessingRunIDRemainsSupported(t *testing.T) {
+	runRepository := &committedExecutionRepository{}
+	commandRepository := &guardedDispatchCommandRepository{}
+	dispatcher := &guardedProcessingDispatcher{response: serviceTypes.DispatchStudyResponse{JobID: "legacy-study-job-1"}}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+
+	err := service.dispatchRetrievedCandidateToStudyService(
+		context.Background(),
+		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "legacy-model", ModelVersion: "1.0"},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		"",
+		"request-1",
+	)
+
+	require.NoError(t, err)
+	require.Zero(t, runRepository.calls)
+	require.Equal(t, 1, dispatcher.dispatchCalls)
+	require.Len(t, commandRepository.executionInserts, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusQueued, commandRepository.executionInserts[0].Status)
+	require.Equal(t, "legacy-study-job-1", *commandRepository.executionInserts[0].StudyServiceJobID)
 }
