@@ -36,6 +36,7 @@ import (
 type InferenceCommandService struct {
 	repository.InferenceCommandRepositoryInterface
 	repository.InferenceQueryRepositoryInterface
+	repository.InferenceProcessingRunRepositoryInterface
 	tenantApplication.TenantQueryServiceInterface
 	userApplication.UserQueryServiceInterface
 	orthancApplication.OrthancCommandServiceInterface
@@ -98,6 +99,96 @@ func (service *InferenceCommandService) BuildStudyServiceDispatchRequest(ctx con
 // DispatchStudy sends a POST /ingest/study request to study-service.
 func (service *InferenceCommandService) DispatchStudy(ctx context.Context, data types.DispatchStudyRequest) (types.DispatchStudyResponse, error) {
 	return service.ProcessingDispatcherInterface.DispatchStudy(ctx, data)
+}
+
+// CreateAutomaticStudyProcessingRun freezes a study plan or reuses its active automatic run.
+func (service *InferenceCommandService) CreateAutomaticStudyProcessingRun(ctx context.Context, data types.CreateStudyProcessingRun) (types.CreateStudyProcessingRunResult, error) {
+	return service.createStudyProcessingRun(ctx, data, entity.InferenceIngestionProcessingRunTriggerAuto)
+}
+
+// CreateManualStudyProcessingRun freezes a new manual plan when no run is active.
+func (service *InferenceCommandService) CreateManualStudyProcessingRun(ctx context.Context, data types.CreateStudyProcessingRun) (types.CreateStudyProcessingRunResult, error) {
+	return service.createStudyProcessingRun(ctx, data, entity.InferenceIngestionProcessingRunTriggerManualReprocess)
+}
+
+func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Context, data types.CreateStudyProcessingRun, trigger entity.InferenceIngestionProcessingRunTrigger) (types.CreateStudyProcessingRunResult, error) {
+	tenantID := strings.TrimSpace(data.TenantID)
+	studyInstanceUID := strings.TrimSpace(data.StudyInstanceUID)
+	if tenantID == "" || studyInstanceUID == "" {
+		return types.CreateStudyProcessingRunResult{}, errors.New(apiError.InvalidPayload)
+	}
+
+	candidates, err := service.InferenceQueryRepositoryInterface.ListInferenceIngestionCandidates(repositoryTypes.ListInferenceIngestionCandidates{
+		TenantID:         tenantID,
+		StudyInstanceUID: &studyInstanceUID,
+	})
+	if err != nil {
+		return types.CreateStudyProcessingRunResult{}, err
+	}
+
+	expected := make([]repositoryTypes.CreateInferenceIngestionProcessingExecution, 0, len(candidates))
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.Status == entity.InferenceIngestionCandidateStatusDisappeared {
+			continue
+		}
+		if candidate.TenantID != tenantID || strings.TrimSpace(candidate.StudyInstanceUID) != studyInstanceUID {
+			return types.CreateStudyProcessingRunResult{}, errors.New(apiError.DatabaseError)
+		}
+
+		job, jobErr := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionJobByID(candidate.IngestionJobID)
+		if jobErr != nil {
+			return types.CreateStudyProcessingRunResult{}, jobErr
+		}
+		if job.TenantID != tenantID {
+			return types.CreateStudyProcessingRunResult{}, errors.New(apiError.DatabaseError)
+		}
+
+		modelName := strings.TrimSpace(job.ModelName)
+		if modelName == "" {
+			return types.CreateStudyProcessingRunResult{}, errors.New(apiError.DatabaseError)
+		}
+		key := candidate.ID + "\x00" + modelName
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		expected = append(expected, repositoryTypes.CreateInferenceIngestionProcessingExecution{
+			ID:           generateID(),
+			CandidateID:  candidate.ID,
+			ModelName:    modelName,
+			ModelVersion: nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
+			Modality:     nonEmptyStringPointer(strings.TrimSpace(job.DICOMModality)),
+		})
+	}
+	if len(expected) == 0 {
+		return types.CreateStudyProcessingRunResult{}, errors.New(apiError.MissingRecord)
+	}
+
+	slices.SortFunc(expected, func(left, right repositoryTypes.CreateInferenceIngestionProcessingExecution) int {
+		leftKey := left.ModelName + "\x00" + left.CandidateID
+		rightKey := right.ModelName + "\x00" + right.CandidateID
+		return strings.Compare(leftKey, rightKey)
+	})
+
+	result, err := service.InferenceProcessingRunRepositoryInterface.CreateProcessingRunPlan(ctx, repositoryTypes.CreateInferenceIngestionProcessingRunPlan{
+		Run: repositoryTypes.CreateInferenceIngestionProcessingRun{
+			ID:               generateID(),
+			TenantID:         tenantID,
+			StudyInstanceUID: studyInstanceUID,
+			RunTrigger:       trigger,
+			Phase:            entity.InferenceIngestionProcessingRunPhaseQueued,
+		},
+		Executions: expected,
+	})
+	if err != nil {
+		return types.CreateStudyProcessingRunResult{}, err
+	}
+
+	return types.CreateStudyProcessingRunResult{
+		Run: result.Run, Executions: result.Executions, Created: result.Created,
+	}, nil
 }
 
 // HandleStudyServiceProcessingCallback persists a study-service processing callback.
@@ -586,7 +677,7 @@ func (service *InferenceCommandService) executeInferenceIngestionJob(ctx context
 		}
 
 		if isLocal {
-			err = service.persistCandidateRetrievalResult(job, candidate, candidateRetrievalResult{
+			err = service.persistCandidateRetrievalResult(ctx, job, candidate, candidateRetrievalResult{
 				Outcome:            candidateRetrievalOutcomeLocal,
 				LastRetrievalState: stringPointer(string(candidateRetrievalOutcomeLocal)),
 			})
@@ -866,10 +957,10 @@ func (service *InferenceCommandService) retrieveQueuedIngestionCandidate(ctx con
 		return nil
 	}
 
-	return service.persistCandidateRetrievalResult(job, candidate, retrievalResult)
+	return service.persistCandidateRetrievalResult(ctx, job, candidate, retrievalResult)
 }
 
-func (service *InferenceCommandService) persistCandidateRetrievalResult(job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate, retrievalResult candidateRetrievalResult) error {
+func (service *InferenceCommandService) persistCandidateRetrievalResult(ctx context.Context, job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate, retrievalResult candidateRetrievalResult) error {
 	retrievalState := stringPointer(string(retrievalResult.Outcome))
 	switch retrievalResult.Outcome {
 	case candidateRetrievalOutcomeLocal, candidateRetrievalOutcomeSuccess:
@@ -884,6 +975,18 @@ func (service *InferenceCommandService) persistCandidateRetrievalResult(job enti
 			log.Println("[Ingestion retrieval worker] cannot mark ingestion candidate retrieved:", err)
 			return err
 		}
+
+		plan, err := service.CreateAutomaticStudyProcessingRun(ctx, types.CreateStudyProcessingRun{
+			TenantID:         candidate.TenantID,
+			StudyInstanceUID: candidate.StudyInstanceUID,
+		})
+		if err != nil {
+			log.Printf("[Ingestion retrieval worker] cannot create automatic processing plan candidate_id=%s study_instance_uid=%s err=%v",
+				candidate.ID, candidate.StudyInstanceUID, err)
+			return err
+		}
+		log.Printf("[Ingestion retrieval worker] processing plan ready candidate_id=%s processing_run_id=%s created=%t expected_executions=%d",
+			candidate.ID, plan.Run.ID, plan.Created, len(plan.Executions))
 
 		service.scheduleStudyServiceDispatch(job, candidate)
 		return nil

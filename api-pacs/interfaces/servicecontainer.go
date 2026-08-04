@@ -290,12 +290,19 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
 	}
 
+	processingRunRepository := &inferenceRepository.InferenceProcessingRunRepository{
+		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
+	}
+
 	service := &inferenceService.InferenceCommandService{
 		InferenceCommandRepositoryInterface: &inferenceRepository.InferenceCommandRepositoryCircuitBreaker{
 			InferenceCommandRepositoryInterface: commandRepository,
 		},
 		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
 			InferenceQueryRepositoryInterface: queryRepository,
+		},
+		InferenceProcessingRunRepositoryInterface: &inferenceRepository.InferenceProcessingRunRepositoryCircuitBreaker{
+			InferenceProcessingRunRepositoryInterface: processingRunRepository,
 		},
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		UserQueryServiceInterface:            k.userQueryServiceContainer(),
@@ -307,11 +314,11 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		DockerInferenceAPIInterface:          dockerInferenceAPI,
 		StudyServiceDispatchSemaphore:        make(chan struct{}, configuredStudyServiceDispatchConcurrency()),
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
-			StudyServiceBaseURL:      os.Getenv("STUDY_SERVICE_BASE_URL"),
-			StudyServiceIngestToken:  os.Getenv("STUDY_SERVICE_INGEST_TOKEN"),
+			StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
+			StudyServiceIngestToken:   os.Getenv("STUDY_SERVICE_INGEST_TOKEN"),
 			StudyServiceOperatorToken: os.Getenv("STUDY_SERVICE_OPERATOR_TOKEN"),
-			StudyServiceClient:       &http.Client{Timeout: 5 * time.Second},
-			OrthancAPIInterface:      orthancAPI,
+			StudyServiceClient:        &http.Client{Timeout: 5 * time.Second},
+			OrthancAPIInterface:       orthancAPI,
 		},
 	}
 

@@ -40,6 +40,17 @@ type CreateInferenceIngestionJob struct {
 	ScheduleEndTimestamp   uint64
 }
 
+type CreateStudyProcessingRun struct {
+	TenantID         string
+	StudyInstanceUID string
+}
+
+type CreateStudyProcessingRunResult struct {
+	Run        entity.InferenceIngestionProcessingRun
+	Executions []entity.InferenceIngestionProcessingJob
+	Created    bool
+}
+
 type BuildStudyServiceDispatchRequestInput struct {
 	IngestionJob       entity.InferenceIngestionJob
 	Candidate          entity.InferenceIngestionCandidate
@@ -153,11 +164,11 @@ type GetInferenceAvailableModelResult struct {
 }
 
 type GetInferenceIngestionCandidates struct {
-	TenantID           string
-	IngestionJobID     *string
-	StudyInstanceUID   *string
-	Status             *string
-	RetrievalFailures  bool
+	TenantID          string
+	IngestionJobID    *string
+	StudyInstanceUID  *string
+	Status            *string
+	RetrievalFailures bool
 }
 
 type GetModelFeedbackByUser struct {
