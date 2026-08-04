@@ -21,12 +21,14 @@ func TestInferenceIngestionProcessingJobStatusTransitionMatrix(t *testing.T) {
 	allowed := map[InferenceIngestionProcessingJobStatus]map[InferenceIngestionProcessingJobStatus]bool{
 		InferenceIngestionProcessingJobStatusPending: {
 			InferenceIngestionProcessingJobStatusQueued:    true,
+			InferenceIngestionProcessingJobStatusCompleted: true,
 			InferenceIngestionProcessingJobStatusSkipped:   true,
 			InferenceIngestionProcessingJobStatusFailed:    true,
 			InferenceIngestionProcessingJobStatusCancelled: true,
 		},
 		InferenceIngestionProcessingJobStatusQueued: {
 			InferenceIngestionProcessingJobStatusRunning:   true,
+			InferenceIngestionProcessingJobStatusCompleted: true,
 			InferenceIngestionProcessingJobStatusFailed:    true,
 			InferenceIngestionProcessingJobStatusSkipped:   true,
 			InferenceIngestionProcessingJobStatusCancelled: true,

@@ -64,14 +64,17 @@ func (status InferenceIngestionProcessingJobStatus) CanTransitionTo(next Inferen
 		return true
 	}
 
+	// Terminal callbacks are authoritative and may arrive without the optional running event.
 	switch status {
 	case InferenceIngestionProcessingJobStatusPending:
 		return next == InferenceIngestionProcessingJobStatusQueued ||
+			next == InferenceIngestionProcessingJobStatusCompleted ||
 			next == InferenceIngestionProcessingJobStatusSkipped ||
 			next == InferenceIngestionProcessingJobStatusFailed ||
 			next == InferenceIngestionProcessingJobStatusCancelled
 	case InferenceIngestionProcessingJobStatusQueued:
 		return next == InferenceIngestionProcessingJobStatusRunning ||
+			next == InferenceIngestionProcessingJobStatusCompleted ||
 			next == InferenceIngestionProcessingJobStatusFailed ||
 			next == InferenceIngestionProcessingJobStatusCancelled ||
 			next == InferenceIngestionProcessingJobStatusSkipped
