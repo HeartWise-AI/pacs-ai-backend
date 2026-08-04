@@ -49,6 +49,12 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) CreateProcessi
 	})
 }
 
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) CreateProcessingRunPlan(ctx context.Context, data types.CreateInferenceIngestionProcessingRunPlan) (types.CreateInferenceIngestionProcessingRunPlanResult, error) {
+	return withProcessingRunCircuit("create_processing_run_plan", func() (types.CreateInferenceIngestionProcessingRunPlanResult, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.CreateProcessingRunPlan(ctx, data)
+	})
+}
+
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) SelectActiveProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error) {
 	return withProcessingRunCircuit("select_active_processing_run", func() (entity.InferenceIngestionProcessingRun, error) {
 		return repository.InferenceProcessingRunRepositoryInterface.SelectActiveProcessingRun(ctx, tenantID, studyInstanceUID)

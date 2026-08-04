@@ -74,6 +74,94 @@ func (repository *InferenceProcessingRunRepository) CreateProcessingRun(ctx cont
 	return run, nil
 }
 
+// CreateProcessingRunPlan atomically freezes a run and its expected executions.
+// An automatic request reuses the active plan. A manual request conflicts until the active run terminates.
+func (repository *InferenceProcessingRunRepository) CreateProcessingRunPlan(ctx context.Context, data types.CreateInferenceIngestionProcessingRunPlan) (types.CreateInferenceIngestionProcessingRunPlanResult, error) {
+	tx, err := repository.PostgresSQLDBHandlerInterface.Begin()
+	if err != nil {
+		return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
+	}
+	defer tx.Rollback()
+
+	lockKey := data.Run.TenantID + "\x00" + data.Run.StudyInstanceUID
+	if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", lockKey); err != nil {
+		return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
+	}
+
+	var activeRun entity.InferenceIngestionProcessingRun
+	err = tx.GetContext(ctx, &activeRun, `
+		SELECT * FROM ingestion_processing_runs
+		WHERE tenant_id = $1 AND study_instance_uid = $2 AND phase <> 'TERMINAL'
+		ORDER BY run_number DESC LIMIT 1
+	`, data.Run.TenantID, data.Run.StudyInstanceUID)
+	if err == nil {
+		if data.Run.RunTrigger != entity.InferenceIngestionProcessingRunTriggerAuto {
+			return types.CreateInferenceIngestionProcessingRunPlanResult{}, errors.New(apiError.DuplicateRecord)
+		}
+
+		executions := make([]entity.InferenceIngestionProcessingJob, 0)
+		if err = tx.SelectContext(ctx, &executions, `
+			SELECT * FROM ingestion_processing_jobs
+			WHERE processing_run_id = $1
+			ORDER BY created_at ASC, id ASC
+		`, activeRun.ID); err != nil {
+			return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
+		}
+
+		if err = tx.Commit(); err != nil {
+			return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
+		}
+		return types.CreateInferenceIngestionProcessingRunPlanResult{
+			Run: activeRun, Executions: executions, Created: false,
+		}, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
+	}
+
+	var runNumber int
+	if err = tx.GetContext(ctx, &runNumber, `
+		SELECT COALESCE(MAX(run_number), 0) + 1
+		FROM ingestion_processing_runs
+		WHERE tenant_id = $1 AND study_instance_uid = $2
+	`, data.Run.TenantID, data.Run.StudyInstanceUID); err != nil {
+		return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
+	}
+
+	var run entity.InferenceIngestionProcessingRun
+	if err = tx.GetContext(ctx, &run, `
+		INSERT INTO ingestion_processing_runs (
+			id, tenant_id, study_instance_uid, run_number, run_trigger, phase
+		) VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING *
+	`, data.Run.ID, data.Run.TenantID, data.Run.StudyInstanceUID, runNumber, data.Run.RunTrigger, data.Run.Phase); err != nil {
+		return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
+	}
+
+	executions := make([]entity.InferenceIngestionProcessingJob, 0, len(data.Executions))
+	for _, expected := range data.Executions {
+		var execution entity.InferenceIngestionProcessingJob
+		if err = tx.GetContext(ctx, &execution, `
+			INSERT INTO ingestion_processing_jobs (
+				id, processing_run_id, candidate_id, tenant_id, model_name,
+				model_version, modality, status
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			RETURNING *
+		`, expected.ID, run.ID, expected.CandidateID, run.TenantID, expected.ModelName,
+			expected.ModelVersion, expected.Modality, entity.InferenceIngestionProcessingJobStatusPending); err != nil {
+			return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
+		}
+		executions = append(executions, execution)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
+	}
+	return types.CreateInferenceIngestionProcessingRunPlanResult{
+		Run: run, Executions: executions, Created: true,
+	}, nil
+}
+
 func (repository *InferenceProcessingRunRepository) selectStudyRun(ctx context.Context, tenantID, studyInstanceUID, suffix string) (entity.InferenceIngestionProcessingRun, error) {
 	var run entity.InferenceIngestionProcessingRun
 	query := `SELECT * FROM ingestion_processing_runs
