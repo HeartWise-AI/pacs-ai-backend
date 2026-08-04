@@ -116,6 +116,7 @@ type UpdateModelFeedbackRequest struct {
 
 type StudyServiceProcessingCallbackRequest struct {
 	StudyInstanceUID  string  `json:"study_instance_uid" validate:"required"`
+	ProcessingRunID   *string `json:"processing_run_id"`
 	ModelName         string  `json:"model_name" validate:"required"`
 	ModelVersion      string  `json:"model_version" validate:"required"`
 	Modality          string  `json:"modality" validate:"required"`

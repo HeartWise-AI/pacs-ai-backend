@@ -31,6 +31,15 @@ type processingRunCallbackCommandRepository struct {
 	updates []repositoryTypes.UpdateInferenceIngestionProcessingJob
 }
 
+type processingRunCallbackRunRepository struct {
+	*processingRunAggregationRepository
+	selectedExecution entity.InferenceIngestionProcessingJob
+}
+
+func (repository *processingRunCallbackRunRepository) SelectProcessingRunExecution(context.Context, string, string, string, string) (entity.InferenceIngestionProcessingJob, error) {
+	return repository.selectedExecution, nil
+}
+
 func (repository *processingRunCallbackCommandRepository) UpdateInferenceIngestionProcessingJob(data repositoryTypes.UpdateInferenceIngestionProcessingJob) error {
 	repository.updates = append(repository.updates, data)
 	return nil
@@ -45,10 +54,13 @@ func TestProcessingCallbackRecalculatesLinkedRunAfterAppliedTransition(t *testin
 		},
 	}
 	commandRepository := &processingRunCallbackCommandRepository{}
-	runRepository := &processingRunAggregationRepository{
-		runs: []entity.InferenceIngestionProcessingRun{{ID: processingRunID, TenantID: "tenant-a", Version: 2}},
-		executions: []entity.InferenceIngestionProcessingJob{
-			{ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusRunning},
+	runRepository := &processingRunCallbackRunRepository{
+		selectedExecution: queryRepository.execution,
+		processingRunAggregationRepository: &processingRunAggregationRepository{
+			runs: []entity.InferenceIngestionProcessingRun{{ID: processingRunID, TenantID: "tenant-a", Version: 2}},
+			executions: []entity.InferenceIngestionProcessingJob{
+				{ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusRunning},
+			},
 		},
 	}
 	service := &InferenceCommandService{
@@ -58,7 +70,7 @@ func TestProcessingCallbackRecalculatesLinkedRunAfterAppliedTransition(t *testin
 	}
 
 	result, err := service.HandleStudyServiceProcessingCallback(context.Background(), serviceTypes.HandleStudyServiceProcessingCallback{
-		CandidateID: "candidate-1", StudyInstanceUID: "study-1", ModelName: "model-one", Status: "running",
+		CandidateID: "candidate-1", ProcessingRunID: processingRunID, StudyInstanceUID: "study-1", ModelName: "model-one", Status: "running",
 	})
 
 	require.NoError(t, err)
@@ -79,10 +91,13 @@ func TestProcessingCallbackReplayHealsLinkedRunAggregate(t *testing.T) {
 		},
 	}
 	commandRepository := &processingRunCallbackCommandRepository{}
-	runRepository := &processingRunAggregationRepository{
-		runs: []entity.InferenceIngestionProcessingRun{{ID: processingRunID, TenantID: "tenant-a", Version: 7}},
-		executions: []entity.InferenceIngestionProcessingJob{
-			{ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusRunning},
+	runRepository := &processingRunCallbackRunRepository{
+		selectedExecution: queryRepository.execution,
+		processingRunAggregationRepository: &processingRunAggregationRepository{
+			runs: []entity.InferenceIngestionProcessingRun{{ID: processingRunID, TenantID: "tenant-a", Version: 7}},
+			executions: []entity.InferenceIngestionProcessingJob{
+				{ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusRunning},
+			},
 		},
 	}
 	service := &InferenceCommandService{
@@ -92,7 +107,7 @@ func TestProcessingCallbackReplayHealsLinkedRunAggregate(t *testing.T) {
 	}
 
 	result, err := service.HandleStudyServiceProcessingCallback(context.Background(), serviceTypes.HandleStudyServiceProcessingCallback{
-		CandidateID: "candidate-1", StudyInstanceUID: "study-1", ModelName: "model-one", Status: "running",
+		CandidateID: "candidate-1", ProcessingRunID: processingRunID, StudyInstanceUID: "study-1", ModelName: "model-one", Status: "running",
 	})
 
 	require.NoError(t, err)
@@ -124,4 +139,32 @@ func TestProcessingCallbackLeavesLegacyExecutionAggregationUnchanged(t *testing.
 	require.Equal(t, "applied", result.Outcome)
 	require.Len(t, commandRepository.updates, 1)
 	require.Empty(t, runRepository.updates)
+}
+
+func TestCorrelatedQueuedDispatchUpdatesPlannedExecution(t *testing.T) {
+	processingRunID := "run-1"
+	runRepository := &processingRunCallbackRunRepository{
+		selectedExecution: entity.InferenceIngestionProcessingJob{
+			ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusPending,
+		},
+		processingRunAggregationRepository: &processingRunAggregationRepository{},
+	}
+	commandRepository := &processingRunCallbackCommandRepository{}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+	}
+
+	service.recordQueuedProcessingDispatch(
+		context.Background(),
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		entity.InferenceIngestionJob{ModelName: "model-one", ModelVersion: "1.0"},
+		serviceTypes.DispatchStudyRequest{ProcessingRunID: &processingRunID, Modality: "US"},
+		serviceTypes.DispatchStudyResponse{JobID: "study-job-1"},
+	)
+
+	require.Len(t, commandRepository.updates, 1)
+	require.Equal(t, "execution-1", commandRepository.updates[0].ID)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusQueued, commandRepository.updates[0].Status)
+	require.Equal(t, "study-job-1", *commandRepository.updates[0].StudyServiceJobID)
 }

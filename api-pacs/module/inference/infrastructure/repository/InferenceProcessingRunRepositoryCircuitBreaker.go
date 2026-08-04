@@ -85,6 +85,12 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListProcessing
 	})
 }
 
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) SelectProcessingRunExecution(ctx context.Context, tenantID, processingRunID, candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error) {
+	return withProcessingRunCircuit("select_processing_run_execution", func() (entity.InferenceIngestionProcessingJob, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(ctx, tenantID, processingRunID, candidateID, modelName)
+	})
+}
+
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) UpdateProcessingRunAggregate(ctx context.Context, data types.UpdateInferenceIngestionProcessingRunAggregate) (entity.InferenceIngestionProcessingRun, error) {
 	return withProcessingRunCircuit("update_processing_run_aggregate", func() (entity.InferenceIngestionProcessingRun, error) {
 		return repository.InferenceProcessingRunRepositoryInterface.UpdateProcessingRunAggregate(ctx, data)

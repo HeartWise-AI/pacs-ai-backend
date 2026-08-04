@@ -67,6 +67,7 @@ type BuildStudyServiceDispatchRequestInput struct {
 	Candidate          entity.InferenceIngestionCandidate
 	OrthancStudyID     *string
 	RetrievalAttemptID *string
+	ProcessingRunID    *string
 	RequestID          *string
 }
 
@@ -76,6 +77,7 @@ type DispatchStudyRequest struct {
 	IngestionJobID     *string `json:"ingestion_job_id"`
 	CandidateID        *string `json:"candidate_id"`
 	RetrievalAttemptID *string `json:"retrieval_attempt_id"`
+	ProcessingRunID    *string `json:"processing_run_id,omitempty"`
 	StudyInstanceUID   string  `json:"study_instance_uid"`
 	OrthancStudyID     string  `json:"orthanc_study_id"`
 	Modality           string  `json:"modality"`
@@ -97,6 +99,7 @@ type StudyServiceJob struct {
 	IngestionJobID     *string    `json:"ingestion_job_id"`
 	CandidateID        *string    `json:"candidate_id"`
 	RetrievalAttemptID *string    `json:"retrieval_attempt_id"`
+	ProcessingRunID    *string    `json:"processing_run_id"`
 	Modality           string     `json:"modality"`
 	ModelName          string     `json:"model_name"`
 	ModelVersion       *string    `json:"model_version"`
@@ -116,6 +119,7 @@ type StudyServiceJobsResponse struct {
 type HandleStudyServiceProcessingCallback struct {
 	CandidateID       string
 	RequestID         string
+	ProcessingRunID   string
 	StudyInstanceUID  string
 	ModelName         string
 	ModelVersion      string

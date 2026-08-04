@@ -18,8 +18,8 @@ import (
 )
 
 var (
-	errStudyServiceBaseURLMissing  = errors.New("study-service base URL is not configured")
-	errLocalOrthancStudyNotFound   = errors.New("study not found in local Orthanc")
+	errStudyServiceBaseURLMissing   = errors.New("study-service base URL is not configured")
+	errLocalOrthancStudyNotFound    = errors.New("study not found in local Orthanc")
 	errDispatchModalityUndetermined = errors.New("cannot determine dispatch modality for ingestion candidate")
 )
 
@@ -41,10 +41,10 @@ func (err *DispatchStudyHTTPError) Error() string {
 
 // StudyServiceDispatcher builds and emits explicit study-service ingest requests.
 type StudyServiceDispatcher struct {
-	StudyServiceBaseURL      string
-	StudyServiceIngestToken  string
+	StudyServiceBaseURL       string
+	StudyServiceIngestToken   string
 	StudyServiceOperatorToken string
-	StudyServiceClient       *http.Client
+	StudyServiceClient        *http.Client
 	orthancAPITypes.OrthancAPIInterface
 }
 
@@ -87,6 +87,7 @@ func (service *StudyServiceDispatcher) BuildDispatchStudyRequest(ctx context.Con
 		IngestionJobID:     ingestionJobID,
 		CandidateID:        nonEmptyStringPointer(strings.TrimSpace(data.Candidate.ID)),
 		RetrievalAttemptID: trimmedPointer(data.RetrievalAttemptID),
+		ProcessingRunID:    trimmedPointer(data.ProcessingRunID),
 		StudyInstanceUID:   strings.TrimSpace(data.Candidate.StudyInstanceUID),
 		OrthancStudyID:     orthancStudyID,
 		Modality:           modality,

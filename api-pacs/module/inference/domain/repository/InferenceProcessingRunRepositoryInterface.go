@@ -24,6 +24,8 @@ type InferenceProcessingRunRepositoryInterface interface {
 	ListProcessingRunHistory(ctx context.Context, data types.ListInferenceIngestionProcessingRuns) ([]entity.InferenceIngestionProcessingRun, error)
 	// ListProcessingRunExecutions returns the expected model executions for a tenant-scoped run.
 	ListProcessingRunExecutions(ctx context.Context, tenantID, processingRunID string) ([]entity.InferenceIngestionProcessingJob, error)
+	// SelectProcessingRunExecution returns one exact tenant/run/candidate/model execution.
+	SelectProcessingRunExecution(ctx context.Context, tenantID, processingRunID, candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error)
 	// UpdateProcessingRunAggregate applies an optimistic versioned aggregate update.
 	UpdateProcessingRunAggregate(ctx context.Context, data types.UpdateInferenceIngestionProcessingRunAggregate) (entity.InferenceIngestionProcessingRun, error)
 }

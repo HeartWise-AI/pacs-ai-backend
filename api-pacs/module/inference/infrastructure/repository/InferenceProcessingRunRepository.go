@@ -217,6 +217,23 @@ func (repository *InferenceProcessingRunRepository) ListProcessingRunExecutions(
 	return executions, processingRunError(err)
 }
 
+// SelectProcessingRunExecution returns one exact tenant/run/candidate/model execution.
+func (repository *InferenceProcessingRunRepository) SelectProcessingRunExecution(ctx context.Context, tenantID, processingRunID, candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error) {
+	var execution entity.InferenceIngestionProcessingJob
+	err := repository.PostgresSQLDBHandlerInterface.QueryRow(`
+		SELECT jobs.* FROM ingestion_processing_jobs jobs
+		JOIN ingestion_processing_runs runs ON runs.id = jobs.processing_run_id
+		WHERE runs.tenant_id = :tenant_id
+		  AND runs.id = :processing_run_id
+		  AND jobs.candidate_id = :candidate_id
+		  AND jobs.model_name = :model_name
+	`, map[string]interface{}{
+		"tenant_id": tenantID, "processing_run_id": processingRunID,
+		"candidate_id": candidateID, "model_name": modelName,
+	}, &execution)
+	return execution, processingRunError(err)
+}
+
 // UpdateProcessingRunAggregate applies an optimistic versioned aggregate update.
 func (repository *InferenceProcessingRunRepository) UpdateProcessingRunAggregate(ctx context.Context, data types.UpdateInferenceIngestionProcessingRunAggregate) (entity.InferenceIngestionProcessingRun, error) {
 	var run entity.InferenceIngestionProcessingRun
