@@ -30,6 +30,7 @@ type guardedDispatchCommandRepository struct {
 	domainRepository.InferenceCommandRepositoryInterface
 	dispatchStateUpdates []repositoryTypes.UpdateCandidateDispatchState
 	executionUpdates     []repositoryTypes.UpdateInferenceIngestionProcessingJob
+	executionUpdateErr   error
 }
 
 func (repository *guardedDispatchCommandRepository) UpdateCandidateDispatchState(data repositoryTypes.UpdateCandidateDispatchState) error {
@@ -39,7 +40,7 @@ func (repository *guardedDispatchCommandRepository) UpdateCandidateDispatchState
 
 func (repository *guardedDispatchCommandRepository) UpdateInferenceIngestionProcessingJob(data repositoryTypes.UpdateInferenceIngestionProcessingJob) error {
 	repository.executionUpdates = append(repository.executionUpdates, data)
-	return nil
+	return repository.executionUpdateErr
 }
 
 type guardedProcessingDispatcher struct {
@@ -143,4 +144,42 @@ func TestDispatchCallsStudyServiceForCommittedPendingExecution(t *testing.T) {
 	require.Len(t, commandRepository.executionUpdates, 1)
 	require.Equal(t, entity.InferenceIngestionProcessingJobStatusQueued, commandRepository.executionUpdates[0].Status)
 	require.Equal(t, "study-job-1", *commandRepository.executionUpdates[0].StudyServiceJobID)
+}
+
+func TestAcceptedDispatchReturnsErrorWhenJobCorrelationCannotBePersisted(t *testing.T) {
+	processingRunID := "run-1"
+	runRepository := &processingRunCallbackRunRepository{
+		selectedExecution: entity.InferenceIngestionProcessingJob{
+			ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusPending,
+		},
+		processingRunAggregationRepository: &processingRunAggregationRepository{
+			runs: []entity.InferenceIngestionProcessingRun{{ID: processingRunID, TenantID: "tenant-a", Version: 1}},
+			executions: []entity.InferenceIngestionProcessingJob{{
+				ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusPending,
+			}},
+		},
+	}
+	commandRepository := &guardedDispatchCommandRepository{executionUpdateErr: errors.New("database unavailable")}
+	dispatcher := &guardedProcessingDispatcher{response: serviceTypes.DispatchStudyResponse{JobID: "study-job-1"}}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+
+	err := service.dispatchRetrievedCandidateToStudyService(
+		context.Background(),
+		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		processingRunID,
+		"request-1",
+	)
+
+	require.ErrorContains(t, err, "accepted job but Go could not persist dispatch state")
+	require.Equal(t, 1, dispatcher.dispatchCalls)
+	require.Len(t, commandRepository.dispatchStateUpdates, 1)
+	require.NotNil(t, commandRepository.dispatchStateUpdates[0].LastDispatchError)
+	require.Len(t, runRepository.updates, 1)
+	require.True(t, runRepository.updates[0].AttentionRequired)
+	require.Equal(t, entity.InferenceIngestionProcessingRunAttentionDispatchFailed, runRepository.updates[0].AttentionReasons[0].Code)
 }

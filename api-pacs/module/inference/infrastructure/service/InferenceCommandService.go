@@ -125,6 +125,7 @@ func (service *InferenceCommandService) RecalculateStudyProcessingRun(ctx contex
 		if err != nil {
 			return types.RecalculateStudyProcessingRunResult{}, err
 		}
+		run.AttentionReasons = append(run.AttentionReasons, data.AttentionReasonsToAdd...)
 		executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, tenantID, processingRunID)
 		if err != nil {
 			return types.RecalculateStudyProcessingRunResult{}, err
@@ -1177,12 +1178,22 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 		cancel()
 
 		if dispatchErr == nil {
-			outcome := "success"
-			if dispatchResponse.AlreadyPresent {
-				outcome = "already_present"
+			if recordErr := service.recordQueuedProcessingDispatch(ctx, candidate, job, dispatchRequest, dispatchResponse); recordErr != nil {
+				persistErr := fmt.Errorf("study-service accepted job but Go could not persist dispatch state: %w", recordErr)
+				ObserveStudyServiceDispatchAttempt("persistence_error", attemptDuration)
+				if candidateErr := service.persistDispatchFailure(candidate.ID, persistErr); candidateErr != nil {
+					log.Printf("[Ingestion dispatch] cannot persist accepted-job state failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
+						candidate.ID, job.ID, requestID, candidateErr,
+					)
+				}
+				if attentionErr := service.markProcessingRunDispatchAttention(ctx, candidate.TenantID, trimmedPointerValue(dispatchRequest.ProcessingRunID)); attentionErr != nil {
+					log.Printf("[Ingestion dispatch] cannot mark accepted-job persistence failure for attention candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
+						candidate.ID, job.ID, requestID, attentionErr,
+					)
+				}
+				return persistErr
 			}
 
-			ObserveStudyServiceDispatchAttempt(outcome, attemptDuration)
 			if clearErr := service.InferenceCommandRepositoryInterface.UpdateCandidateDispatchState(repositoryTypes.UpdateCandidateDispatchState{
 				ID:                candidate.ID,
 				LastDispatchError: nil,
@@ -1191,7 +1202,11 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 					candidate.ID, job.ID, requestID, clearErr,
 				)
 			}
-			service.recordQueuedProcessingDispatch(ctx, candidate, job, dispatchRequest, dispatchResponse)
+			outcome := "success"
+			if dispatchResponse.AlreadyPresent {
+				outcome = "already_present"
+			}
+			ObserveStudyServiceDispatchAttempt(outcome, attemptDuration)
 			log.Printf("[Ingestion dispatch] dispatched candidate_id=%s ingestion_job_id=%s request_id=%s study_service_job_id=%s already_present=%t attempt=%d",
 				candidate.ID,
 				job.ID,
@@ -1281,31 +1296,33 @@ func (service *InferenceCommandService) persistDispatchFailure(candidateID strin
 	})
 }
 
-func (service *InferenceCommandService) recordQueuedProcessingDispatch(ctx context.Context, candidate entity.InferenceIngestionCandidate, job entity.InferenceIngestionJob, dispatchRequest types.DispatchStudyRequest, dispatchResponse types.DispatchStudyResponse) {
+func (service *InferenceCommandService) recordQueuedProcessingDispatch(ctx context.Context, candidate entity.InferenceIngestionCandidate, job entity.InferenceIngestionJob, dispatchRequest types.DispatchStudyRequest, dispatchResponse types.DispatchStudyResponse) error {
+	studyServiceJobID := strings.TrimSpace(dispatchResponse.JobID)
+	if studyServiceJobID == "" {
+		return errors.New("study-service accepted dispatch without a job ID")
+	}
+
 	if processingRunID := trimmedPointerValue(dispatchRequest.ProcessingRunID); processingRunID != "" {
 		existing, err := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(
 			ctx, candidate.TenantID, processingRunID, candidate.ID, job.ModelName,
 		)
 		if err != nil {
-			log.Printf("[Ingestion dispatch] cannot load correlated queued execution candidate_id=%s processing_run_id=%s model_name=%s err=%v",
-				candidate.ID, processingRunID, job.ModelName, err)
-			return
+			return fmt.Errorf("cannot load correlated queued execution: %w", err)
 		}
 		if !existing.Status.CanTransitionTo(entity.InferenceIngestionProcessingJobStatusQueued) {
-			return
+			return nil
 		}
 		if err := service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionProcessingJob(repositoryTypes.UpdateInferenceIngestionProcessingJob{
 			ID:                existing.ID,
 			Status:            entity.InferenceIngestionProcessingJobStatusQueued,
 			ModelVersion:      nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
 			Modality:          nonEmptyStringPointer(strings.TrimSpace(dispatchRequest.Modality)),
-			StudyServiceJobID: nonEmptyStringPointer(strings.TrimSpace(dispatchResponse.JobID)),
+			StudyServiceJobID: &studyServiceJobID,
 			ErrorMessage:      nil,
 		}); err != nil {
-			log.Printf("[Ingestion dispatch] cannot update correlated queued execution candidate_id=%s processing_run_id=%s model_name=%s err=%v",
-				candidate.ID, processingRunID, job.ModelName, err)
+			return fmt.Errorf("cannot persist correlated queued execution: %w", err)
 		}
-		return
+		return nil
 	}
 
 	err := service.InferenceCommandRepositoryInterface.InsertInferenceIngestionProcessingJob(repositoryTypes.AddInferenceIngestionProcessingJob{
@@ -1316,25 +1333,20 @@ func (service *InferenceCommandService) recordQueuedProcessingDispatch(ctx conte
 		ModelVersion:      nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
 		Modality:          nonEmptyStringPointer(strings.TrimSpace(dispatchRequest.Modality)),
 		Status:            entity.InferenceIngestionProcessingJobStatusQueued,
-		StudyServiceJobID: nonEmptyStringPointer(strings.TrimSpace(dispatchResponse.JobID)),
+		StudyServiceJobID: &studyServiceJobID,
 	})
 	if err == nil {
-		return
+		return nil
 	}
 
 	if err.Error() == apiError.DuplicateRecord {
 		existing, queryErr := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionProcessingJobByCandidateModel(candidate.ID, job.ModelName)
 		if queryErr != nil {
-			log.Printf("[Ingestion dispatch] cannot load duplicate queued processing dispatch candidate_id=%s ingestion_job_id=%s err=%v",
-				candidate.ID,
-				job.ID,
-				queryErr,
-			)
-			return
+			return fmt.Errorf("cannot load duplicate queued processing dispatch: %w", queryErr)
 		}
 
 		if existing.Status != entity.InferenceIngestionProcessingJobStatusFailed && existing.StudyServiceJobID != nil {
-			return
+			return nil
 		}
 
 		updateErr := service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionProcessingJob(repositoryTypes.UpdateInferenceIngestionProcessingJob{
@@ -1342,24 +1354,29 @@ func (service *InferenceCommandService) recordQueuedProcessingDispatch(ctx conte
 			Status:            entity.InferenceIngestionProcessingJobStatusQueued,
 			ModelVersion:      nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
 			Modality:          nonEmptyStringPointer(strings.TrimSpace(dispatchRequest.Modality)),
-			StudyServiceJobID: nonEmptyStringPointer(strings.TrimSpace(dispatchResponse.JobID)),
+			StudyServiceJobID: &studyServiceJobID,
 			ErrorMessage:      nil,
 		})
 		if updateErr != nil {
-			log.Printf("[Ingestion dispatch] cannot update duplicate queued processing dispatch candidate_id=%s ingestion_job_id=%s err=%v",
-				candidate.ID,
-				job.ID,
-				updateErr,
-			)
+			return fmt.Errorf("cannot update duplicate queued processing dispatch: %w", updateErr)
 		}
-		return
+		return nil
 	}
 
-	log.Printf("[Ingestion dispatch] cannot persist queued processing dispatch candidate_id=%s ingestion_job_id=%s err=%v",
-		candidate.ID,
-		job.ID,
-		err,
-	)
+	return fmt.Errorf("cannot persist queued processing dispatch: %w", err)
+}
+
+func (service *InferenceCommandService) markProcessingRunDispatchAttention(ctx context.Context, tenantID, processingRunID string) error {
+	if strings.TrimSpace(processingRunID) == "" {
+		return nil
+	}
+	_, err := service.RecalculateStudyProcessingRun(ctx, types.RecalculateStudyProcessingRun{
+		TenantID: tenantID, ProcessingRunID: processingRunID,
+		AttentionReasonsToAdd: entity.InferenceIngestionProcessingRunAttentionReasons{{
+			Code: entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+		}},
+	})
+	return err
 }
 
 func (service *InferenceCommandService) recordFailedProcessingDispatch(ctx context.Context, candidate entity.InferenceIngestionCandidate, job entity.InferenceIngestionJob, dispatchRequest types.DispatchStudyRequest, dispatchErr error) {
@@ -1390,6 +1407,9 @@ func (service *InferenceCommandService) recordFailedProcessingDispatch(ctx conte
 		}
 		if _, err := service.RecalculateStudyProcessingRun(ctx, types.RecalculateStudyProcessingRun{
 			TenantID: candidate.TenantID, ProcessingRunID: processingRunID,
+			AttentionReasonsToAdd: entity.InferenceIngestionProcessingRunAttentionReasons{{
+				Code: entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+			}},
 		}); err != nil {
 			log.Printf("[Ingestion dispatch] cannot aggregate correlated failed execution candidate_id=%s processing_run_id=%s model_name=%s err=%v",
 				candidate.ID, processingRunID, job.ModelName, err)
