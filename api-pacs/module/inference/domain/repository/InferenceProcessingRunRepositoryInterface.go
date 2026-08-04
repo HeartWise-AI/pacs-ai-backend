@@ -1,0 +1,24 @@
+package repository
+
+import (
+	"context"
+
+	"api-pacs/module/inference/domain/entity"
+	"api-pacs/module/inference/infrastructure/repository/types"
+)
+
+// InferenceProcessingRunRepositoryInterface owns transactional processing-run persistence.
+type InferenceProcessingRunRepositoryInterface interface {
+	// CreateProcessingRun atomically allocates the next study-local run number and inserts the run.
+	CreateProcessingRun(ctx context.Context, data types.CreateInferenceIngestionProcessingRun) (entity.InferenceIngestionProcessingRun, error)
+	// SelectActiveProcessingRun returns the tenant-scoped non-terminal run for a study.
+	SelectActiveProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error)
+	// SelectLatestProcessingRun returns the newest tenant-scoped run for a study.
+	SelectLatestProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error)
+	// ListProcessingRunHistory returns tenant-scoped runs ordered newest first.
+	ListProcessingRunHistory(ctx context.Context, data types.ListInferenceIngestionProcessingRuns) ([]entity.InferenceIngestionProcessingRun, error)
+	// ListProcessingRunExecutions returns the expected model executions for a tenant-scoped run.
+	ListProcessingRunExecutions(ctx context.Context, tenantID, processingRunID string) ([]entity.InferenceIngestionProcessingJob, error)
+	// UpdateProcessingRunAggregate applies an optimistic versioned aggregate update.
+	UpdateProcessingRunAggregate(ctx context.Context, data types.UpdateInferenceIngestionProcessingRunAggregate) (entity.InferenceIngestionProcessingRun, error)
+}

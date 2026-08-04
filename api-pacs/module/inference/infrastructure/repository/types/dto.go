@@ -51,6 +51,37 @@ type AddInferenceIngestionProcessingJob struct {
 	CompletedAt       *time.Time
 }
 
+// CreateInferenceIngestionProcessingRun contains immutable values supplied when a run is created.
+// The repository allocates RunNumber and initializes the aggregate version transactionally.
+type CreateInferenceIngestionProcessingRun struct {
+	ID               string
+	TenantID         string                                        `db:"tenant_id"`
+	StudyInstanceUID string                                        `db:"study_instance_uid"`
+	RunTrigger       entity.InferenceIngestionProcessingRunTrigger `db:"run_trigger"`
+	Phase            entity.InferenceIngestionProcessingRunPhase   `db:"phase"`
+}
+
+// ListInferenceIngestionProcessingRuns scopes a paginated study run-history query.
+type ListInferenceIngestionProcessingRuns struct {
+	TenantID         string `db:"tenant_id"`
+	StudyInstanceUID string `db:"study_instance_uid"`
+	Limit            int    `db:"limit"`
+	Offset           int    `db:"offset"`
+}
+
+// UpdateInferenceIngestionProcessingRunAggregate applies one optimistic aggregate transition.
+type UpdateInferenceIngestionProcessingRunAggregate struct {
+	ID                string
+	TenantID          string                                                 `db:"tenant_id"`
+	ExpectedVersion   int64                                                  `db:"expected_version"`
+	Phase             entity.InferenceIngestionProcessingRunPhase            `db:"phase"`
+	Outcome           *entity.InferenceIngestionProcessingRunOutcome         `db:"outcome"`
+	AttentionRequired bool                                                   `db:"attention_required"`
+	AttentionReasons  entity.InferenceIngestionProcessingRunAttentionReasons `db:"attention_reasons"`
+	StartedAt         *time.Time                                             `db:"started_at"`
+	CompletedAt       *time.Time                                             `db:"completed_at"`
+}
+
 type UpdateInferenceIngestionProcessingJob struct {
 	ID                string
 	Status            entity.InferenceIngestionProcessingJobStatus
