@@ -51,6 +51,37 @@ type AddInferenceIngestionProcessingJob struct {
 	CompletedAt       *time.Time
 }
 
+// CreateInferenceIngestionProcessingRun contains immutable values supplied when a run is created.
+// The repository allocates RunNumber and initializes the aggregate version transactionally.
+type CreateInferenceIngestionProcessingRun struct {
+	ID               string
+	TenantID         string
+	StudyInstanceUID string
+	RunTrigger       entity.InferenceIngestionProcessingRunTrigger
+	Phase            entity.InferenceIngestionProcessingRunPhase
+}
+
+// ListInferenceIngestionProcessingRuns scopes a paginated study run-history query.
+type ListInferenceIngestionProcessingRuns struct {
+	TenantID         string
+	StudyInstanceUID string
+	Limit            int
+	Offset           int
+}
+
+// UpdateInferenceIngestionProcessingRunAggregate applies one optimistic aggregate transition.
+type UpdateInferenceIngestionProcessingRunAggregate struct {
+	ID                string
+	TenantID          string
+	ExpectedVersion   int64
+	Phase             entity.InferenceIngestionProcessingRunPhase
+	Outcome           *entity.InferenceIngestionProcessingRunOutcome
+	AttentionRequired bool
+	AttentionReasons  entity.InferenceIngestionProcessingRunAttentionReasons
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
+}
+
 type UpdateInferenceIngestionProcessingJob struct {
 	ID                string
 	Status            entity.InferenceIngestionProcessingJobStatus
