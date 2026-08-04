@@ -8,6 +8,7 @@ import (
 const (
 	InferenceIngestionProcessingRunAttentionEmptyExpectedPlan     = "EMPTY_EXPECTED_PLAN"
 	InferenceIngestionProcessingRunAttentionInvalidExecutionState = "INVALID_EXECUTION_STATE"
+	InferenceIngestionProcessingRunAttentionDispatchFailed        = "DISPATCH_FAILED"
 )
 
 // InferenceIngestionProcessingRunExecutionCounts summarizes the frozen expected-model plan.

@@ -3,13 +3,140 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"api-pacs/module/inference/domain/entity"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 )
+
+func TestStudyServiceDispatcherDispatchStudyDecodesAcceptedResponses(t *testing.T) {
+	testCases := []struct {
+		name           string
+		statusCode     int
+		alreadyPresent bool
+	}{
+		{name: "new job", statusCode: http.StatusAccepted, alreadyPresent: false},
+		{name: "idempotent duplicate", statusCode: http.StatusOK, alreadyPresent: true},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			processingRunID := "run-123"
+			var (
+				request      serviceTypes.DispatchStudyRequest
+				requestErr   error
+				responseErr  error
+				gotMethod    string
+				gotPath      string
+				gotAuth      string
+				gotRequestID string
+			)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethod = r.Method
+				gotPath = r.URL.Path
+				gotAuth = r.Header.Get("Authorization")
+				gotRequestID = r.Header.Get("X-Request-ID")
+				requestErr = json.NewDecoder(r.Body).Decode(&request)
+				w.WriteHeader(testCase.statusCode)
+				responseErr = json.NewEncoder(w).Encode(map[string]any{
+					"job_id":          "study-job-123",
+					"already_present": testCase.alreadyPresent,
+				})
+			}))
+			defer server.Close()
+
+			dispatcher := &StudyServiceDispatcher{
+				StudyServiceBaseURL:     server.URL,
+				StudyServiceIngestToken: "ingest-token",
+				StudyServiceClient:      server.Client(),
+			}
+
+			response, err := dispatcher.DispatchStudy(context.Background(), serviceTypes.DispatchStudyRequest{
+				XRequestID:       "request-123",
+				ProcessingRunID:  &processingRunID,
+				StudyInstanceUID: "study-123",
+				OrthancStudyID:   "orthanc-study-123",
+				Modality:         "US",
+				ModelName:        "model-one",
+			})
+
+			if err != nil {
+				t.Fatalf("DispatchStudy returned error: %v", err)
+			}
+			if requestErr != nil {
+				t.Fatalf("decode request: %v", requestErr)
+			}
+			if responseErr != nil {
+				t.Fatalf("encode response: %v", responseErr)
+			}
+			if gotMethod != http.MethodPost || gotPath != "/ingest/study" {
+				t.Fatalf("unexpected request: %s %s", gotMethod, gotPath)
+			}
+			if gotAuth != "Bearer ingest-token" || gotRequestID != "request-123" {
+				t.Fatalf("unexpected headers: authorization=%q request_id=%q", gotAuth, gotRequestID)
+			}
+			if request.ProcessingRunID == nil || *request.ProcessingRunID != processingRunID {
+				t.Fatalf("unexpected processing run ID: %#v", request.ProcessingRunID)
+			}
+			if response.JobID != "study-job-123" || response.AlreadyPresent != testCase.alreadyPresent {
+				t.Fatalf("unexpected dispatch response: %#v", response)
+			}
+			if response.StatusCode != testCase.statusCode {
+				t.Fatalf("unexpected status code: %d", response.StatusCode)
+			}
+		})
+	}
+}
+
+func TestStudyServiceDispatcherDispatchStudyReturnsTypedRetryableError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "7")
+		http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceClient: server.Client()}
+	_, err := dispatcher.DispatchStudy(context.Background(), serviceTypes.DispatchStudyRequest{})
+
+	var httpErr *DispatchStudyHTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("expected DispatchStudyHTTPError, got %T: %v", err, err)
+	}
+	if httpErr.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("unexpected status code: %d", httpErr.StatusCode)
+	}
+	if httpErr.RetryAfter != 7*time.Second {
+		t.Fatalf("unexpected retry delay: %s", httpErr.RetryAfter)
+	}
+	if !shouldRetryStudyServiceDispatchHTTPError(*httpErr) {
+		t.Fatal("expected service-unavailable response to be retryable")
+	}
+}
+
+func TestStudyServiceDispatcherDispatchStudyReturnsTypedPermanentError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "invalid model", http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceClient: server.Client()}
+	_, err := dispatcher.DispatchStudy(context.Background(), serviceTypes.DispatchStudyRequest{})
+
+	var httpErr *DispatchStudyHTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("expected DispatchStudyHTTPError, got %T: %v", err, err)
+	}
+	if httpErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unexpected status code: %d", httpErr.StatusCode)
+	}
+	if shouldRetryStudyServiceDispatchHTTPError(*httpErr) {
+		t.Fatal("expected bad-request response to be permanent")
+	}
+}
 
 func TestBuildDispatchStudyRequestIncludesProcessingRunID(t *testing.T) {
 	orthancStudyID := "orthanc-study-1"

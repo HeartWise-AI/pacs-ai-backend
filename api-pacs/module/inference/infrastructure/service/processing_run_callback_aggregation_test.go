@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -155,7 +156,7 @@ func TestCorrelatedQueuedDispatchUpdatesPlannedExecution(t *testing.T) {
 		InferenceProcessingRunRepositoryInterface: runRepository,
 	}
 
-	service.recordQueuedProcessingDispatch(
+	err := service.recordQueuedProcessingDispatch(
 		context.Background(),
 		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
 		entity.InferenceIngestionJob{ModelName: "model-one", ModelVersion: "1.0"},
@@ -163,8 +164,43 @@ func TestCorrelatedQueuedDispatchUpdatesPlannedExecution(t *testing.T) {
 		serviceTypes.DispatchStudyResponse{JobID: "study-job-1"},
 	)
 
+	require.NoError(t, err)
 	require.Len(t, commandRepository.updates, 1)
 	require.Equal(t, "execution-1", commandRepository.updates[0].ID)
 	require.Equal(t, entity.InferenceIngestionProcessingJobStatusQueued, commandRepository.updates[0].Status)
 	require.Equal(t, "study-job-1", *commandRepository.updates[0].StudyServiceJobID)
+}
+
+func TestCorrelatedFailedDispatchMarksRunForAttention(t *testing.T) {
+	processingRunID := "run-1"
+	runRepository := &processingRunCallbackRunRepository{
+		selectedExecution: entity.InferenceIngestionProcessingJob{
+			ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusPending,
+		},
+		processingRunAggregationRepository: &processingRunAggregationRepository{
+			runs: []entity.InferenceIngestionProcessingRun{{ID: processingRunID, TenantID: "tenant-a", Version: 3}},
+			executions: []entity.InferenceIngestionProcessingJob{{
+				ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusFailed,
+			}},
+		},
+	}
+	commandRepository := &processingRunCallbackCommandRepository{}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+	}
+
+	service.recordFailedProcessingDispatch(
+		context.Background(),
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		entity.InferenceIngestionJob{ModelName: "model-one"},
+		serviceTypes.DispatchStudyRequest{ProcessingRunID: &processingRunID},
+		errors.New("study-service rejected dispatch"),
+	)
+
+	require.Len(t, commandRepository.updates, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, commandRepository.updates[0].Status)
+	require.Len(t, runRepository.updates, 1)
+	require.True(t, runRepository.updates[0].AttentionRequired)
+	require.Equal(t, entity.InferenceIngestionProcessingRunAttentionDispatchFailed, runRepository.updates[0].AttentionReasons[0].Code)
 }
