@@ -61,6 +61,12 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) SelectActivePr
 	})
 }
 
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) SelectProcessingRun(ctx context.Context, tenantID, processingRunID string) (entity.InferenceIngestionProcessingRun, error) {
+	return withProcessingRunCircuit("select_processing_run", func() (entity.InferenceIngestionProcessingRun, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.SelectProcessingRun(ctx, tenantID, processingRunID)
+	})
+}
+
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) SelectLatestProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error) {
 	return withProcessingRunCircuit("select_latest_processing_run", func() (entity.InferenceIngestionProcessingRun, error) {
 		return repository.InferenceProcessingRunRepositoryInterface.SelectLatestProcessingRun(ctx, tenantID, studyInstanceUID)
@@ -76,6 +82,12 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListProcessing
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListProcessingRunExecutions(ctx context.Context, tenantID, processingRunID string) ([]entity.InferenceIngestionProcessingJob, error) {
 	return withProcessingRunCircuit("list_processing_run_executions", func() ([]entity.InferenceIngestionProcessingJob, error) {
 		return repository.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, tenantID, processingRunID)
+	})
+}
+
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) SelectProcessingRunExecution(ctx context.Context, tenantID, processingRunID, candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error) {
+	return withProcessingRunCircuit("select_processing_run_execution", func() (entity.InferenceIngestionProcessingJob, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(ctx, tenantID, processingRunID, candidateID, modelName)
 	})
 }
 

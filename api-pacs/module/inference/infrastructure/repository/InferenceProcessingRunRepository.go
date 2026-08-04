@@ -177,6 +177,18 @@ func (repository *InferenceProcessingRunRepository) SelectActiveProcessingRun(ct
 	return repository.selectStudyRun(ctx, tenantID, studyInstanceUID, "AND phase <> 'TERMINAL' ORDER BY run_number DESC LIMIT 1")
 }
 
+// SelectProcessingRun returns one tenant-scoped processing run by ID.
+func (repository *InferenceProcessingRunRepository) SelectProcessingRun(ctx context.Context, tenantID, processingRunID string) (entity.InferenceIngestionProcessingRun, error) {
+	var run entity.InferenceIngestionProcessingRun
+	err := repository.PostgresSQLDBHandlerInterface.QueryRow(`
+		SELECT * FROM ingestion_processing_runs
+		WHERE tenant_id = :tenant_id AND id = :processing_run_id
+	`, map[string]interface{}{
+		"tenant_id": tenantID, "processing_run_id": processingRunID,
+	}, &run)
+	return run, processingRunError(err)
+}
+
 // SelectLatestProcessingRun returns the newest tenant-scoped run for a study.
 func (repository *InferenceProcessingRunRepository) SelectLatestProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error) {
 	return repository.selectStudyRun(ctx, tenantID, studyInstanceUID, "ORDER BY run_number DESC LIMIT 1")
@@ -203,6 +215,23 @@ func (repository *InferenceProcessingRunRepository) ListProcessingRunExecutions(
 		ORDER BY jobs.created_at ASC, jobs.id ASC
 	`, map[string]interface{}{"tenant_id": tenantID, "processing_run_id": processingRunID}, &executions)
 	return executions, processingRunError(err)
+}
+
+// SelectProcessingRunExecution returns one exact tenant/run/candidate/model execution.
+func (repository *InferenceProcessingRunRepository) SelectProcessingRunExecution(ctx context.Context, tenantID, processingRunID, candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error) {
+	var execution entity.InferenceIngestionProcessingJob
+	err := repository.PostgresSQLDBHandlerInterface.QueryRow(`
+		SELECT jobs.* FROM ingestion_processing_jobs jobs
+		JOIN ingestion_processing_runs runs ON runs.id = jobs.processing_run_id
+		WHERE runs.tenant_id = :tenant_id
+		  AND runs.id = :processing_run_id
+		  AND jobs.candidate_id = :candidate_id
+		  AND jobs.model_name = :model_name
+	`, map[string]interface{}{
+		"tenant_id": tenantID, "processing_run_id": processingRunID,
+		"candidate_id": candidateID, "model_name": modelName,
+	}, &execution)
+	return execution, processingRunError(err)
 }
 
 // UpdateProcessingRunAggregate applies an optimistic versioned aggregate update.

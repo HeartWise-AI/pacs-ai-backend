@@ -6,7 +6,34 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"api-pacs/module/inference/domain/entity"
+	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 )
+
+func TestBuildDispatchStudyRequestIncludesProcessingRunID(t *testing.T) {
+	orthancStudyID := "orthanc-study-1"
+	processingRunID := " run-123 "
+	dispatcher := &StudyServiceDispatcher{}
+
+	request, err := dispatcher.BuildDispatchStudyRequest(context.Background(), serviceTypes.BuildStudyServiceDispatchRequestInput{
+		IngestionJob: entity.InferenceIngestionJob{
+			ID: "ingestion-1", TenantID: "tenant-a", ModelName: "model-one", ModelVersion: "1.0", Modalities: []string{"US"},
+		},
+		Candidate: entity.InferenceIngestionCandidate{
+			ID: "candidate-1", TenantID: "tenant-a", IngestionJobID: "ingestion-1", StudyInstanceUID: "study-1",
+		},
+		OrthancStudyID:  &orthancStudyID,
+		ProcessingRunID: &processingRunID,
+	})
+
+	if err != nil {
+		t.Fatalf("BuildDispatchStudyRequest returned error: %v", err)
+	}
+	if request.ProcessingRunID == nil || *request.ProcessingRunID != "run-123" {
+		t.Fatalf("unexpected processing run id: %#v", request.ProcessingRunID)
+	}
+}
 
 func TestStudyServiceDispatcherGetJobsByCandidate(t *testing.T) {
 	t.Helper()
@@ -33,6 +60,7 @@ func TestStudyServiceDispatcherGetJobsByCandidate(t *testing.T) {
 					"study_instance_uid": "1.2.3.4",
 					"tenant_id":          "tenant-123",
 					"candidate_id":       "candidate-123",
+					"processing_run_id":  "run-123",
 					"modality":           "echocardiogram",
 					"model_name":         "PanEcho",
 					"model_version":      "1.0.0",
@@ -48,9 +76,9 @@ func TestStudyServiceDispatcherGetJobsByCandidate(t *testing.T) {
 	defer server.Close()
 
 	dispatcher := &StudyServiceDispatcher{
-		StudyServiceBaseURL:      server.URL,
+		StudyServiceBaseURL:       server.URL,
 		StudyServiceOperatorToken: "operator-token",
-		StudyServiceClient:       server.Client(),
+		StudyServiceClient:        server.Client(),
 	}
 
 	jobs, err := dispatcher.GetJobsByCandidate(context.Background(), "tenant-123", "candidate-123")
@@ -75,5 +103,8 @@ func TestStudyServiceDispatcherGetJobsByCandidate(t *testing.T) {
 	}
 	if jobs[0].Status != "completed" {
 		t.Fatalf("unexpected job status: %q", jobs[0].Status)
+	}
+	if jobs[0].ProcessingRunID == nil || *jobs[0].ProcessingRunID != "run-123" {
+		t.Fatalf("unexpected processing run id: %#v", jobs[0].ProcessingRunID)
 	}
 }

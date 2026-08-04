@@ -269,6 +269,24 @@ func TestSelectActiveProcessingRunIsTenantScoped(t *testing.T) {
 	require.Equal(t, "run-1", run.ID)
 }
 
+func TestSelectProcessingRunByIDIsTenantScoped(t *testing.T) {
+	handler := &processingRunTestHandler{}
+	handler.queryRow = func(query string, model interface{}, target interface{}) error {
+		require.Contains(t, query, "tenant_id = :tenant_id")
+		require.Contains(t, query, "id = :processing_run_id")
+		arguments := model.(map[string]interface{})
+		require.Equal(t, "tenant-a", arguments["tenant_id"])
+		require.Equal(t, "run-1", arguments["processing_run_id"])
+		*target.(*entity.InferenceIngestionProcessingRun) = entity.InferenceIngestionProcessingRun{ID: "run-1", TenantID: "tenant-a"}
+		return nil
+	}
+
+	repository := InferenceProcessingRunRepository{PostgresSQLDBHandlerInterface: handler}
+	run, err := repository.SelectProcessingRun(context.Background(), "tenant-a", "run-1")
+	require.NoError(t, err)
+	require.Equal(t, "run-1", run.ID)
+}
+
 func TestListProcessingRunExecutionsIsTenantScoped(t *testing.T) {
 	handler := &processingRunTestHandler{}
 	handler.query = func(query string, model interface{}, target interface{}) error {
@@ -288,6 +306,31 @@ func TestListProcessingRunExecutionsIsTenantScoped(t *testing.T) {
 	executions, err := repository.ListProcessingRunExecutions(context.Background(), "tenant-a", "run-1")
 	require.NoError(t, err)
 	require.Len(t, executions, 1)
+}
+
+func TestSelectProcessingRunExecutionIsFullyScoped(t *testing.T) {
+	handler := &processingRunTestHandler{}
+	handler.queryRow = func(query string, model interface{}, target interface{}) error {
+		require.Contains(t, query, "runs.tenant_id = :tenant_id")
+		require.Contains(t, query, "runs.id = :processing_run_id")
+		require.Contains(t, query, "jobs.candidate_id = :candidate_id")
+		require.Contains(t, query, "jobs.model_name = :model_name")
+		arguments := model.(map[string]interface{})
+		require.Equal(t, "tenant-a", arguments["tenant_id"])
+		require.Equal(t, "run-1", arguments["processing_run_id"])
+		require.Equal(t, "candidate-1", arguments["candidate_id"])
+		require.Equal(t, "model-one", arguments["model_name"])
+		*target.(*entity.InferenceIngestionProcessingJob) = entity.InferenceIngestionProcessingJob{ID: "execution-1"}
+		return nil
+	}
+
+	repository := InferenceProcessingRunRepository{PostgresSQLDBHandlerInterface: handler}
+	execution, err := repository.SelectProcessingRunExecution(
+		context.Background(), "tenant-a", "run-1", "candidate-1", "model-one",
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "execution-1", execution.ID)
 }
 
 func TestListProcessingRunHistoryUsesTenantStudyAndPagination(t *testing.T) {

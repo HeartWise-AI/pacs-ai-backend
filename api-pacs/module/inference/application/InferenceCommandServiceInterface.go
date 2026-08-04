@@ -19,6 +19,8 @@ type InferenceCommandServiceInterface interface {
 	CreateAutomaticStudyProcessingRun(ctx context.Context, data types.CreateStudyProcessingRun) (types.CreateStudyProcessingRunResult, error)
 	// CreateManualStudyProcessingRun creates a new manual study-processing plan when no run is active.
 	CreateManualStudyProcessingRun(ctx context.Context, data types.CreateStudyProcessingRun) (types.CreateStudyProcessingRunResult, error)
+	// RecalculateStudyProcessingRun calculates and persists one authoritative run aggregate.
+	RecalculateStudyProcessingRun(ctx context.Context, data types.RecalculateStudyProcessingRun) (types.RecalculateStudyProcessingRunResult, error)
 	// ExecuteInferenceIngestionRunner execute inference ingestion runner
 	ExecuteInferenceIngestionRunner(ctx context.Context) error
 	// ExecuteInferenceIngestionRetrievalWorker executes queued ingestion retrievals

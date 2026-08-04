@@ -335,9 +335,15 @@ func (controller *InferenceCommandController) StudyServiceProcessingCallback(w h
 		return
 	}
 
+	processingRunID := ""
+	if request.ProcessingRunID != nil {
+		processingRunID = strings.TrimSpace(*request.ProcessingRunID)
+	}
+
 	result, err := controller.InferenceCommandServiceInterface.HandleStudyServiceProcessingCallback(context.TODO(), serviceTypes.HandleStudyServiceProcessingCallback{
 		CandidateID:       candidateID,
 		RequestID:         requestID,
+		ProcessingRunID:   processingRunID,
 		StudyInstanceUID:  request.StudyInstanceUID,
 		ModelName:         request.ModelName,
 		ModelVersion:      request.ModelVersion,

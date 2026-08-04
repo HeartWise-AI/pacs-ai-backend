@@ -21,7 +21,7 @@ type InferenceQueryRepositoryInterface interface {
 	SelectInferenceIngestionJobByID(ID string) (entity.InferenceIngestionJob, error)
 	// SelectInferenceIngestionCandidateByID gets one ingestion candidate by id
 	SelectInferenceIngestionCandidateByID(ID string) (entity.InferenceIngestionCandidate, error)
-	// SelectInferenceIngestionProcessingJobByCandidateModel gets one processing job by candidate/model
+	// SelectInferenceIngestionProcessingJobByCandidateModel gets the latest run-aware processing job by candidate/model.
 	SelectInferenceIngestionProcessingJobByCandidateModel(candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error)
 	// ListInferenceIngestionCandidates lists ingestion candidates for debugging and operations
 	ListInferenceIngestionCandidates(data types.ListInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error)
