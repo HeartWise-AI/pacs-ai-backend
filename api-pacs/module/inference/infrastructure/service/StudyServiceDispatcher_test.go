@@ -235,3 +235,69 @@ func TestStudyServiceDispatcherGetJobsByCandidate(t *testing.T) {
 		t.Fatalf("unexpected processing run id: %#v", jobs[0].ProcessingRunID)
 	}
 }
+
+func TestStudyServiceDispatcherGetJobByID(t *testing.T) {
+	var gotHeaders http.Header
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeaders = r.Header.Clone()
+		if r.URL.Path != "/jobs/python-job-123" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"job_id":             "python-job-123",
+			"study_instance_uid": "1.2.3",
+			"tenant_id":          "tenant-a",
+			"candidate_id":       "candidate-1",
+			"processing_run_id":  "run-1",
+			"model_name":         "EchoPrime",
+			"status":             "running",
+		}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	dispatcher := &StudyServiceDispatcher{
+		StudyServiceBaseURL:       server.URL,
+		StudyServiceOperatorToken: "operator-token",
+		StudyServiceClient:        server.Client(),
+	}
+	job, found, err := dispatcher.GetJobByID(context.Background(), "tenant-a", "python-job-123")
+
+	if err != nil {
+		t.Fatalf("GetJobByID returned error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected job to be found")
+	}
+	if job.JobID != "python-job-123" || job.ProcessingRunID == nil || *job.ProcessingRunID != "run-1" {
+		t.Fatalf("unexpected job: %#v", job)
+	}
+	if gotHeaders.Get("Authorization") != "Bearer operator-token" {
+		t.Fatalf("unexpected authorization header: %q", gotHeaders.Get("Authorization"))
+	}
+	if gotHeaders.Get("X-Tenant-ID") != "tenant-a" {
+		t.Fatalf("unexpected tenant header: %q", gotHeaders.Get("X-Tenant-ID"))
+	}
+	if gotHeaders.Get("X-Request-ID") == "" {
+		t.Fatal("expected X-Request-ID header")
+	}
+}
+
+func TestStudyServiceDispatcherGetJobByIDTreatsNotFoundAsExpected(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+
+	dispatcher := &StudyServiceDispatcher{
+		StudyServiceBaseURL: server.URL,
+		StudyServiceClient:  server.Client(),
+	}
+	job, found, err := dispatcher.GetJobByID(context.Background(), "tenant-a", "missing-job")
+
+	if err != nil {
+		t.Fatalf("GetJobByID returned error: %v", err)
+	}
+	if found {
+		t.Fatalf("expected missing job, got %#v", job)
+	}
+}

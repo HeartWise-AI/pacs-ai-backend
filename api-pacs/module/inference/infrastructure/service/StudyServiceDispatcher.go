@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -141,6 +142,59 @@ func (service *StudyServiceDispatcher) DispatchStudy(ctx context.Context, data s
 	response.StatusCode = resp.StatusCode
 
 	return response, nil
+}
+
+// GetJobByID fetches one exact tenant-scoped job. A missing job is an expected
+// reconciliation result rather than a transport failure.
+func (service *StudyServiceDispatcher) GetJobByID(
+	ctx context.Context,
+	tenantID, jobID string,
+) (serviceTypes.StudyServiceJob, bool, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(service.StudyServiceBaseURL), "/")
+	if baseURL == "" {
+		return serviceTypes.StudyServiceJob{}, false, errStudyServiceBaseURLMissing
+	}
+
+	requestID := generateID()
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("%s/jobs/%s", baseURL, url.PathEscape(strings.TrimSpace(jobID))),
+		nil,
+	)
+	if err != nil {
+		return serviceTypes.StudyServiceJob{}, false, err
+	}
+	req.Header.Set("X-Request-ID", requestID)
+	req.Header.Set("X-Tenant-ID", strings.TrimSpace(tenantID))
+	service.applyBearerToken(req, service.StudyServiceOperatorToken)
+
+	resp, err := service.StudyServiceClient.Do(req)
+	if err != nil {
+		return serviceTypes.StudyServiceJob{}, false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return serviceTypes.StudyServiceJob{}, false, nil
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return serviceTypes.StudyServiceJob{}, false, readErr
+		}
+		return serviceTypes.StudyServiceJob{}, false, fmt.Errorf(
+			"study-service job lookup failed with status %d: %s",
+			resp.StatusCode,
+			strings.TrimSpace(string(body)),
+		)
+	}
+
+	var job serviceTypes.StudyServiceJob
+	if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
+		return serviceTypes.StudyServiceJob{}, false, err
+	}
+	return job, true, nil
 }
 
 // GetJobsByCandidate fetches tenant-scoped operator-visible jobs for one candidate.

@@ -81,6 +81,10 @@ func (dispatcher *guardedProcessingDispatcher) DispatchStudy(context.Context, se
 	return dispatcher.response, nil
 }
 
+func (dispatcher *guardedProcessingDispatcher) GetJobByID(context.Context, string, string) (serviceTypes.StudyServiceJob, bool, error) {
+	return serviceTypes.StudyServiceJob{}, false, nil
+}
+
 func (dispatcher *guardedProcessingDispatcher) GetJobsByCandidate(context.Context, string, string) ([]serviceTypes.StudyServiceJob, error) {
 	return nil, nil
 }
