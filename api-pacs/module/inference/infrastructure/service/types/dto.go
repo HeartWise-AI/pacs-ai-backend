@@ -118,18 +118,26 @@ type StudyServiceJobsResponse struct {
 }
 
 type HandleStudyServiceProcessingCallback struct {
-	CandidateID       string
-	RequestID         string
-	ProcessingRunID   string
-	StudyInstanceUID  string
-	ModelName         string
-	ModelVersion      string
-	Modality          string
-	Status            string
-	ErrorMessage      *string
-	StudyServiceJobID string
-	StartedAt         *time.Time
-	CompletedAt       *time.Time
+	CandidateID        string
+	RequestID          string
+	EventID            string
+	Sequence           *int64
+	OccurredAt         *time.Time
+	TenantID           string
+	IngestionJobID     string
+	PayloadCandidateID string
+	RetrievalAttemptID string
+	ProcessingRunID    string
+	StudyInstanceUID   string
+	ModelName          string
+	ModelVersion       string
+	Modality           string
+	Status             string
+	SkipReason         *entity.InferenceIngestionProcessingJobSkipReason
+	ErrorMessage       *string
+	StudyServiceJobID  string
+	StartedAt          *time.Time
+	CompletedAt        *time.Time
 }
 
 type HandleStudyServiceProcessingCallbackResult struct {
