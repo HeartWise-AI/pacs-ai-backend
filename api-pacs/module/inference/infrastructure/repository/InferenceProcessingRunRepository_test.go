@@ -532,6 +532,41 @@ func TestListProcessingRunHistoryUsesTenantStudyAndPagination(t *testing.T) {
 	require.Equal(t, "run-3", runs[0].ID)
 }
 
+func TestListProcessingRunsForReconciliationSelectsOnlyStaleOrAttentionWork(t *testing.T) {
+	staleBefore := time.Now().UTC().Add(-2 * time.Minute)
+	handler := &processingRunTestHandler{}
+	handler.query = func(query string, model interface{}, target interface{}) error {
+		require.Contains(t, query, "runs.attention_required = TRUE")
+		require.Contains(t, query, "runs.phase <> 'TERMINAL'")
+		require.Contains(t, query, "jobs.status IN ('pending', 'queued', 'running')")
+		require.Contains(t, query, "jobs.updated_at <= :active_stale_before")
+		require.Contains(t, query, "ORDER BY runs.attention_required DESC, runs.updated_at ASC")
+		require.Contains(t, query, "LIMIT :limit")
+
+		arguments := model.(types.ListInferenceIngestionProcessingRunsForReconciliation)
+		require.Equal(t, staleBefore, arguments.ActiveStaleBefore)
+		require.Equal(t, 100, arguments.Limit)
+		*target.(*[]entity.InferenceIngestionProcessingRun) = append(
+			*target.(*[]entity.InferenceIngestionProcessingRun),
+			entity.InferenceIngestionProcessingRun{ID: "run-attention", AttentionRequired: true},
+			entity.InferenceIngestionProcessingRun{ID: "run-stale", Phase: entity.InferenceIngestionProcessingRunPhaseProcessing},
+		)
+		return nil
+	}
+
+	repository := InferenceProcessingRunRepository{PostgresSQLDBHandlerInterface: handler}
+	runs, err := repository.ListProcessingRunsForReconciliation(
+		context.Background(),
+		types.ListInferenceIngestionProcessingRunsForReconciliation{
+			ActiveStaleBefore: staleBefore,
+			Limit:             100,
+		},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"run-attention", "run-stale"}, []string{runs[0].ID, runs[1].ID})
+}
+
 func TestUpdateProcessingRunAggregateMapsVersionConflict(t *testing.T) {
 	queryCount := 0
 	handler := &processingRunTestHandler{}

@@ -93,6 +93,14 @@ type ListInferenceIngestionProcessingRuns struct {
 	Offset           int    `db:"offset"`
 }
 
+// ListInferenceIngestionProcessingRunsForReconciliation bounds the internal
+// cross-tenant worker query. ActiveStaleBefore is the earliest configured
+// threshold; state-specific thresholds are applied by the service.
+type ListInferenceIngestionProcessingRunsForReconciliation struct {
+	ActiveStaleBefore time.Time `db:"active_stale_before"`
+	Limit             int       `db:"limit"`
+}
+
 // UpdateInferenceIngestionProcessingRunAggregate applies one optimistic aggregate transition.
 type UpdateInferenceIngestionProcessingRunAggregate struct {
 	ID                string
