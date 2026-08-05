@@ -1034,10 +1034,38 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationW
 		default:
 		}
 
-		if err := service.reconcileProcessingRun(ctx, run, now, config); err != nil {
-			log.Printf("[Ingestion reconciliation worker] cannot reconcile processing_run_id=%s tenant_id=%s study_instance_uid=%s err=%v",
-				run.ID, run.TenantID, run.StudyInstanceUID, err,
+		attempted, reconcileErr := service.reconcileProcessingRun(ctx, run, now, config)
+		if !attempted {
+			continue
+		}
+		if reconcileErr != nil && ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		trackedRun, trackingErr := service.InferenceProcessingRunRepositoryInterface.RecordProcessingRunReconciliationAttempt(
+			ctx,
+			repositoryTypes.RecordInferenceIngestionProcessingRunReconciliationAttempt{
+				ID: run.ID, TenantID: run.TenantID, Succeeded: reconcileErr == nil, AttemptedAt: now,
+			},
+		)
+		if trackingErr != nil {
+			log.Printf("[Ingestion reconciliation worker] cannot record reconciliation attempt processing_run_id=%s tenant_id=%s err=%v",
+				run.ID, run.TenantID, trackingErr,
 			)
+			continue
+		}
+
+		if reconcileErr != nil {
+			log.Printf("[Ingestion reconciliation worker] cannot reconcile processing_run_id=%s tenant_id=%s study_instance_uid=%s err=%v",
+				run.ID, run.TenantID, run.StudyInstanceUID, reconcileErr,
+			)
+			if uint(trackedRun.ReconciliationFailureCount) >= config.FailureThreshold {
+				if attentionErr := service.addProcessingRunReconciliationFailedAttention(ctx, run); attentionErr != nil {
+					log.Printf("[Ingestion reconciliation worker] cannot mark repeated reconciliation failure processing_run_id=%s tenant_id=%s err=%v",
+						run.ID, run.TenantID, attentionErr,
+					)
+				}
+			}
 		}
 	}
 
@@ -1049,15 +1077,15 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 	run entity.InferenceIngestionProcessingRun,
 	now time.Time,
 	config processingReconciliationConfig,
-) error {
+) (bool, error) {
 	executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, run.TenantID, run.ID)
 	if err != nil {
-		return err
+		return true, err
 	}
 
 	evaluation := evaluateProcessingRunReconciliation(run, executions, now, config)
 	if !evaluation.Eligible {
-		return nil
+		return false, nil
 	}
 
 	candidateIDs := reconciliationCandidateIDs(evaluation, executions)
@@ -1065,22 +1093,22 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 	for _, candidateID := range candidateIDs {
 		candidate, candidateErr := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionCandidateByID(candidateID)
 		if candidateErr != nil {
-			return candidateErr
+			return true, candidateErr
 		}
 		if strings.TrimSpace(candidate.TenantID) != strings.TrimSpace(run.TenantID) {
-			return fmt.Errorf("reconciliation candidate tenant mismatch for run %s", run.ID)
+			return true, fmt.Errorf("reconciliation candidate tenant mismatch for run %s", run.ID)
 		}
 
 		matched, reconcileErr := service.reconcileProcessingRunCandidate(ctx, run, candidate)
 		if reconcileErr != nil {
-			return reconcileErr
+			return true, reconcileErr
 		}
 		if !matched {
 			missingStudyServiceJob = true
 		}
 	}
 
-	return service.syncProcessingRunReconciliationAttention(ctx, run, now, missingStudyServiceJob)
+	return true, service.syncProcessingRunReconciliationAttention(ctx, run, now, missingStudyServiceJob)
 }
 
 func reconciliationCandidateIDs(
@@ -1242,6 +1270,20 @@ func removeProcessingRunAttentionReasons(
 		}
 	}
 	return filtered
+}
+
+func (service *InferenceCommandService) addProcessingRunReconciliationFailedAttention(
+	ctx context.Context,
+	run entity.InferenceIngestionProcessingRun,
+) error {
+	_, err := service.RecalculateStudyProcessingRun(ctx, types.RecalculateStudyProcessingRun{
+		TenantID:        run.TenantID,
+		ProcessingRunID: run.ID,
+		AttentionReasonsToAdd: entity.InferenceIngestionProcessingRunAttentionReasons{{
+			Code: entity.InferenceIngestionProcessingRunAttentionReconciliationFailed,
+		}},
+	})
+	return err
 }
 
 func (service *InferenceCommandService) findIngestionStudiesWithCache(
