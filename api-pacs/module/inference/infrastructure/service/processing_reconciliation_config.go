@@ -68,6 +68,21 @@ func (config processingReconciliationConfig) runningStaleAfter(modelName string)
 	return config.RunningStaleAfter
 }
 
+func (config processingReconciliationConfig) earliestStaleAfter() time.Duration {
+	earliest := config.PendingStaleAfter
+	for _, threshold := range []time.Duration{config.QueuedStaleAfter, config.RunningStaleAfter} {
+		if threshold > 0 && (earliest == 0 || threshold < earliest) {
+			earliest = threshold
+		}
+	}
+	for _, threshold := range config.ModelRunningStaleAfter {
+		if threshold > 0 && (earliest == 0 || threshold < earliest) {
+			earliest = threshold
+		}
+	}
+	return earliest
+}
+
 func configuredPositiveUint(name string, fallback uint) uint {
 	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {

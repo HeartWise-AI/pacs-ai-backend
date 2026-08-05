@@ -37,6 +37,21 @@ func TestConfiguredProcessingReconciliationUsesSpecificAndModelThresholds(t *tes
 	require.Equal(t, 80*time.Minute, config.runningStaleAfter("unknown"))
 	require.NotContains(t, config.ModelRunningStaleAfter, "ignored")
 	require.Equal(t, uint(5), config.FailureThreshold)
+	require.Equal(t, 4*time.Minute, config.earliestStaleAfter())
+}
+
+func TestProcessingReconciliationConfigUsesShortestModelThresholdForCoarseQuery(t *testing.T) {
+	config := processingReconciliationConfig{
+		PendingStaleAfter: 2 * time.Minute,
+		QueuedStaleAfter:  10 * time.Minute,
+		RunningStaleAfter: 65 * time.Minute,
+		ModelRunningStaleAfter: map[string]time.Duration{
+			"FastModel": time.Minute,
+			"SlowModel": 3 * time.Hour,
+		},
+	}
+
+	require.Equal(t, time.Minute, config.earliestStaleAfter())
 }
 
 func TestConfiguredProcessingReconciliationSupportsLegacyStaleThreshold(t *testing.T) {

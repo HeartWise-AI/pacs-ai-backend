@@ -56,10 +56,9 @@ const studyServiceDispatchAttemptTimeout = 2 * time.Second
 const processingRunAggregateUpdateAttempts = 3
 
 const (
-	defaultRecentWindowMinutes        uint = 240
-	defaultStabilityMinutes           uint = 10
-	defaultMissingPollsThreshold      uint = 3
-	defaultReconciliationStaleMinutes uint = 15
+	defaultRecentWindowMinutes   uint = 240
+	defaultStabilityMinutes      uint = 10
+	defaultMissingPollsThreshold uint = 3
 )
 
 var studyServiceDispatchRetrySchedule = []time.Duration{
@@ -1002,35 +1001,41 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRetrievalWorker
 	return nil
 }
 
-// ExecuteInferenceIngestionReconciliationWorker reconciles stale processing candidates against study-service job truth.
-func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationWorker(ctx context.Context) error {
-	staleMinutes := configuredProcessingReconciliationStaleMinutes()
-	staleBefore := time.Now().Add(-time.Duration(staleMinutes) * time.Minute)
+const processingReconciliationBatchLimit = 100
 
-	candidates, err := service.InferenceQueryRepositoryInterface.ListStaleProcessingCandidates(staleBefore)
+// ExecuteInferenceIngestionReconciliationWorker reconciles active processing runs against study-service job truth.
+func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationWorker(ctx context.Context) error {
+	now := time.Now()
+	config := configuredProcessingReconciliation()
+	activeStaleBefore := now.Add(-config.earliestStaleAfter())
+
+	runs, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunsForReconciliation(
+		ctx,
+		repositoryTypes.ListInferenceIngestionProcessingRunsForReconciliation{
+			ActiveStaleBefore: activeStaleBefore,
+			Limit:             processingReconciliationBatchLimit,
+		},
+	)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("[Ingestion reconciliation worker] stale candidates count=%d stale_before=%s stale_minutes=%d",
-		len(candidates),
-		formatEasternTime(staleBefore),
-		staleMinutes,
+	log.Printf("[Ingestion reconciliation worker] candidate runs count=%d active_stale_before=%s batch_limit=%d",
+		len(runs),
+		formatEasternTime(activeStaleBefore),
+		processingReconciliationBatchLimit,
 	)
 
-	for _, candidate := range candidates {
+	for _, run := range runs {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
-		if err := service.reconcileStaleProcessingCandidate(ctx, candidate); err != nil {
-			log.Printf("[Ingestion reconciliation worker] cannot reconcile candidate_id=%s tenant_id=%s study_instance_uid=%s err=%v",
-				candidate.ID,
-				candidate.TenantID,
-				candidate.StudyInstanceUID,
-				err,
+		if err := service.reconcileProcessingRun(ctx, run, now, config); err != nil {
+			log.Printf("[Ingestion reconciliation worker] cannot reconcile processing_run_id=%s tenant_id=%s study_instance_uid=%s err=%v",
+				run.ID, run.TenantID, run.StudyInstanceUID, err,
 			)
 		}
 	}
@@ -1038,7 +1043,75 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationW
 	return nil
 }
 
-func (service *InferenceCommandService) reconcileStaleProcessingCandidate(ctx context.Context, candidate entity.InferenceIngestionCandidate) error {
+func (service *InferenceCommandService) reconcileProcessingRun(
+	ctx context.Context,
+	run entity.InferenceIngestionProcessingRun,
+	now time.Time,
+	config processingReconciliationConfig,
+) error {
+	executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, run.TenantID, run.ID)
+	if err != nil {
+		return err
+	}
+
+	evaluation := evaluateProcessingRunReconciliation(run, executions, now, config)
+	if !evaluation.Eligible {
+		return nil
+	}
+
+	candidateIDs := reconciliationCandidateIDs(evaluation, executions)
+	for _, candidateID := range candidateIDs {
+		candidate, candidateErr := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionCandidateByID(candidateID)
+		if candidateErr != nil {
+			return candidateErr
+		}
+		if strings.TrimSpace(candidate.TenantID) != strings.TrimSpace(run.TenantID) {
+			return fmt.Errorf("reconciliation candidate tenant mismatch for run %s", run.ID)
+		}
+
+		if reconcileErr := service.reconcileProcessingRunCandidate(ctx, run, candidate); reconcileErr != nil {
+			return reconcileErr
+		}
+	}
+	return nil
+}
+
+func reconciliationCandidateIDs(
+	evaluation processingRunReconciliationEvaluation,
+	executions []entity.InferenceIngestionProcessingJob,
+) []string {
+	seen := map[string]struct{}{}
+	candidateIDs := make([]string, 0)
+	appendCandidate := func(candidateID string) {
+		candidateID = strings.TrimSpace(candidateID)
+		if candidateID == "" {
+			return
+		}
+		if _, ok := seen[candidateID]; ok {
+			return
+		}
+		seen[candidateID] = struct{}{}
+		candidateIDs = append(candidateIDs, candidateID)
+	}
+
+	for _, target := range evaluation.StaleExecutions {
+		appendCandidate(target.Execution.CandidateID)
+	}
+	if len(candidateIDs) == 0 && evaluation.Eligible {
+		for _, execution := range executions {
+			if !execution.Status.IsTerminal() {
+				appendCandidate(execution.CandidateID)
+			}
+		}
+	}
+	return candidateIDs
+}
+
+func (service *InferenceCommandService) reconcileProcessingRunCandidate(
+	ctx context.Context,
+	run entity.InferenceIngestionProcessingRun,
+	candidate entity.InferenceIngestionCandidate,
+) error {
 	jobs, err := service.ProcessingDispatcherInterface.GetJobsByCandidate(ctx, candidate.TenantID, candidate.ID)
 	if err != nil {
 		return err
@@ -1055,6 +1128,9 @@ func (service *InferenceCommandService) reconcileStaleProcessingCandidate(ctx co
 
 	for _, job := range jobs {
 		if job.CandidateID != nil && strings.TrimSpace(*job.CandidateID) != "" && strings.TrimSpace(*job.CandidateID) != strings.TrimSpace(candidate.ID) {
+			continue
+		}
+		if strings.TrimSpace(trimmedPointerValue(job.ProcessingRunID)) != strings.TrimSpace(run.ID) {
 			continue
 		}
 
