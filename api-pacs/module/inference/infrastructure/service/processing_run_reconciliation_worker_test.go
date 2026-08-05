@@ -41,10 +41,18 @@ func (repository *reconciliationWorkerRunRepository) UpdateProcessingRunAggregat
 	data repositoryTypes.UpdateInferenceIngestionProcessingRunAggregate,
 ) (entity.InferenceIngestionProcessingRun, error) {
 	repository.aggregateUpdates = append(repository.aggregateUpdates, data)
-	return entity.InferenceIngestionProcessingRun{
+	updated := entity.InferenceIngestionProcessingRun{
 		ID: data.ID, TenantID: data.TenantID, Phase: data.Phase,
 		AttentionRequired: data.AttentionRequired, AttentionReasons: data.AttentionReasons,
-	}, nil
+	}
+	for index := range repository.runs {
+		if repository.runs[index].ID == data.ID {
+			updated.ReconciliationFailureCount = repository.runs[index].ReconciliationFailureCount
+			repository.runs[index] = updated
+			break
+		}
+	}
+	return updated, nil
 }
 
 func (repository *reconciliationWorkerRunRepository) RecordProcessingRunReconciliationAttempt(
@@ -102,6 +110,16 @@ type reconciliationWorkerDispatcher struct {
 	jobIDErr   error
 }
 
+type reconciliationMetricsRecorderTestDouble struct {
+	cycles []ProcessingReconciliationCycleMetrics
+}
+
+func (recorder *reconciliationMetricsRecorderTestDouble) RecordProcessingReconciliationCycle(
+	metrics ProcessingReconciliationCycleMetrics,
+) {
+	recorder.cycles = append(recorder.cycles, metrics)
+}
+
 func (dispatcher *reconciliationWorkerDispatcher) GetJobByID(
 	_ context.Context,
 	tenantID, jobID string,
@@ -153,10 +171,12 @@ func TestReconciliationWorkerQueriesOnlyPreciselyEligibleCandidates(t *testing.T
 		"candidate-stale": {ID: "candidate-stale", TenantID: "tenant-a"},
 	}}
 	dispatcher := &reconciliationWorkerDispatcher{}
+	metricsRecorder := &reconciliationMetricsRecorderTestDouble{}
 	service := &InferenceCommandService{
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		InferenceQueryRepositoryInterface:         queryRepository,
 		ProcessingDispatcherInterface:             dispatcher,
+		ProcessingReconciliationMetricsRecorder:   metricsRecorder,
 	}
 
 	err := service.ExecuteInferenceIngestionReconciliationWorker(context.Background())
@@ -179,6 +199,7 @@ func TestReconciliationWorkerQueriesOnlyPreciselyEligibleCandidates(t *testing.T
 		runRepository.aggregateUpdates[0].AttentionReasons[0].Code,
 		runRepository.aggregateUpdates[0].AttentionReasons[1].Code,
 	})
+	require.Equal(t, []ProcessingReconciliationCycleMetrics{{Checked: 2, Unresolved: 1}}, metricsRecorder.cycles)
 }
 
 func TestReconciliationWorkerMarksThirdConsecutiveFailureForAttention(t *testing.T) {
@@ -205,10 +226,12 @@ func TestReconciliationWorkerMarksThirdConsecutiveFailureForAttention(t *testing
 		"candidate-stale": {ID: "candidate-stale", TenantID: "tenant-a"},
 	}}
 	dispatcher := &reconciliationWorkerDispatcher{err: context.DeadlineExceeded}
+	metricsRecorder := &reconciliationMetricsRecorderTestDouble{}
 	service := &InferenceCommandService{
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		InferenceQueryRepositoryInterface:         queryRepository,
 		ProcessingDispatcherInterface:             dispatcher,
+		ProcessingReconciliationMetricsRecorder:   metricsRecorder,
 	}
 
 	err := service.ExecuteInferenceIngestionReconciliationWorker(context.Background())
@@ -223,6 +246,7 @@ func TestReconciliationWorkerMarksThirdConsecutiveFailureForAttention(t *testing
 			Code: entity.InferenceIngestionProcessingRunAttentionReconciliationFailed,
 		},
 	)
+	require.Equal(t, []ProcessingReconciliationCycleMetrics{{Checked: 1, Failed: 1}}, metricsRecorder.cycles)
 }
 
 func TestRemoveProcessingRunAttentionReasonsClearsOnlyManagedCodes(t *testing.T) {

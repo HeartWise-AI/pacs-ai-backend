@@ -47,7 +47,8 @@ type InferenceCommandService struct {
 	dockerInferenceTypes.DockerInferenceAPIInterface
 	inferenceApplication.ProcessingDispatcherInterface
 	inferenceApplication.WorklistNotificationPublisherInterface
-	StudyServiceDispatchSemaphore chan struct{}
+	StudyServiceDispatchSemaphore           chan struct{}
+	ProcessingReconciliationMetricsRecorder ProcessingReconciliationMetricsRecorder
 }
 
 const inferenceIngestionRetrievalTimeout = 3 * time.Minute
@@ -1006,6 +1007,13 @@ const processingReconciliationBatchLimit = 100
 
 // ExecuteInferenceIngestionReconciliationWorker reconciles active processing runs against study-service job truth.
 func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationWorker(ctx context.Context) error {
+	metrics := ProcessingReconciliationCycleMetrics{}
+	defer func() {
+		if service.ProcessingReconciliationMetricsRecorder != nil {
+			service.ProcessingReconciliationMetricsRecorder.RecordProcessingReconciliationCycle(metrics)
+		}
+	}()
+
 	now := time.Now()
 	config := configuredProcessingReconciliation()
 	activeStaleBefore := now.Add(-config.earliestStaleAfter())
@@ -1028,13 +1036,14 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationW
 	)
 
 	for _, run := range runs {
+		metrics.Checked++
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
-		attempted, reconcileErr := service.reconcileProcessingRun(ctx, run, now, config)
+		attempted, repaired, reconcileErr := service.reconcileProcessingRun(ctx, run, now, config)
 		if !attempted {
 			continue
 		}
@@ -1049,6 +1058,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationW
 			},
 		)
 		if trackingErr != nil {
+			metrics.Failed++
 			log.Printf("[Ingestion reconciliation worker] cannot record reconciliation attempt processing_run_id=%s tenant_id=%s err=%v",
 				run.ID, run.TenantID, trackingErr,
 			)
@@ -1056,6 +1066,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationW
 		}
 
 		if reconcileErr != nil {
+			metrics.Failed++
 			log.Printf("[Ingestion reconciliation worker] cannot reconcile processing_run_id=%s tenant_id=%s study_instance_uid=%s err=%v",
 				run.ID, run.TenantID, run.StudyInstanceUID, reconcileErr,
 			)
@@ -1066,6 +1077,13 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationW
 					)
 				}
 			}
+			continue
+		}
+		if repaired {
+			metrics.Repaired++
+		}
+		if trackedRun.AttentionRequired {
+			metrics.Unresolved++
 		}
 	}
 
@@ -1077,15 +1095,15 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 	run entity.InferenceIngestionProcessingRun,
 	now time.Time,
 	config processingReconciliationConfig,
-) (bool, error) {
+) (bool, bool, error) {
 	executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, run.TenantID, run.ID)
 	if err != nil {
-		return true, err
+		return true, false, err
 	}
 
 	evaluation := evaluateProcessingRunReconciliation(run, executions, now, config)
 	if !evaluation.Eligible {
-		return false, nil
+		return false, false, nil
 	}
 
 	targets := reconciliationExecutionTargets(evaluation, executions)
@@ -1103,6 +1121,7 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 		fallbackCandidateIDs = append(fallbackCandidateIDs, candidateID)
 	}
 
+	repaired := false
 	for _, target := range targets {
 		jobID := strings.TrimSpace(trimmedPointerValue(target.StudyServiceJobID))
 		if jobID == "" {
@@ -1112,17 +1131,21 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 
 		job, found, lookupErr := service.ProcessingDispatcherInterface.GetJobByID(ctx, run.TenantID, jobID)
 		if lookupErr != nil {
-			return true, lookupErr
+			return true, repaired, lookupErr
 		}
 		if !found {
 			appendFallbackCandidate(target.CandidateID)
 			continue
 		}
 		if correlationErr := validateReconciledStudyServiceJob(run, target, job); correlationErr != nil {
-			return true, correlationErr
+			return true, repaired, correlationErr
 		}
-		if _, callbackErr := service.handleReconciledStudyServiceJob(ctx, run, target.CandidateID, job); callbackErr != nil {
-			return true, callbackErr
+		callbackResult, callbackErr := service.handleReconciledStudyServiceJob(ctx, run, target.CandidateID, job)
+		if callbackErr != nil {
+			return true, repaired, callbackErr
+		}
+		if callbackResult.Outcome == "applied" {
+			repaired = true
 		}
 	}
 
@@ -1130,22 +1153,23 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 	for _, candidateID := range fallbackCandidateIDs {
 		candidate, candidateErr := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionCandidateByID(candidateID)
 		if candidateErr != nil {
-			return true, candidateErr
+			return true, repaired, candidateErr
 		}
 		if strings.TrimSpace(candidate.TenantID) != strings.TrimSpace(run.TenantID) {
-			return true, fmt.Errorf("reconciliation candidate tenant mismatch for run %s", run.ID)
+			return true, repaired, fmt.Errorf("reconciliation candidate tenant mismatch for run %s", run.ID)
 		}
 
-		matched, reconcileErr := service.reconcileProcessingRunCandidate(ctx, run, candidate)
+		matched, candidateRepaired, reconcileErr := service.reconcileProcessingRunCandidate(ctx, run, candidate)
 		if reconcileErr != nil {
-			return true, reconcileErr
+			return true, repaired, reconcileErr
 		}
+		repaired = repaired || candidateRepaired
 		if !matched {
 			missingStudyServiceJob = true
 		}
 	}
 
-	return true, service.syncProcessingRunReconciliationAttention(ctx, run, now, missingStudyServiceJob)
+	return true, repaired, service.syncProcessingRunReconciliationAttention(ctx, run, now, missingStudyServiceJob)
 }
 
 func reconciliationExecutionTargets(
@@ -1176,10 +1200,10 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 	ctx context.Context,
 	run entity.InferenceIngestionProcessingRun,
 	candidate entity.InferenceIngestionCandidate,
-) (bool, error) {
+) (bool, bool, error) {
 	jobs, err := service.ProcessingDispatcherInterface.GetJobsByCandidate(ctx, candidate.TenantID, candidate.ID)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	if len(jobs) == 0 {
@@ -1188,10 +1212,11 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 			candidate.TenantID,
 			candidate.StudyInstanceUID,
 		)
-		return false, nil
+		return false, false, nil
 	}
 
 	matched := false
+	repaired := false
 	for _, job := range jobs {
 		if job.CandidateID != nil && strings.TrimSpace(*job.CandidateID) != "" && strings.TrimSpace(*job.CandidateID) != strings.TrimSpace(candidate.ID) {
 			continue
@@ -1201,13 +1226,16 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 		}
 		matched = true
 
-		_, err := service.handleReconciledStudyServiceJob(ctx, run, candidate.ID, job)
+		result, err := service.handleReconciledStudyServiceJob(ctx, run, candidate.ID, job)
 		if err != nil {
-			return false, err
+			return false, repaired, err
+		}
+		if result.Outcome == "applied" {
+			repaired = true
 		}
 	}
 
-	return matched, nil
+	return matched, repaired, nil
 }
 
 func validateReconciledStudyServiceJob(
