@@ -276,6 +276,14 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 	modality := nonEmptyStringPointer(strings.TrimSpace(data.Modality))
 	studyServiceJobID := nonEmptyStringPointer(strings.TrimSpace(data.StudyServiceJobID))
 	errorMessage := trimmedPointer(data.ErrorMessage)
+	eventID := strings.TrimSpace(data.EventID)
+	hasEventID := eventID != ""
+	hasEventSequence := data.Sequence != nil
+	if hasEventID != hasEventSequence || (hasEventSequence && *data.Sequence <= 0) {
+		return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
+	}
+	orderedEvent := hasEventID && hasEventSequence
+	lastEventID := nonEmptyStringPointer(eventID)
 
 	processingRunID := strings.TrimSpace(data.ProcessingRunID)
 	var existing entity.InferenceIngestionProcessingJob
@@ -322,6 +330,8 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 			Status:            status,
 			StudyServiceJobID: studyServiceJobID,
 			ErrorMessage:      errorMessage,
+			LastEventID:       lastEventID,
+			LastEventSequence: data.Sequence,
 			StartedAt:         data.StartedAt,
 			CompletedAt:       data.CompletedAt,
 		})
@@ -344,6 +354,15 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
 	}
 
+	if orderedEvent {
+		if existing.LastEventID != nil && strings.TrimSpace(*existing.LastEventID) == eventID {
+			return types.HandleStudyServiceProcessingCallbackResult{Outcome: "replayed"}, nil
+		}
+		if existing.LastEventSequence != nil && *data.Sequence <= *existing.LastEventSequence {
+			return types.HandleStudyServiceProcessingCallbackResult{Outcome: "ignored"}, nil
+		}
+	}
+
 	if !existing.Status.CanTransitionTo(status) {
 		log.Printf("[Ingestion callback] ignoring out-of-order callback candidate_id=%s model_name=%s request_id=%s current_status=%s incoming_status=%s",
 			candidate.ID,
@@ -355,7 +374,7 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		return types.HandleStudyServiceProcessingCallbackResult{Outcome: "ignored"}, nil
 	}
 
-	if existing.Status == status {
+	if existing.Status == status && !orderedEvent {
 		log.Printf("[Ingestion callback] ignoring replayed callback candidate_id=%s model_name=%s request_id=%s status=%s",
 			candidate.ID,
 			modelName,
@@ -375,6 +394,8 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		Modality:          modality,
 		StudyServiceJobID: studyServiceJobID,
 		ErrorMessage:      errorMessage,
+		LastEventID:       lastEventID,
+		LastEventSequence: data.Sequence,
 		StartedAt:         data.StartedAt,
 		CompletedAt:       data.CompletedAt,
 	})

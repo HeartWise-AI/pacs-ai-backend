@@ -47,6 +47,40 @@ func (repository *processingRunCallbackCommandRepository) UpdateInferenceIngesti
 	return nil
 }
 
+func orderedProcessingCallbackFixture(
+	status entity.InferenceIngestionProcessingJobStatus,
+	lastEventID *string,
+	lastEventSequence *int64,
+) (*InferenceCommandService, *processingRunCallbackCommandRepository, *processingRunCallbackRunRepository) {
+	processingRunID := "run-1"
+	execution := entity.InferenceIngestionProcessingJob{
+		ID: "execution-1", ProcessingRunID: &processingRunID, CandidateID: "candidate-1",
+		TenantID: "tenant-a", ModelName: "model-one", Status: status,
+		LastEventID: lastEventID, LastEventSequence: lastEventSequence,
+	}
+	queryRepository := &processingRunCallbackQueryRepository{
+		candidate: entity.InferenceIngestionCandidate{
+			ID: "candidate-1", TenantID: "tenant-a", StudyInstanceUID: "study-1",
+		},
+	}
+	commandRepository := &processingRunCallbackCommandRepository{}
+	runRepository := &processingRunCallbackRunRepository{
+		selectedExecution: execution,
+		processingRunAggregationRepository: &processingRunAggregationRepository{
+			runs: []entity.InferenceIngestionProcessingRun{{
+				ID: processingRunID, TenantID: "tenant-a", StudyInstanceUID: "study-1", Version: 1,
+			}},
+			executions: []entity.InferenceIngestionProcessingJob{execution},
+		},
+	}
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface:         queryRepository,
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+	}
+	return service, commandRepository, runRepository
+}
+
 func TestProcessingCallbackRecalculatesLinkedRunAfterAppliedTransition(t *testing.T) {
 	processingRunID := "run-1"
 	queryRepository := &processingRunCallbackQueryRepository{
@@ -122,6 +156,115 @@ func TestProcessingCallbackReplayHealsLinkedRunAggregate(t *testing.T) {
 	require.Equal(t, "replayed", result.Outcome)
 	require.Empty(t, commandRepository.updates)
 	require.Len(t, runRepository.updates, 1)
+}
+
+func TestProcessingCallbackTreatsDuplicateEventIDAsMutationFreeReplay(t *testing.T) {
+	lastEventID := "event-running"
+	lastEventSequence := int64(2)
+	service, commandRepository, runRepository := orderedProcessingCallbackFixture(
+		entity.InferenceIngestionProcessingJobStatusRunning,
+		&lastEventID,
+		&lastEventSequence,
+	)
+
+	result, err := service.HandleStudyServiceProcessingCallback(context.Background(), serviceTypes.HandleStudyServiceProcessingCallback{
+		CandidateID: "candidate-1", ProcessingRunID: "run-1", StudyInstanceUID: "study-1",
+		ModelName: "model-one", Status: "running", EventID: lastEventID, Sequence: &lastEventSequence,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "replayed", result.Outcome)
+	require.Empty(t, commandRepository.updates)
+	require.Empty(t, runRepository.updates)
+}
+
+func TestProcessingCallbackIgnoresOlderEventBeforeStatusEvaluation(t *testing.T) {
+	lastEventID := "event-completed"
+	lastEventSequence := int64(3)
+	incomingSequence := int64(2)
+	service, commandRepository, runRepository := orderedProcessingCallbackFixture(
+		entity.InferenceIngestionProcessingJobStatusCompleted,
+		&lastEventID,
+		&lastEventSequence,
+	)
+
+	result, err := service.HandleStudyServiceProcessingCallback(context.Background(), serviceTypes.HandleStudyServiceProcessingCallback{
+		CandidateID: "candidate-1", ProcessingRunID: "run-1", StudyInstanceUID: "study-1",
+		ModelName: "model-one", Status: "running", EventID: "event-running", Sequence: &incomingSequence,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "ignored", result.Outcome)
+	require.Empty(t, commandRepository.updates)
+	require.Empty(t, runRepository.updates)
+}
+
+func TestProcessingCallbackIgnoresDifferentEventAtAlreadyAppliedSequence(t *testing.T) {
+	lastEventID := "event-terminal-a"
+	lastEventSequence := int64(3)
+	service, commandRepository, runRepository := orderedProcessingCallbackFixture(
+		entity.InferenceIngestionProcessingJobStatusCompleted,
+		&lastEventID,
+		&lastEventSequence,
+	)
+
+	result, err := service.HandleStudyServiceProcessingCallback(context.Background(), serviceTypes.HandleStudyServiceProcessingCallback{
+		CandidateID: "candidate-1", ProcessingRunID: "run-1", StudyInstanceUID: "study-1",
+		ModelName: "model-one", Status: "failed", EventID: "event-terminal-b", Sequence: &lastEventSequence,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "ignored", result.Outcome)
+	require.Empty(t, commandRepository.updates)
+	require.Empty(t, runRepository.updates)
+}
+
+func TestProcessingCallbackPersistsFirstOrderedEventForExistingQueuedExecution(t *testing.T) {
+	incomingSequence := int64(1)
+	service, commandRepository, _ := orderedProcessingCallbackFixture(
+		entity.InferenceIngestionProcessingJobStatusQueued,
+		nil,
+		nil,
+	)
+
+	result, err := service.HandleStudyServiceProcessingCallback(context.Background(), serviceTypes.HandleStudyServiceProcessingCallback{
+		CandidateID: "candidate-1", ProcessingRunID: "run-1", StudyInstanceUID: "study-1",
+		ModelName: "model-one", Status: "queued", EventID: "event-queued", Sequence: &incomingSequence,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "applied", result.Outcome)
+	require.Len(t, commandRepository.updates, 1)
+	require.Equal(t, "event-queued", *commandRepository.updates[0].LastEventID)
+	require.EqualValues(t, 1, *commandRepository.updates[0].LastEventSequence)
+}
+
+func TestProcessingCallbackRejectsPartialOrderingIdentity(t *testing.T) {
+	sequence := int64(1)
+	tests := []serviceTypes.HandleStudyServiceProcessingCallback{
+		{
+			CandidateID: "candidate-1", StudyInstanceUID: "study-1", ModelName: "model-one",
+			Status: "queued", EventID: "event-only",
+		},
+		{
+			CandidateID: "candidate-1", StudyInstanceUID: "study-1", ModelName: "model-one",
+			Status: "queued", Sequence: &sequence,
+		},
+	}
+
+	for _, callback := range tests {
+		service, commandRepository, runRepository := orderedProcessingCallbackFixture(
+			entity.InferenceIngestionProcessingJobStatusPending,
+			nil,
+			nil,
+		)
+
+		_, err := service.HandleStudyServiceProcessingCallback(context.Background(), callback)
+
+		require.EqualError(t, err, apiError.InvalidPayload)
+		require.Empty(t, commandRepository.updates)
+		require.Empty(t, runRepository.updates)
+	}
 }
 
 func TestProcessingCallbackLeavesLegacyExecutionAggregationUnchanged(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
-	"github.com/lib/pq"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/lib/pq"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -275,12 +275,14 @@ func (repository *InferenceCommandRepository) InsertInferenceIngestionProcessing
 		Status:            data.Status,
 		StudyServiceJobID: data.StudyServiceJobID,
 		ErrorMessage:      data.ErrorMessage,
+		LastEventID:       data.LastEventID,
+		LastEventSequence: data.LastEventSequence,
 		StartedAt:         data.StartedAt,
 		CompletedAt:       data.CompletedAt,
 	}
 
-	stmt := fmt.Sprintf("INSERT INTO %s (id, candidate_id, tenant_id, model_name, model_version, modality, status, study_service_job_id, error_message, started_at, completed_at) "+
-		"VALUES (:id, :candidate_id, :tenant_id, :model_name, :model_version, :modality, :status, :study_service_job_id, :error_message, :started_at, :completed_at)", processingJob.GetModelName())
+	stmt := fmt.Sprintf("INSERT INTO %s (id, candidate_id, tenant_id, model_name, model_version, modality, status, study_service_job_id, error_message, last_event_id, last_event_sequence, started_at, completed_at) "+
+		"VALUES (:id, :candidate_id, :tenant_id, :model_name, :model_version, :modality, :status, :study_service_job_id, :error_message, :last_event_id, :last_event_sequence, :started_at, :completed_at)", processingJob.GetModelName())
 	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, processingJob)
 	if err != nil {
 		log.Println(err)
@@ -308,6 +310,8 @@ SET status = :status,
 	modality = COALESCE(:modality, modality),
 	study_service_job_id = COALESCE(:study_service_job_id, study_service_job_id),
 	error_message = :error_message,
+	last_event_id = COALESCE(:last_event_id, last_event_id),
+	last_event_sequence = COALESCE(:last_event_sequence, last_event_sequence),
 	started_at = COALESCE(:started_at, started_at),
 	completed_at = COALESCE(:completed_at, completed_at)
 WHERE id = :id`, processingJob.GetModelName())
@@ -318,6 +322,8 @@ WHERE id = :id`, processingJob.GetModelName())
 		"modality":             nullableStringValue(data.Modality),
 		"study_service_job_id": nullableStringValue(data.StudyServiceJobID),
 		"error_message":        nullableStringValue(data.ErrorMessage),
+		"last_event_id":        nullableStringValue(data.LastEventID),
+		"last_event_sequence":  nullableInt64Value(data.LastEventSequence),
 		"started_at":           nullableTimeValue(data.StartedAt),
 		"completed_at":         nullableTimeValue(data.CompletedAt),
 	})
@@ -651,8 +657,8 @@ SET last_dispatch_error = :last_dispatch_error,
 	last_dispatch_attempted_at = COALESCE(:last_dispatch_attempted_at, CURRENT_TIMESTAMP)
 WHERE id = :id`, candidate.GetModelName())
 	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
-		"id":                        data.ID,
-		"last_dispatch_error":       nullableStringValue(data.LastDispatchError),
+		"id":                         data.ID,
+		"last_dispatch_error":        nullableStringValue(data.LastDispatchError),
 		"last_dispatch_attempted_at": nullableTimeValue(data.LastDispatchAttemptedAt),
 	})
 	if err != nil {
@@ -868,6 +874,14 @@ func nullableStringValue(value *string) interface{} {
 }
 
 func nullableIntValue(value *int) interface{} {
+	if value == nil {
+		return nil
+	}
+
+	return *value
+}
+
+func nullableInt64Value(value *int64) interface{} {
 	if value == nil {
 		return nil
 	}

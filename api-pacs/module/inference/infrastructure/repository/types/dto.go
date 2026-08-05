@@ -47,6 +47,8 @@ type AddInferenceIngestionProcessingJob struct {
 	Status            entity.InferenceIngestionProcessingJobStatus
 	StudyServiceJobID *string
 	ErrorMessage      *string
+	LastEventID       *string
+	LastEventSequence *int64
 	StartedAt         *time.Time
 	CompletedAt       *time.Time
 }
@@ -111,6 +113,8 @@ type UpdateInferenceIngestionProcessingJob struct {
 	Modality          *string
 	StudyServiceJobID *string
 	ErrorMessage      *string
+	LastEventID       *string
+	LastEventSequence *int64
 	StartedAt         *time.Time
 	CompletedAt       *time.Time
 }
