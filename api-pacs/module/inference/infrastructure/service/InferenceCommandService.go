@@ -1088,9 +1088,46 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 		return false, nil
 	}
 
-	candidateIDs := reconciliationCandidateIDs(evaluation, executions)
+	targets := reconciliationExecutionTargets(evaluation, executions)
+	fallbackCandidateIDs := make([]string, 0)
+	fallbackCandidateSet := map[string]struct{}{}
+	appendFallbackCandidate := func(candidateID string) {
+		candidateID = strings.TrimSpace(candidateID)
+		if candidateID == "" {
+			return
+		}
+		if _, exists := fallbackCandidateSet[candidateID]; exists {
+			return
+		}
+		fallbackCandidateSet[candidateID] = struct{}{}
+		fallbackCandidateIDs = append(fallbackCandidateIDs, candidateID)
+	}
+
+	for _, target := range targets {
+		jobID := strings.TrimSpace(trimmedPointerValue(target.StudyServiceJobID))
+		if jobID == "" {
+			appendFallbackCandidate(target.CandidateID)
+			continue
+		}
+
+		job, found, lookupErr := service.ProcessingDispatcherInterface.GetJobByID(ctx, run.TenantID, jobID)
+		if lookupErr != nil {
+			return true, lookupErr
+		}
+		if !found {
+			appendFallbackCandidate(target.CandidateID)
+			continue
+		}
+		if correlationErr := validateReconciledStudyServiceJob(run, target, job); correlationErr != nil {
+			return true, correlationErr
+		}
+		if _, callbackErr := service.handleReconciledStudyServiceJob(ctx, run, target.CandidateID, job); callbackErr != nil {
+			return true, callbackErr
+		}
+	}
+
 	missingStudyServiceJob := false
-	for _, candidateID := range candidateIDs {
+	for _, candidateID := range fallbackCandidateIDs {
 		candidate, candidateErr := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionCandidateByID(candidateID)
 		if candidateErr != nil {
 			return true, candidateErr
@@ -1111,35 +1148,28 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 	return true, service.syncProcessingRunReconciliationAttention(ctx, run, now, missingStudyServiceJob)
 }
 
-func reconciliationCandidateIDs(
+func reconciliationExecutionTargets(
 	evaluation processingRunReconciliationEvaluation,
 	executions []entity.InferenceIngestionProcessingJob,
-) []string {
-	seen := map[string]struct{}{}
-	candidateIDs := make([]string, 0)
-	appendCandidate := func(candidateID string) {
-		candidateID = strings.TrimSpace(candidateID)
-		if candidateID == "" {
-			return
+) []entity.InferenceIngestionProcessingJob {
+	if len(evaluation.StaleExecutions) > 0 {
+		targets := make([]entity.InferenceIngestionProcessingJob, 0, len(evaluation.StaleExecutions))
+		for _, target := range evaluation.StaleExecutions {
+			targets = append(targets, target.Execution)
 		}
-		if _, ok := seen[candidateID]; ok {
-			return
-		}
-		seen[candidateID] = struct{}{}
-		candidateIDs = append(candidateIDs, candidateID)
+		return targets
 	}
 
-	for _, target := range evaluation.StaleExecutions {
-		appendCandidate(target.Execution.CandidateID)
+	if !evaluation.Eligible {
+		return nil
 	}
-	if len(candidateIDs) == 0 && evaluation.Eligible {
-		for _, execution := range executions {
-			if !execution.Status.IsTerminal() {
-				appendCandidate(execution.CandidateID)
-			}
+	targets := make([]entity.InferenceIngestionProcessingJob, 0, len(executions))
+	for _, execution := range executions {
+		if !execution.Status.IsTerminal() {
+			targets = append(targets, execution)
 		}
 	}
-	return candidateIDs
+	return targets
 }
 
 func (service *InferenceCommandService) reconcileProcessingRunCandidate(
@@ -1171,35 +1201,69 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 		}
 		matched = true
 
-		result, err := service.HandleStudyServiceProcessingCallback(ctx, types.HandleStudyServiceProcessingCallback{
-			CandidateID:       candidate.ID,
-			RequestID:         fmt.Sprintf("reconcile:%s:%s", strings.TrimSpace(candidate.ID), strings.TrimSpace(job.JobID)),
-			ProcessingRunID:   trimmedPointerValue(job.ProcessingRunID),
-			StudyInstanceUID:  strings.TrimSpace(job.StudyInstanceUID),
-			ModelName:         strings.TrimSpace(job.ModelName),
-			ModelVersion:      trimmedPointerValue(job.ModelVersion),
-			Modality:          strings.TrimSpace(job.Modality),
-			Status:            strings.TrimSpace(job.Status),
-			ErrorMessage:      job.ErrorMessage,
-			StudyServiceJobID: strings.TrimSpace(job.JobID),
-			StartedAt:         job.StartedAt,
-			CompletedAt:       job.CompletedAt,
-		})
+		_, err := service.handleReconciledStudyServiceJob(ctx, run, candidate.ID, job)
 		if err != nil {
 			return false, err
 		}
-
-		log.Printf("[Ingestion reconciliation worker] reconciled candidate_id=%s tenant_id=%s study_service_job_id=%s model_name=%s outcome=%s status=%s",
-			candidate.ID,
-			candidate.TenantID,
-			job.JobID,
-			job.ModelName,
-			result.Outcome,
-			job.Status,
-		)
 	}
 
 	return matched, nil
+}
+
+func validateReconciledStudyServiceJob(
+	run entity.InferenceIngestionProcessingRun,
+	execution entity.InferenceIngestionProcessingJob,
+	job types.StudyServiceJob,
+) error {
+	if strings.TrimSpace(trimmedPointerValue(job.ProcessingRunID)) != strings.TrimSpace(run.ID) {
+		return fmt.Errorf("reconciliation job %s processing-run mismatch", strings.TrimSpace(job.JobID))
+	}
+	if candidateID := strings.TrimSpace(trimmedPointerValue(job.CandidateID)); candidateID != "" && candidateID != strings.TrimSpace(execution.CandidateID) {
+		return fmt.Errorf("reconciliation job %s candidate mismatch", strings.TrimSpace(job.JobID))
+	}
+	if strings.TrimSpace(job.ModelName) != strings.TrimSpace(execution.ModelName) {
+		return fmt.Errorf("reconciliation job %s model mismatch", strings.TrimSpace(job.JobID))
+	}
+	if tenantID := strings.TrimSpace(trimmedPointerValue(job.TenantID)); tenantID != "" && tenantID != strings.TrimSpace(run.TenantID) {
+		return fmt.Errorf("reconciliation job %s tenant mismatch", strings.TrimSpace(job.JobID))
+	}
+	return nil
+}
+
+func (service *InferenceCommandService) handleReconciledStudyServiceJob(
+	ctx context.Context,
+	run entity.InferenceIngestionProcessingRun,
+	candidateID string,
+	job types.StudyServiceJob,
+) (types.HandleStudyServiceProcessingCallbackResult, error) {
+	result, err := service.HandleStudyServiceProcessingCallback(ctx, types.HandleStudyServiceProcessingCallback{
+		CandidateID:       strings.TrimSpace(candidateID),
+		RequestID:         fmt.Sprintf("reconcile:%s:%s", strings.TrimSpace(candidateID), strings.TrimSpace(job.JobID)),
+		ProcessingRunID:   trimmedPointerValue(job.ProcessingRunID),
+		StudyInstanceUID:  strings.TrimSpace(job.StudyInstanceUID),
+		ModelName:         strings.TrimSpace(job.ModelName),
+		ModelVersion:      trimmedPointerValue(job.ModelVersion),
+		Modality:          strings.TrimSpace(job.Modality),
+		Status:            strings.TrimSpace(job.Status),
+		ErrorMessage:      job.ErrorMessage,
+		StudyServiceJobID: strings.TrimSpace(job.JobID),
+		StartedAt:         job.StartedAt,
+		CompletedAt:       job.CompletedAt,
+	})
+	if err != nil {
+		return types.HandleStudyServiceProcessingCallbackResult{}, err
+	}
+
+	log.Printf("[Ingestion reconciliation worker] reconciled processing_run_id=%s candidate_id=%s tenant_id=%s study_service_job_id=%s model_name=%s outcome=%s status=%s",
+		run.ID,
+		candidateID,
+		run.TenantID,
+		job.JobID,
+		job.ModelName,
+		result.Outcome,
+		job.Status,
+	)
+	return result, nil
 }
 
 var reconciliationManagedAttentionReasonCodes = []string{

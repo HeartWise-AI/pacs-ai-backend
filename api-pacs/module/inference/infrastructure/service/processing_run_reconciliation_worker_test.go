@@ -96,8 +96,18 @@ func (repository *reconciliationWorkerQueryRepository) SelectInferenceIngestionC
 
 type reconciliationWorkerDispatcher struct {
 	inferenceApplication.ProcessingDispatcherInterface
-	calls []string
-	err   error
+	calls      []string
+	jobIDCalls []string
+	err        error
+	jobIDErr   error
+}
+
+func (dispatcher *reconciliationWorkerDispatcher) GetJobByID(
+	_ context.Context,
+	tenantID, jobID string,
+) (serviceTypes.StudyServiceJob, bool, error) {
+	dispatcher.jobIDCalls = append(dispatcher.jobIDCalls, tenantID+":"+jobID)
+	return serviceTypes.StudyServiceJob{}, false, dispatcher.jobIDErr
 }
 
 func (dispatcher *reconciliationWorkerDispatcher) GetJobsByCandidate(
@@ -115,6 +125,7 @@ func TestReconciliationWorkerQueriesOnlyPreciselyEligibleCandidates(t *testing.T
 	t.Setenv(reconciliationModelRunningStaleMinutesEnv, "")
 	t.Setenv("INFERENCE_INGESTION_RECONCILIATION_STALE_MINUTES", "")
 	now := time.Now()
+	studyServiceJobID := "python-job-missing"
 	runRepository := &reconciliationWorkerRunRepository{
 		runs: []entity.InferenceIngestionProcessingRun{
 			{
@@ -130,7 +141,7 @@ func TestReconciliationWorkerQueriesOnlyPreciselyEligibleCandidates(t *testing.T
 		executions: map[string][]entity.InferenceIngestionProcessingJob{
 			"run-stale": {{
 				ID: "execution-stale", CandidateID: "candidate-stale", Status: entity.InferenceIngestionProcessingJobStatusPending,
-				UpdatedAt: now.Add(-3 * time.Minute),
+				StudyServiceJobID: &studyServiceJobID, UpdatedAt: now.Add(-3 * time.Minute),
 			}},
 			"run-fresh": {{
 				ID: "execution-fresh", CandidateID: "candidate-fresh", Status: entity.InferenceIngestionProcessingJobStatusPending,
@@ -154,6 +165,7 @@ func TestReconciliationWorkerQueriesOnlyPreciselyEligibleCandidates(t *testing.T
 	require.Equal(t, processingReconciliationBatchLimit, runRepository.listInput.Limit)
 	require.Equal(t, 4, runRepository.executionListCalls)
 	require.Equal(t, []string{"candidate-stale"}, queryRepository.calls)
+	require.Equal(t, []string{"tenant-a:python-job-missing"}, dispatcher.jobIDCalls)
 	require.Equal(t, []string{"tenant-a:candidate-stale"}, dispatcher.calls)
 	require.Len(t, runRepository.attempts, 1)
 	require.True(t, runRepository.attempts[0].Succeeded)
@@ -213,19 +225,6 @@ func TestReconciliationWorkerMarksThirdConsecutiveFailureForAttention(t *testing
 	)
 }
 
-func TestReconciliationCandidateIDsDeduplicatesCandidates(t *testing.T) {
-	evaluation := processingRunReconciliationEvaluation{
-		Eligible: true,
-		StaleExecutions: []processingExecutionReconciliationTarget{
-			{Execution: entity.InferenceIngestionProcessingJob{CandidateID: "candidate-1"}},
-			{Execution: entity.InferenceIngestionProcessingJob{CandidateID: "candidate-1"}},
-			{Execution: entity.InferenceIngestionProcessingJob{CandidateID: "candidate-2"}},
-		},
-	}
-
-	require.Equal(t, []string{"candidate-1", "candidate-2"}, reconciliationCandidateIDs(evaluation, nil))
-}
-
 func TestRemoveProcessingRunAttentionReasonsClearsOnlyManagedCodes(t *testing.T) {
 	reasons := entity.InferenceIngestionProcessingRunAttentionReasons{
 		{Code: entity.InferenceIngestionProcessingRunAttentionPendingStale},
@@ -238,4 +237,28 @@ func TestRemoveProcessingRunAttentionReasonsClearsOnlyManagedCodes(t *testing.T)
 	require.Equal(t, entity.InferenceIngestionProcessingRunAttentionReasons{
 		{Code: "MANUAL_REVIEW_REQUIRED"},
 	}, filtered)
+}
+
+func TestValidateReconciledStudyServiceJobRejectsCorrelationMismatch(t *testing.T) {
+	runID := "run-1"
+	candidateID := "candidate-1"
+	tenantID := "tenant-a"
+	run := entity.InferenceIngestionProcessingRun{ID: runID, TenantID: tenantID}
+	execution := entity.InferenceIngestionProcessingJob{CandidateID: candidateID, ModelName: "EchoPrime"}
+
+	tests := []struct {
+		name string
+		job  serviceTypes.StudyServiceJob
+	}{
+		{name: "run", job: serviceTypes.StudyServiceJob{JobID: "job-1", ProcessingRunID: stringPointer("other-run"), CandidateID: &candidateID, TenantID: &tenantID, ModelName: "EchoPrime"}},
+		{name: "candidate", job: serviceTypes.StudyServiceJob{JobID: "job-1", ProcessingRunID: &runID, CandidateID: stringPointer("other-candidate"), TenantID: &tenantID, ModelName: "EchoPrime"}},
+		{name: "tenant", job: serviceTypes.StudyServiceJob{JobID: "job-1", ProcessingRunID: &runID, CandidateID: &candidateID, TenantID: stringPointer("other-tenant"), ModelName: "EchoPrime"}},
+		{name: "model", job: serviceTypes.StudyServiceJob{JobID: "job-1", ProcessingRunID: &runID, CandidateID: &candidateID, TenantID: &tenantID, ModelName: "OtherModel"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Error(t, validateReconciledStudyServiceJob(run, execution, test.job))
+		})
+	}
 }
