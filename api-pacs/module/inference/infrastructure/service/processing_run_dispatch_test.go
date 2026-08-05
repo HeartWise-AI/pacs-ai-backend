@@ -93,6 +93,10 @@ func (dispatcher *guardedProcessingDispatcher) GetJobsByCandidate(context.Contex
 	return nil, nil
 }
 
+func (dispatcher *guardedProcessingDispatcher) GetCallbackDeadLetters(context.Context, string) ([]serviceTypes.StudyServiceCallbackDeadLetter, error) {
+	return nil, nil
+}
+
 func TestDispatchRejectsExecutionOutsideCommittedRunBeforeCallingStudyService(t *testing.T) {
 	runRepository := &committedExecutionRepository{err: errors.New(apiError.MissingRecord)}
 	commandRepository := &guardedDispatchCommandRepository{}

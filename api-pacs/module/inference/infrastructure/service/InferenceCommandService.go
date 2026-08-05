@@ -1112,18 +1112,13 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 
 	targets := reconciliationExecutionTargets(evaluation, executions)
 	unresolvedTargets := make(map[string]entity.InferenceIngestionProcessingJob, len(targets))
-	fallbackCandidateIDs := make([]string, 0)
-	fallbackCandidateSet := map[string]struct{}{}
-	appendFallbackCandidate := func(candidateID string) {
-		candidateID = strings.TrimSpace(candidateID)
+	fallbackTargetsByCandidate := map[string][]entity.InferenceIngestionProcessingJob{}
+	appendFallbackTarget := func(target entity.InferenceIngestionProcessingJob) {
+		candidateID := strings.TrimSpace(target.CandidateID)
 		if candidateID == "" {
 			return
 		}
-		if _, exists := fallbackCandidateSet[candidateID]; exists {
-			return
-		}
-		fallbackCandidateSet[candidateID] = struct{}{}
-		fallbackCandidateIDs = append(fallbackCandidateIDs, candidateID)
+		fallbackTargetsByCandidate[candidateID] = append(fallbackTargetsByCandidate[candidateID], target)
 	}
 
 	repaired := false
@@ -1143,7 +1138,7 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 			continue
 		}
 		if correlationErr := validateReconciledStudyServiceJob(run, target, job); correlationErr != nil {
-			return true, repaired, correlationErr
+			return true, repaired, service.markProcessingRunStateConflict(ctx, run, correlationErr)
 		}
 		callbackResult, callbackErr := service.handleReconciledStudyServiceJob(ctx, run, target.CandidateID, job)
 		if callbackErr != nil {
@@ -1166,7 +1161,7 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 				continue
 			}
 			if correlationErr := validateReconciledStudyServiceJob(run, target, job); correlationErr != nil {
-				return true, repaired, correlationErr
+				return true, repaired, service.markProcessingRunStateConflict(ctx, run, correlationErr)
 			}
 			callbackResult, callbackErr := service.handleReconciledStudyServiceJob(ctx, run, target.CandidateID, job)
 			if callbackErr != nil {
@@ -1180,11 +1175,11 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 	}
 
 	for _, target := range unresolvedTargets {
-		appendFallbackCandidate(target.CandidateID)
+		appendFallbackTarget(target)
 	}
 
-	missingStudyServiceJob := false
-	for _, candidateID := range fallbackCandidateIDs {
+	findings := processingReconciliationAttentionFindings{}
+	for candidateID, candidateTargets := range fallbackTargetsByCandidate {
 		candidate, candidateErr := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionCandidateByID(candidateID)
 		if candidateErr != nil {
 			return true, repaired, candidateErr
@@ -1193,17 +1188,34 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 			return true, repaired, fmt.Errorf("reconciliation candidate tenant mismatch for run %s", run.ID)
 		}
 
-		matched, candidateRepaired, reconcileErr := service.reconcileProcessingRunCandidate(ctx, run, candidate)
+		matched, candidateRepaired, reconcileErr := service.reconcileProcessingRunCandidate(ctx, run, candidate, candidateTargets)
 		if reconcileErr != nil {
+			var conflictErr *processingReconciliationStateConflictError
+			if errors.As(reconcileErr, &conflictErr) {
+				return true, repaired, service.markProcessingRunStateConflict(ctx, run, conflictErr.Unwrap())
+			}
 			return true, repaired, reconcileErr
 		}
 		repaired = repaired || candidateRepaired
-		if !matched {
-			missingStudyServiceJob = true
+		for _, target := range candidateTargets {
+			if _, found := matched[reconciliationExecutionKey(target.CandidateID, target.ModelName)]; found {
+				continue
+			}
+			if strings.TrimSpace(trimmedPointerValue(target.StudyServiceJobID)) == "" {
+				findings.ExpectedJobMissing = true
+			} else {
+				findings.StudyServiceJobMissing = true
+			}
 		}
 	}
 
-	return true, repaired, service.syncProcessingRunReconciliationAttention(ctx, run, now, missingStudyServiceJob)
+	deadLetters, deadLetterErr := service.ProcessingDispatcherInterface.GetCallbackDeadLetters(ctx, run.TenantID)
+	if deadLetterErr != nil {
+		return true, repaired, deadLetterErr
+	}
+	findings.CallbackDeadLettered = processingRunHasCallbackDeadLetter(run, targets, deadLetters)
+
+	return true, repaired, service.syncProcessingRunReconciliationAttention(ctx, run, now, findings)
 }
 
 func reconciliationExecutionKey(candidateID, modelName string) string {
@@ -1238,11 +1250,17 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 	ctx context.Context,
 	run entity.InferenceIngestionProcessingRun,
 	candidate entity.InferenceIngestionCandidate,
-) (bool, bool, error) {
+	targets []entity.InferenceIngestionProcessingJob,
+) (map[string]struct{}, bool, error) {
 	jobs, err := service.ProcessingDispatcherInterface.GetJobsByCandidate(ctx, candidate.TenantID, candidate.ID)
 	if err != nil {
-		return false, false, err
+		return nil, false, err
 	}
+	targetByKey := make(map[string]entity.InferenceIngestionProcessingJob, len(targets))
+	for _, target := range targets {
+		targetByKey[reconciliationExecutionKey(target.CandidateID, target.ModelName)] = target
+	}
+	matched := map[string]struct{}{}
 
 	if len(jobs) == 0 {
 		log.Printf("[Ingestion reconciliation worker] no study-service jobs returned candidate_id=%s tenant_id=%s study_instance_uid=%s",
@@ -1250,10 +1268,9 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 			candidate.TenantID,
 			candidate.StudyInstanceUID,
 		)
-		return false, false, nil
+		return matched, false, nil
 	}
 
-	matched := false
 	repaired := false
 	for _, job := range jobs {
 		if job.CandidateID != nil && strings.TrimSpace(*job.CandidateID) != "" && strings.TrimSpace(*job.CandidateID) != strings.TrimSpace(candidate.ID) {
@@ -1262,11 +1279,19 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 		if strings.TrimSpace(trimmedPointerValue(job.ProcessingRunID)) != strings.TrimSpace(run.ID) {
 			continue
 		}
-		matched = true
+		key := reconciliationExecutionKey(candidate.ID, job.ModelName)
+		target, expected := targetByKey[key]
+		if !expected {
+			continue
+		}
+		if correlationErr := validateReconciledStudyServiceJob(run, target, job); correlationErr != nil {
+			return matched, repaired, &processingReconciliationStateConflictError{cause: correlationErr}
+		}
+		matched[key] = struct{}{}
 
 		result, err := service.handleReconciledStudyServiceJob(ctx, run, candidate.ID, job)
 		if err != nil {
-			return false, repaired, err
+			return matched, repaired, err
 		}
 		if result.Outcome == "applied" {
 			repaired = true
@@ -1274,6 +1299,60 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 	}
 
 	return matched, repaired, nil
+}
+
+type processingReconciliationAttentionFindings struct {
+	ExpectedJobMissing     bool
+	StudyServiceJobMissing bool
+	CallbackDeadLettered   bool
+}
+
+type processingReconciliationStateConflictError struct {
+	cause error
+}
+
+func (err *processingReconciliationStateConflictError) Error() string {
+	return err.cause.Error()
+}
+
+func (err *processingReconciliationStateConflictError) Unwrap() error {
+	return err.cause
+}
+
+func processingRunHasCallbackDeadLetter(
+	run entity.InferenceIngestionProcessingRun,
+	targets []entity.InferenceIngestionProcessingJob,
+	deadLetters []types.StudyServiceCallbackDeadLetter,
+) bool {
+	jobIDs := make(map[string]struct{}, len(targets))
+	targetKeys := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		if jobID := strings.TrimSpace(trimmedPointerValue(target.StudyServiceJobID)); jobID != "" {
+			jobIDs[jobID] = struct{}{}
+		}
+		targetKeys[reconciliationExecutionKey(target.CandidateID, target.ModelName)] = struct{}{}
+	}
+
+	for _, deadLetter := range deadLetters {
+		payloadRunID := strings.TrimSpace(deadLetter.Payload.ProcessingRunID)
+		if payloadRunID != "" {
+			if payloadRunID == strings.TrimSpace(run.ID) {
+				return true
+			}
+			continue
+		}
+		if _, found := jobIDs[strings.TrimSpace(deadLetter.JobID)]; found {
+			return true
+		}
+		candidateID := strings.TrimSpace(deadLetter.Payload.CandidateID)
+		if candidateID == "" {
+			candidateID = strings.TrimSpace(trimmedPointerValue(deadLetter.CandidateID))
+		}
+		if _, found := targetKeys[reconciliationExecutionKey(candidateID, deadLetter.Payload.ModelName)]; found {
+			return true
+		}
+	}
+	return false
 }
 
 func validateReconciledStudyServiceJob(
@@ -1348,7 +1427,7 @@ func (service *InferenceCommandService) syncProcessingRunReconciliationAttention
 	ctx context.Context,
 	run entity.InferenceIngestionProcessingRun,
 	now time.Time,
-	missingStudyServiceJob bool,
+	findings processingReconciliationAttentionFindings,
 ) error {
 	currentRun, err := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRun(ctx, run.TenantID, run.ID)
 	if err != nil {
@@ -1372,8 +1451,14 @@ func (service *InferenceCommandService) syncProcessingRunReconciliationAttention
 	if len(currentExecutions) == 0 && currentRun.Phase != entity.InferenceIngestionProcessingRunPhaseTerminal {
 		reasons = appendReconciliationReason(reasons, entity.InferenceIngestionProcessingRunAttentionEmptyModelPlan)
 	}
-	if missingStudyServiceJob {
+	if findings.ExpectedJobMissing {
+		reasons = appendReconciliationReason(reasons, entity.InferenceIngestionProcessingRunAttentionExpectedJobMissing)
+	}
+	if findings.StudyServiceJobMissing {
 		reasons = appendReconciliationReason(reasons, entity.InferenceIngestionProcessingRunAttentionStudyServiceJobMissing)
+	}
+	if findings.CallbackDeadLettered && currentRun.Phase != entity.InferenceIngestionProcessingRunPhaseTerminal {
+		reasons = appendReconciliationReason(reasons, entity.InferenceIngestionProcessingRunAttentionCallbackDeadLettered)
 	}
 
 	_, err = service.RecalculateStudyProcessingRun(ctx, types.RecalculateStudyProcessingRun{
@@ -1383,6 +1468,25 @@ func (service *InferenceCommandService) syncProcessingRunReconciliationAttention
 		AttentionReasonCodesToRemove: reconciliationManagedAttentionReasonCodes,
 	})
 	return err
+}
+
+func (service *InferenceCommandService) markProcessingRunStateConflict(
+	ctx context.Context,
+	run entity.InferenceIngestionProcessingRun,
+	conflictErr error,
+) error {
+	_, attentionErr := service.RecalculateStudyProcessingRun(ctx, types.RecalculateStudyProcessingRun{
+		TenantID:        run.TenantID,
+		ProcessingRunID: run.ID,
+		AttentionReasonsToAdd: entity.InferenceIngestionProcessingRunAttentionReasons{{
+			Code:    entity.InferenceIngestionProcessingRunAttentionStateConflict,
+			Message: stringPointer(conflictErr.Error()),
+		}},
+	})
+	if attentionErr != nil {
+		return fmt.Errorf("%w; cannot mark state conflict: %v", conflictErr, attentionErr)
+	}
+	return conflictErr
 }
 
 func removeProcessingRunAttentionReasons(

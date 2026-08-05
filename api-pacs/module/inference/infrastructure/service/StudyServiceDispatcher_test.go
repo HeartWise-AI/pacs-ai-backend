@@ -347,3 +347,54 @@ func TestStudyServiceDispatcherGetJobsByProcessingRunTreatsNotFoundAsFallback(t 
 		t.Fatalf("expected empty fallback result, got %#v", jobs)
 	}
 }
+
+func TestStudyServiceDispatcherGetCallbackDeadLetters(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/jobs/callbacks/dead-letters" || r.URL.Query().Get("limit") != "250" {
+			t.Fatalf("unexpected URL: %s", r.URL.String())
+		}
+		if r.Header.Get("X-Tenant-ID") != "tenant-a" {
+			t.Fatalf("unexpected tenant: %q", r.Header.Get("X-Tenant-ID"))
+		}
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"dead_letters": []map[string]any{{
+				"dead_letter_id": "dead-letter-1",
+				"job_id":         "job-1",
+				"candidate_id":   "candidate-1",
+				"job_status":     "running",
+				"payload_json": map[string]any{
+					"candidate_id": "candidate-1", "processing_run_id": "run-1", "model_name": "EchoPrime",
+				},
+				"attempts": 3, "last_error": "connection refused",
+			}},
+		}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceClient: server.Client()}
+	deadLetters, err := dispatcher.GetCallbackDeadLetters(context.Background(), "tenant-a")
+
+	if err != nil {
+		t.Fatalf("GetCallbackDeadLetters returned error: %v", err)
+	}
+	if len(deadLetters) != 1 || deadLetters[0].Payload.ProcessingRunID != "run-1" {
+		t.Fatalf("unexpected dead letters: %#v", deadLetters)
+	}
+}
+
+func TestStudyServiceDispatcherGetCallbackDeadLettersTreatsNotFoundAsFallback(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceClient: server.Client()}
+
+	deadLetters, err := dispatcher.GetCallbackDeadLetters(context.Background(), "tenant-a")
+
+	if err != nil {
+		t.Fatalf("GetCallbackDeadLetters returned error: %v", err)
+	}
+	if len(deadLetters) != 0 {
+		t.Fatalf("expected empty fallback result, got %#v", deadLetters)
+	}
+}

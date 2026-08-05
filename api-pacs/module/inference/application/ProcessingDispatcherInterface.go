@@ -18,4 +18,6 @@ type ProcessingDispatcherInterface interface {
 	GetJobsByProcessingRun(ctx context.Context, tenantID, processingRunID string) ([]serviceTypes.StudyServiceJob, error)
 	// GetJobsByCandidate fetches tenant-scoped study-service jobs for one ingestion candidate.
 	GetJobsByCandidate(ctx context.Context, tenantID, candidateID string) ([]serviceTypes.StudyServiceJob, error)
+	// GetCallbackDeadLetters fetches tenant-scoped callbacks whose delivery retries were exhausted.
+	GetCallbackDeadLetters(ctx context.Context, tenantID string) ([]serviceTypes.StudyServiceCallbackDeadLetter, error)
 }

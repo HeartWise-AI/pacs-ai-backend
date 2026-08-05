@@ -293,6 +293,59 @@ func (service *StudyServiceDispatcher) GetJobsByCandidate(ctx context.Context, t
 	return response.Jobs, nil
 }
 
+// GetCallbackDeadLetters returns callbacks whose delivery retries were
+// exhausted. A 404 remains compatible with study-service versions that do not
+// expose the operator endpoint yet.
+func (service *StudyServiceDispatcher) GetCallbackDeadLetters(
+	ctx context.Context,
+	tenantID string,
+) ([]serviceTypes.StudyServiceCallbackDeadLetter, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(service.StudyServiceBaseURL), "/")
+	if baseURL == "" {
+		return nil, errStudyServiceBaseURLMissing
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		baseURL+"/jobs/callbacks/dead-letters?limit=250",
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Request-ID", generateID())
+	req.Header.Set("X-Tenant-ID", strings.TrimSpace(tenantID))
+	service.applyBearerToken(req, service.StudyServiceOperatorToken)
+
+	resp, err := service.StudyServiceClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return []serviceTypes.StudyServiceCallbackDeadLetter{}, nil
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, readErr
+		}
+		return nil, fmt.Errorf(
+			"study-service callback dead-letter lookup failed with status %d: %s",
+			resp.StatusCode,
+			strings.TrimSpace(string(body)),
+		)
+	}
+
+	var response serviceTypes.StudyServiceCallbackDeadLettersResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, err
+	}
+	return response.DeadLetters, nil
+}
+
 func (service *StudyServiceDispatcher) applyBearerToken(req *http.Request, token string) {
 	if trimmed := strings.TrimSpace(token); trimmed != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", trimmed))

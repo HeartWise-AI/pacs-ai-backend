@@ -158,14 +158,16 @@ func (repository *reconciliationWorkerQueryRepository) SelectInferenceIngestionC
 
 type reconciliationWorkerDispatcher struct {
 	inferenceApplication.ProcessingDispatcherInterface
-	calls       []string
-	jobIDCalls  []string
-	runCalls    []string
-	err         error
-	jobIDErr    error
-	runErr      error
-	jobsByID    map[string]serviceTypes.StudyServiceJob
-	jobsByRunID map[string][]serviceTypes.StudyServiceJob
+	calls         []string
+	jobIDCalls    []string
+	runCalls      []string
+	err           error
+	jobIDErr      error
+	runErr        error
+	deadLetterErr error
+	jobsByID      map[string]serviceTypes.StudyServiceJob
+	jobsByRunID   map[string][]serviceTypes.StudyServiceJob
+	deadLetters   []serviceTypes.StudyServiceCallbackDeadLetter
 }
 
 type reconciliationMetricsRecorderTestDouble struct {
@@ -203,6 +205,13 @@ func (dispatcher *reconciliationWorkerDispatcher) GetJobsByCandidate(
 ) ([]serviceTypes.StudyServiceJob, error) {
 	dispatcher.calls = append(dispatcher.calls, tenantID+":"+candidateID)
 	return nil, dispatcher.err
+}
+
+func (dispatcher *reconciliationWorkerDispatcher) GetCallbackDeadLetters(
+	_ context.Context,
+	_ string,
+) ([]serviceTypes.StudyServiceCallbackDeadLetter, error) {
+	return dispatcher.deadLetters, dispatcher.deadLetterErr
 }
 
 func TestReconciliationWorkerQueriesOnlyPreciselyEligibleCandidates(t *testing.T) {
@@ -431,6 +440,101 @@ func TestReconciliationWorkerMarksThirdConsecutiveFailureForAttention(t *testing
 		},
 	)
 	require.Equal(t, []ProcessingReconciliationCycleMetrics{{Checked: 1, Failed: 1}}, metricsRecorder.cycles)
+}
+
+func TestReconciliationWorkerDistinguishesExpectedJobAndDeadLetterWarnings(t *testing.T) {
+	t.Setenv(reconciliationPendingStaleMinutesEnv, "2")
+	t.Setenv(reconciliationQueuedStaleMinutesEnv, "10")
+	t.Setenv(reconciliationRunningStaleMinutesEnv, "65")
+	t.Setenv(reconciliationModelRunningStaleMinutesEnv, "")
+	t.Setenv("INFERENCE_INGESTION_RECONCILIATION_STALE_MINUTES", "")
+	now := time.Now()
+	runID := "run-stale"
+	candidateID := "candidate-stale"
+	runRepository := &reconciliationWorkerRunRepository{
+		runs: []entity.InferenceIngestionProcessingRun{{
+			ID: runID, TenantID: "tenant-a", Phase: entity.InferenceIngestionProcessingRunPhaseQueued,
+		}},
+		executions: map[string][]entity.InferenceIngestionProcessingJob{
+			runID: {{
+				ID: "execution-stale", CandidateID: candidateID, ModelName: "EchoPrime",
+				Status: entity.InferenceIngestionProcessingJobStatusPending, UpdatedAt: now.Add(-3 * time.Minute),
+			}},
+		},
+	}
+	queryRepository := &reconciliationWorkerQueryRepository{candidates: map[string]entity.InferenceIngestionCandidate{
+		candidateID: {ID: candidateID, TenantID: "tenant-a"},
+	}}
+	dispatcher := &reconciliationWorkerDispatcher{deadLetters: []serviceTypes.StudyServiceCallbackDeadLetter{{
+		DeadLetterID: "dead-letter-1", JobID: "python-job-1",
+		Payload: serviceTypes.StudyServiceCallbackDeadLetterPayload{
+			CandidateID: candidateID, ProcessingRunID: runID, ModelName: "EchoPrime",
+		},
+	}}}
+	service := &InferenceCommandService{
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		InferenceQueryRepositoryInterface:         queryRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+
+	err := service.ExecuteInferenceIngestionReconciliationWorker(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, runRepository.aggregateUpdates, 1)
+	require.Equal(t, []string{
+		entity.InferenceIngestionProcessingRunAttentionPendingStale,
+		entity.InferenceIngestionProcessingRunAttentionExpectedJobMissing,
+		entity.InferenceIngestionProcessingRunAttentionCallbackDeadLettered,
+	}, []string{
+		runRepository.aggregateUpdates[0].AttentionReasons[0].Code,
+		runRepository.aggregateUpdates[0].AttentionReasons[1].Code,
+		runRepository.aggregateUpdates[0].AttentionReasons[2].Code,
+	})
+}
+
+func TestReconciliationWorkerMarksCorrelationMismatchAsStateConflict(t *testing.T) {
+	t.Setenv(reconciliationPendingStaleMinutesEnv, "2")
+	t.Setenv(reconciliationQueuedStaleMinutesEnv, "10")
+	t.Setenv(reconciliationRunningStaleMinutesEnv, "65")
+	t.Setenv(reconciliationModelRunningStaleMinutesEnv, "")
+	t.Setenv("INFERENCE_INGESTION_RECONCILIATION_STALE_MINUTES", "")
+	now := time.Now()
+	runID := "run-stale"
+	candidateID := "candidate-stale"
+	jobID := "python-job-1"
+	runRepository := &reconciliationWorkerRunRepository{
+		runs: []entity.InferenceIngestionProcessingRun{{
+			ID: runID, TenantID: "tenant-a", Phase: entity.InferenceIngestionProcessingRunPhaseProcessing,
+		}},
+		executions: map[string][]entity.InferenceIngestionProcessingJob{
+			runID: {{
+				ID: "execution-stale", CandidateID: candidateID, ModelName: "EchoPrime",
+				StudyServiceJobID: &jobID, Status: entity.InferenceIngestionProcessingJobStatusRunning,
+				UpdatedAt: now.Add(-70 * time.Minute),
+			}},
+		},
+	}
+	dispatcher := &reconciliationWorkerDispatcher{jobsByID: map[string]serviceTypes.StudyServiceJob{
+		jobID: {
+			JobID: jobID, ProcessingRunID: stringPointer("other-run"), CandidateID: &candidateID,
+			ModelName: "EchoPrime", Status: "running",
+		},
+	}}
+	service := &InferenceCommandService{
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+
+	err := service.ExecuteInferenceIngestionReconciliationWorker(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, runRepository.aggregateUpdates, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingRunAttentionStateConflict,
+		runRepository.aggregateUpdates[0].AttentionReasons[0].Code)
+	require.NotNil(t, runRepository.aggregateUpdates[0].AttentionReasons[0].Message)
+	require.Contains(t, *runRepository.aggregateUpdates[0].AttentionReasons[0].Message, "processing-run mismatch")
+	require.Len(t, runRepository.attempts, 1)
+	require.False(t, runRepository.attempts[0].Succeeded)
 }
 
 func TestRemoveProcessingRunAttentionReasonsClearsOnlyManagedCodes(t *testing.T) {
