@@ -101,6 +101,15 @@ type ListInferenceIngestionProcessingRunsForReconciliation struct {
 	Limit             int       `db:"limit"`
 }
 
+// RecordInferenceIngestionProcessingRunReconciliationAttempt updates durable
+// worker health without relying on process-local counters.
+type RecordInferenceIngestionProcessingRunReconciliationAttempt struct {
+	ID          string    `db:"id"`
+	TenantID    string    `db:"tenant_id"`
+	Succeeded   bool      `db:"succeeded"`
+	AttemptedAt time.Time `db:"attempted_at"`
+}
+
 // UpdateInferenceIngestionProcessingRunAggregate applies one optimistic aggregate transition.
 type UpdateInferenceIngestionProcessingRunAggregate struct {
 	ID                string

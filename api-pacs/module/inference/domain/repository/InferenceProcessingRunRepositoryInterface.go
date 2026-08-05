@@ -27,6 +27,8 @@ type InferenceProcessingRunRepositoryInterface interface {
 	// ListProcessingRunsForReconciliation returns bounded active stale or attention-required work.
 	// Terminal history is never continuously polled.
 	ListProcessingRunsForReconciliation(ctx context.Context, data types.ListInferenceIngestionProcessingRunsForReconciliation) ([]entity.InferenceIngestionProcessingRun, error)
+	// RecordProcessingRunReconciliationAttempt atomically increments failures or resets them after success.
+	RecordProcessingRunReconciliationAttempt(ctx context.Context, data types.RecordInferenceIngestionProcessingRunReconciliationAttempt) (entity.InferenceIngestionProcessingRun, error)
 	// ListProcessingRunExecutions returns the expected model executions for a tenant-scoped run.
 	ListProcessingRunExecutions(ctx context.Context, tenantID, processingRunID string) ([]entity.InferenceIngestionProcessingJob, error)
 	// SelectProcessingRunExecution returns one exact tenant/run/candidate/model execution.

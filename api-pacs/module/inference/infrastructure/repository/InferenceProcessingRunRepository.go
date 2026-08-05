@@ -358,6 +358,26 @@ func (repository *InferenceProcessingRunRepository) ListProcessingRunsForReconci
 	return runs, processingRunError(err)
 }
 
+// RecordProcessingRunReconciliationAttempt keeps failure tracking durable
+// across worker and service restarts. The increment/reset is one atomic update.
+func (repository *InferenceProcessingRunRepository) RecordProcessingRunReconciliationAttempt(
+	ctx context.Context,
+	data types.RecordInferenceIngestionProcessingRunReconciliationAttempt,
+) (entity.InferenceIngestionProcessingRun, error) {
+	var run entity.InferenceIngestionProcessingRun
+	err := repository.PostgresSQLDBHandlerInterface.QueryRow(`
+		UPDATE ingestion_processing_runs SET
+			reconciliation_failure_count = CASE
+				WHEN :succeeded THEN 0
+				ELSE reconciliation_failure_count + 1
+			END,
+			last_reconciliation_at = :attempted_at
+		WHERE id = :id AND tenant_id = :tenant_id
+		RETURNING *
+	`, data, &run)
+	return run, processingRunError(err)
+}
+
 // ListProcessingRunExecutions returns the expected model executions for a tenant-scoped run.
 func (repository *InferenceProcessingRunRepository) ListProcessingRunExecutions(ctx context.Context, tenantID, processingRunID string) ([]entity.InferenceIngestionProcessingJob, error) {
 	executions := make([]entity.InferenceIngestionProcessingJob, 0)

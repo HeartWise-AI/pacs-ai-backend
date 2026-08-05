@@ -100,6 +100,15 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListProcessing
 	})
 }
 
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) RecordProcessingRunReconciliationAttempt(
+	ctx context.Context,
+	data types.RecordInferenceIngestionProcessingRunReconciliationAttempt,
+) (entity.InferenceIngestionProcessingRun, error) {
+	return withProcessingRunCircuit("record_processing_run_reconciliation_attempt", func() (entity.InferenceIngestionProcessingRun, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.RecordProcessingRunReconciliationAttempt(ctx, data)
+	})
+}
+
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListProcessingRunExecutions(ctx context.Context, tenantID, processingRunID string) ([]entity.InferenceIngestionProcessingJob, error) {
 	return withProcessingRunCircuit("list_processing_run_executions", func() ([]entity.InferenceIngestionProcessingJob, error) {
 		return repository.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, tenantID, processingRunID)

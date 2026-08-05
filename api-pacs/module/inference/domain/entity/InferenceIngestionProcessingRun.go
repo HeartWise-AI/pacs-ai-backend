@@ -76,20 +76,22 @@ func (reasons InferenceIngestionProcessingRunAttentionReasons) Value() (driver.V
 
 // InferenceIngestionProcessingRun represents one distinct study-processing attempt.
 type InferenceIngestionProcessingRun struct {
-	ID                string
-	TenantID          string                                          `db:"tenant_id"`
-	StudyInstanceUID  string                                          `db:"study_instance_uid"`
-	RunNumber         int                                             `db:"run_number"`
-	RunTrigger        InferenceIngestionProcessingRunTrigger          `db:"run_trigger"`
-	Phase             InferenceIngestionProcessingRunPhase            `db:"phase"`
-	Outcome           *InferenceIngestionProcessingRunOutcome         `db:"outcome"`
-	AttentionRequired bool                                            `db:"attention_required"`
-	AttentionReasons  InferenceIngestionProcessingRunAttentionReasons `db:"attention_reasons"`
-	Version           int64                                           `db:"version"`
-	StartedAt         *time.Time                                      `db:"started_at"`
-	CompletedAt       *time.Time                                      `db:"completed_at"`
-	CreatedAt         time.Time                                       `db:"created_at"`
-	UpdatedAt         time.Time                                       `db:"updated_at"`
+	ID                         string
+	TenantID                   string                                          `db:"tenant_id"`
+	StudyInstanceUID           string                                          `db:"study_instance_uid"`
+	RunNumber                  int                                             `db:"run_number"`
+	RunTrigger                 InferenceIngestionProcessingRunTrigger          `db:"run_trigger"`
+	Phase                      InferenceIngestionProcessingRunPhase            `db:"phase"`
+	Outcome                    *InferenceIngestionProcessingRunOutcome         `db:"outcome"`
+	AttentionRequired          bool                                            `db:"attention_required"`
+	AttentionReasons           InferenceIngestionProcessingRunAttentionReasons `db:"attention_reasons"`
+	Version                    int64                                           `db:"version"`
+	ReconciliationFailureCount int                                             `db:"reconciliation_failure_count"`
+	LastReconciliationAt       *time.Time                                      `db:"last_reconciliation_at"`
+	StartedAt                  *time.Time                                      `db:"started_at"`
+	CompletedAt                *time.Time                                      `db:"completed_at"`
+	CreatedAt                  time.Time                                       `db:"created_at"`
+	UpdatedAt                  time.Time                                       `db:"updated_at"`
 }
 
 // GetModelName returns the PostgreSQL table name for processing runs.

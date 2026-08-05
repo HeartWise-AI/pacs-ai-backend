@@ -569,6 +569,52 @@ func TestListProcessingRunsForReconciliationSelectsOnlyActiveStaleOrAttentionWor
 	require.Equal(t, []string{"run-attention", "run-stale"}, []string{runs[0].ID, runs[1].ID})
 }
 
+func TestRecordProcessingRunReconciliationAttemptUsesAtomicIncrementOrReset(t *testing.T) {
+	attemptedAt := time.Now().UTC()
+	tests := []struct {
+		name         string
+		succeeded    bool
+		failureCount int
+	}{
+		{name: "failure increments", succeeded: false, failureCount: 2},
+		{name: "success resets", succeeded: true, failureCount: 0},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler := &processingRunTestHandler{}
+			handler.queryRow = func(query string, model interface{}, target interface{}) error {
+				require.Contains(t, query, "reconciliation_failure_count + 1")
+				require.Contains(t, query, "WHEN :succeeded THEN 0")
+				require.Contains(t, query, "last_reconciliation_at = :attempted_at")
+				require.Contains(t, query, "id = :id AND tenant_id = :tenant_id")
+				arguments := model.(types.RecordInferenceIngestionProcessingRunReconciliationAttempt)
+				require.Equal(t, "run-1", arguments.ID)
+				require.Equal(t, "tenant-a", arguments.TenantID)
+				require.Equal(t, test.succeeded, arguments.Succeeded)
+				require.Equal(t, attemptedAt, arguments.AttemptedAt)
+				*target.(*entity.InferenceIngestionProcessingRun) = entity.InferenceIngestionProcessingRun{
+					ID: "run-1", TenantID: "tenant-a", ReconciliationFailureCount: test.failureCount,
+					LastReconciliationAt: &attemptedAt,
+				}
+				return nil
+			}
+
+			repository := InferenceProcessingRunRepository{PostgresSQLDBHandlerInterface: handler}
+			run, err := repository.RecordProcessingRunReconciliationAttempt(
+				context.Background(),
+				types.RecordInferenceIngestionProcessingRunReconciliationAttempt{
+					ID: "run-1", TenantID: "tenant-a", Succeeded: test.succeeded, AttemptedAt: attemptedAt,
+				},
+			)
+
+			require.NoError(t, err)
+			require.Equal(t, test.failureCount, run.ReconciliationFailureCount)
+			require.Equal(t, attemptedAt, *run.LastReconciliationAt)
+		})
+	}
+}
+
 func TestUpdateProcessingRunAggregateMapsVersionConflict(t *testing.T) {
 	queryCount := 0
 	handler := &processingRunTestHandler{}
