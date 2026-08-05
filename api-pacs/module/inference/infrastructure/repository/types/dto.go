@@ -126,6 +126,7 @@ type ApplyInferenceIngestionProcessingTransition struct {
 
 type ApplyInferenceIngestionProcessingTransitionResult struct {
 	Outcome   string
+	Changed   bool
 	Execution entity.InferenceIngestionProcessingJob
 	Run       entity.InferenceIngestionProcessingRun
 	Counts    entity.InferenceIngestionProcessingRunExecutionCounts

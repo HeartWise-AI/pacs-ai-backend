@@ -46,6 +46,7 @@ type InferenceCommandService struct {
 	orthancAPITypes.OrthancAPIInterface
 	dockerInferenceTypes.DockerInferenceAPIInterface
 	inferenceApplication.ProcessingDispatcherInterface
+	inferenceApplication.WorklistNotificationPublisherInterface
 	StudyServiceDispatchSemaphore chan struct{}
 }
 
@@ -398,6 +399,9 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		if transitionErr != nil {
 			return types.HandleStudyServiceProcessingCallbackResult{}, transitionErr
 		}
+		if transition.Changed {
+			service.publishCommittedWorklistNotification(ctx, transition)
+		}
 		return types.HandleStudyServiceProcessingCallbackResult{Outcome: transition.Outcome}, nil
 	}
 
@@ -434,6 +438,40 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 	}
 
 	return types.HandleStudyServiceProcessingCallbackResult{Outcome: "applied"}, nil
+}
+
+func (service *InferenceCommandService) publishCommittedWorklistNotification(
+	ctx context.Context,
+	transition repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult,
+) {
+	if service.WorklistNotificationPublisherInterface == nil {
+		return
+	}
+	notification := types.WorklistNotification{
+		Type:              "study_status.updated",
+		TenantID:          transition.Run.TenantID,
+		StudyInstanceUID:  transition.Run.StudyInstanceUID,
+		RunID:             transition.Run.ID,
+		RunNumber:         transition.Run.RunNumber,
+		Phase:             transition.Run.Phase,
+		Outcome:           transition.Run.Outcome,
+		AttentionRequired: transition.Run.AttentionRequired,
+		ExpectedModels:    transition.Counts.Expected,
+		CompletedModels:   transition.Counts.Completed,
+		FailedModels:      transition.Counts.Failed,
+		SkippedModels:     transition.Counts.Skipped,
+		ActiveModels:      transition.Counts.Active,
+		Version:           transition.Run.Version,
+		UpdatedAt:         transition.Run.UpdatedAt,
+	}
+	if err := service.PublishWorklistNotification(ctx, notification); err != nil {
+		log.Printf(
+			"[Ingestion callback] worklist notification publish failed run_id=%s version=%d err=%v",
+			transition.Run.ID,
+			transition.Run.Version,
+			err,
+		)
+	}
 }
 
 func callbackValueMismatch(incoming, expected string) bool {

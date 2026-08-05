@@ -119,6 +119,42 @@ func TestStudyServiceProcessingCallbackPreservesLegacyPayloadCompatibility(t *te
 	require.Nil(t, service.input.SkipReason)
 }
 
+func TestStudyServiceProcessingCallbackRequiresBearerAuthentication(t *testing.T) {
+	payload := `{
+		"study_instance_uid":"1.2.3.4",
+		"model_name":"PanEcho",
+		"model_version":"1.0.0",
+		"modality":"echocardiogram",
+		"status":"running",
+		"study_service_job_id":"python-job-123"
+	}`
+	tests := []struct {
+		name          string
+		authorization string
+	}{
+		{name: "missing"},
+		{name: "invalid", authorization: "Bearer wrong-secret"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service := &callbackCaptureService{}
+			controller := InferenceCommandController{InferenceCommandServiceInterface: service}
+			recorder := httptest.NewRecorder()
+			request := studyServiceCallbackRequest(t, payload)
+			request.Header.Del("Authorization")
+			if test.authorization != "" {
+				request.Header.Set("Authorization", test.authorization)
+			}
+
+			controller.StudyServiceProcessingCallback(recorder, request)
+
+			require.Equal(t, http.StatusUnauthorized, recorder.Code)
+			require.Zero(t, service.calls)
+		})
+	}
+}
+
 func TestStudyServiceProcessingCallbackRejectsMalformedOrderedEventFields(t *testing.T) {
 	tests := []struct {
 		name    string

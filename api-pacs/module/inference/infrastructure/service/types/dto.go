@@ -144,6 +144,24 @@ type HandleStudyServiceProcessingCallbackResult struct {
 	Outcome string
 }
 
+type WorklistNotification struct {
+	Type              string                                         `json:"type"`
+	TenantID          string                                         `json:"-"`
+	StudyInstanceUID  string                                         `json:"studyInstanceUID"`
+	RunID             string                                         `json:"runId"`
+	RunNumber         int                                            `json:"runNumber"`
+	Phase             entity.InferenceIngestionProcessingRunPhase    `json:"phase"`
+	Outcome           *entity.InferenceIngestionProcessingRunOutcome `json:"outcome"`
+	AttentionRequired bool                                           `json:"attentionRequired"`
+	ExpectedModels    int                                            `json:"expectedModels"`
+	CompletedModels   int                                            `json:"completedModels"`
+	FailedModels      int                                            `json:"failedModels"`
+	SkippedModels     int                                            `json:"skippedModels"`
+	ActiveModels      int                                            `json:"activeModels"`
+	Version           int64                                          `json:"version"`
+	UpdatedAt         time.Time                                      `json:"updatedAt"`
+}
+
 type GetContainerInfoResult struct {
 	ID              string
 	Name            string

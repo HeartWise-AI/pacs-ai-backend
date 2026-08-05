@@ -152,7 +152,7 @@ func (repository *InferenceProcessingRunRepository) ApplyProcessingRunExecutionT
 		outcome = processingTransitionOutcomeReplayed
 	}
 	return types.ApplyInferenceIngestionProcessingTransitionResult{
-		Outcome: outcome, Execution: execution, Run: run, Counts: aggregate.Counts,
+		Outcome: outcome, Changed: true, Execution: execution, Run: run, Counts: aggregate.Counts,
 	}, nil
 }
 

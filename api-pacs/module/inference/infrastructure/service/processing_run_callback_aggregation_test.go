@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -37,6 +38,8 @@ type processingRunCallbackRunRepository struct {
 	*processingRunAggregationRepository
 	selectedExecution entity.InferenceIngestionProcessingJob
 	transitions       []repositoryTypes.ApplyInferenceIngestionProcessingTransition
+	transitionResult  *repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult
+	transitionErr     error
 }
 
 func (repository *processingRunCallbackRunRepository) SelectProcessingRunExecution(context.Context, string, string, string, string) (entity.InferenceIngestionProcessingJob, error) {
@@ -48,11 +51,30 @@ func (repository *processingRunCallbackRunRepository) ApplyProcessingRunExecutio
 	data repositoryTypes.ApplyInferenceIngestionProcessingTransition,
 ) (repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult, error) {
 	repository.transitions = append(repository.transitions, data)
+	if repository.transitionErr != nil {
+		return repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult{}, repository.transitionErr
+	}
+	if repository.transitionResult != nil {
+		return *repository.transitionResult, nil
+	}
 	outcome := "applied"
 	if data.EventID == nil && repository.selectedExecution.Status == data.Status {
 		outcome = "replayed"
 	}
 	return repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult{Outcome: outcome}, nil
+}
+
+type recordingWorklistNotificationPublisher struct {
+	notifications []serviceTypes.WorklistNotification
+	err           error
+}
+
+func (publisher *recordingWorklistNotificationPublisher) PublishWorklistNotification(
+	_ context.Context,
+	notification serviceTypes.WorklistNotification,
+) error {
+	publisher.notifications = append(publisher.notifications, notification)
+	return publisher.err
 }
 
 func (repository *processingRunCallbackCommandRepository) UpdateInferenceIngestionProcessingJob(data repositoryTypes.UpdateInferenceIngestionProcessingJob) error {
@@ -155,6 +177,66 @@ func TestProcessingCallbackPassesStructuredSkipReasonToAtomicTransition(t *testi
 	require.Equal(t, skipReason, runRepository.transitions[0].SkipReason)
 }
 
+func TestProcessingCallbackPublishesCommittedRunNotification(t *testing.T) {
+	service, _, runRepository := orderedProcessingCallbackFixture(
+		entity.InferenceIngestionProcessingJobStatusQueued,
+		nil,
+		nil,
+	)
+	publisher := &recordingWorklistNotificationPublisher{}
+	service.WorklistNotificationPublisherInterface = publisher
+	updatedAt := time.Date(2026, time.August, 5, 14, 0, 0, 0, time.UTC)
+	runRepository.transitionResult = &repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult{
+		Outcome: "applied",
+		Changed: true,
+		Run: entity.InferenceIngestionProcessingRun{
+			ID: "run-1", TenantID: "tenant-a", StudyInstanceUID: "study-1", RunNumber: 2,
+			Phase: entity.InferenceIngestionProcessingRunPhaseProcessing, Version: 7, UpdatedAt: updatedAt,
+		},
+		Counts: entity.InferenceIngestionProcessingRunExecutionCounts{
+			Expected: 3, Running: 1, Completed: 1, Failed: 1, Active: 1,
+		},
+	}
+
+	result, err := service.HandleStudyServiceProcessingCallback(context.Background(), serviceTypes.HandleStudyServiceProcessingCallback{
+		CandidateID: "candidate-1", ProcessingRunID: "run-1", StudyInstanceUID: "study-1",
+		ModelName: "model-one", Status: "running",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "applied", result.Outcome)
+	require.Len(t, publisher.notifications, 1)
+	notification := publisher.notifications[0]
+	require.Equal(t, "study_status.updated", notification.Type)
+	require.Equal(t, "tenant-a", notification.TenantID)
+	require.Equal(t, "study-1", notification.StudyInstanceUID)
+	require.Equal(t, "run-1", notification.RunID)
+	require.Equal(t, 2, notification.RunNumber)
+	require.Equal(t, int64(7), notification.Version)
+	require.Equal(t, 3, notification.ExpectedModels)
+	require.Equal(t, 1, notification.ActiveModels)
+	require.Equal(t, updatedAt, notification.UpdatedAt)
+}
+
+func TestProcessingCallbackPublishesNothingWhenAtomicTransitionFails(t *testing.T) {
+	service, _, runRepository := orderedProcessingCallbackFixture(
+		entity.InferenceIngestionProcessingJobStatusQueued,
+		nil,
+		nil,
+	)
+	publisher := &recordingWorklistNotificationPublisher{}
+	service.WorklistNotificationPublisherInterface = publisher
+	runRepository.transitionErr = errors.New(apiError.DatabaseError)
+
+	_, err := service.HandleStudyServiceProcessingCallback(context.Background(), serviceTypes.HandleStudyServiceProcessingCallback{
+		CandidateID: "candidate-1", ProcessingRunID: "run-1", StudyInstanceUID: "study-1",
+		ModelName: "model-one", Status: "running",
+	})
+
+	require.EqualError(t, err, apiError.DatabaseError)
+	require.Empty(t, publisher.notifications)
+}
+
 func TestProcessingCallbackReplayHealsLinkedRunAggregate(t *testing.T) {
 	processingRunID := "run-1"
 	queryRepository := &processingRunCallbackQueryRepository{
@@ -250,6 +332,29 @@ func TestProcessingCallbackIgnoresDifferentEventAtAlreadyAppliedSequence(t *test
 	require.NoError(t, err)
 	require.Equal(t, "ignored", result.Outcome)
 	require.Empty(t, commandRepository.updates)
+	require.Empty(t, runRepository.updates)
+}
+
+func TestProcessingCallbackIgnoresNewerInvalidTerminalTransition(t *testing.T) {
+	lastEventID := "event-completed"
+	lastEventSequence := int64(3)
+	incomingSequence := int64(4)
+	service, commandRepository, runRepository := orderedProcessingCallbackFixture(
+		entity.InferenceIngestionProcessingJobStatusCompleted,
+		&lastEventID,
+		&lastEventSequence,
+	)
+
+	result, err := service.HandleStudyServiceProcessingCallback(context.Background(), serviceTypes.HandleStudyServiceProcessingCallback{
+		CandidateID: "candidate-1", ProcessingRunID: "run-1", StudyInstanceUID: "study-1",
+		ModelName: "model-one", Status: "failed", EventID: "event-invalid", Sequence: &incomingSequence,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "ignored", result.Outcome)
+	require.Empty(t, commandRepository.updates)
+	require.Empty(t, runRepository.transitions)
+	// The aggregate repository is also untouched because validation happens before persistence.
 	require.Empty(t, runRepository.updates)
 }
 
