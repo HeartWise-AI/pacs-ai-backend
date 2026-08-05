@@ -6,9 +6,21 @@ import (
 )
 
 const (
-	InferenceIngestionProcessingRunAttentionEmptyExpectedPlan     = "EMPTY_EXPECTED_PLAN"
-	InferenceIngestionProcessingRunAttentionInvalidExecutionState = "INVALID_EXECUTION_STATE"
-	InferenceIngestionProcessingRunAttentionDispatchFailed        = "DISPATCH_FAILED"
+	InferenceIngestionProcessingRunAttentionEmptyModelPlan         = "EMPTY_MODEL_PLAN"
+	InferenceIngestionProcessingRunAttentionInvalidExecutionState  = "INVALID_EXECUTION_STATE"
+	InferenceIngestionProcessingRunAttentionDispatchFailed         = "DISPATCH_FAILED"
+	InferenceIngestionProcessingRunAttentionExpectedJobMissing     = "EXPECTED_JOB_MISSING"
+	InferenceIngestionProcessingRunAttentionPendingStale           = "PENDING_STALE"
+	InferenceIngestionProcessingRunAttentionQueueStale             = "QUEUE_STALE"
+	InferenceIngestionProcessingRunAttentionProcessingStale        = "PROCESSING_STALE"
+	InferenceIngestionProcessingRunAttentionCallbackDeadLettered   = "CALLBACK_DEAD_LETTERED"
+	InferenceIngestionProcessingRunAttentionStudyServiceJobMissing = "STUDY_SERVICE_JOB_MISSING"
+	InferenceIngestionProcessingRunAttentionStateConflict          = "STATE_CONFLICT"
+	InferenceIngestionProcessingRunAttentionReconciliationFailed   = "RECONCILIATION_FAILED"
+
+	// InferenceIngestionProcessingRunAttentionEmptyExpectedPlan is retained so
+	// aggregates can clear the structural reason written by earlier releases.
+	InferenceIngestionProcessingRunAttentionEmptyExpectedPlan = "EMPTY_EXPECTED_PLAN"
 )
 
 // InferenceIngestionProcessingRunExecutionCounts summarizes the frozen expected-model plan.
@@ -54,7 +66,7 @@ func AggregateInferenceIngestionProcessingRun(input InferenceIngestionProcessing
 
 	if len(input.Executions) == 0 {
 		reasons = appendProcessingRunAttentionReason(reasons, InferenceIngestionProcessingRunAttentionReason{
-			Code: InferenceIngestionProcessingRunAttentionEmptyExpectedPlan,
+			Code: InferenceIngestionProcessingRunAttentionEmptyModelPlan,
 		})
 	}
 
@@ -141,7 +153,8 @@ func aggregateProcessingRunOutcome(counts InferenceIngestionProcessingRunExecuti
 func preservedProcessingRunAttentionReasons(reasons InferenceIngestionProcessingRunAttentionReasons) InferenceIngestionProcessingRunAttentionReasons {
 	preserved := make(InferenceIngestionProcessingRunAttentionReasons, 0, len(reasons))
 	for _, reason := range reasons {
-		if reason.Code == InferenceIngestionProcessingRunAttentionEmptyExpectedPlan ||
+		if reason.Code == InferenceIngestionProcessingRunAttentionEmptyModelPlan ||
+			reason.Code == InferenceIngestionProcessingRunAttentionEmptyExpectedPlan ||
 			reason.Code == InferenceIngestionProcessingRunAttentionInvalidExecutionState {
 			continue
 		}
