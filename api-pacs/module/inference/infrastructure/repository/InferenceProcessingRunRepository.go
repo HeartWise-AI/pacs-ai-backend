@@ -327,9 +327,11 @@ func (repository *InferenceProcessingRunRepository) ListProcessingRunHistory(ctx
 	return runs, processingRunError(err)
 }
 
-// ListProcessingRunsForReconciliation returns a bounded worker batch. The
-// repository performs a coarse earliest-threshold filter; the service applies
-// the exact pending, queued, running, and model-specific thresholds.
+// ListProcessingRunsForReconciliation returns a bounded active worker batch.
+// Terminal runs remain queryable by the worklist APIs but are never selected
+// for continuous reconciliation. The repository performs a coarse
+// earliest-threshold filter; the service applies the exact pending, queued,
+// running, and model-specific thresholds.
 func (repository *InferenceProcessingRunRepository) ListProcessingRunsForReconciliation(
 	ctx context.Context,
 	data types.ListInferenceIngestionProcessingRunsForReconciliation,
@@ -337,10 +339,10 @@ func (repository *InferenceProcessingRunRepository) ListProcessingRunsForReconci
 	runs := make([]entity.InferenceIngestionProcessingRun, 0)
 	err := repository.PostgresSQLDBHandlerInterface.Query(`
 		SELECT runs.* FROM ingestion_processing_runs runs
-		WHERE runs.attention_required = TRUE
-		   OR (
-			runs.phase <> 'TERMINAL'
-			AND (
+		WHERE runs.phase <> 'TERMINAL'
+		  AND (
+			runs.attention_required = TRUE
+			OR (
 				runs.updated_at <= :active_stale_before
 				OR EXISTS (
 					SELECT 1 FROM ingestion_processing_jobs jobs
@@ -348,7 +350,7 @@ func (repository *InferenceProcessingRunRepository) ListProcessingRunsForReconci
 					  AND jobs.status IN ('pending', 'queued', 'running')
 					  AND jobs.updated_at <= :active_stale_before
 				)
-			)
+			  )
 		   )
 		ORDER BY runs.attention_required DESC, runs.updated_at ASC, runs.id ASC
 		LIMIT :limit

@@ -532,12 +532,12 @@ func TestListProcessingRunHistoryUsesTenantStudyAndPagination(t *testing.T) {
 	require.Equal(t, "run-3", runs[0].ID)
 }
 
-func TestListProcessingRunsForReconciliationSelectsOnlyStaleOrAttentionWork(t *testing.T) {
+func TestListProcessingRunsForReconciliationSelectsOnlyActiveStaleOrAttentionWork(t *testing.T) {
 	staleBefore := time.Now().UTC().Add(-2 * time.Minute)
 	handler := &processingRunTestHandler{}
 	handler.query = func(query string, model interface{}, target interface{}) error {
+		require.Contains(t, query, "WHERE runs.phase <> 'TERMINAL'")
 		require.Contains(t, query, "runs.attention_required = TRUE")
-		require.Contains(t, query, "runs.phase <> 'TERMINAL'")
 		require.Contains(t, query, "jobs.status IN ('pending', 'queued', 'running')")
 		require.Contains(t, query, "jobs.updated_at <= :active_stale_before")
 		require.Contains(t, query, "ORDER BY runs.attention_required DESC, runs.updated_at ASC")
@@ -548,7 +548,9 @@ func TestListProcessingRunsForReconciliationSelectsOnlyStaleOrAttentionWork(t *t
 		require.Equal(t, 100, arguments.Limit)
 		*target.(*[]entity.InferenceIngestionProcessingRun) = append(
 			*target.(*[]entity.InferenceIngestionProcessingRun),
-			entity.InferenceIngestionProcessingRun{ID: "run-attention", AttentionRequired: true},
+			entity.InferenceIngestionProcessingRun{
+				ID: "run-attention", Phase: entity.InferenceIngestionProcessingRunPhaseQueued, AttentionRequired: true,
+			},
 			entity.InferenceIngestionProcessingRun{ID: "run-stale", Phase: entity.InferenceIngestionProcessingRunPhaseProcessing},
 		)
 		return nil
