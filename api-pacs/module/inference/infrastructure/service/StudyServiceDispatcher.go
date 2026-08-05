@@ -197,6 +197,59 @@ func (service *StudyServiceDispatcher) GetJobByID(
 	return job, true, nil
 }
 
+// GetJobsByProcessingRun fetches all tenant-scoped jobs correlated to one Go
+// run. A 404 is treated as endpoint/data absence so mixed-version deployments
+// can continue with candidate fallback.
+func (service *StudyServiceDispatcher) GetJobsByProcessingRun(
+	ctx context.Context,
+	tenantID, processingRunID string,
+) ([]serviceTypes.StudyServiceJob, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(service.StudyServiceBaseURL), "/")
+	if baseURL == "" {
+		return nil, errStudyServiceBaseURLMissing
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("%s/jobs/by-processing-run/%s?page=1&page_size=250", baseURL, url.PathEscape(strings.TrimSpace(processingRunID))),
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Request-ID", generateID())
+	req.Header.Set("X-Tenant-ID", strings.TrimSpace(tenantID))
+	service.applyBearerToken(req, service.StudyServiceOperatorToken)
+
+	resp, err := service.StudyServiceClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return []serviceTypes.StudyServiceJob{}, nil
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, readErr
+		}
+		return nil, fmt.Errorf(
+			"study-service processing-run lookup failed with status %d: %s",
+			resp.StatusCode,
+			strings.TrimSpace(string(body)),
+		)
+	}
+
+	var response serviceTypes.StudyServiceJobsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, err
+	}
+	return response.Jobs, nil
+}
+
 // GetJobsByCandidate fetches tenant-scoped operator-visible jobs for one candidate.
 func (service *StudyServiceDispatcher) GetJobsByCandidate(ctx context.Context, tenantID, candidateID string) ([]serviceTypes.StudyServiceJob, error) {
 	baseURL := strings.TrimRight(strings.TrimSpace(service.StudyServiceBaseURL), "/")

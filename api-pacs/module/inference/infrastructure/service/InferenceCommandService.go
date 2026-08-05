@@ -1111,6 +1111,7 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 	}
 
 	targets := reconciliationExecutionTargets(evaluation, executions)
+	unresolvedTargets := make(map[string]entity.InferenceIngestionProcessingJob, len(targets))
 	fallbackCandidateIDs := make([]string, 0)
 	fallbackCandidateSet := map[string]struct{}{}
 	appendFallbackCandidate := func(candidateID string) {
@@ -1129,7 +1130,7 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 	for _, target := range targets {
 		jobID := strings.TrimSpace(trimmedPointerValue(target.StudyServiceJobID))
 		if jobID == "" {
-			appendFallbackCandidate(target.CandidateID)
+			unresolvedTargets[reconciliationExecutionKey(target.CandidateID, target.ModelName)] = target
 			continue
 		}
 
@@ -1138,7 +1139,7 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 			return true, repaired, lookupErr
 		}
 		if !found {
-			appendFallbackCandidate(target.CandidateID)
+			unresolvedTargets[reconciliationExecutionKey(target.CandidateID, target.ModelName)] = target
 			continue
 		}
 		if correlationErr := validateReconciledStudyServiceJob(run, target, job); correlationErr != nil {
@@ -1151,6 +1152,35 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 		if callbackResult.Outcome == "applied" {
 			repaired = true
 		}
+	}
+
+	if len(unresolvedTargets) > 0 {
+		jobs, lookupErr := service.ProcessingDispatcherInterface.GetJobsByProcessingRun(ctx, run.TenantID, run.ID)
+		if lookupErr != nil {
+			return true, repaired, lookupErr
+		}
+		for _, job := range jobs {
+			key := reconciliationExecutionKey(trimmedPointerValue(job.CandidateID), job.ModelName)
+			target, expected := unresolvedTargets[key]
+			if !expected {
+				continue
+			}
+			if correlationErr := validateReconciledStudyServiceJob(run, target, job); correlationErr != nil {
+				return true, repaired, correlationErr
+			}
+			callbackResult, callbackErr := service.handleReconciledStudyServiceJob(ctx, run, target.CandidateID, job)
+			if callbackErr != nil {
+				return true, repaired, callbackErr
+			}
+			if callbackResult.Outcome == "applied" {
+				repaired = true
+			}
+			delete(unresolvedTargets, key)
+		}
+	}
+
+	for _, target := range unresolvedTargets {
+		appendFallbackCandidate(target.CandidateID)
 	}
 
 	missingStudyServiceJob := false
@@ -1174,6 +1204,10 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 	}
 
 	return true, repaired, service.syncProcessingRunReconciliationAttention(ctx, run, now, missingStudyServiceJob)
+}
+
+func reconciliationExecutionKey(candidateID, modelName string) string {
+	return strings.TrimSpace(candidateID) + "\x1f" + strings.TrimSpace(modelName)
 }
 
 func reconciliationExecutionTargets(

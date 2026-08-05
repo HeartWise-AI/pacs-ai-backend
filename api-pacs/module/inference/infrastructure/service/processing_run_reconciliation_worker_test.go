@@ -158,11 +158,14 @@ func (repository *reconciliationWorkerQueryRepository) SelectInferenceIngestionC
 
 type reconciliationWorkerDispatcher struct {
 	inferenceApplication.ProcessingDispatcherInterface
-	calls      []string
-	jobIDCalls []string
-	err        error
-	jobIDErr   error
-	jobsByID   map[string]serviceTypes.StudyServiceJob
+	calls       []string
+	jobIDCalls  []string
+	runCalls    []string
+	err         error
+	jobIDErr    error
+	runErr      error
+	jobsByID    map[string]serviceTypes.StudyServiceJob
+	jobsByRunID map[string][]serviceTypes.StudyServiceJob
 }
 
 type reconciliationMetricsRecorderTestDouble struct {
@@ -184,6 +187,14 @@ func (dispatcher *reconciliationWorkerDispatcher) GetJobByID(
 		return job, true, nil
 	}
 	return serviceTypes.StudyServiceJob{}, false, dispatcher.jobIDErr
+}
+
+func (dispatcher *reconciliationWorkerDispatcher) GetJobsByProcessingRun(
+	_ context.Context,
+	tenantID, processingRunID string,
+) ([]serviceTypes.StudyServiceJob, error) {
+	dispatcher.runCalls = append(dispatcher.runCalls, tenantID+":"+processingRunID)
+	return dispatcher.jobsByRunID[processingRunID], dispatcher.runErr
 }
 
 func (dispatcher *reconciliationWorkerDispatcher) GetJobsByCandidate(
@@ -244,6 +255,7 @@ func TestReconciliationWorkerQueriesOnlyPreciselyEligibleCandidates(t *testing.T
 	require.Equal(t, 4, runRepository.executionListCalls)
 	require.Equal(t, []string{"candidate-stale"}, queryRepository.calls)
 	require.Equal(t, []string{"tenant-a:python-job-missing"}, dispatcher.jobIDCalls)
+	require.Equal(t, []string{"tenant-a:run-stale"}, dispatcher.runCalls)
 	require.Equal(t, []string{"tenant-a:candidate-stale"}, dispatcher.calls)
 	require.Len(t, runRepository.attempts, 1)
 	require.True(t, runRepository.attempts[0].Succeeded)
@@ -310,11 +322,66 @@ func TestReconciliationWorkerRepairsMissedTerminalCallbackByExactJobID(t *testin
 
 	require.NoError(t, err)
 	require.Equal(t, []string{tenantID + ":" + jobID}, dispatcher.jobIDCalls)
+	require.Empty(t, dispatcher.runCalls)
 	require.Empty(t, dispatcher.calls)
 	require.Equal(t, entity.InferenceIngestionProcessingJobStatusCompleted, runRepository.executions[runID][0].Status)
 	require.Equal(t, entity.InferenceIngestionProcessingRunPhaseTerminal, runRepository.runs[0].Phase)
 	require.False(t, runRepository.runs[0].AttentionRequired)
 	require.Empty(t, runRepository.runs[0].AttentionReasons)
+	require.Equal(t, []ProcessingReconciliationCycleMetrics{{Checked: 1, Repaired: 1}}, metricsRecorder.cycles)
+}
+
+func TestReconciliationWorkerRepairsMissedCallbackByProcessingRunBeforeCandidateFallback(t *testing.T) {
+	t.Setenv(reconciliationPendingStaleMinutesEnv, "2")
+	t.Setenv(reconciliationQueuedStaleMinutesEnv, "10")
+	t.Setenv(reconciliationRunningStaleMinutesEnv, "65")
+	t.Setenv(reconciliationModelRunningStaleMinutesEnv, "")
+	t.Setenv("INFERENCE_INGESTION_RECONCILIATION_STALE_MINUTES", "")
+	now := time.Now()
+	completedAt := now.Add(-time.Minute)
+	runID := "run-1"
+	candidateID := "candidate-1"
+	tenantID := "tenant-a"
+	jobID := "python-job-1"
+	runRepository := &reconciliationWorkerRunRepository{
+		runs: []entity.InferenceIngestionProcessingRun{{
+			ID: runID, TenantID: tenantID, StudyInstanceUID: "study-1",
+			Phase: entity.InferenceIngestionProcessingRunPhaseProcessing, Version: 3,
+		}},
+		executions: map[string][]entity.InferenceIngestionProcessingJob{
+			runID: {{
+				ID: "execution-1", ProcessingRunID: &runID, CandidateID: candidateID, TenantID: tenantID,
+				ModelName: "EchoPrime", Status: entity.InferenceIngestionProcessingJobStatusRunning,
+				UpdatedAt: now.Add(-70 * time.Minute),
+			}},
+		},
+	}
+	queryRepository := &reconciliationWorkerQueryRepository{candidates: map[string]entity.InferenceIngestionCandidate{
+		candidateID: {ID: candidateID, TenantID: tenantID, StudyInstanceUID: "study-1"},
+	}}
+	dispatcher := &reconciliationWorkerDispatcher{jobsByRunID: map[string][]serviceTypes.StudyServiceJob{
+		runID: {{
+			JobID: jobID, StudyInstanceUID: "study-1", TenantID: &tenantID, CandidateID: &candidateID,
+			ProcessingRunID: &runID, ModelName: "EchoPrime", Status: "completed", CompletedAt: &completedAt,
+		}},
+	}}
+	metricsRecorder := &reconciliationMetricsRecorderTestDouble{}
+	service := &InferenceCommandService{
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		InferenceQueryRepositoryInterface:         queryRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+		ProcessingReconciliationMetricsRecorder:   metricsRecorder,
+	}
+
+	err := service.ExecuteInferenceIngestionReconciliationWorker(context.Background())
+
+	require.NoError(t, err)
+	require.Empty(t, dispatcher.jobIDCalls)
+	require.Equal(t, []string{tenantID + ":" + runID}, dispatcher.runCalls)
+	require.Empty(t, dispatcher.calls)
+	require.Empty(t, queryRepository.calls)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusCompleted, runRepository.executions[runID][0].Status)
+	require.Equal(t, entity.InferenceIngestionProcessingRunPhaseTerminal, runRepository.runs[0].Phase)
 	require.Equal(t, []ProcessingReconciliationCycleMetrics{{Checked: 1, Repaired: 1}}, metricsRecorder.cycles)
 }
 
@@ -353,6 +420,7 @@ func TestReconciliationWorkerMarksThirdConsecutiveFailureForAttention(t *testing
 	err := service.ExecuteInferenceIngestionReconciliationWorker(context.Background())
 
 	require.NoError(t, err)
+	require.Equal(t, []string{"tenant-a:run-stale"}, dispatcher.runCalls)
 	require.Len(t, runRepository.attempts, 1)
 	require.False(t, runRepository.attempts[0].Succeeded)
 	require.Equal(t, 3, runRepository.runs[0].ReconciliationFailureCount)
