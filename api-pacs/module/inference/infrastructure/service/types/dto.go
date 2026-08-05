@@ -52,10 +52,11 @@ type CreateStudyProcessingRunResult struct {
 }
 
 type RecalculateStudyProcessingRun struct {
-	TenantID              string
-	ProcessingRunID       string
-	WholeRunCancelled     bool
-	AttentionReasonsToAdd entity.InferenceIngestionProcessingRunAttentionReasons
+	TenantID                     string
+	ProcessingRunID              string
+	WholeRunCancelled            bool
+	AttentionReasonsToAdd        entity.InferenceIngestionProcessingRunAttentionReasons
+	AttentionReasonCodesToRemove []string
 }
 
 type RecalculateStudyProcessingRunResult struct {

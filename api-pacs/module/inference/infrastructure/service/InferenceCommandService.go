@@ -125,6 +125,7 @@ func (service *InferenceCommandService) RecalculateStudyProcessingRun(ctx contex
 		if err != nil {
 			return types.RecalculateStudyProcessingRunResult{}, err
 		}
+		run.AttentionReasons = removeProcessingRunAttentionReasons(run.AttentionReasons, data.AttentionReasonCodesToRemove)
 		run.AttentionReasons = append(run.AttentionReasons, data.AttentionReasonsToAdd...)
 		executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, tenantID, processingRunID)
 		if err != nil {
@@ -1060,6 +1061,7 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 	}
 
 	candidateIDs := reconciliationCandidateIDs(evaluation, executions)
+	missingStudyServiceJob := false
 	for _, candidateID := range candidateIDs {
 		candidate, candidateErr := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionCandidateByID(candidateID)
 		if candidateErr != nil {
@@ -1069,11 +1071,16 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 			return fmt.Errorf("reconciliation candidate tenant mismatch for run %s", run.ID)
 		}
 
-		if reconcileErr := service.reconcileProcessingRunCandidate(ctx, run, candidate); reconcileErr != nil {
+		matched, reconcileErr := service.reconcileProcessingRunCandidate(ctx, run, candidate)
+		if reconcileErr != nil {
 			return reconcileErr
 		}
+		if !matched {
+			missingStudyServiceJob = true
+		}
 	}
-	return nil
+
+	return service.syncProcessingRunReconciliationAttention(ctx, run, now, missingStudyServiceJob)
 }
 
 func reconciliationCandidateIDs(
@@ -1111,10 +1118,10 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 	ctx context.Context,
 	run entity.InferenceIngestionProcessingRun,
 	candidate entity.InferenceIngestionCandidate,
-) error {
+) (bool, error) {
 	jobs, err := service.ProcessingDispatcherInterface.GetJobsByCandidate(ctx, candidate.TenantID, candidate.ID)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if len(jobs) == 0 {
@@ -1123,9 +1130,10 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 			candidate.TenantID,
 			candidate.StudyInstanceUID,
 		)
-		return nil
+		return false, nil
 	}
 
+	matched := false
 	for _, job := range jobs {
 		if job.CandidateID != nil && strings.TrimSpace(*job.CandidateID) != "" && strings.TrimSpace(*job.CandidateID) != strings.TrimSpace(candidate.ID) {
 			continue
@@ -1133,6 +1141,7 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 		if strings.TrimSpace(trimmedPointerValue(job.ProcessingRunID)) != strings.TrimSpace(run.ID) {
 			continue
 		}
+		matched = true
 
 		result, err := service.HandleStudyServiceProcessingCallback(ctx, types.HandleStudyServiceProcessingCallback{
 			CandidateID:       candidate.ID,
@@ -1149,7 +1158,7 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 			CompletedAt:       job.CompletedAt,
 		})
 		if err != nil {
-			return err
+			return false, err
 		}
 
 		log.Printf("[Ingestion reconciliation worker] reconciled candidate_id=%s tenant_id=%s study_service_job_id=%s model_name=%s outcome=%s status=%s",
@@ -1162,7 +1171,77 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 		)
 	}
 
-	return nil
+	return matched, nil
+}
+
+var reconciliationManagedAttentionReasonCodes = []string{
+	entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+	entity.InferenceIngestionProcessingRunAttentionExpectedJobMissing,
+	entity.InferenceIngestionProcessingRunAttentionPendingStale,
+	entity.InferenceIngestionProcessingRunAttentionQueueStale,
+	entity.InferenceIngestionProcessingRunAttentionProcessingStale,
+	entity.InferenceIngestionProcessingRunAttentionCallbackDeadLettered,
+	entity.InferenceIngestionProcessingRunAttentionStudyServiceJobMissing,
+	entity.InferenceIngestionProcessingRunAttentionStateConflict,
+	entity.InferenceIngestionProcessingRunAttentionReconciliationFailed,
+}
+
+func (service *InferenceCommandService) syncProcessingRunReconciliationAttention(
+	ctx context.Context,
+	run entity.InferenceIngestionProcessingRun,
+	now time.Time,
+	missingStudyServiceJob bool,
+) error {
+	currentRun, err := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRun(ctx, run.TenantID, run.ID)
+	if err != nil {
+		return err
+	}
+	currentExecutions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, run.TenantID, run.ID)
+	if err != nil {
+		return err
+	}
+
+	evaluation := evaluateProcessingRunReconciliation(
+		currentRun,
+		currentExecutions,
+		now,
+		configuredProcessingReconciliation(),
+	)
+	reasons := entity.InferenceIngestionProcessingRunAttentionReasons{}
+	for _, target := range evaluation.StaleExecutions {
+		reasons = appendReconciliationReason(reasons, target.ReasonCode)
+	}
+	if len(currentExecutions) == 0 && currentRun.Phase != entity.InferenceIngestionProcessingRunPhaseTerminal {
+		reasons = appendReconciliationReason(reasons, entity.InferenceIngestionProcessingRunAttentionEmptyModelPlan)
+	}
+	if missingStudyServiceJob {
+		reasons = appendReconciliationReason(reasons, entity.InferenceIngestionProcessingRunAttentionStudyServiceJobMissing)
+	}
+
+	_, err = service.RecalculateStudyProcessingRun(ctx, types.RecalculateStudyProcessingRun{
+		TenantID:                     run.TenantID,
+		ProcessingRunID:              run.ID,
+		AttentionReasonsToAdd:        reasons,
+		AttentionReasonCodesToRemove: reconciliationManagedAttentionReasonCodes,
+	})
+	return err
+}
+
+func removeProcessingRunAttentionReasons(
+	reasons entity.InferenceIngestionProcessingRunAttentionReasons,
+	codes []string,
+) entity.InferenceIngestionProcessingRunAttentionReasons {
+	remove := make(map[string]struct{}, len(codes))
+	for _, code := range codes {
+		remove[code] = struct{}{}
+	}
+	filtered := make(entity.InferenceIngestionProcessingRunAttentionReasons, 0, len(reasons))
+	for _, reason := range reasons {
+		if _, shouldRemove := remove[reason.Code]; !shouldRemove {
+			filtered = append(filtered, reason)
+		}
+	}
+	return filtered
 }
 
 func (service *InferenceCommandService) findIngestionStudiesWithCache(

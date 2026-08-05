@@ -20,6 +20,30 @@ type reconciliationWorkerRunRepository struct {
 	executions         map[string][]entity.InferenceIngestionProcessingJob
 	listInput          repositoryTypes.ListInferenceIngestionProcessingRunsForReconciliation
 	executionListCalls int
+	aggregateUpdates   []repositoryTypes.UpdateInferenceIngestionProcessingRunAggregate
+}
+
+func (repository *reconciliationWorkerRunRepository) SelectProcessingRun(
+	_ context.Context,
+	_, processingRunID string,
+) (entity.InferenceIngestionProcessingRun, error) {
+	for _, run := range repository.runs {
+		if run.ID == processingRunID {
+			return run, nil
+		}
+	}
+	return entity.InferenceIngestionProcessingRun{}, nil
+}
+
+func (repository *reconciliationWorkerRunRepository) UpdateProcessingRunAggregate(
+	_ context.Context,
+	data repositoryTypes.UpdateInferenceIngestionProcessingRunAggregate,
+) (entity.InferenceIngestionProcessingRun, error) {
+	repository.aggregateUpdates = append(repository.aggregateUpdates, data)
+	return entity.InferenceIngestionProcessingRun{
+		ID: data.ID, TenantID: data.TenantID, Phase: data.Phase,
+		AttentionRequired: data.AttentionRequired, AttentionReasons: data.AttentionReasons,
+	}, nil
 }
 
 func (repository *reconciliationWorkerRunRepository) ListProcessingRunsForReconciliation(
@@ -99,9 +123,18 @@ func TestReconciliationWorkerQueriesOnlyPreciselyEligibleCandidates(t *testing.T
 
 	require.NoError(t, err)
 	require.Equal(t, processingReconciliationBatchLimit, runRepository.listInput.Limit)
-	require.Equal(t, 2, runRepository.executionListCalls)
+	require.Equal(t, 4, runRepository.executionListCalls)
 	require.Equal(t, []string{"candidate-stale"}, queryRepository.calls)
 	require.Equal(t, []string{"tenant-a:candidate-stale"}, dispatcher.calls)
+	require.Len(t, runRepository.aggregateUpdates, 1)
+	require.True(t, runRepository.aggregateUpdates[0].AttentionRequired)
+	require.Equal(t, []string{
+		entity.InferenceIngestionProcessingRunAttentionPendingStale,
+		entity.InferenceIngestionProcessingRunAttentionStudyServiceJobMissing,
+	}, []string{
+		runRepository.aggregateUpdates[0].AttentionReasons[0].Code,
+		runRepository.aggregateUpdates[0].AttentionReasons[1].Code,
+	})
 }
 
 func TestReconciliationCandidateIDsDeduplicatesCandidates(t *testing.T) {
@@ -115,4 +148,18 @@ func TestReconciliationCandidateIDsDeduplicatesCandidates(t *testing.T) {
 	}
 
 	require.Equal(t, []string{"candidate-1", "candidate-2"}, reconciliationCandidateIDs(evaluation, nil))
+}
+
+func TestRemoveProcessingRunAttentionReasonsClearsOnlyManagedCodes(t *testing.T) {
+	reasons := entity.InferenceIngestionProcessingRunAttentionReasons{
+		{Code: entity.InferenceIngestionProcessingRunAttentionPendingStale},
+		{Code: entity.InferenceIngestionProcessingRunAttentionStudyServiceJobMissing},
+		{Code: "MANUAL_REVIEW_REQUIRED"},
+	}
+
+	filtered := removeProcessingRunAttentionReasons(reasons, reconciliationManagedAttentionReasonCodes)
+
+	require.Equal(t, entity.InferenceIngestionProcessingRunAttentionReasons{
+		{Code: "MANUAL_REVIEW_REQUIRED"},
+	}, filtered)
 }
