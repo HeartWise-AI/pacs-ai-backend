@@ -46,6 +46,7 @@ type InferenceCommandService struct {
 	orthancAPITypes.OrthancAPIInterface
 	dockerInferenceTypes.DockerInferenceAPIInterface
 	inferenceApplication.ProcessingDispatcherInterface
+	inferenceApplication.WorklistNotificationPublisherInterface
 	StudyServiceDispatchSemaphore chan struct{}
 }
 
@@ -258,7 +259,11 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		return types.HandleStudyServiceProcessingCallbackResult{}, err
 	}
 
-	if strings.TrimSpace(candidate.StudyInstanceUID) != strings.TrimSpace(data.StudyInstanceUID) {
+	if strings.TrimSpace(candidate.ID) != strings.TrimSpace(data.CandidateID) ||
+		callbackValueMismatch(data.PayloadCandidateID, candidate.ID) ||
+		callbackValueMismatch(data.TenantID, candidate.TenantID) ||
+		callbackValueMismatch(data.IngestionJobID, candidate.IngestionJobID) ||
+		strings.TrimSpace(candidate.StudyInstanceUID) != strings.TrimSpace(data.StudyInstanceUID) {
 		return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
 	}
 
@@ -272,10 +277,33 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 	modality := nonEmptyStringPointer(strings.TrimSpace(data.Modality))
 	studyServiceJobID := nonEmptyStringPointer(strings.TrimSpace(data.StudyServiceJobID))
 	errorMessage := trimmedPointer(data.ErrorMessage)
+	eventID := strings.TrimSpace(data.EventID)
+	hasEventID := eventID != ""
+	hasEventSequence := data.Sequence != nil
+	if hasEventID != hasEventSequence || (hasEventSequence && *data.Sequence <= 0) {
+		return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
+	}
+	orderedEvent := hasEventID && hasEventSequence
+	lastEventID := nonEmptyStringPointer(eventID)
 
 	processingRunID := strings.TrimSpace(data.ProcessingRunID)
 	var existing entity.InferenceIngestionProcessingJob
 	if processingRunID != "" {
+		run, runErr := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRun(
+			ctx, candidate.TenantID, processingRunID,
+		)
+		if runErr != nil {
+			if runErr.Error() == apiError.MissingRecord {
+				return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
+			}
+			return types.HandleStudyServiceProcessingCallbackResult{}, runErr
+		}
+		if strings.TrimSpace(run.ID) != processingRunID ||
+			strings.TrimSpace(run.TenantID) != strings.TrimSpace(candidate.TenantID) ||
+			strings.TrimSpace(run.StudyInstanceUID) != strings.TrimSpace(candidate.StudyInstanceUID) {
+			return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
+		}
+
 		existing, err = service.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(
 			ctx, candidate.TenantID, processingRunID, candidate.ID, modelName,
 		)
@@ -284,6 +312,9 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 	}
 	if err != nil {
 		if processingRunID != "" {
+			if err.Error() == apiError.MissingRecord {
+				return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
+			}
 			return types.HandleStudyServiceProcessingCallbackResult{}, err
 		}
 		if err.Error() != apiError.MissingRecord {
@@ -300,6 +331,8 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 			Status:            status,
 			StudyServiceJobID: studyServiceJobID,
 			ErrorMessage:      errorMessage,
+			LastEventID:       lastEventID,
+			LastEventSequence: data.Sequence,
 			StartedAt:         data.StartedAt,
 			CompletedAt:       data.CompletedAt,
 		})
@@ -308,6 +341,27 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		}
 
 		return types.HandleStudyServiceProcessingCallbackResult{Outcome: "applied"}, nil
+	}
+
+	if processingRunID != "" && !processingCallbackMatchesExecution(
+		existing,
+		candidate,
+		processingRunID,
+		modelName,
+		strings.TrimSpace(data.ModelVersion),
+		strings.TrimSpace(data.Modality),
+		strings.TrimSpace(data.StudyServiceJobID),
+	) {
+		return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
+	}
+
+	if orderedEvent {
+		if existing.LastEventID != nil && strings.TrimSpace(*existing.LastEventID) == eventID {
+			return types.HandleStudyServiceProcessingCallbackResult{Outcome: "replayed"}, nil
+		}
+		if existing.LastEventSequence != nil && *data.Sequence <= *existing.LastEventSequence {
+			return types.HandleStudyServiceProcessingCallbackResult{Outcome: "ignored"}, nil
+		}
 	}
 
 	if !existing.Status.CanTransitionTo(status) {
@@ -321,7 +375,37 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		return types.HandleStudyServiceProcessingCallbackResult{Outcome: "ignored"}, nil
 	}
 
-	if existing.Status == status {
+	if processingRunID != "" {
+		transition, transitionErr := service.InferenceProcessingRunRepositoryInterface.ApplyProcessingRunExecutionTransition(
+			ctx,
+			repositoryTypes.ApplyInferenceIngestionProcessingTransition{
+				TenantID:          candidate.TenantID,
+				ProcessingRunID:   processingRunID,
+				ExecutionID:       existing.ID,
+				CandidateID:       candidate.ID,
+				ModelName:         modelName,
+				Status:            status,
+				ModelVersion:      modelVersion,
+				Modality:          modality,
+				StudyServiceJobID: studyServiceJobID,
+				ErrorMessage:      errorMessage,
+				SkipReason:        data.SkipReason,
+				EventID:           lastEventID,
+				EventSequence:     data.Sequence,
+				StartedAt:         data.StartedAt,
+				CompletedAt:       data.CompletedAt,
+			},
+		)
+		if transitionErr != nil {
+			return types.HandleStudyServiceProcessingCallbackResult{}, transitionErr
+		}
+		if transition.Changed {
+			service.publishCommittedWorklistNotification(ctx, transition)
+		}
+		return types.HandleStudyServiceProcessingCallbackResult{Outcome: transition.Outcome}, nil
+	}
+
+	if existing.Status == status && !orderedEvent {
 		log.Printf("[Ingestion callback] ignoring replayed callback candidate_id=%s model_name=%s request_id=%s status=%s",
 			candidate.ID,
 			modelName,
@@ -341,6 +425,8 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		Modality:          modality,
 		StudyServiceJobID: studyServiceJobID,
 		ErrorMessage:      errorMessage,
+		LastEventID:       lastEventID,
+		LastEventSequence: data.Sequence,
 		StartedAt:         data.StartedAt,
 		CompletedAt:       data.CompletedAt,
 	})
@@ -352,6 +438,74 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 	}
 
 	return types.HandleStudyServiceProcessingCallbackResult{Outcome: "applied"}, nil
+}
+
+func (service *InferenceCommandService) publishCommittedWorklistNotification(
+	ctx context.Context,
+	transition repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult,
+) {
+	if service.WorklistNotificationPublisherInterface == nil {
+		return
+	}
+	notification := types.WorklistNotification{
+		Type:              "study_status.updated",
+		TenantID:          transition.Run.TenantID,
+		StudyInstanceUID:  transition.Run.StudyInstanceUID,
+		RunID:             transition.Run.ID,
+		RunNumber:         transition.Run.RunNumber,
+		Phase:             transition.Run.Phase,
+		Outcome:           transition.Run.Outcome,
+		AttentionRequired: transition.Run.AttentionRequired,
+		ExpectedModels:    transition.Counts.Expected,
+		CompletedModels:   transition.Counts.Completed,
+		FailedModels:      transition.Counts.Failed,
+		SkippedModels:     transition.Counts.Skipped,
+		ActiveModels:      transition.Counts.Active,
+		Version:           transition.Run.Version,
+		UpdatedAt:         transition.Run.UpdatedAt,
+	}
+	if err := service.PublishWorklistNotification(ctx, notification); err != nil {
+		log.Printf(
+			"[Ingestion callback] worklist notification publish failed run_id=%s version=%d err=%v",
+			transition.Run.ID,
+			transition.Run.Version,
+			err,
+		)
+	}
+}
+
+func callbackValueMismatch(incoming, expected string) bool {
+	incoming = strings.TrimSpace(incoming)
+	return incoming != "" && incoming != strings.TrimSpace(expected)
+}
+
+func callbackPointerMismatch(incoming string, expected *string) bool {
+	if expected == nil || strings.TrimSpace(*expected) == "" {
+		return false
+	}
+	return strings.TrimSpace(incoming) != strings.TrimSpace(*expected)
+}
+
+func processingCallbackMatchesExecution(
+	execution entity.InferenceIngestionProcessingJob,
+	candidate entity.InferenceIngestionCandidate,
+	processingRunID string,
+	modelName string,
+	modelVersion string,
+	modality string,
+	studyServiceJobID string,
+) bool {
+	if execution.ProcessingRunID == nil || strings.TrimSpace(*execution.ProcessingRunID) != processingRunID {
+		return false
+	}
+	if strings.TrimSpace(execution.CandidateID) != strings.TrimSpace(candidate.ID) ||
+		strings.TrimSpace(execution.TenantID) != strings.TrimSpace(candidate.TenantID) ||
+		strings.TrimSpace(execution.ModelName) != modelName {
+		return false
+	}
+	return !callbackPointerMismatch(modelVersion, execution.ModelVersion) &&
+		!callbackPointerMismatch(modality, execution.Modality) &&
+		!callbackPointerMismatch(studyServiceJobID, execution.StudyServiceJobID)
 }
 
 func (service *InferenceCommandService) recalculateProcessingRunForExecution(ctx context.Context, candidate entity.InferenceIngestionCandidate, execution entity.InferenceIngestionProcessingJob) error {

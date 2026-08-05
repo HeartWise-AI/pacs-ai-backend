@@ -92,21 +92,22 @@ type ServiceContainerInterface interface {
 type kernel struct{}
 
 var (
-	m                      sync.Mutex
-	k                      *kernel
-	containerOnce          sync.Once
-	elasticsearchDBHandler *elasticsearch.ElasticsearchDBHandler
-	redisIAMDBHandler      *redis.RedisDBHandler
-	postgresqlDBHanddler   *postgresql.PostgreSQLDBHandler
-	firebaseAdminSDK       *firebaseadmin.FirebaseAdminSDK
-	orthancAPI             *orthanc.OrthancAPI
-	kibanaAPI              *kibana.KibanaAPI
-	mailchimpAPI           *mailchimp.MailchimpAPI
-	cloudflareAPI          *cloudflare.CloudflareAPI
-	mailgunSDK             *mailgun.MailgunSDK
-	dockerSDK              *docker.DockerSDK
-	dockerInferenceAPI     *dockerinference.DockerInferenceAPI
-	docusignAPI            *docusign.DocusignAPI
+	m                          sync.Mutex
+	k                          *kernel
+	containerOnce              sync.Once
+	elasticsearchDBHandler     *elasticsearch.ElasticsearchDBHandler
+	redisIAMDBHandler          *redis.RedisDBHandler
+	postgresqlDBHanddler       *postgresql.PostgreSQLDBHandler
+	firebaseAdminSDK           *firebaseadmin.FirebaseAdminSDK
+	orthancAPI                 *orthanc.OrthancAPI
+	kibanaAPI                  *kibana.KibanaAPI
+	mailchimpAPI               *mailchimp.MailchimpAPI
+	cloudflareAPI              *cloudflare.CloudflareAPI
+	mailgunSDK                 *mailgun.MailgunSDK
+	dockerSDK                  *docker.DockerSDK
+	dockerInferenceAPI         *dockerinference.DockerInferenceAPI
+	docusignAPI                *docusign.DocusignAPI
+	worklistNotificationBroker = inferenceService.NewWorklistNotificationBroker()
 )
 
 // ================================= REST ===================================
@@ -304,15 +305,16 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		InferenceProcessingRunRepositoryInterface: &inferenceRepository.InferenceProcessingRunRepositoryCircuitBreaker{
 			InferenceProcessingRunRepositoryInterface: processingRunRepository,
 		},
-		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
-		UserQueryServiceInterface:            k.userQueryServiceContainer(),
-		OrthancCommandServiceInterface:       k.orthancCommandServiceContainer(),
-		OrthancQueryServiceInterface:         k.orthancQueryServiceContainer(),
-		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
-		DockerSDKInterface:                   dockerSDK,
-		OrthancAPIInterface:                  orthancAPI,
-		DockerInferenceAPIInterface:          dockerInferenceAPI,
-		StudyServiceDispatchSemaphore:        make(chan struct{}, configuredStudyServiceDispatchConcurrency()),
+		TenantQueryServiceInterface:            k.tenantQueryServiceContainer(),
+		UserQueryServiceInterface:              k.userQueryServiceContainer(),
+		OrthancCommandServiceInterface:         k.orthancCommandServiceContainer(),
+		OrthancQueryServiceInterface:           k.orthancQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface:   k.elasticsearchCommandServiceContainer(),
+		DockerSDKInterface:                     dockerSDK,
+		OrthancAPIInterface:                    orthancAPI,
+		DockerInferenceAPIInterface:            dockerInferenceAPI,
+		StudyServiceDispatchSemaphore:          make(chan struct{}, configuredStudyServiceDispatchConcurrency()),
+		WorklistNotificationPublisherInterface: worklistNotificationBroker,
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
 			StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
 			StudyServiceIngestToken:   os.Getenv("STUDY_SERVICE_INGEST_TOKEN"),

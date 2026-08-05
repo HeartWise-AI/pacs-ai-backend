@@ -19,6 +19,12 @@ type InferenceProcessingRunRepository struct {
 	postgresqlTypes.PostgresSQLDBHandlerInterface
 }
 
+const (
+	processingTransitionOutcomeApplied  = "applied"
+	processingTransitionOutcomeIgnored  = "ignored"
+	processingTransitionOutcomeReplayed = "replayed"
+)
+
 func processingRunError(err error) error {
 	if err == nil {
 		return nil
@@ -32,6 +38,122 @@ func processingRunError(err error) error {
 	}
 	log.Println(err)
 	return errors.New(apiError.DatabaseError)
+}
+
+// ApplyProcessingRunExecutionTransition serializes one execution event with its aggregate update.
+func (repository *InferenceProcessingRunRepository) ApplyProcessingRunExecutionTransition(
+	ctx context.Context,
+	data types.ApplyInferenceIngestionProcessingTransition,
+) (types.ApplyInferenceIngestionProcessingTransitionResult, error) {
+	tx, err := repository.PostgresSQLDBHandlerInterface.Begin()
+	if err != nil {
+		return types.ApplyInferenceIngestionProcessingTransitionResult{}, processingRunError(err)
+	}
+	defer tx.Rollback()
+
+	var run entity.InferenceIngestionProcessingRun
+	if err = tx.GetContext(ctx, &run, `
+		SELECT * FROM ingestion_processing_runs
+		WHERE id = $1 AND tenant_id = $2
+		FOR UPDATE
+	`, data.ProcessingRunID, data.TenantID); err != nil {
+		return types.ApplyInferenceIngestionProcessingTransitionResult{}, processingRunError(err)
+	}
+
+	var execution entity.InferenceIngestionProcessingJob
+	if err = tx.GetContext(ctx, &execution, `
+		SELECT * FROM ingestion_processing_jobs
+		WHERE id = $1 AND processing_run_id = $2 AND candidate_id = $3
+		  AND tenant_id = $4 AND model_name = $5
+		FOR UPDATE
+	`, data.ExecutionID, data.ProcessingRunID, data.CandidateID, data.TenantID, data.ModelName); err != nil {
+		return types.ApplyInferenceIngestionProcessingTransitionResult{}, processingRunError(err)
+	}
+
+	if data.EventID != nil && execution.LastEventID != nil && *data.EventID == *execution.LastEventID {
+		return types.ApplyInferenceIngestionProcessingTransitionResult{
+			Outcome: processingTransitionOutcomeReplayed, Execution: execution, Run: run,
+		}, nil
+	}
+	if data.EventSequence != nil && execution.LastEventSequence != nil && *data.EventSequence <= *execution.LastEventSequence {
+		return types.ApplyInferenceIngestionProcessingTransitionResult{
+			Outcome: processingTransitionOutcomeIgnored, Execution: execution, Run: run,
+		}, nil
+	}
+	if !execution.Status.CanTransitionTo(data.Status) {
+		return types.ApplyInferenceIngestionProcessingTransitionResult{
+			Outcome: processingTransitionOutcomeIgnored, Execution: execution, Run: run,
+		}, nil
+	}
+
+	legacyReplay := data.EventID == nil && data.EventSequence == nil && execution.Status == data.Status
+	if !legacyReplay {
+		var skipReasonCode interface{}
+		var skipReasonMessage interface{}
+		if data.SkipReason != nil {
+			skipReasonCode = data.SkipReason.Code
+			if data.SkipReason.Message != nil {
+				skipReasonMessage = *data.SkipReason.Message
+			}
+		}
+
+		if err = tx.GetContext(ctx, &execution, `
+			UPDATE ingestion_processing_jobs SET
+				status = $1,
+				model_version = COALESCE($2, model_version),
+				modality = COALESCE($3, modality),
+				study_service_job_id = COALESCE($4, study_service_job_id),
+				error_message = $5,
+				skip_reason_code = $6,
+				skip_reason_message = $7,
+				last_event_id = COALESCE($8, last_event_id),
+				last_event_sequence = COALESCE($9, last_event_sequence),
+				started_at = COALESCE($10, started_at),
+				completed_at = COALESCE($11, completed_at)
+			WHERE id = $12
+			RETURNING *
+		`, data.Status, data.ModelVersion, data.Modality, data.StudyServiceJobID,
+			data.ErrorMessage, skipReasonCode, skipReasonMessage, data.EventID,
+			data.EventSequence, data.StartedAt, data.CompletedAt, data.ExecutionID); err != nil {
+			return types.ApplyInferenceIngestionProcessingTransitionResult{}, processingRunError(err)
+		}
+	}
+
+	executions := make([]entity.InferenceIngestionProcessingJob, 0)
+	if err = tx.SelectContext(ctx, &executions, `
+		SELECT * FROM ingestion_processing_jobs
+		WHERE processing_run_id = $1
+		ORDER BY created_at ASC, id ASC
+	`, data.ProcessingRunID); err != nil {
+		return types.ApplyInferenceIngestionProcessingTransitionResult{}, processingRunError(err)
+	}
+
+	aggregate := entity.AggregateInferenceIngestionProcessingRun(
+		entity.InferenceIngestionProcessingRunAggregationInput{Run: run, Executions: executions},
+	)
+	if err = tx.GetContext(ctx, &run, `
+		UPDATE ingestion_processing_runs SET
+			phase = $1, outcome = $2,
+			attention_required = $3, attention_reasons = $4,
+			started_at = $5, completed_at = $6, version = version + 1
+		WHERE id = $7 AND tenant_id = $8
+		RETURNING *
+	`, aggregate.Phase, aggregate.Outcome, aggregate.AttentionRequired,
+		aggregate.AttentionReasons, aggregate.StartedAt, aggregate.CompletedAt,
+		data.ProcessingRunID, data.TenantID); err != nil {
+		return types.ApplyInferenceIngestionProcessingTransitionResult{}, processingRunError(err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return types.ApplyInferenceIngestionProcessingTransitionResult{}, processingRunError(err)
+	}
+	outcome := processingTransitionOutcomeApplied
+	if legacyReplay {
+		outcome = processingTransitionOutcomeReplayed
+	}
+	return types.ApplyInferenceIngestionProcessingTransitionResult{
+		Outcome: outcome, Changed: true, Execution: execution, Run: run, Counts: aggregate.Counts,
+	}, nil
 }
 
 // CreateProcessingRun atomically allocates the next study-local run number and inserts the run.

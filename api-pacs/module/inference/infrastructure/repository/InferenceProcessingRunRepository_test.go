@@ -65,6 +65,179 @@ func processingExecutionRows(now time.Time) *sqlmock.Rows {
 	)
 }
 
+func processingRunStateRows(
+	now time.Time,
+	phase entity.InferenceIngestionProcessingRunPhase,
+	version int64,
+	startedAt *time.Time,
+	completedAt *time.Time,
+) *sqlmock.Rows {
+	return emptyProcessingRunRows().AddRow(
+		"run-2", "tenant-a", "1.2.3", 2, "AUTO", phase,
+		nil, false, []byte("[]"), version, startedAt, completedAt, now, now,
+	)
+}
+
+func processingExecutionStateRows(
+	now time.Time,
+	status entity.InferenceIngestionProcessingJobStatus,
+	lastEventID *string,
+	lastEventSequence *int64,
+	startedAt *time.Time,
+) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "processing_run_id", "candidate_id", "tenant_id", "model_name", "model_version",
+		"modality", "status", "study_service_job_id", "error_message", "skip_reason_code",
+		"skip_reason_message", "last_event_id", "last_event_sequence", "started_at", "completed_at",
+		"created_at", "updated_at",
+	}).AddRow(
+		"execution-1", "run-2", "candidate-1", "tenant-a", "EchoModel", "v1",
+		"US", status, "python-job-1", nil, nil, nil, lastEventID, lastEventSequence,
+		startedAt, nil, now, now,
+	)
+}
+
+func TestApplyProcessingRunExecutionTransitionUpdatesExecutionAndAggregateAtomically(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { database.Close() })
+	now := time.Now().UTC()
+	eventID := "event-running"
+	eventSequence := int64(2)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_runs").
+		WithArgs("run-2", "tenant-a").
+		WillReturnRows(processingRunStateRows(now, entity.InferenceIngestionProcessingRunPhaseQueued, 1, nil, nil))
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_jobs").
+		WithArgs("execution-1", "run-2", "candidate-1", "tenant-a", "EchoModel").
+		WillReturnRows(processingExecutionStateRows(now, entity.InferenceIngestionProcessingJobStatusQueued, nil, nil, nil))
+	mock.ExpectQuery("UPDATE ingestion_processing_jobs").
+		WithArgs(
+			entity.InferenceIngestionProcessingJobStatusRunning,
+			nil, nil, nil, nil, nil, nil, eventID, eventSequence, now, nil, "execution-1",
+		).
+		WillReturnRows(processingExecutionStateRows(
+			now, entity.InferenceIngestionProcessingJobStatusRunning, &eventID, &eventSequence, &now,
+		))
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_jobs").
+		WithArgs("run-2").
+		WillReturnRows(processingExecutionStateRows(
+			now, entity.InferenceIngestionProcessingJobStatusRunning, &eventID, &eventSequence, &now,
+		))
+	mock.ExpectQuery("UPDATE ingestion_processing_runs").
+		WithArgs(
+			entity.InferenceIngestionProcessingRunPhaseProcessing,
+			nil,
+			false,
+			sqlmock.AnyArg(),
+			now,
+			nil,
+			"run-2",
+			"tenant-a",
+		).
+		WillReturnRows(processingRunStateRows(
+			now, entity.InferenceIngestionProcessingRunPhaseProcessing, 2, &now, nil,
+		))
+	mock.ExpectCommit()
+
+	repository := InferenceProcessingRunRepository{
+		PostgresSQLDBHandlerInterface: &processingRunTestHandler{db: sqlx.NewDb(database, "sqlmock")},
+	}
+	result, err := repository.ApplyProcessingRunExecutionTransition(
+		context.Background(),
+		types.ApplyInferenceIngestionProcessingTransition{
+			TenantID: "tenant-a", ProcessingRunID: "run-2", ExecutionID: "execution-1",
+			CandidateID: "candidate-1", ModelName: "EchoModel",
+			Status:  entity.InferenceIngestionProcessingJobStatusRunning,
+			EventID: &eventID, EventSequence: &eventSequence, StartedAt: &now,
+		},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "applied", result.Outcome)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusRunning, result.Execution.Status)
+	require.Equal(t, int64(2), result.Run.Version)
+	require.Equal(t, 1, result.Counts.Running)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyProcessingRunExecutionTransitionRechecksDuplicateEventUnderLock(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { database.Close() })
+	now := time.Now().UTC()
+	eventID := "event-running"
+	eventSequence := int64(2)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_runs").
+		WillReturnRows(processingRunStateRows(now, entity.InferenceIngestionProcessingRunPhaseProcessing, 2, &now, nil))
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_jobs").
+		WillReturnRows(processingExecutionStateRows(
+			now, entity.InferenceIngestionProcessingJobStatusRunning, &eventID, &eventSequence, &now,
+		))
+	mock.ExpectRollback()
+
+	repository := InferenceProcessingRunRepository{
+		PostgresSQLDBHandlerInterface: &processingRunTestHandler{db: sqlx.NewDb(database, "sqlmock")},
+	}
+	result, err := repository.ApplyProcessingRunExecutionTransition(
+		context.Background(),
+		types.ApplyInferenceIngestionProcessingTransition{
+			TenantID: "tenant-a", ProcessingRunID: "run-2", ExecutionID: "execution-1",
+			CandidateID: "candidate-1", ModelName: "EchoModel",
+			Status:  entity.InferenceIngestionProcessingJobStatusRunning,
+			EventID: &eventID, EventSequence: &eventSequence,
+		},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "replayed", result.Outcome)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyProcessingRunExecutionTransitionRollsBackExecutionWhenAggregateFails(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { database.Close() })
+	now := time.Now().UTC()
+	eventID := "event-running"
+	eventSequence := int64(2)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_runs").
+		WillReturnRows(processingRunStateRows(now, entity.InferenceIngestionProcessingRunPhaseQueued, 1, nil, nil))
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_jobs").
+		WillReturnRows(processingExecutionStateRows(now, entity.InferenceIngestionProcessingJobStatusQueued, nil, nil, nil))
+	mock.ExpectQuery("UPDATE ingestion_processing_jobs").
+		WillReturnRows(processingExecutionStateRows(
+			now, entity.InferenceIngestionProcessingJobStatusRunning, &eventID, &eventSequence, &now,
+		))
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_jobs").
+		WillReturnRows(processingExecutionStateRows(
+			now, entity.InferenceIngestionProcessingJobStatusRunning, &eventID, &eventSequence, &now,
+		))
+	mock.ExpectQuery("UPDATE ingestion_processing_runs").WillReturnError(errors.New("aggregate failed"))
+	mock.ExpectRollback()
+
+	repository := InferenceProcessingRunRepository{
+		PostgresSQLDBHandlerInterface: &processingRunTestHandler{db: sqlx.NewDb(database, "sqlmock")},
+	}
+	_, err = repository.ApplyProcessingRunExecutionTransition(
+		context.Background(),
+		types.ApplyInferenceIngestionProcessingTransition{
+			TenantID: "tenant-a", ProcessingRunID: "run-2", ExecutionID: "execution-1",
+			CandidateID: "candidate-1", ModelName: "EchoModel",
+			Status:  entity.InferenceIngestionProcessingJobStatusRunning,
+			EventID: &eventID, EventSequence: &eventSequence, StartedAt: &now,
+		},
+	)
+
+	require.EqualError(t, err, apiError.DatabaseError)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestCreateProcessingRunLocksAllocatesAndCommits(t *testing.T) {
 	database, mock, err := sqlmock.New()
 	require.NoError(t, err)

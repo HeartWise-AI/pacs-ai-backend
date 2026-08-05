@@ -43,6 +43,18 @@ func withProcessingRunCircuit[T any](name string, operation func() (T, error)) (
 	}
 }
 
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ApplyProcessingRunExecutionTransition(
+	ctx context.Context,
+	data types.ApplyInferenceIngestionProcessingTransition,
+) (types.ApplyInferenceIngestionProcessingTransitionResult, error) {
+	return withProcessingRunCircuit(
+		"apply_processing_run_execution_transition",
+		func() (types.ApplyInferenceIngestionProcessingTransitionResult, error) {
+			return repository.InferenceProcessingRunRepositoryInterface.ApplyProcessingRunExecutionTransition(ctx, data)
+		},
+	)
+}
+
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) CreateProcessingRun(ctx context.Context, data types.CreateInferenceIngestionProcessingRun) (entity.InferenceIngestionProcessingRun, error) {
 	return withProcessingRunCircuit("create_processing_run", func() (entity.InferenceIngestionProcessingRun, error) {
 		return repository.InferenceProcessingRunRepositoryInterface.CreateProcessingRun(ctx, data)

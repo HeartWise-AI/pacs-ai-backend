@@ -47,6 +47,8 @@ type AddInferenceIngestionProcessingJob struct {
 	Status            entity.InferenceIngestionProcessingJobStatus
 	StudyServiceJobID *string
 	ErrorMessage      *string
+	LastEventID       *string
+	LastEventSequence *int64
 	StartedAt         *time.Time
 	CompletedAt       *time.Time
 }
@@ -104,6 +106,32 @@ type UpdateInferenceIngestionProcessingRunAggregate struct {
 	CompletedAt       *time.Time                                             `db:"completed_at"`
 }
 
+type ApplyInferenceIngestionProcessingTransition struct {
+	TenantID          string
+	ProcessingRunID   string
+	ExecutionID       string
+	CandidateID       string
+	ModelName         string
+	Status            entity.InferenceIngestionProcessingJobStatus
+	ModelVersion      *string
+	Modality          *string
+	StudyServiceJobID *string
+	ErrorMessage      *string
+	SkipReason        *entity.InferenceIngestionProcessingJobSkipReason
+	EventID           *string
+	EventSequence     *int64
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
+}
+
+type ApplyInferenceIngestionProcessingTransitionResult struct {
+	Outcome   string
+	Changed   bool
+	Execution entity.InferenceIngestionProcessingJob
+	Run       entity.InferenceIngestionProcessingRun
+	Counts    entity.InferenceIngestionProcessingRunExecutionCounts
+}
+
 type UpdateInferenceIngestionProcessingJob struct {
 	ID                string
 	Status            entity.InferenceIngestionProcessingJobStatus
@@ -111,6 +139,8 @@ type UpdateInferenceIngestionProcessingJob struct {
 	Modality          *string
 	StudyServiceJobID *string
 	ErrorMessage      *string
+	LastEventID       *string
+	LastEventSequence *int64
 	StartedAt         *time.Time
 	CompletedAt       *time.Time
 }

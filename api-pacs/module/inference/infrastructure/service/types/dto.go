@@ -118,22 +118,48 @@ type StudyServiceJobsResponse struct {
 }
 
 type HandleStudyServiceProcessingCallback struct {
-	CandidateID       string
-	RequestID         string
-	ProcessingRunID   string
-	StudyInstanceUID  string
-	ModelName         string
-	ModelVersion      string
-	Modality          string
-	Status            string
-	ErrorMessage      *string
-	StudyServiceJobID string
-	StartedAt         *time.Time
-	CompletedAt       *time.Time
+	CandidateID        string
+	RequestID          string
+	EventID            string
+	Sequence           *int64
+	OccurredAt         *time.Time
+	TenantID           string
+	IngestionJobID     string
+	PayloadCandidateID string
+	RetrievalAttemptID string
+	ProcessingRunID    string
+	StudyInstanceUID   string
+	ModelName          string
+	ModelVersion       string
+	Modality           string
+	Status             string
+	SkipReason         *entity.InferenceIngestionProcessingJobSkipReason
+	ErrorMessage       *string
+	StudyServiceJobID  string
+	StartedAt          *time.Time
+	CompletedAt        *time.Time
 }
 
 type HandleStudyServiceProcessingCallbackResult struct {
 	Outcome string
+}
+
+type WorklistNotification struct {
+	Type              string                                         `json:"type"`
+	TenantID          string                                         `json:"-"`
+	StudyInstanceUID  string                                         `json:"studyInstanceUID"`
+	RunID             string                                         `json:"runId"`
+	RunNumber         int                                            `json:"runNumber"`
+	Phase             entity.InferenceIngestionProcessingRunPhase    `json:"phase"`
+	Outcome           *entity.InferenceIngestionProcessingRunOutcome `json:"outcome"`
+	AttentionRequired bool                                           `json:"attentionRequired"`
+	ExpectedModels    int                                            `json:"expectedModels"`
+	CompletedModels   int                                            `json:"completedModels"`
+	FailedModels      int                                            `json:"failedModels"`
+	SkippedModels     int                                            `json:"skippedModels"`
+	ActiveModels      int                                            `json:"activeModels"`
+	Version           int64                                          `json:"version"`
+	UpdatedAt         time.Time                                      `json:"updatedAt"`
 }
 
 type GetContainerInfoResult struct {

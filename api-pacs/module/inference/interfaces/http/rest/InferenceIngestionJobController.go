@@ -18,6 +18,7 @@ import (
 	"api-pacs/interfaces/http/rest/viewmodels"
 	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/module/inference/domain/entity"
 	inferenceService "api-pacs/module/inference/infrastructure/service"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 	types "api-pacs/module/inference/interfaces/http"
@@ -335,24 +336,67 @@ func (controller *InferenceCommandController) StudyServiceProcessingCallback(w h
 		return
 	}
 
+	occurredAt, err := parseRFC3339Pointer(request.OccurredAt)
+	if err != nil {
+		inferenceService.ObserveStudyServiceProcessingCallback(request.Status, "invalid_payload")
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Invalid occurred_at timestamp.",
+			ErrorCode: apiError.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var skipReason *entity.InferenceIngestionProcessingJobSkipReason
+	if request.SkipReason != nil {
+		normalized, reasonErr := entity.NewInferenceIngestionProcessingJobSkipReason(
+			string(request.SkipReason.Code),
+			request.SkipReason.Message,
+		)
+		if reasonErr != nil {
+			inferenceService.ObserveStudyServiceProcessingCallback(request.Status, "invalid_payload")
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   "Invalid skip reason.",
+				ErrorCode: apiError.InvalidPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
+		skipReason = &normalized
+	}
+
 	processingRunID := ""
 	if request.ProcessingRunID != nil {
 		processingRunID = strings.TrimSpace(*request.ProcessingRunID)
 	}
 
 	result, err := controller.InferenceCommandServiceInterface.HandleStudyServiceProcessingCallback(context.TODO(), serviceTypes.HandleStudyServiceProcessingCallback{
-		CandidateID:       candidateID,
-		RequestID:         requestID,
-		ProcessingRunID:   processingRunID,
-		StudyInstanceUID:  request.StudyInstanceUID,
-		ModelName:         request.ModelName,
-		ModelVersion:      request.ModelVersion,
-		Modality:          request.Modality,
-		Status:            request.Status,
-		ErrorMessage:      request.ErrorMessage,
-		StudyServiceJobID: request.StudyServiceJobID,
-		StartedAt:         startedAt,
-		CompletedAt:       completedAt,
+		CandidateID:        candidateID,
+		RequestID:          requestID,
+		EventID:            strings.TrimSpace(request.EventID),
+		Sequence:           request.Sequence,
+		OccurredAt:         occurredAt,
+		TenantID:           strings.TrimSpace(request.TenantID),
+		IngestionJobID:     strings.TrimSpace(request.IngestionJobID),
+		PayloadCandidateID: strings.TrimSpace(request.CandidateID),
+		RetrievalAttemptID: strings.TrimSpace(request.RetrievalAttemptID),
+		ProcessingRunID:    processingRunID,
+		StudyInstanceUID:   request.StudyInstanceUID,
+		ModelName:          request.ModelName,
+		ModelVersion:       request.ModelVersion,
+		Modality:           request.Modality,
+		Status:             request.Status,
+		SkipReason:         skipReason,
+		ErrorMessage:       request.ErrorMessage,
+		StudyServiceJobID:  request.StudyServiceJobID,
+		StartedAt:          startedAt,
+		CompletedAt:        completedAt,
 	})
 	if err != nil {
 		var httpCode int
