@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	apiError "api-pacs/internal/errors"
 	inferenceApplication "api-pacs/module/inference/application"
 	"api-pacs/module/inference/domain/entity"
 	domainRepository "api-pacs/module/inference/domain/repository"
@@ -36,18 +38,70 @@ func (repository *reconciliationWorkerRunRepository) SelectProcessingRun(
 	return entity.InferenceIngestionProcessingRun{}, nil
 }
 
+func (repository *reconciliationWorkerRunRepository) SelectProcessingRunExecution(
+	_ context.Context,
+	_, processingRunID, candidateID, modelName string,
+) (entity.InferenceIngestionProcessingJob, error) {
+	for _, execution := range repository.executions[processingRunID] {
+		if execution.CandidateID == candidateID && execution.ModelName == modelName {
+			return execution, nil
+		}
+	}
+	return entity.InferenceIngestionProcessingJob{}, errors.New(apiError.MissingRecord)
+}
+
+func (repository *reconciliationWorkerRunRepository) ApplyProcessingRunExecutionTransition(
+	_ context.Context,
+	data repositoryTypes.ApplyInferenceIngestionProcessingTransition,
+) (repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult, error) {
+	executions := repository.executions[data.ProcessingRunID]
+	for index := range executions {
+		if executions[index].ID != data.ExecutionID {
+			continue
+		}
+		executions[index].Status = data.Status
+		executions[index].StudyServiceJobID = data.StudyServiceJobID
+		executions[index].StartedAt = data.StartedAt
+		executions[index].CompletedAt = data.CompletedAt
+		executions[index].UpdatedAt = time.Now()
+	}
+	repository.executions[data.ProcessingRunID] = executions
+
+	for index := range repository.runs {
+		if repository.runs[index].ID != data.ProcessingRunID {
+			continue
+		}
+		aggregate := entity.AggregateInferenceIngestionProcessingRun(
+			entity.InferenceIngestionProcessingRunAggregationInput{
+				Run: repository.runs[index], Executions: executions,
+			},
+		)
+		repository.runs[index].Phase = aggregate.Phase
+		repository.runs[index].Outcome = aggregate.Outcome
+		repository.runs[index].AttentionRequired = aggregate.AttentionRequired
+		repository.runs[index].AttentionReasons = aggregate.AttentionReasons
+		repository.runs[index].Version = aggregate.NextVersion
+		return repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult{
+			Outcome: "applied", Changed: true, Execution: executions[0], Run: repository.runs[index], Counts: aggregate.Counts,
+		}, nil
+	}
+	return repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult{}, errors.New(apiError.MissingRecord)
+}
+
 func (repository *reconciliationWorkerRunRepository) UpdateProcessingRunAggregate(
 	_ context.Context,
 	data repositoryTypes.UpdateInferenceIngestionProcessingRunAggregate,
 ) (entity.InferenceIngestionProcessingRun, error) {
 	repository.aggregateUpdates = append(repository.aggregateUpdates, data)
-	updated := entity.InferenceIngestionProcessingRun{
-		ID: data.ID, TenantID: data.TenantID, Phase: data.Phase,
-		AttentionRequired: data.AttentionRequired, AttentionReasons: data.AttentionReasons,
-	}
+	updated := entity.InferenceIngestionProcessingRun{ID: data.ID, TenantID: data.TenantID}
 	for index := range repository.runs {
 		if repository.runs[index].ID == data.ID {
-			updated.ReconciliationFailureCount = repository.runs[index].ReconciliationFailureCount
+			updated = repository.runs[index]
+			updated.Phase = data.Phase
+			updated.Outcome = data.Outcome
+			updated.AttentionRequired = data.AttentionRequired
+			updated.AttentionReasons = data.AttentionReasons
+			updated.Version++
 			repository.runs[index] = updated
 			break
 		}
@@ -108,6 +162,7 @@ type reconciliationWorkerDispatcher struct {
 	jobIDCalls []string
 	err        error
 	jobIDErr   error
+	jobsByID   map[string]serviceTypes.StudyServiceJob
 }
 
 type reconciliationMetricsRecorderTestDouble struct {
@@ -125,6 +180,9 @@ func (dispatcher *reconciliationWorkerDispatcher) GetJobByID(
 	tenantID, jobID string,
 ) (serviceTypes.StudyServiceJob, bool, error) {
 	dispatcher.jobIDCalls = append(dispatcher.jobIDCalls, tenantID+":"+jobID)
+	if job, found := dispatcher.jobsByID[jobID]; found {
+		return job, true, nil
+	}
 	return serviceTypes.StudyServiceJob{}, false, dispatcher.jobIDErr
 }
 
@@ -200,6 +258,64 @@ func TestReconciliationWorkerQueriesOnlyPreciselyEligibleCandidates(t *testing.T
 		runRepository.aggregateUpdates[0].AttentionReasons[1].Code,
 	})
 	require.Equal(t, []ProcessingReconciliationCycleMetrics{{Checked: 2, Unresolved: 1}}, metricsRecorder.cycles)
+}
+
+func TestReconciliationWorkerRepairsMissedTerminalCallbackByExactJobID(t *testing.T) {
+	t.Setenv(reconciliationPendingStaleMinutesEnv, "2")
+	t.Setenv(reconciliationQueuedStaleMinutesEnv, "10")
+	t.Setenv(reconciliationRunningStaleMinutesEnv, "65")
+	t.Setenv(reconciliationModelRunningStaleMinutesEnv, "")
+	t.Setenv("INFERENCE_INGESTION_RECONCILIATION_STALE_MINUTES", "")
+	now := time.Now()
+	completedAt := now.Add(-time.Minute)
+	runID := "run-1"
+	candidateID := "candidate-1"
+	tenantID := "tenant-a"
+	jobID := "python-job-1"
+	runRepository := &reconciliationWorkerRunRepository{
+		runs: []entity.InferenceIngestionProcessingRun{{
+			ID: runID, TenantID: tenantID, StudyInstanceUID: "study-1",
+			Phase: entity.InferenceIngestionProcessingRunPhaseProcessing, Version: 3,
+			AttentionRequired: true,
+			AttentionReasons: entity.InferenceIngestionProcessingRunAttentionReasons{{
+				Code: entity.InferenceIngestionProcessingRunAttentionProcessingStale,
+			}},
+		}},
+		executions: map[string][]entity.InferenceIngestionProcessingJob{
+			runID: {{
+				ID: "execution-1", ProcessingRunID: &runID, CandidateID: candidateID, TenantID: tenantID,
+				ModelName: "EchoPrime", Status: entity.InferenceIngestionProcessingJobStatusRunning,
+				StudyServiceJobID: &jobID, UpdatedAt: now.Add(-70 * time.Minute),
+			}},
+		},
+	}
+	queryRepository := &reconciliationWorkerQueryRepository{candidates: map[string]entity.InferenceIngestionCandidate{
+		candidateID: {ID: candidateID, TenantID: tenantID, StudyInstanceUID: "study-1"},
+	}}
+	dispatcher := &reconciliationWorkerDispatcher{jobsByID: map[string]serviceTypes.StudyServiceJob{
+		jobID: {
+			JobID: jobID, StudyInstanceUID: "study-1", TenantID: &tenantID, CandidateID: &candidateID,
+			ProcessingRunID: &runID, ModelName: "EchoPrime", Status: "completed", CompletedAt: &completedAt,
+		},
+	}}
+	metricsRecorder := &reconciliationMetricsRecorderTestDouble{}
+	service := &InferenceCommandService{
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		InferenceQueryRepositoryInterface:         queryRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+		ProcessingReconciliationMetricsRecorder:   metricsRecorder,
+	}
+
+	err := service.ExecuteInferenceIngestionReconciliationWorker(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, []string{tenantID + ":" + jobID}, dispatcher.jobIDCalls)
+	require.Empty(t, dispatcher.calls)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusCompleted, runRepository.executions[runID][0].Status)
+	require.Equal(t, entity.InferenceIngestionProcessingRunPhaseTerminal, runRepository.runs[0].Phase)
+	require.False(t, runRepository.runs[0].AttentionRequired)
+	require.Empty(t, runRepository.runs[0].AttentionReasons)
+	require.Equal(t, []ProcessingReconciliationCycleMetrics{{Checked: 1, Repaired: 1}}, metricsRecorder.cycles)
 }
 
 func TestReconciliationWorkerMarksThirdConsecutiveFailureForAttention(t *testing.T) {

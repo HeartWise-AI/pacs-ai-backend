@@ -126,7 +126,11 @@ func (service *InferenceCommandService) RecalculateStudyProcessingRun(ctx contex
 		if err != nil {
 			return types.RecalculateStudyProcessingRunResult{}, err
 		}
+		hadStructuredAttention := len(run.AttentionReasons) > 0
 		run.AttentionReasons = removeProcessingRunAttentionReasons(run.AttentionReasons, data.AttentionReasonCodesToRemove)
+		if hadStructuredAttention && len(run.AttentionReasons) == 0 {
+			run.AttentionRequired = false
+		}
 		run.AttentionReasons = append(run.AttentionReasons, data.AttentionReasonsToAdd...)
 		executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, tenantID, processingRunID)
 		if err != nil {
