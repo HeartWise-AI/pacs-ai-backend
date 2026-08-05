@@ -235,3 +235,166 @@ func TestStudyServiceDispatcherGetJobsByCandidate(t *testing.T) {
 		t.Fatalf("unexpected processing run id: %#v", jobs[0].ProcessingRunID)
 	}
 }
+
+func TestStudyServiceDispatcherGetJobByID(t *testing.T) {
+	var gotHeaders http.Header
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeaders = r.Header.Clone()
+		if r.URL.Path != "/jobs/python-job-123" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"job_id":             "python-job-123",
+			"study_instance_uid": "1.2.3",
+			"tenant_id":          "tenant-a",
+			"candidate_id":       "candidate-1",
+			"processing_run_id":  "run-1",
+			"model_name":         "EchoPrime",
+			"status":             "running",
+		}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	dispatcher := &StudyServiceDispatcher{
+		StudyServiceBaseURL:       server.URL,
+		StudyServiceOperatorToken: "operator-token",
+		StudyServiceClient:        server.Client(),
+	}
+	job, found, err := dispatcher.GetJobByID(context.Background(), "tenant-a", "python-job-123")
+
+	if err != nil {
+		t.Fatalf("GetJobByID returned error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected job to be found")
+	}
+	if job.JobID != "python-job-123" || job.ProcessingRunID == nil || *job.ProcessingRunID != "run-1" {
+		t.Fatalf("unexpected job: %#v", job)
+	}
+	if gotHeaders.Get("Authorization") != "Bearer operator-token" {
+		t.Fatalf("unexpected authorization header: %q", gotHeaders.Get("Authorization"))
+	}
+	if gotHeaders.Get("X-Tenant-ID") != "tenant-a" {
+		t.Fatalf("unexpected tenant header: %q", gotHeaders.Get("X-Tenant-ID"))
+	}
+	if gotHeaders.Get("X-Request-ID") == "" {
+		t.Fatal("expected X-Request-ID header")
+	}
+}
+
+func TestStudyServiceDispatcherGetJobByIDTreatsNotFoundAsExpected(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+
+	dispatcher := &StudyServiceDispatcher{
+		StudyServiceBaseURL: server.URL,
+		StudyServiceClient:  server.Client(),
+	}
+	job, found, err := dispatcher.GetJobByID(context.Background(), "tenant-a", "missing-job")
+
+	if err != nil {
+		t.Fatalf("GetJobByID returned error: %v", err)
+	}
+	if found {
+		t.Fatalf("expected missing job, got %#v", job)
+	}
+}
+
+func TestStudyServiceDispatcherGetJobsByProcessingRun(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/jobs/by-processing-run/run-123" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Header.Get("X-Tenant-ID") != "tenant-a" {
+			t.Fatalf("unexpected tenant: %q", r.Header.Get("X-Tenant-ID"))
+		}
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"jobs": []map[string]any{{
+				"job_id": "job-1", "processing_run_id": "run-123", "candidate_id": "candidate-1",
+				"model_name": "EchoPrime", "status": "running",
+			}},
+			"page": 1, "page_size": 250,
+		}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceClient: server.Client()}
+	jobs, err := dispatcher.GetJobsByProcessingRun(context.Background(), "tenant-a", "run-123")
+
+	if err != nil {
+		t.Fatalf("GetJobsByProcessingRun returned error: %v", err)
+	}
+	if len(jobs) != 1 || jobs[0].JobID != "job-1" {
+		t.Fatalf("unexpected jobs: %#v", jobs)
+	}
+}
+
+func TestStudyServiceDispatcherGetJobsByProcessingRunTreatsNotFoundAsFallback(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceClient: server.Client()}
+
+	jobs, err := dispatcher.GetJobsByProcessingRun(context.Background(), "tenant-a", "run-123")
+
+	if err != nil {
+		t.Fatalf("GetJobsByProcessingRun returned error: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("expected empty fallback result, got %#v", jobs)
+	}
+}
+
+func TestStudyServiceDispatcherGetCallbackDeadLetters(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/jobs/callbacks/dead-letters" || r.URL.Query().Get("limit") != "250" {
+			t.Fatalf("unexpected URL: %s", r.URL.String())
+		}
+		if r.Header.Get("X-Tenant-ID") != "tenant-a" {
+			t.Fatalf("unexpected tenant: %q", r.Header.Get("X-Tenant-ID"))
+		}
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"dead_letters": []map[string]any{{
+				"dead_letter_id": "dead-letter-1",
+				"job_id":         "job-1",
+				"candidate_id":   "candidate-1",
+				"job_status":     "running",
+				"payload_json": map[string]any{
+					"candidate_id": "candidate-1", "processing_run_id": "run-1", "model_name": "EchoPrime",
+				},
+				"attempts": 3, "last_error": "connection refused",
+			}},
+		}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceClient: server.Client()}
+	deadLetters, err := dispatcher.GetCallbackDeadLetters(context.Background(), "tenant-a")
+
+	if err != nil {
+		t.Fatalf("GetCallbackDeadLetters returned error: %v", err)
+	}
+	if len(deadLetters) != 1 || deadLetters[0].Payload.ProcessingRunID != "run-1" {
+		t.Fatalf("unexpected dead letters: %#v", deadLetters)
+	}
+}
+
+func TestStudyServiceDispatcherGetCallbackDeadLettersTreatsNotFoundAsFallback(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceClient: server.Client()}
+
+	deadLetters, err := dispatcher.GetCallbackDeadLetters(context.Background(), "tenant-a")
+
+	if err != nil {
+		t.Fatalf("GetCallbackDeadLetters returned error: %v", err)
+	}
+	if len(deadLetters) != 0 {
+		t.Fatalf("expected empty fallback result, got %#v", deadLetters)
+	}
+}

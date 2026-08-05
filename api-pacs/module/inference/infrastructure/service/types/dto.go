@@ -52,10 +52,11 @@ type CreateStudyProcessingRunResult struct {
 }
 
 type RecalculateStudyProcessingRun struct {
-	TenantID              string
-	ProcessingRunID       string
-	WholeRunCancelled     bool
-	AttentionReasonsToAdd entity.InferenceIngestionProcessingRunAttentionReasons
+	TenantID                     string
+	ProcessingRunID              string
+	WholeRunCancelled            bool
+	AttentionReasonsToAdd        entity.InferenceIngestionProcessingRunAttentionReasons
+	AttentionReasonCodesToRemove []string
 }
 
 type RecalculateStudyProcessingRunResult struct {
@@ -115,6 +116,26 @@ type StudyServiceJobsResponse struct {
 	Jobs     []StudyServiceJob `json:"jobs"`
 	Page     int               `json:"page"`
 	PageSize int               `json:"page_size"`
+}
+
+type StudyServiceCallbackDeadLetterPayload struct {
+	CandidateID     string `json:"candidate_id"`
+	ProcessingRunID string `json:"processing_run_id"`
+	ModelName       string `json:"model_name"`
+}
+
+type StudyServiceCallbackDeadLetter struct {
+	DeadLetterID string                                `json:"dead_letter_id"`
+	JobID        string                                `json:"job_id"`
+	CandidateID  *string                               `json:"candidate_id"`
+	JobStatus    string                                `json:"job_status"`
+	Payload      StudyServiceCallbackDeadLetterPayload `json:"payload_json"`
+	Attempts     int                                   `json:"attempts"`
+	LastError    string                                `json:"last_error"`
+}
+
+type StudyServiceCallbackDeadLettersResponse struct {
+	DeadLetters []StudyServiceCallbackDeadLetter `json:"dead_letters"`
 }
 
 type HandleStudyServiceProcessingCallback struct {

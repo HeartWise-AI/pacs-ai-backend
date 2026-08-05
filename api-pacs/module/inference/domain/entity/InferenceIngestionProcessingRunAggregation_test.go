@@ -85,7 +85,7 @@ func TestAggregateInferenceIngestionProcessingRunOutcomeMatrix(t *testing.T) {
 		},
 		{
 			name: "empty plan needs attention", expectedPhase: InferenceIngestionProcessingRunPhaseQueued,
-			expectedAttention: true, expectedReasonCode: InferenceIngestionProcessingRunAttentionEmptyExpectedPlan,
+			expectedAttention: true, expectedReasonCode: InferenceIngestionProcessingRunAttentionEmptyModelPlan,
 		},
 		{
 			name: "invalid execution status needs attention", statuses: []InferenceIngestionProcessingJobStatus{
@@ -168,10 +168,20 @@ func TestAggregateInferenceIngestionProcessingRunCountsAndTimestamps(t *testing.
 }
 
 func TestAggregateInferenceIngestionProcessingRunPreservesOperationalAttention(t *testing.T) {
-	message := "dispatch retry exhausted"
+	operationalReasons := InferenceIngestionProcessingRunAttentionReasons{
+		{Code: InferenceIngestionProcessingRunAttentionDispatchFailed},
+		{Code: InferenceIngestionProcessingRunAttentionExpectedJobMissing},
+		{Code: InferenceIngestionProcessingRunAttentionPendingStale},
+		{Code: InferenceIngestionProcessingRunAttentionQueueStale},
+		{Code: InferenceIngestionProcessingRunAttentionProcessingStale},
+		{Code: InferenceIngestionProcessingRunAttentionCallbackDeadLettered},
+		{Code: InferenceIngestionProcessingRunAttentionStudyServiceJobMissing},
+		{Code: InferenceIngestionProcessingRunAttentionStateConflict},
+		{Code: InferenceIngestionProcessingRunAttentionReconciliationFailed},
+	}
 	run := InferenceIngestionProcessingRun{
 		AttentionRequired: true,
-		AttentionReasons:  InferenceIngestionProcessingRunAttentionReasons{{Code: "DISPATCH_FAILED", Message: &message}},
+		AttentionReasons:  operationalReasons,
 	}
 
 	result := AggregateInferenceIngestionProcessingRun(InferenceIngestionProcessingRunAggregationInput{
@@ -185,6 +195,24 @@ func TestAggregateInferenceIngestionProcessingRunPreservesOperationalAttention(t
 }
 
 func TestAggregateInferenceIngestionProcessingRunClearsResolvedStructuralAttention(t *testing.T) {
+	run := InferenceIngestionProcessingRun{
+		AttentionRequired: true,
+		AttentionReasons: InferenceIngestionProcessingRunAttentionReasons{{
+			Code: InferenceIngestionProcessingRunAttentionEmptyModelPlan,
+		}},
+	}
+
+	result := AggregateInferenceIngestionProcessingRun(InferenceIngestionProcessingRunAggregationInput{
+		Run: run, Executions: []InferenceIngestionProcessingJob{
+			processingExecution("one", InferenceIngestionProcessingJobStatusCompleted),
+		},
+	})
+
+	require.False(t, result.AttentionRequired)
+	require.Empty(t, result.AttentionReasons)
+}
+
+func TestAggregateInferenceIngestionProcessingRunClearsLegacyEmptyExpectedPlanAttention(t *testing.T) {
 	run := InferenceIngestionProcessingRun{
 		AttentionRequired: true,
 		AttentionReasons: InferenceIngestionProcessingRunAttentionReasons{{

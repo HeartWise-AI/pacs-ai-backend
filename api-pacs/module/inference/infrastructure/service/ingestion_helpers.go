@@ -19,20 +19,6 @@ import (
 	"api-pacs/module/inference/domain/entity"
 )
 
-func configuredProcessingReconciliationStaleMinutes() uint {
-	value := strings.TrimSpace(os.Getenv("INFERENCE_INGESTION_RECONCILIATION_STALE_MINUTES"))
-	if value == "" {
-		return defaultReconciliationStaleMinutes
-	}
-
-	minutes, err := strconv.Atoi(value)
-	if err != nil || minutes <= 0 {
-		return defaultReconciliationStaleMinutes
-	}
-
-	return uint(minutes)
-}
-
 func ingestionModalitiesFilter(modalities []string) string {
 	normalizedModalities := make([]string, 0, len(modalities))
 	for _, modality := range modalities {

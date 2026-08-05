@@ -327,6 +327,57 @@ func (repository *InferenceProcessingRunRepository) ListProcessingRunHistory(ctx
 	return runs, processingRunError(err)
 }
 
+// ListProcessingRunsForReconciliation returns a bounded active worker batch.
+// Terminal runs remain queryable by the worklist APIs but are never selected
+// for continuous reconciliation. The repository performs a coarse
+// earliest-threshold filter; the service applies the exact pending, queued,
+// running, and model-specific thresholds.
+func (repository *InferenceProcessingRunRepository) ListProcessingRunsForReconciliation(
+	ctx context.Context,
+	data types.ListInferenceIngestionProcessingRunsForReconciliation,
+) ([]entity.InferenceIngestionProcessingRun, error) {
+	runs := make([]entity.InferenceIngestionProcessingRun, 0)
+	err := repository.PostgresSQLDBHandlerInterface.Query(`
+		SELECT runs.* FROM ingestion_processing_runs runs
+		WHERE runs.phase <> 'TERMINAL'
+		  AND (
+			runs.attention_required = TRUE
+			OR (
+				runs.updated_at <= :active_stale_before
+				OR EXISTS (
+					SELECT 1 FROM ingestion_processing_jobs jobs
+					WHERE jobs.processing_run_id = runs.id
+					  AND jobs.status IN ('pending', 'queued', 'running')
+					  AND jobs.updated_at <= :active_stale_before
+				)
+			  )
+		   )
+		ORDER BY runs.attention_required DESC, runs.updated_at ASC, runs.id ASC
+		LIMIT :limit
+	`, data, &runs)
+	return runs, processingRunError(err)
+}
+
+// RecordProcessingRunReconciliationAttempt keeps failure tracking durable
+// across worker and service restarts. The increment/reset is one atomic update.
+func (repository *InferenceProcessingRunRepository) RecordProcessingRunReconciliationAttempt(
+	ctx context.Context,
+	data types.RecordInferenceIngestionProcessingRunReconciliationAttempt,
+) (entity.InferenceIngestionProcessingRun, error) {
+	var run entity.InferenceIngestionProcessingRun
+	err := repository.PostgresSQLDBHandlerInterface.QueryRow(`
+		UPDATE ingestion_processing_runs SET
+			reconciliation_failure_count = CASE
+				WHEN :succeeded THEN 0
+				ELSE reconciliation_failure_count + 1
+			END,
+			last_reconciliation_at = :attempted_at
+		WHERE id = :id AND tenant_id = :tenant_id
+		RETURNING *
+	`, data, &run)
+	return run, processingRunError(err)
+}
+
 // ListProcessingRunExecutions returns the expected model executions for a tenant-scoped run.
 func (repository *InferenceProcessingRunRepository) ListProcessingRunExecutions(ctx context.Context, tenantID, processingRunID string) ([]entity.InferenceIngestionProcessingJob, error) {
 	executions := make([]entity.InferenceIngestionProcessingJob, 0)

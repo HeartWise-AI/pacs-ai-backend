@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -143,6 +144,112 @@ func (service *StudyServiceDispatcher) DispatchStudy(ctx context.Context, data s
 	return response, nil
 }
 
+// GetJobByID fetches one exact tenant-scoped job. A missing job is an expected
+// reconciliation result rather than a transport failure.
+func (service *StudyServiceDispatcher) GetJobByID(
+	ctx context.Context,
+	tenantID, jobID string,
+) (serviceTypes.StudyServiceJob, bool, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(service.StudyServiceBaseURL), "/")
+	if baseURL == "" {
+		return serviceTypes.StudyServiceJob{}, false, errStudyServiceBaseURLMissing
+	}
+
+	requestID := generateID()
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("%s/jobs/%s", baseURL, url.PathEscape(strings.TrimSpace(jobID))),
+		nil,
+	)
+	if err != nil {
+		return serviceTypes.StudyServiceJob{}, false, err
+	}
+	req.Header.Set("X-Request-ID", requestID)
+	req.Header.Set("X-Tenant-ID", strings.TrimSpace(tenantID))
+	service.applyBearerToken(req, service.StudyServiceOperatorToken)
+
+	resp, err := service.StudyServiceClient.Do(req)
+	if err != nil {
+		return serviceTypes.StudyServiceJob{}, false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return serviceTypes.StudyServiceJob{}, false, nil
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return serviceTypes.StudyServiceJob{}, false, readErr
+		}
+		return serviceTypes.StudyServiceJob{}, false, fmt.Errorf(
+			"study-service job lookup failed with status %d: %s",
+			resp.StatusCode,
+			strings.TrimSpace(string(body)),
+		)
+	}
+
+	var job serviceTypes.StudyServiceJob
+	if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
+		return serviceTypes.StudyServiceJob{}, false, err
+	}
+	return job, true, nil
+}
+
+// GetJobsByProcessingRun fetches all tenant-scoped jobs correlated to one Go
+// run. A 404 is treated as endpoint/data absence so mixed-version deployments
+// can continue with candidate fallback.
+func (service *StudyServiceDispatcher) GetJobsByProcessingRun(
+	ctx context.Context,
+	tenantID, processingRunID string,
+) ([]serviceTypes.StudyServiceJob, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(service.StudyServiceBaseURL), "/")
+	if baseURL == "" {
+		return nil, errStudyServiceBaseURLMissing
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("%s/jobs/by-processing-run/%s?page=1&page_size=250", baseURL, url.PathEscape(strings.TrimSpace(processingRunID))),
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Request-ID", generateID())
+	req.Header.Set("X-Tenant-ID", strings.TrimSpace(tenantID))
+	service.applyBearerToken(req, service.StudyServiceOperatorToken)
+
+	resp, err := service.StudyServiceClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return []serviceTypes.StudyServiceJob{}, nil
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, readErr
+		}
+		return nil, fmt.Errorf(
+			"study-service processing-run lookup failed with status %d: %s",
+			resp.StatusCode,
+			strings.TrimSpace(string(body)),
+		)
+	}
+
+	var response serviceTypes.StudyServiceJobsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, err
+	}
+	return response.Jobs, nil
+}
+
 // GetJobsByCandidate fetches tenant-scoped operator-visible jobs for one candidate.
 func (service *StudyServiceDispatcher) GetJobsByCandidate(ctx context.Context, tenantID, candidateID string) ([]serviceTypes.StudyServiceJob, error) {
 	baseURL := strings.TrimRight(strings.TrimSpace(service.StudyServiceBaseURL), "/")
@@ -184,6 +291,59 @@ func (service *StudyServiceDispatcher) GetJobsByCandidate(ctx context.Context, t
 	}
 
 	return response.Jobs, nil
+}
+
+// GetCallbackDeadLetters returns callbacks whose delivery retries were
+// exhausted. A 404 remains compatible with study-service versions that do not
+// expose the operator endpoint yet.
+func (service *StudyServiceDispatcher) GetCallbackDeadLetters(
+	ctx context.Context,
+	tenantID string,
+) ([]serviceTypes.StudyServiceCallbackDeadLetter, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(service.StudyServiceBaseURL), "/")
+	if baseURL == "" {
+		return nil, errStudyServiceBaseURLMissing
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		baseURL+"/jobs/callbacks/dead-letters?limit=250",
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Request-ID", generateID())
+	req.Header.Set("X-Tenant-ID", strings.TrimSpace(tenantID))
+	service.applyBearerToken(req, service.StudyServiceOperatorToken)
+
+	resp, err := service.StudyServiceClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return []serviceTypes.StudyServiceCallbackDeadLetter{}, nil
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, readErr
+		}
+		return nil, fmt.Errorf(
+			"study-service callback dead-letter lookup failed with status %d: %s",
+			resp.StatusCode,
+			strings.TrimSpace(string(body)),
+		)
+	}
+
+	var response serviceTypes.StudyServiceCallbackDeadLettersResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, err
+	}
+	return response.DeadLetters, nil
 }
 
 func (service *StudyServiceDispatcher) applyBearerToken(req *http.Request, token string) {
