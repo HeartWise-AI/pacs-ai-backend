@@ -36,10 +36,23 @@ type processingRunCallbackCommandRepository struct {
 type processingRunCallbackRunRepository struct {
 	*processingRunAggregationRepository
 	selectedExecution entity.InferenceIngestionProcessingJob
+	transitions       []repositoryTypes.ApplyInferenceIngestionProcessingTransition
 }
 
 func (repository *processingRunCallbackRunRepository) SelectProcessingRunExecution(context.Context, string, string, string, string) (entity.InferenceIngestionProcessingJob, error) {
 	return repository.selectedExecution, nil
+}
+
+func (repository *processingRunCallbackRunRepository) ApplyProcessingRunExecutionTransition(
+	_ context.Context,
+	data repositoryTypes.ApplyInferenceIngestionProcessingTransition,
+) (repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult, error) {
+	repository.transitions = append(repository.transitions, data)
+	outcome := "applied"
+	if data.EventID == nil && repository.selectedExecution.Status == data.Status {
+		outcome = "replayed"
+	}
+	return repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult{Outcome: outcome}, nil
 }
 
 func (repository *processingRunCallbackCommandRepository) UpdateInferenceIngestionProcessingJob(data repositoryTypes.UpdateInferenceIngestionProcessingJob) error {
@@ -114,11 +127,32 @@ func TestProcessingCallbackRecalculatesLinkedRunAfterAppliedTransition(t *testin
 
 	require.NoError(t, err)
 	require.Equal(t, "applied", result.Outcome)
-	require.Len(t, commandRepository.updates, 1)
-	require.Equal(t, entity.InferenceIngestionProcessingJobStatusRunning, commandRepository.updates[0].Status)
-	require.Len(t, runRepository.updates, 1)
-	require.Equal(t, int64(2), runRepository.updates[0].ExpectedVersion)
-	require.Equal(t, entity.InferenceIngestionProcessingRunPhaseProcessing, runRepository.updates[0].Phase)
+	require.Empty(t, commandRepository.updates)
+	require.Len(t, runRepository.transitions, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusRunning, runRepository.transitions[0].Status)
+}
+
+func TestProcessingCallbackPassesStructuredSkipReasonToAtomicTransition(t *testing.T) {
+	service, commandRepository, runRepository := orderedProcessingCallbackFixture(
+		entity.InferenceIngestionProcessingJobStatusRunning,
+		nil,
+		nil,
+	)
+	message := "No usable DICOM series"
+	skipReason := &entity.InferenceIngestionProcessingJobSkipReason{
+		Code: entity.InferenceIngestionProcessingJobSkipReasonNoUsableDICOM, Message: &message,
+	}
+
+	result, err := service.HandleStudyServiceProcessingCallback(context.Background(), serviceTypes.HandleStudyServiceProcessingCallback{
+		CandidateID: "candidate-1", ProcessingRunID: "run-1", StudyInstanceUID: "study-1",
+		ModelName: "model-one", Status: "skipped", SkipReason: skipReason,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "applied", result.Outcome)
+	require.Empty(t, commandRepository.updates)
+	require.Len(t, runRepository.transitions, 1)
+	require.Equal(t, skipReason, runRepository.transitions[0].SkipReason)
 }
 
 func TestProcessingCallbackReplayHealsLinkedRunAggregate(t *testing.T) {
@@ -155,7 +189,7 @@ func TestProcessingCallbackReplayHealsLinkedRunAggregate(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "replayed", result.Outcome)
 	require.Empty(t, commandRepository.updates)
-	require.Len(t, runRepository.updates, 1)
+	require.Len(t, runRepository.transitions, 1)
 }
 
 func TestProcessingCallbackTreatsDuplicateEventIDAsMutationFreeReplay(t *testing.T) {
@@ -219,9 +253,9 @@ func TestProcessingCallbackIgnoresDifferentEventAtAlreadyAppliedSequence(t *test
 	require.Empty(t, runRepository.updates)
 }
 
-func TestProcessingCallbackPersistsFirstOrderedEventForExistingQueuedExecution(t *testing.T) {
+func TestProcessingCallbackPassesFirstOrderedEventToAtomicTransition(t *testing.T) {
 	incomingSequence := int64(1)
-	service, commandRepository, _ := orderedProcessingCallbackFixture(
+	service, commandRepository, runRepository := orderedProcessingCallbackFixture(
 		entity.InferenceIngestionProcessingJobStatusQueued,
 		nil,
 		nil,
@@ -234,9 +268,10 @@ func TestProcessingCallbackPersistsFirstOrderedEventForExistingQueuedExecution(t
 
 	require.NoError(t, err)
 	require.Equal(t, "applied", result.Outcome)
-	require.Len(t, commandRepository.updates, 1)
-	require.Equal(t, "event-queued", *commandRepository.updates[0].LastEventID)
-	require.EqualValues(t, 1, *commandRepository.updates[0].LastEventSequence)
+	require.Empty(t, commandRepository.updates)
+	require.Len(t, runRepository.transitions, 1)
+	require.Equal(t, "event-queued", *runRepository.transitions[0].EventID)
+	require.EqualValues(t, 1, *runRepository.transitions[0].EventSequence)
 }
 
 func TestProcessingCallbackRejectsPartialOrderingIdentity(t *testing.T) {

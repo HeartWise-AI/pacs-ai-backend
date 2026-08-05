@@ -374,6 +374,33 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		return types.HandleStudyServiceProcessingCallbackResult{Outcome: "ignored"}, nil
 	}
 
+	if processingRunID != "" {
+		transition, transitionErr := service.InferenceProcessingRunRepositoryInterface.ApplyProcessingRunExecutionTransition(
+			ctx,
+			repositoryTypes.ApplyInferenceIngestionProcessingTransition{
+				TenantID:          candidate.TenantID,
+				ProcessingRunID:   processingRunID,
+				ExecutionID:       existing.ID,
+				CandidateID:       candidate.ID,
+				ModelName:         modelName,
+				Status:            status,
+				ModelVersion:      modelVersion,
+				Modality:          modality,
+				StudyServiceJobID: studyServiceJobID,
+				ErrorMessage:      errorMessage,
+				SkipReason:        data.SkipReason,
+				EventID:           lastEventID,
+				EventSequence:     data.Sequence,
+				StartedAt:         data.StartedAt,
+				CompletedAt:       data.CompletedAt,
+			},
+		)
+		if transitionErr != nil {
+			return types.HandleStudyServiceProcessingCallbackResult{}, transitionErr
+		}
+		return types.HandleStudyServiceProcessingCallbackResult{Outcome: transition.Outcome}, nil
+	}
+
 	if existing.Status == status && !orderedEvent {
 		log.Printf("[Ingestion callback] ignoring replayed callback candidate_id=%s model_name=%s request_id=%s status=%s",
 			candidate.ID,
