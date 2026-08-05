@@ -51,18 +51,44 @@ func RunInferenceIngestionRetrievalWorkerHandler() {
 func RunInferenceIngestionReconciliationWorkerHandler() {
 	inferenceCommandService := InferenceCommandServiceDI()
 	interval := inferenceIngestionReconciliationWorkerInterval()
+	runInferenceIngestionReconciliationWorker(context.Background(), inferenceCommandService, interval)
+}
 
+type inferenceIngestionReconciliationWorker interface {
+	ExecuteInferenceIngestionReconciliationWorker(context.Context) error
+}
+
+func runInferenceIngestionReconciliationWorker(
+	ctx context.Context,
+	worker inferenceIngestionReconciliationWorker,
+	interval time.Duration,
+) {
 	log.Printf("[Ingestion reconciliation worker] interval configured minutes=%d", int(interval.Minutes()))
+	executeInferenceIngestionReconciliationWorker(ctx, worker, "startup")
 
-	tick := time.Tick(interval)
-	for range tick {
-		err := inferenceCommandService.ExecuteInferenceIngestionReconciliationWorker(context.TODO())
-		if err == nil || err.Error() == apiError.MissingRecord {
-			log.Println("[Ingestion reconciliation worker] executed stale processing reconciliation worker")
-		} else {
-			log.Println("[Ingestion reconciliation worker] error while executing stale processing reconciliation worker:", err)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			executeInferenceIngestionReconciliationWorker(ctx, worker, "scheduled")
 		}
 	}
+}
+
+func executeInferenceIngestionReconciliationWorker(
+	ctx context.Context,
+	worker inferenceIngestionReconciliationWorker,
+	trigger string,
+) {
+	err := worker.ExecuteInferenceIngestionReconciliationWorker(ctx)
+	if err == nil || err.Error() == apiError.MissingRecord {
+		log.Printf("[Ingestion reconciliation worker] executed processing reconciliation worker trigger=%s", trigger)
+		return
+	}
+	log.Printf("[Ingestion reconciliation worker] error while executing processing reconciliation worker trigger=%s err=%v", trigger, err)
 }
 
 func inferenceIngestionRunnerInterval() time.Duration {
