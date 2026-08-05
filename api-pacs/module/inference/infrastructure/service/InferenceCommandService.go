@@ -258,7 +258,11 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		return types.HandleStudyServiceProcessingCallbackResult{}, err
 	}
 
-	if strings.TrimSpace(candidate.StudyInstanceUID) != strings.TrimSpace(data.StudyInstanceUID) {
+	if strings.TrimSpace(candidate.ID) != strings.TrimSpace(data.CandidateID) ||
+		callbackValueMismatch(data.PayloadCandidateID, candidate.ID) ||
+		callbackValueMismatch(data.TenantID, candidate.TenantID) ||
+		callbackValueMismatch(data.IngestionJobID, candidate.IngestionJobID) ||
+		strings.TrimSpace(candidate.StudyInstanceUID) != strings.TrimSpace(data.StudyInstanceUID) {
 		return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
 	}
 
@@ -276,6 +280,21 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 	processingRunID := strings.TrimSpace(data.ProcessingRunID)
 	var existing entity.InferenceIngestionProcessingJob
 	if processingRunID != "" {
+		run, runErr := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRun(
+			ctx, candidate.TenantID, processingRunID,
+		)
+		if runErr != nil {
+			if runErr.Error() == apiError.MissingRecord {
+				return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
+			}
+			return types.HandleStudyServiceProcessingCallbackResult{}, runErr
+		}
+		if strings.TrimSpace(run.ID) != processingRunID ||
+			strings.TrimSpace(run.TenantID) != strings.TrimSpace(candidate.TenantID) ||
+			strings.TrimSpace(run.StudyInstanceUID) != strings.TrimSpace(candidate.StudyInstanceUID) {
+			return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
+		}
+
 		existing, err = service.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(
 			ctx, candidate.TenantID, processingRunID, candidate.ID, modelName,
 		)
@@ -284,6 +303,9 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 	}
 	if err != nil {
 		if processingRunID != "" {
+			if err.Error() == apiError.MissingRecord {
+				return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
+			}
 			return types.HandleStudyServiceProcessingCallbackResult{}, err
 		}
 		if err.Error() != apiError.MissingRecord {
@@ -308,6 +330,18 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		}
 
 		return types.HandleStudyServiceProcessingCallbackResult{Outcome: "applied"}, nil
+	}
+
+	if processingRunID != "" && !processingCallbackMatchesExecution(
+		existing,
+		candidate,
+		processingRunID,
+		modelName,
+		strings.TrimSpace(data.ModelVersion),
+		strings.TrimSpace(data.Modality),
+		strings.TrimSpace(data.StudyServiceJobID),
+	) {
+		return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
 	}
 
 	if !existing.Status.CanTransitionTo(status) {
@@ -352,6 +386,40 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 	}
 
 	return types.HandleStudyServiceProcessingCallbackResult{Outcome: "applied"}, nil
+}
+
+func callbackValueMismatch(incoming, expected string) bool {
+	incoming = strings.TrimSpace(incoming)
+	return incoming != "" && incoming != strings.TrimSpace(expected)
+}
+
+func callbackPointerMismatch(incoming string, expected *string) bool {
+	if expected == nil || strings.TrimSpace(*expected) == "" {
+		return false
+	}
+	return strings.TrimSpace(incoming) != strings.TrimSpace(*expected)
+}
+
+func processingCallbackMatchesExecution(
+	execution entity.InferenceIngestionProcessingJob,
+	candidate entity.InferenceIngestionCandidate,
+	processingRunID string,
+	modelName string,
+	modelVersion string,
+	modality string,
+	studyServiceJobID string,
+) bool {
+	if execution.ProcessingRunID == nil || strings.TrimSpace(*execution.ProcessingRunID) != processingRunID {
+		return false
+	}
+	if strings.TrimSpace(execution.CandidateID) != strings.TrimSpace(candidate.ID) ||
+		strings.TrimSpace(execution.TenantID) != strings.TrimSpace(candidate.TenantID) ||
+		strings.TrimSpace(execution.ModelName) != modelName {
+		return false
+	}
+	return !callbackPointerMismatch(modelVersion, execution.ModelVersion) &&
+		!callbackPointerMismatch(modality, execution.Modality) &&
+		!callbackPointerMismatch(studyServiceJobID, execution.StudyServiceJobID)
 }
 
 func (service *InferenceCommandService) recalculateProcessingRunForExecution(ctx context.Context, candidate entity.InferenceIngestionCandidate, execution entity.InferenceIngestionProcessingJob) error {
