@@ -491,7 +491,9 @@ func TestReconciliationWorkerRepairsMissedCallbackByProcessingRunBeforeCandidate
 	require.Empty(t, dispatcher.jobIDCalls)
 	require.Equal(t, []string{tenantID + ":" + runID}, dispatcher.runCalls)
 	require.Empty(t, dispatcher.calls)
-	require.Empty(t, queryRepository.calls)
+	// Run-level discovery avoids the candidate dispatcher fallback, while the
+	// normal callback handler still loads the candidate to validate scope.
+	require.Equal(t, []string{candidateID}, queryRepository.calls)
 	require.Equal(t, entity.InferenceIngestionProcessingJobStatusCompleted, runRepository.executions[runID][0].Status)
 	require.Equal(t, entity.InferenceIngestionProcessingRunPhaseTerminal, runRepository.runs[0].Phase)
 	require.Equal(t, []ProcessingReconciliationCycleMetrics{{Checked: 1, Repaired: 1}}, metricsRecorder.cycles)
