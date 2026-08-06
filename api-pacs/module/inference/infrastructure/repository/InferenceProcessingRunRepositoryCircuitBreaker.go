@@ -106,6 +106,12 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListProcessing
 	})
 }
 
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListLegacyProcessingRunBackfillRows(ctx context.Context) ([]types.LegacyProcessingRunBackfillRow, error) {
+	return withProcessingRunCircuit("list_legacy_processing_run_backfill_rows", func() ([]types.LegacyProcessingRunBackfillRow, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.ListLegacyProcessingRunBackfillRows(ctx)
+	})
+}
+
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) RecordProcessingRunReconciliationAttempt(
 	ctx context.Context,
 	data types.RecordInferenceIngestionProcessingRunReconciliationAttempt,

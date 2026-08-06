@@ -163,6 +163,19 @@ type ApplyInferenceIngestionProcessingTransitionResult struct {
 	Counts    entity.InferenceIngestionProcessingRunExecutionCounts
 }
 
+// LegacyProcessingRunBackfillRow is the read-only projection used to plan
+// LEGACY_IMPORT runs without loading patient, DICOM, or inference-result data.
+type LegacyProcessingRunBackfillRow struct {
+	ExecutionID       string                                       `db:"execution_id"`
+	CandidateID       string                                       `db:"candidate_id"`
+	ExecutionTenantID string                                       `db:"execution_tenant_id"`
+	CandidateTenantID string                                       `db:"candidate_tenant_id"`
+	StudyInstanceUID  string                                       `db:"study_instance_uid"`
+	ModelName         string                                       `db:"model_name"`
+	Status            entity.InferenceIngestionProcessingJobStatus `db:"status"`
+	ExistingRun       bool                                         `db:"existing_run"`
+}
+
 type UpdateInferenceIngestionProcessingJob struct {
 	ID                string
 	Status            entity.InferenceIngestionProcessingJobStatus

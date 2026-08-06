@@ -125,6 +125,16 @@ reasons without writing. Backfill progress metrics must use bounded reason/state
 labels and must not include tenant IDs, Study Instance UIDs, patient data, DICOM
 metadata, or inference results.
 
+The current read-only command is:
+
+```bash
+go run ./cmd/legacy-processing-run-backfill --dry-run
+```
+
+It uses the standard `POSTGRES_DB_*` environment variables and refuses to run
+without `--dry-run`. No write mode exists until the transactional implementation
+and its rollback tests are complete.
+
 ## Observed preflight on 2026-08-06
 
 The local inference database contained:

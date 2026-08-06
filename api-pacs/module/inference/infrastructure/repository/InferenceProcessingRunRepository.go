@@ -197,6 +197,36 @@ func (repository *InferenceProcessingRunRepository) CreateProcessingRun(ctx cont
 	return run, nil
 }
 
+// ListLegacyProcessingRunBackfillRows returns a minimal, deterministic and
+// read-only projection of executions that do not yet belong to a run.
+func (repository *InferenceProcessingRunRepository) ListLegacyProcessingRunBackfillRows(_ context.Context) ([]types.LegacyProcessingRunBackfillRow, error) {
+	rows := make([]types.LegacyProcessingRunBackfillRow, 0)
+	err := repository.PostgresSQLDBHandlerInterface.Query(`
+		SELECT
+			jobs.id AS execution_id,
+			jobs.candidate_id,
+			jobs.tenant_id AS execution_tenant_id,
+			candidates.tenant_id AS candidate_tenant_id,
+			candidates.study_instance_uid,
+			jobs.model_name,
+			jobs.status,
+			EXISTS (
+				SELECT 1
+				FROM ingestion_processing_runs runs
+				WHERE runs.tenant_id = jobs.tenant_id
+					AND runs.study_instance_uid = candidates.study_instance_uid
+			) AS existing_run
+		FROM ingestion_processing_jobs jobs
+		JOIN ingestion_candidates candidates ON candidates.id = jobs.candidate_id
+		WHERE jobs.processing_run_id IS NULL
+		ORDER BY jobs.tenant_id, candidates.study_instance_uid, jobs.model_name, jobs.created_at, jobs.id
+	`, map[string]interface{}{}, &rows)
+	if err != nil {
+		return nil, processingRunError(err)
+	}
+	return rows, nil
+}
+
 // CreateProcessingRunPlan atomically freezes a run and its expected executions.
 // An automatic request reuses the active plan. A manual request conflicts until the active run terminates.
 func (repository *InferenceProcessingRunRepository) CreateProcessingRunPlan(ctx context.Context, data types.CreateInferenceIngestionProcessingRunPlan) (types.CreateInferenceIngestionProcessingRunPlanResult, error) {
