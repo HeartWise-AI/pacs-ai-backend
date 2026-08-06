@@ -107,7 +107,7 @@ var (
 	dockerSDK                  *docker.DockerSDK
 	dockerInferenceAPI         *dockerinference.DockerInferenceAPI
 	docusignAPI                *docusign.DocusignAPI
-	worklistNotificationBroker = inferenceService.NewWorklistNotificationBroker()
+	worklistNotificationBroker *inferenceService.RedisWorklistNotificationBroker
 )
 
 // ================================= REST ===================================
@@ -603,6 +603,12 @@ func registerHandlers() {
 	_, err = redisIAMDBHandler.Connect(fmt.Sprintf("%s:%s", os.Getenv("REDIS_HOST"), os.Getenv("REDIS_PORT")), os.Getenv("REDIS_PASSWORD"), redisIAMDB)
 	if err != nil {
 		log.Fatalf("[SERVER] cannot connect to account redis IAM server %v", err)
+	}
+	worklistNotificationBroker = inferenceService.NewRedisWorklistNotificationBroker(
+		&inferenceService.RedisWorklistNotificationTransport{Client: redisIAMDBHandler.Client},
+	)
+	if err = worklistNotificationBroker.Start(context.Background()); err != nil {
+		log.Fatalf("[SERVER] cannot subscribe to worklist Redis events %v", err)
 	}
 
 	// create new elasticsearch connection
