@@ -298,7 +298,7 @@ SELECT
 	runs.phase,
 	runs.outcome,
 	COALESCE(runs.attention_required, FALSE) AS attention_required,
-	COALESCE(runs.attention_reasons, '[]'::jsonb) AS attention_reasons,
+	COALESCE(runs.attention_reasons, CAST('[]' AS jsonb)) AS attention_reasons,
 	COALESCE(counts.expected_models, 0) AS expected_models,
 	COALESCE(counts.pending_models, 0) AS pending_models,
 	COALESCE(counts.queued_models, 0) AS queued_models,
@@ -326,15 +326,15 @@ LEFT JOIN LATERAL (
 ) runs ON TRUE
 LEFT JOIN LATERAL (
 	SELECT
-		COUNT(jobs.id)::int AS expected_models,
-		COUNT(*) FILTER (WHERE jobs.status = 'pending')::int AS pending_models,
-		COUNT(*) FILTER (WHERE jobs.status = 'queued')::int AS queued_models,
-		COUNT(*) FILTER (WHERE jobs.status = 'running')::int AS running_models,
-		COUNT(*) FILTER (WHERE jobs.status = 'completed')::int AS completed_models,
-		COUNT(*) FILTER (WHERE jobs.status = 'failed')::int AS failed_models,
-		COUNT(*) FILTER (WHERE jobs.status = 'skipped')::int AS skipped_models,
-		COUNT(*) FILTER (WHERE jobs.status = 'cancelled')::int AS cancelled_models,
-		COUNT(*) FILTER (WHERE jobs.status IN ('pending', 'queued', 'running'))::int AS active_models
+		CAST(COUNT(jobs.id) AS int) AS expected_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status = 'pending') AS int) AS pending_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status = 'queued') AS int) AS queued_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status = 'running') AS int) AS running_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status = 'completed') AS int) AS completed_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status = 'failed') AS int) AS failed_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status = 'skipped') AS int) AS skipped_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status = 'cancelled') AS int) AS cancelled_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status IN ('pending', 'queued', 'running')) AS int) AS active_models
 	FROM ingestion_processing_jobs jobs
 	WHERE jobs.processing_run_id = runs.id
 ) counts ON runs.id IS NOT NULL

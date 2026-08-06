@@ -18,6 +18,9 @@ func TestListWorklistStudyStatusesBuildsTenantScopedCurrentStudySnapshot(t *test
 	now := time.Now().UTC()
 	handler := &processingRunTestHandler{}
 	handler.query = func(query string, model interface{}, target interface{}) error {
+		require.NotContains(t, query, "::", "sqlx named queries corrupt PostgreSQL double-colon casts")
+		require.Contains(t, query, "CAST('[]' AS jsonb)")
+		require.Contains(t, query, "CAST(COUNT(jobs.id) AS int)")
 		require.Contains(t, query, "candidates.tenant_id = :tenant_id")
 		require.Contains(t, query, "DISTINCT ON (candidates.study_instance_uid)")
 		require.Contains(t, query, "LEFT JOIN LATERAL")
