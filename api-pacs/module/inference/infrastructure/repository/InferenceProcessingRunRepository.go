@@ -29,6 +29,13 @@ const (
 	processingTransitionOutcomeReplayed = "replayed"
 )
 
+// processingRunStudyLockKey returns a collision-resistant, PostgreSQL-safe
+// representation of the tenant/study pair. PostgreSQL text values cannot
+// contain NUL bytes, so a NUL separator must not be used for advisory locks.
+func processingRunStudyLockKey(tenantID, studyInstanceUID string) string {
+	return fmt.Sprintf("%d:%s%s", len(tenantID), tenantID, studyInstanceUID)
+}
+
 func processingRunError(err error) error {
 	if err == nil {
 		return nil
@@ -168,7 +175,7 @@ func (repository *InferenceProcessingRunRepository) CreateProcessingRun(ctx cont
 	}
 	defer tx.Rollback()
 
-	lockKey := data.TenantID + "\x00" + data.StudyInstanceUID
+	lockKey := processingRunStudyLockKey(data.TenantID, data.StudyInstanceUID)
 	if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", lockKey); err != nil {
 		return entity.InferenceIngestionProcessingRun{}, processingRunError(err)
 	}
@@ -309,7 +316,7 @@ func (repository *InferenceProcessingRunRepository) ImportLegacyProcessingRun(
 	}
 	defer tx.Rollback()
 
-	lockKey := tenantID + "\x00" + studyInstanceUID
+	lockKey := processingRunStudyLockKey(tenantID, studyInstanceUID)
 	if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", lockKey); err != nil {
 		return types.ImportLegacyProcessingRunResult{}, processingRunError(err)
 	}
@@ -417,6 +424,97 @@ func (repository *InferenceProcessingRunRepository) ImportLegacyProcessingRun(
 	}, nil
 }
 
+// RollbackLegacyProcessingRun preserves every processing execution by
+// unlinking the exact approved set before deleting its LEGACY_IMPORT run.
+func (repository *InferenceProcessingRunRepository) RollbackLegacyProcessingRun(
+	ctx context.Context,
+	data types.RollbackLegacyProcessingRun,
+) (types.RollbackLegacyProcessingRunResult, error) {
+	runID := strings.TrimSpace(data.RunID)
+	if runID == "" || data.ExpectedExecutions <= 0 {
+		return types.RollbackLegacyProcessingRunResult{}, errors.New(apiError.InvalidPayload)
+	}
+	tx, err := repository.PostgresSQLDBHandlerInterface.Begin()
+	if err != nil {
+		return types.RollbackLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	defer tx.Rollback()
+
+	var identity struct {
+		TenantID         string `db:"tenant_id"`
+		StudyInstanceUID string `db:"study_instance_uid"`
+	}
+	if err = tx.GetContext(ctx, &identity, `
+		SELECT tenant_id, study_instance_uid
+		FROM ingestion_processing_runs
+		WHERE id = $1 AND run_trigger = $2
+	`, runID, entity.InferenceIngestionProcessingRunTriggerLegacyImport); err != nil {
+		return types.RollbackLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	lockKey := processingRunStudyLockKey(identity.TenantID, identity.StudyInstanceUID)
+	if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", lockKey); err != nil {
+		return types.RollbackLegacyProcessingRunResult{}, processingRunError(err)
+	}
+
+	var lockedRun entity.InferenceIngestionProcessingRun
+	if err = tx.GetContext(ctx, &lockedRun, `
+		SELECT * FROM ingestion_processing_runs
+		WHERE id = $1 AND run_trigger = $2
+		FOR UPDATE
+	`, runID, entity.InferenceIngestionProcessingRunTriggerLegacyImport); err != nil {
+		return types.RollbackLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	executionIDs := make([]string, 0)
+	if err = tx.SelectContext(ctx, &executionIDs, `
+		SELECT id FROM ingestion_processing_jobs
+		WHERE processing_run_id = $1
+		ORDER BY id
+		FOR UPDATE
+	`, runID); err != nil {
+		return types.RollbackLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	if len(executionIDs) != data.ExpectedExecutions {
+		return types.RollbackLegacyProcessingRunResult{}, errors.New(apiError.InvalidPayload)
+	}
+
+	result, err := tx.ExecContext(ctx, `
+		UPDATE ingestion_processing_jobs
+		SET processing_run_id = NULL
+		WHERE processing_run_id = $1 AND id = ANY($2)
+	`, runID, pq.Array(executionIDs))
+	if err != nil {
+		return types.RollbackLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	unlinked, err := result.RowsAffected()
+	if err != nil || unlinked != int64(data.ExpectedExecutions) {
+		return types.RollbackLegacyProcessingRunResult{}, errors.New(apiError.DatabaseError)
+	}
+	var remaining int
+	if err = tx.GetContext(ctx, &remaining, `
+		SELECT COUNT(*) FROM ingestion_processing_jobs WHERE processing_run_id = $1
+	`, runID); err != nil {
+		return types.RollbackLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	if remaining != 0 {
+		return types.RollbackLegacyProcessingRunResult{}, errors.New(apiError.DatabaseError)
+	}
+	result, err = tx.ExecContext(ctx, `
+		DELETE FROM ingestion_processing_runs
+		WHERE id = $1 AND run_trigger = $2
+	`, runID, entity.InferenceIngestionProcessingRunTriggerLegacyImport)
+	if err != nil {
+		return types.RollbackLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil || deleted != 1 {
+		return types.RollbackLegacyProcessingRunResult{}, errors.New(apiError.DatabaseError)
+	}
+	if err = tx.Commit(); err != nil {
+		return types.RollbackLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	return types.RollbackLegacyProcessingRunResult{UnlinkedExecutions: int(unlinked)}, nil
+}
+
 func validateLegacyProcessingRunExecutions(tenantID string, executions []entity.InferenceIngestionProcessingJob) error {
 	models := make(map[string]struct{}, len(executions))
 	for _, execution := range executions {
@@ -468,7 +566,7 @@ func (repository *InferenceProcessingRunRepository) CreateProcessingRunPlan(ctx 
 	}
 	defer tx.Rollback()
 
-	lockKey := data.Run.TenantID + "\x00" + data.Run.StudyInstanceUID
+	lockKey := processingRunStudyLockKey(data.Run.TenantID, data.Run.StudyInstanceUID)
 	if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", lockKey); err != nil {
 		return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
 	}

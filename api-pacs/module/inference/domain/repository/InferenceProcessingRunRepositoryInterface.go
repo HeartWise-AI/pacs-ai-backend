@@ -35,6 +35,8 @@ type InferenceProcessingRunRepositoryInterface interface {
 	LoadLegacyProcessingRunVerificationSnapshot(ctx context.Context) (types.LegacyProcessingRunVerificationSnapshot, error)
 	// ImportLegacyProcessingRun atomically creates and links one preflight-approved LEGACY_IMPORT study.
 	ImportLegacyProcessingRun(ctx context.Context, data types.ImportLegacyProcessingRun) (types.ImportLegacyProcessingRunResult, error)
+	// RollbackLegacyProcessingRun atomically unlinks executions before deleting one LEGACY_IMPORT run.
+	RollbackLegacyProcessingRun(ctx context.Context, data types.RollbackLegacyProcessingRun) (types.RollbackLegacyProcessingRunResult, error)
 	// RecordProcessingRunReconciliationAttempt atomically increments failures or resets them after success.
 	RecordProcessingRunReconciliationAttempt(ctx context.Context, data types.RecordInferenceIngestionProcessingRunReconciliationAttempt) (entity.InferenceIngestionProcessingRun, error)
 	// ListProcessingRunExecutions returns the expected model executions for a tenant-scoped run.

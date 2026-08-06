@@ -159,6 +159,13 @@ After an interruption, run `--dry-run` again and use its new remaining counts.
 Reusing the original counts intentionally fails the fresh-plan gate. The
 operator command itself does not automatically retry failed studies.
 
+The guarded incident rollback uses `--rollback` with the literal confirmation
+`ROLLBACK_LEGACY_IMPORT` and exact fresh imported study/execution totals. It
+unlinks every execution before deleting its `LEGACY_IMPORT` run, preventing the
+processing-job foreign key's `ON DELETE CASCADE` from deleting execution state.
+Each run is reverted in an independent transaction and interruption requires a
+fresh count before restart.
+
 After the import completes, retain a point-in-time verification report using
 the original approved totals:
 

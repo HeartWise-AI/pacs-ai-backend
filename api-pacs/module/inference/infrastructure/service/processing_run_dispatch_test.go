@@ -314,3 +314,24 @@ func TestLegacyDispatchWithoutProcessingRunIDRemainsSupported(t *testing.T) {
 	require.Equal(t, entity.InferenceIngestionProcessingJobStatusQueued, commandRepository.executionInserts[0].Status)
 	require.Equal(t, "legacy-study-job-1", *commandRepository.executionInserts[0].StudyServiceJobID)
 }
+
+func TestRunlessDispatchIsRejectedAfterCompatibilityCutoff(t *testing.T) {
+	dispatcher := &guardedProcessingDispatcher{}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface: &guardedDispatchCommandRepository{},
+		ProcessingDispatcherInterface:       dispatcher,
+		RequireProcessingRunID:              true,
+	}
+
+	err := service.dispatchRetrievedCandidateToStudyService(
+		context.Background(),
+		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		"",
+		"request-1",
+	)
+
+	require.EqualError(t, err, apiError.InvalidPayload)
+	require.Zero(t, dispatcher.buildCalls)
+	require.Zero(t, dispatcher.dispatchCalls)
+}

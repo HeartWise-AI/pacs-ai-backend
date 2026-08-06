@@ -26,6 +26,16 @@ type legacyBackfillRepository struct {
 	runs                   []entity.InferenceIngestionProcessingRun
 	verificationExecutions []repositoryTypes.LegacyProcessingRunVerificationExecution
 	verificationErr        error
+	rollbacks              []repositoryTypes.RollbackLegacyProcessingRun
+	rollbackFn             func(repositoryTypes.RollbackLegacyProcessingRun) (repositoryTypes.RollbackLegacyProcessingRunResult, error)
+}
+
+func (repository *legacyBackfillRepository) RollbackLegacyProcessingRun(_ context.Context, data repositoryTypes.RollbackLegacyProcessingRun) (repositoryTypes.RollbackLegacyProcessingRunResult, error) {
+	repository.rollbacks = append(repository.rollbacks, data)
+	if repository.rollbackFn != nil {
+		return repository.rollbackFn(data)
+	}
+	return repositoryTypes.RollbackLegacyProcessingRunResult{UnlinkedExecutions: data.ExpectedExecutions}, nil
 }
 
 func (repository *legacyBackfillRepository) LoadLegacyProcessingRunVerificationSnapshot(context.Context) (repositoryTypes.LegacyProcessingRunVerificationSnapshot, error) {
@@ -346,4 +356,51 @@ func TestVerifyLegacyProcessingRunBackfillReportsDriftWithoutIdentifiers(t *test
 	} {
 		require.Positive(t, report.Issues[issue], issue)
 	}
+}
+
+func TestRollbackLegacyProcessingRunBackfillRequiresExactPlanAndRevertsDeterministically(t *testing.T) {
+	runA, runB := "legacy-a", "legacy-b"
+	repository := &legacyBackfillRepository{
+		runs: []entity.InferenceIngestionProcessingRun{
+			{ID: runB, TenantID: "tenant-b", StudyInstanceUID: "study-b"},
+			{ID: runA, TenantID: "tenant-a", StudyInstanceUID: "study-a"},
+		},
+		verificationExecutions: []repositoryTypes.LegacyProcessingRunVerificationExecution{
+			{InferenceIngestionProcessingJob: entity.InferenceIngestionProcessingJob{ProcessingRunID: &runA}},
+			{InferenceIngestionProcessingJob: entity.InferenceIngestionProcessingJob{ProcessingRunID: &runB}},
+			{InferenceIngestionProcessingJob: entity.InferenceIngestionProcessingJob{ProcessingRunID: &runB}},
+		},
+	}
+	service := InferenceCommandService{InferenceProcessingRunRepositoryInterface: repository}
+
+	result, err := service.RollbackLegacyProcessingRunBackfill(context.Background(), serviceTypes.RollbackLegacyProcessingRunBackfill{
+		Confirmation: serviceTypes.LegacyBackfillRollbackConfirmation, ExpectedStudies: 2, ExpectedExecutions: 3,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, result.RevertedStudies)
+	require.Equal(t, 3, result.RevertedExecutions)
+	require.Equal(t, map[string]int{serviceTypes.LegacyBackfillRollbackOutcomeReverted: 2}, result.Outcomes)
+	require.Equal(t, []repositoryTypes.RollbackLegacyProcessingRun{
+		{RunID: runA, ExpectedExecutions: 1},
+		{RunID: runB, ExpectedExecutions: 2},
+	}, repository.rollbacks)
+}
+
+func TestRollbackLegacyProcessingRunBackfillRejectsStaleCountsBeforeMutation(t *testing.T) {
+	runID := "legacy-a"
+	repository := &legacyBackfillRepository{
+		runs: []entity.InferenceIngestionProcessingRun{{ID: runID}},
+		verificationExecutions: []repositoryTypes.LegacyProcessingRunVerificationExecution{
+			{InferenceIngestionProcessingJob: entity.InferenceIngestionProcessingJob{ProcessingRunID: &runID}},
+		},
+	}
+	service := InferenceCommandService{InferenceProcessingRunRepositoryInterface: repository}
+
+	_, err := service.RollbackLegacyProcessingRunBackfill(context.Background(), serviceTypes.RollbackLegacyProcessingRunBackfill{
+		Confirmation: serviceTypes.LegacyBackfillRollbackConfirmation, ExpectedStudies: 2, ExpectedExecutions: 1,
+	})
+
+	require.EqualError(t, err, apiError.InvalidPayload)
+	require.Empty(t, repository.rollbacks)
 }

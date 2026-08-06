@@ -275,6 +275,79 @@ func (service *InferenceCommandService) ApplyLegacyProcessingRunBackfill(ctx con
 	return result, nil
 }
 
+// RollbackLegacyProcessingRunBackfill is the guarded incident escape hatch.
+// It delegates each run to a transaction that unlinks before deleting.
+func (service *InferenceCommandService) RollbackLegacyProcessingRunBackfill(ctx context.Context, data types.RollbackLegacyProcessingRunBackfill) (types.LegacyProcessingRunBackfillRollbackResult, error) {
+	result := types.LegacyProcessingRunBackfillRollbackResult{Outcomes: map[string]int{}}
+	if data.Confirmation != types.LegacyBackfillRollbackConfirmation || data.ExpectedStudies <= 0 || data.ExpectedExecutions <= 0 {
+		return result, errors.New(apiError.InvalidPayload)
+	}
+	snapshot, err := service.InferenceProcessingRunRepositoryInterface.LoadLegacyProcessingRunVerificationSnapshot(ctx)
+	if err != nil {
+		return result, err
+	}
+	result.PlannedStudies = len(snapshot.Runs)
+	result.PlannedExecutions = len(snapshot.Executions)
+	if result.PlannedStudies != data.ExpectedStudies || result.PlannedExecutions != data.ExpectedExecutions {
+		return result, errors.New(apiError.InvalidPayload)
+	}
+
+	executionCounts := make(map[string]int, len(snapshot.Runs))
+	for _, execution := range snapshot.Executions {
+		if execution.ProcessingRunID == nil {
+			return result, errors.New(apiError.InvalidPayload)
+		}
+		executionCounts[*execution.ProcessingRunID]++
+	}
+	runs := append([]entity.InferenceIngestionProcessingRun(nil), snapshot.Runs...)
+	sort.Slice(runs, func(i, j int) bool {
+		left := runs[i].TenantID + "\x00" + runs[i].StudyInstanceUID + "\x00" + runs[i].ID
+		right := runs[j].TenantID + "\x00" + runs[j].StudyInstanceUID + "\x00" + runs[j].ID
+		return left < right
+	})
+	for _, run := range runs {
+		expected := executionCounts[run.ID]
+		if expected <= 0 {
+			result.Outcomes[types.LegacyBackfillRollbackOutcomeFailed]++
+			return result, errors.New(apiError.InvalidPayload)
+		}
+		reverted, rollbackErr := service.InferenceProcessingRunRepositoryInterface.RollbackLegacyProcessingRun(ctx, repositoryTypes.RollbackLegacyProcessingRun{
+			RunID: run.ID, ExpectedExecutions: expected,
+		})
+		if rollbackErr == nil {
+			result.RevertedStudies++
+			result.RevertedExecutions += reverted.UnlinkedExecutions
+			result.Outcomes[types.LegacyBackfillRollbackOutcomeReverted]++
+			continue
+		}
+		if rollbackErr.Error() == apiError.MissingRecord {
+			fresh, refreshErr := service.InferenceProcessingRunRepositoryInterface.LoadLegacyProcessingRunVerificationSnapshot(ctx)
+			if refreshErr != nil {
+				result.Outcomes[types.LegacyBackfillRollbackOutcomeFailed]++
+				return result, refreshErr
+			}
+			if !legacyImportedRunExists(fresh.Runs, run.ID) {
+				result.AlreadyRevertedStudies++
+				result.AlreadyRevertedExecutions += expected
+				result.Outcomes[types.LegacyBackfillRollbackOutcomeAlready]++
+				continue
+			}
+		}
+		result.Outcomes[types.LegacyBackfillRollbackOutcomeFailed]++
+		return result, rollbackErr
+	}
+	return result, nil
+}
+
+func legacyImportedRunExists(runs []entity.InferenceIngestionProcessingRun, runID string) bool {
+	for _, run := range runs {
+		if run.ID == runID {
+			return true
+		}
+	}
+	return false
+}
+
 func legacyBackfillGroupRemains(rows []repositoryTypes.LegacyProcessingRunBackfillRow, tenantID, studyInstanceUID string) bool {
 	wantedKey := strings.TrimSpace(tenantID) + "\x00" + strings.TrimSpace(studyInstanceUID)
 	for _, row := range rows {

@@ -453,6 +453,23 @@ func TestProcessingCallbackLeavesLegacyExecutionAggregationUnchanged(t *testing.
 	require.Empty(t, runRepository.updates)
 }
 
+func TestProcessingCallbackRejectsRunlessPayloadAfterCompatibilityCutoff(t *testing.T) {
+	service, commandRepository, runRepository := orderedProcessingCallbackFixture(
+		entity.InferenceIngestionProcessingJobStatusQueued,
+		nil,
+		nil,
+	)
+	service.RequireProcessingRunID = true
+
+	_, err := service.HandleStudyServiceProcessingCallback(context.Background(), serviceTypes.HandleStudyServiceProcessingCallback{
+		CandidateID: "candidate-1", StudyInstanceUID: "study-1", ModelName: "model-one", Status: "completed",
+	})
+
+	require.EqualError(t, err, apiError.InvalidPayload)
+	require.Empty(t, commandRepository.updates)
+	require.Empty(t, runRepository.transitions)
+}
+
 func TestProcessingCallbackRejectsCorrelatedIdentityMismatchesBeforeMutation(t *testing.T) {
 	tests := []struct {
 		name   string

@@ -21,6 +21,10 @@ const (
 	LegacyBackfillVerifyDuplicateModel    = "duplicate_model"
 	LegacyBackfillVerifyAggregateMismatch = "aggregate_mismatch"
 	LegacyBackfillVerifyUnknownRun        = "unknown_run"
+	LegacyBackfillRollbackConfirmation    = "ROLLBACK_LEGACY_IMPORT"
+	LegacyBackfillRollbackOutcomeReverted = "reverted"
+	LegacyBackfillRollbackOutcomeAlready  = "already_reverted"
+	LegacyBackfillRollbackOutcomeFailed   = "failed"
 )
 
 // LegacyProcessingRunBackfillDryRun is an identifier-free operational report.
@@ -72,4 +76,20 @@ type LegacyProcessingRunBackfillVerification struct {
 	InvalidRuns        int                               `json:"invalidRuns"`
 	Remaining          LegacyProcessingRunBackfillDryRun `json:"remaining"`
 	Issues             map[string]int                    `json:"issues"`
+}
+
+type RollbackLegacyProcessingRunBackfill struct {
+	Confirmation       string
+	ExpectedStudies    int
+	ExpectedExecutions int
+}
+
+type LegacyProcessingRunBackfillRollbackResult struct {
+	PlannedStudies            int            `json:"plannedStudies"`
+	PlannedExecutions         int            `json:"plannedExecutions"`
+	RevertedStudies           int            `json:"revertedStudies"`
+	RevertedExecutions        int            `json:"revertedExecutions"`
+	AlreadyRevertedStudies    int            `json:"alreadyRevertedStudies"`
+	AlreadyRevertedExecutions int            `json:"alreadyRevertedExecutions"`
+	Outcomes                  map[string]int `json:"outcomes"`
 }

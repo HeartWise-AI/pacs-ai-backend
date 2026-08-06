@@ -57,7 +57,7 @@ func newLegacyBackfillSQLMock(t *testing.T) (*InferenceProcessingRunRepository, 
 func expectLegacyBackfillLockedExecutions(mock sqlmock.Sqlmock, rows *sqlmock.Rows) {
 	mock.ExpectBegin()
 	mock.ExpectExec("SELECT pg_advisory_xact_lock").
-		WithArgs("tenant-a\x001.2.3").
+		WithArgs("8:tenant-a1.2.3").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT EXISTS").
 		WithArgs("tenant-a", "1.2.3").
@@ -110,7 +110,7 @@ func TestImportLegacyProcessingRunRejectsExistingRunAndRollsBack(t *testing.T) {
 	repository, mock := newLegacyBackfillSQLMock(t)
 	mock.ExpectBegin()
 	mock.ExpectExec("SELECT pg_advisory_xact_lock").
-		WithArgs("tenant-a\x001.2.3").
+		WithArgs("8:tenant-a1.2.3").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT EXISTS").
 		WithArgs("tenant-a", "1.2.3").
@@ -189,6 +189,65 @@ func TestImportLegacyProcessingRunRollsBackWhenPersistedCountCannotBeVerified(t 
 	})
 
 	require.EqualError(t, err, apiError.DatabaseError)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRollbackLegacyProcessingRunUnlinksBeforeDeletingAndCommits(t *testing.T) {
+	repository, mock := newLegacyBackfillSQLMock(t)
+	now := time.Date(2026, time.August, 6, 10, 0, 0, 0, time.UTC)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT tenant_id, study_instance_uid").
+		WithArgs("legacy-run-1", entity.InferenceIngestionProcessingRunTriggerLegacyImport).
+		WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "study_instance_uid"}).AddRow("tenant-a", "1.2.3"))
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").
+		WithArgs("8:tenant-a1.2.3").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_runs").
+		WithArgs("legacy-run-1", entity.InferenceIngestionProcessingRunTriggerLegacyImport).
+		WillReturnRows(legacyBackfillRunRows(now))
+	mock.ExpectQuery("SELECT id FROM ingestion_processing_jobs").
+		WithArgs("legacy-run-1").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("execution-1").AddRow("execution-2"))
+	mock.ExpectExec("UPDATE ingestion_processing_jobs").
+		WithArgs("legacy-run-1", pq.Array([]string{"execution-1", "execution-2"})).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM ingestion_processing_jobs").
+		WithArgs("legacy-run-1").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectExec("DELETE FROM ingestion_processing_runs").
+		WithArgs("legacy-run-1", entity.InferenceIngestionProcessingRunTriggerLegacyImport).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	result, err := repository.RollbackLegacyProcessingRun(context.Background(), types.RollbackLegacyProcessingRun{
+		RunID: "legacy-run-1", ExpectedExecutions: 2,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, result.UnlinkedExecutions)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRollbackLegacyProcessingRunRejectsChangedCountWithoutUnlinking(t *testing.T) {
+	repository, mock := newLegacyBackfillSQLMock(t)
+	now := time.Date(2026, time.August, 6, 10, 0, 0, 0, time.UTC)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT tenant_id, study_instance_uid").
+		WithArgs("legacy-run-1", entity.InferenceIngestionProcessingRunTriggerLegacyImport).
+		WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "study_instance_uid"}).AddRow("tenant-a", "1.2.3"))
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").
+		WithArgs("8:tenant-a1.2.3").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_runs").
+		WithArgs("legacy-run-1", entity.InferenceIngestionProcessingRunTriggerLegacyImport).
+		WillReturnRows(legacyBackfillRunRows(now))
+	mock.ExpectQuery("SELECT id FROM ingestion_processing_jobs").
+		WithArgs("legacy-run-1").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("execution-1").AddRow("execution-2"))
+	mock.ExpectRollback()
+
+	_, err := repository.RollbackLegacyProcessingRun(context.Background(), types.RollbackLegacyProcessingRun{
+		RunID: "legacy-run-1", ExpectedExecutions: 1,
+	})
+
+	require.EqualError(t, err, apiError.InvalidPayload)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

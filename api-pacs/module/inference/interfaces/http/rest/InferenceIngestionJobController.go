@@ -421,6 +421,9 @@ func (controller *InferenceCommandController) StudyServiceProcessingCallback(w h
 		}
 
 		inferenceService.ObserveStudyServiceProcessingCallback(request.Status, outcome)
+		if occurredAt != nil {
+			inferenceService.ObserveStudyServiceProcessingCallbackLag(request.Status, outcome, *occurredAt)
+		}
 		response := viewmodels.HTTPResponseVM{
 			Status:    httpCode,
 			Success:   false,
@@ -433,6 +436,9 @@ func (controller *InferenceCommandController) StudyServiceProcessingCallback(w h
 	}
 
 	inferenceService.ObserveStudyServiceProcessingCallback(request.Status, result.Outcome)
+	if occurredAt != nil {
+		inferenceService.ObserveStudyServiceProcessingCallbackLag(request.Status, result.Outcome, *occurredAt)
+	}
 	response := viewmodels.HTTPResponseVM{
 		Status:  http.StatusOK,
 		Success: true,

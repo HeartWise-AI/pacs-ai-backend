@@ -192,6 +192,15 @@ type ImportLegacyProcessingRunResult struct {
 	LinkedExecutions int
 }
 
+type RollbackLegacyProcessingRun struct {
+	RunID              string
+	ExpectedExecutions int
+}
+
+type RollbackLegacyProcessingRunResult struct {
+	UnlinkedExecutions int
+}
+
 // LegacyProcessingRunVerificationExecution adds candidate ownership evidence
 // to a linked execution without selecting patient or inference-result data.
 type LegacyProcessingRunVerificationExecution struct {
