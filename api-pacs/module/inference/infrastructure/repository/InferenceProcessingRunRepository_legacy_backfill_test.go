@@ -93,7 +93,7 @@ func TestImportLegacyProcessingRunCommitsRunAndEveryExecutionAtomically(t *testi
 	mock.ExpectCommit()
 
 	result, err := repository.ImportLegacyProcessingRun(context.Background(), types.ImportLegacyProcessingRun{
-		RunID: "legacy-run-1", TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+		RunID: "legacy-run-1", TenantID: "tenant-a", StudyInstanceUID: "1.2.3", ExpectedExecutions: 2,
 	})
 
 	require.NoError(t, err)
@@ -118,7 +118,7 @@ func TestImportLegacyProcessingRunRejectsExistingRunAndRollsBack(t *testing.T) {
 	mock.ExpectRollback()
 
 	_, err := repository.ImportLegacyProcessingRun(context.Background(), types.ImportLegacyProcessingRun{
-		RunID: "legacy-run-1", TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+		RunID: "legacy-run-1", TenantID: "tenant-a", StudyInstanceUID: "1.2.3", ExpectedExecutions: 2,
 	})
 
 	require.EqualError(t, err, apiError.DuplicateRecord)
@@ -132,7 +132,21 @@ func TestImportLegacyProcessingRunRejectsAmbiguousModelPlanAndRollsBack(t *testi
 	mock.ExpectRollback()
 
 	_, err := repository.ImportLegacyProcessingRun(context.Background(), types.ImportLegacyProcessingRun{
-		RunID: "legacy-run-1", TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+		RunID: "legacy-run-1", TenantID: "tenant-a", StudyInstanceUID: "1.2.3", ExpectedExecutions: 2,
+	})
+
+	require.EqualError(t, err, apiError.InvalidPayload)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestImportLegacyProcessingRunRejectsChangedExecutionCountAndRollsBack(t *testing.T) {
+	repository, mock := newLegacyBackfillSQLMock(t)
+	now := time.Date(2026, time.August, 6, 10, 0, 0, 0, time.UTC)
+	expectLegacyBackfillLockedExecutions(mock, legacyBackfillExecutionRows(now, "model-one", "model-two"))
+	mock.ExpectRollback()
+
+	_, err := repository.ImportLegacyProcessingRun(context.Background(), types.ImportLegacyProcessingRun{
+		RunID: "legacy-run-1", TenantID: "tenant-a", StudyInstanceUID: "1.2.3", ExpectedExecutions: 1,
 	})
 
 	require.EqualError(t, err, apiError.InvalidPayload)
@@ -150,7 +164,7 @@ func TestImportLegacyProcessingRunRollsBackWhenLinkCountDoesNotMatchPlan(t *test
 	mock.ExpectRollback()
 
 	_, err := repository.ImportLegacyProcessingRun(context.Background(), types.ImportLegacyProcessingRun{
-		RunID: "legacy-run-1", TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+		RunID: "legacy-run-1", TenantID: "tenant-a", StudyInstanceUID: "1.2.3", ExpectedExecutions: 2,
 	})
 
 	require.EqualError(t, err, apiError.DatabaseError)
@@ -171,7 +185,7 @@ func TestImportLegacyProcessingRunRollsBackWhenPersistedCountCannotBeVerified(t 
 	mock.ExpectRollback()
 
 	_, err := repository.ImportLegacyProcessingRun(context.Background(), types.ImportLegacyProcessingRun{
-		RunID: "legacy-run-1", TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+		RunID: "legacy-run-1", TenantID: "tenant-a", StudyInstanceUID: "1.2.3", ExpectedExecutions: 2,
 	})
 
 	require.EqualError(t, err, apiError.DatabaseError)

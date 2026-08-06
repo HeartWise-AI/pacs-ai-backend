@@ -178,9 +178,10 @@ type LegacyProcessingRunBackfillRow struct {
 
 // ImportLegacyProcessingRun identifies one preflight-approved logical study.
 type ImportLegacyProcessingRun struct {
-	RunID            string
-	TenantID         string
-	StudyInstanceUID string
+	RunID              string
+	TenantID           string
+	StudyInstanceUID   string
+	ExpectedExecutions int
 }
 
 // ImportLegacyProcessingRunResult returns the committed legacy aggregate and

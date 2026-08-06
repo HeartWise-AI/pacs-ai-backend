@@ -11,13 +11,26 @@ import (
 	postgresqlTypes "api-pacs/infrastructures/database/postgresql/types"
 	inferenceRepository "api-pacs/module/inference/infrastructure/repository"
 	inferenceService "api-pacs/module/inference/infrastructure/service"
+	inferenceServiceTypes "api-pacs/module/inference/infrastructure/service/types"
 )
 
 func main() {
 	dryRun := flag.Bool("dry-run", false, "validate legacy processing state without writing")
+	apply := flag.Bool("apply", false, "apply the freshly validated legacy import plan")
+	confirmation := flag.String("confirm", "", "required literal confirmation token for apply mode")
+	expectedStudies := flag.Int("expected-studies", 0, "eligible study count from the immediately preceding dry run")
+	expectedExecutions := flag.Int("expected-executions", 0, "eligible execution count from the immediately preceding dry run")
 	flag.Parse()
-	if !*dryRun {
-		fmt.Fprintln(os.Stderr, "refusing to run: --dry-run is the only supported mode")
+	if *dryRun == *apply {
+		fmt.Fprintln(os.Stderr, "refusing to run: select exactly one of --dry-run or --apply")
+		os.Exit(2)
+	}
+	if *dryRun && (*confirmation != "" || *expectedStudies != 0 || *expectedExecutions != 0) {
+		fmt.Fprintln(os.Stderr, "refusing to run: apply confirmation flags cannot be used with --dry-run")
+		os.Exit(2)
+	}
+	if *apply && (*confirmation != inferenceServiceTypes.LegacyBackfillConfirmation || *expectedStudies <= 0 || *expectedExecutions <= 0) {
+		fmt.Fprintln(os.Stderr, "refusing to apply: require --confirm=LEGACY_IMPORT and positive --expected-studies/--expected-executions")
 		os.Exit(2)
 	}
 
@@ -36,19 +49,38 @@ func main() {
 	repository := &inferenceRepository.InferenceProcessingRunRepository{
 		PostgresSQLDBHandlerInterface: database,
 	}
-	service := &inferenceService.InferenceQueryService{
-		InferenceProcessingRunRepositoryInterface: repository,
-	}
-	report, err := service.DryRunLegacyProcessingRunBackfill(context.Background())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "cannot plan legacy processing-run backfill: %v\n", err)
-		os.Exit(1)
+	var report any
+	if *dryRun {
+		service := &inferenceService.InferenceQueryService{InferenceProcessingRunRepositoryInterface: repository}
+		var err error
+		report, err = service.DryRunLegacyProcessingRunBackfill(context.Background())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cannot plan legacy processing-run backfill: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		service := &inferenceService.InferenceCommandService{InferenceProcessingRunRepositoryInterface: repository}
+		var err error
+		report, err = service.ApplyLegacyProcessingRunBackfill(context.Background(), inferenceServiceTypes.ApplyLegacyProcessingRunBackfill{
+			Confirmation:       *confirmation,
+			ExpectedStudies:    *expectedStudies,
+			ExpectedExecutions: *expectedExecutions,
+		})
+		if err != nil {
+			_ = writeJSON(os.Stdout, report)
+			fmt.Fprintf(os.Stderr, "legacy processing-run backfill stopped: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
-	encoder := json.NewEncoder(os.Stdout)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(report); err != nil {
-		fmt.Fprintf(os.Stderr, "cannot encode dry-run report: %v\n", err)
+	if err := writeJSON(os.Stdout, report); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot encode backfill report: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func writeJSON(output *os.File, report any) error {
+	encoder := json.NewEncoder(output)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(report)
 }

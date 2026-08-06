@@ -2,15 +2,20 @@ package service
 
 import (
 	"context"
+	"errors"
+	"sort"
 	"strings"
 
+	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
 )
 
 type legacyBackfillGroup struct {
-	rows []repositoryTypes.LegacyProcessingRunBackfillRow
+	tenantID         string
+	studyInstanceUID string
+	rows             []repositoryTypes.LegacyProcessingRunBackfillRow
 }
 
 // DryRunLegacyProcessingRunBackfill reads and validates current legacy state
@@ -63,6 +68,97 @@ func PlanLegacyProcessingRunBackfill(rows []repositoryTypes.LegacyProcessingRunB
 		}
 	}
 	return report
+}
+
+// ApplyLegacyProcessingRunBackfill re-runs preflight immediately before any
+// write, validates explicit operator expectations, then imports one study per
+// transaction in deterministic order.
+func (service *InferenceCommandService) ApplyLegacyProcessingRunBackfill(ctx context.Context, data types.ApplyLegacyProcessingRunBackfill) (types.LegacyProcessingRunBackfillApplyResult, error) {
+	result := types.LegacyProcessingRunBackfillApplyResult{Outcomes: map[string]int{}}
+	if data.Confirmation != types.LegacyBackfillConfirmation || data.ExpectedStudies <= 0 || data.ExpectedExecutions <= 0 {
+		return result, errors.New(apiError.InvalidPayload)
+	}
+
+	rows, err := service.InferenceProcessingRunRepositoryInterface.ListLegacyProcessingRunBackfillRows(ctx)
+	if err != nil {
+		return result, err
+	}
+	result.Plan = PlanLegacyProcessingRunBackfill(rows)
+	if result.Plan.SkippedStudies != 0 ||
+		result.Plan.EligibleStudies != data.ExpectedStudies ||
+		result.Plan.EligibleExecutions != data.ExpectedExecutions {
+		return result, errors.New(apiError.InvalidPayload)
+	}
+
+	for _, group := range eligibleLegacyBackfillGroups(rows) {
+		imported, importErr := service.InferenceProcessingRunRepositoryInterface.ImportLegacyProcessingRun(ctx, repositoryTypes.ImportLegacyProcessingRun{
+			RunID:              generateID(),
+			TenantID:           group.tenantID,
+			StudyInstanceUID:   group.studyInstanceUID,
+			ExpectedExecutions: len(group.rows),
+		})
+		if importErr == nil {
+			result.ImportedStudies++
+			result.ImportedExecutions += imported.LinkedExecutions
+			result.Outcomes[types.LegacyBackfillOutcomeImported]++
+			continue
+		}
+		if importErr.Error() == apiError.DuplicateRecord || importErr.Error() == apiError.MissingRecord {
+			remainingRows, refreshErr := service.InferenceProcessingRunRepositoryInterface.ListLegacyProcessingRunBackfillRows(ctx)
+			if refreshErr != nil {
+				result.Outcomes[types.LegacyBackfillOutcomeFailed]++
+				return result, refreshErr
+			}
+			if !legacyBackfillGroupRemains(remainingRows, group.tenantID, group.studyInstanceUID) {
+				result.AlreadyImportedStudies++
+				result.AlreadyImportedExecutions += len(group.rows)
+				result.Outcomes[types.LegacyBackfillOutcomeAlreadyDone]++
+				continue
+			}
+		}
+		result.Outcomes[types.LegacyBackfillOutcomeFailed]++
+		return result, importErr
+	}
+	return result, nil
+}
+
+func legacyBackfillGroupRemains(rows []repositoryTypes.LegacyProcessingRunBackfillRow, tenantID, studyInstanceUID string) bool {
+	wantedKey := strings.TrimSpace(tenantID) + "\x00" + strings.TrimSpace(studyInstanceUID)
+	for _, row := range rows {
+		if legacyBackfillGroupKey(row) == wantedKey {
+			return true
+		}
+	}
+	return false
+}
+
+func eligibleLegacyBackfillGroups(rows []repositoryTypes.LegacyProcessingRunBackfillRow) []*legacyBackfillGroup {
+	groupsByKey := make(map[string]*legacyBackfillGroup)
+	for _, row := range rows {
+		key := legacyBackfillGroupKey(row)
+		group := groupsByKey[key]
+		if group == nil {
+			group = &legacyBackfillGroup{
+				tenantID:         strings.TrimSpace(row.ExecutionTenantID),
+				studyInstanceUID: strings.TrimSpace(row.StudyInstanceUID),
+			}
+			groupsByKey[key] = group
+		}
+		group.rows = append(group.rows, row)
+	}
+
+	keys := make([]string, 0, len(groupsByKey))
+	for key, group := range groupsByKey {
+		if legacyBackfillGroupSkipReason(group.rows) == "" {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	groups := make([]*legacyBackfillGroup, 0, len(keys))
+	for _, key := range keys {
+		groups = append(groups, groupsByKey[key])
+	}
+	return groups
 }
 
 func legacyBackfillGroupKey(row repositoryTypes.LegacyProcessingRunBackfillRow) string {

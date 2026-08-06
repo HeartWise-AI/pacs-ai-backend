@@ -108,7 +108,8 @@ Each logical study is processed in one database transaction:
 
 1. acquire the same tenant/study advisory lock used by run creation;
 2. lock and reload all orphan execution rows for the group;
-3. re-check eligibility and absence of an existing run;
+3. re-check eligibility, absence of an existing run, and the exact
+   preflight-approved execution count;
 4. calculate the aggregate using those locked executions;
 5. insert one `LEGACY_IMPORT` run;
 6. link every locked execution to that run;
@@ -131,9 +132,32 @@ The current read-only command is:
 go run ./cmd/legacy-processing-run-backfill --dry-run
 ```
 
-It uses the standard `POSTGRES_DB_*` environment variables and refuses to run
-without `--dry-run`. No write mode exists until the transactional implementation
-and its rollback tests are complete.
+It uses the standard `POSTGRES_DB_*` environment variables. The controlled
+write command requires all three independent operator gates:
+
+```bash
+go run ./cmd/legacy-processing-run-backfill \
+  --apply \
+  --confirm=LEGACY_IMPORT \
+  --expected-studies=<eligibleStudies-from-fresh-dry-run> \
+  --expected-executions=<eligibleExecutions-from-fresh-dry-run>
+```
+
+`--dry-run` and `--apply` are mutually exclusive. Apply mode performs its own
+fresh read before the first transaction and refuses all writes when either
+expected count differs or any study is skipped. This protects against stale
+operator approval and state changes between inspection and execution.
+
+Studies are imported sequentially in deterministic tenant/study order, with
+one transaction per study. An unexpected database or validation failure stops
+the command and returns an identifier-free partial report. A concurrent
+duplicate/missing result is counted as `already_imported` only after a fresh
+read confirms that the group's orphan rows disappeared; a competing normal run
+that leaves orphan rows is a conflict and stops the command.
+
+After an interruption, run `--dry-run` again and use its new remaining counts.
+Reusing the original counts intentionally fails the fresh-plan gate. The
+operator command itself does not automatically retry failed studies.
 
 ## Observed preflight on 2026-08-06
 

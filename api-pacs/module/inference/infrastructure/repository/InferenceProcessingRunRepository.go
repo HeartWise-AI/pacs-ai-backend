@@ -240,7 +240,7 @@ func (repository *InferenceProcessingRunRepository) ImportLegacyProcessingRun(
 	runID := strings.TrimSpace(data.RunID)
 	tenantID := strings.TrimSpace(data.TenantID)
 	studyInstanceUID := strings.TrimSpace(data.StudyInstanceUID)
-	if runID == "" || tenantID == "" || studyInstanceUID == "" {
+	if runID == "" || tenantID == "" || studyInstanceUID == "" || data.ExpectedExecutions <= 0 {
 		return types.ImportLegacyProcessingRunResult{}, errors.New(apiError.InvalidPayload)
 	}
 
@@ -283,6 +283,9 @@ func (repository *InferenceProcessingRunRepository) ImportLegacyProcessingRun(
 	}
 	if len(executions) == 0 {
 		return types.ImportLegacyProcessingRunResult{}, errors.New(apiError.MissingRecord)
+	}
+	if len(executions) != data.ExpectedExecutions {
+		return types.ImportLegacyProcessingRunResult{}, errors.New(apiError.InvalidPayload)
 	}
 	if err = validateLegacyProcessingRunExecutions(tenantID, executions); err != nil {
 		return types.ImportLegacyProcessingRunResult{}, err
