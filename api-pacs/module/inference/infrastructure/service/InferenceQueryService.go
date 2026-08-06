@@ -26,6 +26,11 @@ type InferenceQueryService struct {
 	dockerInferenceTypes.DockerInferenceAPIInterface
 }
 
+const (
+	defaultWorklistPageLimit = 25
+	maximumWorklistPageLimit = 100
+)
+
 // GetContainerInfo returns the container info with stats
 func (service *InferenceQueryService) GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error) {
 	// get container info
@@ -277,6 +282,109 @@ func parseInferenceIngestionCandidateStatus(status string) (entity.InferenceInge
 	default:
 		return "", false
 	}
+}
+
+// GetWorklistStudyStatuses returns the current worklist snapshot for one
+// authenticated tenant. The repository remains responsible for enforcing the
+// tenant predicate; this layer normalizes input and maps persistence types into
+// the public frontend contract.
+func (service *InferenceQueryService) GetWorklistStudyStatuses(_ context.Context, data types.GetWorklistStudyStatuses) (types.WorklistStudyStatusPage, error) {
+	tenantID := strings.TrimSpace(data.TenantID)
+	if tenantID == "" || data.Limit < 0 || data.Offset < 0 {
+		return types.WorklistStudyStatusPage{}, errors.New(apiError.InvalidPayload)
+	}
+
+	limit := data.Limit
+	if limit == 0 {
+		limit = defaultWorklistPageLimit
+	}
+	if limit > maximumWorklistPageLimit {
+		return types.WorklistStudyStatusPage{}, errors.New(apiError.MaximumLimitReached)
+	}
+
+	studyInstanceUIDs, valid := normalizeStudyInstanceUIDs(data.StudyInstanceUIDs)
+	if !valid {
+		return types.WorklistStudyStatusPage{}, errors.New(apiError.InvalidPayload)
+	}
+
+	repositoryPage, err := service.InferenceQueryRepositoryInterface.ListWorklistStudyStatuses(repositoryTypes.ListWorklistStudyStatuses{
+		TenantID:          tenantID,
+		StudyInstanceUIDs: studyInstanceUIDs,
+		Limit:             limit,
+		Offset:            data.Offset,
+	})
+	if err != nil {
+		return types.WorklistStudyStatusPage{}, err
+	}
+
+	studies := make([]types.WorklistStudyStatus, 0, len(repositoryPage.Studies))
+	for _, status := range repositoryPage.Studies {
+		attentionReasons := status.AttentionReasons
+		if attentionReasons == nil {
+			attentionReasons = entity.InferenceIngestionProcessingRunAttentionReasons{}
+		}
+
+		studies = append(studies, types.WorklistStudyStatus{
+			StudyInstanceUID:  status.StudyInstanceUID,
+			IngestionStatus:   status.IngestionStatus,
+			RetrievalState:    status.RetrievalState,
+			RetrievalError:    status.RetrievalError,
+			RunID:             status.RunID,
+			RunNumber:         status.RunNumber,
+			Trigger:           status.RunTrigger,
+			Phase:             status.Phase,
+			Outcome:           status.Outcome,
+			AttentionRequired: status.AttentionRequired,
+			AttentionReasons:  attentionReasons,
+			ProcessingRunCounts: types.ProcessingRunCounts{
+				Expected:  status.ExpectedModels,
+				Pending:   status.PendingModels,
+				Queued:    status.QueuedModels,
+				Running:   status.RunningModels,
+				Completed: status.CompletedModels,
+				Failed:    status.FailedModels,
+				Skipped:   status.SkippedModels,
+				Cancelled: status.CancelledModels,
+				Active:    status.ActiveModels,
+			},
+			Version:     status.Version,
+			StartedAt:   status.StartedAt,
+			CompletedAt: status.CompletedAt,
+			UpdatedAt:   status.UpdatedAt,
+		})
+	}
+
+	return types.WorklistStudyStatusPage{
+		Studies: studies,
+		WorklistPage: types.WorklistPage{
+			Limit:   limit,
+			Offset:  data.Offset,
+			HasMore: repositoryPage.HasMore,
+		},
+	}, nil
+}
+
+func normalizeStudyInstanceUIDs(values []string) ([]string, bool) {
+	if len(values) == 0 {
+		return nil, true
+	}
+
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		uid := strings.TrimSpace(value)
+		if uid == "" {
+			return nil, false
+		}
+		if _, exists := seen[uid]; exists {
+			continue
+		}
+
+		seen[uid] = struct{}{}
+		normalized = append(normalized, uid)
+	}
+
+	return normalized, true
 }
 
 // GetModelFeedBackByUser gets the model feedback by user

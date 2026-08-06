@@ -93,6 +93,20 @@ type ListInferenceIngestionProcessingRuns struct {
 	Offset           int    `db:"offset"`
 }
 
+// InferenceIngestionProcessingRunHistoryPage carries limit+1 pagination
+// information without requiring a separate total-count query.
+type InferenceIngestionProcessingRunHistoryPage struct {
+	Runs    []entity.InferenceIngestionProcessingRun
+	HasMore bool
+}
+
+// ListInferenceIngestionProcessingRunExecutions scopes a batch execution read
+// to one tenant and the processing runs visible on the requested history page.
+type ListInferenceIngestionProcessingRunExecutions struct {
+	TenantID         string
+	ProcessingRunIDs []string
+}
+
 // ListInferenceIngestionProcessingRunsForReconciliation bounds the internal
 // cross-tenant worker query. ActiveStaleBefore is the earliest configured
 // threshold; state-specific thresholds are applied by the service.

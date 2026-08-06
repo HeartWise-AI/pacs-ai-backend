@@ -24,6 +24,8 @@ type InferenceQueryServiceInterface interface {
 	GetInferenceIngestionJobs(ctx context.Context, tenantID string) ([]entity.InferenceIngestionJob, error)
 	// GetInferenceIngestionCandidates gets ingestion candidates for debugging and operations
 	GetInferenceIngestionCandidates(ctx context.Context, data types.GetInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error)
+	// GetWorklistStudyStatuses returns the current tenant-scoped worklist snapshot.
+	GetWorklistStudyStatuses(ctx context.Context, data types.GetWorklistStudyStatuses) (types.WorklistStudyStatusPage, error)
 	// GetModelFeedBackByUser gets the model feedback by user
 	GetModelFeedBackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (types.GetModelFeedbackResult, error)
 	// GetOnboardingModelQuestionnaireAnswers gets the onboarding model questionnaire answers
