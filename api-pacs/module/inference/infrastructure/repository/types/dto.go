@@ -195,6 +195,52 @@ type ListInferenceIngestionCandidates struct {
 	RetrievalFailures bool
 }
 
+// ListWorklistStudyStatuses scopes the current worklist snapshot to one tenant.
+// StudyInstanceUIDs is optional and lets callers restrict the database query to
+// the studies visible on the current worklist page.
+type ListWorklistStudyStatuses struct {
+	TenantID          string
+	StudyInstanceUIDs []string
+	Limit             int
+	Offset            int
+}
+
+// WorklistStudyStatus is the repository projection for one logical study and
+// its active run, or its latest terminal run when no active run exists.
+type WorklistStudyStatus struct {
+	StudyInstanceUID  string                                                 `db:"study_instance_uid"`
+	IngestionStatus   entity.InferenceIngestionCandidateStatus               `db:"ingestion_status"`
+	RetrievalState    *string                                                `db:"retrieval_state"`
+	RetrievalError    *string                                                `db:"retrieval_error"`
+	RunID             *string                                                `db:"run_id"`
+	RunNumber         *int                                                   `db:"run_number"`
+	RunTrigger        *entity.InferenceIngestionProcessingRunTrigger         `db:"run_trigger"`
+	Phase             *entity.InferenceIngestionProcessingRunPhase           `db:"phase"`
+	Outcome           *entity.InferenceIngestionProcessingRunOutcome         `db:"outcome"`
+	AttentionRequired bool                                                   `db:"attention_required"`
+	AttentionReasons  entity.InferenceIngestionProcessingRunAttentionReasons `db:"attention_reasons"`
+	ExpectedModels    int                                                    `db:"expected_models"`
+	PendingModels     int                                                    `db:"pending_models"`
+	QueuedModels      int                                                    `db:"queued_models"`
+	RunningModels     int                                                    `db:"running_models"`
+	CompletedModels   int                                                    `db:"completed_models"`
+	FailedModels      int                                                    `db:"failed_models"`
+	SkippedModels     int                                                    `db:"skipped_models"`
+	CancelledModels   int                                                    `db:"cancelled_models"`
+	ActiveModels      int                                                    `db:"active_models"`
+	Version           *int64                                                 `db:"version"`
+	StartedAt         *time.Time                                             `db:"started_at"`
+	CompletedAt       *time.Time                                             `db:"completed_at"`
+	UpdatedAt         time.Time                                              `db:"updated_at"`
+}
+
+// WorklistStudyStatusPage carries limit+1 pagination information without a
+// separate count query.
+type WorklistStudyStatusPage struct {
+	Studies []WorklistStudyStatus
+	HasMore bool
+}
+
 type GetOnboardingModelQuestionnaireAnswer struct {
 	TenantID string
 	UserID   string

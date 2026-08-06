@@ -25,6 +25,8 @@ type InferenceQueryRepositoryInterface interface {
 	SelectInferenceIngestionProcessingJobByCandidateModel(candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error)
 	// ListInferenceIngestionCandidates lists ingestion candidates for debugging and operations
 	ListInferenceIngestionCandidates(data types.ListInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error)
+	// ListWorklistStudyStatuses returns one tenant-scoped current status per logical study.
+	ListWorklistStudyStatuses(data types.ListWorklistStudyStatuses) (types.WorklistStudyStatusPage, error)
 	// ListCandidatesByJob lists ingestion candidates by ingestion job ID
 	ListCandidatesByJob(ingestionJobID string) ([]entity.InferenceIngestionCandidate, error)
 	// ListCandidatesReadyForRetrieval lists stable ingestion candidates ready for retrieval
