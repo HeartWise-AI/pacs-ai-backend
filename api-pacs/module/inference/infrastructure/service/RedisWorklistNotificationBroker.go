@@ -75,9 +75,15 @@ func (broker *RedisWorklistNotificationBroker) PublishWorklistNotification(
 		TenantID: tenantID, Notification: notification,
 	})
 	if err != nil {
+		ObserveWorklistNotification("encode_failed")
 		return err
 	}
-	return broker.transport.Publish(ctx, payload)
+	if err := broker.transport.Publish(ctx, payload); err != nil {
+		ObserveWorklistNotification("publish_failed")
+		return err
+	}
+	ObserveWorklistNotification("published")
+	return nil
 }
 
 func (broker *RedisWorklistNotificationBroker) SubscribeWorklistNotifications(
@@ -119,17 +125,21 @@ func (broker *RedisWorklistNotificationBroker) consume(
 			}
 			var envelope redisWorklistNotificationEnvelope
 			if err := json.Unmarshal(payload, &envelope); err != nil {
-				log.Printf("[Worklist SSE] ignoring invalid Redis notification err=%v", err)
+				ObserveWorklistNotification("invalid_received")
+				log.Printf("[Worklist SSE] event=redis_notification_invalid err=%v", err)
 				continue
 			}
 			tenantID := strings.TrimSpace(envelope.TenantID)
 			if tenantID == "" {
-				log.Printf("[Worklist SSE] ignoring Redis notification without tenant")
+				ObserveWorklistNotification("invalid_received")
+				log.Printf("[Worklist SSE] event=redis_notification_without_tenant")
 				continue
 			}
+			ObserveWorklistNotification("received")
 			envelope.Notification.TenantID = tenantID
 			if err := broker.local.PublishWorklistNotification(ctx, envelope.Notification); err != nil && ctx.Err() == nil {
-				log.Printf("[Worklist SSE] local notification fan-out failed err=%v", err)
+				ObserveWorklistNotification("local_fanout_failed")
+				log.Printf("[Worklist SSE] event=local_fanout_failed err=%v", err)
 			}
 		}
 	}

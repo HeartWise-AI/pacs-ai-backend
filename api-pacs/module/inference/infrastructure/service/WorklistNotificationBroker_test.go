@@ -73,6 +73,7 @@ func TestWorklistNotificationBrokerDoesNotBlockOnSlowSubscriber(t *testing.T) {
 	broker := NewWorklistNotificationBroker()
 	_, cancel := broker.SubscribeWorklistNotifications("tenant-a", 1)
 	t.Cleanup(cancel)
+	droppedBefore := expvarMapIntValue(worklistNotificationsTotal, "local_subscriber_dropped")
 
 	require.NoError(t, broker.PublishWorklistNotification(context.Background(), serviceTypes.WorklistNotification{
 		TenantID: "tenant-a", Version: 1,
@@ -80,4 +81,5 @@ func TestWorklistNotificationBrokerDoesNotBlockOnSlowSubscriber(t *testing.T) {
 	require.NoError(t, broker.PublishWorklistNotification(context.Background(), serviceTypes.WorklistNotification{
 		TenantID: "tenant-a", Version: 2,
 	}))
+	require.Equal(t, droppedBefore+1, expvarMapIntValue(worklistNotificationsTotal, "local_subscriber_dropped"))
 }

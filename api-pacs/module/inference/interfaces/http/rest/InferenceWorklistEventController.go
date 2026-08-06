@@ -3,10 +3,12 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
 	apiError "api-pacs/internal/errors"
+	inferenceService "api-pacs/module/inference/infrastructure/service"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 )
 
@@ -46,6 +48,12 @@ func (controller *InferenceQueryController) StreamWorklistEvents(w http.Response
 		return
 	}
 	flusher.Flush()
+	inferenceService.ObserveWorklistSSEConnectionOpened()
+	log.Printf("[Worklist SSE] event=connection_opened")
+	defer func() {
+		inferenceService.ObserveWorklistSSEConnectionClosed()
+		log.Printf("[Worklist SSE] event=connection_closed")
+	}()
 
 	heartbeat := time.NewTicker(controller.worklistEventHeartbeatInterval())
 	defer heartbeat.Stop()
@@ -59,8 +67,10 @@ func (controller *InferenceQueryController) StreamWorklistEvents(w http.Response
 				return
 			}
 			if err := writeWorklistServerSentEvent(w, notification); err != nil {
+				inferenceService.ObserveWorklistNotification("sse_write_failed")
 				return
 			}
+			inferenceService.ObserveWorklistNotification("sse_sent")
 			flusher.Flush()
 		case <-heartbeat.C:
 			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {

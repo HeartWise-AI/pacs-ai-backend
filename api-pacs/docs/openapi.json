@@ -2200,6 +2200,29 @@
         }
       }
     },
+    "/inference/worklist/events": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Stream real-time worklist study updates",
+        "description": "Opens a tenant-scoped Server-Sent Events connection. Reload GET /inference/worklist/status after every reconnect because events are not durably replayed. Callable by an owner or administrator only.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "SSE stream containing study_status.updated events and heartbeat comments",
+            "content": {
+              "text/event-stream": {
+                "schema": { "type": "string" },
+                "x-event-data-schema": { "$ref": "#/components/schemas/WorklistStudyStatusEvent" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/WorklistUnavailable" }
+        }
+      }
+    },
     "/inference/worklist/studies/{studyInstanceUID}/runs": {
       "get": {
         "tags": ["inference"],
@@ -2337,6 +2360,37 @@
                 "items": { "$ref": "#/components/schemas/ProcessingRunAttentionReason" }
               },
               "version": { "type": "integer", "format": "int64", "nullable": true },
+              "startedAt": { "type": "string", "format": "date-time", "nullable": true },
+              "completedAt": { "type": "string", "format": "date-time", "nullable": true },
+              "updatedAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        ]
+      },
+      "WorklistStudyStatusEvent": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ProcessingRunCounts" },
+          {
+            "type": "object",
+            "required": ["type", "studyInstanceUID", "runId", "runNumber", "trigger", "phase", "outcome", "attentionRequired", "attentionReasons", "version", "startedAt", "completedAt", "updatedAt"],
+            "properties": {
+              "type": { "type": "string", "enum": ["study_status.updated"] },
+              "studyInstanceUID": { "type": "string" },
+              "runId": { "type": "string" },
+              "runNumber": { "type": "integer", "minimum": 1 },
+              "trigger": { "type": "string", "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT"] },
+              "phase": { "type": "string", "enum": ["QUEUED", "PROCESSING", "TERMINAL"] },
+              "outcome": {
+                "type": "string",
+                "nullable": true,
+                "enum": ["SUCCESS", "SUCCESS_WITH_SKIPS", "PARTIAL_SUCCESS", "NO_RESULT", "FAILED", "CANCELLED"]
+              },
+              "attentionRequired": { "type": "boolean" },
+              "attentionReasons": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ProcessingRunAttentionReason" }
+              },
+              "version": { "type": "integer", "format": "int64", "minimum": 1 },
               "startedAt": { "type": "string", "format": "date-time", "nullable": true },
               "completedAt": { "type": "string", "format": "date-time", "nullable": true },
               "updatedAt": { "type": "string", "format": "date-time" }

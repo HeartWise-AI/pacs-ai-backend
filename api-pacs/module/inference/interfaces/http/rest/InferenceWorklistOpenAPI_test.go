@@ -43,6 +43,14 @@ func TestWorklistOpenAPIDocumentsExactRoutesAndVisibleStudyFilter(t *testing.T) 
 	require.Equal(t, true, visibleStudyFilter["explode"])
 	require.Equal(t, "array", openAPIMap(t, visibleStudyFilter["schema"])["type"])
 
+	eventsPath := openAPIMap(t, paths["/inference/worklist/events"])
+	eventsOperation := openAPIMap(t, eventsPath["get"])
+	require.Contains(t, eventsOperation["description"], "Reload GET /inference/worklist/status after every reconnect")
+	eventsResponses := openAPIMap(t, eventsOperation["responses"])
+	eventsOK := openAPIMap(t, eventsResponses["200"])
+	eventsContent := openAPIMap(t, eventsOK["content"])
+	require.Contains(t, eventsContent, "text/event-stream")
+
 	require.Contains(t, paths, "/inference/worklist/studies/{studyInstanceUID}/runs")
 	require.Contains(t, paths, "/inference/processing/runs/{runId}")
 }
@@ -53,6 +61,7 @@ func TestWorklistOpenAPIPublicSchemasExcludeTenantAndPythonInternals(t *testing.
 	schemas := openAPIMap(t, components["schemas"])
 	publicSchemas := []string{
 		"WorklistStudyStatus",
+		"WorklistStudyStatusEvent",
 		"ProcessingRunExecutionSummary",
 		"ProcessingRunSummary",
 		"ProcessingRunDetail",
