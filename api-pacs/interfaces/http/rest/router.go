@@ -189,6 +189,7 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Group(func(r chi.Router) {
 						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 						r.Get("/worklist/status", inferenceQueryController.GetWorklistStudyStatuses)
+						r.Get("/worklist/events", inferenceQueryController.StreamWorklistEvents)
 						r.Get("/worklist/studies/{studyInstanceUID}/runs", inferenceQueryController.GetStudyProcessingRunHistory)
 						r.Get("/processing/runs/{runId}", inferenceQueryController.GetProcessingRunDetail)
 						r.Post("/worklist/studies/{studyInstanceUID}/reprocess", inferenceCommandController.ReprocessStudy)

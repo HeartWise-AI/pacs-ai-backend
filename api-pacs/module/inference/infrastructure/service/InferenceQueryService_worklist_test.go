@@ -98,6 +98,33 @@ func TestGetWorklistStudyStatusesAppliesDefaultLimitAndReturnsEmptyArray(t *test
 	require.Empty(t, page.Studies)
 }
 
+func TestWorklistSnapshotRecoversVersionMissedWhileEventStreamWasDisconnected(t *testing.T) {
+	broker := NewWorklistNotificationBroker()
+	_, disconnect := broker.SubscribeWorklistNotifications("tenant-a", 1)
+	disconnect()
+	require.NoError(t, broker.PublishWorklistNotification(context.Background(), serviceTypes.WorklistNotification{
+		TenantID: "tenant-a", StudyInstanceUID: "1.2.3", Version: 9,
+	}))
+
+	version := int64(9)
+	runID := "run-9"
+	repository := &worklistStatusQueryRepository{page: repositoryTypes.WorklistStudyStatusPage{
+		Studies: []repositoryTypes.WorklistStudyStatus{{
+			StudyInstanceUID: "1.2.3", RunID: &runID, Version: &version,
+		}},
+	}}
+	service := InferenceQueryService{InferenceQueryRepositoryInterface: repository}
+
+	snapshot, err := service.GetWorklistStudyStatuses(context.Background(), serviceTypes.GetWorklistStudyStatuses{
+		TenantID: "tenant-a", StudyInstanceUIDs: []string{"1.2.3"},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, snapshot.Studies, 1)
+	require.Equal(t, &version, snapshot.Studies[0].Version)
+	require.Equal(t, &runID, snapshot.Studies[0].RunID)
+}
+
 func TestGetWorklistStudyStatusesNormalizesNilAttentionReasons(t *testing.T) {
 	repository := &worklistStatusQueryRepository{page: repositoryTypes.WorklistStudyStatusPage{
 		Studies: []repositoryTypes.WorklistStudyStatus{{StudyInstanceUID: "1.2.3"}},

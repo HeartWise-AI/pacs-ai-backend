@@ -35,6 +35,7 @@ func (broker *WorklistNotificationBroker) PublishWorklistNotification(
 		select {
 		case subscriber <- notification:
 		default:
+			ObserveWorklistNotification("local_subscriber_dropped")
 		}
 	}
 	return nil

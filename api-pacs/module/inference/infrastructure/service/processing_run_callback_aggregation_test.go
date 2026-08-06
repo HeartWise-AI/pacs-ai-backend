@@ -186,15 +186,25 @@ func TestProcessingCallbackPublishesCommittedRunNotification(t *testing.T) {
 	publisher := &recordingWorklistNotificationPublisher{}
 	service.WorklistNotificationPublisherInterface = publisher
 	updatedAt := time.Date(2026, time.August, 5, 14, 0, 0, 0, time.UTC)
+	startedAt := updatedAt.Add(-time.Minute)
+	attentionMessage := "callback delivery exhausted"
 	runRepository.transitionResult = &repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult{
 		Outcome: "applied",
 		Changed: true,
 		Run: entity.InferenceIngestionProcessingRun{
 			ID: "run-1", TenantID: "tenant-a", StudyInstanceUID: "study-1", RunNumber: 2,
-			Phase: entity.InferenceIngestionProcessingRunPhaseProcessing, Version: 7, UpdatedAt: updatedAt,
+			RunTrigger:        entity.InferenceIngestionProcessingRunTriggerAuto,
+			Phase:             entity.InferenceIngestionProcessingRunPhaseProcessing,
+			AttentionRequired: true,
+			AttentionReasons: entity.InferenceIngestionProcessingRunAttentionReasons{{
+				Code:    entity.InferenceIngestionProcessingRunAttentionCallbackDeadLettered,
+				Message: &attentionMessage,
+			}},
+			Version: 7, StartedAt: &startedAt, UpdatedAt: updatedAt,
 		},
 		Counts: entity.InferenceIngestionProcessingRunExecutionCounts{
-			Expected: 3, Running: 1, Completed: 1, Failed: 1, Active: 1,
+			Expected: 8, Pending: 1, Queued: 1, Running: 1, Completed: 1,
+			Failed: 1, Skipped: 1, Cancelled: 1, Active: 3,
 		},
 	}
 
@@ -207,14 +217,25 @@ func TestProcessingCallbackPublishesCommittedRunNotification(t *testing.T) {
 	require.Equal(t, "applied", result.Outcome)
 	require.Len(t, publisher.notifications, 1)
 	notification := publisher.notifications[0]
-	require.Equal(t, "study_status.updated", notification.Type)
+	require.Equal(t, serviceTypes.WorklistNotificationTypeStudyStatusUpdated, notification.Type)
 	require.Equal(t, "tenant-a", notification.TenantID)
 	require.Equal(t, "study-1", notification.StudyInstanceUID)
 	require.Equal(t, "run-1", notification.RunID)
 	require.Equal(t, 2, notification.RunNumber)
+	require.Equal(t, entity.InferenceIngestionProcessingRunTriggerAuto, notification.Trigger)
+	require.True(t, notification.AttentionRequired)
+	require.Len(t, notification.AttentionReasons, 1)
 	require.Equal(t, int64(7), notification.Version)
-	require.Equal(t, 3, notification.ExpectedModels)
-	require.Equal(t, 1, notification.ActiveModels)
+	require.Equal(t, 8, notification.ExpectedModels)
+	require.Equal(t, 1, notification.PendingModels)
+	require.Equal(t, 1, notification.QueuedModels)
+	require.Equal(t, 1, notification.RunningModels)
+	require.Equal(t, 1, notification.CompletedModels)
+	require.Equal(t, 1, notification.FailedModels)
+	require.Equal(t, 1, notification.SkippedModels)
+	require.Equal(t, 1, notification.CancelledModels)
+	require.Equal(t, 3, notification.ActiveModels)
+	require.Equal(t, &startedAt, notification.StartedAt)
 	require.Equal(t, updatedAt, notification.UpdatedAt)
 }
 

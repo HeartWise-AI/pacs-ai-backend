@@ -165,22 +165,35 @@ type HandleStudyServiceProcessingCallbackResult struct {
 	Outcome string
 }
 
+const WorklistNotificationTypeStudyStatusUpdated = "study_status.updated"
+
+// WorklistNotification is the versioned aggregate published after a processing
+// run change commits. TenantID is routing metadata for the broker and must
+// never be exposed to the browser.
 type WorklistNotification struct {
-	Type              string                                         `json:"type"`
-	TenantID          string                                         `json:"-"`
-	StudyInstanceUID  string                                         `json:"studyInstanceUID"`
-	RunID             string                                         `json:"runId"`
-	RunNumber         int                                            `json:"runNumber"`
-	Phase             entity.InferenceIngestionProcessingRunPhase    `json:"phase"`
-	Outcome           *entity.InferenceIngestionProcessingRunOutcome `json:"outcome"`
-	AttentionRequired bool                                           `json:"attentionRequired"`
-	ExpectedModels    int                                            `json:"expectedModels"`
-	CompletedModels   int                                            `json:"completedModels"`
-	FailedModels      int                                            `json:"failedModels"`
-	SkippedModels     int                                            `json:"skippedModels"`
-	ActiveModels      int                                            `json:"activeModels"`
-	Version           int64                                          `json:"version"`
-	UpdatedAt         time.Time                                      `json:"updatedAt"`
+	Type              string                                                 `json:"type"`
+	TenantID          string                                                 `json:"-"`
+	StudyInstanceUID  string                                                 `json:"studyInstanceUID"`
+	RunID             string                                                 `json:"runId"`
+	RunNumber         int                                                    `json:"runNumber"`
+	Trigger           entity.InferenceIngestionProcessingRunTrigger          `json:"trigger"`
+	Phase             entity.InferenceIngestionProcessingRunPhase            `json:"phase"`
+	Outcome           *entity.InferenceIngestionProcessingRunOutcome         `json:"outcome"`
+	AttentionRequired bool                                                   `json:"attentionRequired"`
+	AttentionReasons  entity.InferenceIngestionProcessingRunAttentionReasons `json:"attentionReasons"`
+	ExpectedModels    int                                                    `json:"expectedModels"`
+	PendingModels     int                                                    `json:"pendingModels"`
+	QueuedModels      int                                                    `json:"queuedModels"`
+	RunningModels     int                                                    `json:"runningModels"`
+	CompletedModels   int                                                    `json:"completedModels"`
+	FailedModels      int                                                    `json:"failedModels"`
+	SkippedModels     int                                                    `json:"skippedModels"`
+	CancelledModels   int                                                    `json:"cancelledModels"`
+	ActiveModels      int                                                    `json:"activeModels"`
+	Version           int64                                                  `json:"version"`
+	StartedAt         *time.Time                                             `json:"startedAt"`
+	CompletedAt       *time.Time                                             `json:"completedAt"`
+	UpdatedAt         time.Time                                              `json:"updatedAt"`
 }
 
 type GetContainerInfoResult struct {

@@ -452,21 +452,33 @@ func (service *InferenceCommandService) publishCommittedWorklistNotification(
 	if service.WorklistNotificationPublisherInterface == nil {
 		return
 	}
+	attentionReasons := transition.Run.AttentionReasons
+	if attentionReasons == nil {
+		attentionReasons = entity.InferenceIngestionProcessingRunAttentionReasons{}
+	}
 	notification := types.WorklistNotification{
-		Type:              "study_status.updated",
+		Type:              types.WorklistNotificationTypeStudyStatusUpdated,
 		TenantID:          transition.Run.TenantID,
 		StudyInstanceUID:  transition.Run.StudyInstanceUID,
 		RunID:             transition.Run.ID,
 		RunNumber:         transition.Run.RunNumber,
+		Trigger:           transition.Run.RunTrigger,
 		Phase:             transition.Run.Phase,
 		Outcome:           transition.Run.Outcome,
 		AttentionRequired: transition.Run.AttentionRequired,
+		AttentionReasons:  attentionReasons,
 		ExpectedModels:    transition.Counts.Expected,
+		PendingModels:     transition.Counts.Pending,
+		QueuedModels:      transition.Counts.Queued,
+		RunningModels:     transition.Counts.Running,
 		CompletedModels:   transition.Counts.Completed,
 		FailedModels:      transition.Counts.Failed,
 		SkippedModels:     transition.Counts.Skipped,
+		CancelledModels:   transition.Counts.Cancelled,
 		ActiveModels:      transition.Counts.Active,
 		Version:           transition.Run.Version,
+		StartedAt:         transition.Run.StartedAt,
+		CompletedAt:       transition.Run.CompletedAt,
 		UpdatedAt:         transition.Run.UpdatedAt,
 	}
 	if err := service.PublishWorklistNotification(ctx, notification); err != nil {
