@@ -22,6 +22,7 @@ import (
 // InferenceQueryService handles the Inference query service logic
 type InferenceQueryService struct {
 	repository.InferenceQueryRepositoryInterface
+	repository.InferenceProcessingRunRepositoryInterface
 	dockerTypes.DockerSDKInterface
 	dockerInferenceTypes.DockerInferenceAPIInterface
 }
@@ -290,16 +291,9 @@ func parseInferenceIngestionCandidateStatus(status string) (entity.InferenceInge
 // the public frontend contract.
 func (service *InferenceQueryService) GetWorklistStudyStatuses(_ context.Context, data types.GetWorklistStudyStatuses) (types.WorklistStudyStatusPage, error) {
 	tenantID := strings.TrimSpace(data.TenantID)
-	if tenantID == "" || data.Limit < 0 || data.Offset < 0 {
-		return types.WorklistStudyStatusPage{}, errors.New(apiError.InvalidPayload)
-	}
-
-	limit := data.Limit
-	if limit == 0 {
-		limit = defaultWorklistPageLimit
-	}
-	if limit > maximumWorklistPageLimit {
-		return types.WorklistStudyStatusPage{}, errors.New(apiError.MaximumLimitReached)
+	limit, err := normalizeWorklistPagination(tenantID, data.Limit, data.Offset)
+	if err != nil {
+		return types.WorklistStudyStatusPage{}, err
 	}
 
 	studyInstanceUIDs, valid := normalizeStudyInstanceUIDs(data.StudyInstanceUIDs)
@@ -385,6 +379,152 @@ func normalizeStudyInstanceUIDs(values []string) ([]string, bool) {
 	}
 
 	return normalized, true
+}
+
+// GetStudyProcessingRunHistory returns newest-first runs and their frozen model
+// executions for one tenant-scoped study.
+func (service *InferenceQueryService) GetStudyProcessingRunHistory(ctx context.Context, data types.GetStudyProcessingRunHistory) (types.StudyProcessingRunHistoryPage, error) {
+	tenantID := strings.TrimSpace(data.TenantID)
+	studyInstanceUID := strings.TrimSpace(data.StudyInstanceUID)
+	limit, err := normalizeWorklistPagination(tenantID, data.Limit, data.Offset)
+	if err != nil {
+		return types.StudyProcessingRunHistoryPage{}, err
+	}
+	if studyInstanceUID == "" {
+		return types.StudyProcessingRunHistoryPage{}, errors.New(apiError.InvalidPayload)
+	}
+
+	repositoryPage, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunHistoryPage(ctx, repositoryTypes.ListInferenceIngestionProcessingRuns{
+		TenantID: tenantID, StudyInstanceUID: studyInstanceUID, Limit: limit, Offset: data.Offset,
+	})
+	if err != nil {
+		return types.StudyProcessingRunHistoryPage{}, err
+	}
+
+	runIDs := make([]string, 0, len(repositoryPage.Runs))
+	for _, run := range repositoryPage.Runs {
+		runIDs = append(runIDs, run.ID)
+	}
+
+	executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutionsByRunIDs(ctx, repositoryTypes.ListInferenceIngestionProcessingRunExecutions{
+		TenantID: tenantID, ProcessingRunIDs: runIDs,
+	})
+	if err != nil {
+		return types.StudyProcessingRunHistoryPage{}, err
+	}
+
+	executionsByRunID := make(map[string][]entity.InferenceIngestionProcessingJob, len(repositoryPage.Runs))
+	for _, execution := range executions {
+		if execution.ProcessingRunID == nil {
+			continue
+		}
+		executionsByRunID[*execution.ProcessingRunID] = append(executionsByRunID[*execution.ProcessingRunID], execution)
+	}
+
+	runs := make([]types.ProcessingRunDetail, 0, len(repositoryPage.Runs))
+	for _, run := range repositoryPage.Runs {
+		runs = append(runs, buildProcessingRunDetail(run, executionsByRunID[run.ID]))
+	}
+
+	return types.StudyProcessingRunHistoryPage{
+		Runs: runs,
+		WorklistPage: types.WorklistPage{
+			Limit: limit, Offset: data.Offset, HasMore: repositoryPage.HasMore,
+		},
+	}, nil
+}
+
+// GetProcessingRunDetail returns one run only when its ID belongs to the
+// authenticated tenant, then loads the run's frozen model plan.
+func (service *InferenceQueryService) GetProcessingRunDetail(ctx context.Context, data types.GetProcessingRunDetail) (types.ProcessingRunDetail, error) {
+	tenantID := strings.TrimSpace(data.TenantID)
+	runID := strings.TrimSpace(data.RunID)
+	if tenantID == "" || runID == "" {
+		return types.ProcessingRunDetail{}, errors.New(apiError.InvalidPayload)
+	}
+
+	run, err := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRun(ctx, tenantID, runID)
+	if err != nil {
+		return types.ProcessingRunDetail{}, err
+	}
+
+	executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, tenantID, runID)
+	if err != nil {
+		return types.ProcessingRunDetail{}, err
+	}
+
+	return buildProcessingRunDetail(run, executions), nil
+}
+
+func normalizeWorklistPagination(tenantID string, limit, offset int) (int, error) {
+	if tenantID == "" || limit < 0 || offset < 0 {
+		return 0, errors.New(apiError.InvalidPayload)
+	}
+	if limit == 0 {
+		limit = defaultWorklistPageLimit
+	}
+	if limit > maximumWorklistPageLimit {
+		return 0, errors.New(apiError.MaximumLimitReached)
+	}
+	return limit, nil
+}
+
+func buildProcessingRunDetail(run entity.InferenceIngestionProcessingRun, executions []entity.InferenceIngestionProcessingJob) types.ProcessingRunDetail {
+	attentionReasons := run.AttentionReasons
+	if attentionReasons == nil {
+		attentionReasons = entity.InferenceIngestionProcessingRunAttentionReasons{}
+	}
+
+	executionSummaries := make([]types.ProcessingRunExecutionSummary, 0, len(executions))
+	for index := range executions {
+		execution := &executions[index]
+		executionSummaries = append(executionSummaries, types.ProcessingRunExecutionSummary{
+			ExecutionID:  execution.ID,
+			ModelName:    execution.ModelName,
+			ModelVersion: execution.ModelVersion,
+			Modality:     execution.Modality,
+			Status:       execution.Status,
+			ErrorMessage: execution.ErrorMessage,
+			SkipReason:   execution.GetSkipReason(),
+			StartedAt:    execution.StartedAt,
+			CompletedAt:  execution.CompletedAt,
+			UpdatedAt:    execution.UpdatedAt,
+		})
+	}
+
+	aggregate := entity.AggregateInferenceIngestionProcessingRun(entity.InferenceIngestionProcessingRunAggregationInput{
+		Run: run, Executions: executions,
+	})
+
+	return types.ProcessingRunDetail{
+		ProcessingRunSummary: types.ProcessingRunSummary{
+			RunID:             run.ID,
+			StudyInstanceUID:  run.StudyInstanceUID,
+			RunNumber:         run.RunNumber,
+			Trigger:           run.RunTrigger,
+			Phase:             run.Phase,
+			Outcome:           run.Outcome,
+			AttentionRequired: run.AttentionRequired,
+			AttentionReasons:  attentionReasons,
+			ProcessingRunCounts: types.ProcessingRunCounts{
+				Expected:  aggregate.Counts.Expected,
+				Pending:   aggregate.Counts.Pending,
+				Queued:    aggregate.Counts.Queued,
+				Running:   aggregate.Counts.Running,
+				Completed: aggregate.Counts.Completed,
+				Failed:    aggregate.Counts.Failed,
+				Skipped:   aggregate.Counts.Skipped,
+				Cancelled: aggregate.Counts.Cancelled,
+				Active:    aggregate.Counts.Active,
+			},
+			Version:     run.Version,
+			StartedAt:   run.StartedAt,
+			CompletedAt: run.CompletedAt,
+			CreatedAt:   run.CreatedAt,
+			UpdatedAt:   run.UpdatedAt,
+		},
+		Executions: executionSummaries,
+	}
 }
 
 // GetModelFeedBackByUser gets the model feedback by user

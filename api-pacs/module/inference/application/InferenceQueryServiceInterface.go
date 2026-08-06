@@ -26,6 +26,10 @@ type InferenceQueryServiceInterface interface {
 	GetInferenceIngestionCandidates(ctx context.Context, data types.GetInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error)
 	// GetWorklistStudyStatuses returns the current tenant-scoped worklist snapshot.
 	GetWorklistStudyStatuses(ctx context.Context, data types.GetWorklistStudyStatuses) (types.WorklistStudyStatusPage, error)
+	// GetStudyProcessingRunHistory returns paginated run and model history for one study.
+	GetStudyProcessingRunHistory(ctx context.Context, data types.GetStudyProcessingRunHistory) (types.StudyProcessingRunHistoryPage, error)
+	// GetProcessingRunDetail returns one tenant-scoped run and its frozen model plan.
+	GetProcessingRunDetail(ctx context.Context, data types.GetProcessingRunDetail) (types.ProcessingRunDetail, error)
 	// GetModelFeedBackByUser gets the model feedback by user
 	GetModelFeedBackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (types.GetModelFeedbackResult, error)
 	// GetOnboardingModelQuestionnaireAnswers gets the onboarding model questionnaire answers

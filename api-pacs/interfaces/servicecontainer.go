@@ -443,10 +443,16 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		FirebaseAdminSDK:              firebaseAdminSDK,
 		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
 	}
+	processingRunRepository := &inferenceRepository.InferenceProcessingRunRepository{
+		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
+	}
 
 	service := &inferenceService.InferenceQueryService{
 		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
 			InferenceQueryRepositoryInterface: repository,
+		},
+		InferenceProcessingRunRepositoryInterface: &inferenceRepository.InferenceProcessingRunRepositoryCircuitBreaker{
+			InferenceProcessingRunRepositoryInterface: processingRunRepository,
 		},
 		DockerSDKInterface:          dockerSDK,
 		DockerInferenceAPIInterface: dockerInferenceAPI,
