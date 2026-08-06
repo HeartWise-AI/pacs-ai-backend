@@ -8,6 +8,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/lib/pq"
+
 	postgresqlTypes "api-pacs/infrastructures/database/postgresql/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	apiError "api-pacs/internal/errors"
@@ -254,6 +256,102 @@ func (repository *InferenceQueryRepository) ListInferenceIngestionCandidates(dat
 	}
 
 	return candidates, nil
+}
+
+// ListWorklistStudyStatuses returns one current status row per logical study.
+// A non-terminal run is preferred; otherwise the latest terminal run is used.
+func (repository *InferenceQueryRepository) ListWorklistStudyStatuses(data types.ListWorklistStudyStatuses) (types.WorklistStudyStatusPage, error) {
+	statuses := make([]types.WorklistStudyStatus, 0)
+	args := map[string]interface{}{
+		"tenant_id": data.TenantID,
+		"limit":     data.Limit + 1,
+		"offset":    data.Offset,
+	}
+
+	studyFilter := ""
+	if len(data.StudyInstanceUIDs) > 0 {
+		studyFilter = "AND candidates.study_instance_uid = ANY(:study_instance_uids)"
+		args["study_instance_uids"] = pq.Array(data.StudyInstanceUIDs)
+	}
+
+	stmt := fmt.Sprintf(`
+WITH latest_candidates AS (
+	SELECT DISTINCT ON (candidates.study_instance_uid)
+		candidates.study_instance_uid,
+		candidates.status AS ingestion_status,
+		candidates.last_retrieval_state AS retrieval_state,
+		candidates.last_retrieval_error AS retrieval_error,
+		candidates.updated_at
+	FROM ingestion_candidates candidates
+	WHERE candidates.tenant_id = :tenant_id
+		%s
+	ORDER BY candidates.study_instance_uid, candidates.updated_at DESC, candidates.id DESC
+)
+SELECT
+	candidates.study_instance_uid,
+	candidates.ingestion_status,
+	candidates.retrieval_state,
+	candidates.retrieval_error,
+	runs.id AS run_id,
+	runs.run_number,
+	runs.run_trigger,
+	runs.phase,
+	runs.outcome,
+	COALESCE(runs.attention_required, FALSE) AS attention_required,
+	COALESCE(runs.attention_reasons, CAST('[]' AS jsonb)) AS attention_reasons,
+	COALESCE(counts.expected_models, 0) AS expected_models,
+	COALESCE(counts.pending_models, 0) AS pending_models,
+	COALESCE(counts.queued_models, 0) AS queued_models,
+	COALESCE(counts.running_models, 0) AS running_models,
+	COALESCE(counts.completed_models, 0) AS completed_models,
+	COALESCE(counts.failed_models, 0) AS failed_models,
+	COALESCE(counts.skipped_models, 0) AS skipped_models,
+	COALESCE(counts.cancelled_models, 0) AS cancelled_models,
+	COALESCE(counts.active_models, 0) AS active_models,
+	runs.version,
+	runs.started_at,
+	runs.completed_at,
+	GREATEST(candidates.updated_at, COALESCE(runs.updated_at, candidates.updated_at)) AS updated_at
+FROM latest_candidates candidates
+LEFT JOIN LATERAL (
+	SELECT selected_run.*
+	FROM ingestion_processing_runs selected_run
+	WHERE selected_run.tenant_id = :tenant_id
+		AND selected_run.study_instance_uid = candidates.study_instance_uid
+	ORDER BY (selected_run.phase <> 'TERMINAL') DESC,
+		selected_run.run_number DESC,
+		selected_run.created_at DESC,
+		selected_run.id DESC
+	LIMIT 1
+) runs ON TRUE
+LEFT JOIN LATERAL (
+	SELECT
+		CAST(COUNT(jobs.id) AS int) AS expected_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status = 'pending') AS int) AS pending_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status = 'queued') AS int) AS queued_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status = 'running') AS int) AS running_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status = 'completed') AS int) AS completed_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status = 'failed') AS int) AS failed_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status = 'skipped') AS int) AS skipped_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status = 'cancelled') AS int) AS cancelled_models,
+		CAST(COUNT(*) FILTER (WHERE jobs.status IN ('pending', 'queued', 'running')) AS int) AS active_models
+	FROM ingestion_processing_jobs jobs
+	WHERE jobs.processing_run_id = runs.id
+) counts ON runs.id IS NOT NULL
+ORDER BY updated_at DESC, candidates.study_instance_uid ASC
+LIMIT :limit OFFSET :offset`, studyFilter)
+
+	if err := repository.PostgresSQLDBHandlerInterface.Query(stmt, args, &statuses); err != nil {
+		log.Println(err)
+		return types.WorklistStudyStatusPage{}, errors.New(apiError.DatabaseError)
+	}
+
+	hasMore := len(statuses) > data.Limit
+	if hasMore {
+		statuses = statuses[:data.Limit]
+	}
+
+	return types.WorklistStudyStatusPage{Studies: statuses, HasMore: hasMore}, nil
 }
 
 // ListCandidatesByJob lists ingestion candidates by ingestion job ID

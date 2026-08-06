@@ -232,6 +232,33 @@ func (repository InferenceQueryRepositoryCircuitBreaker) ListInferenceIngestionC
 	}
 }
 
+// ListWorklistStudyStatuses returns one tenant-scoped current status per logical study.
+func (repository InferenceQueryRepositoryCircuitBreaker) ListWorklistStudyStatuses(data types.ListWorklistStudyStatuses) (types.WorklistStudyStatusPage, error) {
+	output := make(chan types.WorklistStudyStatusPage, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("list_worklist_study_statuses", config.Settings())
+	errors := hystrix.Go("list_worklist_study_statuses", func() error {
+		page, err := repository.InferenceQueryRepositoryInterface.ListWorklistStudyStatuses(data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- page
+		return nil
+	}, nil)
+
+	select {
+	case page := <-output:
+		return page, nil
+	case err := <-errChan:
+		return types.WorklistStudyStatusPage{}, err
+	case err := <-errors:
+		return types.WorklistStudyStatusPage{}, err
+	}
+}
+
 // ListCandidatesByJob lists ingestion candidates by ingestion job ID
 func (repository InferenceQueryRepositoryCircuitBreaker) ListCandidatesByJob(ingestionJobID string) ([]entity.InferenceIngestionCandidate, error) {
 	output := make(chan []entity.InferenceIngestionCandidate, 1)

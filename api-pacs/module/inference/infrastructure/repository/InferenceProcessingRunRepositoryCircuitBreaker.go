@@ -91,6 +91,12 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListProcessing
 	})
 }
 
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListProcessingRunHistoryPage(ctx context.Context, data types.ListInferenceIngestionProcessingRuns) (types.InferenceIngestionProcessingRunHistoryPage, error) {
+	return withProcessingRunCircuit("list_processing_run_history_page", func() (types.InferenceIngestionProcessingRunHistoryPage, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.ListProcessingRunHistoryPage(ctx, data)
+	})
+}
+
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListProcessingRunsForReconciliation(
 	ctx context.Context,
 	data types.ListInferenceIngestionProcessingRunsForReconciliation,
@@ -112,6 +118,12 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) RecordProcessi
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListProcessingRunExecutions(ctx context.Context, tenantID, processingRunID string) ([]entity.InferenceIngestionProcessingJob, error) {
 	return withProcessingRunCircuit("list_processing_run_executions", func() ([]entity.InferenceIngestionProcessingJob, error) {
 		return repository.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, tenantID, processingRunID)
+	})
+}
+
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListProcessingRunExecutionsByRunIDs(ctx context.Context, data types.ListInferenceIngestionProcessingRunExecutions) ([]entity.InferenceIngestionProcessingJob, error) {
+	return withProcessingRunCircuit("list_processing_run_executions_by_run_ids", func() ([]entity.InferenceIngestionProcessingJob, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutionsByRunIDs(ctx, data)
 	})
 }
 

@@ -2160,10 +2160,336 @@
           "5xx": { "description": "Server side errors" }
         }
       }
+    },
+    "/inference/worklist/status": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get current worklist study statuses",
+        "description": "Returns one current ingestion and processing summary per logical study for the authenticated tenant. Callable by an owner or administrator only.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "studyInstanceUID",
+            "in": "query",
+            "description": "Repeat this parameter to restrict the snapshot to studies visible on the current frontend page.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          { "$ref": "#/components/parameters/WorklistLimit" },
+          { "$ref": "#/components/parameters/WorklistOffset" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current study-processing snapshot",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WorklistStudyStatusResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/WorklistUnavailable" }
+        }
+      }
+    },
+    "/inference/worklist/studies/{studyInstanceUID}/runs": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get study processing-run history",
+        "description": "Returns processing attempts newest first, including each run's frozen model execution plan, for the authenticated tenant. Callable by an owner or administrator only.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "studyInstanceUID",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          { "$ref": "#/components/parameters/WorklistLimit" },
+          { "$ref": "#/components/parameters/WorklistOffset" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated processing-run history",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StudyProcessingRunHistoryResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/WorklistUnavailable" }
+        }
+      }
+    },
+    "/inference/processing/runs/{runId}": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get processing-run detail",
+        "description": "Returns one processing attempt and its frozen model execution plan only when it belongs to the authenticated tenant. Callable by an owner or administrator only.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Processing-run detail",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProcessingRunDetailResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "404": { "$ref": "#/components/responses/ProcessingRunNotFound" },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/WorklistUnavailable" }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "WorklistPage": {
+        "type": "object",
+        "required": ["limit", "offset", "hasMore"],
+        "properties": {
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "offset": { "type": "integer", "minimum": 0 },
+          "hasMore": { "type": "boolean" }
+        }
+      },
+      "ProcessingRunCounts": {
+        "type": "object",
+        "required": ["expectedModels", "pendingModels", "queuedModels", "runningModels", "completedModels", "failedModels", "skippedModels", "cancelledModels", "activeModels"],
+        "properties": {
+          "expectedModels": { "type": "integer", "minimum": 0 },
+          "pendingModels": { "type": "integer", "minimum": 0 },
+          "queuedModels": { "type": "integer", "minimum": 0 },
+          "runningModels": { "type": "integer", "minimum": 0 },
+          "completedModels": { "type": "integer", "minimum": 0 },
+          "failedModels": { "type": "integer", "minimum": 0 },
+          "skippedModels": { "type": "integer", "minimum": 0 },
+          "cancelledModels": { "type": "integer", "minimum": 0 },
+          "activeModels": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "ProcessingRunAttentionReason": {
+        "type": "object",
+        "required": ["code"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string", "nullable": true }
+        }
+      },
+      "WorklistStudyStatus": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ProcessingRunCounts" },
+          {
+            "type": "object",
+            "required": ["studyInstanceUID", "ingestionStatus", "retrievalState", "retrievalError", "runId", "runNumber", "trigger", "phase", "outcome", "attentionRequired", "attentionReasons", "version", "startedAt", "completedAt", "updatedAt"],
+            "properties": {
+              "studyInstanceUID": { "type": "string" },
+              "ingestionStatus": {
+                "type": "string",
+                "enum": ["DISCOVERED", "GROWING", "STABLE", "RETRIEVAL_QUEUED", "RETRIEVED", "DISAPPEARED", "FAILED"]
+              },
+              "retrievalState": { "type": "string", "nullable": true },
+              "retrievalError": { "type": "string", "nullable": true },
+              "runId": { "type": "string", "nullable": true },
+              "runNumber": { "type": "integer", "nullable": true },
+              "trigger": {
+                "type": "string",
+                "nullable": true,
+                "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT"]
+              },
+              "phase": {
+                "type": "string",
+                "nullable": true,
+                "enum": ["QUEUED", "PROCESSING", "TERMINAL"]
+              },
+              "outcome": {
+                "type": "string",
+                "nullable": true,
+                "enum": ["SUCCESS", "SUCCESS_WITH_SKIPS", "PARTIAL_SUCCESS", "NO_RESULT", "FAILED", "CANCELLED"]
+              },
+              "attentionRequired": { "type": "boolean" },
+              "attentionReasons": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ProcessingRunAttentionReason" }
+              },
+              "version": { "type": "integer", "format": "int64", "nullable": true },
+              "startedAt": { "type": "string", "format": "date-time", "nullable": true },
+              "completedAt": { "type": "string", "format": "date-time", "nullable": true },
+              "updatedAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        ]
+      },
+      "ProcessingRunExecutionSummary": {
+        "type": "object",
+        "required": ["executionId", "modelName", "modelVersion", "modality", "status", "errorMessage", "skipReason", "startedAt", "completedAt", "updatedAt"],
+        "properties": {
+          "executionId": { "type": "string" },
+          "modelName": { "type": "string" },
+          "modelVersion": { "type": "string", "nullable": true },
+          "modality": { "type": "string", "nullable": true },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "queued", "running", "completed", "failed", "skipped", "cancelled"]
+          },
+          "errorMessage": { "type": "string", "nullable": true },
+          "skipReason": {
+            "nullable": true,
+            "allOf": [{ "$ref": "#/components/schemas/ProcessingRunSkipReason" }]
+          },
+          "startedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "completedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ProcessingRunSkipReason": {
+        "type": "object",
+        "required": ["code"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": ["NO_USABLE_DICOM", "UNSUPPORTED_MODALITY", "REQUIRED_SERIES_MISSING", "MODEL_NOT_APPLICABLE", "PREREQUISITE_NOT_MET", "MODEL_DISABLED"]
+          },
+          "message": { "type": "string", "nullable": true }
+        }
+      },
+      "ProcessingRunSummary": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ProcessingRunCounts" },
+          {
+            "type": "object",
+            "required": ["runId", "studyInstanceUID", "runNumber", "trigger", "phase", "outcome", "attentionRequired", "attentionReasons", "version", "startedAt", "completedAt", "createdAt", "updatedAt"],
+            "properties": {
+              "runId": { "type": "string" },
+              "studyInstanceUID": { "type": "string" },
+              "runNumber": { "type": "integer", "minimum": 1 },
+              "trigger": { "type": "string", "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT"] },
+              "phase": { "type": "string", "enum": ["QUEUED", "PROCESSING", "TERMINAL"] },
+              "outcome": {
+                "type": "string",
+                "nullable": true,
+                "enum": ["SUCCESS", "SUCCESS_WITH_SKIPS", "PARTIAL_SUCCESS", "NO_RESULT", "FAILED", "CANCELLED"]
+              },
+              "attentionRequired": { "type": "boolean" },
+              "attentionReasons": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ProcessingRunAttentionReason" }
+              },
+              "version": { "type": "integer", "format": "int64" },
+              "startedAt": { "type": "string", "format": "date-time", "nullable": true },
+              "completedAt": { "type": "string", "format": "date-time", "nullable": true },
+              "createdAt": { "type": "string", "format": "date-time" },
+              "updatedAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        ]
+      },
+      "ProcessingRunDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ProcessingRunSummary" },
+          {
+            "type": "object",
+            "required": ["executions"],
+            "properties": {
+              "executions": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ProcessingRunExecutionSummary" }
+              }
+            }
+          }
+        ]
+      },
+      "WorklistStudyStatusPage": {
+        "allOf": [
+          { "$ref": "#/components/schemas/WorklistPage" },
+          {
+            "type": "object",
+            "required": ["studies"],
+            "properties": {
+              "studies": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/WorklistStudyStatus" }
+              }
+            }
+          }
+        ]
+      },
+      "StudyProcessingRunHistoryPage": {
+        "allOf": [
+          { "$ref": "#/components/schemas/WorklistPage" },
+          {
+            "type": "object",
+            "required": ["runs"],
+            "properties": {
+              "runs": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ProcessingRunDetail" }
+              }
+            }
+          }
+        ]
+      },
+      "WorklistStudyStatusResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/WorklistStudyStatusPage" }
+        }
+      },
+      "StudyProcessingRunHistoryResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/StudyProcessingRunHistoryPage" }
+        }
+      },
+      "ProcessingRunDetailResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/ProcessingRunDetail" }
+        }
+      },
+      "WorklistErrorResponse": {
+        "type": "object",
+        "required": ["success", "message", "errorCode", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": { "type": "string" },
+          "data": { "type": "object" }
+        }
+      },
       "AddInferenceModelRequest": {
         "required": ["name", "dockerImage", "outputMode"],
         "type": "object",
@@ -2781,6 +3107,81 @@
           },
           "email": {
             "type": "string"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "WorklistLimit": {
+        "name": "limit",
+        "in": "query",
+        "description": "Maximum records returned. Defaults to 25 and cannot exceed 100.",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 25
+        }
+      },
+      "WorklistOffset": {
+        "name": "offset",
+        "in": "query",
+        "description": "Zero-based number of records to skip.",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      }
+    },
+    "responses": {
+      "WorklistBadRequest": {
+        "description": "Invalid pagination, identifier, or visible-study filter",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "WorklistUnauthorized": {
+        "description": "Authentication is required",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "WorklistForbidden": {
+        "description": "The authenticated user is not an owner or administrator",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "ProcessingRunNotFound": {
+        "description": "The run does not exist in the authenticated tenant",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "WorklistServerError": {
+        "description": "Database or internal server error",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "WorklistUnavailable": {
+        "description": "Worklist status is temporarily unavailable",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
           }
         }
       }

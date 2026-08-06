@@ -7,6 +7,7 @@ import (
 	"log"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/lib/pq"
 
 	postgresqlTypes "api-pacs/infrastructures/database/postgresql/types"
 	apiError "api-pacs/internal/errors"
@@ -327,6 +328,25 @@ func (repository *InferenceProcessingRunRepository) ListProcessingRunHistory(ctx
 	return runs, processingRunError(err)
 }
 
+// ListProcessingRunHistoryPage returns bounded tenant-scoped runs newest first.
+// One extra row is requested to derive HasMore without a count query.
+func (repository *InferenceProcessingRunRepository) ListProcessingRunHistoryPage(ctx context.Context, data types.ListInferenceIngestionProcessingRuns) (types.InferenceIngestionProcessingRunHistoryPage, error) {
+	query := data
+	query.Limit++
+
+	runs, err := repository.ListProcessingRunHistory(ctx, query)
+	if err != nil {
+		return types.InferenceIngestionProcessingRunHistoryPage{}, err
+	}
+
+	hasMore := len(runs) > data.Limit
+	if hasMore {
+		runs = runs[:data.Limit]
+	}
+
+	return types.InferenceIngestionProcessingRunHistoryPage{Runs: runs, HasMore: hasMore}, nil
+}
+
 // ListProcessingRunsForReconciliation returns a bounded active worker batch.
 // Terminal runs remain queryable by the worklist APIs but are never selected
 // for continuous reconciliation. The repository performs a coarse
@@ -387,6 +407,27 @@ func (repository *InferenceProcessingRunRepository) ListProcessingRunExecutions(
 		WHERE runs.tenant_id = :tenant_id AND runs.id = :processing_run_id
 		ORDER BY jobs.created_at ASC, jobs.id ASC
 	`, map[string]interface{}{"tenant_id": tenantID, "processing_run_id": processingRunID}, &executions)
+	return executions, processingRunError(err)
+}
+
+// ListProcessingRunExecutionsByRunIDs loads all model executions for a bounded
+// tenant-scoped history page in one query. Results are grouped by newest run and
+// retain the frozen model-plan order within each run.
+func (repository *InferenceProcessingRunRepository) ListProcessingRunExecutionsByRunIDs(ctx context.Context, data types.ListInferenceIngestionProcessingRunExecutions) ([]entity.InferenceIngestionProcessingJob, error) {
+	executions := make([]entity.InferenceIngestionProcessingJob, 0)
+	if len(data.ProcessingRunIDs) == 0 {
+		return executions, nil
+	}
+
+	err := repository.PostgresSQLDBHandlerInterface.Query(`
+		SELECT jobs.* FROM ingestion_processing_jobs jobs
+		JOIN ingestion_processing_runs runs ON runs.id = jobs.processing_run_id
+		WHERE runs.tenant_id = :tenant_id
+		  AND runs.id = ANY(:processing_run_ids)
+		ORDER BY runs.run_number DESC, jobs.created_at ASC, jobs.id ASC
+	`, map[string]interface{}{
+		"tenant_id": data.TenantID, "processing_run_ids": pq.Array(data.ProcessingRunIDs),
+	}, &executions)
 	return executions, processingRunError(err)
 }
 

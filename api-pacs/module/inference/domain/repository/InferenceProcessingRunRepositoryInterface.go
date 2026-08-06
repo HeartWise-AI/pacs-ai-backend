@@ -24,6 +24,8 @@ type InferenceProcessingRunRepositoryInterface interface {
 	SelectLatestProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error)
 	// ListProcessingRunHistory returns tenant-scoped runs ordered newest first.
 	ListProcessingRunHistory(ctx context.Context, data types.ListInferenceIngestionProcessingRuns) ([]entity.InferenceIngestionProcessingRun, error)
+	// ListProcessingRunHistoryPage returns bounded tenant-scoped history with has-more information.
+	ListProcessingRunHistoryPage(ctx context.Context, data types.ListInferenceIngestionProcessingRuns) (types.InferenceIngestionProcessingRunHistoryPage, error)
 	// ListProcessingRunsForReconciliation returns bounded active stale or attention-required work.
 	// Terminal history is never continuously polled.
 	ListProcessingRunsForReconciliation(ctx context.Context, data types.ListInferenceIngestionProcessingRunsForReconciliation) ([]entity.InferenceIngestionProcessingRun, error)
@@ -31,6 +33,8 @@ type InferenceProcessingRunRepositoryInterface interface {
 	RecordProcessingRunReconciliationAttempt(ctx context.Context, data types.RecordInferenceIngestionProcessingRunReconciliationAttempt) (entity.InferenceIngestionProcessingRun, error)
 	// ListProcessingRunExecutions returns the expected model executions for a tenant-scoped run.
 	ListProcessingRunExecutions(ctx context.Context, tenantID, processingRunID string) ([]entity.InferenceIngestionProcessingJob, error)
+	// ListProcessingRunExecutionsByRunIDs loads executions for a bounded tenant-scoped history page.
+	ListProcessingRunExecutionsByRunIDs(ctx context.Context, data types.ListInferenceIngestionProcessingRunExecutions) ([]entity.InferenceIngestionProcessingJob, error)
 	// SelectProcessingRunExecution returns one exact tenant/run/candidate/model execution.
 	SelectProcessingRunExecution(ctx context.Context, tenantID, processingRunID, candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error)
 	// UpdateProcessingRunAggregate applies an optimistic versioned aggregate update.
