@@ -20,6 +20,8 @@ import (
 // InferenceQueryController request controller for inference query
 type InferenceQueryController struct {
 	application.InferenceQueryServiceInterface
+	application.WorklistNotificationSubscriberInterface
+	WorklistEventHeartbeatInterval time.Duration
 }
 
 // GetContainerInfo returns the inference model container info with stats

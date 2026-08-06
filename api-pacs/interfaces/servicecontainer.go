@@ -195,7 +195,9 @@ func (k *kernel) RegisterInferenceRESTQueryController() inferenceREST.InferenceQ
 	service := k.inferenceQueryServiceContainer()
 
 	controller := inferenceREST.InferenceQueryController{
-		InferenceQueryServiceInterface: service,
+		InferenceQueryServiceInterface:          service,
+		WorklistNotificationSubscriberInterface: worklistNotificationBroker,
+		WorklistEventHeartbeatInterval:          20 * time.Second,
 	}
 
 	return controller
