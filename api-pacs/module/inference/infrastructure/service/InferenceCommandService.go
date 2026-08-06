@@ -226,7 +226,7 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 			CandidateID:  candidate.ID,
 			ModelName:    modelName,
 			ModelVersion: nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
-			Modality:     nonEmptyStringPointer(strings.TrimSpace(job.DICOMModality)),
+			Modality:     nonEmptyStringPointer(canonicalStudyServiceModality(job.DICOMModality)),
 		})
 	}
 	if len(expected) == 0 {
@@ -540,7 +540,7 @@ func processingCallbackMatchesExecution(
 		return false
 	}
 	return !callbackPointerMismatch(modelVersion, execution.ModelVersion) &&
-		!callbackPointerMismatch(modality, execution.Modality) &&
+		!callbackModalityMismatch(modality, execution.Modality) &&
 		!callbackPointerMismatch(studyServiceJobID, execution.StudyServiceJobID)
 }
 

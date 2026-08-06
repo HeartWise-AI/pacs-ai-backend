@@ -134,8 +134,10 @@ func TestCreateAutomaticStudyProcessingRunFreezesAllKnownModels(t *testing.T) {
 			require.Len(t, data.Executions, 2)
 			require.Equal(t, "AlphaModel", data.Executions[0].ModelName)
 			require.Equal(t, "candidate-a", data.Executions[0].CandidateID)
+			require.Equal(t, "echocardiogram", *data.Executions[0].Modality)
 			require.Equal(t, "BetaModel", data.Executions[1].ModelName)
 			require.Equal(t, "candidate-b", data.Executions[1].CandidateID)
+			require.Equal(t, "echocardiogram", *data.Executions[1].Modality)
 			return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{
 				Run: entity.InferenceIngestionProcessingRun{ID: "run-1"},
 				Executions: []entity.InferenceIngestionProcessingJob{
