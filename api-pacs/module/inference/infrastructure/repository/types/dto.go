@@ -176,6 +176,21 @@ type LegacyProcessingRunBackfillRow struct {
 	ExistingRun       bool                                         `db:"existing_run"`
 }
 
+// ImportLegacyProcessingRun identifies one preflight-approved logical study.
+type ImportLegacyProcessingRun struct {
+	RunID            string
+	TenantID         string
+	StudyInstanceUID string
+}
+
+// ImportLegacyProcessingRunResult returns the committed legacy aggregate and
+// linked execution count without exposing detailed inference results.
+type ImportLegacyProcessingRunResult struct {
+	Run              entity.InferenceIngestionProcessingRun
+	Counts           entity.InferenceIngestionProcessingRunExecutionCounts
+	LinkedExecutions int
+}
+
 type UpdateInferenceIngestionProcessingJob struct {
 	ID                string
 	Status            entity.InferenceIngestionProcessingJobStatus

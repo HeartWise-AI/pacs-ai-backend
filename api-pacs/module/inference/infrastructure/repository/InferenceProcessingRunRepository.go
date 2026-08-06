@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lib/pq"
@@ -225,6 +228,173 @@ func (repository *InferenceProcessingRunRepository) ListLegacyProcessingRunBackf
 		return nil, processingRunError(err)
 	}
 	return rows, nil
+}
+
+// ImportLegacyProcessingRun serializes one logical study with normal run
+// creation, revalidates the orphan execution plan, and commits the run plus all
+// links as one transaction.
+func (repository *InferenceProcessingRunRepository) ImportLegacyProcessingRun(
+	ctx context.Context,
+	data types.ImportLegacyProcessingRun,
+) (types.ImportLegacyProcessingRunResult, error) {
+	runID := strings.TrimSpace(data.RunID)
+	tenantID := strings.TrimSpace(data.TenantID)
+	studyInstanceUID := strings.TrimSpace(data.StudyInstanceUID)
+	if runID == "" || tenantID == "" || studyInstanceUID == "" {
+		return types.ImportLegacyProcessingRunResult{}, errors.New(apiError.InvalidPayload)
+	}
+
+	tx, err := repository.PostgresSQLDBHandlerInterface.Begin()
+	if err != nil {
+		return types.ImportLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	defer tx.Rollback()
+
+	lockKey := tenantID + "\x00" + studyInstanceUID
+	if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", lockKey); err != nil {
+		return types.ImportLegacyProcessingRunResult{}, processingRunError(err)
+	}
+
+	var existingRun bool
+	if err = tx.GetContext(ctx, &existingRun, `
+		SELECT EXISTS (
+			SELECT 1 FROM ingestion_processing_runs
+			WHERE tenant_id = $1 AND study_instance_uid = $2
+		)
+	`, tenantID, studyInstanceUID); err != nil {
+		return types.ImportLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	if existingRun {
+		return types.ImportLegacyProcessingRunResult{}, errors.New(apiError.DuplicateRecord)
+	}
+
+	executions := make([]entity.InferenceIngestionProcessingJob, 0)
+	if err = tx.SelectContext(ctx, &executions, `
+		SELECT jobs.*
+		FROM ingestion_processing_jobs jobs
+		JOIN ingestion_candidates candidates ON candidates.id = jobs.candidate_id
+		WHERE candidates.tenant_id = $1
+			AND candidates.study_instance_uid = $2
+			AND jobs.processing_run_id IS NULL
+		ORDER BY jobs.model_name, jobs.created_at, jobs.id
+		FOR UPDATE OF jobs
+	`, tenantID, studyInstanceUID); err != nil {
+		return types.ImportLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	if len(executions) == 0 {
+		return types.ImportLegacyProcessingRunResult{}, errors.New(apiError.MissingRecord)
+	}
+	if err = validateLegacyProcessingRunExecutions(tenantID, executions); err != nil {
+		return types.ImportLegacyProcessingRunResult{}, err
+	}
+
+	createdAt, updatedAt := legacyProcessingRunEvidenceWindow(executions)
+	seedRun := entity.InferenceIngestionProcessingRun{
+		ID: runID, TenantID: tenantID, StudyInstanceUID: studyInstanceUID,
+		RunNumber: 1, RunTrigger: entity.InferenceIngestionProcessingRunTriggerLegacyImport,
+		Phase:   entity.InferenceIngestionProcessingRunPhaseQueued,
+		Version: 0, CreatedAt: createdAt, UpdatedAt: updatedAt,
+	}
+	aggregate := entity.AggregateInferenceIngestionProcessingRun(entity.InferenceIngestionProcessingRunAggregationInput{
+		Run: seedRun, Executions: executions, WholeRunCancelled: legacyExecutionsAllCancelled(executions),
+	})
+
+	var run entity.InferenceIngestionProcessingRun
+	if err = tx.GetContext(ctx, &run, `
+		INSERT INTO ingestion_processing_runs (
+			id, tenant_id, study_instance_uid, run_number, run_trigger,
+			phase, outcome, attention_required, attention_reasons, version,
+			started_at, completed_at, created_at, updated_at
+		) VALUES ($1, $2, $3, 1, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		RETURNING *
+	`, runID, tenantID, studyInstanceUID, entity.InferenceIngestionProcessingRunTriggerLegacyImport,
+		aggregate.Phase, aggregate.Outcome, aggregate.AttentionRequired, aggregate.AttentionReasons,
+		aggregate.NextVersion, aggregate.StartedAt, aggregate.CompletedAt, createdAt, updatedAt); err != nil {
+		return types.ImportLegacyProcessingRunResult{}, processingRunError(err)
+	}
+
+	executionIDs := make([]string, 0, len(executions))
+	for _, execution := range executions {
+		executionIDs = append(executionIDs, execution.ID)
+	}
+	result, err := tx.ExecContext(ctx, `
+		UPDATE ingestion_processing_jobs
+		SET processing_run_id = $1
+		WHERE id = ANY($2) AND processing_run_id IS NULL
+	`, run.ID, pq.Array(executionIDs))
+	if err != nil {
+		return types.ImportLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	linked, err := result.RowsAffected()
+	if err != nil {
+		return types.ImportLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	if linked != int64(len(executions)) {
+		return types.ImportLegacyProcessingRunResult{}, processingRunError(fmt.Errorf(
+			"legacy processing-run link count mismatch: expected %d, linked %d", len(executions), linked,
+		))
+	}
+
+	var persistedLinks int
+	if err = tx.GetContext(ctx, &persistedLinks, `
+		SELECT COUNT(*) FROM ingestion_processing_jobs WHERE processing_run_id = $1
+	`, run.ID); err != nil {
+		return types.ImportLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	if persistedLinks != len(executions) {
+		return types.ImportLegacyProcessingRunResult{}, processingRunError(fmt.Errorf(
+			"legacy processing-run verification mismatch: expected %d, persisted %d", len(executions), persistedLinks,
+		))
+	}
+
+	if err = tx.Commit(); err != nil {
+		return types.ImportLegacyProcessingRunResult{}, processingRunError(err)
+	}
+	return types.ImportLegacyProcessingRunResult{
+		Run: run, Counts: aggregate.Counts, LinkedExecutions: persistedLinks,
+	}, nil
+}
+
+func validateLegacyProcessingRunExecutions(tenantID string, executions []entity.InferenceIngestionProcessingJob) error {
+	models := make(map[string]struct{}, len(executions))
+	for _, execution := range executions {
+		modelName := strings.ToLower(strings.TrimSpace(execution.ModelName))
+		if strings.TrimSpace(execution.ID) == "" || strings.TrimSpace(execution.CandidateID) == "" ||
+			strings.TrimSpace(execution.TenantID) != tenantID || modelName == "" {
+			return errors.New(apiError.InvalidPayload)
+		}
+		if _, valid := entity.ParseInferenceIngestionProcessingJobStatus(string(execution.Status)); !valid {
+			return errors.New(apiError.InvalidPayload)
+		}
+		if _, duplicate := models[modelName]; duplicate {
+			return errors.New(apiError.InvalidPayload)
+		}
+		models[modelName] = struct{}{}
+	}
+	return nil
+}
+
+func legacyProcessingRunEvidenceWindow(executions []entity.InferenceIngestionProcessingJob) (time.Time, time.Time) {
+	createdAt := executions[0].CreatedAt
+	updatedAt := executions[0].UpdatedAt
+	for _, execution := range executions[1:] {
+		if execution.CreatedAt.Before(createdAt) {
+			createdAt = execution.CreatedAt
+		}
+		if execution.UpdatedAt.After(updatedAt) {
+			updatedAt = execution.UpdatedAt
+		}
+	}
+	return createdAt, updatedAt
+}
+
+func legacyExecutionsAllCancelled(executions []entity.InferenceIngestionProcessingJob) bool {
+	for _, execution := range executions {
+		if execution.Status != entity.InferenceIngestionProcessingJobStatusCancelled {
+			return false
+		}
+	}
+	return len(executions) > 0
 }
 
 // CreateProcessingRunPlan atomically freezes a run and its expected executions.

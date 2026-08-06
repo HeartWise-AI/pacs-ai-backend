@@ -31,6 +31,8 @@ type InferenceProcessingRunRepositoryInterface interface {
 	ListProcessingRunsForReconciliation(ctx context.Context, data types.ListInferenceIngestionProcessingRunsForReconciliation) ([]entity.InferenceIngestionProcessingRun, error)
 	// ListLegacyProcessingRunBackfillRows returns only run-less execution metadata needed by the read-only dry run.
 	ListLegacyProcessingRunBackfillRows(ctx context.Context) ([]types.LegacyProcessingRunBackfillRow, error)
+	// ImportLegacyProcessingRun atomically creates and links one preflight-approved LEGACY_IMPORT study.
+	ImportLegacyProcessingRun(ctx context.Context, data types.ImportLegacyProcessingRun) (types.ImportLegacyProcessingRunResult, error)
 	// RecordProcessingRunReconciliationAttempt atomically increments failures or resets them after success.
 	RecordProcessingRunReconciliationAttempt(ctx context.Context, data types.RecordInferenceIngestionProcessingRunReconciliationAttempt) (entity.InferenceIngestionProcessingRun, error)
 	// ListProcessingRunExecutions returns the expected model executions for a tenant-scoped run.

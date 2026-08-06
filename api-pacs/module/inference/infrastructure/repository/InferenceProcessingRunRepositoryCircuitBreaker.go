@@ -112,6 +112,12 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListLegacyProc
 	})
 }
 
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ImportLegacyProcessingRun(ctx context.Context, data types.ImportLegacyProcessingRun) (types.ImportLegacyProcessingRunResult, error) {
+	return withProcessingRunCircuit("import_legacy_processing_run", func() (types.ImportLegacyProcessingRunResult, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.ImportLegacyProcessingRun(ctx, data)
+	})
+}
+
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) RecordProcessingRunReconciliationAttempt(
 	ctx context.Context,
 	data types.RecordInferenceIngestionProcessingRunReconciliationAttempt,
