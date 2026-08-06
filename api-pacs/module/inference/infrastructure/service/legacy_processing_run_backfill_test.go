@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -16,12 +17,21 @@ import (
 
 type legacyBackfillRepository struct {
 	domainRepository.InferenceProcessingRunRepositoryInterface
-	rows         []repositoryTypes.LegacyProcessingRunBackfillRow
-	rowResponses [][]repositoryTypes.LegacyProcessingRunBackfillRow
-	err          error
-	listCalls    int
-	imports      []repositoryTypes.ImportLegacyProcessingRun
-	importFn     func(repositoryTypes.ImportLegacyProcessingRun) (repositoryTypes.ImportLegacyProcessingRunResult, error)
+	rows                   []repositoryTypes.LegacyProcessingRunBackfillRow
+	rowResponses           [][]repositoryTypes.LegacyProcessingRunBackfillRow
+	err                    error
+	listCalls              int
+	imports                []repositoryTypes.ImportLegacyProcessingRun
+	importFn               func(repositoryTypes.ImportLegacyProcessingRun) (repositoryTypes.ImportLegacyProcessingRunResult, error)
+	runs                   []entity.InferenceIngestionProcessingRun
+	verificationExecutions []repositoryTypes.LegacyProcessingRunVerificationExecution
+	verificationErr        error
+}
+
+func (repository *legacyBackfillRepository) LoadLegacyProcessingRunVerificationSnapshot(context.Context) (repositoryTypes.LegacyProcessingRunVerificationSnapshot, error) {
+	return repositoryTypes.LegacyProcessingRunVerificationSnapshot{
+		Runs: repository.runs, Executions: repository.verificationExecutions, Orphans: repository.rows,
+	}, repository.verificationErr
 }
 
 func (repository *legacyBackfillRepository) ListLegacyProcessingRunBackfillRows(context.Context) ([]repositoryTypes.LegacyProcessingRunBackfillRow, error) {
@@ -246,4 +256,94 @@ func TestApplyLegacyProcessingRunBackfillRejectsConcurrentRunConflict(t *testing
 
 	require.EqualError(t, err, apiError.DuplicateRecord)
 	require.Equal(t, map[string]int{serviceTypes.LegacyBackfillOutcomeFailed: 1}, result.Outcomes)
+}
+
+func TestVerifyLegacyProcessingRunBackfillPassesCompleteConsistentImport(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 10, 0, 0, 0, time.UTC)
+	completedAt := now.Add(time.Minute)
+	outcome := entity.InferenceIngestionProcessingRunOutcomeSuccess
+	runID := "legacy-run-1"
+	repository := &legacyBackfillRepository{
+		runs: []entity.InferenceIngestionProcessingRun{{
+			ID: runID, TenantID: "tenant-a", StudyInstanceUID: "study-a", RunNumber: 1,
+			RunTrigger: entity.InferenceIngestionProcessingRunTriggerLegacyImport,
+			Phase:      entity.InferenceIngestionProcessingRunPhaseTerminal, Outcome: &outcome,
+			Version: 1, StartedAt: &now, CompletedAt: &completedAt, CreatedAt: now, UpdatedAt: completedAt,
+		}},
+		verificationExecutions: []repositoryTypes.LegacyProcessingRunVerificationExecution{{
+			InferenceIngestionProcessingJob: entity.InferenceIngestionProcessingJob{
+				ID: "execution-1", ProcessingRunID: &runID, CandidateID: "candidate-1", TenantID: "tenant-a",
+				ModelName: "model-one", Status: entity.InferenceIngestionProcessingJobStatusCompleted,
+				StartedAt: &now, CompletedAt: &completedAt, CreatedAt: now, UpdatedAt: completedAt,
+			},
+			CandidateTenantID: "tenant-a", CandidateStudyInstanceUID: "study-a",
+		}},
+	}
+	service := InferenceQueryService{InferenceProcessingRunRepositoryInterface: repository}
+
+	report, err := service.VerifyLegacyProcessingRunBackfill(context.Background(), serviceTypes.VerifyLegacyProcessingRunBackfill{
+		ExpectedStudies: 1, ExpectedExecutions: 1,
+	})
+
+	require.NoError(t, err)
+	require.True(t, report.Passed)
+	require.Equal(t, 1, report.ImportedStudies)
+	require.Equal(t, 1, report.ImportedExecutions)
+	require.Zero(t, report.InvalidRuns)
+	require.Empty(t, report.Issues)
+	require.Zero(t, report.Remaining.OrphanExecutions)
+}
+
+func TestVerifyLegacyProcessingRunBackfillReportsDriftWithoutIdentifiers(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 10, 0, 0, 0, time.UTC)
+	runID := "legacy-run-1"
+	repository := &legacyBackfillRepository{
+		rows: []repositoryTypes.LegacyProcessingRunBackfillRow{
+			legacyBackfillRow("orphan-1", "candidate-3", "tenant-a", "study-orphan", "model-three", entity.InferenceIngestionProcessingJobStatusQueued),
+		},
+		runs: []entity.InferenceIngestionProcessingRun{{
+			ID: runID, TenantID: "tenant-a", StudyInstanceUID: "study-a", RunNumber: 2,
+			RunTrigger: entity.InferenceIngestionProcessingRunTriggerLegacyImport,
+			Phase:      entity.InferenceIngestionProcessingRunPhaseQueued, Version: 0, CreatedAt: now, UpdatedAt: now,
+		}},
+		verificationExecutions: []repositoryTypes.LegacyProcessingRunVerificationExecution{
+			{
+				InferenceIngestionProcessingJob: entity.InferenceIngestionProcessingJob{
+					ID: "execution-1", ProcessingRunID: &runID, CandidateID: "candidate-1", TenantID: "tenant-b",
+					ModelName: "Model-One", Status: entity.InferenceIngestionProcessingJobStatusCompleted, CreatedAt: now, UpdatedAt: now,
+				},
+				CandidateTenantID: "tenant-b", CandidateStudyInstanceUID: "study-b",
+			},
+			{
+				InferenceIngestionProcessingJob: entity.InferenceIngestionProcessingJob{
+					ID: "execution-2", ProcessingRunID: &runID, CandidateID: "candidate-2", TenantID: "tenant-b",
+					ModelName: " model-one ", Status: entity.InferenceIngestionProcessingJobStatusCompleted, CreatedAt: now, UpdatedAt: now,
+				},
+				CandidateTenantID: "tenant-b", CandidateStudyInstanceUID: "study-b",
+			},
+		},
+	}
+	service := InferenceQueryService{InferenceProcessingRunRepositoryInterface: repository}
+
+	report, err := service.VerifyLegacyProcessingRunBackfill(context.Background(), serviceTypes.VerifyLegacyProcessingRunBackfill{
+		ExpectedStudies: 2, ExpectedExecutions: 3,
+	})
+
+	require.NoError(t, err)
+	require.False(t, report.Passed)
+	require.Equal(t, 1, report.InvalidRuns)
+	require.Equal(t, 1, report.Remaining.OrphanExecutions)
+	for _, issue := range []string{
+		serviceTypes.LegacyBackfillVerifyStudyCount,
+		serviceTypes.LegacyBackfillVerifyExecutionCount,
+		serviceTypes.LegacyBackfillVerifyRemainingOrphans,
+		serviceTypes.LegacyBackfillVerifyInvalidRunNumber,
+		serviceTypes.LegacyBackfillVerifyInvalidVersion,
+		serviceTypes.LegacyBackfillVerifyTenantMismatch,
+		serviceTypes.LegacyBackfillVerifyStudyMismatch,
+		serviceTypes.LegacyBackfillVerifyDuplicateModel,
+		serviceTypes.LegacyBackfillVerifyAggregateMismatch,
+	} {
+		require.Positive(t, report.Issues[issue], issue)
+	}
 }

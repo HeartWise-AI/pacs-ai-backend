@@ -234,3 +234,42 @@ func TestListLegacyProcessingRunBackfillRowsMapsDatabaseFailure(t *testing.T) {
 
 	require.EqualError(t, err, apiError.DatabaseError)
 }
+
+func TestLoadLegacyProcessingRunVerificationSnapshotUsesOneReadOnlyTransaction(t *testing.T) {
+	repository, mock := newLegacyBackfillSQLMock(t)
+	now := time.Date(2026, time.August, 6, 10, 0, 0, 0, time.UTC)
+	runID := "legacy-run-1"
+	mock.ExpectBegin()
+	mock.ExpectExec("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_runs").
+		WithArgs(entity.InferenceIngestionProcessingRunTriggerLegacyImport).
+		WillReturnRows(legacyBackfillRunRows(now))
+	mock.ExpectQuery("SELECT jobs.\\*").
+		WithArgs(entity.InferenceIngestionProcessingRunTriggerLegacyImport).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "processing_run_id", "candidate_id", "tenant_id", "model_name", "model_version",
+			"modality", "status", "study_service_job_id", "error_message", "skip_reason_code",
+			"skip_reason_message", "last_event_id", "last_event_sequence", "started_at", "completed_at",
+			"created_at", "updated_at", "candidate_tenant_id", "candidate_study_instance_uid",
+		}).AddRow(
+			"execution-1", runID, "candidate-1", "tenant-a", "model-one", "v1", "US", "completed",
+			"python-1", nil, nil, nil, nil, nil, now, now.Add(time.Minute), now, now.Add(time.Minute),
+			"tenant-a", "1.2.3",
+		))
+	mock.ExpectQuery("SELECT jobs.id AS execution_id").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"execution_id", "candidate_id", "execution_tenant_id", "candidate_tenant_id",
+			"study_instance_uid", "model_name", "status", "existing_run",
+		}))
+	mock.ExpectCommit()
+
+	snapshot, err := repository.LoadLegacyProcessingRunVerificationSnapshot(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, snapshot.Runs, 1)
+	require.Len(t, snapshot.Executions, 1)
+	require.Empty(t, snapshot.Orphans)
+	require.Equal(t, runID, *snapshot.Executions[0].ProcessingRunID)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

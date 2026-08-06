@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"time"
 
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
@@ -26,6 +27,158 @@ func (service *InferenceQueryService) DryRunLegacyProcessingRunBackfill(ctx cont
 		return types.LegacyProcessingRunBackfillDryRun{}, err
 	}
 	return PlanLegacyProcessingRunBackfill(rows), nil
+}
+
+// VerifyLegacyProcessingRunBackfill proves the persisted import against
+// operator-approved totals, candidate correlation, and authoritative aggregate rules.
+func (service *InferenceQueryService) VerifyLegacyProcessingRunBackfill(ctx context.Context, data types.VerifyLegacyProcessingRunBackfill) (types.LegacyProcessingRunBackfillVerification, error) {
+	report := types.LegacyProcessingRunBackfillVerification{
+		ExpectedStudies: data.ExpectedStudies, ExpectedExecutions: data.ExpectedExecutions,
+		Issues: map[string]int{},
+	}
+	if data.ExpectedStudies <= 0 || data.ExpectedExecutions <= 0 {
+		return report, errors.New(apiError.InvalidPayload)
+	}
+
+	snapshot, err := service.InferenceProcessingRunRepositoryInterface.LoadLegacyProcessingRunVerificationSnapshot(ctx)
+	if err != nil {
+		return report, err
+	}
+	runs := snapshot.Runs
+	executionRows := snapshot.Executions
+	report.Remaining = PlanLegacyProcessingRunBackfill(snapshot.Orphans)
+	report.ImportedStudies = len(snapshot.Runs)
+	report.ImportedExecutions = len(snapshot.Executions)
+	if report.ImportedStudies != data.ExpectedStudies {
+		report.Issues[types.LegacyBackfillVerifyStudyCount]++
+	}
+	if report.ImportedExecutions != data.ExpectedExecutions {
+		report.Issues[types.LegacyBackfillVerifyExecutionCount]++
+	}
+	if report.Remaining.OrphanExecutions != 0 {
+		report.Issues[types.LegacyBackfillVerifyRemainingOrphans]++
+	}
+
+	runsByID := make(map[string]entity.InferenceIngestionProcessingRun, len(runs))
+	executionsByRun := make(map[string][]repositoryTypes.LegacyProcessingRunVerificationExecution, len(runs))
+	for _, run := range runs {
+		runsByID[run.ID] = run
+	}
+	for _, execution := range executionRows {
+		if execution.ProcessingRunID == nil {
+			report.Issues[types.LegacyBackfillVerifyUnknownRun]++
+			continue
+		}
+		if _, exists := runsByID[*execution.ProcessingRunID]; !exists {
+			report.Issues[types.LegacyBackfillVerifyUnknownRun]++
+			continue
+		}
+		executionsByRun[*execution.ProcessingRunID] = append(executionsByRun[*execution.ProcessingRunID], execution)
+	}
+
+	for _, run := range runs {
+		rows := executionsByRun[run.ID]
+		invalid := false
+		mark := func(reason string) {
+			report.Issues[reason]++
+			invalid = true
+		}
+		if len(rows) == 0 {
+			mark(types.LegacyBackfillVerifyEmptyRun)
+		}
+		if run.RunNumber != 1 {
+			mark(types.LegacyBackfillVerifyInvalidRunNumber)
+		}
+		if run.Version < 1 {
+			mark(types.LegacyBackfillVerifyInvalidVersion)
+		}
+
+		models := make(map[string]struct{}, len(rows))
+		executions := make([]entity.InferenceIngestionProcessingJob, 0, len(rows))
+		for _, row := range rows {
+			execution := row.InferenceIngestionProcessingJob
+			executions = append(executions, execution)
+			if strings.TrimSpace(execution.TenantID) != strings.TrimSpace(run.TenantID) ||
+				strings.TrimSpace(row.CandidateTenantID) != strings.TrimSpace(run.TenantID) {
+				mark(types.LegacyBackfillVerifyTenantMismatch)
+			}
+			if strings.TrimSpace(row.CandidateStudyInstanceUID) != strings.TrimSpace(run.StudyInstanceUID) {
+				mark(types.LegacyBackfillVerifyStudyMismatch)
+			}
+			model := strings.ToLower(strings.TrimSpace(execution.ModelName))
+			if _, duplicate := models[model]; duplicate {
+				mark(types.LegacyBackfillVerifyDuplicateModel)
+			}
+			models[model] = struct{}{}
+		}
+
+		aggregate := entity.AggregateInferenceIngestionProcessingRun(entity.InferenceIngestionProcessingRunAggregationInput{
+			Run: run, Executions: executions, WholeRunCancelled: verificationExecutionsAllCancelled(executions),
+		})
+		if !legacyVerificationAggregateMatches(run, aggregate) {
+			mark(types.LegacyBackfillVerifyAggregateMismatch)
+		}
+		if invalid {
+			report.InvalidRuns++
+		}
+	}
+
+	report.Passed = len(report.Issues) == 0
+	return report, nil
+}
+
+func verificationExecutionsAllCancelled(executions []entity.InferenceIngestionProcessingJob) bool {
+	if len(executions) == 0 {
+		return false
+	}
+	for _, execution := range executions {
+		if execution.Status != entity.InferenceIngestionProcessingJobStatusCancelled {
+			return false
+		}
+	}
+	return true
+}
+
+func legacyVerificationAggregateMatches(run entity.InferenceIngestionProcessingRun, aggregate entity.InferenceIngestionProcessingRunAggregation) bool {
+	return run.Phase == aggregate.Phase &&
+		equalLegacyVerificationOutcome(run.Outcome, aggregate.Outcome) &&
+		run.AttentionRequired == aggregate.AttentionRequired &&
+		equalLegacyVerificationReasons(run.AttentionReasons, aggregate.AttentionReasons) &&
+		equalLegacyVerificationTime(run.StartedAt, aggregate.StartedAt) &&
+		equalLegacyVerificationTime(run.CompletedAt, aggregate.CompletedAt)
+}
+
+func equalLegacyVerificationOutcome(left, right *entity.InferenceIngestionProcessingRunOutcome) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return *left == *right
+}
+
+func equalLegacyVerificationReasons(left, right entity.InferenceIngestionProcessingRunAttentionReasons) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index].Code != right[index].Code || !equalLegacyVerificationString(left[index].Message, right[index].Message) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalLegacyVerificationString(left, right *string) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return *left == *right
+}
+
+func equalLegacyVerificationTime(left, right *time.Time) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return left.Equal(*right)
 }
 
 // PlanLegacyProcessingRunBackfill groups the minimal repository projection and

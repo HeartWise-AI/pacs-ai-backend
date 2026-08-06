@@ -230,6 +230,65 @@ func (repository *InferenceProcessingRunRepository) ListLegacyProcessingRunBackf
 	return rows, nil
 }
 
+// LoadLegacyProcessingRunVerificationSnapshot observes the complete proof from
+// one repeatable-read, read-only transaction so concurrent callbacks cannot
+// create a mixed-time verification result.
+func (repository *InferenceProcessingRunRepository) LoadLegacyProcessingRunVerificationSnapshot(ctx context.Context) (types.LegacyProcessingRunVerificationSnapshot, error) {
+	snapshot := types.LegacyProcessingRunVerificationSnapshot{
+		Runs:       make([]entity.InferenceIngestionProcessingRun, 0),
+		Executions: make([]types.LegacyProcessingRunVerificationExecution, 0),
+		Orphans:    make([]types.LegacyProcessingRunBackfillRow, 0),
+	}
+	tx, err := repository.PostgresSQLDBHandlerInterface.Begin()
+	if err != nil {
+		return snapshot, processingRunError(err)
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"); err != nil {
+		return snapshot, processingRunError(err)
+	}
+	if err = tx.SelectContext(ctx, &snapshot.Runs, `
+		SELECT * FROM ingestion_processing_runs
+		WHERE run_trigger = $1
+		ORDER BY tenant_id, study_instance_uid, id
+	`, entity.InferenceIngestionProcessingRunTriggerLegacyImport); err != nil {
+		return snapshot, processingRunError(err)
+	}
+	if err = tx.SelectContext(ctx, &snapshot.Executions, `
+		SELECT jobs.*,
+			candidates.tenant_id AS candidate_tenant_id,
+			candidates.study_instance_uid AS candidate_study_instance_uid
+		FROM ingestion_processing_jobs jobs
+		JOIN ingestion_processing_runs runs ON runs.id = jobs.processing_run_id
+		JOIN ingestion_candidates candidates ON candidates.id = jobs.candidate_id
+		WHERE runs.run_trigger = $1
+		ORDER BY jobs.processing_run_id, jobs.model_name, jobs.created_at, jobs.id
+	`, entity.InferenceIngestionProcessingRunTriggerLegacyImport); err != nil {
+		return snapshot, processingRunError(err)
+	}
+	if err = tx.SelectContext(ctx, &snapshot.Orphans, `
+		SELECT jobs.id AS execution_id, jobs.candidate_id,
+			jobs.tenant_id AS execution_tenant_id,
+			candidates.tenant_id AS candidate_tenant_id,
+			candidates.study_instance_uid, jobs.model_name, jobs.status,
+			EXISTS (
+				SELECT 1 FROM ingestion_processing_runs runs
+				WHERE runs.tenant_id = jobs.tenant_id
+					AND runs.study_instance_uid = candidates.study_instance_uid
+			) AS existing_run
+		FROM ingestion_processing_jobs jobs
+		JOIN ingestion_candidates candidates ON candidates.id = jobs.candidate_id
+		WHERE jobs.processing_run_id IS NULL
+		ORDER BY jobs.tenant_id, candidates.study_instance_uid, jobs.model_name, jobs.created_at, jobs.id
+	`); err != nil {
+		return snapshot, processingRunError(err)
+	}
+	if err = tx.Commit(); err != nil {
+		return snapshot, processingRunError(err)
+	}
+	return snapshot, nil
+}
+
 // ImportLegacyProcessingRun serializes one logical study with normal run
 // creation, revalidates the orphan execution plan, and commits the run plus all
 // links as one transaction.

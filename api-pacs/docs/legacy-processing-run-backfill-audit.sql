@@ -76,3 +76,34 @@ FROM (
 ) grouped
 GROUP BY processing_mix
 ORDER BY logical_studies DESC, processing_mix;
+
+-- Post-write structural cross-check. The Go --verify command remains
+-- authoritative because it also recalculates each domain aggregate.
+SELECT
+    COUNT(DISTINCT runs.id) AS legacy_import_runs,
+    COUNT(jobs.id) AS linked_executions,
+    COUNT(*) FILTER (WHERE jobs.id IS NULL) AS empty_legacy_import_runs
+FROM ingestion_processing_runs runs
+LEFT JOIN ingestion_processing_jobs jobs ON jobs.processing_run_id = runs.id
+WHERE runs.run_trigger = 'LEGACY_IMPORT';
+
+SELECT COUNT(*) AS invalid_legacy_execution_correlations
+FROM ingestion_processing_runs runs
+JOIN ingestion_processing_jobs jobs ON jobs.processing_run_id = runs.id
+JOIN ingestion_candidates candidates ON candidates.id = jobs.candidate_id
+WHERE runs.run_trigger = 'LEGACY_IMPORT'
+  AND (
+      jobs.tenant_id IS DISTINCT FROM runs.tenant_id
+      OR candidates.tenant_id IS DISTINCT FROM runs.tenant_id
+      OR candidates.study_instance_uid IS DISTINCT FROM runs.study_instance_uid
+  );
+
+SELECT COUNT(*) AS duplicate_legacy_run_models
+FROM (
+    SELECT runs.id, LOWER(BTRIM(jobs.model_name))
+    FROM ingestion_processing_runs runs
+    JOIN ingestion_processing_jobs jobs ON jobs.processing_run_id = runs.id
+    WHERE runs.run_trigger = 'LEGACY_IMPORT'
+    GROUP BY runs.id, LOWER(BTRIM(jobs.model_name))
+    HAVING COUNT(*) > 1
+) duplicates;

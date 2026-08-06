@@ -159,6 +159,24 @@ After an interruption, run `--dry-run` again and use its new remaining counts.
 Reusing the original counts intentionally fails the fresh-plan gate. The
 operator command itself does not automatically retry failed studies.
 
+After the import completes, retain a point-in-time verification report using
+the original approved totals:
+
+```bash
+go run ./cmd/legacy-processing-run-backfill \
+  --verify \
+  --expected-studies=<original-approved-study-count> \
+  --expected-executions=<original-approved-execution-count>
+```
+
+Verification is read-only and observes imported runs, linked executions, and
+remaining orphans in one repeatable-read transaction. It fails unless totals
+match, no orphan rows remain, every execution still correlates to its run's
+tenant/study, model names are unique within each run, and persisted lifecycle,
+outcome, attention, and timestamps match the authoritative domain aggregate.
+Its JSON contains only bounded counters and no tenant, study, candidate, or
+execution identifiers.
+
 ## Observed preflight on 2026-08-06
 
 The local inference database contained:
@@ -191,7 +209,8 @@ Before applying the future write migration:
 - stop ingestion dispatch during the write window, or prove advisory-lock
   coordination with the running service;
 - verify post-write that every imported run's expected count equals its linked
-  execution count and that no eligible orphan rows remain.
+  execution count and that no orphan rows remain by retaining a successful
+  `--verify` report.
 
 The later compatibility-removal step may reject new run-less callbacks and
 run-less dispatch writes. It must happen only after Go and Python run-aware

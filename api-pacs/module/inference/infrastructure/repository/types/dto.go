@@ -192,6 +192,20 @@ type ImportLegacyProcessingRunResult struct {
 	LinkedExecutions int
 }
 
+// LegacyProcessingRunVerificationExecution adds candidate ownership evidence
+// to a linked execution without selecting patient or inference-result data.
+type LegacyProcessingRunVerificationExecution struct {
+	entity.InferenceIngestionProcessingJob
+	CandidateTenantID         string `db:"candidate_tenant_id"`
+	CandidateStudyInstanceUID string `db:"candidate_study_instance_uid"`
+}
+
+type LegacyProcessingRunVerificationSnapshot struct {
+	Runs       []entity.InferenceIngestionProcessingRun
+	Executions []LegacyProcessingRunVerificationExecution
+	Orphans    []LegacyProcessingRunBackfillRow
+}
+
 type UpdateInferenceIngestionProcessingJob struct {
 	ID                string
 	Status            entity.InferenceIngestionProcessingJobStatus

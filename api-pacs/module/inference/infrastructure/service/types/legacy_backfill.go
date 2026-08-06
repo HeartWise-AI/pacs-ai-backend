@@ -1,15 +1,26 @@
 package types
 
 const (
-	LegacyBackfillSkipExistingRun     = "existing_run"
-	LegacyBackfillSkipTenantMismatch  = "tenant_mismatch"
-	LegacyBackfillSkipInvalidIdentity = "invalid_identity"
-	LegacyBackfillSkipInvalidStatus   = "invalid_status"
-	LegacyBackfillSkipDuplicateModel  = "duplicate_model"
-	LegacyBackfillConfirmation        = "LEGACY_IMPORT"
-	LegacyBackfillOutcomeImported     = "imported"
-	LegacyBackfillOutcomeAlreadyDone  = "already_imported"
-	LegacyBackfillOutcomeFailed       = "failed"
+	LegacyBackfillSkipExistingRun         = "existing_run"
+	LegacyBackfillSkipTenantMismatch      = "tenant_mismatch"
+	LegacyBackfillSkipInvalidIdentity     = "invalid_identity"
+	LegacyBackfillSkipInvalidStatus       = "invalid_status"
+	LegacyBackfillSkipDuplicateModel      = "duplicate_model"
+	LegacyBackfillConfirmation            = "LEGACY_IMPORT"
+	LegacyBackfillOutcomeImported         = "imported"
+	LegacyBackfillOutcomeAlreadyDone      = "already_imported"
+	LegacyBackfillOutcomeFailed           = "failed"
+	LegacyBackfillVerifyStudyCount        = "study_count_mismatch"
+	LegacyBackfillVerifyExecutionCount    = "execution_count_mismatch"
+	LegacyBackfillVerifyRemainingOrphans  = "remaining_orphans"
+	LegacyBackfillVerifyEmptyRun          = "empty_run"
+	LegacyBackfillVerifyInvalidRunNumber  = "invalid_run_number"
+	LegacyBackfillVerifyInvalidVersion    = "invalid_version"
+	LegacyBackfillVerifyTenantMismatch    = "tenant_mismatch"
+	LegacyBackfillVerifyStudyMismatch     = "study_mismatch"
+	LegacyBackfillVerifyDuplicateModel    = "duplicate_model"
+	LegacyBackfillVerifyAggregateMismatch = "aggregate_mismatch"
+	LegacyBackfillVerifyUnknownRun        = "unknown_run"
 )
 
 // LegacyProcessingRunBackfillDryRun is an identifier-free operational report.
@@ -43,4 +54,22 @@ type LegacyProcessingRunBackfillApplyResult struct {
 	AlreadyImportedStudies    int                               `json:"alreadyImportedStudies"`
 	AlreadyImportedExecutions int                               `json:"alreadyImportedExecutions"`
 	Outcomes                  map[string]int                    `json:"outcomes"`
+}
+
+type VerifyLegacyProcessingRunBackfill struct {
+	ExpectedStudies    int
+	ExpectedExecutions int
+}
+
+// LegacyProcessingRunBackfillVerification is an identifier-free proof of the
+// persisted legacy import and any remaining orphan state.
+type LegacyProcessingRunBackfillVerification struct {
+	Passed             bool                              `json:"passed"`
+	ExpectedStudies    int                               `json:"expectedStudies"`
+	ExpectedExecutions int                               `json:"expectedExecutions"`
+	ImportedStudies    int                               `json:"importedStudies"`
+	ImportedExecutions int                               `json:"importedExecutions"`
+	InvalidRuns        int                               `json:"invalidRuns"`
+	Remaining          LegacyProcessingRunBackfillDryRun `json:"remaining"`
+	Issues             map[string]int                    `json:"issues"`
 }
