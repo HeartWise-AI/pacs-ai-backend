@@ -1,0 +1,519 @@
+{
+  "openapi": "3.0.2",
+  "info": {
+    "title": "DeepCORO-CTO Inference Model API",
+    "description": "PACS.AI inference API for DeepCORO-CTO, a research-preview J-CTO scorer for chronic total occlusions on coronary angiography (XA).",
+    "termsOfService": "https://github.com/HeartWise-AI",
+    "contact": {
+      "name": "HeartWise AI",
+      "email": "hello@heartwise.ai"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://deepcoro-cto/api",
+      "description": "Docker"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Local"
+    },
+    {
+      "url": "http://localhost:8000/api",
+      "description": "Local Docker"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Inference",
+      "description": "Inference service"
+    }
+  ],
+  "paths": {
+    "/inference/predict": {
+      "post": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Predict",
+        "description": "Run DeepCORO-CTO inference on up to 8 coronary angiogram DICOM videos. Supported output modes: JSON and HTML.",
+        "requestBody": {
+          "description": "Prediction request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/PredictResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "JSON": {
+                    "summary": "Successful JSON J-CTO prediction",
+                    "value": {
+                      "success": true,
+                      "message": "Prediction successful",
+                      "data": {
+                        "diagnosis": "DeepCORO-CTO: J-CTO score = 2.1 (difficult) | Calcification at occlusion, Bending > 45°",
+                        "predictions": {
+                          "jctoScore": {
+                            "predicted": 2.1,
+                            "difficulty": "difficult",
+                            "componentsAboveThreshold": 2
+                          },
+                          "components": {
+                            "jcto_blunt_stump": {
+                              "name": "Blunt / flush stump",
+                              "probability": 0.32,
+                              "threshold": 0.5,
+                              "present": false
+                            },
+                            "jcto_calcification": {
+                              "name": "Calcification at occlusion",
+                              "probability": 0.71,
+                              "threshold": 0.5,
+                              "present": true
+                            },
+                            "jcto_bending_gt45": {
+                              "name": "Bending > 45°",
+                              "probability": 0.64,
+                              "threshold": 0.5,
+                              "present": true
+                            },
+                            "jcto_occlusion_length_gt20": {
+                              "name": "Occlusion length ≥ 20 mm",
+                              "probability": 0.41,
+                              "threshold": 0.5,
+                              "present": false
+                            }
+                          }
+                        },
+                        "modelRecommendations": {
+                          "en": "<strong>Predicted imaging J-CTO score 2.1 (difficult).</strong> This is the four morphological imaging components only (range 0–4); it does not include the classic fifth point for a previously failed attempt.",
+                          "fr": "<strong>Score J-CTO morphologique prédit 2.1 (difficult).</strong> Il s'agit des quatre composantes morphologiques d'imagerie seulement (plage 0–4).",
+                          "presentable": true
+                        }
+                      }
+                    }
+                  },
+                  "HTML": {
+                    "summary": "Successful HTML J-CTO report",
+                    "value": {
+                      "success": true,
+                      "message": "Prediction successful",
+                      "data": {
+                        "htmlBase64": "PCFET0NUWVBFIGh0bWw+PGh0bWw+PGhlYWQ+PG1ldGEgY2hhcnNldD0idXRmLTgiPjx0aXRsZT5EZWVwQ09STy1DVE8gUmVwb3J0PC90aXRsZT48L2hlYWQ+PGJvZHk+PGgxPkRlZXBDT1JPLUNUTyBKLUNUTyBBc3Nlc3NtZW50PC9oMT48cD5QcmVkaWN0ZWQgSi1DVE8gc2NvcmU6IDIuMSAoZGlmZmljdWx0KTwvcD48L2JvZHk+PC9odG1sPg=="
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-info": {
+      "get": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Get Model Info",
+        "description": "Get DeepCORO-CTO model info",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GetModelInfoResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Model info retrieved successfully",
+                  "data": {
+                    "modelId": "DeepCORO_CTO",
+                    "modelName": "DeepCORO-CTO",
+                    "domainName": "Cardiology",
+                    "stage": "ai_inference",
+                    "modality": "Angiogram",
+                    "version": "1.0.0",
+                    "dicomTargetLevel": "SERIES",
+                    "dicomUploadMin": 1,
+                    "dicomUploadMax": 8,
+                    "supportedDicomModalities": [
+                      "XA"
+                    ],
+                    "supportedDicomTags": [
+                      "*"
+                    ],
+                    "supportedAdditionalMetadata": [],
+                    "supportedOutputModes": [
+                      "HTML",
+                      "JSON"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-facts": {
+      "get": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Get Model Facts",
+        "description": "Get DeepCORO-CTO model facts",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GetModelFactsResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Model facts retrieved successfully",
+                  "data": {
+                    "en": {
+                      "Summary": {
+                        "Name": "DeepCORO-CTO",
+                        "Description": "DeepCORO-CLIP based imaging J-CTO scorer for chronic total occlusions on coronary angiography. From up to 8 videos per study it predicts the four morphological J-CTO components (blunt/flush stump, calcification at the occlusion, bending > 45°, occlusion length ≥ 20 mm) and an aggregate imaging J-CTO score clamped to [0, 4]. This is not the classic Morino J-CTO score (0–5): the fifth point for a previously failed crossing attempt is not available from imaging and is not predicted.",
+                        "Developed_by": "HeartWise.AI / MHI",
+                        "Development_period": "2024-2026",
+                        "Version": "1.0.0"
+                      },
+                      "Mechanism": {
+                        "Outcome": "Four J-CTO morphological component binary classifications plus imaging J-CTO score (0-4) regression",
+                        "Output": "jcto_blunt_stump, jcto_calcification, jcto_bending_gt45, jcto_occlusion_length_gt20: probabilities after sigmoid; jcto_score: predicted imaging J-CTO score clamped to [0, 4] (excludes prior-failure point)",
+                        "Target_population": "Adults with a chronic total occlusion (CTO) undergoing coronary angiography at MHI",
+                        "Input_data_source": "Coronary diagnostic angiograms (view class inferred from DICOM positioner angles)",
+                        "Input_data_type": "dicom",
+                        "Model_type": "Deep Learning (MViT video encoder + view-aware multi-instance linear-probing)",
+                        "Supported_DICOM_modalities": "XA"
+                      },
+                      "Model_Components": {
+                        "Model": {
+                          "Purpose": "Predict morphological J-CTO components and an imaging J-CTO score to support CTO PCI difficulty assessment",
+                          "Output": "J-CTO components (blunt stump, calcification, bending > 45°, length ≥ 20 mm), imaging J-CTO score (0-4)"
+                        }
+                      },
+                      "Uses_and_directions": {
+                        "General_use": "Research preview for angiogram-based imaging J-CTO scoring (four morphological features only).",
+                        "Target_population_and_use_case": "Adults with a CTO on coronary angiography. Videos are pooled per study (up to 8) and each video's angiographic view is inferred from the DICOM positioner primary/secondary angles.",
+                        "Before_using_this_model": "Validated on MHI Labelbox-annotated data only (99 held-out studies): blunt stump AUROC 0.70 (95% CI 0.59-0.80), calcification AUROC 0.70 (95% CI 0.59-0.80), bending > 45° AUROC 0.65 (95% CI 0.50-0.79), occlusion length ≥ 20 mm AUROC 0.66 (95% CI 0.53-0.79), J-CTO score ≥ 3 AUROC 0.68 (95% CI 0.57-0.79), MAE 1.01. Not validated for clinical use outside MHI. Do not treat the predicted score as classic Morino J-CTO (0–5)."
+                      },
+                      "Warnings_and_limitations": {
+                        "Image_Quality": "Requires diagnostic-quality coronary angiograms that visualise the occluded segment.",
+                        "Number_of_videos": "Uses up to 8 videos per study, ordered by SeriesTime; extra videos are ignored. Padded slots are masked out of the pooling.",
+                        "View_inference": "Angiographic view class is derived from DICOM PositionerPrimaryAngle/PositionerSecondaryAngle; when angles are missing a padding view embedding is used.",
+                        "Score_definition": "Predicted jcto_score is an imaging-only morphological score in [0, 4]. Classic J-CTO also awards 1 point for a previously failed attempt; that history item is not modeled here. componentsAboveThreshold counts binary heads above 0.5 and may differ from the regression score.",
+                        "Confidence_Scores": "Component thresholds default to 0.5 on sigmoid probability and are tracked in class_mapping.json. The J-CTO score head is a regression output clamped to [0, 4]."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PredictRequest": {
+        "required": [
+          "outputMode"
+        ],
+        "type": "object",
+        "properties": {
+          "seriesInstanceImages": {
+            "type": "object",
+            "description": "Map of series number -> instance number -> base64-encoded XA DICOM. Up to 8 videos are used after SeriesTime sorting.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "nullable": true
+          },
+          "seriesInstanceMetadata": {
+            "type": "object",
+            "nullable": true
+          },
+          "additionalMetadata": {
+            "type": "object",
+            "nullable": true,
+            "description": "Unused for DeepCORO-CTO (view class is inferred from DICOM angles)."
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": [
+              "JSON",
+              "HTML"
+            ],
+            "description": "Output mode supported by DeepCORO-CTO"
+          }
+        }
+      },
+      "APIResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Operation successful"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "APIErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "Bad Request"
+          },
+          "errorCode": {
+            "type": "string",
+            "example": "BAD_REQUEST"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "GetModelInfoResponse": {
+        "type": "object",
+        "properties": {
+          "modelId": {
+            "type": "string",
+            "description": "Model identifier",
+            "example": "DeepCORO_CTO"
+          },
+          "modelName": {
+            "type": "string",
+            "description": "Model display name",
+            "example": "DeepCORO-CTO"
+          },
+          "version": {
+            "type": "string",
+            "description": "Model version",
+            "example": "1.0.0"
+          },
+          "dicomTargetLevel": {
+            "type": "string",
+            "enum": [
+              "PATIENT",
+              "STUDY",
+              "SERIES",
+              "INSTANCE"
+            ],
+            "description": "DICOM target level",
+            "example": "SERIES"
+          },
+          "dicomUploadMin": {
+            "type": "integer",
+            "description": "Minimum number of DICOM videos to upload for inference",
+            "example": 1
+          },
+          "dicomUploadMax": {
+            "type": "integer",
+            "description": "Maximum number of DICOM videos used per study",
+            "example": 8
+          },
+          "supportedDicomModalities": {
+            "type": "array",
+            "description": "Supported DICOM modalities",
+            "items": {
+              "type": "string",
+              "example": "XA"
+            }
+          },
+          "supportedDicomTags": {
+            "type": "array",
+            "description": "Supported DICOM tags",
+            "items": {
+              "type": "string",
+              "example": "*"
+            }
+          },
+          "supportedAdditionalMetadata": {
+            "type": "array",
+            "description": "No Step-2 variables; view class is inferred from positioner angles",
+            "items": {
+              "type": "object"
+            },
+            "example": []
+          },
+          "supportedOutputModes": {
+            "type": "array",
+            "description": "Supported output modes",
+            "items": {
+              "type": "string",
+              "enum": [
+                "JSON",
+                "HTML"
+              ],
+              "example": "JSON"
+            }
+          }
+        }
+      },
+      "GetModelFactsResponse": {
+        "type": "object",
+        "properties": {
+          "en": {
+            "type": "object",
+            "description": "Model facts in English. See example for DeepCORO-CTO / J-CTO details."
+          }
+        }
+      },
+      "PredictResponse": {
+        "type": "object",
+        "description": "JSON mode returns diagnosis/predictions/modelRecommendations; HTML mode returns htmlBase64.",
+        "properties": {
+          "diagnosis": {
+            "type": "string",
+            "description": "Short J-CTO assessment summary (JSON mode)"
+          },
+          "predictions": {
+            "type": "object",
+            "description": "jctoScore plus per-component probabilities (JSON mode)"
+          },
+          "modelRecommendations": {
+            "type": "object",
+            "description": "Operator-facing EN/FR recommendations (JSON mode)"
+          },
+          "htmlBase64": {
+            "type": "string",
+            "description": "Base64-encoded HTML report (HTML mode)"
+          }
+        }
+      }
+    }
+  }
+}

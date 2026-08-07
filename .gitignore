@@ -1,7 +1,14 @@
-.vscode
+.vscode/*
+!.vscode/settings.json
 .idea
 .venv
+.env
 **.dcm
 **.html
 **.csv
 *.txt
+!**/requirements.txt
+!**/requirements_*.txt
+
+# deploy script credentials
+scripts/.env.deploy

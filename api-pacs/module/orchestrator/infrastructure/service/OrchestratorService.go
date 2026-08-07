@@ -39,6 +39,14 @@ func (service *OrchestratorService) extractUserIDFromContext(ctx context.Context
     return ""
 }
 
+// Tenant ID from context
+func (service *OrchestratorService) extractTenantIDFromContext(ctx context.Context) string {
+	if tenantID := ctx.Value(iamTypes.TenantIDCtx); tenantID != nil {
+		return tenantID.(string)
+	}
+	return ""
+}
+
 // CreateThread creates a new thread
 func (service *OrchestratorService) CreateThread(ctx context.Context, request types.CreateThreadRequest) (types.CreateThreadResponse, error) {
 	// Extract bearer token from context
@@ -47,17 +55,22 @@ func (service *OrchestratorService) CreateThread(ctx context.Context, request ty
 	// Extract user ID from context
 	userID := service.extractUserIDFromContext(ctx)
 
+	// Extract tenant ID from context
+	tenantID := service.extractTenantIDFromContext(ctx)
+
 	// Create request payload including bearer token for the orchestrator service
 	requestPayload := struct {
 		Metadata    map[string]interface{} `json:"metadata,omitempty"`
 		BearerToken string                 `json:"bearer_token,omitempty"`
 		APIBaseURL  string                 `json:"api_base_url,omitempty"`
 		UserID      string                 `json:"user_id,omitempty"`
+		TenantID    string                 `json:"tenant_id,omitempty"`
 	}{
 		Metadata:    request.Metadata,
 		BearerToken: bearerToken,
 		APIBaseURL:  os.Getenv("API_BASE_URL"), // Allow orchestrator to know where to callback
 		UserID:      userID,
+		TenantID:    tenantID,
 	}
 
 	requestBytes, err := json.Marshal(requestPayload)
@@ -77,7 +90,7 @@ func (service *OrchestratorService) CreateThread(ctx context.Context, request ty
 	defer resp.Body.Close()
 
 	// Check response status
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return types.CreateThreadResponse{}, fmt.Errorf("external API returned status: %d", resp.StatusCode)
 	}
 
@@ -110,6 +123,9 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 	// Extract user ID from context
 	userID := service.extractUserIDFromContext(ctx)
 
+	// Extract tenant ID from context
+	tenantID := service.extractTenantIDFromContext(ctx)
+
 	// Create the request payload for the Python server including bearer token
 	requestPayload := struct {
 		Message           string `json:"message"`
@@ -119,6 +135,7 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 		BearerToken       string `json:"bearer_token,omitempty"`
 		APIBaseURL        string `json:"api_base_url,omitempty"`
 		UserID            string `json:"user_id,omitempty"`
+		TenantID          string `json:"tenant_id,omitempty"`
 	}{
 		Message:           request.Content,
 		ConversationID:    request.ThreadID,
@@ -127,6 +144,7 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 		BearerToken:       bearerToken,
 		APIBaseURL:        os.Getenv("API_BASE_URL"),
 		UserID:      	   userID,
+		TenantID:          tenantID,
 	}
 
 	requestBytes, err := json.Marshal(requestPayload)
@@ -245,17 +263,22 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 	// Extract user ID from context
 	userID := service.extractUserIDFromContext(ctx)
 
+	// Extract tenant ID from context
+	tenantID := service.extractTenantIDFromContext(ctx)
+
 	// Create request payload
 	requestPayload := struct {
 		Payload     []types.StudyData `json:"payload"`
 		ThreadID    *string           `json:"conversation_id,omitempty"`
 		BearerToken string            `json:"bearer_token"`
 		UserID      string            `json:"user_id"`
+		TenantID    string            `json:"tenant_id,omitempty"`
 	}{
 		Payload:     request.Payload,
 		ThreadID:    request.ThreadID,
 		BearerToken: bearerToken,
 		UserID:      userID,
+		TenantID:    tenantID,
 	}
 
 	requestBytes, err := json.Marshal(requestPayload)
@@ -341,6 +364,9 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 func (service *OrchestratorService) GetThread(ctx context.Context, threadID string) (types.GetThreadResponse, error) {
 	// Extract bearer token from context
 	bearerToken := service.extractBearerTokenFromContext(ctx)
+
+	// Extract tenant ID from context
+	tenantID := service.extractTenantIDFromContext(ctx)
 	
 	// Create request with bearer token
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/threads/%s", service.OrchestratorAPIURL, threadID), nil)
@@ -353,6 +379,9 @@ func (service *OrchestratorService) GetThread(ctx context.Context, threadID stri
 	q.Add("bearer_token", bearerToken)
 	if apiBaseURL := os.Getenv("API_BASE_URL"); apiBaseURL != "" {
 		q.Add("api_base_url", apiBaseURL)
+	}
+	if tenantID != "" {
+		q.Add("tenant_id", tenantID)
 	}
 	req.URL.RawQuery = q.Encode()
 

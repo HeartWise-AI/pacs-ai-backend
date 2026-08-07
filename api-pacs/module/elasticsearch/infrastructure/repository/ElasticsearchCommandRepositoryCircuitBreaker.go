@@ -17,6 +17,33 @@ type ElasticsearchCommandRepositoryCircuitBreaker struct {
 
 var config = hystrix_config.Config{}
 
+// InsertAdminInviteLog decorator pattern to insert admin invite log request
+func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertAdminInviteLog(ctx context.Context, data repositoryTypes.CreateAdminInviteLog) (*index.Response, error) {
+	output := make(chan *index.Response, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("insert_admin_invite_log", config.Settings())
+	errors := hystrix.Go("insert_admin_invite_log", func() error {
+		adminInvite, err := repository.ElasticsearchCommandRepositoryInterface.InsertAdminInviteLog(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- adminInvite
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errChan:
+		return nil, err
+	case err := <-errors:
+		return nil, err
+	}
+}
+
 // InsertAdminMemberLog decorator pattern to insert admin member log request
 func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertAdminMemberLog(ctx context.Context, data repositoryTypes.CreateAdminMemberLog) (*index.Response, error) {
 	output := make(chan *index.Response, 1)
@@ -139,6 +166,33 @@ func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertRetrieveSt
 		}
 
 		output <- study
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errChan:
+		return nil, err
+	case err := <-errors:
+		return nil, err
+	}
+}
+
+// InsertSignedConsentLog decorator pattern to insert signed consent log
+func (repository *ElasticsearchCommandRepositoryCircuitBreaker) InsertSignedConsentLog(ctx context.Context, data repositoryTypes.CreateSignedConsentLog) (*index.Response, error) {
+	output := make(chan *index.Response, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("insert_signed_consent_log", config.Settings())
+	errors := hystrix.Go("insert_signed_consent_log", func() error {
+		signedConsent, err := repository.ElasticsearchCommandRepositoryInterface.InsertSignedConsentLog(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- signedConsent
 		return nil
 	}, nil)
 

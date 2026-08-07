@@ -10,6 +10,7 @@
 package rest
 
 import (
+	"expvar"
 	"fmt"
 	"log"
 	"net/http"
@@ -54,6 +55,7 @@ func (router *router) InitRouter() *chi.Mux {
 	orthancProxy := interfaces.ServiceContainer().RegisterOrthancProxy()
 	orthancCommandController := interfaces.ServiceContainer().RegisterOrthancRESTCommandController()
 	orthancQueryController := interfaces.ServiceContainer().RegisterOrthancRESTQueryController()
+	tenantCommandController := interfaces.ServiceContainer().RegisterTenantRESTCommandController()
 	tenantQueryController := interfaces.ServiceContainer().RegisterTenantRESTQueryController()
 	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
 	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
@@ -75,7 +77,7 @@ func (router *router) InitRouter() *chi.Mux {
 			Success: true,
 			Message: "alive",
 			Data: map[string]interface{}{
-				"version": "v0.23.0-beta",
+				"version": "v0.27.0-beta",
 			},
 		}
 
@@ -91,6 +93,7 @@ func (router *router) InitRouter() *chi.Mux {
 		workDir, _ := os.Getwd()
 		docsDir := http.Dir(filepath.Join(workDir, "docs"))
 		FileServer(r, "/docs", docsDir)
+		r.Handle("/debug/vars", expvar.Handler())
 
 		// orthanc openapi
 		orthancDocsDir := http.Dir(filepath.Join(workDir, "docs", "orthanc"))
@@ -130,6 +133,9 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
+					r.Post("/onboarding-model-questionnaire-answers/add", inferenceCommandController.AddOnboardingModelQuestionnaireAnswers)
+					r.Get("/onboarding-model-questionnaire-answers", inferenceQueryController.GetOnboardingModelQuestionnaireAnswers)
+
 					r.Route("/model", func(r chi.Router) {
 						r.Group(func(r chi.Router) {
 							r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
@@ -138,7 +144,7 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Post("/add", inferenceCommandController.AddInferenceModel)
 							r.Get("/list", inferenceQueryController.GetInferenceModels)
 							r.Get("/{modelID}/feedback", inferenceQueryController.GetModelFeedbackByModelID)
-							r.Delete("/{ID}/remove", inferenceCommandController.DeleteInferenceModel)
+							r.Delete("/{ID}/remove", inferenceCommandController.RemoveInferenceModel)
 							r.Put("/{ID}/update", inferenceCommandController.UpdateInferenceModel)
 							r.Put("/feedback/update", inferenceCommandController.UpdateModelFeedback)
 							r.Delete("/{modelID}/feedback/remove", inferenceCommandController.RemoveModelFeedback)
@@ -160,6 +166,40 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Get("/available", inferenceQueryController.GetInferenceAvailableModels)
 						})
 					})
+
+					// inference ingestion jobs
+					r.Route("/ingestion", func(r chi.Router) {
+						r.Group(func(r chi.Router) {
+							r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+
+							r.Post("/job/create", inferenceCommandController.CreateInferenceIngestionJob)
+							r.Post("/job/{ID}/start", inferenceCommandController.StartInferenceIngestionJob)
+							r.Post("/job/{ID}/stop", inferenceCommandController.StopInferenceInferenceJob)
+							r.Post("/jobs/import", inferenceCommandController.ImportInferenceIngestionJobsCSVFile)
+							r.Get("/jobs", inferenceQueryController.GetInferenceIngestionJobs)
+							r.Get("/candidates", inferenceQueryController.GetInferenceIngestionCandidates)
+							r.Get("/retrieval-failures", inferenceQueryController.GetInferenceIngestionRetrievalFailures)
+							r.Get("/job/{ID}/candidates", inferenceQueryController.GetInferenceIngestionJobCandidates)
+							r.Get("/job/{ID}/study/{studyInstanceUID}", inferenceQueryController.GetInferenceIngestionCandidateByStudyUID)
+							r.Put("/job/{ID}/update", inferenceCommandController.UpdateInferenceIngestionJob)
+							r.Delete("/job/{ID}/remove", inferenceCommandController.RemoveInferenceIngestionJob)
+						})
+					})
+
+					r.Group(func(r chi.Router) {
+						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+						r.Get("/worklist/status", inferenceQueryController.GetWorklistStudyStatuses)
+						r.Get("/worklist/events", inferenceQueryController.StreamWorklistEvents)
+						r.Get("/worklist/studies/{studyInstanceUID}/runs", inferenceQueryController.GetStudyProcessingRunHistory)
+						r.Get("/processing/runs/{runId}", inferenceQueryController.GetProcessingRunDetail)
+						r.Post("/worklist/studies/{studyInstanceUID}/reprocess", inferenceCommandController.ReprocessStudy)
+					})
+				})
+			})
+
+			r.Route("/internal", func(r chi.Router) {
+				r.Route("/inference", func(r chi.Router) {
+					r.Post("/ingestion/candidates/{candidate_id}/processing", inferenceCommandController.StudyServiceProcessingCallback)
 				})
 			})
 
@@ -215,12 +255,19 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
+					r.Post("/onboarding-questionnaire-answers/add", tenantCommandController.AddOnboardingQuestionnaireAnswers)
+					r.Get("/onboarding-questionnaire-answers", tenantQueryController.GetOnboardingQuestionnaireAnswers)
 					r.Get("/", tenantQueryController.GetTenantByID)
+					r.Put("/onboarding-consent/config/update", tenantCommandController.UpdateOnboardingConsentConfig)
+					r.Put("/onboarding-registration/config/update", tenantCommandController.UpdateOnboardingRegistrationConfig)
 				})
 			})
 
 			// user module
 			r.Route("/user", func(r chi.Router) {
+				r.Post("/register", userCommandController.RegisterTenantUser)
+				r.Get("/specialties", userQueryController.GetDoctorSpecialties)
+
 				// superuser only
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.FirebaseSuperUserGuard)
@@ -231,6 +278,7 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
+					r.Post("/tutorial/reset", userCommandController.ResetTutorial)
 					r.Get("/me", userQueryController.GetCurrentTenantUser)
 					r.Get("/metadata", userQueryController.GetUserMetadata)
 					r.Put("/password/update", userCommandController.UpdateTenantUserPassword)
@@ -241,10 +289,13 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
 						r.Post("/add", userCommandController.CreateTenantUser)
+						r.Post("/invite", userCommandController.SendTenantEmailInvite)
+						r.Post("/invite/resend", userCommandController.ResendTenantEmailInvite)
 						r.Get("/all", userQueryController.GetTenantUsers)
-						r.Get("/specialties", userQueryController.GetDoctorSpecialties)
+						r.Get("/invites", userQueryController.GetTenantUserEmailInvites)
 						r.Put("/update", userCommandController.UpdateTenantUser)
 						r.Delete("/{ID}/remove", userCommandController.DeleteTenantUser)
+						r.Delete("/invite/{ID}/remove", userCommandController.RemoveTenantUserEmailInvite)
 					})
 				})
 			})

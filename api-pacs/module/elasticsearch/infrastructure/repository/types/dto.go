@@ -1,5 +1,11 @@
 package types
 
+type CreateAdminInviteLog struct {
+	TenantID   string
+	TenantName string
+	Email      string
+}
+
 type CreateAdminMemberLog struct {
 	TenantID   string
 	TenantName string
@@ -58,6 +64,13 @@ type CreateRetrieveStudyLog struct {
 	Email            string
 	Name             string
 	StudyInstanceUID string
+}
+
+type CreateSignedConsentLog struct {
+	TenantID   string
+	TenantName string
+	UserID     string
+	Email      string
 }
 
 type CreateStoredCustomSeriesLog struct {

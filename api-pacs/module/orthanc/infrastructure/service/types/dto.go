@@ -1,24 +1,25 @@
 package types
 
 type FindModalityStudies struct {
-	TenantID                   string
-	ModalityID                 string
-	UserID                     string
-	AccessionNumber            string
-	InstitutionName            string
-	ModalitiesInStudy          string
-	NumberOfStudyRelatedSeries string
-	PatientBirthDate           string
-	PatientID                  string
-	PatientName                string
-	PatientSex                 string
-	ReferringPhysicianName     string
-	RequestingPhysician        string
-	StudyDate                  string
-	StudyDescription           string
-	StudyID                    string
-	StudyInstanceUID           string
-	StudyTime                  string
+	TenantID                      string
+	ModalityID                    string
+	AccessionNumber               string
+	InstitutionName               string
+	ModalitiesInStudy             string
+	NumberOfStudyRelatedSeries    string
+	NumberOfStudyRelatedInstances string
+	PatientBirthDate              string
+	PatientID                     string
+	PatientName                   string
+	PatientSex                    string
+	ReferringPhysicianName        string
+	RequestingPhysician           string
+	StudyDate                     string
+	StudyDescription              string
+	StudyID                       string
+	StudyInstanceUID              string
+	StudyTime                     string
+	UserID                       *string
 }
 
 type ListDICOMModalityResult struct {
@@ -41,10 +42,10 @@ type ListDICOMModalityResult struct {
 
 type RetrieveModalityStudyBySeries struct {
 	TenantID         string
-	UserID           string
 	ModalityID       string
 	StudyInstanceUID string
 	ModalityType     string
+	UserID           *string
 }
 
 type StoreStudyCustomSeries struct {

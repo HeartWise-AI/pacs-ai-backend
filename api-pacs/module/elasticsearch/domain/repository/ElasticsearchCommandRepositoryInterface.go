@@ -9,6 +9,8 @@ import (
 )
 
 type ElasticsearchCommandRepositoryInterface interface {
+	// InsertAdminInviteLog insert admin invite log
+	InsertAdminInviteLog(ctx context.Context, data repositoryTypes.CreateAdminInviteLog) (*index.Response, error)
 	// InsertAdminMemberLog insert admin member log
 	InsertAdminMemberLog(ctx context.Context, data repositoryTypes.CreateAdminMemberLog) (*index.Response, error)
 	// InsertGetModalityStudyLog insert get modality study log
@@ -19,6 +21,8 @@ type ElasticsearchCommandRepositoryInterface interface {
 	InsertPredictInferenceModelLog(ctx context.Context, data repositoryTypes.CreatePredictInferenceModelLog) (*index.Response, error)
 	// InsertRetrieveStudyLog insert retrieved study log
 	InsertRetrieveStudyLog(ctx context.Context, data repositoryTypes.CreateRetrieveStudyLog) (*index.Response, error)
+	// InsertSignedConsentLog insert signed consent log
+	InsertSignedConsentLog(ctx context.Context, data repositoryTypes.CreateSignedConsentLog) (*index.Response, error)
 	// InsertStoredCustomSeriesLog insert stored custom series log
 	InsertStoredCustomSeriesLog(ctx context.Context, data repositoryTypes.CreateStoredCustomSeriesLog) (*index.Response, error)
 }

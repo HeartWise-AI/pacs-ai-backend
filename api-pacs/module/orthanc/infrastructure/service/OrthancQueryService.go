@@ -46,21 +46,22 @@ func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, dat
 		LocalAET:  os.Getenv("ORTHANC_AET"),
 		Normalize: true,
 		Query: orthancAPITypes.QueryStudy{
-			AccessionNumber:            data.AccessionNumber,
-			InstitutionName:            data.InstitutionName,
-			ModalitiesInStudy:          data.ModalitiesInStudy,
-			NumberOfStudyRelatedSeries: data.NumberOfStudyRelatedSeries,
-			PatientBirthDate:           data.PatientBirthDate,
-			PatientID:                  data.PatientID,
-			PatientName:                data.PatientName,
-			PatientSex:                 data.PatientSex,
-			ReferringPhysicianName:     data.ReferringPhysicianName,
-			RequestingPhysician:        data.RequestingPhysician,
-			StudyDate:                  data.StudyDate,
-			StudyDescription:           data.StudyDescription,
-			StudyID:                    data.StudyID,
-			StudyInstanceUID:           data.StudyInstanceUID,
-			StudyTime:                  data.StudyTime,
+			AccessionNumber:               data.AccessionNumber,
+			InstitutionName:               data.InstitutionName,
+			ModalitiesInStudy:             data.ModalitiesInStudy,
+			NumberOfStudyRelatedSeries:    data.NumberOfStudyRelatedSeries,
+			NumberOfStudyRelatedInstances: data.NumberOfStudyRelatedInstances,
+			PatientBirthDate:              data.PatientBirthDate,
+			PatientID:                     data.PatientID,
+			PatientName:                   data.PatientName,
+			PatientSex:                    data.PatientSex,
+			ReferringPhysicianName:        data.ReferringPhysicianName,
+			RequestingPhysician:           data.RequestingPhysician,
+			StudyDate:                     data.StudyDate,
+			StudyDescription:              data.StudyDescription,
+			StudyID:                       data.StudyID,
+			StudyInstanceUID:              data.StudyInstanceUID,
+			StudyTime:                     data.StudyTime,
 		},
 		Timeout: 0,
 	})
@@ -70,31 +71,33 @@ func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, dat
 	}
 
 	// logs to elasticsearch
-	go func() {
-		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, data.UserID)
-		if err != nil {
-			return
-		}
+	if data.UserID != nil {
+		go func() {
+			user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, *data.UserID)
+			if err != nil {
+				return
+			}
 
-		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
-		if err != nil {
-			return
-		}
+			tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
+			if err != nil {
+				return
+			}
 
-		_, err = service.ElasticsearchCommandServiceInterface.CreateGetModalityStudyLog(ctx, elasticsearchTypes.CreateGetModalityStudyLog{
-			TenantID:   data.TenantID,
-			TenantName: tenant.Name,
-			ModalityID: data.ModalityID,
-			UserID:     data.UserID,
-			Email:      user.Email,
-			Name:       user.Name,
-			QueryID:    queryID,
-		})
-		if err != nil {
-			log.Println(err)
-			return
-		}
-	}()
+			_, err = service.ElasticsearchCommandServiceInterface.CreateGetModalityStudyLog(ctx, elasticsearchTypes.CreateGetModalityStudyLog{
+				TenantID:   data.TenantID,
+				TenantName: tenant.Name,
+				ModalityID: data.ModalityID,
+				UserID:     *data.UserID,
+				Email:      user.Email,
+				Name:       user.Name,
+				QueryID:    queryID,
+			})
+			if err != nil {
+				log.Println(err)
+				return
+			}
+		}()
+	}
 
 	return res, queryID, nil
 }

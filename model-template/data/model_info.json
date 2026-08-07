@@ -1,7 +1,7 @@
 {
   "modelId": "ModelTemplate",
   "modelName": "Model Template",
-  "version": "1.10.1",
+  "version": "1.13.0",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 5,
@@ -208,6 +208,50 @@
       "questionFr": "Veuillez fournir des commentaires supplémentaires sur l'analyse :",
       "answerOptionsEn": null,
       "answerOptionsFr": null
+    }
+  ],
+  "onboardingModelQuestionnaires": [
+    {
+      "id": "q1",
+      "type": "TEXT",
+      "questionEn": "Please provide any additional comments about the model",
+      "questionFr": "Veuillez fournir des commentaires supplémentaires sur le modèle :",
+      "answerOptionsEn": null,
+      "answerOptionsFr": null
+    },
+    {
+      "id": "q2",
+      "type": "CHECKBOX",
+      "questionEn": "Which of the following best describes your experience with the model?",
+      "questionFr": "Laquelle des descriptions suivantes correspond le mieux à votre expérience avec le modèle ?",
+      "answerOptionsEn": [
+        {
+          "id": "easy",
+          "answer": "Easy to use"
+        },
+        {
+          "id": "intuitive",
+          "answer": "Intuitive"
+        },
+        {
+          "id": "useful",
+          "answer": "Useful"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "easy",
+          "answer": "Facile à utiliser"
+        },
+        {
+          "id": "intuitive",
+          "answer": "Intuitif"
+        },
+        {
+          "id": "useful",
+          "answer": "Utile"
+        }
+      ]
     }
   ]
 }

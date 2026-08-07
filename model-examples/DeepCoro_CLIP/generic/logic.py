@@ -19,6 +19,9 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 
+SERIES_TIME_TAG = (0x0008, 0x0031)
+
+
 class VideoMILWrapper(torch.nn.Module):
     def __init__(self, video_encoder, mil_model, num_videos: int):
         """Wrapper around *VideoEncoder* and *MultiInstanceLinearProbing*.
@@ -40,7 +43,7 @@ class VideoMILWrapper(torch.nn.Module):
         self.num_videos: int = num_videos
 
     def forward(
-        self, x: torch.Tensor, video_indices: torch.Tensor | None = None
+        self, x: torch.Tensor, video_mask: torch.Tensor | None = None
     ) -> dict[str, torch.Tensor]:
         """Wrapper forward pass.
 
@@ -48,10 +51,10 @@ class VideoMILWrapper(torch.nn.Module):
         always receives a 3-D tensor of shape ``[B, N, D]`` where *N* is the
         number of video segments associated with each sample.
 
-        In the typical *single-video* case, ``video_indices`` will be ``None``
-        and the underlying ``VideoEncoder`` already returns a tensor of shape
-        ``[B, D]`` (aggregated representation).  We therefore unsqueeze a
-        singleton *N* dimension so that it becomes ``[B, 1, D]``.
+        In the typical *single-video* case the underlying ``VideoEncoder``
+        already returns a tensor of shape ``[B, D]`` (aggregated
+        representation).  We therefore unsqueeze a singleton *N* dimension so
+        that it becomes ``[B, 1, D]``.
 
         When ``multi_video=True`` the dataloader supplies inputs of shape
         ``[B, N, C, F, H, W]``.  If the encoder is configured with
@@ -61,6 +64,10 @@ class VideoMILWrapper(torch.nn.Module):
         the *N* dimension and output ``[B, D]``.  In this scenario we again
         expand the aggregated vector so that downstream MIL logic continues
         to work (with ``N = 1``).
+
+        ``video_mask`` optionally marks which of the *N* video slots are real
+        (vs. zero-padding added to reach ``num_videos``); it is applied only
+        when its length matches the actual instance count.
         """
 
         # ------------------------------------------------------------------
@@ -102,10 +109,13 @@ class VideoMILWrapper(torch.nn.Module):
         else:
             B, N, _ = embeddings.shape  # type: ignore[misc]
 
-        # Build a simple boolean mask that marks every video as valid.  In the
-        # future we could incorporate ``video_indices`` to create selective
-        # masks, e.g. when some videos are padded.
-        attention_mask = torch.ones((B, N), dtype=torch.bool, device=embeddings.device)
+        # Mask out zero-padded video slots so their constant encoder embedding
+        # can't pollute the attention/CLS pooling and collapse predictions. Apply
+        # the caller mask only when it lines up with the actual instance count N;
+        # otherwise fall back to the MIL model's all-valid default (mask=None).
+        attention_mask = None
+        if video_mask is not None and video_mask.shape[-1] == N:
+            attention_mask = video_mask.to(device=embeddings.device, dtype=torch.bool)
 
         # ------------------------------------------------------------------
         # 4) Forward through the MIL head(s)
@@ -114,6 +124,9 @@ class VideoMILWrapper(torch.nn.Module):
 
 
 class CustomPredictionService(BasePredictionService):
+    DEFAULT_DATASET_MEAN = [122.09012603759766, 122.09012603759766, 122.09012603759766]
+    DEFAULT_DATASET_STD = [28.790834426879883, 28.790834426879883, 28.790834426879883]
+
     def load_model(self, config: Config):
         print("Loading model")
 
@@ -131,7 +144,7 @@ class CustomPredictionService(BasePredictionService):
             CustomPredictionService.model_config = json.load(fp)
             
         # Create and load the model
-        print(f"Model path: {CustomPredictionService.model_config["ModelStateDict"]["model_path"]}")
+        print(f"Model path: {CustomPredictionService.model_config['ModelStateDict']['model_path']}")
         try:
             print("Loading video encoder")
             video_encoder = VideoEncoder(
@@ -745,7 +758,7 @@ class CustomPredictionService(BasePredictionService):
             frame_count = 0
             compressedVideo = []
             capture = cv.VideoCapture(avi_path)
-            stride = CustomPredictionService.model_config["VideoMILWrapper"]["frame_stride"]
+            stride, _ = self._get_video_loading_config()
             try:
                 while True:
                     ret, frame = capture.read()
@@ -777,10 +790,52 @@ class CustomPredictionService(BasePredictionService):
             print(f"Error processing DICOM {dicom_name}: {e}")
             return None
 
+    def _get_video_loading_config(self) -> tuple[int, int]:
+        """Return (stride, resize) for service-side video loading."""
+        wrapper_cfg = CustomPredictionService.model_config.get("VideoMILWrapper", {})
+        stride = wrapper_cfg.get("stride")
+        if stride is None:
+            stride = wrapper_cfg.get("frame_stride", 1)
+        resize = wrapper_cfg.get("resize", 224)
+        return int(stride), int(resize)
+
+    def _get_dataset_normalization_stats(self) -> tuple[list[float], list[float]]:
+        """Return dataset normalization stats used by the deployment model."""
+        video_encoder_cfg = CustomPredictionService.model_config.get("VideoEncoder", {})
+        dataset_mean = video_encoder_cfg.get("dataset_mean")
+        dataset_std = video_encoder_cfg.get("dataset_std")
+
+        if dataset_mean is None:
+            dataset_mean = CustomPredictionService.model_config.get("dataset_mean")
+        if dataset_std is None:
+            dataset_std = CustomPredictionService.model_config.get("dataset_std")
+
+        if dataset_mean is None or dataset_std is None:
+            dataset_mean = self.DEFAULT_DATASET_MEAN
+            dataset_std = self.DEFAULT_DATASET_STD
+
+        return list(dataset_mean), list(dataset_std)
+
+    def _extract_series_time(self, dicom: pydicom.Dataset) -> float:
+        """Extract sortable series time from the DICOM; fallback to inf."""
+        try:
+            if SERIES_TIME_TAG in dicom:
+                raw_value = dicom[SERIES_TIME_TAG].value
+                if raw_value is not None:
+                    return float(str(raw_value))
+        except Exception:
+            pass
+        return float("inf")
+
     def _run_inference(self, dicoms: list[pydicom.Dataset]) -> dict[str, float] | None:
         try:
             videos = []
             max_videos = CustomPredictionService.model_config["VideoMILWrapper"]["num_videos"]
+            _, resize = self._get_video_loading_config()
+
+            # Match the external DeepCORO path: take the first N after sorting
+            # by series/acquisition time.
+            dicoms = sorted(dicoms, key=self._extract_series_time)
                         
             stop_pt = min(len(dicoms), max_videos)
             dicom_ok = 0
@@ -826,11 +881,11 @@ class CustomPredictionService(BasePredictionService):
                     video = video[indices]     
                                
                 # Resize the video
-                video = v2.Resize((224, 224), antialias=True)(video)                            
+                video = v2.Resize((resize, resize), antialias=True)(video)
 
-                # Normalize the video
-                mean = [105.24055480957031, 105.24055480957031, 105.24055480957031]
-                std = [39.24827194213867, 39.24827194213867, 39.24827194213867]              
+                # Normalize with the same training-set statistics used by the
+                # current DeepCORO inference configs.
+                mean, std = self._get_dataset_normalization_stats()
                 video = v2.Normalize(mean, std)(video)
                 
                 # Permute to [F,C,H,W]
@@ -841,8 +896,9 @@ class CustomPredictionService(BasePredictionService):
                 videos.append(video)
                 dicom_ok += 1
 
-            video_batch = torch.from_numpy(np.array(videos)).to(dtype=torch.float16)
-                        
+            video_batch = torch.from_numpy(np.array(videos)).to(dtype=torch.float32)
+            num_real_videos = video_batch.shape[0]
+
             # Zero pad the video_batch if we have fewer videos than max_videos
             if video_batch.shape[0] < max_videos:
                 # Get the shape of a single video (after permute)
@@ -852,17 +908,20 @@ class CustomPredictionService(BasePredictionService):
                 zero_padding = torch.zeros(padding_shape, dtype=video_batch.dtype, device=video_batch.device)
                 # Concatenate the original videos with zero padding
                 video_batch = torch.cat([video_batch, zero_padding], dim=0)
-            
-            video_batch = video_batch.unsqueeze(0).to(
-                "cuda" if torch.cuda.is_available() else "cpu"
-            )
-            
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            video_batch = video_batch.unsqueeze(0).to(device)
+
+            # Mark only the real videos as valid; padded slots stay False.
+            video_mask = torch.zeros((1, max_videos), dtype=torch.bool, device=device)
+            video_mask[:, :num_real_videos] = True
+
             model = CustomPredictionService.models["video_mil_wrapper"]
             model.eval()
-            
+
             with torch.no_grad():
                 outputs: torch.Tensor = model(
-                    video_batch
+                    video_batch, video_mask=video_mask
                 )
 
             # Normalize the output

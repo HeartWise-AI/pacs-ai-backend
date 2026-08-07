@@ -1,0 +1,14 @@
+{
+  "Value": {
+    "head_dim": 1,
+    "task": "regression",
+    "name": "LVEF",
+    "unit": "%"
+  },
+  "y_true_cat": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Reduced EF (<40%)",
+    "threshold": 0.5
+  }
+}

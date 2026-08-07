@@ -1,10 +1,13 @@
 services:
   api-pacs:
+    env_file: .env
+    environment:
+      APP_TIMEZONE: ${APP_TIMEZONE:-America/Toronto}
+      TZ: ${APP_TIMEZONE:-America/Toronto}
     build: .
     container_name: api-pacs
     restart: unless-stopped
     networks:
-      - default
       - pacs-net
     ports:
       - ${API_URL_REST_PORT}:${API_URL_REST_PORT}
@@ -13,6 +16,7 @@ services:
     depends_on:
       - redis
       - elasticsearch
+      - postgresql
 
 networks:
   pacs-net:

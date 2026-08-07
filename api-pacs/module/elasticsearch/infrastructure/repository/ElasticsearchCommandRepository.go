@@ -19,6 +19,24 @@ type ElasticsearchCommandRepository struct {
 	types.ElasticsearchDBHandlerInterface
 }
 
+// InsertAdminInviteLog insert admin invite log
+func (repository *ElasticsearchCommandRepository) InsertAdminInviteLog(ctx context.Context, data repositoryTypes.CreateAdminInviteLog) (*index.Response, error) {
+	adminInvite := entity.AdminInvite{
+		TenantID:   data.TenantID,
+		TenantName: data.TenantName,
+		Email:      data.Email,
+		Timestamp:  uint(time.Now().Unix()),
+	}
+
+	res, err := repository.ElasticsearchDBHandlerInterface.IndexDocument(ctx, adminInvite.GetModelName(), adminInvite)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.DatabaseError)
+	}
+
+	return res, nil
+}
+
 // InsertAdminMemberLog insert admin member log
 func (repository *ElasticsearchCommandRepository) InsertAdminMemberLog(ctx context.Context, data repositoryTypes.CreateAdminMemberLog) (*index.Response, error) {
 	adminMember := entity.AdminMember{
@@ -131,6 +149,25 @@ func (repository *ElasticsearchCommandRepository) InsertRetrieveStudyLog(ctx con
 	}
 
 	res, err := repository.ElasticsearchDBHandlerInterface.IndexDocument(ctx, study.GetModelName(), study)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.DatabaseError)
+	}
+
+	return res, nil
+}
+
+// InsertSignedConsentLog insert signed consent log
+func (repository *ElasticsearchCommandRepository) InsertSignedConsentLog(ctx context.Context, data repositoryTypes.CreateSignedConsentLog) (*index.Response, error) {
+	consent := entity.SignedConsent{
+		TenantID:   data.TenantID,
+		TenantName: data.TenantName,
+		UserID:     data.UserID,
+		Email:      data.Email,
+		Timestamp:  uint(time.Now().Unix()),
+	}
+
+	res, err := repository.ElasticsearchDBHandlerInterface.IndexDocument(ctx, consent.GetModelName(), consent)
 	if err != nil {
 		log.Println(err)
 		return nil, errors.New(apiError.DatabaseError)

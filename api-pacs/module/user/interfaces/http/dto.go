@@ -14,6 +14,15 @@ var (
 		"CreateTenantUserRequest.LicenseNo":           "License number is required.",
 		"CreateTenantUserRequest.Specialty":           "Specialty is required.",
 		"DeleteTenantUserRequest.UserID":              "User ID is required.",
+		"SendTenantEmailInviteRequest.Email":          "Valid email is required.",
+		"RegisterTenantUserRequest.TenantID":          "Tenant ID is required.",
+		"RegisterTenantUserRequest.Role":              "Role is required.",
+		"RegisterTenantUserRequest.Name":              "Name is required.",
+		"RegisterTenantUserRequest.Email":             "Email is required.",
+		"RegisterTenantUserRequest.Password":          "Password is required.",
+		"RegisterTenantUserRequest.LicenseNo":         "License number is required.",
+		"RegisterTenantUserRequest.Specialty":         "Specialty is required.",
+		"ResendTenantEmailInviteRequest.ID":           "ID is required.",
 		"UpdateTenantUserRequest.ID":                  "ID is required.",
 		"UpdateTenantUserRequest.Role":                "Role is required.",
 		"UpdateTenantUserRequest.Name":                "Name is required.",
@@ -42,6 +51,25 @@ type CreateTenantUserRequest struct {
 
 type DeleteTenantUserRequest struct {
 	UserID string `json:"userId" validate:"required"`
+}
+
+type SendTenantEmailInviteRequest struct {
+	Email string `json:"email" validate:"email"`
+}
+
+type RegisterTenantUserRequest struct {
+	TenantID  string  `json:"tenantId" validate:"required"`
+	Role      string  `json:"role" validate:"required"`
+	Name      string  `json:"name" validate:"required"`
+	Email     string  `json:"email" validate:"required"`
+	Password  string  `json:"password" validate:"required"`
+	LicenseNo string  `json:"licenseNo" validate:"required"`
+	Specialty string  `json:"specialty" validate:"required"`
+	Code      *string `json:"code"`
+}
+
+type ResendTenantEmailInviteRequest struct {
+	ID string `json:"id" validate:"required"`
 }
 
 type UpdateTenantUserRequest struct {
@@ -74,8 +102,21 @@ type GetTenantUserResponse struct {
 	Specialty         string `json:"specialty"`
 	IsEmailVerified   bool   `json:"isEmailVerified"`
 	IsAccountDisabled bool   `json:"isAccountDisabled"`
+	IsConsentSigned   bool   `json:"isConsentSigned"`
+	IsAdminCreated    bool   `json:"isAdminCreated"`
 	CreatedAt         uint   `json:"createdAt"`
 	UpdatedAt         uint   `json:"updatedAt"`
+}
+
+type GetTenantUserEmailInviteResponse struct {
+	ID         string  `json:"id"`
+	TenantID   string  `json:"tenantId"`
+	Code       string  `json:"code"`
+	Email      string  `json:"email"`
+	ExpiresAt  uint64  `json:"expiresAt"`
+	VerifiedAt *uint64 `json:"verifiedAt"`
+	CreatedAt  uint64  `json:"createdAt"`
+	UpdatedAt  uint64  `json:"updatedAt"`
 }
 
 type GetUserMetadataResponse struct {

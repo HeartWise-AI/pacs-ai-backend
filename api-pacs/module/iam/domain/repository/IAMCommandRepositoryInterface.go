@@ -6,5 +6,7 @@ import (
 
 type IAMCommandRepositoryInterface interface {
 	DeleteTokenSession(key string) error
+	IsEmailVerificationCooldownActive(key string) (bool, error)
+	SetEmailVerificationCooldown(key string) error
 	SetTokenSession(data repositoryTypes.SetTokenSession) error
 }

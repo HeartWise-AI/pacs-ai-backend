@@ -94,7 +94,6 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 	res, queryID, err := controller.OrthancQueryServiceInterface.FindModalityStudies(context.TODO(), serviceTypes.FindModalityStudies{
 		TenantID:                   tenantID,
 		ModalityID:                 request.ModalityID,
-		UserID:                     userID,
 		AccessionNumber:            request.AccessionNumber,
 		InstitutionName:            request.InstitutionName,
 		ModalitiesInStudy:          request.ModalitiesInStudy,
@@ -110,6 +109,7 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 		StudyID:                    request.StudyID,
 		StudyInstanceUID:           request.StudyInstanceUID,
 		StudyTime:                  request.StudyTime,
+		UserID:                     &userID,
 	})
 	if err != nil {
 		var httpCode int
@@ -215,10 +215,19 @@ func (controller *OrthancQueryController) GetJobsInfo(w http.ResponseWriter, r *
 
 	for _, job := range res {
 		jobs = append(jobs, types.GetJobInfoResponse{
-			ID:       job.ID,
-			Priority: job.Priority,
-			Progress: job.Progress,
-			State:    job.State,
+			CompletionTime:   job.CompletionTime,
+			Content:          job.Content,
+			CreationTime:     job.CreationTime,
+			EffectiveRuntime: job.EffectiveRuntime,
+			ErrorCode:        job.ErrorCode,
+			ErrorDescription: job.ErrorDescription,
+			ErrorDetails:     job.ErrorDetails,
+			ID:               job.ID,
+			Priority:         job.Priority,
+			Progress:         job.Progress,
+			State:            job.State,
+			Timestamp:        job.Timestamp,
+			Type:             job.Type,
 		})
 	}
 

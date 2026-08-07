@@ -1,0 +1,36 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "CathEF-CLIP",
+      "Description": "DeepCORO-CLIP based LVEF estimator from left coronary angiograms. Predicts continuous LVEF (%) and binary reduced-EF probability (<40%) from up to 4 videos per study.",
+      "Developed_by": "HeartWise.AI / MHI",
+      "Development_period": "2024-2026",
+      "Version": "1.0.0 (v2 retrained)"
+    },
+    "Mechanism": {
+      "Outcome": "LVEF (%) regression and P(LVEF<40%) binary classification",
+      "Output": "Value: LVEF in %; y_true_cat: probability that EF < 40% after sigmoid",
+      "Target_population": "Adults undergoing coronary angiography at MHI",
+      "Input_data_source": "Left coronary diagnostic angiograms",
+      "Input_data_type": "dicom",
+      "Model_type": "Deep Learning (MViT encoder + MIL linear-probing)",
+      "Supported_DICOM_modalities": "XA"
+    },
+    "Model_Components": {
+      "Model": {
+        "Purpose": "Estimate LVEF and reduced-EF probability from coronary angiograms",
+        "Output": "LVEF (%), P(EF<40%)"
+      }
+    },
+    "Uses_and_directions": {
+      "General_use": "Research preview for coronary angiogram-based LVEF estimation.",
+      "Target_population_and_use_case": "Adults with left coronary diagnostic angiograms; input is restricted to main_structure=Left Coronary and status=diagnostic.",
+      "Before_using_this_model": "Validated on MHI data only (AUC 0.911, MAE 5.98, Pearson r 0.685). Not validated for clinical use outside MHI."
+    },
+    "Warnings_and_limitations": {
+      "Image_Quality": "Requires diagnostic-quality left coronary angiograms.",
+      "Number_of_videos": "Uses up to 4 videos per study; extra videos are ignored.",
+      "Confidence_Scores": "Reduced-EF threshold defaults to 0.5 on sigmoid probability and is tracked in class_mapping.json."
+    }
+  }
+}

@@ -3,6 +3,24 @@ import numpy as np
 
 from skimage import morphology
 
+
+def load_pixel_array(dcm: pydicom.Dataset) -> np.ndarray:
+    """Decode DICOM pixels, correcting mislabeled YBR_FULL_422 when needed."""
+    pi = getattr(dcm, "PhotometricInterpretation", None)
+    if pi == "YBR_FULL_422" and hasattr(dcm, "PixelData"):
+        rows = int(dcm.Rows)
+        cols = int(dcm.Columns)
+        frames = int(getattr(dcm, "NumberOfFrames", 1) or 1)
+        samples = int(getattr(dcm, "SamplesPerPixel", 3) or 3)
+        expected_full = rows * cols * frames * samples
+        try:
+            if len(dcm.PixelData) >= expected_full:
+                dcm.PhotometricInterpretation = "YBR_FULL"
+        except TypeError:
+            pass
+    return dcm.pixel_array
+
+
 def to_uint8(array):
     array = array - np.min(array)
     array = array / np.max(array)
@@ -19,10 +37,11 @@ def handle_colorspace(im_array: np.ndarray, dicom_ds: pydicom.Dataset) -> np.nda
         numpy array of the image in RGB format
     """
     cspace = dicom_ds[(0x0028, 0x0004)].value
-    if cspace in ['YBR_FULL', 'YBR_FULL_422']:
-        recolored = pydicom.pixel_data_handlers.convert_color_space(im_array, cspace, 'RGB')
-    elif cspace in ['RGB']:
-        recolored = pydicom.pixel_data_handlers.convert_color_space(im_array, cspace, cspace)
+    if cspace in ['YBR_FULL', 'YBR_FULL_422', 'RGB']:
+        return im_array
+        # recolored = pydicom.pixel_data_handlers.convert_color_space(im_array, cspace, 'RGB')
+    # elif cspace in ['RGB']:
+    #     recolored = pydicom.pixel_data_handlers.convert_color_space(im_array, cspace, cspace)
     elif cspace in ['PALETTE COLOR']:
         recolored = to_uint8(pydicom.pixel_data_handlers.util.apply_color_lut(im_array, dicom_ds))
     elif cspace in ['MONOCHROME1', 'MONOCHROME2']:

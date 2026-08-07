@@ -1,0 +1,35 @@
+{
+  "VideoEncoder": {
+    "backbone": "mvit",
+    "input_channels": 3,
+    "num_frames": 16,
+    "pretrained": false,
+    "output_dim": 512,
+    "freeze_ratio": 0.9,
+    "dropout": 0.15,
+    "num_heads": 16,
+    "aggregator_depth": 1,
+    "aggregate_videos_tokens": false,
+    "per_video_pool": false
+  },
+  "MultiInstanceLinearProbing": {
+    "embedding_dim": 512,
+    "pooling_mode": "attention+cls_token",
+    "attention_hidden": 128,
+    "dropout": 0.2,
+    "use_cls_token": true,
+    "num_attention_heads": 8,
+    "separate_video_attention": true,
+    "normalization_strategy": "post_norm"
+  },
+  "VideoMILWrapper": {
+    "num_videos": 6,
+    "stride": 2,
+    "resize": 224
+  },
+  "ModelStateDict": {
+    "model_path": "best_model_epoch_4.pt"
+  },
+  "dataset_mean": [133.98593139648438, 133.98593139648438, 133.98593139648438],
+  "dataset_std": [27.26662254333496, 27.26662254333496, 27.26662254333496]
+}

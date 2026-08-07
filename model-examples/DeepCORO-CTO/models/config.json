@@ -1,0 +1,50 @@
+{
+  "VideoEncoder": {
+    "backbone": "mvit",
+    "input_channels": 3,
+    "num_frames": 16,
+    "pretrained": false,
+    "output_dim": 512,
+    "freeze_ratio": 0.7987585697606139,
+    "dropout": 0.19626902693861784,
+    "num_heads": 16,
+    "aggregator_depth": 1,
+    "aggregate_videos_tokens": false,
+    "per_video_pool": false
+  },
+  "MultiInstanceLinearProbing": {
+    "embedding_dim": 512,
+    "pooling_mode": "attention+cls_token",
+    "attention_hidden": 256,
+    "dropout": 0.29909803463691986,
+    "use_cls_token": true,
+    "num_attention_heads": 8,
+    "separate_video_attention": true,
+    "normalization_strategy": "post_norm",
+    "num_view_classes": 12
+  },
+  "VideoMILWrapper": {
+    "num_videos": 8,
+    "stride": 1,
+    "resize": 224
+  },
+  "ModelStateDict": {
+    "model_path": "best_model_epoch_24.pt"
+  },
+  "view_labels_map": {
+    "AP": 0,
+    "AP Caudal": 1,
+    "AP Cranial": 2,
+    "LAO Caudal": 3,
+    "LAO Cranial": 4,
+    "LAO Lateral": 5,
+    "LAO Straight": 6,
+    "Other": 7,
+    "RAO Caudal": 8,
+    "RAO Cranial": 9,
+    "RAO Lateral": 10,
+    "RAO Straight": 11
+  },
+  "dataset_mean": [122.09012603759766, 122.09012603759766, 122.09012603759766],
+  "dataset_std": [28.790834426879883, 28.790834426879883, 28.790834426879883]
+}

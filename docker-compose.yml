@@ -1,13 +1,40 @@
+services:
+  postgres:
+    image: postgres:16
+    command: ["postgres", "-c", "timezone=${APP_TIMEZONE}", "-c", "log_timezone=${APP_TIMEZONE}"]
+    container_name: cardio-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cardio
+      POSTGRES_PASSWORD: cardio
+      POSTGRES_DB: cardio_agent
+      TZ: ${APP_TIMEZONE}
+    ports:
+      - "5434:5432"
+    volumes:
+      - cardio_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cardio -d cardio_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 networks:
   default:
-    name: pacs-net-default
+    external: true
+    name: pacs-net
 
 include:
   - orthanc/docker-compose.yml
   # - orthanc-pacs/docker-compose.yml # uncomment to launch othanc pacs for simulation
   - redis/docker-compose.yml
   - elasticsearch/docker-compose.yml
+  - postgresql/docker-compose.yml
   - api-pacs/docker-compose.yml
   - ../PACS-AI/docker-compose.yml
   - nginx/docker-compose.yml
-  - cardio-agent/backend/docker-compose.yml
+  - cardio-agent/backend/docker-compose.root.yml
+  - cardio-agent/study-service/docker-compose.root.yaml
+
+volumes:
+  cardio_postgres_data:

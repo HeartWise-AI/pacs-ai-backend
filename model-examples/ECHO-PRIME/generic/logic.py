@@ -112,9 +112,17 @@ class CustomPredictionService(BasePredictionService):
     async def _process_study(self, request: PredictRequest):
         """Common processing logic for both HTML and JSON output."""
         # Process DICOM files
-        stack_of_videos = self.EchoPrimeInference.process_series_instance_metadata(
-            request.seriesInstanceMetadata
-        )
+        use_full_dicom = os.environ.get("USE_FULL_DICOM", "false").lower() == "true"
+
+        if use_full_dicom:
+            print("Using full DICOM mode (USE_FULL_DICOM=true)")
+            stack_of_videos = self.EchoPrimeInference.process_series_instance_images(
+                request.seriesInstanceImages
+            )
+        else:
+            stack_of_videos = self.EchoPrimeInference.process_series_instance_metadata(
+                request.seriesInstanceMetadata
+            )
         if stack_of_videos is None:
             print("No valid DICOM files found")
             return None

@@ -6,6 +6,7 @@ import math
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import BytesIO
 from typing import Any
 
 import cv2
@@ -275,9 +276,8 @@ class EchoPrimeInference:
             out_logits = view_classifier(stack_of_first_frames)
         out_views = torch.argmax(out_logits, dim=1)
         view_list = [self.COARSE_VIEWS[v] for v in out_views]
-        stack_of_view_encodings = (
-            torch.stack([torch.nn.functional.one_hot(out_views, 11)]).squeeze().to(self.DEVICE)
-        )
+        # Keep batch dim: squeeze() collapses N=1 from [1,11] to [11] and breaks torch.cat.
+        stack_of_view_encodings = torch.nn.functional.one_hot(out_views, 11).to(self.DEVICE)
 
         if visualize:
             self._visualize_views(stack_of_first_frames, view_list)
@@ -412,15 +412,18 @@ class EchoPrimeInference:
         preds = {}
         for s_dx, section in enumerate(self.non_empty_sections):
             for pheno in self.section_to_phenotypes[section]:
-                preds[pheno] = np.nanmean(
-                    [
-                        self.candidate_labels[pheno][self.candidate_studies[c_ids]]
-                        for c_ids in top_candidate_ids[
-                            s_dx
-                        ].cpu()  # Move indices to CPU for numpy operations
-                        if self.candidate_studies[c_ids] in self.candidate_labels[pheno]
-                    ]
-                )
+                values = [
+                    self.candidate_labels[pheno][self.candidate_studies[c_ids]]
+                    for c_ids in top_candidate_ids[
+                        s_dx
+                    ].cpu()  # Move indices to CPU for numpy operations
+                    if self.candidate_studies[c_ids] in self.candidate_labels[pheno]
+                ]
+                if not values:
+                    preds[pheno] = None
+                    continue
+                mean = np.nanmean(values)
+                preds[pheno] = None if np.isnan(mean) else float(mean)
 
         return preds
 
@@ -469,7 +472,7 @@ class EchoPrimeInference:
             Preprocessed pixel array
         """
         dcm = pydicom.dcmread(dicom_path)
-        pixels = dcm.pixel_array
+        pixels = video_utils.load_pixel_array(dcm)
 
         # Exclude images like (600,800) or (600,800,3)
         if pixels.ndim < 3 or pixels.shape[2] == 3:
@@ -651,3 +654,54 @@ class EchoPrimeInference:
         return torch.stack(stack_of_videos).to(
             self.DEVICE
         )  # Move stacked tensor to correct device
+
+    def process_series_instance_images(
+        self, seriesInstanceImages: dict[int, dict[int, str]]
+    ) -> torch.Tensor:
+        """Process full DICOM files received as base64-encoded images.
+
+        Used as a temporary workaround when the caller does not support
+        DICOM tag forwarding (e.g. cardio-agent).
+
+        Args:
+            seriesInstanceImages: Dict of series_number -> instance_number -> base64 DICOM
+
+        Returns:
+            Stack of preprocessed videos as a tensor, or None if no valid videos found
+        """
+        stack_of_videos = []
+
+        for series_number, instances in seriesInstanceImages.items():
+            for instance_number, dicom_base64 in instances.items():
+                try:
+                    dicom_data = base64.b64decode(dicom_base64)
+                    dcm = pydicom.dcmread(BytesIO(dicom_data))
+
+                    # Skip single-frame DICOMs
+                    num_frames = getattr(dcm, 'NumberOfFrames', None)
+                    if num_frames is None or int(num_frames) <= 1:
+                        print(f"Skipping single-frame DICOM for series {series_number} instance {instance_number}")
+                        continue
+
+                    pixels = video_utils.load_pixel_array(dcm)
+
+                    # Exclude images like (600,800) or (600,800,3)
+                    if pixels.ndim < 3 or pixels.shape[2] == 3:
+                        continue
+
+                    # If single channel repeat to 3 channels
+                    if pixels.ndim == 3:
+                        pixels = np.repeat(pixels[..., None], 3, axis=3)
+
+                    # Mask everything outside ultrasound region
+                    pixels = video_utils.mask_outside_ultrasound(pixels)
+
+                    stack_of_videos.append(self.preprocess_video(pixels))
+
+                except Exception as e:
+                    print(f"Error processing series {series_number} instance {instance_number}: {str(e)}")
+                    continue
+
+        if not stack_of_videos:
+            return None
+        return torch.stack(stack_of_videos).to(self.DEVICE)

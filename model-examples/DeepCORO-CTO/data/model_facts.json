@@ -1,0 +1,38 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "DeepCORO-CTO",
+      "Description": "DeepCORO-CLIP based imaging J-CTO scorer for chronic total occlusions on coronary angiography. From up to 8 videos per study it predicts the four morphological J-CTO components (blunt/flush stump, calcification at the occlusion, bending > 45°, occlusion length ≥ 20 mm) and an aggregate imaging J-CTO score clamped to [0, 4]. This is not the classic Morino J-CTO score (0–5): the fifth point for a previously failed crossing attempt is not available from imaging and is not predicted.",
+      "Developed_by": "HeartWise.AI / MHI",
+      "Development_period": "2024-2026",
+      "Version": "1.0.0"
+    },
+    "Mechanism": {
+      "Outcome": "Four J-CTO morphological component binary classifications plus imaging J-CTO score (0-4) regression",
+      "Output": "jcto_blunt_stump, jcto_calcification, jcto_bending_gt45, jcto_occlusion_length_gt20: probabilities after sigmoid; jcto_score: predicted imaging J-CTO score clamped to [0, 4] (excludes prior-failure point)",
+      "Target_population": "Adults with a chronic total occlusion (CTO) undergoing coronary angiography at MHI",
+      "Input_data_source": "Coronary diagnostic angiograms (view class inferred from DICOM positioner angles)",
+      "Input_data_type": "dicom",
+      "Model_type": "Deep Learning (MViT video encoder + view-aware multi-instance linear-probing)",
+      "Supported_DICOM_modalities": "XA"
+    },
+    "Model_Components": {
+      "Model": {
+        "Purpose": "Predict morphological J-CTO components and an imaging J-CTO score to support CTO PCI difficulty assessment",
+        "Output": "J-CTO components (blunt stump, calcification, bending > 45°, length ≥ 20 mm), imaging J-CTO score (0-4)"
+      }
+    },
+    "Uses_and_directions": {
+      "General_use": "Research preview for angiogram-based imaging J-CTO scoring (four morphological features only).",
+      "Target_population_and_use_case": "Adults with a CTO on coronary angiography. Videos are pooled per study (up to 8) and each video's angiographic view is inferred from the DICOM positioner primary/secondary angles.",
+      "Before_using_this_model": "Validated on MHI Labelbox-annotated data only (99 held-out studies): blunt stump AUROC 0.70 (95% CI 0.59-0.80), calcification AUROC 0.70 (95% CI 0.59-0.80), bending > 45° AUROC 0.65 (95% CI 0.50-0.79), occlusion length ≥ 20 mm AUROC 0.66 (95% CI 0.53-0.79), J-CTO score ≥ 3 AUROC 0.68 (95% CI 0.57-0.79), MAE 1.01. Not validated for clinical use outside MHI. Do not treat the predicted score as classic Morino J-CTO (0–5)."
+    },
+    "Warnings_and_limitations": {
+      "Image_Quality": "Requires diagnostic-quality coronary angiograms that visualise the occluded segment.",
+      "Number_of_videos": "Uses up to 8 videos per study, ordered by SeriesTime; extra videos are ignored. Padded slots are masked out of the pooling.",
+      "View_inference": "Angiographic view class is derived from DICOM PositionerPrimaryAngle/PositionerSecondaryAngle; when angles are missing a padding view embedding is used.",
+      "Score_definition": "Predicted jcto_score is an imaging-only morphological score in [0, 4]. Classic J-CTO also awards 1 point for a previously failed attempt; that history item is not modeled here. componentsAboveThreshold counts binary heads above 0.5 and may differ from the regression score.",
+      "Confidence_Scores": "Component thresholds default to 0.5 on sigmoid probability and are tracked in class_mapping.json. The J-CTO score head is a regression output clamped to [0, 4]."
+    }
+  }
+}

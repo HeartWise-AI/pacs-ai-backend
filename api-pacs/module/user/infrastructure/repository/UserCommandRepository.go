@@ -68,6 +68,29 @@ func (repository *UserCommandRepository) DeleteTenantUser(ctx context.Context, t
 	return nil
 }
 
+// DeleteTenantUserEmailInvite deletes a tenant user email invite
+func (repository *UserCommandRepository) DeleteTenantUserEmailInvite(ctx context.Context, ID string) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	var emailInvite entity.UserEmailInvite
+
+	collectionPath := fmt.Sprintf("%s/%s", emailInvite.GetModelName(), ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Delete(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
 // InsertTenantUser creates a new tenant user for tenant
 func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, data repositoryTypes.CreateTenantUser) (string, error) {
 	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
@@ -93,7 +116,7 @@ func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, d
 	// create user in firebase auth
 	params := (&auth.UserToCreate{}).
 		Email(data.Email).
-		EmailVerified(false).
+		EmailVerified(data.IsEmailVerified).
 		Password(data.Password).
 		DisplayName(data.Name).
 		Disabled(false)
@@ -110,12 +133,13 @@ func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, d
 
 	// create user in firestore
 	user := entity.User{
-		TenantID:  data.TenantID,
-		Role:      data.Role,
-		LicenseNo: data.LicenseNo,
-		Specialty: data.Specialty,
-		CreatedAt: int(time.Now().Unix()),
-		UpdatedAt: int(time.Now().Unix()),
+		TenantID:       data.TenantID,
+		Role:           data.Role,
+		LicenseNo:      data.LicenseNo,
+		Specialty:      data.Specialty,
+		IsAdminCreated: data.IsAdminCreated,
+		CreatedAt:      int(time.Now().Unix()),
+		UpdatedAt:      int(time.Now().Unix()),
 	}
 
 	collectionPath := fmt.Sprintf("%s/%s", user.GetModelName(), authUser.UID)
@@ -128,6 +152,61 @@ func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, d
 	}
 
 	return authUser.UID, nil
+}
+
+// GenerateTenantUserEmailVerificationLink generates a Firebase email verification link.
+func (repository *UserCommandRepository) GenerateTenantUserEmailVerificationLink(ctx context.Context, tenantID, email string) (string, error) {
+	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
+	if err != nil {
+		log.Println(err)
+		return "", errors.New(apiError.FirebaseAuthError)
+	}
+
+	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
+	if err != nil {
+		log.Println(err)
+		return "", errors.New(apiError.FirebaseAuthError)
+	}
+
+	verifyLink, err := tenantAuth.EmailVerificationLink(ctx, email)
+	if err != nil {
+		log.Println(err)
+		return "", errors.New(apiError.FirebaseAuthError)
+	}
+
+	return verifyLink, nil
+}
+
+// InsertTenantUserEmailInvite creates a new tenant user email invite
+func (repository *UserCommandRepository) InsertTenantUserEmailInvite(ctx context.Context, data repositoryTypes.CreateTenantUserEmailInvite) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	// create user email invite in firestore
+	emailInvite := entity.UserEmailInvite{
+		ID:        data.ID,
+		TenantID:  data.TenantID,
+		Code:      data.Code,
+		Email:     data.Email,
+		ExpiresAt: int(data.ExpiresAt.Unix()),
+		CreatedAt: int(time.Now().Unix()),
+		UpdatedAt: int(time.Now().Unix()),
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", emailInvite.GetModelName(), data.ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Create(ctx, emailInvite)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
 }
 
 // UpdateTenantUser update tenant user for tenant
@@ -175,6 +254,93 @@ func (repository *UserCommandRepository) UpdateTenantUser(ctx context.Context, d
 	docRef := firestoreClient.Doc(collectionPath)
 
 	_, err = docRef.Update(ctx, updateTenantUser)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
+// UpdateTenantUserConsent update tenant user consent for tenant
+func (repository *UserCommandRepository) UpdateTenantUserConsent(ctx context.Context, data repositoryTypes.UpdateTenantUserConsent) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	var user entity.User
+
+	// update user in firestore
+	updateTenantUser := []firestore.Update{
+		{Path: "is_consent_signed", Value: data.IsConsentSigned},
+		{Path: "updated_at", Value: int(time.Now().Unix())},
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", user.GetModelName(), data.ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Update(ctx, updateTenantUser)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
+// UpdateTenantUserEmailInvite update tenant user email invite
+func (repository *UserCommandRepository) UpdateTenantUserEmailInvite(ctx context.Context, data repositoryTypes.UpdateTenantUserEmailInvite) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	var emailInvite entity.UserEmailInvite
+
+	// update user email invite in firestore
+	updateEmailInvite := []firestore.Update{
+		{Path: "code", Value: data.Code},
+		{Path: "expires_at", Value: int(data.ExpiresAt.Unix())},
+		{Path: "updated_at", Value: int(time.Now().Unix())},
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", emailInvite.GetModelName(), data.ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Update(ctx, updateEmailInvite)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
+// UpdateTenantUserEmailInviteVerifiedAt update tenant user email invite verified at
+func (repository *UserCommandRepository) UpdateTenantUserEmailInviteVerifiedAt(ctx context.Context, ID string) error {
+	// firestore client
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	var emailInvite entity.UserEmailInvite
+
+	// update user email invite in firestore
+	updateEmailInvite := []firestore.Update{
+		{Path: "verified_at", Value: int(time.Now().Unix())},
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", emailInvite.GetModelName(), ID)
+	docRef := firestoreClient.Doc(collectionPath)
+
+	_, err = docRef.Update(ctx, updateEmailInvite)
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.FirestoreError)

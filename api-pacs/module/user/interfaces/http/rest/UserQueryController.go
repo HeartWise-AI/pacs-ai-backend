@@ -62,6 +62,8 @@ func (controller *UserQueryController) GetCurrentTenantUser(w http.ResponseWrite
 			Specialty:         res.Specialty,
 			IsEmailVerified:   res.IsEmailVerified,
 			IsAccountDisabled: res.IsAccountDisabled,
+			IsConsentSigned:   res.IsConsentSigned,
+			IsAdminCreated:    res.IsAdminCreated,
 			CreatedAt:         res.CreatedAt,
 			UpdatedAt:         res.UpdatedAt,
 		},
@@ -143,6 +145,8 @@ func (controller *UserQueryController) GetTenantUsers(w http.ResponseWriter, r *
 			Specialty:         user.Specialty,
 			IsEmailVerified:   user.IsEmailVerified,
 			IsAccountDisabled: user.IsAccountDisabled,
+			IsConsentSigned:   user.IsConsentSigned,
+			IsAdminCreated:    user.IsAdminCreated,
 			CreatedAt:         user.CreatedAt,
 			UpdatedAt:         user.UpdatedAt,
 		})
@@ -153,6 +157,69 @@ func (controller *UserQueryController) GetTenantUsers(w http.ResponseWriter, r *
 		Success: true,
 		Message: "Successfully fetched tenant users.",
 		Data:    users,
+	}
+
+	response.JSON(w)
+}
+
+// GetTenantUserEmailInvites get tenant user email invites
+func (controller *UserQueryController) GetTenantUserEmailInvites(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
+	res, err := controller.UserQueryServiceInterface.GetTenantUserEmailInvites(context.TODO(), tenantID)
+	if err != nil {
+		var httpCode int
+		var errorMsg string
+
+		switch err.Error() {
+		case errors.DatabaseError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while fetching tenant user email invites."
+		case errors.FirestoreError:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Error occurred while fetching tenant user email invites."
+		default:
+			httpCode = http.StatusInternalServerError
+			errorMsg = "Database error."
+		}
+
+		response := viewmodels.HTTPResponseVM{
+			Status:    httpCode,
+			Success:   false,
+			Message:   errorMsg,
+			ErrorCode: err.Error(),
+		}
+
+		response.JSON(w)
+		return
+	}
+
+	var userEmailInvites []types.GetTenantUserEmailInviteResponse
+
+	for _, invite := range res {
+		var verifiedAt *uint64
+		if invite.VerifiedAt != nil {
+			verifiedAtVal := uint64(*invite.VerifiedAt)
+			verifiedAt = &verifiedAtVal
+		}
+
+		userEmailInvites = append(userEmailInvites, types.GetTenantUserEmailInviteResponse{
+			ID:         invite.ID,
+			TenantID:   invite.TenantID,
+			Code:       invite.Code,
+			Email:      invite.Email,
+			ExpiresAt:  uint64(invite.ExpiresAt),
+			VerifiedAt: verifiedAt,
+			CreatedAt:  uint64(invite.CreatedAt),
+			UpdatedAt:  uint64(invite.UpdatedAt),
+		})
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully fetched tenant user email invites.",
+		Data:    userEmailInvites,
 	}
 
 	response.JSON(w)

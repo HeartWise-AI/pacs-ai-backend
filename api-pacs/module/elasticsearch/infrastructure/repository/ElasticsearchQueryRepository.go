@@ -30,6 +30,29 @@ func (repository *ElasticsearchQueryRepository) GetAllIndices() (indices.Respons
 	return res, nil
 }
 
+// SearchAdminInviteLogs searches admin invite logs
+func (repository *ElasticsearchQueryRepository) SearchAdminInviteLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error) {
+	var adminInvite entity.AdminInvite
+
+	res, err := repository.ElasticsearchDBHandlerInterface.SearchDocuments(ctx, types.SearchDocument{
+		Index:     adminInvite.GetModelName(),
+		TenantID:  data.TenantID,
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+
+	if len(res.Hits.Hits) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return res, nil
+}
+
 // SearchAdminMemberLogs searches admin member logs
 func (repository *ElasticsearchQueryRepository) SearchAdminMemberLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error) {
 	var adminMember entity.AdminMember
@@ -128,6 +151,29 @@ func (repository *ElasticsearchQueryRepository) SearchRetrievedStudyLogs(ctx con
 
 	res, err := repository.ElasticsearchDBHandlerInterface.SearchDocuments(ctx, types.SearchDocument{
 		Index:     retrievedStudy.GetModelName(),
+		TenantID:  data.TenantID,
+		Query:     data.Query,
+		StartDate: data.StartDate,
+		EndDate:   data.EndDate,
+	})
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+
+	if len(res.Hits.Hits) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	return res, nil
+}
+
+// SearchSignedConsentLogs searches signed consent logs
+func (repository *ElasticsearchQueryRepository) SearchSignedConsentLogs(ctx context.Context, data repositoryTypes.SearchDocument) (*search.Response, error) {
+	var signedConsent entity.SignedConsent
+
+	res, err := repository.ElasticsearchDBHandlerInterface.SearchDocuments(ctx, types.SearchDocument{
+		Index:     signedConsent.GetModelName(),
 		TenantID:  data.TenantID,
 		Query:     data.Query,
 		StartDate: data.StartDate,

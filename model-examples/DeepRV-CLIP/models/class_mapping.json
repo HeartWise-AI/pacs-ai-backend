@@ -1,0 +1,8 @@
+{
+  "Outcome": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Abnormal RV systolic function",
+    "threshold": 0.5
+  }
+}

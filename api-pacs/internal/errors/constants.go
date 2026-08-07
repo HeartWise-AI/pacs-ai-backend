@@ -5,6 +5,8 @@ const (
 	DatabaseError string = "DATABASE_ERROR"
 	// DuplicateRecord is the code for duplicate records
 	DuplicateRecord string = "DUPLICATE_RECORD"
+	// ForbiddenAccess is the code for accessing forbidden resources
+	ForbiddenAccess string = "FORBIDDEN_ACCESS"
 	// HystrixTimeout is the code for hystrix timeouts
 	HystrixTimeout string = "HYSTRIX_TIMEOUT"
 	// InvalidRequestPayload is the code for binding errors
@@ -60,4 +62,7 @@ const (
 
 	// Cloudflare-related errors
 	CloudflareAPIError string = "CLOUDFLARE_API_ERROR"
+
+	// Docusign-related errors
+	DocusignError string = "DOCUSIGN_ERROR"
 )

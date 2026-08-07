@@ -19,8 +19,36 @@ type GetTenantUser struct {
 	Specialty         string
 	IsEmailVerified   bool
 	IsAccountDisabled bool
+	IsConsentSigned   bool
+	IsAdminCreated    bool
 	CreatedAt         uint
 	UpdatedAt         uint
+}
+
+type RegisterTenantUser struct {
+	TenantID  string
+	Role      string
+	Name      string
+	Email     string
+	Password  string
+	LicenseNo string
+	Specialty string
+	Code      *string
+}
+
+type ResetTutorial struct {
+	TenantID string
+	UserID   string
+}
+
+type ResendTenantUserEmailInvite struct {
+	ID       string
+	TenantID string
+}
+
+type SendTenantUserEmailInvite struct {
+	TenantID string
+	Email    string
 }
 
 type UpdateTenantUser struct {

@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "0.23.0-beta"
+    "version": "0.27.0-beta"
   },
   "servers": [
     {
@@ -83,10 +83,12 @@
               "type": "string",
               "enum": [
                 "logins",
+                "admin_invites",
                 "admin_members",
                 "find_modality_studies",
                 "predict_inference_models",
-                "retrieved_studies"
+                "retrieved_studies",
+                "signed_consents"
               ]
             }
           },
@@ -284,6 +286,39 @@
         }
       }
     },
+    "/inference/onboarding-model-questionnaire-answers/add": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Add Onboarding Model Questionnaire Answers",
+        "description": "Add onboarding model questionnaire answers.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Add onboarding model questionnaire answer request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddOnboardingModelQuestionnaireAnswerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/inference/model/container/{containerID}/restart": {
       "post": {
         "tags": ["inference"],
@@ -430,6 +465,107 @@
         }
       }
     },
+    "/inference/ingestion/job/create": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Create Inference Ingestion Job",
+        "description": "Create inference ingestion job.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Create inference ingestion job request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInferenceIngestionJobRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/ingestion/job/{id}/start": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Start Inference Ingestion Job",
+        "description": "Start inference ingestion job.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Job ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/ingestion/job/{id}/stop": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Stop Inference Ingestion Job",
+        "description": "Stop inference ingestion job.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Job ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/inference/model/list": {
       "get": {
         "tags": ["inference"],
@@ -440,6 +576,46 @@
             "bearerAuth": []
           }
         ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/ingestion/jobs/import": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Import Ingestion Jobs CSV",
+        "description": "Import ingestion jobs from CSV file.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Upload csv file",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "2xx": {
             "description": "Success"
@@ -612,6 +788,63 @@
         }
       }
     },
+    "/inference/onboarding-model-questionnaire-answers": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Onboarding Model Questionnaire Answers",
+        "description": "Get onboarding model questionnaire answers.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "modelId",
+            "in": "query",
+            "description": "Model ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/ingestion/jobs": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Inference Ingestion Jobs",
+        "description": "Get inference ingestion jobs.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/inference/model/{id}/update": {
       "put": {
         "tags": ["inference"],
@@ -672,6 +905,50 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/UpdateModelFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/inference/ingestion/job/{id}/update": {
+      "put": {
+        "tags": ["inference"],
+        "summary": "Update Inference Ingestion Job",
+        "description": "Update inference ingestion job.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Inference ingestion sjob ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Update inference ingestion job request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInferenceIngestionJobRequest"
               }
             }
           }
@@ -757,6 +1034,40 @@
         }
       }
     },
+    "/inference/ingestion/job/{id}/remove": {
+      "delete": {
+        "tags": ["inference"],
+        "summary": "Delete Inference Ingestion Job",
+        "description": "Delete inference ingestion job.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Inference ingestion job ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/lead/contact-form": {
       "post": {
         "tags": ["lead"],
@@ -800,6 +1111,74 @@
             }
           }
         },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/tenant/onboarding-questionnaire-answers/add": {
+      "post": {
+        "tags": ["tenant"],
+        "summary": "Add Onboarding Questionnaire Answers",
+        "description": "Add onboarding questionnaire answers.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Save onboarding questionnaire answer request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddOnboardingQuestionnaireAnswerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/tenant/onboarding-questionnaire-answers": {
+      "get": {
+        "tags": ["tenant"],
+        "summary": "Get Onboarding Questionnaire Answers",
+        "description": "Get onboarding questionnaire answers.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "questionnaireType",
+            "in": "query",
+            "description": "Onboarding questionnaire type",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["PRE_SURVEY", "POST_SURVEY"]
+            }
+          }
+        ],
         "responses": {
           "2xx": {
             "description": "Success"
@@ -1258,6 +1637,74 @@
         }
       }
     },
+    "/tenant/onboarding-consent/config/update": {
+      "put": {
+        "tags": ["tenant"],
+        "summary": "Update Onboarding Consent Config",
+        "description": "Update onboarding consent configuration.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update onboarding consent configuration request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOnboardingConsentConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/tenant/onboarding-registration/config/update": {
+      "put": {
+        "tags": ["tenant"],
+        "summary": "Update Onboarding Registration Config",
+        "description": "Update onboarding registration configuration.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Update onboarding registration configuration request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOnboardingRegistrationConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/owner/add": {
       "post": {
         "tags": ["user"],
@@ -1326,6 +1773,126 @@
         }
       }
     },
+    "/user/invite": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Invite Tenant User",
+        "description": "Invite tenant user. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Invite tenant user request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendTenantEmailInviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/register": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Register Tenant User",
+        "description": "Register tenant user.",
+        "requestBody": {
+          "description": "Register tenant user request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterTenantUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/invite/resend": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Resend Tenant Invitation",
+        "description": "Resend tenant user invitation. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Resend tenant user invitation request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendTenantEmailInviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/tutorial/reset": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Reset Tutorial",
+        "description": "Reset tutorial.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/all": {
       "get": {
         "tags": ["user"],
@@ -1349,16 +1916,34 @@
         }
       }
     },
-    "/user/specialties": {
+    "/user/invites": {
       "get": {
         "tags": ["user"],
-        "summary": "Get Doctor Specialties",
-        "description": "Get doctor specialties.",
+        "summary": "Get Tenant User Email Invites",
+        "description": "Get tenant user email invites. Callable by admin or owner only.",
         "security": [
           {
             "bearerAuth": []
           }
         ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/specialties": {
+      "get": {
+        "tags": ["user"],
+        "summary": "Get Doctor Specialties",
+        "description": "Get doctor specialties.",
         "responses": {
           "2xx": {
             "description": "Success"
@@ -1547,10 +2132,418 @@
           "5xx": { "description": "Server side errors" }
         }
       }
+    },
+    "/user/invite/{id}/remove": {
+      "delete": {
+        "tags": ["user"],
+        "summary": "Remove Tenant User Email Invite",
+        "description": "Remove tenant user email invite. Callable by admin or owner only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Email invite ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "2xx": { "description": "Success" },
+          "4xx": { "description": "Client side errors" },
+          "5xx": { "description": "Server side errors" }
+        }
+      }
+    },
+    "/inference/worklist/status": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get current worklist study statuses",
+        "description": "Returns one current ingestion and processing summary per logical study for the authenticated tenant. Callable by an owner or administrator only.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "studyInstanceUID",
+            "in": "query",
+            "description": "Repeat this parameter to restrict the snapshot to studies visible on the current frontend page.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          { "$ref": "#/components/parameters/WorklistLimit" },
+          { "$ref": "#/components/parameters/WorklistOffset" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current study-processing snapshot",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WorklistStudyStatusResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/WorklistUnavailable" }
+        }
+      }
+    },
+    "/inference/worklist/events": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Stream real-time worklist study updates",
+        "description": "Opens a tenant-scoped Server-Sent Events connection. Reload GET /inference/worklist/status after every reconnect because events are not durably replayed. Callable by an owner or administrator only.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "SSE stream containing study_status.updated events and heartbeat comments",
+            "content": {
+              "text/event-stream": {
+                "schema": { "type": "string" },
+                "x-event-data-schema": { "$ref": "#/components/schemas/WorklistStudyStatusEvent" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/WorklistUnavailable" }
+        }
+      }
+    },
+    "/inference/worklist/studies/{studyInstanceUID}/runs": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get study processing-run history",
+        "description": "Returns processing attempts newest first, including each run's frozen model execution plan, for the authenticated tenant. Callable by an owner or administrator only.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "studyInstanceUID",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          { "$ref": "#/components/parameters/WorklistLimit" },
+          { "$ref": "#/components/parameters/WorklistOffset" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated processing-run history",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StudyProcessingRunHistoryResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/WorklistUnavailable" }
+        }
+      }
+    },
+    "/inference/processing/runs/{runId}": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get processing-run detail",
+        "description": "Returns one processing attempt and its frozen model execution plan only when it belongs to the authenticated tenant. Callable by an owner or administrator only.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Processing-run detail",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProcessingRunDetailResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "404": { "$ref": "#/components/responses/ProcessingRunNotFound" },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/WorklistUnavailable" }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "WorklistPage": {
+        "type": "object",
+        "required": ["limit", "offset", "hasMore"],
+        "properties": {
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "offset": { "type": "integer", "minimum": 0 },
+          "hasMore": { "type": "boolean" }
+        }
+      },
+      "ProcessingRunCounts": {
+        "type": "object",
+        "required": ["expectedModels", "pendingModels", "queuedModels", "runningModels", "completedModels", "failedModels", "skippedModels", "cancelledModels", "activeModels"],
+        "properties": {
+          "expectedModels": { "type": "integer", "minimum": 0 },
+          "pendingModels": { "type": "integer", "minimum": 0 },
+          "queuedModels": { "type": "integer", "minimum": 0 },
+          "runningModels": { "type": "integer", "minimum": 0 },
+          "completedModels": { "type": "integer", "minimum": 0 },
+          "failedModels": { "type": "integer", "minimum": 0 },
+          "skippedModels": { "type": "integer", "minimum": 0 },
+          "cancelledModels": { "type": "integer", "minimum": 0 },
+          "activeModels": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "ProcessingRunAttentionReason": {
+        "type": "object",
+        "required": ["code"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string", "nullable": true }
+        }
+      },
+      "WorklistStudyStatus": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ProcessingRunCounts" },
+          {
+            "type": "object",
+            "required": ["studyInstanceUID", "ingestionStatus", "retrievalState", "retrievalError", "runId", "runNumber", "trigger", "phase", "outcome", "attentionRequired", "attentionReasons", "version", "startedAt", "completedAt", "updatedAt"],
+            "properties": {
+              "studyInstanceUID": { "type": "string" },
+              "ingestionStatus": {
+                "type": "string",
+                "enum": ["DISCOVERED", "GROWING", "STABLE", "RETRIEVAL_QUEUED", "RETRIEVED", "DISAPPEARED", "FAILED"]
+              },
+              "retrievalState": { "type": "string", "nullable": true },
+              "retrievalError": { "type": "string", "nullable": true },
+              "runId": { "type": "string", "nullable": true },
+              "runNumber": { "type": "integer", "nullable": true },
+              "trigger": {
+                "type": "string",
+                "nullable": true,
+                "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT"]
+              },
+              "phase": {
+                "type": "string",
+                "nullable": true,
+                "enum": ["QUEUED", "PROCESSING", "TERMINAL"]
+              },
+              "outcome": {
+                "type": "string",
+                "nullable": true,
+                "enum": ["SUCCESS", "SUCCESS_WITH_SKIPS", "PARTIAL_SUCCESS", "NO_RESULT", "FAILED", "CANCELLED"]
+              },
+              "attentionRequired": { "type": "boolean" },
+              "attentionReasons": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ProcessingRunAttentionReason" }
+              },
+              "version": { "type": "integer", "format": "int64", "nullable": true },
+              "startedAt": { "type": "string", "format": "date-time", "nullable": true },
+              "completedAt": { "type": "string", "format": "date-time", "nullable": true },
+              "updatedAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        ]
+      },
+      "WorklistStudyStatusEvent": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ProcessingRunCounts" },
+          {
+            "type": "object",
+            "required": ["type", "studyInstanceUID", "runId", "runNumber", "trigger", "phase", "outcome", "attentionRequired", "attentionReasons", "version", "startedAt", "completedAt", "updatedAt"],
+            "properties": {
+              "type": { "type": "string", "enum": ["study_status.updated"] },
+              "studyInstanceUID": { "type": "string" },
+              "runId": { "type": "string" },
+              "runNumber": { "type": "integer", "minimum": 1 },
+              "trigger": { "type": "string", "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT"] },
+              "phase": { "type": "string", "enum": ["QUEUED", "PROCESSING", "TERMINAL"] },
+              "outcome": {
+                "type": "string",
+                "nullable": true,
+                "enum": ["SUCCESS", "SUCCESS_WITH_SKIPS", "PARTIAL_SUCCESS", "NO_RESULT", "FAILED", "CANCELLED"]
+              },
+              "attentionRequired": { "type": "boolean" },
+              "attentionReasons": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ProcessingRunAttentionReason" }
+              },
+              "version": { "type": "integer", "format": "int64", "minimum": 1 },
+              "startedAt": { "type": "string", "format": "date-time", "nullable": true },
+              "completedAt": { "type": "string", "format": "date-time", "nullable": true },
+              "updatedAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        ]
+      },
+      "ProcessingRunExecutionSummary": {
+        "type": "object",
+        "required": ["executionId", "modelName", "modelVersion", "modality", "status", "errorMessage", "skipReason", "startedAt", "completedAt", "updatedAt"],
+        "properties": {
+          "executionId": { "type": "string" },
+          "modelName": { "type": "string" },
+          "modelVersion": { "type": "string", "nullable": true },
+          "modality": { "type": "string", "nullable": true },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "queued", "running", "completed", "failed", "skipped", "cancelled"]
+          },
+          "errorMessage": { "type": "string", "nullable": true },
+          "skipReason": {
+            "nullable": true,
+            "allOf": [{ "$ref": "#/components/schemas/ProcessingRunSkipReason" }]
+          },
+          "startedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "completedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ProcessingRunSkipReason": {
+        "type": "object",
+        "required": ["code"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": ["NO_USABLE_DICOM", "UNSUPPORTED_MODALITY", "REQUIRED_SERIES_MISSING", "MODEL_NOT_APPLICABLE", "PREREQUISITE_NOT_MET", "MODEL_DISABLED"]
+          },
+          "message": { "type": "string", "nullable": true }
+        }
+      },
+      "ProcessingRunSummary": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ProcessingRunCounts" },
+          {
+            "type": "object",
+            "required": ["runId", "studyInstanceUID", "runNumber", "trigger", "phase", "outcome", "attentionRequired", "attentionReasons", "version", "startedAt", "completedAt", "createdAt", "updatedAt"],
+            "properties": {
+              "runId": { "type": "string" },
+              "studyInstanceUID": { "type": "string" },
+              "runNumber": { "type": "integer", "minimum": 1 },
+              "trigger": { "type": "string", "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT"] },
+              "phase": { "type": "string", "enum": ["QUEUED", "PROCESSING", "TERMINAL"] },
+              "outcome": {
+                "type": "string",
+                "nullable": true,
+                "enum": ["SUCCESS", "SUCCESS_WITH_SKIPS", "PARTIAL_SUCCESS", "NO_RESULT", "FAILED", "CANCELLED"]
+              },
+              "attentionRequired": { "type": "boolean" },
+              "attentionReasons": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ProcessingRunAttentionReason" }
+              },
+              "version": { "type": "integer", "format": "int64" },
+              "startedAt": { "type": "string", "format": "date-time", "nullable": true },
+              "completedAt": { "type": "string", "format": "date-time", "nullable": true },
+              "createdAt": { "type": "string", "format": "date-time" },
+              "updatedAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        ]
+      },
+      "ProcessingRunDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ProcessingRunSummary" },
+          {
+            "type": "object",
+            "required": ["executions"],
+            "properties": {
+              "executions": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ProcessingRunExecutionSummary" }
+              }
+            }
+          }
+        ]
+      },
+      "WorklistStudyStatusPage": {
+        "allOf": [
+          { "$ref": "#/components/schemas/WorklistPage" },
+          {
+            "type": "object",
+            "required": ["studies"],
+            "properties": {
+              "studies": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/WorklistStudyStatus" }
+              }
+            }
+          }
+        ]
+      },
+      "StudyProcessingRunHistoryPage": {
+        "allOf": [
+          { "$ref": "#/components/schemas/WorklistPage" },
+          {
+            "type": "object",
+            "required": ["runs"],
+            "properties": {
+              "runs": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ProcessingRunDetail" }
+              }
+            }
+          }
+        ]
+      },
+      "WorklistStudyStatusResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/WorklistStudyStatusPage" }
+        }
+      },
+      "StudyProcessingRunHistoryResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/StudyProcessingRunHistoryPage" }
+        }
+      },
+      "ProcessingRunDetailResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/ProcessingRunDetail" }
+        }
+      },
+      "WorklistErrorResponse": {
+        "type": "object",
+        "required": ["success", "message", "errorCode", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": { "type": "string" },
+          "data": { "type": "object" }
+        }
+      },
       "AddInferenceModelRequest": {
         "required": ["name", "dockerImage", "outputMode"],
         "type": "object",
@@ -1591,15 +2584,76 @@
           }
         }
       },
-      "SubscribeRequest": {
-        "required": ["token", "email"],
+      "AddOnboardingQuestionnaireAnswerRequest": {
+        "required": ["questionnaireType", "onboardingQuestionnaireAnswers"],
         "type": "object",
         "properties": {
-          "token": {
+          "questionnaireType": {
+            "type": "string",
+            "enum": ["PRE_SURVEY", "POST_SURVEY"]
+          },
+          "onboardingQuestionnaireAnswers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["questionnaireId", "questionnaireQuestion"],
+              "properties": {
+                "questionnaireId": {
+                  "type": "string"
+                },
+                "questionnaireQuestion": {
+                  "type": "string"
+                },
+                "questionnaireAnswerIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "questionnaireAnswers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "AddOnboardingModelQuestionnaireAnswerRequest": {
+        "required": ["modelId", "onboardingModelQuestionnaireAnswers"],
+        "type": "object",
+        "properties": {
+          "modelId": {
             "type": "string"
           },
-          "email": {
-            "type": "string"
+          "onboardingModelQuestionnaireAnswers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["questionnaireId", "questionnaireQuestion"],
+              "properties": {
+                "questionnaireId": {
+                  "type": "string"
+                },
+                "questionnaireQuestion": {
+                  "type": "string"
+                },
+                "questionnaireAnswerIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "questionnaireAnswers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -1657,34 +2711,49 @@
           }
         }
       },
-      "PredictInferenceModelRequest": {
-        "required": ["studyInstanceUID", "seriesInstanceUIDs"],
+      "CreateInferenceIngestionJobRequest": {
+        "required": [
+          "dicomModality",
+          "containerId",
+          "modelId",
+          "modelName",
+          "modelVersion",
+          "modalities",
+          "intervalInMinutes",
+          "scheduleStartTimestamp",
+          "scheduleEndTimestamp"
+        ],
         "type": "object",
         "properties": {
-          "studyInstanceUID": {
+          "dicomModality": {
             "type": "string"
           },
-          "seriesInstanceUIDs": {
+          "containerId": {
+            "type": "string"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "modelName": {
+            "type": "string"
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "modalities": {
             "type": "array",
             "items": {
               "type": "string"
             }
           },
-          "additionalMetadata": {
-            "type": "object",
-            "nullable": true
-          }
-        }
-      },
-      "RetrieveModalityStudyRequest": {
-        "required": ["modalityId", "studyInstanceUID"],
-        "type": "object",
-        "properties": {
-          "modalityId": {
-            "type": "string"
+          "intervalInMinutes": {
+            "type": "integer"
           },
-          "studyInstanceUID": {
-            "type": "string"
+          "scheduleStartTimestamp": {
+            "type": "integer"
+          },
+          "scheduleEndTimestamp": {
+            "type": "integer"
           }
         }
       },
@@ -1775,6 +2844,107 @@
           }
         }
       },
+      "PredictInferenceModelRequest": {
+        "required": ["studyInstanceUID", "seriesInstanceUIDs"],
+        "type": "object",
+        "properties": {
+          "studyInstanceUID": {
+            "type": "string"
+          },
+          "seriesInstanceUIDs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "additionalMetadata": {
+            "type": "object",
+            "nullable": true
+          }
+        }
+      },
+      "RegisterTenantUserRequest": {
+        "required": [
+          "tenantId",
+          "role",
+          "name",
+          "email",
+          "password",
+          "licenseNo",
+          "specialty"
+        ],
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+
+          "licenseNo": {
+            "type": "string"
+          },
+          "specialty": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "RetrieveModalityStudyRequest": {
+        "required": ["modalityId", "studyInstanceUID"],
+        "type": "object",
+        "properties": {
+          "modalityId": {
+            "type": "string"
+          },
+          "studyInstanceUID": {
+            "type": "string"
+          }
+        }
+      },
+      "ResendTenantEmailInviteRequest": {
+        "required": ["id"],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "SendTenantEmailInviteRequest": {
+        "required": ["email"],
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        }
+      },
+      "SubscribeRequest": {
+        "required": ["token", "email"],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        }
+      },
       "StoreStudyCustomSeriesRequest": {
         "required": [
           "modelName",
@@ -1852,6 +3022,24 @@
           }
         }
       },
+      "UpdateOnboardingConsentConfigRequest": {
+        "required": ["onboardingEnableConsent"],
+        "type": "object",
+        "properties": {
+          "onboardingEnableConsent": {
+            "type": "boolean"
+          }
+        }
+      },
+      "UpdateOnboardingRegistrationConfigRequest": {
+        "required": ["onboardingEnableRegistration"],
+        "type": "object",
+        "properties": {
+          "onboardingEnableRegistration": {
+            "type": "boolean"
+          }
+        }
+      },
       "UpdateTenantUserRequest": {
         "required": ["id", "role", "name", "licenseNo", "specialty"],
         "type": "object",
@@ -1921,6 +3109,32 @@
           }
         }
       },
+      "UpdateInferenceIngestionJobRequest": {
+        "required": [
+          "modalities",
+          "intervalInMinutes",
+          "scheduleStartTimestamp",
+          "scheduleEndTimestamp"
+        ],
+        "type": "object",
+        "properties": {
+          "modalities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "intervalInMinutes": {
+            "type": "integer"
+          },
+          "scheduleStartTimestamp": {
+            "type": "integer"
+          },
+          "scheduleEndTimestamp": {
+            "type": "integer"
+          }
+        }
+      },
       "UpdateUserMetadataRequest": {
         "type": "object",
         "properties": {
@@ -1947,6 +3161,81 @@
           },
           "email": {
             "type": "string"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "WorklistLimit": {
+        "name": "limit",
+        "in": "query",
+        "description": "Maximum records returned. Defaults to 25 and cannot exceed 100.",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 25
+        }
+      },
+      "WorklistOffset": {
+        "name": "offset",
+        "in": "query",
+        "description": "Zero-based number of records to skip.",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      }
+    },
+    "responses": {
+      "WorklistBadRequest": {
+        "description": "Invalid pagination, identifier, or visible-study filter",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "WorklistUnauthorized": {
+        "description": "Authentication is required",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "WorklistForbidden": {
+        "description": "The authenticated user is not an owner or administrator",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "ProcessingRunNotFound": {
+        "description": "The run does not exist in the authenticated tenant",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "WorklistServerError": {
+        "description": "Database or internal server error",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "WorklistUnavailable": {
+        "description": "Worklist status is temporarily unavailable",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
           }
         }
       }

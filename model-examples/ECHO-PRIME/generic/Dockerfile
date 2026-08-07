@@ -6,14 +6,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     && rm -rf /var/lib/apt/lists/*
 
+ARG USE_FULL_DICOM=false
+ENV USE_FULL_DICOM=${USE_FULL_DICOM}
+
 WORKDIR /app
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
 RUN apt-get update
 RUN python -m pip install --upgrade pip
-RUN python -m pip uninstall opencv-python
+RUN python -m pip uninstall -y \
+    opencv-python \
+    opencv-python-headless \
+    opencv-contrib-python \
+    opencv-contrib-python-headless || true
+RUN rm -rf \
+    /usr/local/lib/python3.10/dist-packages/cv2 \
+    /usr/local/lib/python3.10/dist-packages/cv2.abi3.so \
+    /usr/local/lib/python3.10/dist-packages/opencv_python* \
+    /usr/local/lib/python3.10/dist-packages/opencv_contrib_python* || true
 RUN pip install --no-cache-dir -r requirements.txt
+RUN rm -rf /usr/local/lib/python3.10/dist-packages/cv2/typing || true
+RUN python -c "import cv2, numpy; print('cv2', cv2.__version__, 'numpy', numpy.__version__)"
 
 # Copy application files
 COPY main.py .
