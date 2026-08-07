@@ -163,6 +163,58 @@ type ApplyInferenceIngestionProcessingTransitionResult struct {
 	Counts    entity.InferenceIngestionProcessingRunExecutionCounts
 }
 
+// LegacyProcessingRunBackfillRow is the read-only projection used to plan
+// LEGACY_IMPORT runs without loading patient, DICOM, or inference-result data.
+type LegacyProcessingRunBackfillRow struct {
+	ExecutionID       string                                       `db:"execution_id"`
+	CandidateID       string                                       `db:"candidate_id"`
+	ExecutionTenantID string                                       `db:"execution_tenant_id"`
+	CandidateTenantID string                                       `db:"candidate_tenant_id"`
+	StudyInstanceUID  string                                       `db:"study_instance_uid"`
+	ModelName         string                                       `db:"model_name"`
+	Status            entity.InferenceIngestionProcessingJobStatus `db:"status"`
+	ExistingRun       bool                                         `db:"existing_run"`
+}
+
+// ImportLegacyProcessingRun identifies one preflight-approved logical study.
+type ImportLegacyProcessingRun struct {
+	RunID              string
+	TenantID           string
+	StudyInstanceUID   string
+	ExpectedExecutions int
+}
+
+// ImportLegacyProcessingRunResult returns the committed legacy aggregate and
+// linked execution count without exposing detailed inference results.
+type ImportLegacyProcessingRunResult struct {
+	Run              entity.InferenceIngestionProcessingRun
+	Counts           entity.InferenceIngestionProcessingRunExecutionCounts
+	LinkedExecutions int
+}
+
+type RollbackLegacyProcessingRun struct {
+	RunID              string
+	ExpectedExecutions int
+}
+
+type RollbackLegacyProcessingRunResult struct {
+	UnlinkedExecutions int
+}
+
+// LegacyProcessingRunVerificationExecution adds candidate ownership evidence
+// to a linked execution without selecting patient or inference-result data.
+type LegacyProcessingRunVerificationExecution struct {
+	entity.InferenceIngestionProcessingJob
+	CandidateTenantID         string `db:"candidate_tenant_id"`
+	CandidateStudyInstanceUID string `db:"candidate_study_instance_uid"`
+}
+
+type LegacyProcessingRunVerificationSnapshot struct {
+	Runs       []entity.InferenceIngestionProcessingRun
+	Executions []LegacyProcessingRunVerificationExecution
+	Orphans    []LegacyProcessingRunBackfillRow
+}
+
 type UpdateInferenceIngestionProcessingJob struct {
 	ID                string
 	Status            entity.InferenceIngestionProcessingJobStatus

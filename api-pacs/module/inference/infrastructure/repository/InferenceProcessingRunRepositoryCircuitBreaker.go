@@ -106,6 +106,30 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListProcessing
 	})
 }
 
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListLegacyProcessingRunBackfillRows(ctx context.Context) ([]types.LegacyProcessingRunBackfillRow, error) {
+	return withProcessingRunCircuit("list_legacy_processing_run_backfill_rows", func() ([]types.LegacyProcessingRunBackfillRow, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.ListLegacyProcessingRunBackfillRows(ctx)
+	})
+}
+
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) LoadLegacyProcessingRunVerificationSnapshot(ctx context.Context) (types.LegacyProcessingRunVerificationSnapshot, error) {
+	return withProcessingRunCircuit("load_legacy_processing_run_verification_snapshot", func() (types.LegacyProcessingRunVerificationSnapshot, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.LoadLegacyProcessingRunVerificationSnapshot(ctx)
+	})
+}
+
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ImportLegacyProcessingRun(ctx context.Context, data types.ImportLegacyProcessingRun) (types.ImportLegacyProcessingRunResult, error) {
+	return withProcessingRunCircuit("import_legacy_processing_run", func() (types.ImportLegacyProcessingRunResult, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.ImportLegacyProcessingRun(ctx, data)
+	})
+}
+
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) RollbackLegacyProcessingRun(ctx context.Context, data types.RollbackLegacyProcessingRun) (types.RollbackLegacyProcessingRunResult, error) {
+	return withProcessingRunCircuit("rollback_legacy_processing_run", func() (types.RollbackLegacyProcessingRunResult, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.RollbackLegacyProcessingRun(ctx, data)
+	})
+}
+
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) RecordProcessingRunReconciliationAttempt(
 	ctx context.Context,
 	data types.RecordInferenceIngestionProcessingRunReconciliationAttempt,

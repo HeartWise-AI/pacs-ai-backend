@@ -379,7 +379,7 @@ func resolveDispatchModality(job entity.InferenceIngestionJob, candidate entity.
 	candidateModalities := parseCandidateModalities(candidate.ModalitiesInStudy)
 	if len(candidateModalities) == 0 {
 		if len(jobModalities) == 1 {
-			return jobModalities[0], nil
+			return canonicalStudyServiceModality(jobModalities[0]), nil
 		}
 		return "", errDispatchModalityUndetermined
 	}
@@ -391,12 +391,12 @@ func resolveDispatchModality(job entity.InferenceIngestionJob, candidate entity.
 
 	for _, modality := range candidateModalities {
 		if _, ok := jobModalitySet[modality]; ok {
-			return modality, nil
+			return canonicalStudyServiceModality(modality), nil
 		}
 	}
 
 	if len(jobModalities) == 1 {
-		return jobModalities[0], nil
+		return canonicalStudyServiceModality(jobModalities[0]), nil
 	}
 
 	return "", errDispatchModalityUndetermined

@@ -49,6 +49,7 @@ type InferenceCommandService struct {
 	inferenceApplication.WorklistNotificationPublisherInterface
 	StudyServiceDispatchSemaphore           chan struct{}
 	ProcessingReconciliationMetricsRecorder ProcessingReconciliationMetricsRecorder
+	RequireProcessingRunID                  bool
 }
 
 const inferenceIngestionRetrievalTimeout = 3 * time.Minute
@@ -225,7 +226,7 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 			CandidateID:  candidate.ID,
 			ModelName:    modelName,
 			ModelVersion: nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
-			Modality:     nonEmptyStringPointer(strings.TrimSpace(job.DICOMModality)),
+			Modality:     nonEmptyStringPointer(canonicalStudyServiceModality(job.DICOMModality)),
 		})
 	}
 	if len(expected) == 0 {
@@ -292,6 +293,9 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 	lastEventID := nonEmptyStringPointer(eventID)
 
 	processingRunID := strings.TrimSpace(data.ProcessingRunID)
+	if service.RequireProcessingRunID && processingRunID == "" {
+		return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
+	}
 	var existing entity.InferenceIngestionProcessingJob
 	if processingRunID != "" {
 		run, runErr := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRun(
@@ -449,6 +453,21 @@ func (service *InferenceCommandService) publishCommittedWorklistNotification(
 	ctx context.Context,
 	transition repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult,
 ) {
+	ObserveProcessingRunTransition(transition.Run, transition.Execution, transition.Outcome)
+	processingOutcome := "none"
+	if transition.Run.Outcome != nil {
+		processingOutcome = string(*transition.Run.Outcome)
+	}
+	log.Printf(
+		"[Processing run transition] run_id=%s version=%d phase=%s outcome=%s attention_required=%t execution_status=%s transition=%s",
+		transition.Run.ID,
+		transition.Run.Version,
+		transition.Run.Phase,
+		processingOutcome,
+		transition.Run.AttentionRequired,
+		transition.Execution.Status,
+		transition.Outcome,
+	)
 	if service.WorklistNotificationPublisherInterface == nil {
 		return
 	}
@@ -521,7 +540,7 @@ func processingCallbackMatchesExecution(
 		return false
 	}
 	return !callbackPointerMismatch(modelVersion, execution.ModelVersion) &&
-		!callbackPointerMismatch(modality, execution.Modality) &&
+		!callbackModalityMismatch(modality, execution.Modality) &&
 		!callbackPointerMismatch(studyServiceJobID, execution.StudyServiceJobID)
 }
 
@@ -1732,6 +1751,9 @@ func (service *InferenceCommandService) scheduleStudyServiceDispatch(job entity.
 }
 
 func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService(ctx context.Context, job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate, processingRunID, requestID string) error {
+	if service.RequireProcessingRunID && strings.TrimSpace(processingRunID) == "" {
+		return errors.New(apiError.InvalidPayload)
+	}
 	shouldDispatch, err := service.shouldDispatchCommittedProcessingExecution(ctx, candidate, job, processingRunID)
 	if err != nil {
 		ObserveStudyServiceDispatchAttempt("permanent_error", 0)

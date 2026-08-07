@@ -318,6 +318,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		StudyServiceDispatchSemaphore:           make(chan struct{}, configuredStudyServiceDispatchConcurrency()),
 		WorklistNotificationPublisherInterface:  worklistNotificationBroker,
 		ProcessingReconciliationMetricsRecorder: &inferenceService.LoggingProcessingReconciliationMetricsRecorder{},
+		RequireProcessingRunID:                  configuredProcessingRunIDRequirement(),
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
 			StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
 			StudyServiceIngestToken:   os.Getenv("STUDY_SERVICE_INGEST_TOKEN"),
@@ -328,6 +329,11 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 	}
 
 	return service
+}
+
+func configuredProcessingRunIDRequirement() bool {
+	required, err := strconv.ParseBool(strings.TrimSpace(os.Getenv("INFERENCE_REQUIRE_PROCESSING_RUN_ID")))
+	return err == nil && required
 }
 
 func configuredStudyServiceDispatchConcurrency() int {

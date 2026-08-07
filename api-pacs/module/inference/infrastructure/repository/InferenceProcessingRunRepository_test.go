@@ -26,6 +26,15 @@ type processingRunTestHandler struct {
 	queryRow func(string, interface{}, interface{}) error
 }
 
+func TestProcessingRunStudyLockKeyIsPostgresSafeAndUnambiguous(t *testing.T) {
+	first := processingRunStudyLockKey("a", "bc")
+	second := processingRunStudyLockKey("ab", "c")
+
+	require.NotEqual(t, first, second)
+	require.NotContains(t, first, "\x00")
+	require.NotContains(t, second, "\x00")
+}
+
 func (handler *processingRunTestHandler) Begin() (*sqlx.Tx, error) {
 	return handler.db.Beginx()
 }
@@ -245,7 +254,7 @@ func TestCreateProcessingRunLocksAllocatesAndCommits(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectExec("pg_advisory_xact_lock").
-		WithArgs("tenant-a\x001.2.3").
+		WithArgs("8:tenant-a1.2.3").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT COALESCE\\(MAX\\(run_number\\), 0\\) \\+ 1").
 		WithArgs("tenant-a", "1.2.3").
@@ -299,7 +308,7 @@ func TestCreateProcessingRunPlanCreatesRunAndExecutionsAtomically(t *testing.T) 
 
 	mock.ExpectBegin()
 	mock.ExpectExec("pg_advisory_xact_lock").
-		WithArgs("tenant-a\x001.2.3").
+		WithArgs("8:tenant-a1.2.3").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_runs").
 		WithArgs("tenant-a", "1.2.3").

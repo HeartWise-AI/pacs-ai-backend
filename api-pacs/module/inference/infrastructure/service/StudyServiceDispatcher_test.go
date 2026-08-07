@@ -160,6 +160,24 @@ func TestBuildDispatchStudyRequestIncludesProcessingRunID(t *testing.T) {
 	if request.ProcessingRunID == nil || *request.ProcessingRunID != "run-123" {
 		t.Fatalf("unexpected processing run id: %#v", request.ProcessingRunID)
 	}
+	if request.Modality != "echocardiogram" {
+		t.Fatalf("unexpected canonical modality: %q", request.Modality)
+	}
+}
+
+func TestResolveDispatchModalityReturnsCanonicalStudyServiceValue(t *testing.T) {
+	modalitiesInStudy := "XA\\SR"
+	modality, err := resolveDispatchModality(
+		entity.InferenceIngestionJob{Modalities: []string{"XA"}},
+		entity.InferenceIngestionCandidate{ModalitiesInStudy: &modalitiesInStudy},
+	)
+
+	if err != nil {
+		t.Fatalf("resolveDispatchModality returned error: %v", err)
+	}
+	if modality != "angiogram" {
+		t.Fatalf("unexpected canonical modality: %q", modality)
+	}
 }
 
 func TestStudyServiceDispatcherGetJobsByCandidate(t *testing.T) {
