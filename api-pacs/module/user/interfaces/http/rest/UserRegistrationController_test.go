@@ -12,9 +12,11 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stretchr/testify/require"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
+	"api-pacs/interfaces/http/rest/middlewares/peeraddr"
 	apiError "api-pacs/internal/errors"
 	iamEntity "api-pacs/module/iam/domain/entity"
 	"api-pacs/module/user/application"
@@ -163,13 +165,17 @@ func TestRegisterTenantUserUsesOnlyTrustedProxyClientIP(t *testing.T) {
 	require.NoError(t, err)
 
 	testCases := []struct {
-		name       string
-		remoteAddr string
-		realIP     string
-		expectedIP string
+		name         string
+		remoteAddr   string
+		realIP       string
+		trueClientIP string
+		forwardedFor string
+		expectedIP   string
 	}{
 		{name: "trusted proxy", remoteAddr: "172.20.0.5:4321", realIP: "203.0.113.25", expectedIP: "203.0.113.25"},
-		{name: "untrusted direct peer cannot spoof header", remoteAddr: "198.51.100.7:4321", realIP: "203.0.113.25", expectedIP: "198.51.100.7"},
+		{name: "untrusted direct peer cannot spoof real IP", remoteAddr: "198.51.100.7:4321", realIP: "203.0.113.25", expectedIP: "198.51.100.7"},
+		{name: "untrusted direct peer cannot spoof true client IP", remoteAddr: "198.51.100.7:4321", realIP: "203.0.113.25", trueClientIP: "172.20.0.5", expectedIP: "198.51.100.7"},
+		{name: "untrusted direct peer cannot spoof forwarded for", remoteAddr: "198.51.100.7:4321", forwardedFor: "172.20.0.5", expectedIP: "198.51.100.7"},
 		{name: "invalid trusted header falls back to peer", remoteAddr: "172.20.0.5:4321", realIP: "not-an-ip", expectedIP: "172.20.0.5"},
 	}
 
@@ -183,9 +189,12 @@ func TestRegisterTenantUserUsesOnlyTrustedProxyClientIP(t *testing.T) {
 			request := registrationRequest(t, nil)
 			request.RemoteAddr = testCase.remoteAddr
 			request.Header.Set("X-Real-IP", testCase.realIP)
+			request.Header.Set("True-Client-IP", testCase.trueClientIP)
+			request.Header.Set("X-Forwarded-For", testCase.forwardedFor)
 			recorder := httptest.NewRecorder()
 
-			controller.RegisterTenantUser(recorder, request)
+			handler := peeraddr.Capture(middleware.RealIP(http.HandlerFunc(controller.RegisterTenantUser)))
+			handler.ServeHTTP(recorder, request)
 
 			require.Equal(t, http.StatusCreated, recorder.Code)
 			require.Equal(t, testCase.expectedIP, service.registrationInput.ClientIP)

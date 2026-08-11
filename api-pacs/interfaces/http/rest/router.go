@@ -24,6 +24,7 @@ import (
 
 	"api-pacs/interfaces"
 	"api-pacs/interfaces/http/rest/middlewares/cors"
+	"api-pacs/interfaces/http/rest/middlewares/peeraddr"
 	"api-pacs/interfaces/http/rest/viewmodels"
 )
 
@@ -65,6 +66,8 @@ func (router *router) InitRouter() *chi.Mux {
 
 	// global and recommended middlewares
 	r.Use(middleware.RequestID)
+	// Capture the real socket peer before RealIP rewrites RemoteAddr from headers.
+	r.Use(peeraddr.Capture)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(cors.Init().Handler)

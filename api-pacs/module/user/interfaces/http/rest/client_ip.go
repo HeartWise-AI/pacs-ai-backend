@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/http"
 	"strings"
+
+	"api-pacs/interfaces/http/rest/middlewares/peeraddr"
 )
 
 // ParseTrustedProxyCIDRs parses the direct proxy networks allowed to supply
@@ -28,7 +30,7 @@ func ParseTrustedProxyCIDRs(value string) ([]*net.IPNet, error) {
 }
 
 func (controller *UserCommandController) registrationClientIP(request *http.Request) string {
-	remoteIP := parseRemoteIP(request.RemoteAddr)
+	remoteIP := parseRemoteIP(peeraddr.SocketAddress(request))
 	if remoteIP == nil {
 		return "unknown"
 	}
