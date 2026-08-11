@@ -60,7 +60,13 @@ const (
 	DockerError          string = "DOCKER_ERROR"
 	DockerInferenceError string = "DOCKER_INFERENCE_ERROR"
 	InferenceError       string = "INFERENCE_ERROR"
-	TorchServeError      string = "TORCHSERVE_ERROR"
+	// InferenceQuotaExceeded is returned when the user's fixed-window allowance is exhausted.
+	InferenceQuotaExceeded string = "INFERENCE_QUOTA_EXCEEDED"
+	// InferenceConcurrencyExceeded is returned when the user's active reservation limit is reached.
+	InferenceConcurrencyExceeded string = "INFERENCE_CONCURRENCY_EXCEEDED"
+	// InferenceQuotaUnavailable is returned when quota enforcement cannot make a safe decision.
+	InferenceQuotaUnavailable string = "INFERENCE_QUOTA_UNAVAILABLE"
+	TorchServeError           string = "TORCHSERVE_ERROR"
 
 	// Cloudflare-related errors
 	CloudflareAPIError string = "CLOUDFLARE_API_ERROR"

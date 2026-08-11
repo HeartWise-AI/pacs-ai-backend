@@ -207,13 +207,16 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 		return lastPartI < lastPartJ
 	})
 
-	predictionResult, err := controller.InferenceCommandServiceInterface.PredictInferenceModel(context.TODO(), tenantID, containerID, &userID, serviceTypes.PredictInferenceModel{
+	predictionResult, err := controller.InferenceCommandServiceInterface.PredictInferenceModel(r.Context(), tenantID, containerID, &userID, serviceTypes.PredictInferenceModel{
 		StudyInstanceUID:   request.StudyInstanceUID,
 		SeriesInstanceUIDs: request.SeriesInstanceUIDs,
 		AdditionalMetadata: request.AdditionalMetadata,
 		ForceJSON:          request.ForceJSON,
 	})
 	if err != nil {
+		if writeInferenceQuotaError(w, err) {
+			return
+		}
 		var httpCode int
 		var errorMsg string
 
@@ -224,6 +227,9 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 		case apiError.DockerInferenceError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker inference service encountered an error."
+		case apiError.InferenceQuotaUnavailable:
+			httpCode = http.StatusServiceUnavailable
+			errorMsg = "Inference quota enforcement is temporarily unavailable."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Please contact technical support."

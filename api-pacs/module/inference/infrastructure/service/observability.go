@@ -24,7 +24,19 @@ var (
 	worklistSSEConnectionsActive      = expvar.NewInt("worklist_sse_connections_active")
 	worklistSSEConnectionsTotal       = expvar.NewMap("worklist_sse_connections_total")
 	worklistNotificationsTotal        = expvar.NewMap("worklist_notifications_total")
+	inferenceQuotaEventsTotal         = expvar.NewMap("inference_quota_events_total")
 )
+
+var inferenceQuotaEvents = map[string]struct{}{
+	"accepted": {}, "rejected_allowance": {}, "rejected_concurrency": {},
+	"completed": {}, "released": {}, "refunded": {}, "unavailable": {},
+}
+
+// ObserveInferenceQuotaEvent records bounded operational outcomes without
+// tenant, user, study, model, or reservation identifiers.
+func ObserveInferenceQuotaEvent(event string) {
+	inferenceQuotaEventsTotal.Add(boundedMetricLabelValue(event, inferenceQuotaEvents), 1)
+}
 
 var dispatchLatencyBuckets = []time.Duration{
 	100 * time.Millisecond,

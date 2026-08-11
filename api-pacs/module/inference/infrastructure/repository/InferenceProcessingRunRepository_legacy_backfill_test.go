@@ -40,6 +40,7 @@ func legacyBackfillExecutionRows(now time.Time, modelNames ...string) *sqlmock.R
 func legacyBackfillRunRows(now time.Time) *sqlmock.Rows {
 	return emptyProcessingRunRows().AddRow(
 		"legacy-run-1", "tenant-a", "1.2.3", 1, "LEGACY_IMPORT", "TERMINAL",
+		nil,
 		"SUCCESS", false, []byte("[]"), int64(1), now, now.Add(2*time.Minute),
 		now, now.Add(2*time.Minute),
 	)

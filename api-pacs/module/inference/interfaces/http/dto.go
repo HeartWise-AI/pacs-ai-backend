@@ -7,6 +7,19 @@ import (
 	"api-pacs/module/inference/domain/entity"
 )
 
+// InferenceQuotaResponse exposes stable allowance and concurrency metadata.
+type InferenceQuotaResponse struct {
+	Allowance                    int64   `json:"allowance"`
+	Used                         int64   `json:"used"`
+	Remaining                    int64   `json:"remaining"`
+	WindowSeconds                int64   `json:"windowSeconds"`
+	ResetAfterSeconds            int64   `json:"resetAfterSeconds"`
+	ResetAt                      *uint64 `json:"resetAt,omitempty"`
+	MaxConcurrentExecutions      int64   `json:"maxConcurrentExecutions"`
+	ActiveExecutions             int64   `json:"activeExecutions"`
+	ConcurrencyRetryAfterSeconds int64   `json:"concurrencyRetryAfterSeconds"`
+}
+
 var (
 	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
 	ValidationErrors map[string]string   = map[string]string{

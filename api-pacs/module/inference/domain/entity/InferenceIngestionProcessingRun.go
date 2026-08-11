@@ -81,6 +81,7 @@ type InferenceIngestionProcessingRun struct {
 	StudyInstanceUID           string                                          `db:"study_instance_uid"`
 	RunNumber                  int                                             `db:"run_number"`
 	RunTrigger                 InferenceIngestionProcessingRunTrigger          `db:"run_trigger"`
+	RequestedByUserID          *string                                         `db:"requested_by_user_id"`
 	Phase                      InferenceIngestionProcessingRunPhase            `db:"phase"`
 	Outcome                    *InferenceIngestionProcessingRunOutcome         `db:"outcome"`
 	AttentionRequired          bool                                            `db:"attention_required"`

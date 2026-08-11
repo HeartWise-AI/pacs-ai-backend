@@ -80,7 +80,8 @@ func (state *realtimeWorklistE2EState) CreateProcessingRunPlan(_ context.Context
 	run := entity.InferenceIngestionProcessingRun{
 		ID: data.Run.ID, TenantID: data.Run.TenantID, StudyInstanceUID: data.Run.StudyInstanceUID,
 		RunNumber: runNumber, RunTrigger: data.Run.RunTrigger, Phase: data.Run.Phase,
-		Version: 1, CreatedAt: now, UpdatedAt: now,
+		RequestedByUserID: data.Run.RequestedByUserID,
+		Version:           1, CreatedAt: now, UpdatedAt: now,
 	}
 	state.runs[run.ID] = run
 	executions := make([]entity.InferenceIngestionProcessingJob, 0, len(data.Executions))
@@ -307,6 +308,7 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 		InferenceQueryRepositoryInterface: state, InferenceCommandRepositoryInterface: state,
 		InferenceProcessingRunRepositoryInterface: state, ProcessingDispatcherInterface: dispatcher,
 		WorklistNotificationPublisherInterface: broker,
+		InferenceQuotaManagerInterface:         &allowAllInferenceQuotaManager{},
 	}
 	query := &InferenceQueryService{InferenceQueryRepositoryInterface: state, InferenceProcessingRunRepositoryInterface: state}
 
@@ -375,8 +377,9 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 	require.Equal(t, 1, snapshot.Studies[0].Completed)
 	require.Equal(t, 1, snapshot.Studies[0].Failed)
 
+	manualUserID := "admin-a"
 	manual, err := command.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
-		TenantID: "tenant-a", StudyInstanceUID: "study-1",
+		TenantID: "tenant-a", StudyInstanceUID: "study-1", UserID: &manualUserID,
 	})
 	require.NoError(t, err)
 	require.Equal(t, 2, manual.Run.RunNumber)

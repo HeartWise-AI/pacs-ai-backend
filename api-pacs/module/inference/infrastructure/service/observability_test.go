@@ -64,6 +64,17 @@ func TestProcessingObservabilityTracksCommittedAggregateAttentionAndSkip(t *test
 	require.Equal(t, skipBefore+1, expvarMapIntValue(processingRunSkipsTotal, "no_usable_dicom"))
 }
 
+func TestInferenceQuotaObservabilityUsesBoundedLabels(t *testing.T) {
+	acceptedBefore := expvarMapIntValue(inferenceQuotaEventsTotal, "accepted")
+	unknownBefore := expvarMapIntValue(inferenceQuotaEventsTotal, "unknown")
+
+	ObserveInferenceQuotaEvent("accepted")
+	ObserveInferenceQuotaEvent("tenant-or-user-controlled-value")
+
+	require.Equal(t, acceptedBefore+1, expvarMapIntValue(inferenceQuotaEventsTotal, "accepted"))
+	require.Equal(t, unknownBefore+1, expvarMapIntValue(inferenceQuotaEventsTotal, "unknown"))
+}
+
 func expvarMapIntValue(metric *expvar.Map, key string) int64 {
 	value := metric.Get(key)
 	if value == nil {

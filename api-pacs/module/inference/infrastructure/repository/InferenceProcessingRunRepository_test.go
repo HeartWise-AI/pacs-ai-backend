@@ -50,6 +50,7 @@ func (handler *processingRunTestHandler) QueryRow(query string, model interface{
 func emptyProcessingRunRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"id", "tenant_id", "study_instance_uid", "run_number", "run_trigger", "phase",
+		"requested_by_user_id",
 		"outcome", "attention_required", "attention_reasons", "version", "started_at",
 		"completed_at", "created_at", "updated_at",
 	})
@@ -57,7 +58,7 @@ func emptyProcessingRunRows() *sqlmock.Rows {
 
 func processingRunRows(now time.Time) *sqlmock.Rows {
 	return emptyProcessingRunRows().AddRow(
-		"run-2", "tenant-a", "1.2.3", 2, "AUTO", "QUEUED",
+		"run-2", "tenant-a", "1.2.3", 2, "AUTO", "QUEUED", nil,
 		nil, false, []byte("[]"), int64(1), nil, nil, now, now,
 	)
 }
@@ -82,7 +83,7 @@ func processingRunStateRows(
 	completedAt *time.Time,
 ) *sqlmock.Rows {
 	return emptyProcessingRunRows().AddRow(
-		"run-2", "tenant-a", "1.2.3", 2, "AUTO", phase,
+		"run-2", "tenant-a", "1.2.3", 2, "AUTO", phase, nil,
 		nil, false, []byte("[]"), version, startedAt, completedAt, now, now,
 	)
 }
@@ -260,7 +261,7 @@ func TestCreateProcessingRunLocksAllocatesAndCommits(t *testing.T) {
 		WithArgs("tenant-a", "1.2.3").
 		WillReturnRows(sqlmock.NewRows([]string{"run_number"}).AddRow(2))
 	mock.ExpectQuery("INSERT INTO ingestion_processing_runs").
-		WithArgs("run-2", "tenant-a", "1.2.3", 2, entity.InferenceIngestionProcessingRunTriggerAuto, entity.InferenceIngestionProcessingRunPhaseQueued).
+		WithArgs("run-2", "tenant-a", "1.2.3", 2, entity.InferenceIngestionProcessingRunTriggerAuto, entity.InferenceIngestionProcessingRunPhaseQueued, nil).
 		WillReturnRows(processingRunRows(time.Now()))
 	mock.ExpectCommit()
 
@@ -317,7 +318,7 @@ func TestCreateProcessingRunPlanCreatesRunAndExecutionsAtomically(t *testing.T) 
 		WithArgs("tenant-a", "1.2.3").
 		WillReturnRows(sqlmock.NewRows([]string{"run_number"}).AddRow(2))
 	mock.ExpectQuery("INSERT INTO ingestion_processing_runs").
-		WithArgs("run-2", "tenant-a", "1.2.3", 2, entity.InferenceIngestionProcessingRunTriggerAuto, entity.InferenceIngestionProcessingRunPhaseQueued).
+		WithArgs("run-2", "tenant-a", "1.2.3", 2, entity.InferenceIngestionProcessingRunTriggerAuto, entity.InferenceIngestionProcessingRunPhaseQueued, nil).
 		WillReturnRows(processingRunRows(now))
 	mock.ExpectQuery("INSERT INTO ingestion_processing_jobs").
 		WithArgs("execution-1", "run-2", "candidate-1", "tenant-a", "EchoModel", "v1", "US", entity.InferenceIngestionProcessingJobStatusPending).

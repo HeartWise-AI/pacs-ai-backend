@@ -56,11 +56,12 @@ type AddInferenceIngestionProcessingJob struct {
 // CreateInferenceIngestionProcessingRun contains immutable values supplied when a run is created.
 // The repository allocates RunNumber and initializes the aggregate version transactionally.
 type CreateInferenceIngestionProcessingRun struct {
-	ID               string
-	TenantID         string                                        `db:"tenant_id"`
-	StudyInstanceUID string                                        `db:"study_instance_uid"`
-	RunTrigger       entity.InferenceIngestionProcessingRunTrigger `db:"run_trigger"`
-	Phase            entity.InferenceIngestionProcessingRunPhase   `db:"phase"`
+	ID                string
+	TenantID          string                                        `db:"tenant_id"`
+	StudyInstanceUID  string                                        `db:"study_instance_uid"`
+	RunTrigger        entity.InferenceIngestionProcessingRunTrigger `db:"run_trigger"`
+	Phase             entity.InferenceIngestionProcessingRunPhase   `db:"phase"`
+	RequestedByUserID *string                                       `db:"requested_by_user_id"`
 }
 
 // CreateInferenceIngestionProcessingExecution contains one frozen expected-model execution.

@@ -46,6 +46,7 @@ type InferenceCommandService struct {
 	orthancAPITypes.OrthancAPIInterface
 	dockerInferenceTypes.DockerInferenceAPIInterface
 	inferenceApplication.ProcessingDispatcherInterface
+	inferenceApplication.InferenceQuotaManagerInterface
 	inferenceApplication.WorklistNotificationPublisherInterface
 	StudyServiceDispatchSemaphore           chan struct{}
 	ProcessingReconciliationMetricsRecorder ProcessingReconciliationMetricsRecorder
@@ -153,6 +154,7 @@ func (service *InferenceCommandService) RecalculateStudyProcessingRun(ctx contex
 			CompletedAt:       aggregate.CompletedAt,
 		})
 		if err == nil {
+			service.finalizeProcessingRunQuota(updated)
 			return types.RecalculateStudyProcessingRunResult{Run: updated, Counts: aggregate.Counts}, nil
 		}
 		if err.Error() != apiError.DuplicateRecord {
@@ -238,24 +240,71 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		rightKey := right.ModelName + "\x00" + right.CandidateID
 		return strings.Compare(leftKey, rightKey)
 	})
+	runID := generateID()
+	var quotaReservation *types.InferenceQuotaReservation
+	var requestedByUserID *string
+	if trigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess {
+		if data.UserID == nil || strings.TrimSpace(*data.UserID) == "" {
+			return types.CreateStudyProcessingRunResult{}, errors.New(apiError.InvalidPayload)
+		}
+		if service.InferenceQuotaManagerInterface == nil {
+			ObserveInferenceQuotaEvent("unavailable")
+			return types.CreateStudyProcessingRunResult{}, errors.New(apiError.InferenceQuotaUnavailable)
+		}
+		userID := strings.TrimSpace(*data.UserID)
+		requestedByUserID = &userID
+		quotaReservation = &types.InferenceQuotaReservation{
+			TenantID: tenantID, UserID: userID, ReservationID: runID, Units: 1,
+		}
+		if _, err := service.InferenceQuotaManagerInterface.Reserve(ctx, *quotaReservation); err != nil {
+			return types.CreateStudyProcessingRunResult{}, err
+		}
+	}
 
 	result, err := service.InferenceProcessingRunRepositoryInterface.CreateProcessingRunPlan(ctx, repositoryTypes.CreateInferenceIngestionProcessingRunPlan{
 		Run: repositoryTypes.CreateInferenceIngestionProcessingRun{
-			ID:               generateID(),
-			TenantID:         tenantID,
-			StudyInstanceUID: studyInstanceUID,
-			RunTrigger:       trigger,
-			Phase:            entity.InferenceIngestionProcessingRunPhaseQueued,
+			ID:                runID,
+			TenantID:          tenantID,
+			StudyInstanceUID:  studyInstanceUID,
+			RunTrigger:        trigger,
+			Phase:             entity.InferenceIngestionProcessingRunPhaseQueued,
+			RequestedByUserID: requestedByUserID,
 		},
 		Executions: expected,
 	})
 	if err != nil {
+		service.finishInferenceQuotaReservation(quotaReservation, true)
 		return types.CreateStudyProcessingRunResult{}, err
 	}
 
 	return types.CreateStudyProcessingRunResult{
 		Run: result.Run, Executions: result.Executions, Created: result.Created,
 	}, nil
+}
+
+func (service *InferenceCommandService) finalizeProcessingRunQuota(run entity.InferenceIngestionProcessingRun) {
+	if run.Phase != entity.InferenceIngestionProcessingRunPhaseTerminal || run.RequestedByUserID == nil {
+		return
+	}
+	userID := strings.TrimSpace(*run.RequestedByUserID)
+	if userID == "" {
+		return
+	}
+	refund := run.StartedAt == nil && hasProcessingRunAttentionReason(
+		run.AttentionReasons, entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+	)
+	service.finishInferenceQuotaReservation(&types.InferenceQuotaReservation{
+		TenantID: run.TenantID, UserID: userID, ReservationID: run.ID, Units: 1,
+	}, refund)
+}
+
+func hasProcessingRunAttentionReason(reasons entity.InferenceIngestionProcessingRunAttentionReasons, code string) bool {
+	for _, reason := range reasons {
+		if reason.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 // HandleStudyServiceProcessingCallback persists a study-service processing callback.
@@ -454,6 +503,7 @@ func (service *InferenceCommandService) publishCommittedWorklistNotification(
 	transition repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult,
 ) {
 	ObserveProcessingRunTransition(transition.Run, transition.Execution, transition.Outcome)
+	service.finalizeProcessingRunQuota(transition.Run)
 	processingOutcome := "none"
 	if transition.Run.Outcome != nil {
 		processingOutcome = string(*transition.Run.Outcome)
@@ -2561,8 +2611,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
 
-	// predict
-	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, predictRequest)
+	predictionResult, err := service.predictInferenceModelWithQuota(ctx, tenantID, containerName, userID, predictRequest)
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
@@ -2629,6 +2678,54 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	}
 
 	return predictionResult, nil
+}
+
+func (service *InferenceCommandService) predictInferenceModelWithQuota(
+	ctx context.Context,
+	tenantID string,
+	containerName string,
+	userID *string,
+	predictRequest dockerInferenceTypes.PredictRequest,
+) (dockerInferenceTypes.PredictResponse, error) {
+	var quotaReservation *types.InferenceQuotaReservation
+	if userID != nil {
+		trimmedUserID := strings.TrimSpace(*userID)
+		if trimmedUserID == "" || service.InferenceQuotaManagerInterface == nil {
+			ObserveInferenceQuotaEvent("unavailable")
+			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InferenceQuotaUnavailable)
+		}
+		quotaReservation = &types.InferenceQuotaReservation{
+			TenantID: tenantID, UserID: trimmedUserID, ReservationID: generateID(), Units: 1,
+		}
+		if _, err := service.InferenceQuotaManagerInterface.Reserve(ctx, *quotaReservation); err != nil {
+			return dockerInferenceTypes.PredictResponse{}, err
+		}
+	}
+
+	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, predictRequest)
+	if err != nil {
+		service.finishInferenceQuotaReservation(quotaReservation, true)
+		return dockerInferenceTypes.PredictResponse{}, err
+	}
+	service.finishInferenceQuotaReservation(quotaReservation, false)
+	return predictionResult, nil
+}
+
+func (service *InferenceCommandService) finishInferenceQuotaReservation(reservation *types.InferenceQuotaReservation, refund bool) {
+	if reservation == nil || service.InferenceQuotaManagerInterface == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var err error
+	if refund {
+		_, err = service.InferenceQuotaManagerInterface.Refund(ctx, *reservation)
+	} else {
+		_, err = service.InferenceQuotaManagerInterface.Release(ctx, *reservation)
+	}
+	if err != nil {
+		log.Printf("[security] event=inference_quota_finalize_failed refund=%t", refund)
+	}
 }
 
 // RemoveInferenceModel deletes an inference model

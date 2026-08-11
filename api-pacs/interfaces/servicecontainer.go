@@ -108,6 +108,7 @@ var (
 	dockerInferenceAPI         *dockerinference.DockerInferenceAPI
 	docusignAPI                *docusign.DocusignAPI
 	worklistNotificationBroker *inferenceService.RedisWorklistNotificationBroker
+	inferenceQuotaManager      *inferenceService.RedisInferenceQuotaManager
 )
 
 // ================================= REST ===================================
@@ -320,6 +321,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		DockerSDKInterface:                      dockerSDK,
 		OrthancAPIInterface:                     orthancAPI,
 		DockerInferenceAPIInterface:             dockerInferenceAPI,
+		InferenceQuotaManagerInterface:          inferenceQuotaManager,
 		StudyServiceDispatchSemaphore:           make(chan struct{}, configuredStudyServiceDispatchConcurrency()),
 		WorklistNotificationPublisherInterface:  worklistNotificationBroker,
 		ProcessingReconciliationMetricsRecorder: &inferenceService.LoggingProcessingReconciliationMetricsRecorder{},
@@ -467,8 +469,9 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		InferenceProcessingRunRepositoryInterface: &inferenceRepository.InferenceProcessingRunRepositoryCircuitBreaker{
 			InferenceProcessingRunRepositoryInterface: processingRunRepository,
 		},
-		DockerSDKInterface:          dockerSDK,
-		DockerInferenceAPIInterface: dockerInferenceAPI,
+		DockerSDKInterface:             dockerSDK,
+		DockerInferenceAPIInterface:    dockerInferenceAPI,
+		InferenceQuotaManagerInterface: inferenceQuotaManager,
 	}
 
 	return service
@@ -619,6 +622,10 @@ func registerHandlers() {
 	_, err = redisIAMDBHandler.Connect(fmt.Sprintf("%s:%s", os.Getenv("REDIS_HOST"), os.Getenv("REDIS_PORT")), os.Getenv("REDIS_PASSWORD"), redisIAMDB)
 	if err != nil {
 		log.Fatalf("[SERVER] cannot connect to account redis IAM server %v", err)
+	}
+	inferenceQuotaManager = &inferenceService.RedisInferenceQuotaManager{
+		Client: redisIAMDBHandler.Client,
+		Config: inferenceService.InferenceQuotaConfigFromEnvironment(),
 	}
 	worklistNotificationBroker = inferenceService.NewRedisWorklistNotificationBroker(
 		&inferenceService.RedisWorklistNotificationTransport{Client: redisIAMDBHandler.Client},

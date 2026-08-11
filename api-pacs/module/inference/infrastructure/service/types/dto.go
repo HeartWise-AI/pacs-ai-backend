@@ -43,6 +43,7 @@ type CreateInferenceIngestionJob struct {
 type CreateStudyProcessingRun struct {
 	TenantID         string
 	StudyInstanceUID string
+	UserID           *string
 }
 
 type CreateStudyProcessingRunResult struct {
