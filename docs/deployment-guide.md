@@ -1013,9 +1013,10 @@ docker compose images > pacs-ai-versions.txt
 | **Mail** | | | |
 | `MAILGUN_API_KEY` / `MAILGUN_DOMAIN` / `MAILGUN_SENDER_EMAIL` | yes | — | Transactional email |
 | `MAILCHIMP_API_KEY` / `MAILCHIMP_BASE_URL` / `MAILCHIMP_LIST_ID` | optional | — | Marketing list sync |
+| **Public registration protection** | | | |
+| `CLOUDFLARE_SECRET_KEY` / `CLOUDFLARE_TURNSTILE_BASE_URL` | required when public registration is enabled | — | Server-side Turnstile registration verification |
 | **Optional integrations** | | | |
 | `DOCUSIGN_*` (6 vars) | optional | — | DocuSign integration |
-| `CLOUDFLARE_SECRET_KEY` / `CLOUDFLARE_TURNSTILE_BASE_URL` | optional | — | Bot challenge |
 | `OPENAPI_DOCS_PASSWORD` | optional | — | Basic-auth on `/docs` |
 | `ORCHESTRATOR_API_URL` | optional | — | URL of the optional orchestrator service |
 

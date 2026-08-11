@@ -329,20 +329,27 @@ func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWrite
 		return
 	}
 
-	err = controller.UserCommandServiceInterface.RegisterTenantUser(context.TODO(), serviceTypes.RegisterTenantUser{
-		TenantID:  request.TenantID,
-		Name:      request.Name,
-		Email:     strings.ToLower(request.Email),
-		Password:  request.Password,
-		LicenseNo: request.LicenseNo,
-		Specialty: request.Specialty,
-		Code:      request.Code,
+	err = controller.UserCommandServiceInterface.RegisterTenantUser(r.Context(), serviceTypes.RegisterTenantUser{
+		TenantID:       request.TenantID,
+		TurnstileToken: request.TurnstileToken,
+		Name:           request.Name,
+		Email:          strings.ToLower(request.Email),
+		Password:       request.Password,
+		LicenseNo:      request.LicenseNo,
+		Specialty:      request.Specialty,
+		Code:           request.Code,
 	})
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
+		case errors.TurnstileInvalid:
+			httpCode = http.StatusBadRequest
+			errorMsg = "Registration verification failed."
+		case errors.CloudflareAPIError:
+			httpCode = http.StatusServiceUnavailable
+			errorMsg = "Registration verification is temporarily unavailable."
 		case errors.DatabaseError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Error occurred while registering tenant user."
