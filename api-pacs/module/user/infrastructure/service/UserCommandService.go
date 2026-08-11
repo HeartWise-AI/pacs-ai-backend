@@ -11,6 +11,7 @@ import (
 
 	"github.com/segmentio/ksuid"
 
+	cloudflareAPITypes "api-pacs/infrastructures/providers/api/cloudflare/types"
 	mailgunTypes "api-pacs/infrastructures/providers/sdk/mailgun/types"
 	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
@@ -28,6 +29,7 @@ import (
 
 // UserCommandService handles the User command service logic
 type UserCommandService struct {
+	cloudflareAPITypes.CloudflareAPIInterface
 	repository.UserCommandRepositoryInterface
 	repository.UserQueryRepositoryInterface
 	tenantApplication.TenantCommandServiceInterface
@@ -165,6 +167,20 @@ func (service *UserCommandService) DeleteTenantUserEmailInvite(ctx context.Conte
 
 // RegisterTenantUser registers a tenant user
 func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data types.RegisterTenantUser) error {
+	turnstileResponse, err := service.CloudflareAPIInterface.ValidateTurnstileToken(ctx, data.TurnstileToken)
+	if err != nil {
+		log.Printf("[security] event=registration_turnstile_unavailable tenant_id=%s", data.TenantID)
+		return errors.New(apiError.CloudflareAPIError)
+	}
+	if !turnstileResponse.Success {
+		if isTurnstileProviderFailure(turnstileResponse.ErrorCodes) {
+			log.Printf("[security] event=registration_turnstile_unavailable tenant_id=%s", data.TenantID)
+			return errors.New(apiError.CloudflareAPIError)
+		}
+		log.Printf("[security] event=registration_turnstile_rejected tenant_id=%s", data.TenantID)
+		return errors.New(apiError.TurnstileInvalid)
+	}
+
 	// get tenant
 	tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
 	if err != nil {
@@ -237,6 +253,17 @@ func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data 
 	}
 
 	return nil
+}
+
+func isTurnstileProviderFailure(errorCodes []string) bool {
+	for _, errorCode := range errorCodes {
+		switch errorCode {
+		case "missing-input-secret", "invalid-input-secret", "bad-request", "internal-error":
+			return true
+		}
+	}
+
+	return false
 }
 
 // SendTenantUserEmailVerification sends a Firebase email verification link to a tenant user.

@@ -558,6 +558,7 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 	}
 
 	service := &userService.UserCommandService{
+		CloudflareAPIInterface: cloudflareAPI,
 		UserCommandRepositoryInterface: &userRepository.UserCommandRepositoryCircuitBreaker{
 			UserCommandRepositoryInterface: repository,
 		},

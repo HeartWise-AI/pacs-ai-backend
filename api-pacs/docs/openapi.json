@@ -2866,6 +2866,7 @@
       "RegisterTenantUserRequest": {
         "required": [
           "tenantId",
+          "turnstileToken",
           "name",
           "email",
           "password",
@@ -2876,6 +2877,10 @@
         "properties": {
           "tenantId": {
             "type": "string"
+          },
+          "turnstileToken": {
+            "type": "string",
+            "description": "Single-use Cloudflare Turnstile response generated for this registration attempt."
           },
           "name": {
             "type": "string"

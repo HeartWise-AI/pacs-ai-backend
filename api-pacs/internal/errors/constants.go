@@ -62,6 +62,7 @@ const (
 
 	// Cloudflare-related errors
 	CloudflareAPIError string = "CLOUDFLARE_API_ERROR"
+	TurnstileInvalid   string = "TURNSTILE_INVALID"
 
 	// Docusign-related errors
 	DocusignError string = "DOCUSIGN_ERROR"
