@@ -118,6 +118,26 @@ func (state *realtimeWorklistE2EState) ListProcessingRunExecutions(_ context.Con
 	return result, nil
 }
 
+func (state *realtimeWorklistE2EState) UpdateProcessingRunAggregate(_ context.Context, data repositoryTypes.UpdateInferenceIngestionProcessingRunAggregate) (entity.InferenceIngestionProcessingRun, error) {
+	run, exists := state.runs[data.ID]
+	if !exists || run.TenantID != data.TenantID {
+		return entity.InferenceIngestionProcessingRun{}, errors.New(apiError.MissingRecord)
+	}
+	if run.Version != data.ExpectedVersion {
+		return entity.InferenceIngestionProcessingRun{}, errors.New(apiError.DuplicateRecord)
+	}
+	run.Phase = data.Phase
+	run.Outcome = data.Outcome
+	run.AttentionRequired = data.AttentionRequired
+	run.AttentionReasons = data.AttentionReasons
+	run.StartedAt = data.StartedAt
+	run.CompletedAt = data.CompletedAt
+	run.Version++
+	run.UpdatedAt = time.Now().UTC()
+	state.runs[run.ID] = run
+	return run, nil
+}
+
 func (state *realtimeWorklistE2EState) SelectProcessingRunExecution(_ context.Context, tenantID, runID, candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error) {
 	for _, execution := range state.executions {
 		if execution.TenantID == tenantID && execution.ProcessingRunID != nil && *execution.ProcessingRunID == runID &&

@@ -54,6 +54,7 @@ func (repository *guardedDispatchCommandRepository) InsertInferenceIngestionProc
 
 type guardedProcessingDispatcher struct {
 	buildCalls        int
+	buildErr          error
 	dispatchCalls     int
 	dispatchCall      chan serviceTypes.DispatchStudyRequest
 	response          serviceTypes.DispatchStudyResponse
@@ -63,6 +64,9 @@ type guardedProcessingDispatcher struct {
 
 func (dispatcher *guardedProcessingDispatcher) BuildDispatchStudyRequest(_ context.Context, data serviceTypes.BuildStudyServiceDispatchRequestInput) (serviceTypes.DispatchStudyRequest, error) {
 	dispatcher.buildCalls++
+	if dispatcher.buildErr != nil {
+		return serviceTypes.DispatchStudyRequest{}, dispatcher.buildErr
+	}
 	return serviceTypes.DispatchStudyRequest{
 		XRequestID:      trimmedPointerValue(data.RequestID),
 		ProcessingRunID: data.ProcessingRunID,

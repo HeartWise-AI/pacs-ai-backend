@@ -35,6 +35,7 @@ type recordingInferenceQuotaManager struct {
 	released   []serviceTypes.InferenceQuotaReservation
 	refunded   []serviceTypes.InferenceQuotaReservation
 	reserveErr error
+	refundCall chan serviceTypes.InferenceQuotaReservation
 }
 
 func (manager *recordingInferenceQuotaManager) Reserve(_ context.Context, data serviceTypes.InferenceQuotaReservation) (serviceTypes.InferenceQuotaStatus, error) {
@@ -55,6 +56,9 @@ func (manager *recordingInferenceQuotaManager) Refund(_ context.Context, data se
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	manager.refunded = append(manager.refunded, data)
+	if manager.refundCall != nil {
+		manager.refundCall <- data
+	}
 	return serviceTypes.InferenceQuotaStatus{}, nil
 }
 
@@ -172,6 +176,56 @@ func TestManualReprocessPropagatesQuotaRejectionBeforeCreatingPlan(t *testing.T)
 	require.EqualError(t, err, apiError.InferenceQuotaExceeded)
 	require.Empty(t, quotaManager.refunded)
 	require.Empty(t, dispatchCalls)
+}
+
+func TestManualReprocessRefundsQuotaWhenPreDispatchRequestBuildFails(t *testing.T) {
+	job := entity.InferenceIngestionJob{
+		ID: "job-a", TenantID: "tenant-a", ModelName: "EchoModel", DICOMModality: "US",
+	}
+	candidate := entity.InferenceIngestionCandidate{
+		ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: job.ID,
+		StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved,
+	}
+	state := &realtimeWorklistE2EState{
+		candidates: map[string]entity.InferenceIngestionCandidate{candidate.ID: candidate},
+		jobs:       map[string]entity.InferenceIngestionJob{job.ID: job},
+		runs:       map[string]entity.InferenceIngestionProcessingRun{},
+		executions: map[string]entity.InferenceIngestionProcessingJob{},
+	}
+	refundCalls := make(chan serviceTypes.InferenceQuotaReservation, 1)
+	quotaManager := &recordingInferenceQuotaManager{refundCall: refundCalls}
+	dispatcher := &guardedProcessingDispatcher{buildErr: errors.New("orthanc study is unavailable")}
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface:         state,
+		InferenceCommandRepositoryInterface:       state,
+		InferenceProcessingRunRepositoryInterface: state,
+		InferenceQuotaManagerInterface:            quotaManager,
+		ProcessingDispatcherInterface:             dispatcher,
+		StudyServiceDispatchSemaphore:             make(chan struct{}, 1),
+	}
+	userID := "user-a"
+
+	result, err := service.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
+		TenantID: "tenant-a", StudyInstanceUID: candidate.StudyInstanceUID, UserID: &userID,
+	})
+	require.NoError(t, err)
+
+	select {
+	case refunded := <-refundCalls:
+		require.Equal(t, result.Run.ID, refunded.ReservationID)
+	case <-time.After(time.Second):
+		t.Fatal("pre-dispatch failure did not refund the manual run quota")
+	}
+
+	terminalRun := state.runs[result.Run.ID]
+	require.Equal(t, entity.InferenceIngestionProcessingRunPhaseTerminal, terminalRun.Phase)
+	require.True(t, terminalRun.AttentionRequired)
+	require.True(t, hasProcessingRunAttentionReason(
+		terminalRun.AttentionReasons, entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+	))
+	require.Len(t, result.Executions, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, state.executions[result.Executions[0].ID].Status)
+	require.Zero(t, dispatcher.dispatchCalls)
 }
 
 func TestTerminalManualRunReleasesOrRefundsReservationByDispatchPolicy(t *testing.T) {
