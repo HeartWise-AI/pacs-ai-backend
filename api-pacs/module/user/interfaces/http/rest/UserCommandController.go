@@ -3,7 +3,10 @@ package rest
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -22,6 +25,7 @@ import (
 // UserCommandController request controller for user command
 type UserCommandController struct {
 	application.UserCommandServiceInterface
+	TrustedProxyCIDRs []*net.IPNet
 }
 
 // CreateTenantOwner create a tenant owner. Only callable by superuser.
@@ -332,8 +336,9 @@ func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWrite
 	err = controller.UserCommandServiceInterface.RegisterTenantUser(r.Context(), serviceTypes.RegisterTenantUser{
 		TenantID:       request.TenantID,
 		TurnstileToken: request.TurnstileToken,
+		ClientIP:       controller.registrationClientIP(r),
 		Name:           request.Name,
-		Email:          strings.ToLower(request.Email),
+		Email:          strings.ToLower(strings.TrimSpace(request.Email)),
 		Password:       request.Password,
 		LicenseNo:      request.LicenseNo,
 		Specialty:      request.Specialty,
@@ -342,21 +347,26 @@ func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWrite
 	if err != nil {
 		var httpCode int
 		var errorMsg string
+		var rateLimitError *apiError.RegistrationRateLimitError
 
-		switch err.Error() {
-		case errors.TurnstileInvalid:
+		switch {
+		case stderrors.As(err, &rateLimitError):
+			httpCode = http.StatusTooManyRequests
+			errorMsg = "Too many registration attempts. Please try again later."
+			w.Header().Set("Retry-After", strconv.Itoa(rateLimitError.RetryAfterSeconds))
+		case err.Error() == errors.TurnstileInvalid:
 			httpCode = http.StatusBadRequest
 			errorMsg = "Registration verification failed."
-		case errors.CloudflareAPIError:
+		case err.Error() == errors.CloudflareAPIError:
 			httpCode = http.StatusServiceUnavailable
 			errorMsg = "Registration verification is temporarily unavailable."
-		case errors.DatabaseError:
+		case err.Error() == errors.DatabaseError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Error occurred while registering tenant user."
-		case errors.DuplicateRecord:
+		case err.Error() == errors.DuplicateRecord:
 			httpCode = http.StatusConflict
 			errorMsg = "User already exist."
-		case errors.UnauthorizedAccess:
+		case err.Error() == errors.UnauthorizedAccess:
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Unauthorized access."
 		default:

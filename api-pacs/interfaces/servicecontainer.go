@@ -261,9 +261,14 @@ func (k *kernel) RegisterTenantRESTQueryController() tenantREST.TenantQueryContr
 // RegisterUserRESTCommandController performs dependency injection to the RegisterUserRESTCommandController
 func (k *kernel) RegisterUserRESTCommandController() userREST.UserCommandController {
 	service := k.userCommandServiceContainer()
+	trustedProxyCIDRs, err := userREST.ParseTrustedProxyCIDRs(os.Getenv("REGISTRATION_TRUSTED_PROXY_CIDRS"))
+	if err != nil {
+		log.Printf("[security] event=registration_trusted_proxy_config_invalid err=%v", err)
+	}
 
 	controller := userREST.UserCommandController{
 		UserCommandServiceInterface: service,
+		TrustedProxyCIDRs:           trustedProxyCIDRs,
 	}
 
 	return controller
@@ -559,6 +564,10 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 
 	service := &userService.UserCommandService{
 		CloudflareAPIInterface: cloudflareAPI,
+		RegistrationRateLimiterInterface: &userService.RedisRegistrationRateLimiter{
+			RedisDBHandlerInterface: redisIAMDBHandler,
+			Config:                  userService.RegistrationRateLimitConfigFromEnvironment(),
+		},
 		UserCommandRepositoryInterface: &userRepository.UserCommandRepositoryCircuitBreaker{
 			UserCommandRepositoryInterface: repository,
 		},

@@ -275,6 +275,11 @@ Update `api-pacs/.env` with the following variables:
 | `APP_URL`                   | Should be set to `http://localhost:3000`                                                                                  |
 | `CLOUDFLARE_SECRET_KEY`    | Server-side Turnstile secret key; required when public registration is enabled                                            |
 | `CLOUDFLARE_TURNSTILE_BASE_URL` | Turnstile verification base URL; set to `https://challenges.cloudflare.com/turnstile/v0`                             |
+| `REGISTRATION_RATE_LIMIT_WINDOW_SECONDS` | Registration counter window; defaults to `600` seconds                                                        |
+| `REGISTRATION_RATE_LIMIT_TENANT_ATTEMPTS` | Maximum attempts per tenant and window; defaults to `100`                                                   |
+| `REGISTRATION_RATE_LIMIT_EMAIL_ATTEMPTS` | Maximum attempts per normalized email and tenant; defaults to `5`                                             |
+| `REGISTRATION_RATE_LIMIT_IP_ATTEMPTS` | Maximum attempts per trusted client IP and tenant; defaults to `10`                                                |
+| `REGISTRATION_TRUSTED_PROXY_CIDRS` | Comma-separated direct-proxy CIDRs allowed to supply `X-Real-IP`; leave empty for direct access                    |
 | `DOCKER_USERNAME`           | Your DockerHub username                                                                                                   |
 | `DOCKER_PASSWORD`           | Your DockerHub password                                                                                                   |
 | `DOCKER_NETWORK`            | Should be set to `pacs-net`                                                                                               |

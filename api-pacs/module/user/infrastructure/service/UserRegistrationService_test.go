@@ -25,6 +25,7 @@ type registrationCommandRepository struct {
 	insertCalls          int
 	verifiedInvite       string
 	verificationContexts chan context.Context
+	verificationRelease  chan struct{}
 }
 
 func (repository *registrationCommandRepository) InsertTenantUser(_ context.Context, data repositoryTypes.CreateTenantUser) (string, error) {
@@ -41,6 +42,9 @@ func (repository *registrationCommandRepository) UpdateTenantUserEmailInviteVeri
 func (repository *registrationCommandRepository) GenerateTenantUserEmailVerificationLink(ctx context.Context, _, _ string) (string, error) {
 	if repository.verificationContexts != nil {
 		repository.verificationContexts <- ctx
+		if repository.verificationRelease != nil {
+			<-repository.verificationRelease
+		}
 	}
 	return "", errors.New("stop after capturing verification context")
 }
@@ -78,6 +82,22 @@ type registrationTurnstileAPI struct {
 	calls    int
 }
 
+type registrationRateLimiter struct {
+	input      serviceTypes.RegistrationRateLimit
+	retryAfter time.Duration
+	err        error
+	calls      int
+}
+
+func (limiter *registrationRateLimiter) CheckRegistrationAttempt(
+	_ context.Context,
+	data serviceTypes.RegistrationRateLimit,
+) (time.Duration, error) {
+	limiter.input = data
+	limiter.calls++
+	return limiter.retryAfter, limiter.err
+}
+
 func (api *registrationTurnstileAPI) ValidateTurnstileToken(_ context.Context, token string) (cloudflareAPITypes.ValidateTurnstileTokenResponse, error) {
 	api.token = token
 	api.calls++
@@ -96,10 +116,11 @@ func TestRegisterTenantUserPersistsServerOwnedUserRole(t *testing.T) {
 	}}
 	turnstileAPI := &registrationTurnstileAPI{response: cloudflareAPITypes.ValidateTurnstileTokenResponse{Success: true}}
 	service := UserCommandService{
-		CloudflareAPIInterface:         turnstileAPI,
-		UserCommandRepositoryInterface: commandRepository,
-		UserQueryRepositoryInterface:   queryRepository,
-		TenantQueryServiceInterface:    &registrationTenantQueryService{},
+		CloudflareAPIInterface:           turnstileAPI,
+		RegistrationRateLimiterInterface: &registrationRateLimiter{},
+		UserCommandRepositoryInterface:   commandRepository,
+		UserQueryRepositoryInterface:     queryRepository,
+		TenantQueryServiceInterface:      &registrationTenantQueryService{},
 	}
 
 	err := service.RegisterTenantUser(context.Background(), serviceTypes.RegisterTenantUser{
@@ -123,12 +144,18 @@ func TestRegisterTenantUserPersistsServerOwnedUserRole(t *testing.T) {
 
 func TestRegisterTenantUserVerificationEmailOutlivesRequestContext(t *testing.T) {
 	verificationContexts := make(chan context.Context, 1)
-	commandRepository := &registrationCommandRepository{verificationContexts: verificationContexts}
+	verificationRelease := make(chan struct{})
+	commandRepository := &registrationCommandRepository{
+		verificationContexts: verificationContexts,
+		verificationRelease:  verificationRelease,
+	}
+	t.Cleanup(func() { close(verificationRelease) })
 	service := UserCommandService{
-		CloudflareAPIInterface:         &registrationTurnstileAPI{response: cloudflareAPITypes.ValidateTurnstileTokenResponse{Success: true}},
-		UserCommandRepositoryInterface: commandRepository,
-		UserQueryRepositoryInterface:   &registrationQueryRepository{},
-		TenantQueryServiceInterface:    &registrationTenantQueryService{},
+		CloudflareAPIInterface:           &registrationTurnstileAPI{response: cloudflareAPITypes.ValidateTurnstileTokenResponse{Success: true}},
+		RegistrationRateLimiterInterface: &registrationRateLimiter{},
+		UserCommandRepositoryInterface:   commandRepository,
+		UserQueryRepositoryInterface:     &registrationQueryRepository{},
+		TenantQueryServiceInterface:      &registrationTenantQueryService{},
 	}
 	requestContext, cancelRequest := context.WithCancel(context.Background())
 
@@ -153,6 +180,77 @@ func TestRegisterTenantUserVerificationEmailOutlivesRequestContext(t *testing.T)
 	case <-time.After(time.Second):
 		t.Fatal("verification email was not started")
 	}
+}
+
+func TestRegisterTenantUserRejectsThrottledAttemptBeforeTurnstileAndAccountOperations(t *testing.T) {
+	limiter := &registrationRateLimiter{retryAfter: 90 * time.Second}
+	turnstileAPI := &registrationTurnstileAPI{response: cloudflareAPITypes.ValidateTurnstileTokenResponse{Success: true}}
+	commandRepository := &registrationCommandRepository{}
+	queryRepository := &registrationQueryRepository{}
+	tenantService := &registrationTenantQueryService{}
+	service := UserCommandService{
+		CloudflareAPIInterface:           turnstileAPI,
+		RegistrationRateLimiterInterface: limiter,
+		UserCommandRepositoryInterface:   commandRepository,
+		UserQueryRepositoryInterface:     queryRepository,
+		TenantQueryServiceInterface:      tenantService,
+	}
+
+	err := service.RegisterTenantUser(context.Background(), serviceTypes.RegisterTenantUser{
+		TenantID:       "tenant-a",
+		TurnstileToken: "unused-turnstile-token",
+		ClientIP:       "203.0.113.10",
+		Email:          "public.user@example.com",
+	})
+
+	var rateLimitError *apiError.RegistrationRateLimitError
+	require.ErrorAs(t, err, &rateLimitError)
+	require.Equal(t, 90, rateLimitError.RetryAfterSeconds)
+	require.Equal(t, 1, limiter.calls)
+	require.Equal(t, "tenant-a", limiter.input.TenantID)
+	require.Equal(t, "public.user@example.com", limiter.input.Email)
+	require.Equal(t, "203.0.113.10", limiter.input.ClientIP)
+	require.Equal(t, 0, turnstileAPI.calls)
+	require.Equal(t, 0, tenantService.calls)
+	require.Equal(t, 0, queryRepository.selectEmailCalls)
+	require.Equal(t, 0, commandRepository.insertCalls)
+}
+
+func TestRegisterTenantUserRejectsDuplicateAfterRateLimitAndTurnstile(t *testing.T) {
+	limiter := &registrationRateLimiter{}
+	turnstileAPI := &registrationTurnstileAPI{response: cloudflareAPITypes.ValidateTurnstileTokenResponse{Success: true}}
+	commandRepository := &registrationCommandRepository{}
+	queryRepository := &duplicateRegistrationQueryRepository{}
+	service := UserCommandService{
+		CloudflareAPIInterface:           turnstileAPI,
+		RegistrationRateLimiterInterface: limiter,
+		UserCommandRepositoryInterface:   commandRepository,
+		UserQueryRepositoryInterface:     queryRepository,
+		TenantQueryServiceInterface:      &registrationTenantQueryService{},
+	}
+
+	err := service.RegisterTenantUser(context.Background(), serviceTypes.RegisterTenantUser{
+		TenantID:       "tenant-a",
+		TurnstileToken: "valid-turnstile-token",
+		ClientIP:       "203.0.113.10",
+		Email:          "existing.user@example.com",
+	})
+
+	require.EqualError(t, err, apiError.DuplicateRecord)
+	require.Equal(t, 1, limiter.calls)
+	require.Equal(t, 1, turnstileAPI.calls)
+	require.Equal(t, 1, queryRepository.selectEmailCalls)
+	require.Equal(t, 0, commandRepository.insertCalls)
+}
+
+type duplicateRegistrationQueryRepository struct {
+	repository.UserQueryRepositoryInterface
+	selectEmailCalls int
+}
+
+func (repository *duplicateRegistrationQueryRepository) SelectTenantUserByEmail(context.Context, string, string) (repositoryTypes.GetTenantUser, error) {
+	repository.selectEmailCalls++
+	return repositoryTypes.GetTenantUser{Email: "existing.user@example.com"}, nil
 }
 
 func TestRegisterTenantUserRejectsTurnstileFailureBeforeAccountOperations(t *testing.T) {
@@ -197,10 +295,11 @@ func TestRegisterTenantUserRejectsTurnstileFailureBeforeAccountOperations(t *tes
 			tenantService := &registrationTenantQueryService{}
 			turnstileAPI := &registrationTurnstileAPI{response: testCase.response, err: testCase.providerErr}
 			service := UserCommandService{
-				CloudflareAPIInterface:         turnstileAPI,
-				UserCommandRepositoryInterface: commandRepository,
-				UserQueryRepositoryInterface:   queryRepository,
-				TenantQueryServiceInterface:    tenantService,
+				CloudflareAPIInterface:           turnstileAPI,
+				RegistrationRateLimiterInterface: &registrationRateLimiter{},
+				UserCommandRepositoryInterface:   commandRepository,
+				UserQueryRepositoryInterface:     queryRepository,
+				TenantQueryServiceInterface:      tenantService,
 			}
 
 			err := service.RegisterTenantUser(context.Background(), serviceTypes.RegisterTenantUser{

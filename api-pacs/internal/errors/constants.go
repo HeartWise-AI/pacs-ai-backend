@@ -31,6 +31,8 @@ const (
 	SystemScriptFailed string = "SYSTEM_SCRIPT_FAILED"
 	// UnauthorizedAccess is the code for accessing restricted routes
 	UnauthorizedAccess string = "UNAUTHORIZED_ACCESS"
+	// RegistrationRateLimited is returned when public registration exceeds an anti-abuse limit.
+	RegistrationRateLimited string = "REGISTRATION_RATE_LIMITED"
 
 	// Firebase-related errors
 	FirebaseAuthError            string = "FIREBASE_AUTH_ERROR"
