@@ -21,9 +21,10 @@ import (
 
 type registrationCommandRepository struct {
 	repository.UserCommandRepositoryInterface
-	insertedUser   repositoryTypes.CreateTenantUser
-	insertCalls    int
-	verifiedInvite string
+	insertedUser         repositoryTypes.CreateTenantUser
+	insertCalls          int
+	verifiedInvite       string
+	verificationContexts chan context.Context
 }
 
 func (repository *registrationCommandRepository) InsertTenantUser(_ context.Context, data repositoryTypes.CreateTenantUser) (string, error) {
@@ -35,6 +36,13 @@ func (repository *registrationCommandRepository) InsertTenantUser(_ context.Cont
 func (repository *registrationCommandRepository) UpdateTenantUserEmailInviteVerifiedAt(_ context.Context, id string) error {
 	repository.verifiedInvite = id
 	return nil
+}
+
+func (repository *registrationCommandRepository) GenerateTenantUserEmailVerificationLink(ctx context.Context, _, _ string) (string, error) {
+	if repository.verificationContexts != nil {
+		repository.verificationContexts <- ctx
+	}
+	return "", errors.New("stop after capturing verification context")
 }
 
 type registrationQueryRepository struct {
@@ -111,6 +119,40 @@ func TestRegisterTenantUserPersistsServerOwnedUserRole(t *testing.T) {
 	require.Equal(t, iamEntity.UserRole, commandRepository.insertedUser.Role)
 	require.Equal(t, "invite-id", commandRepository.verifiedInvite)
 	require.True(t, commandRepository.insertedUser.IsEmailVerified)
+}
+
+func TestRegisterTenantUserVerificationEmailOutlivesRequestContext(t *testing.T) {
+	verificationContexts := make(chan context.Context, 1)
+	commandRepository := &registrationCommandRepository{verificationContexts: verificationContexts}
+	service := UserCommandService{
+		CloudflareAPIInterface:         &registrationTurnstileAPI{response: cloudflareAPITypes.ValidateTurnstileTokenResponse{Success: true}},
+		UserCommandRepositoryInterface: commandRepository,
+		UserQueryRepositoryInterface:   &registrationQueryRepository{},
+		TenantQueryServiceInterface:    &registrationTenantQueryService{},
+	}
+	requestContext, cancelRequest := context.WithCancel(context.Background())
+
+	err := service.RegisterTenantUser(requestContext, serviceTypes.RegisterTenantUser{
+		TenantID:       "tenant-a",
+		TurnstileToken: "valid-turnstile-token",
+		Name:           "Public User",
+		Email:          "public.user@example.com",
+		Password:       "ValidPassword!",
+		LicenseNo:      "demo-license",
+		Specialty:      "demo-specialty",
+	})
+	require.NoError(t, err)
+	cancelRequest()
+
+	select {
+	case verificationContext := <-verificationContexts:
+		require.NoError(t, verificationContext.Err())
+		deadline, hasDeadline := verificationContext.Deadline()
+		require.True(t, hasDeadline)
+		require.WithinDuration(t, time.Now().Add(registrationVerificationEmailTimeout), deadline, time.Second)
+	case <-time.After(time.Second):
+		t.Fatal("verification email was not started")
+	}
 }
 
 func TestRegisterTenantUserRejectsTurnstileFailureBeforeAccountOperations(t *testing.T) {

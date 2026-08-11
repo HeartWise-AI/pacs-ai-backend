@@ -41,7 +41,8 @@ type UserCommandService struct {
 }
 
 const (
-	userInviteTemplate string = "%s/register?t=%s&email=%s&code=%s"
+	userInviteTemplate                   string        = "%s/register?t=%s&email=%s&code=%s"
+	registrationVerificationEmailTimeout time.Duration = time.Minute
 )
 
 // CreateTenantUser add a new tenant user with random generated password
@@ -245,8 +246,14 @@ func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data 
 		return err
 	}
 	if !isEmailVerified {
+		// The verification email runs after the HTTP handler returns, so it must not
+		// inherit request cancellation. Keep it time-bounded to avoid leaking work.
+		emailContext := context.WithoutCancel(ctx)
 		go func() {
-			if err := service.SendTenantUserEmailVerification(ctx, data.TenantID, data.Email); err != nil {
+			emailContext, cancel := context.WithTimeout(emailContext, registrationVerificationEmailTimeout)
+			defer cancel()
+
+			if err := service.SendTenantUserEmailVerification(emailContext, data.TenantID, data.Email); err != nil {
 				log.Println("[error] cannot send verification email after registration", err)
 			}
 		}()
