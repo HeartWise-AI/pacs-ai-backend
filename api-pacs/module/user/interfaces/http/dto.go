@@ -16,7 +16,6 @@ var (
 		"DeleteTenantUserRequest.UserID":              "User ID is required.",
 		"SendTenantEmailInviteRequest.Email":          "Valid email is required.",
 		"RegisterTenantUserRequest.TenantID":          "Tenant ID is required.",
-		"RegisterTenantUserRequest.Role":              "Role is required.",
 		"RegisterTenantUserRequest.Name":              "Name is required.",
 		"RegisterTenantUserRequest.Email":             "Email is required.",
 		"RegisterTenantUserRequest.Password":          "Password is required.",
@@ -59,7 +58,6 @@ type SendTenantEmailInviteRequest struct {
 
 type RegisterTenantUserRequest struct {
 	TenantID  string  `json:"tenantId" validate:"required"`
-	Role      string  `json:"role" validate:"required"`
 	Name      string  `json:"name" validate:"required"`
 	Email     string  `json:"email" validate:"required"`
 	Password  string  `json:"password" validate:"required"`

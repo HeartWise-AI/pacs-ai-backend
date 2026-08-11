@@ -2866,7 +2866,6 @@
       "RegisterTenantUserRequest": {
         "required": [
           "tenantId",
-          "role",
           "name",
           "email",
           "password",
@@ -2876,9 +2875,6 @@
         "type": "object",
         "properties": {
           "tenantId": {
-            "type": "string"
-          },
-          "role": {
             "type": "string"
           },
           "name": {

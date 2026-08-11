@@ -329,22 +329,8 @@ func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWrite
 		return
 	}
 
-	// check if role to be added is owner (only callable via CreateTenantOwner)
-	if request.Role == entity.OwnerRole {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusUnauthorized,
-			Success:   false,
-			Message:   "Unauthorized access.",
-			ErrorCode: apiError.UnauthorizedAccess,
-		}
-
-		response.JSON(w)
-		return
-	}
-
 	err = controller.UserCommandServiceInterface.RegisterTenantUser(context.TODO(), serviceTypes.RegisterTenantUser{
 		TenantID:  request.TenantID,
-		Role:      request.Role,
 		Name:      request.Name,
 		Email:     strings.ToLower(request.Email),
 		Password:  request.Password,

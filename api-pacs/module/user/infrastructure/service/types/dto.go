@@ -27,7 +27,6 @@ type GetTenantUser struct {
 
 type RegisterTenantUser struct {
 	TenantID  string
-	Role      string
 	Name      string
 	Email     string
 	Password  string

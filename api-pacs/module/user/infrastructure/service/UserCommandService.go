@@ -16,6 +16,7 @@ import (
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	"api-pacs/module/elasticsearch/domain/entity"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	iamEntity "api-pacs/module/iam/domain/entity"
 	inferenceApplication "api-pacs/module/inference/application"
 	inferenceTypes "api-pacs/module/inference/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
@@ -216,7 +217,7 @@ func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data 
 	// insert tenant user
 	_, err = service.UserCommandRepositoryInterface.InsertTenantUser(ctx, repositoryTypes.CreateTenantUser{
 		TenantID:        data.TenantID,
-		Role:            data.Role,
+		Role:            iamEntity.UserRole,
 		Email:           data.Email,
 		Name:            data.Name,
 		Password:        data.Password,
