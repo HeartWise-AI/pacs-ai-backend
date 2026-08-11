@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -61,7 +62,7 @@ func (manager *recordingInferenceQuotaManager) Status(context.Context, string, s
 	return serviceTypes.InferenceQuotaStatus{}, nil
 }
 
-func manualQuotaPlannerService(t *testing.T, quotaManager *recordingInferenceQuotaManager, createErr error) *InferenceCommandService {
+func manualQuotaPlannerService(t *testing.T, quotaManager *recordingInferenceQuotaManager, createErr error) (*InferenceCommandService, <-chan serviceTypes.DispatchStudyRequest) {
 	t.Helper()
 	queryRepository := &processingRunPlannerQueryRepository{
 		candidates: []entity.InferenceIngestionCandidate{{
@@ -73,6 +74,9 @@ func manualQuotaPlannerService(t *testing.T, quotaManager *recordingInferenceQuo
 		},
 	}
 	runRepository := &processingRunPlannerRepository{
+		selectedExecution: entity.InferenceIngestionProcessingJob{
+			ID: "execution-a", Status: entity.InferenceIngestionProcessingJobStatusPending,
+		},
 		create: func(data repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error) {
 			if createErr != nil {
 				return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{}, createErr
@@ -85,16 +89,24 @@ func manualQuotaPlannerService(t *testing.T, quotaManager *recordingInferenceQuo
 			return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{Run: run, Created: true}, nil
 		},
 	}
-	return &InferenceCommandService{
+	dispatchCalls := make(chan serviceTypes.DispatchStudyRequest, 1)
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       &guardedDispatchCommandRepository{},
 		InferenceQueryRepositoryInterface:         queryRepository,
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		InferenceQuotaManagerInterface:            quotaManager,
+		ProcessingDispatcherInterface: &guardedProcessingDispatcher{
+			dispatchCall: dispatchCalls,
+			response:     serviceTypes.DispatchStudyResponse{JobID: "study-service-job-a"},
+		},
+		StudyServiceDispatchSemaphore: make(chan struct{}, 1),
 	}
+	return service, dispatchCalls
 }
 
 func TestManualReprocessReservesOneUserScopedUnitAndPersistsRequester(t *testing.T) {
 	quotaManager := &recordingInferenceQuotaManager{}
-	service := manualQuotaPlannerService(t, quotaManager, nil)
+	service, dispatchCalls := manualQuotaPlannerService(t, quotaManager, nil)
 	userID := "user-a"
 
 	result, err := service.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
@@ -107,11 +119,19 @@ func TestManualReprocessReservesOneUserScopedUnitAndPersistsRequester(t *testing
 	require.Len(t, quotaManager.reserved, 1)
 	require.Equal(t, result.Run.ID, quotaManager.reserved[0].ReservationID)
 	require.Equal(t, int64(1), quotaManager.reserved[0].Units)
+	select {
+	case request := <-dispatchCalls:
+		require.Equal(t, result.Run.ID, trimmedPointerValue(request.ProcessingRunID))
+		require.NotEmpty(t, request.XRequestID)
+		require.NotEqual(t, "candidate-a", request.XRequestID)
+	case <-time.After(time.Second):
+		t.Fatal("manual processing run was not dispatched")
+	}
 }
 
 func TestAutomaticIngestionRunIsExplicitlyExemptFromUserQuota(t *testing.T) {
 	quotaManager := &recordingInferenceQuotaManager{}
-	service := manualQuotaPlannerService(t, quotaManager, nil)
+	service, _ := manualQuotaPlannerService(t, quotaManager, nil)
 
 	result, err := service.CreateAutomaticStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
 		TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
@@ -124,7 +144,7 @@ func TestAutomaticIngestionRunIsExplicitlyExemptFromUserQuota(t *testing.T) {
 
 func TestManualReprocessRefundsReservationWhenPlanCreationFails(t *testing.T) {
 	quotaManager := &recordingInferenceQuotaManager{}
-	service := manualQuotaPlannerService(t, quotaManager, errors.New(apiError.DatabaseError))
+	service, dispatchCalls := manualQuotaPlannerService(t, quotaManager, errors.New(apiError.DatabaseError))
 	userID := "user-a"
 
 	_, err := service.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
@@ -135,13 +155,14 @@ func TestManualReprocessRefundsReservationWhenPlanCreationFails(t *testing.T) {
 	require.Len(t, quotaManager.reserved, 1)
 	require.Len(t, quotaManager.refunded, 1)
 	require.Equal(t, quotaManager.reserved[0].ReservationID, quotaManager.refunded[0].ReservationID)
+	require.Empty(t, dispatchCalls)
 }
 
 func TestManualReprocessPropagatesQuotaRejectionBeforeCreatingPlan(t *testing.T) {
 	quotaManager := &recordingInferenceQuotaManager{reserveErr: &apiError.InferenceQuotaLimitError{
 		ErrorCode: apiError.InferenceQuotaExceeded,
 	}}
-	service := manualQuotaPlannerService(t, quotaManager, nil)
+	service, dispatchCalls := manualQuotaPlannerService(t, quotaManager, nil)
 	userID := "user-a"
 
 	_, err := service.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
@@ -150,6 +171,7 @@ func TestManualReprocessPropagatesQuotaRejectionBeforeCreatingPlan(t *testing.T)
 
 	require.EqualError(t, err, apiError.InferenceQuotaExceeded)
 	require.Empty(t, quotaManager.refunded)
+	require.Empty(t, dispatchCalls)
 }
 
 func TestTerminalManualRunReleasesOrRefundsReservationByDispatchPolicy(t *testing.T) {

@@ -115,6 +115,12 @@ func (service *InferenceCommandService) CreateManualStudyProcessingRun(ctx conte
 	return service.createStudyProcessingRun(ctx, data, entity.InferenceIngestionProcessingRunTriggerManualReprocess)
 }
 
+type processingRunDispatchTarget struct {
+	job       entity.InferenceIngestionJob
+	candidate entity.InferenceIngestionCandidate
+	requestID string
+}
+
 // RecalculateStudyProcessingRun calculates and persists one authoritative run aggregate.
 func (service *InferenceCommandService) RecalculateStudyProcessingRun(ctx context.Context, data types.RecalculateStudyProcessingRun) (types.RecalculateStudyProcessingRunResult, error) {
 	tenantID := strings.TrimSpace(data.TenantID)
@@ -196,6 +202,7 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 	}
 
 	expected := make([]repositoryTypes.CreateInferenceIngestionProcessingExecution, 0, len(candidates))
+	dispatchTargets := make([]processingRunDispatchTarget, 0, len(candidates))
 	seen := make(map[string]struct{}, len(candidates))
 	for _, candidate := range candidates {
 		if candidate.Status == entity.InferenceIngestionCandidateStatusDisappeared {
@@ -223,12 +230,16 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		}
 		seen[key] = struct{}{}
 
+		executionID := generateID()
 		expected = append(expected, repositoryTypes.CreateInferenceIngestionProcessingExecution{
-			ID:           generateID(),
+			ID:           executionID,
 			CandidateID:  candidate.ID,
 			ModelName:    modelName,
 			ModelVersion: nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
 			Modality:     nonEmptyStringPointer(canonicalStudyServiceModality(job.DICOMModality)),
+		})
+		dispatchTargets = append(dispatchTargets, processingRunDispatchTarget{
+			job: job, candidate: candidate, requestID: executionID,
 		})
 	}
 	if len(expected) == 0 {
@@ -275,6 +286,13 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 	if err != nil {
 		service.finishInferenceQuotaReservation(quotaReservation, true)
 		return types.CreateStudyProcessingRunResult{}, err
+	}
+	if trigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess {
+		for _, target := range dispatchTargets {
+			service.scheduleStudyServiceDispatchWithRequestID(
+				target.job, target.candidate, result.Run.ID, target.requestID,
+			)
+		}
 	}
 
 	return types.CreateStudyProcessingRunResult{
@@ -1776,9 +1794,21 @@ func (service *InferenceCommandService) persistCandidateRetrievalResult(ctx cont
 }
 
 func (service *InferenceCommandService) scheduleStudyServiceDispatch(job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate, processingRunID string) {
-	requestID := strings.TrimSpace(candidate.ID)
+	service.scheduleStudyServiceDispatchWithRequestID(job, candidate, processingRunID, candidate.ID)
+}
+
+func (service *InferenceCommandService) scheduleStudyServiceDispatchWithRequestID(
+	job entity.InferenceIngestionJob,
+	candidate entity.InferenceIngestionCandidate,
+	processingRunID string,
+	requestID string,
+) {
+	requestID = strings.TrimSpace(requestID)
 	if requestID == "" {
-		requestID = generateID()
+		requestID = strings.TrimSpace(candidate.ID)
+		if requestID == "" {
+			requestID = generateID()
+		}
 	}
 
 	go func() {
