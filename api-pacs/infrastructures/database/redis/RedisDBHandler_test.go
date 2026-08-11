@@ -2,6 +2,7 @@ package redis
 
 import (
 	"testing"
+	"time"
 )
 
 func TestConnection(t *testing.T) {
@@ -97,4 +98,40 @@ func TestFlushDB(t *testing.T) {
 	}
 
 	db.Flush()
+}
+
+func TestIncrementWithExpiry(t *testing.T) {
+	db := new(RedisDBHandler)
+	_, err := db.Connect("localhost:6379", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const key = "test:increment-with-expiry"
+	requireNoError(t, db.Delete(key))
+	t.Cleanup(func() { _ = db.Delete(key) })
+
+	firstCount, firstTTL, err := db.IncrementWithExpiry(key, time.Minute)
+	requireNoError(t, err)
+	if firstCount != 1 {
+		t.Fatalf("expected first count 1, got %d", firstCount)
+	}
+	if firstTTL <= 0 || firstTTL > time.Minute {
+		t.Fatalf("expected a positive TTL no greater than one minute, got %s", firstTTL)
+	}
+
+	secondCount, secondTTL, err := db.IncrementWithExpiry(key, time.Minute)
+	requireNoError(t, err)
+	if secondCount != 2 {
+		t.Fatalf("expected second count 2, got %d", secondCount)
+	}
+	if secondTTL <= 0 || secondTTL > firstTTL {
+		t.Fatalf("expected the original expiry window to be preserved, got first=%s second=%s", firstTTL, secondTTL)
+	}
+}
+
+func requireNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
 }

@@ -1830,6 +1830,18 @@
           "4xx": {
             "description": "Client side errors"
           },
+          "429": {
+            "description": "Registration rate limit exceeded. The response errorCode is REGISTRATION_RATE_LIMITED.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the current registration throttle window expires.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
           "5xx": {
             "description": "Server side errors"
           }

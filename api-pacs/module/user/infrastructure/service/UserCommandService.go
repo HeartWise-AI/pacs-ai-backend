@@ -22,6 +22,7 @@ import (
 	inferenceTypes "api-pacs/module/inference/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
 	tenantTypes "api-pacs/module/tenant/infrastructure/service/types"
+	userApplication "api-pacs/module/user/application"
 	"api-pacs/module/user/domain/repository"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
 	"api-pacs/module/user/infrastructure/service/types"
@@ -30,6 +31,7 @@ import (
 // UserCommandService handles the User command service logic
 type UserCommandService struct {
 	cloudflareAPITypes.CloudflareAPIInterface
+	userApplication.RegistrationRateLimiterInterface
 	repository.UserCommandRepositoryInterface
 	repository.UserQueryRepositoryInterface
 	tenantApplication.TenantCommandServiceInterface
@@ -168,6 +170,26 @@ func (service *UserCommandService) DeleteTenantUserEmailInvite(ctx context.Conte
 
 // RegisterTenantUser registers a tenant user
 func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data types.RegisterTenantUser) error {
+	if service.RegistrationRateLimiterInterface == nil {
+		log.Printf("[security] event=registration_rate_limit_unavailable tenant_id=%s", data.TenantID)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	retryAfter, err := service.RegistrationRateLimiterInterface.CheckRegistrationAttempt(ctx, types.RegistrationRateLimit{
+		TenantID: data.TenantID,
+		Email:    data.Email,
+		ClientIP: data.ClientIP,
+	})
+	if err != nil {
+		log.Printf("[security] event=registration_rate_limit_unavailable tenant_id=%s", data.TenantID)
+		return errors.New(apiError.DatabaseError)
+	}
+	if retryAfter > 0 {
+		retryAfterSeconds := int((retryAfter + time.Second - 1) / time.Second)
+		log.Printf("[security] event=registration_rate_limited tenant_id=%s", data.TenantID)
+		return &apiError.RegistrationRateLimitError{RetryAfterSeconds: retryAfterSeconds}
+	}
+
 	turnstileResponse, err := service.CloudflareAPIInterface.ValidateTurnstileToken(ctx, data.TurnstileToken)
 	if err != nil {
 		log.Printf("[security] event=registration_turnstile_unavailable tenant_id=%s", data.TenantID)

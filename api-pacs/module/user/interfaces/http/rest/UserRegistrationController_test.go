@@ -54,7 +54,7 @@ func registrationPayload(role *string) map[string]interface{} {
 		"tenantId":       "tenant-a",
 		"turnstileToken": "valid-turnstile-token",
 		"name":           "Public User",
-		"email":          "PUBLIC.USER@EXAMPLE.COM",
+		"email":          "  PUBLIC.USER@EXAMPLE.COM  ",
 		"password":       "ValidPassword!",
 		"licenseNo":      "demo-license",
 		"specialty":      "demo-specialty",
@@ -142,6 +142,62 @@ func TestRegisterTenantUserMapsTurnstileFailures(t *testing.T) {
 	}
 }
 
+func TestRegisterTenantUserReturnsRateLimitContract(t *testing.T) {
+	service := &registrationCommandService{registrationErr: &apiError.RegistrationRateLimitError{RetryAfterSeconds: 73}}
+	controller := UserCommandController{UserCommandServiceInterface: service}
+	recorder := httptest.NewRecorder()
+
+	controller.RegisterTenantUser(recorder, registrationRequest(t, nil))
+
+	require.Equal(t, http.StatusTooManyRequests, recorder.Code)
+	require.Equal(t, "73", recorder.Header().Get("Retry-After"))
+	var response struct {
+		ErrorCode string `json:"errorCode"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, apiError.RegistrationRateLimited, response.ErrorCode)
+}
+
+func TestRegisterTenantUserUsesOnlyTrustedProxyClientIP(t *testing.T) {
+	trustedNetworks, err := ParseTrustedProxyCIDRs("172.16.0.0/12")
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name       string
+		remoteAddr string
+		realIP     string
+		expectedIP string
+	}{
+		{name: "trusted proxy", remoteAddr: "172.20.0.5:4321", realIP: "203.0.113.25", expectedIP: "203.0.113.25"},
+		{name: "untrusted direct peer cannot spoof header", remoteAddr: "198.51.100.7:4321", realIP: "203.0.113.25", expectedIP: "198.51.100.7"},
+		{name: "invalid trusted header falls back to peer", remoteAddr: "172.20.0.5:4321", realIP: "not-an-ip", expectedIP: "172.20.0.5"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			service := &registrationCommandService{}
+			controller := UserCommandController{
+				UserCommandServiceInterface: service,
+				TrustedProxyCIDRs:           trustedNetworks,
+			}
+			request := registrationRequest(t, nil)
+			request.RemoteAddr = testCase.remoteAddr
+			request.Header.Set("X-Real-IP", testCase.realIP)
+			recorder := httptest.NewRecorder()
+
+			controller.RegisterTenantUser(recorder, request)
+
+			require.Equal(t, http.StatusCreated, recorder.Code)
+			require.Equal(t, testCase.expectedIP, service.registrationInput.ClientIP)
+		})
+	}
+}
+
+func TestParseTrustedProxyCIDRsRejectsInvalidConfiguration(t *testing.T) {
+	_, err := ParseTrustedProxyCIDRs("172.16.0.0/12,not-a-cidr")
+	require.Error(t, err)
+}
+
 func TestCreateTenantUserPreservesAuthorizedAdminRole(t *testing.T) {
 	service := &registrationCommandService{}
 	controller := UserCommandController{UserCommandServiceInterface: service}
@@ -172,6 +228,11 @@ func TestRegisterTenantUserOpenAPIExcludesClientControlledRole(t *testing.T) {
 	require.NoError(t, err)
 
 	var document struct {
+		Paths map[string]struct {
+			Post struct {
+				Responses map[string]json.RawMessage `json:"responses"`
+			} `json:"post"`
+		} `json:"paths"`
 		Components struct {
 			Schemas map[string]struct {
 				Required   []string                   `json:"required"`
@@ -186,6 +247,9 @@ func TestRegisterTenantUserOpenAPIExcludesClientControlledRole(t *testing.T) {
 	require.NotContains(t, schema.Properties, "role")
 	require.Contains(t, schema.Required, "turnstileToken")
 	require.Contains(t, schema.Properties, "turnstileToken")
+	registerPath, ok := document.Paths["/user/register"]
+	require.True(t, ok)
+	require.Contains(t, registerPath.Post.Responses, "429")
 }
 
 func stringPointer(value string) *string {

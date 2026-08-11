@@ -1015,10 +1015,21 @@ docker compose images > pacs-ai-versions.txt
 | `MAILCHIMP_API_KEY` / `MAILCHIMP_BASE_URL` / `MAILCHIMP_LIST_ID` | optional | — | Marketing list sync |
 | **Public registration protection** | | | |
 | `CLOUDFLARE_SECRET_KEY` / `CLOUDFLARE_TURNSTILE_BASE_URL` | required when public registration is enabled | — | Server-side Turnstile registration verification |
+| `REGISTRATION_RATE_LIMIT_WINDOW_SECONDS` | optional | `600` | Fixed registration throttle window in seconds |
+| `REGISTRATION_RATE_LIMIT_TENANT_ATTEMPTS` | optional | `100` | Maximum attempts per tenant and window |
+| `REGISTRATION_RATE_LIMIT_EMAIL_ATTEMPTS` | optional | `5` | Maximum attempts per normalized email within its tenant and window |
+| `REGISTRATION_RATE_LIMIT_IP_ATTEMPTS` | optional | `10` | Maximum attempts per trusted client IP within its tenant and window |
+| `REGISTRATION_TRUSTED_PROXY_CIDRS` | required behind a reverse proxy | empty | Comma-separated CIDRs of direct proxies allowed to supply `X-Real-IP`; use the exact `pacs-net` subnet for the bundled Nginx deployment |
 | **Optional integrations** | | | |
 | `DOCUSIGN_*` (6 vars) | optional | — | DocuSign integration |
 | `OPENAPI_DOCS_PASSWORD` | optional | — | Basic-auth on `/docs` |
 | `ORCHESTRATOR_API_URL` | optional | — | URL of the optional orchestrator service |
+
+Registration counters are stored in the IAM Redis database and use hashed,
+tenant-scoped identifiers. When `REGISTRATION_TRUSTED_PROXY_CIDRS` is empty or
+the direct peer is outside those networks, api-pacs ignores `X-Real-IP` and
+uses the socket peer address. Throttled requests return
+`REGISTRATION_RATE_LIMITED`, HTTP 429, and a `Retry-After` header in seconds.
 
 #### cardio-agent / study-service (`cardio-agent/study-service/.env`)
 
