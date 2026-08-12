@@ -168,7 +168,7 @@ func authorizeAccountManagement(actorID, actorRole, targetID, targetRole string)
 func (service *UserCommandService) logAccountAccessAudit(ctx context.Context, data types.ChangeTenantUserAccess, target repositoryTypes.GetTenantUser, outcome, failureReason string) {
 	previousState := userEntity.ResolveAccountAccessState(target.AccessState, target.IsAccountDisabled)
 	log.Printf(
-		"[security] event=account_access_transition tenant_id=%s actor_user_id=%s actor_role=%s target_user_id=%s target_role=%s previous_state=%s new_state=%s outcome=%s reason=%q failure_reason=%s",
+		"[security] event=account_access_transition tenant_id=%s actor_user_id=%s actor_role=%s target_user_id=%s target_role=%s previous_state=%s new_state=%s outcome=%s reason_present=%t failure_reason=%s",
 		data.TenantID,
 		data.ActorUserID,
 		data.ActorRole,
@@ -177,7 +177,7 @@ func (service *UserCommandService) logAccountAccessAudit(ctx context.Context, da
 		previousState,
 		data.AccessState,
 		outcome,
-		data.Reason,
+		data.Reason != "",
 		failureReason,
 	)
 
