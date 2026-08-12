@@ -1,11 +1,13 @@
 package http
 
 import (
+	"unicode"
+
 	"github.com/go-playground/validator/v10"
 )
 
 var (
-	Validate         *validator.Validate = validator.New(validator.WithRequiredStructEnabled())
+	Validate         *validator.Validate = newValidator()
 	ValidationErrors map[string]string   = map[string]string{
 		"CreateTenantOwnerRequest.TenantID":           "Tenant ID is required.",
 		"CreateTenantUserRequest.Role":                "Role is required.",
@@ -15,13 +17,14 @@ var (
 		"CreateTenantUserRequest.Specialty":           "Specialty is required.",
 		"DeleteTenantUserRequest.UserID":              "User ID is required.",
 		"SendTenantEmailInviteRequest.Email":          "Valid email is required.",
-		"RegisterTenantUserRequest.TenantID":          "Tenant ID is required.",
-		"RegisterTenantUserRequest.TurnstileToken":    "Turnstile token is required.",
-		"RegisterTenantUserRequest.Name":              "Name is required.",
-		"RegisterTenantUserRequest.Email":             "Email is required.",
-		"RegisterTenantUserRequest.Password":          "Password is required.",
-		"RegisterTenantUserRequest.LicenseNo":         "License number is required.",
-		"RegisterTenantUserRequest.Specialty":         "Specialty is required.",
+		"RegisterTenantUserRequest.TenantID":          "Tenant ID is required and must not exceed 128 characters.",
+		"RegisterTenantUserRequest.TurnstileToken":    "Turnstile token is required and must not exceed 4096 characters.",
+		"RegisterTenantUserRequest.Name":              "Name is required and must not exceed 100 characters.",
+		"RegisterTenantUserRequest.Email":             "A valid email address is required.",
+		"RegisterTenantUserRequest.Password":          "Password must be 8 to 128 characters and contain uppercase, lowercase, and special characters.",
+		"RegisterTenantUserRequest.LicenseNo":         "License number is required and must not exceed 100 characters.",
+		"RegisterTenantUserRequest.Specialty":         "Specialty is required and must not exceed 100 characters.",
+		"RegisterTenantUserRequest.Code":              "Invitation code must not exceed 256 characters.",
 		"ResendTenantEmailInviteRequest.ID":           "ID is required.",
 		"UpdateTenantUserRequest.ID":                  "ID is required.",
 		"UpdateTenantUserRequest.Role":                "Role is required.",
@@ -31,6 +34,25 @@ var (
 		"UpdateTenantUserPasswordRequest.NewPassword": "New password is required.",
 	}
 )
+
+func newValidator() *validator.Validate {
+	validate := validator.New(validator.WithRequiredStructEnabled())
+	if err := validate.RegisterValidation("public_password", validatePublicPassword); err != nil {
+		panic(err)
+	}
+	return validate
+}
+
+func validatePublicPassword(field validator.FieldLevel) bool {
+	password := field.Field().String()
+	var hasUpper, hasLower, hasSpecial bool
+	for _, character := range password {
+		hasUpper = hasUpper || unicode.IsUpper(character)
+		hasLower = hasLower || unicode.IsLower(character)
+		hasSpecial = hasSpecial || unicode.IsPunct(character) || unicode.IsSymbol(character)
+	}
+	return hasUpper && hasLower && hasSpecial
+}
 
 type CreateTenantOwnerRequest struct {
 	TenantID  string `json:"tenantId" validate:"required"`
@@ -58,14 +80,17 @@ type SendTenantEmailInviteRequest struct {
 }
 
 type RegisterTenantUserRequest struct {
-	TenantID       string  `json:"tenantId" validate:"required"`
-	TurnstileToken string  `json:"turnstileToken" validate:"required"`
-	Name           string  `json:"name" validate:"required"`
-	Email          string  `json:"email" validate:"required"`
-	Password       string  `json:"password" validate:"required"`
-	LicenseNo      string  `json:"licenseNo" validate:"required"`
-	Specialty      string  `json:"specialty" validate:"required"`
-	Code           *string `json:"code"`
+	TenantID       string  `json:"tenantId" validate:"required,max=128"`
+	TurnstileToken string  `json:"turnstileToken" validate:"required,max=4096"`
+	Name           string  `json:"name" validate:"required,max=100"`
+	Email          string  `json:"email" validate:"required,email,max=254"`
+	Password       string  `json:"password" validate:"required,min=8,max=128,public_password"`
+	LicenseNo      string  `json:"licenseNo" validate:"required,max=100"`
+	Specialty      string  `json:"specialty" validate:"required,max=100"`
+	Code           *string `json:"code" validate:"omitempty,max=256"`
+	// Role is accepted only for compatibility with the current frontend and is
+	// never passed to the service. Public registration remains server-owned USER.
+	Role *string `json:"role" validate:"omitempty,max=64"`
 }
 
 type ResendTenantEmailInviteRequest struct {

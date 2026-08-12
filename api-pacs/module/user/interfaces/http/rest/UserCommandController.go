@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	stderrors "errors"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -27,6 +28,8 @@ type UserCommandController struct {
 	application.UserCommandServiceInterface
 	TrustedProxyCIDRs []*net.IPNet
 }
+
+const maxPublicRegistrationBodyBytes = 16 << 10
 
 // CreateTenantOwner create a tenant owner. Only callable by superuser.
 func (controller *UserCommandController) CreateTenantOwner(w http.ResponseWriter, r *http.Request) {
@@ -294,27 +297,42 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWriter, r *http.Request) {
 	var request types.RegisterTenantUserRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
+	r.Body = http.MaxBytesReader(w, r.Body, maxPublicRegistrationBodyBytes)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		writeInvalidRegistrationRequest(w)
 		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		writeInvalidRegistrationRequest(w)
+		return
+	}
+
+	request.TenantID = strings.TrimSpace(request.TenantID)
+	request.TurnstileToken = strings.TrimSpace(request.TurnstileToken)
+	request.Name = strings.TrimSpace(request.Name)
+	request.Email = strings.ToLower(strings.TrimSpace(request.Email))
+	request.LicenseNo = strings.TrimSpace(request.LicenseNo)
+	request.Specialty = strings.TrimSpace(request.Specialty)
+	if request.Code != nil {
+		code := strings.TrimSpace(*request.Code)
+		request.Code = &code
 	}
 
 	// validate request
 	err := types.Validate.Struct(request)
 	if err != nil {
-		errors := err.(validator.ValidationErrors)
-		if len(errors) > 0 {
+		validationErrors, ok := err.(validator.ValidationErrors)
+		if ok && len(validationErrors) > 0 {
+			message := types.ValidationErrors[validationErrors[0].StructNamespace()]
+			if message == "" {
+				message = "Invalid payload request."
+			}
 			response := viewmodels.HTTPResponseVM{
 				Status:    http.StatusBadRequest,
 				Success:   false,
-				Message:   types.ValidationErrors[errors[0].StructNamespace()],
+				Message:   message,
 				ErrorCode: apiError.InvalidPayload,
 			}
 
@@ -322,14 +340,7 @@ func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWrite
 			return
 		}
 
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
+		writeInvalidRegistrationRequest(w)
 		return
 	}
 
@@ -338,7 +349,7 @@ func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWrite
 		TurnstileToken: request.TurnstileToken,
 		ClientIP:       controller.registrationClientIP(r),
 		Name:           request.Name,
-		Email:          strings.ToLower(strings.TrimSpace(request.Email)),
+		Email:          request.Email,
 		Password:       request.Password,
 		LicenseNo:      request.LicenseNo,
 		Specialty:      request.Specialty,
@@ -354,6 +365,9 @@ func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWrite
 			httpCode = http.StatusTooManyRequests
 			errorMsg = "Too many registration attempts. Please try again later."
 			w.Header().Set("Retry-After", strconv.Itoa(rateLimitError.RetryAfterSeconds))
+		case err.Error() == errors.InvalidPayload:
+			httpCode = http.StatusBadRequest
+			errorMsg = "Invalid registration payload."
 		case err.Error() == errors.TurnstileInvalid:
 			httpCode = http.StatusBadRequest
 			errorMsg = "Registration verification failed."
@@ -389,6 +403,17 @@ func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWrite
 		Status:  http.StatusCreated,
 		Success: true,
 		Message: "Successfully registered tenant user.",
+	}
+
+	response.JSON(w)
+}
+
+func writeInvalidRegistrationRequest(w http.ResponseWriter) {
+	response := viewmodels.HTTPResponseVM{
+		Status:    http.StatusBadRequest,
+		Success:   false,
+		Message:   "Invalid payload request.",
+		ErrorCode: apiError.InvalidRequestPayload,
 	}
 
 	response.JSON(w)
