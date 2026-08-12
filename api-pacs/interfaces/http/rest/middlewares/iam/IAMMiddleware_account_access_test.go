@@ -92,6 +92,28 @@ func TestActiveSessionReachesProtectedAPIAndRefreshesTTL(t *testing.T) {
 	require.Equal(t, 1, command.setCalls)
 }
 
+func TestActiveSessionReachesOrthancProxy(t *testing.T) {
+	command := &accessGuardCommandService{}
+	middleware := &IAMMiddleware{
+		IAMCommandServiceInterface: command,
+		IAMQueryServiceInterface:   &accessGuardQueryService{suspended: false},
+	}
+	reached := false
+	handler := middleware.TokenSessionOrthancProxyAuthGuard(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		reached = true
+		require.Equal(t, "tenant-a", request.Context().Value(types.TenantIDCtx))
+		require.Equal(t, "user-a", request.Context().Value(types.UserIDCtx))
+	}))
+	request := httptest.NewRequest(http.MethodGet, "/orthanc", nil)
+	request.Header.Set("Authorization", "Bearer session")
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	require.True(t, reached)
+	require.Zero(t, command.setCalls)
+}
+
 func TestConcurrentSuspensionCannotResurrectSession(t *testing.T) {
 	command := &accessGuardCommandService{setErr: errors.New(apiError.AccountSuspended)}
 	middleware := &IAMMiddleware{

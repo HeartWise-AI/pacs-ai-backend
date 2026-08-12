@@ -62,6 +62,19 @@ func TestSetTokenSessionCannotWriteThroughSuspensionMarker(t *testing.T) {
 	require.Equal(t, "session-a", redis.writtenKey)
 }
 
+func TestSetTokenSessionWritesWhenUserIsActive(t *testing.T) {
+	redis := &sessionRevocationRedis{}
+	repository := &IAMCommandRepository{RedisDBHandlerInterface: redis}
+
+	err := repository.SetTokenSession(repositoryTypes.SetTokenSession{
+		SessionID: "session-a", TenantID: "tenant-a", UserID: "user-a", Role: "USER", ExpireTimeInSeconds: 900,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "iam:suspended:tenant-a:user-a", redis.blockingKey)
+	require.Equal(t, "session-a", redis.writtenKey)
+}
+
 func TestRevokeUserSessionsDeletesOnlyMatchingTenantUser(t *testing.T) {
 	redis := &sessionRevocationRedis{values: map[string]string{
 		"session-a": `{"tenantId":"tenant-a","userId":"user-a","role":"USER"}`,
