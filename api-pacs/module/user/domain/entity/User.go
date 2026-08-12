@@ -27,7 +27,7 @@ type User struct {
 // ResolveAccountAccessState keeps pre-migration profiles compatible while
 // preserving any account Firebase had already disabled.
 func ResolveAccountAccessState(accessState string, firebaseDisabled bool) string {
-	if firebaseDisabled || accessState == AccountAccessSuspended {
+	if firebaseDisabled || (accessState != "" && accessState != AccountAccessActive) {
 		return AccountAccessSuspended
 	}
 	return AccountAccessActive
