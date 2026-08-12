@@ -18,6 +18,14 @@ end
 return {count, redis.call("PTTL", KEYS[1])}
 `)
 
+var setIfKeyAbsentScript = db.NewScript(`
+if redis.call("EXISTS", KEYS[1]) == 1 then
+  return 0
+end
+redis.call("SET", KEYS[2], ARGV[1], "PX", ARGV[2])
+return 1
+`)
+
 // RedisDBHandler handles the methods for the redis database
 type RedisDBHandler struct {
 	rw     sync.RWMutex
@@ -109,6 +117,26 @@ func (r *RedisDBHandler) IncrementWithExpiry(key string, expiry time.Duration) (
 	return count, time.Duration(ttlMilliseconds) * time.Millisecond, nil
 }
 
+// Scan returns all keys matching pattern without blocking Redis with KEYS.
+func (r *RedisDBHandler) Scan(pattern string) ([]string, error) {
+	r.rw.RLock()
+	defer r.rw.RUnlock()
+
+	var keys []string
+	var cursor uint64
+	for {
+		batch, nextCursor, err := r.Client.Scan(cursor, pattern, 100).Result()
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, batch...)
+		cursor = nextCursor
+		if cursor == 0 {
+			return keys, nil
+		}
+	}
+}
+
 // Set a key-value pair to redis database (case-sensitive)
 func (r *RedisDBHandler) Set(key string, val interface{}, exp time.Duration) error {
 	r.rw.Lock()
@@ -117,4 +145,23 @@ func (r *RedisDBHandler) Set(key string, val interface{}, exp time.Duration) err
 	err := r.Client.Set(key, val, exp).Err()
 
 	return err
+}
+
+// SetIfKeyAbsent atomically writes key only when blockingKey does not exist.
+// It prevents a concurrent request from recreating a session after suspension.
+func (r *RedisDBHandler) SetIfKeyAbsent(blockingKey, key string, val interface{}, exp time.Duration) (bool, error) {
+	r.rw.Lock()
+	defer r.rw.Unlock()
+
+	result, err := setIfKeyAbsentScript.Run(
+		r.Client,
+		[]string{blockingKey, key},
+		val,
+		exp.Milliseconds(),
+	).Int()
+	if err != nil {
+		return false, err
+	}
+
+	return result == 1, nil
 }

@@ -5,8 +5,11 @@ import (
 )
 
 type IAMCommandRepositoryInterface interface {
+	ClearUserSuspension(tenantID, userID string) error
 	DeleteTokenSession(key string) error
+	RevokeUserSessions(tenantID, userID string) error
 	IsEmailVerificationCooldownActive(key string) (bool, error)
 	SetEmailVerificationCooldown(key string) error
 	SetTokenSession(data repositoryTypes.SetTokenSession) error
+	SetUserSuspended(tenantID, userID string) error
 }

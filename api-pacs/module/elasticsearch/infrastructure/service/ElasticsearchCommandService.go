@@ -60,15 +60,22 @@ func (service *ElasticsearchCommandService) CreateAdminInviteLog(ctx context.Con
 // CreateAdminMemberLog add a new admin member log
 func (service *ElasticsearchCommandService) CreateAdminMemberLog(ctx context.Context, data types.CreateAdminMemberLog) (*index.Response, error) {
 	res, err := service.ElasticsearchCommandRepositoryInterface.InsertAdminMemberLog(ctx, repositoryTypes.CreateAdminMemberLog{
-		TenantID:   data.TenantID,
-		TenantName: data.TenantName,
-		UserID:     data.UserID,
-		Email:      data.Email,
-		Name:       data.Name,
-		Role:       data.Role,
-		LicenseNo:  data.LicenseNo,
-		Specialty:  data.Specialty,
-		Action:     data.Action,
+		TenantID:      data.TenantID,
+		TenantName:    data.TenantName,
+		UserID:        data.UserID,
+		Email:         data.Email,
+		Name:          data.Name,
+		Role:          data.Role,
+		LicenseNo:     data.LicenseNo,
+		Specialty:     data.Specialty,
+		Action:        data.Action,
+		ActorUserID:   data.ActorUserID,
+		ActorRole:     data.ActorRole,
+		PreviousState: data.PreviousState,
+		NewState:      data.NewState,
+		Reason:        data.Reason,
+		Outcome:       data.Outcome,
+		FailureReason: data.FailureReason,
 	})
 	if err != nil {
 		return nil, err

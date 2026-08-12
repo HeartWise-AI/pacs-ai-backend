@@ -17,12 +17,14 @@ import (
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	"api-pacs/module/elasticsearch/domain/entity"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	iamApplication "api-pacs/module/iam/application"
 	iamEntity "api-pacs/module/iam/domain/entity"
 	inferenceApplication "api-pacs/module/inference/application"
 	inferenceTypes "api-pacs/module/inference/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
 	tenantTypes "api-pacs/module/tenant/infrastructure/service/types"
 	userApplication "api-pacs/module/user/application"
+	userEntity "api-pacs/module/user/domain/entity"
 	"api-pacs/module/user/domain/repository"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
 	"api-pacs/module/user/infrastructure/service/types"
@@ -39,6 +41,7 @@ type UserCommandService struct {
 	inferenceApplication.InferenceCommandServiceInterface
 	inferenceApplication.InferenceQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
+	iamApplication.IAMCommandServiceInterface
 	mailgunTypes.MailgunSDKInterface
 }
 
@@ -46,6 +49,120 @@ const (
 	userInviteTemplate                   string        = "%s/register?t=%s&email=%s&code=%s"
 	registrationVerificationEmailTimeout time.Duration = time.Minute
 )
+
+// ChangeTenantUserAccess applies tenant-scoped role hierarchy and synchronizes
+// durable account state with immediate Redis session enforcement.
+func (service *UserCommandService) ChangeTenantUserAccess(ctx context.Context, data types.ChangeTenantUserAccess) error {
+	if data.AccessState != userEntity.AccountAccessActive && data.AccessState != userEntity.AccountAccessSuspended {
+		return errors.New(apiError.InvalidPayload)
+	}
+	target, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, data.TenantID, data.TargetUserID)
+	if err != nil {
+		return err
+	}
+	if err := authorizeAccountManagement(data.ActorUserID, data.ActorRole, target.ID, target.Role); err != nil {
+		service.logAccountAccessAudit(ctx, data, target, "REJECTED", err.Error())
+		return err
+	}
+
+	previousState := target.AccessState
+	if previousState == "" {
+		previousState = userEntity.ResolveAccountAccessState(previousState, target.IsAccountDisabled)
+	}
+	if data.AccessState == userEntity.AccountAccessSuspended {
+		if err := service.IAMCommandServiceInterface.SetUserSuspended(ctx, data.TenantID, target.ID); err != nil {
+			service.logAccountAccessAudit(ctx, data, target, "REJECTED", err.Error())
+			return err
+		}
+		if err := service.IAMCommandServiceInterface.RevokeUserSessions(ctx, data.TenantID, target.ID); err != nil {
+			service.logAccountAccessAudit(ctx, data, target, "REJECTED", err.Error())
+			return err
+		}
+		if previousState != data.AccessState {
+			if err := service.UserCommandRepositoryInterface.UpdateTenantUserAccessState(ctx, repositoryTypes.UpdateTenantUserAccessState{
+				ID: target.ID, TenantID: data.TenantID, AccessState: data.AccessState,
+			}); err != nil {
+				_ = service.IAMCommandServiceInterface.ClearUserSuspension(context.WithoutCancel(ctx), data.TenantID, target.ID)
+				service.logAccountAccessAudit(ctx, data, target, "REJECTED", err.Error())
+				return err
+			}
+		}
+	} else {
+		if previousState != data.AccessState {
+			if err := service.UserCommandRepositoryInterface.UpdateTenantUserAccessState(ctx, repositoryTypes.UpdateTenantUserAccessState{
+				ID: target.ID, TenantID: data.TenantID, AccessState: data.AccessState,
+			}); err != nil {
+				service.logAccountAccessAudit(ctx, data, target, "REJECTED", err.Error())
+				return err
+			}
+		}
+		if err := service.IAMCommandServiceInterface.ClearUserSuspension(ctx, data.TenantID, target.ID); err != nil {
+			service.logAccountAccessAudit(ctx, data, target, "REJECTED", err.Error())
+			return err
+		}
+	}
+
+	service.logAccountAccessAudit(ctx, data, target, "SUCCESS", "")
+	return nil
+}
+
+func authorizeAccountManagement(actorID, actorRole, targetID, targetRole string) error {
+	if actorID == targetID {
+		return errors.New(apiError.ForbiddenAccess)
+	}
+	rank := map[string]int{iamEntity.UserRole: 1, iamEntity.AdminRole: 2, iamEntity.OwnerRole: 3}
+	actorRank, actorRoleKnown := rank[actorRole]
+	targetRank, targetRoleKnown := rank[targetRole]
+	if !actorRoleKnown || !targetRoleKnown || actorRank < rank[iamEntity.AdminRole] || actorRank <= targetRank {
+		return errors.New(apiError.ForbiddenAccess)
+	}
+	return nil
+}
+
+func (service *UserCommandService) logAccountAccessAudit(ctx context.Context, data types.ChangeTenantUserAccess, target repositoryTypes.GetTenantUser, outcome, failureReason string) {
+	previousState := userEntity.ResolveAccountAccessState(target.AccessState, target.IsAccountDisabled)
+	log.Printf(
+		"[security] event=account_access_transition tenant_id=%s actor_user_id=%s actor_role=%s target_user_id=%s target_role=%s previous_state=%s new_state=%s outcome=%s reason=%q failure_reason=%s",
+		data.TenantID,
+		data.ActorUserID,
+		data.ActorRole,
+		target.ID,
+		target.Role,
+		previousState,
+		data.AccessState,
+		outcome,
+		data.Reason,
+		failureReason,
+	)
+
+	if service.ElasticsearchCommandServiceInterface == nil || service.TenantQueryServiceInterface == nil {
+		return
+	}
+	auditContext := context.WithoutCancel(ctx)
+	go func() {
+		auditContext, cancel := context.WithTimeout(auditContext, 10*time.Second)
+		defer cancel()
+		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(auditContext, data.TenantID)
+		if err != nil {
+			log.Printf("[security] event=account_access_audit_failed tenant_id=%s target_user_id=%s error=%v", data.TenantID, target.ID, err)
+			return
+		}
+		action := entity.ReactivateAction
+		if data.AccessState == userEntity.AccountAccessSuspended {
+			action = entity.SuspendAction
+		}
+		_, err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(auditContext, elasticsearchTypes.CreateAdminMemberLog{
+			TenantID: data.TenantID, TenantName: tenant.Name, UserID: target.ID,
+			Email: target.Email, Name: target.Name, Role: target.Role, LicenseNo: target.LicenseNo, Specialty: target.Specialty,
+			Action: action, ActorUserID: data.ActorUserID, ActorRole: data.ActorRole,
+			PreviousState: previousState, NewState: data.AccessState, Reason: data.Reason,
+			Outcome: outcome, FailureReason: failureReason,
+		})
+		if err != nil {
+			log.Printf("[security] event=account_access_audit_failed tenant_id=%s target_user_id=%s error=%v", data.TenantID, target.ID, err)
+		}
+	}()
+}
 
 // CreateTenantUser add a new tenant user with random generated password
 func (service *UserCommandService) CreateTenantUser(ctx context.Context, data types.CreateTenantUser) (string, error) {
@@ -118,41 +235,61 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 }
 
 // DeleteTenantUser delete tenant user by id
-func (service *UserCommandService) DeleteTenantUser(ctx context.Context, tenantID, id string) error {
-	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, tenantID, id)
+func (service *UserCommandService) DeleteTenantUser(ctx context.Context, data types.DeleteTenantUser) error {
+	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, data.TenantID, data.TargetUserID)
 	if err != nil {
 		return err
 	}
+	if err := authorizeAccountManagement(data.ActorUserID, data.ActorRole, user.ID, user.Role); err != nil {
+		return err
+	}
+	if err := service.IAMCommandServiceInterface.SetUserSuspended(ctx, data.TenantID, user.ID); err != nil {
+		return err
+	}
+	if err := service.IAMCommandServiceInterface.RevokeUserSessions(ctx, data.TenantID, user.ID); err != nil {
+		return err
+	}
 
-	err = service.UserCommandRepositoryInterface.DeleteTenantUser(ctx, tenantID, id)
+	err = service.UserCommandRepositoryInterface.DeleteTenantUser(ctx, data.TenantID, user.ID)
 	if err != nil {
 		log.Println(err)
 		return err
 	}
 
-	// log to elasticsearch
-	go func() {
-		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
-		if err != nil {
-			return
-		}
+	// log to elasticsearch without inheriting request cancellation
+	if service.TenantQueryServiceInterface != nil && service.ElasticsearchCommandServiceInterface != nil {
+		auditContext := context.WithoutCancel(ctx)
+		go func() {
+			auditContext, cancel := context.WithTimeout(auditContext, 10*time.Second)
+			defer cancel()
+			tenant, err := service.TenantQueryServiceInterface.GetTenantByID(auditContext, data.TenantID)
+			if err != nil {
+				return
+			}
 
-		_, err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(ctx, elasticsearchTypes.CreateAdminMemberLog{
-			TenantID:   user.TenantID,
-			TenantName: tenant.Name,
-			UserID:     user.ID,
-			Email:      user.Email,
-			Name:       user.Name,
-			Role:       user.Role,
-			LicenseNo:  user.LicenseNo,
-			Specialty:  user.Specialty,
-			Action:     entity.DeleteAction,
-		})
-		if err != nil {
-			log.Println(err)
-			return
-		}
-	}()
+			_, err = service.ElasticsearchCommandServiceInterface.CreateAdminMemberLog(auditContext, elasticsearchTypes.CreateAdminMemberLog{
+				TenantID:      user.TenantID,
+				TenantName:    tenant.Name,
+				UserID:        user.ID,
+				Email:         user.Email,
+				Name:          user.Name,
+				Role:          user.Role,
+				LicenseNo:     user.LicenseNo,
+				Specialty:     user.Specialty,
+				Action:        entity.DeleteAction,
+				ActorUserID:   data.ActorUserID,
+				ActorRole:     data.ActorRole,
+				PreviousState: userEntity.ResolveAccountAccessState(user.AccessState, user.IsAccountDisabled),
+				NewState:      "DELETED",
+				Reason:        data.Reason,
+				Outcome:       "SUCCESS",
+			})
+			if err != nil {
+				log.Println(err)
+				return
+			}
+		}()
+	}
 
 	return nil
 }

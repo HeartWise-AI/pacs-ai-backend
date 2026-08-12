@@ -17,6 +17,59 @@ type IAMCommandRepository struct {
 	types.RedisDBHandlerInterface
 }
 
+func userSuspensionKey(tenantID, userID string) string {
+	return "iam:suspended:" + tenantID + ":" + userID
+}
+
+// SetUserSuspended installs the fail-closed marker checked by every session write.
+func (repository *IAMCommandRepository) SetUserSuspended(tenantID, userID string) error {
+	if err := repository.RedisDBHandlerInterface.Set(userSuspensionKey(tenantID, userID), "1", 0); err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+	return nil
+}
+
+// ClearUserSuspension allows sessions to be created again after reactivation.
+func (repository *IAMCommandRepository) ClearUserSuspension(tenantID, userID string) error {
+	if err := repository.RedisDBHandlerInterface.Delete(userSuspensionKey(tenantID, userID)); err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+	return nil
+}
+
+// RevokeUserSessions removes both current and pre-feature sessions for one user.
+func (repository *IAMCommandRepository) RevokeUserSessions(tenantID, userID string) error {
+	keys, err := repository.RedisDBHandlerInterface.Scan("*")
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	for _, key := range keys {
+		encoded, getErr := repository.RedisDBHandlerInterface.Get(key)
+		if getErr != nil {
+			continue
+		}
+		var session entity.TokenSession
+		if json.Unmarshal([]byte(encoded), &session) != nil {
+			continue
+		}
+		if session.Role != entity.OwnerRole && session.Role != entity.AdminRole && session.Role != entity.UserRole {
+			continue
+		}
+		if session.TenantID == tenantID && session.UserID == userID {
+			if deleteErr := repository.RedisDBHandlerInterface.Delete(key); deleteErr != nil {
+				log.Println(deleteErr)
+				return errors.New(apiError.DatabaseError)
+			}
+		}
+	}
+
+	return nil
+}
+
 // DeleteTokenSession delete token session
 func (repository *IAMCommandRepository) DeleteTokenSession(key string) error {
 	err := repository.RedisDBHandlerInterface.Delete(key)
@@ -64,10 +117,18 @@ func (repository *IAMCommandRepository) SetTokenSession(data repositoryTypes.Set
 	// convert to string
 	encodedStr, _ := json.Marshal(session)
 
-	err := repository.RedisDBHandlerInterface.Set(data.SessionID, encodedStr, time.Duration(data.ExpireTimeInSeconds)*time.Second)
+	written, err := repository.RedisDBHandlerInterface.SetIfKeyAbsent(
+		userSuspensionKey(data.TenantID, data.UserID),
+		data.SessionID,
+		encodedStr,
+		time.Duration(data.ExpireTimeInSeconds)*time.Second,
+	)
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.DatabaseError)
+	}
+	if !written {
+		return errors.New(apiError.AccountSuspended)
 	}
 
 	return nil

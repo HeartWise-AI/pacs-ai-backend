@@ -39,16 +39,23 @@ type AdminInviteLogResponse struct {
 }
 
 type AdminMemberLogResponse struct {
-	TenantID   string `json:"sessionId" csv:"tenant_id"`
-	TenantName string `json:"tenantName" csv:"tenant_name"`
-	UserID     string `json:"userId" csv:"user_id"`
-	Email      string `json:"email" csv:"email"`
-	Name       string `json:"name" csv:"name"`
-	Role       string `json:"role" csv:"role"`
-	LicenseNo  string `json:"licenseNo" csv:"license_no"`
-	Specialty  string `json:"specialty" csv:"specialty"`
-	Action     string `json:"action" csv:"action"`
-	Timestamp  uint   `json:"timestamp" csv:"timestamp"`
+	TenantID      string `json:"sessionId" csv:"tenant_id"`
+	TenantName    string `json:"tenantName" csv:"tenant_name"`
+	UserID        string `json:"userId" csv:"user_id"`
+	Email         string `json:"email" csv:"email"`
+	Name          string `json:"name" csv:"name"`
+	Role          string `json:"role" csv:"role"`
+	LicenseNo     string `json:"licenseNo" csv:"license_no"`
+	Specialty     string `json:"specialty" csv:"specialty"`
+	Action        string `json:"action" csv:"action"`
+	ActorUserID   string `json:"actorUserId,omitempty" csv:"actor_user_id"`
+	ActorRole     string `json:"actorRole,omitempty" csv:"actor_role"`
+	PreviousState string `json:"previousState,omitempty" csv:"previous_state"`
+	NewState      string `json:"newState,omitempty" csv:"new_state"`
+	Reason        string `json:"reason,omitempty" csv:"reason"`
+	Outcome       string `json:"outcome,omitempty" csv:"outcome"`
+	FailureReason string `json:"failureReason,omitempty" csv:"failure_reason"`
+	Timestamp     uint   `json:"timestamp" csv:"timestamp"`
 }
 
 type LoginLogResponse struct {

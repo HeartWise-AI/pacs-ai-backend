@@ -117,6 +117,9 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 	if !user.IsEmailVerified && !user.IsAdminCreated {
 		return "", errors.New(apiError.FirebaseAuthEmailNotVerified)
 	}
+	if user.IsAccountDisabled || user.AccessState == "SUSPENDED" {
+		return "", errors.New(apiError.AccountSuspended)
+	}
 
 	err = service.SetTokenSession(ctx, types.SetTokenSession{
 		SessionID:           sessionToken,
@@ -153,6 +156,18 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 	}()
 
 	return sessionToken, nil
+}
+
+func (service *IAMCommandService) SetUserSuspended(_ context.Context, tenantID, userID string) error {
+	return service.IAMCommandRepositoryInterface.SetUserSuspended(tenantID, userID)
+}
+
+func (service *IAMCommandService) ClearUserSuspension(_ context.Context, tenantID, userID string) error {
+	return service.IAMCommandRepositoryInterface.ClearUserSuspension(tenantID, userID)
+}
+
+func (service *IAMCommandService) RevokeUserSessions(_ context.Context, tenantID, userID string) error {
+	return service.IAMCommandRepositoryInterface.RevokeUserSessions(tenantID, userID)
 }
 
 // SetTokenSession sets token session

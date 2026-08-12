@@ -31,6 +31,8 @@ const (
 	SystemScriptFailed string = "SYSTEM_SCRIPT_FAILED"
 	// UnauthorizedAccess is the code for accessing restricted routes
 	UnauthorizedAccess string = "UNAUTHORIZED_ACCESS"
+	// AccountSuspended is returned when an account is blocked from creating or using sessions.
+	AccountSuspended string = "ACCOUNT_SUSPENDED"
 	// RegistrationRateLimited is returned when public registration exceeds an anti-abuse limit.
 	RegistrationRateLimited string = "REGISTRATION_RATE_LIMITED"
 	// RequestBodyTooLarge is returned when an HTTP request exceeds its configured body limit.

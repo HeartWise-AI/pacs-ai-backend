@@ -1,10 +1,16 @@
 package entity
 
+const (
+	AccountAccessActive    string = "ACTIVE"
+	AccountAccessSuspended string = "SUSPENDED"
+)
+
 // User holds the user entity fields
 type User struct {
 	ID                string `firestore:"id,omitempty"` // firebase auth
 	TenantID          string `firestore:"tenant_id"`
 	Role              string `firestore:"role"`
+	AccessState       string `firestore:"access_state"`
 	Name              string `firestore:"name,omitempty"`     // firebase auth (DisplayName)
 	Email             string `firestore:"email,omitempty"`    // firebase auth
 	Password          string `firestore:"password,omitempty"` // firebase auth
@@ -16,6 +22,15 @@ type User struct {
 	IsAdminCreated    bool   `firestore:"is_admin_created"`
 	CreatedAt         int    `firestore:"created_at,omitempty"`
 	UpdatedAt         int    `firestore:"updated_at"`
+}
+
+// ResolveAccountAccessState keeps pre-migration profiles compatible while
+// preserving any account Firebase had already disabled.
+func ResolveAccountAccessState(accessState string, firebaseDisabled bool) string {
+	if firebaseDisabled || accessState == AccountAccessSuspended {
+		return AccountAccessSuspended
+	}
+	return AccountAccessActive
 }
 
 // GetModelName returns the model name of user entity that can be used for naming schemas

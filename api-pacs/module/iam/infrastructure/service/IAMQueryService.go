@@ -21,3 +21,7 @@ func (service *IAMQueryService) GetSessionToken(ctx context.Context, key string)
 
 	return session, nil
 }
+
+func (service *IAMQueryService) IsUserSuspended(_ context.Context, tenantID, userID string) (bool, error) {
+	return service.IAMQueryRepositoryInterface.IsUserSuspended(tenantID, userID)
+}

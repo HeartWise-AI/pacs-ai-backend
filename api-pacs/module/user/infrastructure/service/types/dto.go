@@ -13,6 +13,7 @@ type GetTenantUser struct {
 	ID                string
 	TenantID          string
 	Role              string
+	AccessState       string
 	Name              string
 	Email             string
 	LicenseNo         string
@@ -23,6 +24,23 @@ type GetTenantUser struct {
 	IsAdminCreated    bool
 	CreatedAt         uint
 	UpdatedAt         uint
+}
+
+type ChangeTenantUserAccess struct {
+	TenantID     string
+	ActorUserID  string
+	ActorRole    string
+	TargetUserID string
+	AccessState  string
+	Reason       string
+}
+
+type DeleteTenantUser struct {
+	TenantID     string
+	ActorUserID  string
+	ActorRole    string
+	TargetUserID string
+	Reason       string
 }
 
 type RegisterTenantUser struct {

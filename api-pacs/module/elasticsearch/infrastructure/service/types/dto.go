@@ -7,15 +7,22 @@ type CreateAdminInviteLog struct {
 }
 
 type CreateAdminMemberLog struct {
-	TenantID   string
-	TenantName string
-	UserID     string
-	Email      string
-	Name       string
-	Role       string
-	LicenseNo  string
-	Specialty  string
-	Action     string
+	TenantID      string
+	TenantName    string
+	UserID        string
+	Email         string
+	Name          string
+	Role          string
+	LicenseNo     string
+	Specialty     string
+	Action        string
+	ActorUserID   string
+	ActorRole     string
+	PreviousState string
+	NewState      string
+	Reason        string
+	Outcome       string
+	FailureReason string
 }
 
 type CreateLoginLog struct {

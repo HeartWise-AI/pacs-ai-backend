@@ -19,6 +19,7 @@ type UserCommandRepositoryInterface interface {
 	InsertTenantUserEmailInvite(ctx context.Context, data repositoryTypes.CreateTenantUserEmailInvite) error
 	// UpdateTenantUser updates a tenant user
 	UpdateTenantUser(ctx context.Context, data repositoryTypes.UpdateTenantUser) error
+	UpdateTenantUserAccessState(ctx context.Context, data repositoryTypes.UpdateTenantUserAccessState) error
 	// UpdateTenantUserPassword updates a tenant user password
 	UpdateTenantUserPassword(ctx context.Context, data repositoryTypes.UpdateTenantUserPassword) error
 	// UpdateTenantUserConsent updates a tenant user consent

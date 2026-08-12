@@ -59,6 +59,7 @@ func (creator *firebaseTenantUserCreator) CreateProfile(ctx context.Context, use
 	user := entity.User{
 		TenantID:       data.TenantID,
 		Role:           data.Role,
+		AccessState:    entity.AccountAccessActive,
 		LicenseNo:      data.LicenseNo,
 		Specialty:      data.Specialty,
 		IsAdminCreated: data.IsAdminCreated,
@@ -69,6 +70,53 @@ func (creator *firebaseTenantUserCreator) CreateProfile(ctx context.Context, use
 	collectionPath := fmt.Sprintf("%s/%s", user.GetModelName(), userID)
 	_, err := creator.firestoreClient.Doc(collectionPath).Create(ctx, user)
 	return err
+}
+
+// UpdateTenantUserAccessState synchronizes the durable Firestore state with
+// Firebase Auth. Firebase is disabled first so a suspended user cannot mint a
+// new ID token while the profile update is in flight.
+func (repository *UserCommandRepository) UpdateTenantUserAccessState(ctx context.Context, data repositoryTypes.UpdateTenantUserAccessState) error {
+	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(data.TenantID)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+	authUser, err := tenantAuth.GetUser(ctx, data.ID)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	disabled := data.AccessState == entity.AccountAccessSuspended
+	if _, err = tenantAuth.UpdateUser(ctx, data.ID, (&auth.UserToUpdate{}).Disabled(disabled)); err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirebaseAuthError)
+	}
+
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err == nil {
+		var user entity.User
+		_, err = firestoreClient.Doc(fmt.Sprintf("%s/%s", user.GetModelName(), data.ID)).Update(ctx, []firestore.Update{
+			{Path: "access_state", Value: data.AccessState},
+			{Path: "updated_at", Value: int(time.Now().Unix())},
+		})
+	}
+	if err != nil {
+		log.Println(err)
+		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), registrationRollbackTimeout)
+		defer cancel()
+		if _, rollbackErr := tenantAuth.UpdateUser(rollbackCtx, data.ID, (&auth.UserToUpdate{}).Disabled(authUser.Disabled)); rollbackErr != nil {
+			log.Printf("[security] severity=critical event=account_access_firebase_rollback_failed tenant_id=%s user_id=%s error=%v", data.TenantID, data.ID, rollbackErr)
+		}
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
 }
 
 func (creator *firebaseTenantUserCreator) DeleteAuthUser(ctx context.Context, userID string) error {

@@ -98,6 +98,12 @@ func (middleware *IAMMiddleware) TokenSessionAuthGuard(next http.Handler) http.H
 			return
 		}
 
+		suspended, err := middleware.IAMQueryServiceInterface.IsUserSuspended(r.Context(), tokenSession.TenantID, tokenSession.UserID)
+		if err != nil || suspended {
+			writeUnauthorized(w)
+			return
+		}
+
 		// reset token session duration
 		err = middleware.IAMCommandServiceInterface.SetTokenSession(r.Context(), serviceTypes.SetTokenSession{
 			SessionID:           sessionToken,
@@ -148,6 +154,12 @@ func (middleware *IAMMiddleware) TokenSessionOrthancProxyAuthGuard(next http.Han
 			return
 		}
 
+		suspended, err := middleware.IAMQueryServiceInterface.IsUserSuspended(r.Context(), tokenSession.TenantID, tokenSession.UserID)
+		if err != nil || suspended {
+			writeUnauthorized(w)
+			return
+		}
+
 		// set context and pass
 		ctx := context.WithValue(r.Context(), types.TenantIDCtx, tokenSession.TenantID)
 		ctx = context.WithValue(ctx, types.UserIDCtx, tokenSession.UserID)
@@ -155,4 +167,14 @@ func (middleware *IAMMiddleware) TokenSessionOrthancProxyAuthGuard(next http.Han
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func writeUnauthorized(w http.ResponseWriter) {
+	response := viewmodels.HTTPResponseVM{
+		Status:    http.StatusUnauthorized,
+		Success:   false,
+		Message:   "Unauthorized access.",
+		ErrorCode: apiError.UnauthorizedAccess,
+	}
+	response.JSON(w)
 }

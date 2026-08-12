@@ -582,6 +582,7 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 		InferenceCommandServiceInterface:     k.inferenceCommandServiceContainer(),
 		InferenceQueryServiceInterface:       k.inferenceQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
+		IAMCommandServiceInterface:           k.iamCommandServiceContainer(),
 		MailgunSDKInterface:                  mailgunSDK,
 	}
 

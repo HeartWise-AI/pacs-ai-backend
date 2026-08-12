@@ -15,6 +15,19 @@ type IAMQueryRepository struct {
 	types.RedisDBHandlerInterface
 }
 
+// IsUserSuspended checks the revocation marker used by normal and proxy auth guards.
+func (repository *IAMQueryRepository) IsUserSuspended(tenantID, userID string) (bool, error) {
+	_, err := repository.RedisDBHandlerInterface.Get(userSuspensionKey(tenantID, userID))
+	if err == nil {
+		return true, nil
+	}
+	if err.Error() == "empty" {
+		return false, nil
+	}
+	log.Println(err)
+	return false, errors.New(apiError.DatabaseError)
+}
+
 // GetTokenSession get token session by session id
 func (repository *IAMQueryRepository) GetTokenSession(key string) (entity.TokenSession, error) {
 	var session entity.TokenSession
