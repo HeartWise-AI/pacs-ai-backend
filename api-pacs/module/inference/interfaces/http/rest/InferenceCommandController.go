@@ -4,14 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"sort"
-	"strconv"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
+	"api-pacs/interfaces/http/rest/middlewares/requestbody"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
@@ -26,6 +24,10 @@ type InferenceCommandController struct {
 }
 
 var mediaMaxFileSize int64 = 5 * 1024 * 1024 // 5MB
+
+const mediaMultipartOverheadAllowance int64 = 64 * 1024
+
+const defaultInferencePredictMaxRequestBodyBytes int64 = 1024 * 1024
 
 var mediaAllowedFileTypes = []string{
 	"text/csv", "application/csv",
@@ -138,7 +140,16 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 	}
 
 	var request types.PredictInferenceModelRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+	predictMaxBytes := requestbody.PositiveInt64FromEnvironment(
+		"INFERENCE_PREDICT_MAX_REQUEST_BODY_BYTES",
+		defaultInferencePredictMaxRequestBodyBytes,
+	)
+	if err := requestbody.DecodeJSON(w, r, &request, predictMaxBytes); err != nil {
+		if requestbody.IsTooLarge(err) {
+			requestbody.ObserveRejection(r, predictMaxBytes, "inference_predict")
+			requestbody.WriteTooLarge(w)
+			return
+		}
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
@@ -190,23 +201,6 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 		return
 	}
 
-	// sort series instance by last part asc
-	sort.Slice(request.SeriesInstanceUIDs, func(i, j int) bool {
-		partsI := strings.Split(request.SeriesInstanceUIDs[i], ".")
-		lastPartI, err := strconv.ParseInt(partsI[len(partsI)-1], 10, 64)
-		if err != nil {
-			return false
-		}
-
-		partsJ := strings.Split(request.SeriesInstanceUIDs[j], ".")
-		lastPartJ, err := strconv.ParseInt(partsJ[len(partsJ)-1], 10, 64)
-		if err != nil {
-			return false
-		}
-
-		return lastPartI < lastPartJ
-	})
-
 	predictionResult, err := controller.InferenceCommandServiceInterface.PredictInferenceModel(r.Context(), tenantID, containerID, &userID, serviceTypes.PredictInferenceModel{
 		StudyInstanceUID:   request.StudyInstanceUID,
 		SeriesInstanceUIDs: request.SeriesInstanceUIDs,
@@ -215,6 +209,9 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 	})
 	if err != nil {
 		if writeInferenceQuotaError(w, err) {
+			return
+		}
+		if writeInferenceInputError(w, err) {
 			return
 		}
 		var httpCode int

@@ -1,14 +1,14 @@
 package rest
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
+	"api-pacs/interfaces/http/rest/middlewares/requestbody"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/internal/inputlimits"
 	"api-pacs/module/orchestrator/application"
 	"api-pacs/module/orchestrator/infrastructure/service/types"
 	httpTypes "api-pacs/module/orchestrator/interfaces/http"
@@ -29,17 +29,13 @@ func NewOrchestratorController(orchestratorService application.OrchestratorServi
 // CreateThread creates a new thread
 func (controller *OrchestratorController) CreateThread(w http.ResponseWriter, r *http.Request) {
 	var request types.CreateThreadRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		fmt.Println("Invalid payload request.")
-
-		response.JSON(w)
+	limits := configuredOrchestratorInputLimits()
+	if err := requestbody.DecodeJSON(w, r, &request, limits.MaxRequestBodyBytes); err != nil {
+		writeOrchestratorDecodeError(w, r, err, "orchestrator_thread", limits.MaxRequestBodyBytes)
+		return
+	}
+	if err := inputlimits.ValidateJSONValue(request.Metadata, limits.MaxMetadataBytes, limits.MaxMetadataDepth, limits.MaxMetadataEntries); err != nil {
+		writeOrchestratorInputError(w, errOrchestratorInputLimit, "orchestrator_thread")
 		return
 	}
 
@@ -84,15 +80,9 @@ func (controller *OrchestratorController) CreateMessage(w http.ResponseWriter, r
 	threadID := chi.URLParam(r, "threadID")
 
 	var request httpTypes.CreateMessageRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
+	limits := configuredOrchestratorInputLimits()
+	if err := requestbody.DecodeJSON(w, r, &request, limits.MaxRequestBodyBytes); err != nil {
+		writeOrchestratorDecodeError(w, r, err, "orchestrator_chat", limits.MaxRequestBodyBytes)
 		return
 	}
 
@@ -108,14 +98,18 @@ func (controller *OrchestratorController) CreateMessage(w http.ResponseWriter, r
 		response.JSON(w)
 		return
 	}
+	if err := validateOrchestratorMessage(request, limits); err != nil {
+		writeOrchestratorInputError(w, err, "orchestrator_chat")
+		return
+	}
 
 	// Set the threadID from URL parameter
 	serviceRequest := types.CreateMessageRequest{
-		ThreadID:   threadID,
-		Content:    request.Message,
-		Metadata:   request.Metadata,
-		ImageData:  request.ImageData,
-		ImageType:  request.ImageType,
+		ThreadID:  threadID,
+		Content:   request.Message,
+		Metadata:  request.Metadata,
+		ImageData: request.ImageData,
+		ImageType: request.ImageType,
 	}
 
 	// Create the message (bearer token is extracted from context in the service)
@@ -162,56 +156,15 @@ func (controller *OrchestratorController) UploadDicomPayload(w http.ResponseWrit
 	threadID := chi.URLParam(r, "threadID")
 
 	var request httpTypes.UploadDicomPayloadRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid payload request.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
+	limits := configuredOrchestratorInputLimits()
+	if err := requestbody.DecodeJSON(w, r, &request, limits.MaxRequestBodyBytes); err != nil {
+		writeOrchestratorDecodeError(w, r, err, "orchestrator_dicom", limits.MaxRequestBodyBytes)
 		return
 	}
 
-	// Validate required fields
-	if len(request.Payload) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Payload is required.",
-			ErrorCode: apiError.InvalidPayload,
-		}
-
-		response.JSON(w)
+	if err := validateOrchestratorDICOMPayload(request, limits); err != nil {
+		writeOrchestratorInputError(w, err, "orchestrator_dicom")
 		return
-	}
-
-	// Validate each study in the payload
-	for i, study := range request.Payload {
-		if study.StudyInstanceUID == "" {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   fmt.Sprintf("Study Instance UID is required for study at index %d.", i),
-				ErrorCode: apiError.InvalidPayload,
-			}
-
-			response.JSON(w)
-			return
-		}
-
-		if len(study.SeriesInstanceUIDs) == 0 {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   fmt.Sprintf("Series Instance UIDs are required for study at index %d.", i),
-				ErrorCode: apiError.InvalidPayload,
-			}
-
-			response.JSON(w)
-			return
-		}
 	}
 
 	// Convert HTTP request to service request

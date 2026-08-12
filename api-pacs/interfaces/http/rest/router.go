@@ -16,8 +16,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -25,6 +27,7 @@ import (
 	"api-pacs/interfaces"
 	"api-pacs/interfaces/http/rest/middlewares/cors"
 	"api-pacs/interfaces/http/rest/middlewares/peeraddr"
+	"api-pacs/interfaces/http/rest/middlewares/requestbody"
 	"api-pacs/interfaces/http/rest/viewmodels"
 )
 
@@ -106,6 +109,11 @@ func (router *router) InitRouter() *chi.Mux {
 	// API routes
 	r.Group(func(r chi.Router) {
 		r.Route("/v1", func(r chi.Router) {
+			r.Use(requestbody.Limit(requestbody.PositiveInt64FromEnvironment(
+				"API_MAX_REQUEST_BODY_BYTES",
+				requestbody.DefaultAPIMaxBytes,
+			)))
+
 			// elasticsearch module
 			r.Route("/ecs", func(r chi.Router) {
 				// superuser only
@@ -313,7 +321,11 @@ func (router *router) InitRouter() *chi.Mux {
 			r.Group(func(r chi.Router) {
 				r.Use(iamMiddleware.TokenSessionOrthancProxyAuthGuard)
 
-				r.Handle("/orthanc/dicom-web/*", orthancProxy.DICOMWebProxy())
+				dicomWebProxy := requestbody.LimitWithScope(requestbody.PositiveInt64FromEnvironment(
+					"DICOMWEB_MAX_REQUEST_BODY_BYTES",
+					requestbody.DefaultDICOMWebMaxBytes,
+				), "dicomweb")(orthancProxy.DICOMWebProxy())
+				r.Handle("/orthanc/dicom-web/*", requestbody.WithoutReadDeadline(dicomWebProxy))
 			})
 		})
 	})
@@ -344,10 +356,38 @@ func FileServer(r chi.Router, path string, root http.FileSystem) {
 
 func (router *router) Serve(port int) {
 	log.Printf("[SERVER] REST server running on :%d", port)
-	err := http.ListenAndServe(fmt.Sprintf(":%d", port), router.InitRouter())
+	server := newHTTPServer(port, router.InitRouter())
+	err := server.ListenAndServe()
 	if err != nil {
 		log.Fatalf("[SERVER] REST server failed %v", err)
 	}
+}
+
+const (
+	defaultReadHeaderTimeout = 10 * time.Second
+	defaultReadTimeout       = 30 * time.Second
+	defaultIdleTimeout       = 2 * time.Minute
+)
+
+func newHTTPServer(port int, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              fmt.Sprintf(":%d", port),
+		Handler:           handler,
+		ReadHeaderTimeout: configuredServerDuration("HTTP_SERVER_READ_HEADER_TIMEOUT_SECONDS", defaultReadHeaderTimeout),
+		ReadTimeout:       configuredServerDuration("HTTP_SERVER_READ_TIMEOUT_SECONDS", defaultReadTimeout),
+		IdleTimeout:       configuredServerDuration("HTTP_SERVER_IDLE_TIMEOUT_SECONDS", defaultIdleTimeout),
+		// Streaming worklist events intentionally prevent a server-wide
+		// WriteTimeout. Nginx and non-streaming upstream calls remain bounded.
+		WriteTimeout: 0,
+	}
+}
+
+func configuredServerDuration(name string, fallback time.Duration) time.Duration {
+	seconds, err := strconv.ParseInt(strings.TrimSpace(os.Getenv(name)), 10, 64)
+	if err != nil || seconds <= 0 {
+		return fallback
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 func registerHandlers() {}

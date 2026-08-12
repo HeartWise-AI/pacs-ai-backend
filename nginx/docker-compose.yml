@@ -10,6 +10,9 @@ services:
       - ./ssl:/etc/nginx/ssl
     environment:
       - SERVER_NAME=${SERVER_NAME}
+      - NGINX_FRONTEND_MAX_BODY_SIZE=${NGINX_FRONTEND_MAX_BODY_SIZE:-1m}
+      - NGINX_API_MAX_BODY_SIZE=${NGINX_API_MAX_BODY_SIZE:-16m}
+      - NGINX_DICOMWEB_MAX_BODY_SIZE=${NGINX_DICOMWEB_MAX_BODY_SIZE:-2g}
     depends_on:
       - orthanc
       - api-pacs

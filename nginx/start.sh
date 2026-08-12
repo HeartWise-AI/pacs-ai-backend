@@ -24,7 +24,7 @@ else
 fi
 
 # Replace environment variables in the Nginx config template with real values
-envsubst '${SERVER_NAME}' < /etc/nginx/nginx.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${SERVER_NAME} ${NGINX_FRONTEND_MAX_BODY_SIZE} ${NGINX_API_MAX_BODY_SIZE} ${NGINX_DICOMWEB_MAX_BODY_SIZE}' < /etc/nginx/nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 # Start Nginx
 nginx -g 'daemon off;'

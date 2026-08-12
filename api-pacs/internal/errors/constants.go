@@ -33,6 +33,10 @@ const (
 	UnauthorizedAccess string = "UNAUTHORIZED_ACCESS"
 	// RegistrationRateLimited is returned when public registration exceeds an anti-abuse limit.
 	RegistrationRateLimited string = "REGISTRATION_RATE_LIMITED"
+	// RequestBodyTooLarge is returned when an HTTP request exceeds its configured body limit.
+	RequestBodyTooLarge string = "REQUEST_BODY_TOO_LARGE"
+	// RequestInputLimitExceeded is returned when a decoded variable-length field exceeds a safe bound.
+	RequestInputLimitExceeded string = "REQUEST_INPUT_LIMIT_EXCEEDED"
 
 	// Firebase-related errors
 	FirebaseAuthError            string = "FIREBASE_AUTH_ERROR"
@@ -66,7 +70,13 @@ const (
 	InferenceConcurrencyExceeded string = "INFERENCE_CONCURRENCY_EXCEEDED"
 	// InferenceQuotaUnavailable is returned when quota enforcement cannot make a safe decision.
 	InferenceQuotaUnavailable string = "INFERENCE_QUOTA_UNAVAILABLE"
-	TorchServeError           string = "TORCHSERVE_ERROR"
+	// InferenceModelInputOutOfRange is returned when the selected series count is outside the model contract.
+	InferenceModelInputOutOfRange string = "INFERENCE_MODEL_INPUT_OUT_OF_RANGE"
+	// InferenceInputInvalid is returned when inference UIDs or metadata violate bounded input rules.
+	InferenceInputInvalid string = "INFERENCE_INPUT_INVALID"
+	// InferenceModelConfigurationInvalid is returned when a model publishes unsafe upload bounds.
+	InferenceModelConfigurationInvalid string = "INFERENCE_MODEL_CONFIGURATION_INVALID"
+	TorchServeError                    string = "TORCHSERVE_ERROR"
 
 	// Cloudflare-related errors
 	CloudflareAPIError string = "CLOUDFLARE_API_ERROR"
