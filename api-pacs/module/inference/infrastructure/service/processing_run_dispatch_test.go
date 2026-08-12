@@ -54,7 +54,9 @@ func (repository *guardedDispatchCommandRepository) InsertInferenceIngestionProc
 
 type guardedProcessingDispatcher struct {
 	buildCalls        int
+	buildErr          error
 	dispatchCalls     int
+	dispatchCall      chan serviceTypes.DispatchStudyRequest
 	response          serviceTypes.DispatchStudyResponse
 	dispatchResponses []serviceTypes.DispatchStudyResponse
 	dispatchErrors    []error
@@ -62,16 +64,23 @@ type guardedProcessingDispatcher struct {
 
 func (dispatcher *guardedProcessingDispatcher) BuildDispatchStudyRequest(_ context.Context, data serviceTypes.BuildStudyServiceDispatchRequestInput) (serviceTypes.DispatchStudyRequest, error) {
 	dispatcher.buildCalls++
+	if dispatcher.buildErr != nil {
+		return serviceTypes.DispatchStudyRequest{}, dispatcher.buildErr
+	}
 	return serviceTypes.DispatchStudyRequest{
+		XRequestID:      trimmedPointerValue(data.RequestID),
 		ProcessingRunID: data.ProcessingRunID,
 		Modality:        "US",
 		ModelName:       data.IngestionJob.ModelName,
 	}, nil
 }
 
-func (dispatcher *guardedProcessingDispatcher) DispatchStudy(context.Context, serviceTypes.DispatchStudyRequest) (serviceTypes.DispatchStudyResponse, error) {
+func (dispatcher *guardedProcessingDispatcher) DispatchStudy(_ context.Context, request serviceTypes.DispatchStudyRequest) (serviceTypes.DispatchStudyResponse, error) {
 	index := dispatcher.dispatchCalls
 	dispatcher.dispatchCalls++
+	if dispatcher.dispatchCall != nil {
+		dispatcher.dispatchCall <- request
+	}
 	if index < len(dispatcher.dispatchErrors) && dispatcher.dispatchErrors[index] != nil {
 		return serviceTypes.DispatchStudyResponse{}, dispatcher.dispatchErrors[index]
 	}

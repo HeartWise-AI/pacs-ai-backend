@@ -36,6 +36,7 @@ func processingRunRequest(studyInstanceUID string) *http.Request {
 	routeContext.URLParams.Add("studyInstanceUID", studyInstanceUID)
 	ctx := context.WithValue(request.Context(), chi.RouteCtxKey, routeContext)
 	ctx = context.WithValue(ctx, iamTypes.TenantIDCtx, "tenant-a")
+	ctx = context.WithValue(ctx, iamTypes.UserIDCtx, "user-a")
 	return request.WithContext(ctx)
 }
 
@@ -57,6 +58,8 @@ func TestReprocessStudyCreatesTenantScopedManualRun(t *testing.T) {
 	require.Equal(t, http.StatusCreated, recorder.Code)
 	require.Equal(t, "tenant-a", service.input.TenantID)
 	require.Equal(t, "1.2.3", service.input.StudyInstanceUID)
+	require.NotNil(t, service.input.UserID)
+	require.Equal(t, "user-a", *service.input.UserID)
 	var response struct {
 		Success bool `json:"success"`
 		Data    struct {
@@ -87,6 +90,33 @@ func TestReprocessStudyReturnsConflictForActiveRun(t *testing.T) {
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
 	require.False(t, response.Success)
 	require.Equal(t, apiError.DuplicateRecord, response.ErrorCode)
+}
+
+func TestReprocessStudyReturnsMachineReadableQuotaLimit(t *testing.T) {
+	service := &manualProcessingRunService{err: &apiError.InferenceQuotaLimitError{
+		ErrorCode: apiError.InferenceConcurrencyExceeded,
+		Allowance: 50, Used: 4, Remaining: 46,
+		MaxConcurrentExecutions: 2, ActiveExecutions: 2, RetryAfterSeconds: 37,
+	}}
+	controller := InferenceCommandController{InferenceCommandServiceInterface: service}
+	recorder := httptest.NewRecorder()
+
+	controller.ReprocessStudy(recorder, processingRunRequest("1.2.3"))
+
+	require.Equal(t, http.StatusTooManyRequests, recorder.Code)
+	require.Equal(t, "37", recorder.Header().Get("Retry-After"))
+	require.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
+	var response struct {
+		ErrorCode string `json:"errorCode"`
+		Data      struct {
+			Remaining        int64 `json:"remaining"`
+			ActiveExecutions int64 `json:"activeExecutions"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, apiError.InferenceConcurrencyExceeded, response.ErrorCode)
+	require.Equal(t, int64(46), response.Data.Remaining)
+	require.Equal(t, int64(2), response.Data.ActiveExecutions)
 }
 
 func TestReprocessStudyRejectsMissingStudyUID(t *testing.T) {

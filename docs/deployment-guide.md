@@ -1020,6 +1020,12 @@ docker compose images > pacs-ai-versions.txt
 | `REGISTRATION_RATE_LIMIT_EMAIL_ATTEMPTS` | optional | `5` | Maximum attempts per normalized email within its tenant and window |
 | `REGISTRATION_RATE_LIMIT_IP_ATTEMPTS` | optional | `10` | Maximum attempts per trusted client IP within its tenant and window |
 | `REGISTRATION_TRUSTED_PROXY_CIDRS` | required behind a reverse proxy | empty | Comma-separated CIDRs of direct proxies allowed to supply `X-Real-IP`; use the exact `pacs-net` subnet for the bundled Nginx deployment |
+| **Public-demo inference quotas** | | | |
+| `INFERENCE_USER_QUOTA_WINDOW_SECONDS` | optional | `86400` | Fixed usage-allowance window in seconds |
+| `INFERENCE_USER_QUOTA_ALLOWANCE` | optional | `50` | User-triggered inference units per tenant/user and window |
+| `INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS` | optional | `2` | Active direct predictions or manual reprocessing runs per tenant/user |
+| `INFERENCE_USER_RESERVATION_TTL_SECONDS` | optional | `7200` | Recovery TTL for an active reservation that never receives a terminal outcome |
+| `INFERENCE_USER_QUOTA_TENANT_OVERRIDES_JSON` | optional | empty | JSON object keyed by tenant ID; supports `windowSeconds`, `allowance`, `maxConcurrentExecutions`, and `reservationTtlSeconds` |
 | **Optional integrations** | | | |
 | `DOCUSIGN_*` (6 vars) | optional | — | DocuSign integration |
 | `OPENAPI_DOCS_PASSWORD` | optional | — | Basic-auth on `/docs` |
@@ -1030,6 +1036,21 @@ tenant-scoped identifiers. When `REGISTRATION_TRUSTED_PROXY_CIDRS` is empty or
 the direct peer is outside those networks, api-pacs ignores `X-Real-IP` and
 uses the socket peer address. Throttled requests return
 `REGISTRATION_RATE_LIMITED`, HTTP 429, and a `Retry-After` header in seconds.
+
+Inference quotas use the same Redis deployment but separate hashed tenant/user
+keys. One direct model prediction and one manual study reprocessing run each
+consume one unit. Input/plan validation and dispatch failures are refunded;
+work accepted by a model remains charged even when the model later fails.
+Manual-run concurrency is held until the run reaches a terminal state, with
+the reservation TTL acting only as recovery for lost callbacks. Automated
+ingestion has no authenticated user and is explicitly exempt from these public
+user limits; it remains bounded by `STUDY_SERVICE_DISPATCH_CONCURRENCY`.
+All authenticated users, including tenant administrators and owners, use the
+same tenant/user quota unless their tenant receives an explicit override.
+Clients can read `GET /v1/inference/quota`. Limit rejections return HTTP 429,
+`Retry-After`, and either `INFERENCE_QUOTA_EXCEEDED` or
+`INFERENCE_CONCURRENCY_EXCEEDED`. Redis unavailability fails closed with HTTP
+503 and `INFERENCE_QUOTA_UNAVAILABLE`.
 
 #### cardio-agent / study-service (`cardio-agent/study-service/.env`)
 

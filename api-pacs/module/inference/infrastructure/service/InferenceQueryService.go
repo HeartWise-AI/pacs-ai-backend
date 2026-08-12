@@ -13,6 +13,7 @@ import (
 	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/module/inference/application"
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
@@ -25,6 +26,15 @@ type InferenceQueryService struct {
 	repository.InferenceProcessingRunRepositoryInterface
 	dockerTypes.DockerSDKInterface
 	dockerInferenceTypes.DockerInferenceAPIInterface
+	application.InferenceQuotaManagerInterface
+}
+
+// GetInferenceQuota returns the current tenant/user allowance and active work.
+func (service *InferenceQueryService) GetInferenceQuota(ctx context.Context, tenantID, userID string) (types.InferenceQuotaStatus, error) {
+	if service.InferenceQuotaManagerInterface == nil {
+		return types.InferenceQuotaStatus{}, errors.New(apiError.InferenceQuotaUnavailable)
+	}
+	return service.InferenceQuotaManagerInterface.Status(ctx, tenantID, userID)
 }
 
 const (
@@ -255,11 +265,11 @@ func (service *InferenceQueryService) GetInferenceIngestionCandidates(ctx contex
 	}
 
 	res, err := service.InferenceQueryRepositoryInterface.ListInferenceIngestionCandidates(repositoryTypes.ListInferenceIngestionCandidates{
-		TenantID:           data.TenantID,
-		IngestionJobID:     data.IngestionJobID,
-		StudyInstanceUID:   data.StudyInstanceUID,
-		Status:             status,
-		RetrievalFailures:  data.RetrievalFailures,
+		TenantID:          data.TenantID,
+		IngestionJobID:    data.IngestionJobID,
+		StudyInstanceUID:  data.StudyInstanceUID,
+		Status:            status,
+		RetrievalFailures: data.RetrievalFailures,
 	})
 	if err != nil && err.Error() != apiError.MissingRecord {
 		return nil, err

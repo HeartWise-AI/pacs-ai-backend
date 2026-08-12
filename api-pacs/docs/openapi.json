@@ -456,6 +456,23 @@
           "2xx": {
             "description": "Success"
           },
+          "429": {
+            "description": "Per-user inference allowance or concurrency limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request should be retried",
+                "schema": { "type": "integer", "minimum": 1 }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InferenceQuotaLimitResponse" }
+              }
+            }
+          },
+          "503": {
+            "description": "Inference quota enforcement is unavailable and fails closed"
+          },
           "4xx": {
             "description": "Client side errors"
           },
@@ -2173,6 +2190,31 @@
         }
       }
     },
+    "/inference/quota": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get authenticated user inference quota",
+        "description": "Returns the fixed-window allowance and active inference reservations for the authenticated tenant/user. Responses are not cacheable.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Current per-user inference quota state",
+            "headers": {
+              "Cache-Control": {
+                "schema": { "type": "string", "example": "no-store" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InferenceQuotaResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "503": { "$ref": "#/components/responses/InferenceQuotaUnavailable" }
+        }
+      }
+    },
     "/inference/worklist/status": {
       "get": {
         "tags": ["inference"],
@@ -2299,10 +2341,97 @@
           "503": { "$ref": "#/components/responses/WorklistUnavailable" }
         }
       }
+    },
+    "/inference/worklist/studies/{studyInstanceUID}/reprocess": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Create a manual study reprocessing run",
+        "description": "Creates one tenant-scoped manual processing run and reserves one unit from the authenticated user's inference quota. Callable by an owner or administrator only.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "studyInstanceUID",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "201": { "description": "Manual processing run created" },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "409": { "description": "The study already has an active processing run" },
+          "429": {
+            "description": "Per-user inference allowance or concurrency limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request should be retried",
+                "schema": { "type": "integer", "minimum": 1 }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InferenceQuotaLimitResponse" }
+              }
+            }
+          },
+          "503": { "$ref": "#/components/responses/InferenceQuotaUnavailable" }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "InferenceQuotaData": {
+        "type": "object",
+        "required": ["allowance", "used", "remaining", "windowSeconds", "resetAfterSeconds", "maxConcurrentExecutions", "activeExecutions", "concurrencyRetryAfterSeconds"],
+        "properties": {
+          "allowance": { "type": "integer", "format": "int64", "minimum": 1 },
+          "used": { "type": "integer", "format": "int64", "minimum": 0 },
+          "remaining": { "type": "integer", "format": "int64", "minimum": 0 },
+          "windowSeconds": { "type": "integer", "format": "int64", "minimum": 1 },
+          "resetAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 },
+          "resetAt": { "type": "integer", "format": "int64", "nullable": true },
+          "maxConcurrentExecutions": { "type": "integer", "format": "int64", "minimum": 1 },
+          "activeExecutions": { "type": "integer", "format": "int64", "minimum": 0 },
+          "concurrencyRetryAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 }
+        }
+      },
+      "InferenceQuotaResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/InferenceQuotaData" }
+        }
+      },
+      "InferenceQuotaLimitResponse": {
+        "type": "object",
+        "required": ["success", "message", "errorCode", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "message": { "type": "string" },
+          "errorCode": {
+            "type": "string",
+            "enum": ["INFERENCE_QUOTA_EXCEEDED", "INFERENCE_CONCURRENCY_EXCEEDED"]
+          },
+          "data": {
+            "type": "object",
+            "required": ["allowance", "used", "remaining", "resetAfterSeconds", "maxConcurrentExecutions", "activeExecutions", "retryAfterSeconds"],
+            "properties": {
+              "allowance": { "type": "integer", "format": "int64", "minimum": 1 },
+              "used": { "type": "integer", "format": "int64", "minimum": 0 },
+              "remaining": { "type": "integer", "format": "int64", "minimum": 0 },
+              "resetAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 },
+              "maxConcurrentExecutions": { "type": "integer", "format": "int64", "minimum": 1 },
+              "activeExecutions": { "type": "integer", "format": "int64", "minimum": 0 },
+              "retryAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 }
+            }
+          }
+        }
+      },
       "WorklistPage": {
         "type": "object",
         "required": ["limit", "offset", "hasMore"],
@@ -3246,6 +3375,14 @@
       },
       "WorklistUnavailable": {
         "description": "Worklist status is temporarily unavailable",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "InferenceQuotaUnavailable": {
+        "description": "Redis-backed inference quota enforcement is temporarily unavailable and fails closed",
         "content": {
           "application/json": {
             "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }

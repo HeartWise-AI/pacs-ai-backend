@@ -193,10 +193,10 @@ func (repository *InferenceProcessingRunRepository) CreateProcessingRun(ctx cont
 	var run entity.InferenceIngestionProcessingRun
 	err = tx.GetContext(ctx, &run, `
 		INSERT INTO ingestion_processing_runs (
-			id, tenant_id, study_instance_uid, run_number, run_trigger, phase
-		) VALUES ($1, $2, $3, $4, $5, $6)
+			id, tenant_id, study_instance_uid, run_number, run_trigger, phase, requested_by_user_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING *
-	`, data.ID, data.TenantID, data.StudyInstanceUID, runNumber, data.RunTrigger, data.Phase)
+	`, data.ID, data.TenantID, data.StudyInstanceUID, runNumber, data.RunTrigger, data.Phase, data.RequestedByUserID)
 	if err != nil {
 		return entity.InferenceIngestionProcessingRun{}, processingRunError(err)
 	}
@@ -614,10 +614,10 @@ func (repository *InferenceProcessingRunRepository) CreateProcessingRunPlan(ctx 
 	var run entity.InferenceIngestionProcessingRun
 	if err = tx.GetContext(ctx, &run, `
 		INSERT INTO ingestion_processing_runs (
-			id, tenant_id, study_instance_uid, run_number, run_trigger, phase
-		) VALUES ($1, $2, $3, $4, $5, $6)
+			id, tenant_id, study_instance_uid, run_number, run_trigger, phase, requested_by_user_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING *
-	`, data.Run.ID, data.Run.TenantID, data.Run.StudyInstanceUID, runNumber, data.Run.RunTrigger, data.Run.Phase); err != nil {
+	`, data.Run.ID, data.Run.TenantID, data.Run.StudyInstanceUID, runNumber, data.Run.RunTrigger, data.Run.Phase, data.Run.RequestedByUserID); err != nil {
 		return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
 	}
 

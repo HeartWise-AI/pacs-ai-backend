@@ -137,6 +137,7 @@ func (controller *InferenceCommandController) CreateInferenceIngestionJob(w http
 // ReprocessStudy creates a new manual processing run for one tenant-scoped study.
 func (controller *InferenceCommandController) ReprocessStudy(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 	studyInstanceUID := strings.TrimSpace(chi.URLParam(r, "studyInstanceUID"))
 	if studyInstanceUID == "" {
 		response := viewmodels.HTTPResponseVM{
@@ -152,8 +153,12 @@ func (controller *InferenceCommandController) ReprocessStudy(w http.ResponseWrit
 	result, err := controller.InferenceCommandServiceInterface.CreateManualStudyProcessingRun(r.Context(), serviceTypes.CreateStudyProcessingRun{
 		TenantID:         tenantID,
 		StudyInstanceUID: studyInstanceUID,
+		UserID:           &userID,
 	})
 	if err != nil {
+		if writeInferenceQuotaError(w, err) {
+			return
+		}
 		httpCode := http.StatusInternalServerError
 		errorMessage := "Please contact technical support."
 		switch err.Error() {
@@ -168,6 +173,9 @@ func (controller *InferenceCommandController) ReprocessStudy(w http.ResponseWrit
 			errorMessage = "This study already has an active processing run."
 		case apiError.DatabaseError:
 			errorMessage = "Database error."
+		case apiError.InferenceQuotaUnavailable:
+			httpCode = http.StatusServiceUnavailable
+			errorMessage = "Inference quota enforcement is temporarily unavailable."
 		}
 
 		response := viewmodels.HTTPResponseVM{

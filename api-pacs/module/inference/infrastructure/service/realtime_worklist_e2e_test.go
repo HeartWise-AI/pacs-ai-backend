@@ -27,10 +27,11 @@ type realtimeWorklistE2EState struct {
 	domainRepository.InferenceQueryRepositoryInterface
 	domainRepository.InferenceCommandRepositoryInterface
 	domainRepository.InferenceProcessingRunRepositoryInterface
-	candidates map[string]entity.InferenceIngestionCandidate
-	jobs       map[string]entity.InferenceIngestionJob
-	runs       map[string]entity.InferenceIngestionProcessingRun
-	executions map[string]entity.InferenceIngestionProcessingJob
+	candidates      map[string]entity.InferenceIngestionCandidate
+	jobs            map[string]entity.InferenceIngestionJob
+	runs            map[string]entity.InferenceIngestionProcessingRun
+	executions      map[string]entity.InferenceIngestionProcessingJob
+	dispatchUpdates chan string
 }
 
 func (state *realtimeWorklistE2EState) ListInferenceIngestionCandidates(data repositoryTypes.ListInferenceIngestionCandidates) ([]entity.InferenceIngestionCandidate, error) {
@@ -80,7 +81,8 @@ func (state *realtimeWorklistE2EState) CreateProcessingRunPlan(_ context.Context
 	run := entity.InferenceIngestionProcessingRun{
 		ID: data.Run.ID, TenantID: data.Run.TenantID, StudyInstanceUID: data.Run.StudyInstanceUID,
 		RunNumber: runNumber, RunTrigger: data.Run.RunTrigger, Phase: data.Run.Phase,
-		Version: 1, CreatedAt: now, UpdatedAt: now,
+		RequestedByUserID: data.Run.RequestedByUserID,
+		Version:           1, CreatedAt: now, UpdatedAt: now,
 	}
 	state.runs[run.ID] = run
 	executions := make([]entity.InferenceIngestionProcessingJob, 0, len(data.Executions))
@@ -116,6 +118,26 @@ func (state *realtimeWorklistE2EState) ListProcessingRunExecutions(_ context.Con
 	return result, nil
 }
 
+func (state *realtimeWorklistE2EState) UpdateProcessingRunAggregate(_ context.Context, data repositoryTypes.UpdateInferenceIngestionProcessingRunAggregate) (entity.InferenceIngestionProcessingRun, error) {
+	run, exists := state.runs[data.ID]
+	if !exists || run.TenantID != data.TenantID {
+		return entity.InferenceIngestionProcessingRun{}, errors.New(apiError.MissingRecord)
+	}
+	if run.Version != data.ExpectedVersion {
+		return entity.InferenceIngestionProcessingRun{}, errors.New(apiError.DuplicateRecord)
+	}
+	run.Phase = data.Phase
+	run.Outcome = data.Outcome
+	run.AttentionRequired = data.AttentionRequired
+	run.AttentionReasons = data.AttentionReasons
+	run.StartedAt = data.StartedAt
+	run.CompletedAt = data.CompletedAt
+	run.Version++
+	run.UpdatedAt = time.Now().UTC()
+	state.runs[run.ID] = run
+	return run, nil
+}
+
 func (state *realtimeWorklistE2EState) SelectProcessingRunExecution(_ context.Context, tenantID, runID, candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error) {
 	for _, execution := range state.executions {
 		if execution.TenantID == tenantID && execution.ProcessingRunID != nil && *execution.ProcessingRunID == runID &&
@@ -137,6 +159,9 @@ func (state *realtimeWorklistE2EState) UpdateInferenceIngestionProcessingJob(dat
 	execution.Modality = data.Modality
 	execution.UpdatedAt = time.Now().UTC()
 	state.executions[data.ID] = execution
+	if state.dispatchUpdates != nil {
+		state.dispatchUpdates <- data.ID
+	}
 	return nil
 }
 
@@ -246,8 +271,12 @@ func (state *realtimeWorklistE2EState) ListProcessingRunExecutionsByRunIDs(_ con
 type realtimeWorklistE2EDispatcher struct{ http *StudyServiceDispatcher }
 
 func (dispatcher *realtimeWorklistE2EDispatcher) BuildDispatchStudyRequest(_ context.Context, data serviceTypes.BuildStudyServiceDispatchRequestInput) (serviceTypes.DispatchStudyRequest, error) {
+	requestID := trimmedPointerValue(data.RequestID)
+	if requestID == "" {
+		requestID = data.Candidate.ID
+	}
 	return serviceTypes.DispatchStudyRequest{
-		XRequestID: data.Candidate.ID, TenantID: &data.Candidate.TenantID,
+		XRequestID: requestID, TenantID: &data.Candidate.TenantID,
 		IngestionJobID: &data.IngestionJob.ID, CandidateID: &data.Candidate.ID,
 		ProcessingRunID: data.ProcessingRunID, StudyInstanceUID: data.Candidate.StudyInstanceUID,
 		OrthancStudyID: "orthanc-study", Modality: "US", ModelName: data.IngestionJob.ModelName,
@@ -288,13 +317,19 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 		}
 	}
 
-	dispatched := make([]serviceTypes.DispatchStudyRequest, 0, 2)
+	type dispatchRecord struct {
+		request   serviceTypes.DispatchStudyRequest
+		requestID string
+	}
+	dispatched := make([]dispatchRecord, 0, 4)
 	python := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		require.Equal(t, "/ingest/study", request.URL.Path)
 		var payload serviceTypes.DispatchStudyRequest
 		require.NoError(t, json.NewDecoder(request.Body).Decode(&payload))
 		require.NotNil(t, payload.ProcessingRunID)
-		dispatched = append(dispatched, payload)
+		dispatched = append(dispatched, dispatchRecord{
+			request: payload, requestID: request.Header.Get("X-Request-ID"),
+		})
 		w.WriteHeader(http.StatusAccepted)
 		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"job_id": "python-" + strings.ToLower(payload.ModelName)}))
 	}))
@@ -307,6 +342,8 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 		InferenceQueryRepositoryInterface: state, InferenceCommandRepositoryInterface: state,
 		InferenceProcessingRunRepositoryInterface: state, ProcessingDispatcherInterface: dispatcher,
 		WorklistNotificationPublisherInterface: broker,
+		InferenceQuotaManagerInterface:         &allowAllInferenceQuotaManager{},
+		StudyServiceDispatchSemaphore:          make(chan struct{}, 1),
 	}
 	query := &InferenceQueryService{InferenceQueryRepositoryInterface: state, InferenceProcessingRunRepositoryInterface: state}
 
@@ -323,8 +360,8 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 		))
 	}
 	require.Len(t, dispatched, 2)
-	for _, payload := range dispatched {
-		require.Equal(t, automatic.Run.ID, *payload.ProcessingRunID)
+	for _, dispatch := range dispatched {
+		require.Equal(t, automatic.Run.ID, *dispatch.request.ProcessingRunID)
 	}
 
 	tenantAEvents, unsubscribeA := broker.SubscribeWorklistNotifications("tenant-a", 4)
@@ -375,12 +412,27 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 	require.Equal(t, 1, snapshot.Studies[0].Completed)
 	require.Equal(t, 1, snapshot.Studies[0].Failed)
 
+	manualUserID := "admin-a"
+	state.dispatchUpdates = make(chan string, 2)
 	manual, err := command.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
-		TenantID: "tenant-a", StudyInstanceUID: "study-1",
+		TenantID: "tenant-a", StudyInstanceUID: "study-1", UserID: &manualUserID,
 	})
 	require.NoError(t, err)
 	require.Equal(t, 2, manual.Run.RunNumber)
 	require.Equal(t, entity.InferenceIngestionProcessingRunTriggerManualReprocess, manual.Run.RunTrigger)
+	for range manual.Executions {
+		select {
+		case <-state.dispatchUpdates:
+		case <-time.After(time.Second):
+			t.Fatal("manual processing execution was not dispatched")
+		}
+	}
+	require.Len(t, dispatched, 4)
+	for _, dispatch := range dispatched[2:] {
+		require.Equal(t, manual.Run.ID, trimmedPointerValue(dispatch.request.ProcessingRunID))
+		require.NotEmpty(t, dispatch.requestID)
+		require.NotEqual(t, trimmedPointerValue(dispatch.request.CandidateID), dispatch.requestID)
+	}
 	history, err := query.GetStudyProcessingRunHistory(context.Background(), serviceTypes.GetStudyProcessingRunHistory{
 		TenantID: "tenant-a", StudyInstanceUID: "study-1", Limit: 10,
 	})

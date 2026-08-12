@@ -39,10 +39,12 @@ func (repository *processingRunPlannerQueryRepository) SelectInferenceIngestionJ
 
 type processingRunPlannerRepository struct {
 	domainRepository.InferenceProcessingRunRepositoryInterface
-	activeRun        *entity.InferenceIngestionProcessingRun
-	activeErr        error
-	activeExecutions []entity.InferenceIngestionProcessingJob
-	create           func(repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error)
+	activeRun         *entity.InferenceIngestionProcessingRun
+	activeErr         error
+	activeExecutions  []entity.InferenceIngestionProcessingJob
+	selectedExecution entity.InferenceIngestionProcessingJob
+	selectedErr       error
+	create            func(repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error)
 }
 
 type concurrentProcessingRunPlannerRepository struct {
@@ -106,6 +108,13 @@ func (repository *processingRunPlannerRepository) SelectActiveProcessingRun(_ co
 
 func (repository *processingRunPlannerRepository) ListProcessingRunExecutions(_ context.Context, _, _ string) ([]entity.InferenceIngestionProcessingJob, error) {
 	return repository.activeExecutions, nil
+}
+
+func (repository *processingRunPlannerRepository) SelectProcessingRunExecution(context.Context, string, string, string, string) (entity.InferenceIngestionProcessingJob, error) {
+	if repository.selectedErr != nil {
+		return entity.InferenceIngestionProcessingJob{}, repository.selectedErr
+	}
+	return repository.selectedExecution, nil
 }
 
 func (repository *processingRunPlannerRepository) CreateProcessingRunPlan(_ context.Context, data repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error) {

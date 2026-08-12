@@ -135,6 +135,7 @@ func (router *router) InitRouter() *chi.Mux {
 				// admin or owner only
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
+					r.Get("/quota", inferenceQueryController.GetInferenceQuota)
 
 					r.Post("/onboarding-model-questionnaire-answers/add", inferenceCommandController.AddOnboardingModelQuestionnaireAnswers)
 					r.Get("/onboarding-model-questionnaire-answers", inferenceQueryController.GetOnboardingModelQuestionnaireAnswers)

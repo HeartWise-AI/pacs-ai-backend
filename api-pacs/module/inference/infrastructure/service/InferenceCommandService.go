@@ -46,6 +46,7 @@ type InferenceCommandService struct {
 	orthancAPITypes.OrthancAPIInterface
 	dockerInferenceTypes.DockerInferenceAPIInterface
 	inferenceApplication.ProcessingDispatcherInterface
+	inferenceApplication.InferenceQuotaManagerInterface
 	inferenceApplication.WorklistNotificationPublisherInterface
 	StudyServiceDispatchSemaphore           chan struct{}
 	ProcessingReconciliationMetricsRecorder ProcessingReconciliationMetricsRecorder
@@ -114,6 +115,12 @@ func (service *InferenceCommandService) CreateManualStudyProcessingRun(ctx conte
 	return service.createStudyProcessingRun(ctx, data, entity.InferenceIngestionProcessingRunTriggerManualReprocess)
 }
 
+type processingRunDispatchTarget struct {
+	job       entity.InferenceIngestionJob
+	candidate entity.InferenceIngestionCandidate
+	requestID string
+}
+
 // RecalculateStudyProcessingRun calculates and persists one authoritative run aggregate.
 func (service *InferenceCommandService) RecalculateStudyProcessingRun(ctx context.Context, data types.RecalculateStudyProcessingRun) (types.RecalculateStudyProcessingRunResult, error) {
 	tenantID := strings.TrimSpace(data.TenantID)
@@ -153,6 +160,7 @@ func (service *InferenceCommandService) RecalculateStudyProcessingRun(ctx contex
 			CompletedAt:       aggregate.CompletedAt,
 		})
 		if err == nil {
+			service.finalizeProcessingRunQuota(updated)
 			return types.RecalculateStudyProcessingRunResult{Run: updated, Counts: aggregate.Counts}, nil
 		}
 		if err.Error() != apiError.DuplicateRecord {
@@ -194,6 +202,7 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 	}
 
 	expected := make([]repositoryTypes.CreateInferenceIngestionProcessingExecution, 0, len(candidates))
+	dispatchTargets := make([]processingRunDispatchTarget, 0, len(candidates))
 	seen := make(map[string]struct{}, len(candidates))
 	for _, candidate := range candidates {
 		if candidate.Status == entity.InferenceIngestionCandidateStatusDisappeared {
@@ -221,12 +230,16 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		}
 		seen[key] = struct{}{}
 
+		executionID := generateID()
 		expected = append(expected, repositoryTypes.CreateInferenceIngestionProcessingExecution{
-			ID:           generateID(),
+			ID:           executionID,
 			CandidateID:  candidate.ID,
 			ModelName:    modelName,
 			ModelVersion: nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
 			Modality:     nonEmptyStringPointer(canonicalStudyServiceModality(job.DICOMModality)),
+		})
+		dispatchTargets = append(dispatchTargets, processingRunDispatchTarget{
+			job: job, candidate: candidate, requestID: executionID,
 		})
 	}
 	if len(expected) == 0 {
@@ -238,24 +251,78 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		rightKey := right.ModelName + "\x00" + right.CandidateID
 		return strings.Compare(leftKey, rightKey)
 	})
+	runID := generateID()
+	var quotaReservation *types.InferenceQuotaReservation
+	var requestedByUserID *string
+	if trigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess {
+		if data.UserID == nil || strings.TrimSpace(*data.UserID) == "" {
+			return types.CreateStudyProcessingRunResult{}, errors.New(apiError.InvalidPayload)
+		}
+		if service.InferenceQuotaManagerInterface == nil {
+			ObserveInferenceQuotaEvent("unavailable")
+			return types.CreateStudyProcessingRunResult{}, errors.New(apiError.InferenceQuotaUnavailable)
+		}
+		userID := strings.TrimSpace(*data.UserID)
+		requestedByUserID = &userID
+		quotaReservation = &types.InferenceQuotaReservation{
+			TenantID: tenantID, UserID: userID, ReservationID: runID, Units: 1,
+		}
+		if _, err := service.InferenceQuotaManagerInterface.Reserve(ctx, *quotaReservation); err != nil {
+			return types.CreateStudyProcessingRunResult{}, err
+		}
+	}
 
 	result, err := service.InferenceProcessingRunRepositoryInterface.CreateProcessingRunPlan(ctx, repositoryTypes.CreateInferenceIngestionProcessingRunPlan{
 		Run: repositoryTypes.CreateInferenceIngestionProcessingRun{
-			ID:               generateID(),
-			TenantID:         tenantID,
-			StudyInstanceUID: studyInstanceUID,
-			RunTrigger:       trigger,
-			Phase:            entity.InferenceIngestionProcessingRunPhaseQueued,
+			ID:                runID,
+			TenantID:          tenantID,
+			StudyInstanceUID:  studyInstanceUID,
+			RunTrigger:        trigger,
+			Phase:             entity.InferenceIngestionProcessingRunPhaseQueued,
+			RequestedByUserID: requestedByUserID,
 		},
 		Executions: expected,
 	})
 	if err != nil {
+		service.finishInferenceQuotaReservation(quotaReservation, true)
 		return types.CreateStudyProcessingRunResult{}, err
+	}
+	if trigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess {
+		for _, target := range dispatchTargets {
+			service.scheduleStudyServiceDispatchWithRequestID(
+				target.job, target.candidate, result.Run.ID, target.requestID, target.requestID,
+			)
+		}
 	}
 
 	return types.CreateStudyProcessingRunResult{
 		Run: result.Run, Executions: result.Executions, Created: result.Created,
 	}, nil
+}
+
+func (service *InferenceCommandService) finalizeProcessingRunQuota(run entity.InferenceIngestionProcessingRun) {
+	if run.Phase != entity.InferenceIngestionProcessingRunPhaseTerminal || run.RequestedByUserID == nil {
+		return
+	}
+	userID := strings.TrimSpace(*run.RequestedByUserID)
+	if userID == "" {
+		return
+	}
+	refund := run.StartedAt == nil && hasProcessingRunAttentionReason(
+		run.AttentionReasons, entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+	)
+	service.finishInferenceQuotaReservation(&types.InferenceQuotaReservation{
+		TenantID: run.TenantID, UserID: userID, ReservationID: run.ID, Units: 1,
+	}, refund)
+}
+
+func hasProcessingRunAttentionReason(reasons entity.InferenceIngestionProcessingRunAttentionReasons, code string) bool {
+	for _, reason := range reasons {
+		if reason.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 // HandleStudyServiceProcessingCallback persists a study-service processing callback.
@@ -454,6 +521,7 @@ func (service *InferenceCommandService) publishCommittedWorklistNotification(
 	transition repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult,
 ) {
 	ObserveProcessingRunTransition(transition.Run, transition.Execution, transition.Outcome)
+	service.finalizeProcessingRunQuota(transition.Run)
 	processingOutcome := "none"
 	if transition.Run.Outcome != nil {
 		processingOutcome = string(*transition.Run.Outcome)
@@ -1726,9 +1794,22 @@ func (service *InferenceCommandService) persistCandidateRetrievalResult(ctx cont
 }
 
 func (service *InferenceCommandService) scheduleStudyServiceDispatch(job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate, processingRunID string) {
-	requestID := strings.TrimSpace(candidate.ID)
+	service.scheduleStudyServiceDispatchWithRequestID(job, candidate, processingRunID, candidate.ID, "")
+}
+
+func (service *InferenceCommandService) scheduleStudyServiceDispatchWithRequestID(
+	job entity.InferenceIngestionJob,
+	candidate entity.InferenceIngestionCandidate,
+	processingRunID string,
+	requestID string,
+	processingExecutionID string,
+) {
+	requestID = strings.TrimSpace(requestID)
 	if requestID == "" {
-		requestID = generateID()
+		requestID = strings.TrimSpace(candidate.ID)
+		if requestID == "" {
+			requestID = generateID()
+		}
 	}
 
 	go func() {
@@ -1739,7 +1820,9 @@ func (service *InferenceCommandService) scheduleStudyServiceDispatch(job entity.
 			}()
 		}
 
-		if err := service.dispatchRetrievedCandidateToStudyService(context.Background(), job, candidate, processingRunID, requestID); err != nil {
+		if err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
+			context.Background(), job, candidate, processingRunID, requestID, processingExecutionID,
+		); err != nil {
 			log.Printf("[Ingestion dispatch] final dispatch failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
 				candidate.ID,
 				job.ID,
@@ -1751,6 +1834,19 @@ func (service *InferenceCommandService) scheduleStudyServiceDispatch(job entity.
 }
 
 func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService(ctx context.Context, job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate, processingRunID, requestID string) error {
+	return service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
+		ctx, job, candidate, processingRunID, requestID, "",
+	)
+}
+
+func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyServiceWithExecutionID(
+	ctx context.Context,
+	job entity.InferenceIngestionJob,
+	candidate entity.InferenceIngestionCandidate,
+	processingRunID string,
+	requestID string,
+	processingExecutionID string,
+) error {
 	if service.RequireProcessingRunID && strings.TrimSpace(processingRunID) == "" {
 		return errors.New(apiError.InvalidPayload)
 	}
@@ -1762,6 +1858,9 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 				candidate.ID, job.ID, requestID, persistErr,
 			)
 		}
+		service.recordKnownProcessingExecutionDispatchFailure(
+			ctx, candidate, job, processingRunID, processingExecutionID, err,
+		)
 		return err
 	}
 	if !shouldDispatch {
@@ -1781,6 +1880,9 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 				candidate.ID, job.ID, requestID, persistErr,
 			)
 		}
+		service.recordKnownProcessingExecutionDispatchFailure(
+			ctx, candidate, job, processingRunID, processingExecutionID, err,
+		)
 		return err
 	}
 
@@ -1886,6 +1988,44 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 	}
 
 	return nil
+}
+
+func (service *InferenceCommandService) recordKnownProcessingExecutionDispatchFailure(
+	ctx context.Context,
+	candidate entity.InferenceIngestionCandidate,
+	job entity.InferenceIngestionJob,
+	processingRunID string,
+	processingExecutionID string,
+	dispatchErr error,
+) {
+	processingRunID = strings.TrimSpace(processingRunID)
+	processingExecutionID = strings.TrimSpace(processingExecutionID)
+	if processingRunID == "" || processingExecutionID == "" {
+		return
+	}
+	if err := service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionProcessingJob(
+		repositoryTypes.UpdateInferenceIngestionProcessingJob{
+			ID: processingExecutionID, Status: entity.InferenceIngestionProcessingJobStatusFailed,
+			ModelVersion: nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
+			Modality:     nonEmptyStringPointer(canonicalStudyServiceModality(job.DICOMModality)),
+			ErrorMessage: stringPointer(dispatchErr.Error()),
+		},
+	); err != nil {
+		log.Printf("[Ingestion dispatch] cannot fail known pre-dispatch execution candidate_id=%s processing_run_id=%s execution_id=%s err=%v",
+			candidate.ID, processingRunID, processingExecutionID, err,
+		)
+		return
+	}
+	if _, err := service.RecalculateStudyProcessingRun(ctx, types.RecalculateStudyProcessingRun{
+		TenantID: candidate.TenantID, ProcessingRunID: processingRunID,
+		AttentionReasonsToAdd: entity.InferenceIngestionProcessingRunAttentionReasons{{
+			Code: entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+		}},
+	}); err != nil {
+		log.Printf("[Ingestion dispatch] cannot aggregate known pre-dispatch failure candidate_id=%s processing_run_id=%s execution_id=%s err=%v",
+			candidate.ID, processingRunID, processingExecutionID, err,
+		)
+	}
 }
 
 func (service *InferenceCommandService) shouldDispatchCommittedProcessingExecution(ctx context.Context, candidate entity.InferenceIngestionCandidate, job entity.InferenceIngestionJob, processingRunID string) (bool, error) {
@@ -2561,8 +2701,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
 
-	// predict
-	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, predictRequest)
+	predictionResult, err := service.predictInferenceModelWithQuota(ctx, tenantID, containerName, userID, predictRequest)
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
@@ -2629,6 +2768,54 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	}
 
 	return predictionResult, nil
+}
+
+func (service *InferenceCommandService) predictInferenceModelWithQuota(
+	ctx context.Context,
+	tenantID string,
+	containerName string,
+	userID *string,
+	predictRequest dockerInferenceTypes.PredictRequest,
+) (dockerInferenceTypes.PredictResponse, error) {
+	var quotaReservation *types.InferenceQuotaReservation
+	if userID != nil {
+		trimmedUserID := strings.TrimSpace(*userID)
+		if trimmedUserID == "" || service.InferenceQuotaManagerInterface == nil {
+			ObserveInferenceQuotaEvent("unavailable")
+			return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InferenceQuotaUnavailable)
+		}
+		quotaReservation = &types.InferenceQuotaReservation{
+			TenantID: tenantID, UserID: trimmedUserID, ReservationID: generateID(), Units: 1,
+		}
+		if _, err := service.InferenceQuotaManagerInterface.Reserve(ctx, *quotaReservation); err != nil {
+			return dockerInferenceTypes.PredictResponse{}, err
+		}
+	}
+
+	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, predictRequest)
+	if err != nil {
+		service.finishInferenceQuotaReservation(quotaReservation, true)
+		return dockerInferenceTypes.PredictResponse{}, err
+	}
+	service.finishInferenceQuotaReservation(quotaReservation, false)
+	return predictionResult, nil
+}
+
+func (service *InferenceCommandService) finishInferenceQuotaReservation(reservation *types.InferenceQuotaReservation, refund bool) {
+	if reservation == nil || service.InferenceQuotaManagerInterface == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var err error
+	if refund {
+		_, err = service.InferenceQuotaManagerInterface.Refund(ctx, *reservation)
+	} else {
+		_, err = service.InferenceQuotaManagerInterface.Release(ctx, *reservation)
+	}
+	if err != nil {
+		log.Printf("[security] event=inference_quota_finalize_failed refund=%t", refund)
+	}
 }
 
 // RemoveInferenceModel deletes an inference model
