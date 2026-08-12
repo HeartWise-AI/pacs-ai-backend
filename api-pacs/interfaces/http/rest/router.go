@@ -325,7 +325,11 @@ func (router *router) InitRouter() *chi.Mux {
 					"DICOMWEB_MAX_REQUEST_BODY_BYTES",
 					requestbody.DefaultDICOMWebMaxBytes,
 				), "dicomweb")(orthancProxy.DICOMWebProxy())
-				r.Handle("/orthanc/dicom-web/*", requestbody.WithoutReadDeadline(dicomWebProxy))
+				dicomWebReadTimeout := time.Duration(requestbody.PositiveInt64FromEnvironment(
+					"DICOMWEB_READ_TIMEOUT_SECONDS",
+					int64(requestbody.DefaultDICOMWebReadTimeout/time.Second),
+				)) * time.Second
+				r.Handle("/orthanc/dicom-web/*", requestbody.WithReadDeadline(dicomWebReadTimeout)(dicomWebProxy))
 			})
 		})
 	})

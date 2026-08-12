@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,18 +43,60 @@ func (recorder *readDeadlineRecorder) SetReadDeadline(deadline time.Time) error 
 	return nil
 }
 
-func TestWithoutReadDeadlineClearsDeadlineForClinicalUpload(t *testing.T) {
+func TestWithReadDeadlineExtendsDeadlineForClinicalUpload(t *testing.T) {
 	called := false
-	handler := WithoutReadDeadline(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	timeout := 2 * time.Hour
+	handler := WithReadDeadline(timeout)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		called = true
 	}))
 	recorder := &readDeadlineRecorder{ResponseRecorder: httptest.NewRecorder(), deadline: time.Now()}
 	request := httptest.NewRequest(http.MethodPost, "/proxy/orthanc/dicom-web/studies", http.NoBody)
+	before := time.Now()
+
+	handler.ServeHTTP(recorder, request)
+	after := time.Now()
+
+	require.True(t, called)
+	require.False(t, recorder.deadline.IsZero())
+	require.False(t, recorder.deadline.Before(before.Add(timeout)))
+	require.False(t, recorder.deadline.After(after.Add(timeout)))
+}
+
+func TestWithReadDeadlineUsesSafeFallback(t *testing.T) {
+	handler := WithReadDeadline(0)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	recorder := &readDeadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+	request := httptest.NewRequest(http.MethodPost, "/proxy/orthanc/dicom-web/studies", http.NoBody)
+	before := time.Now()
 
 	handler.ServeHTTP(recorder, request)
 
-	require.True(t, called)
-	require.True(t, recorder.deadline.IsZero())
+	require.False(t, recorder.deadline.Before(before.Add(DefaultDICOMWebReadTimeout)))
+}
+
+func TestLimitStateSupportsConcurrentAccess(t *testing.T) {
+	state := &limitState{}
+	start := make(chan struct{})
+	var workers sync.WaitGroup
+	workers.Add(2)
+
+	go func() {
+		defer workers.Done()
+		<-start
+		for index := 0; index < 1000; index++ {
+			state.exceeded.Store(true)
+		}
+	}()
+	go func() {
+		defer workers.Done()
+		<-start
+		for index := 0; index < 1000; index++ {
+			_ = state.exceeded.Load()
+		}
+	}()
+
+	close(start)
+	workers.Wait()
+	require.True(t, state.exceeded.Load())
 }
 
 func TestLimitMapsChunkedReadOverflowToPayloadTooLarge(t *testing.T) {

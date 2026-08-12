@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -20,8 +21,9 @@ import (
 )
 
 const (
-	DefaultAPIMaxBytes      int64 = 16 * 1024 * 1024
-	DefaultDICOMWebMaxBytes int64 = 6 * 1024 * 1024 * 1024
+	DefaultAPIMaxBytes         int64         = 16 * 1024 * 1024
+	DefaultDICOMWebMaxBytes    int64         = 6 * 1024 * 1024 * 1024
+	DefaultDICOMWebReadTimeout time.Duration = 2 * time.Hour
 )
 
 var ErrTooLarge = errors.New("request body too large")
@@ -35,7 +37,7 @@ var rejectionScopes = map[string]struct{}{
 }
 
 type limitState struct {
-	exceeded bool
+	exceeded atomic.Bool
 }
 
 type stateReadCloser struct {
@@ -47,7 +49,7 @@ func (body *stateReadCloser) Read(buffer []byte) (int, error) {
 	count, err := body.ReadCloser.Read(buffer)
 	var maxBytesError *http.MaxBytesError
 	if errors.As(err, &maxBytesError) {
-		body.state.exceeded = true
+		body.state.exceeded.Store(true)
 	}
 	return count, err
 }
@@ -64,7 +66,7 @@ func (writer *limitResponseWriter) Unwrap() http.ResponseWriter {
 }
 
 func (writer *limitResponseWriter) WriteHeader(status int) {
-	if writer.state.exceeded {
+	if writer.state.exceeded.Load() {
 		writer.reject()
 		return
 	}
@@ -76,7 +78,7 @@ func (writer *limitResponseWriter) WriteHeader(status int) {
 }
 
 func (writer *limitResponseWriter) Write(data []byte) (int, error) {
-	if writer.state.exceeded {
+	if writer.state.exceeded.Load() {
 		writer.reject()
 		return len(data), nil
 	}
@@ -98,7 +100,8 @@ func (writer *limitResponseWriter) reject() {
 }
 
 // Limit rejects declared oversized bodies before the handler and keeps
-// chunked bodies bounded while preserving a stable HTTP 413 response.
+// chunked bodies bounded. Streamed overflows receive a stable HTTP 413 when
+// the downstream handler has not already committed a response.
 func Limit(maxBytes int64) func(http.Handler) http.Handler {
 	return LimitWithScope(maxBytes, "api")
 }
@@ -128,7 +131,7 @@ func LimitWithScope(maxBytes int64, scope string) func(http.Handler) http.Handle
 			}
 			limitedWriter := &limitResponseWriter{ResponseWriter: writer, state: state}
 			next.ServeHTTP(limitedWriter, request)
-			if state.exceeded {
+			if state.exceeded.Load() {
 				ObserveRejection(request, maxBytes, scope)
 				limitedWriter.reject()
 			}
@@ -218,14 +221,20 @@ func PositiveInt64FromEnvironment(name string, fallback int64) int64 {
 	return parsed
 }
 
-// WithoutReadDeadline is reserved for authenticated, explicitly size-bounded
-// clinical upload routes that legitimately need longer than the server-wide
-// request read timeout.
-func WithoutReadDeadline(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if err := http.NewResponseController(writer).SetReadDeadline(time.Time{}); err != nil {
-			log.Printf("cannot clear clinical upload read deadline: %v", err)
-		}
-		next.ServeHTTP(writer, request)
-	})
+// WithReadDeadline extends the server-wide read deadline for authenticated,
+// explicitly size-bounded clinical upload routes without allowing a client to
+// hold the request open indefinitely.
+func WithReadDeadline(timeout time.Duration) func(http.Handler) http.Handler {
+	if timeout <= 0 {
+		timeout = DefaultDICOMWebReadTimeout
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			deadline := time.Now().Add(timeout)
+			if err := http.NewResponseController(writer).SetReadDeadline(deadline); err != nil {
+				log.Printf("cannot extend clinical upload read deadline: %v", err)
+			}
+			next.ServeHTTP(writer, request)
+		})
+	}
 }
