@@ -66,10 +66,15 @@ func validateOrchestratorDICOMPayload(request httpTypes.UploadDicomPayloadReques
 	if len(request.Payload) > limits.MaxStudies {
 		return errOrchestratorInputLimit
 	}
+	seenStudies := make(map[string]struct{}, len(request.Payload))
 	for _, study := range request.Payload {
 		if !inputlimits.ValidDICOMUID(study.StudyInstanceUID) || len(study.SeriesInstanceUIDs) == 0 {
 			return errors.New(apiError.InvalidPayload)
 		}
+		if _, duplicate := seenStudies[study.StudyInstanceUID]; duplicate {
+			return errors.New(apiError.InvalidPayload)
+		}
+		seenStudies[study.StudyInstanceUID] = struct{}{}
 		if len(study.SeriesInstanceUIDs) > limits.MaxSeriesPerStudy {
 			return errOrchestratorInputLimit
 		}

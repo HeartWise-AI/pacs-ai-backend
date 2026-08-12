@@ -46,6 +46,9 @@ func TestValidateOrchestratorDICOMPayloadBounds(t *testing.T) {
 		"too many studies": func(request *httpTypes.UploadDicomPayloadRequest) {
 			request.Payload = append(request.Payload, request.Payload[0], request.Payload[0])
 		},
+		"duplicate study": func(request *httpTypes.UploadDicomPayloadRequest) {
+			request.Payload = append(request.Payload, request.Payload[0])
+		},
 		"too many series": func(request *httpTypes.UploadDicomPayloadRequest) {
 			request.Payload[0].SeriesInstanceUIDs = append(request.Payload[0].SeriesInstanceUIDs, "1.2.3.3")
 		},
