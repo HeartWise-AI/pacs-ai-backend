@@ -1078,7 +1078,9 @@ DICOM retrieval or model request allocation. The selected model's advertised
 fails closed with HTTP 503.
 
 The authenticated DICOMweb proxy is the only bundled large-upload exception.
-Nginx defaults are configured with `NGINX_FRONTEND_MAX_BODY_SIZE=1m`,
+Nginx-specific settings belong in `nginx/.env`; the root `.env` remains for
+shared platform settings such as `APP_TIMEZONE`. Nginx defaults are
+`NGINX_FRONTEND_MAX_BODY_SIZE=1m`,
 `NGINX_API_MAX_BODY_SIZE=16m`, and `NGINX_DICOMWEB_MAX_BODY_SIZE=6g`. Its route
 also clears api-pacs' regular 30-second request-read deadline, while retaining
 the Nginx client-body timeout and the explicit DICOMweb size ceiling. Do not

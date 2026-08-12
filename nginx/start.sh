@@ -1,4 +1,11 @@
 #!/bin/sh
+set -eu
+
+: "${SERVER_NAME:=localhost}"
+: "${NGINX_FRONTEND_MAX_BODY_SIZE:=1m}"
+: "${NGINX_API_MAX_BODY_SIZE:=16m}"
+: "${NGINX_DICOMWEB_MAX_BODY_SIZE:=6g}"
+export SERVER_NAME NGINX_FRONTEND_MAX_BODY_SIZE NGINX_API_MAX_BODY_SIZE NGINX_DICOMWEB_MAX_BODY_SIZE
 
 SSL_DIR="/etc/nginx/ssl"
 CRT_FILE="$SSL_DIR/nginx.crt"
@@ -27,4 +34,4 @@ fi
 envsubst '${SERVER_NAME} ${NGINX_FRONTEND_MAX_BODY_SIZE} ${NGINX_API_MAX_BODY_SIZE} ${NGINX_DICOMWEB_MAX_BODY_SIZE}' < /etc/nginx/nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 # Start Nginx
-nginx -g 'daemon off;'
+exec nginx -g 'daemon off;'
