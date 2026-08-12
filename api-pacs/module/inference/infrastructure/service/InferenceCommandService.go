@@ -2505,11 +2505,6 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 			return dockerInferenceTypes.PredictRequest{}, "", err
 		}
 
-		// check if SeriesInstanceImages is empty
-		if len(seriesInstanceImages) == 0 {
-			log.Println("[predict] empty series instance images")
-			return dockerInferenceTypes.PredictRequest{}, "", errors.New(apiError.InferenceError)
-		}
 	} else {
 		/// ---------------------- for DICOM metadata
 		// get allowed dicom tags
@@ -2650,12 +2645,16 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 		if err := eg.Wait(); err != nil {
 			return dockerInferenceTypes.PredictRequest{}, "", err
 		}
+	}
 
-		// check if SeriesInstanceMetadata is empty
-		if len(seriesInstanceMetadata) == 0 {
-			log.Println("[predict] empty series instance metadata")
-			return dockerInferenceTypes.PredictRequest{}, "", errors.New(apiError.InferenceError)
-		}
+	actualSeriesCount := nonEmptySeriesCount(seriesInstanceImages)
+	if len(seriesInstanceImages) == 0 {
+		actualSeriesCount = nonEmptySeriesCount(seriesInstanceMetadata)
+	}
+	if err := validateModelSeriesBounds(modelInfo, actualSeriesCount); err != nil {
+		ObserveInferenceInputRejection("model_bounds")
+		log.Printf("[security] event=inference_input_rejected reason=model_bounds stage=retrieved tenant_id=%s container_id=%s series_count=%d", tenantID, containerID, actualSeriesCount)
+		return dockerInferenceTypes.PredictRequest{}, "", err
 	}
 
 	// create predict request

@@ -98,6 +98,16 @@ func validateModelSeriesBounds(modelInfo dockerInferenceTypes.GetModelInfoRespon
 	return nil
 }
 
+func nonEmptySeriesCount[T any](series map[int]map[int]T) int {
+	count := 0
+	for _, instances := range series {
+		if len(instances) > 0 {
+			count++
+		}
+	}
+	return count
+}
+
 func sortedSeriesInstanceUIDs(values []string) []string {
 	result := slices.Clone(values)
 	slices.SortFunc(result, func(left, right string) int {
