@@ -1029,7 +1029,7 @@ docker compose images > pacs-ai-versions.txt
 | **Request and input safety** | | | |
 | `API_MAX_REQUEST_BODY_BYTES` | optional | `16777216` | Hard body limit for regular `/v1` API requests |
 | `INFERENCE_PREDICT_MAX_REQUEST_BODY_BYTES` | optional | `1048576` | Stricter JSON body limit for direct model predictions |
-| `DICOMWEB_MAX_REQUEST_BODY_BYTES` | optional | `2147483648` | Go-side ceiling for the authenticated DICOMweb large-upload exception; keep consistent with the Nginx 2g default |
+| `DICOMWEB_MAX_REQUEST_BODY_BYTES` | optional | `6442450944` | Go-side ceiling for the authenticated DICOMweb large-upload exception; keep consistent with the Nginx 6g default |
 | `INFERENCE_MAX_SERIES_UIDS` | optional | `256` | Hard series-count ceiling before a model request is assembled |
 | `INFERENCE_MAX_METADATA_BYTES` | optional | `65536` | Maximum encoded prediction metadata size |
 | `INFERENCE_MAX_METADATA_DEPTH` / `INFERENCE_MAX_METADATA_ENTRIES` | optional | `8` / `256` | Prediction metadata structural limits |
@@ -1079,7 +1079,7 @@ fails closed with HTTP 503.
 
 The authenticated DICOMweb proxy is the only bundled large-upload exception.
 Nginx defaults are configured with `NGINX_FRONTEND_MAX_BODY_SIZE=1m`,
-`NGINX_API_MAX_BODY_SIZE=16m`, and `NGINX_DICOMWEB_MAX_BODY_SIZE=2g`. Its route
+`NGINX_API_MAX_BODY_SIZE=16m`, and `NGINX_DICOMWEB_MAX_BODY_SIZE=6g`. Its route
 also clears api-pacs' regular 30-second request-read deadline, while retaining
 the Nginx client-body timeout and the explicit DICOMweb size ceiling. Do not
 raise the general API limits to accommodate DICOM uploads; tune only the

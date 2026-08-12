@@ -92,6 +92,7 @@ func TestLimitAllowsBodyAtBoundary(t *testing.T) {
 }
 
 func TestConfiguredMaxBytesUsesSafeFallback(t *testing.T) {
+	require.Equal(t, int64(6*1024*1024*1024), DefaultDICOMWebMaxBytes)
 	t.Setenv("TEST_MAX_BYTES", "invalid")
 	require.Equal(t, int64(123), PositiveInt64FromEnvironment("TEST_MAX_BYTES", 123))
 	t.Setenv("TEST_MAX_BYTES", "456")

@@ -21,7 +21,7 @@ import (
 
 const (
 	DefaultAPIMaxBytes      int64 = 16 * 1024 * 1024
-	DefaultDICOMWebMaxBytes int64 = 2 * 1024 * 1024 * 1024
+	DefaultDICOMWebMaxBytes int64 = 6 * 1024 * 1024 * 1024
 )
 
 var ErrTooLarge = errors.New("request body too large")
