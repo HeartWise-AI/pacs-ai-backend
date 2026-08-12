@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -44,28 +46,66 @@ func (repository *accountAccessCommandRepository) DeleteTenantUser(_ context.Con
 
 type accountAccessQueryRepository struct {
 	repository.UserQueryRepositoryInterface
-	user repositoryTypes.GetTenantUser
+	users map[string]repositoryTypes.GetTenantUser
 }
 
-func (repository *accountAccessQueryRepository) SelectTenantUserByID(context.Context, string, string) (repositoryTypes.GetTenantUser, error) {
-	return repository.user, nil
+func (repository *accountAccessQueryRepository) SelectTenantUserByID(_ context.Context, _ string, id string) (repositoryTypes.GetTenantUser, error) {
+	user, ok := repository.users[id]
+	if !ok {
+		return repositoryTypes.GetTenantUser{}, errors.New(apiError.MissingRecord)
+	}
+	return user, nil
 }
 
 type accountAccessIAM struct {
 	iamApplication.IAMCommandServiceInterface
-	suspended int
-	revoked   int
-	cleared   int
-	setErr    error
-	revokeErr error
-	clearErr  error
-	sequence  *[]string
+	suspended       int
+	revoked         int
+	cleared         int
+	setErr          error
+	markerCreated   bool
+	revokeErr       error
+	clearErr        error
+	sequence        *[]string
+	mu              sync.Mutex
+	lockHeld        bool
+	lockToken       string
+	acquired        int
+	released        int
+	suspendStarted  chan struct{}
+	continueSuspend chan struct{}
 }
 
-func (iam *accountAccessIAM) SetUserSuspended(context.Context, string, string) error {
+func (iam *accountAccessIAM) AcquireUserAccessTransition(_ context.Context, _, _, ownerToken string, _ time.Duration) (bool, error) {
+	iam.mu.Lock()
+	defer iam.mu.Unlock()
+	iam.acquired++
+	if iam.lockHeld {
+		return false, nil
+	}
+	iam.lockHeld = true
+	iam.lockToken = ownerToken
+	return true, nil
+}
+
+func (iam *accountAccessIAM) ReleaseUserAccessTransition(_ context.Context, _, _, ownerToken string) error {
+	iam.mu.Lock()
+	defer iam.mu.Unlock()
+	if iam.lockHeld && iam.lockToken == ownerToken {
+		iam.lockHeld = false
+		iam.released++
+	}
+	return nil
+}
+
+func (iam *accountAccessIAM) SetUserSuspended(context.Context, string, string) (bool, error) {
 	iam.suspended++
 	*iam.sequence = append(*iam.sequence, "suspend")
-	return iam.setErr
+	if iam.suspendStarted != nil {
+		close(iam.suspendStarted)
+		<-iam.continueSuspend
+	}
+	return iam.markerCreated, iam.setErr
 }
 
 func (iam *accountAccessIAM) RevokeUserSessions(context.Context, string, string) error {
@@ -82,10 +122,18 @@ func (iam *accountAccessIAM) ClearUserSuspension(context.Context, string, string
 func newAccountAccessService(user repositoryTypes.GetTenantUser) (*UserCommandService, *accountAccessCommandRepository, *accountAccessIAM) {
 	sequence := []string{}
 	commandRepository := &accountAccessCommandRepository{sequence: &sequence}
-	iam := &accountAccessIAM{sequence: &sequence}
+	iam := &accountAccessIAM{sequence: &sequence, markerCreated: true}
+	users := map[string]repositoryTypes.GetTenantUser{
+		user.ID:   user,
+		"owner":   {ID: "owner", TenantID: user.TenantID, Role: iamEntity.OwnerRole, AccessState: entity.AccountAccessActive},
+		"owner-a": {ID: "owner-a", TenantID: user.TenantID, Role: iamEntity.OwnerRole, AccessState: entity.AccountAccessActive},
+		"admin":   {ID: "admin", TenantID: user.TenantID, Role: iamEntity.AdminRole, AccessState: entity.AccountAccessActive},
+		"user-a":  {ID: "user-a", TenantID: user.TenantID, Role: iamEntity.UserRole, AccessState: entity.AccountAccessActive},
+	}
+	users[user.ID] = user
 	return &UserCommandService{
 		UserCommandRepositoryInterface: commandRepository,
-		UserQueryRepositoryInterface:   &accountAccessQueryRepository{user: user},
+		UserQueryRepositoryInterface:   &accountAccessQueryRepository{users: users},
 		IAMCommandServiceInterface:     iam,
 	}, commandRepository, iam
 }
@@ -210,6 +258,102 @@ func TestChangeTenantUserAccessPropagatesFailClosedErrors(t *testing.T) {
 	}
 }
 
+func TestFailedSuspensionPreservesExistingMarker(t *testing.T) {
+	service, _, iam := newAccountAccessService(repositoryTypes.GetTenantUser{
+		ID: "target", TenantID: "tenant-a", Role: iamEntity.UserRole,
+		AccessState: entity.AccountAccessSuspended, IsAccountDisabled: true,
+	})
+	iam.revokeErr = errors.New(apiError.DatabaseError)
+
+	err := service.ChangeTenantUserAccess(context.Background(), serviceTypes.ChangeTenantUserAccess{
+		TenantID: "tenant-a", ActorUserID: "owner", ActorRole: iamEntity.OwnerRole,
+		TargetUserID: "target", AccessState: entity.AccountAccessSuspended,
+	})
+
+	require.EqualError(t, err, apiError.DatabaseError)
+	require.Zero(t, iam.cleared)
+}
+
+func TestFailedSuspensionDoesNotClearMarkerCreatedByAnotherOperation(t *testing.T) {
+	service, _, iam := newAccountAccessService(repositoryTypes.GetTenantUser{
+		ID: "target", TenantID: "tenant-a", Role: iamEntity.UserRole, AccessState: entity.AccountAccessActive,
+	})
+	iam.markerCreated = false
+	iam.revokeErr = errors.New(apiError.DatabaseError)
+
+	err := service.ChangeTenantUserAccess(context.Background(), serviceTypes.ChangeTenantUserAccess{
+		TenantID: "tenant-a", ActorUserID: "owner", ActorRole: iamEntity.OwnerRole,
+		TargetUserID: "target", AccessState: entity.AccountAccessSuspended,
+	})
+
+	require.EqualError(t, err, apiError.DatabaseError)
+	require.Zero(t, iam.cleared)
+}
+
+func TestUsesCurrentStoredActorRoleInsteadOfCachedSessionRole(t *testing.T) {
+	service, commandRepository, iam := newAccountAccessService(repositoryTypes.GetTenantUser{
+		ID: "target", TenantID: "tenant-a", Role: iamEntity.UserRole, AccessState: entity.AccountAccessActive,
+	})
+	query := service.UserQueryRepositoryInterface.(*accountAccessQueryRepository)
+	query.users["demoted-admin"] = repositoryTypes.GetTenantUser{
+		ID: "demoted-admin", TenantID: "tenant-a", Role: iamEntity.UserRole, AccessState: entity.AccountAccessActive,
+	}
+
+	err := service.ChangeTenantUserAccess(context.Background(), serviceTypes.ChangeTenantUserAccess{
+		TenantID: "tenant-a", ActorUserID: "demoted-admin", ActorRole: iamEntity.AdminRole,
+		TargetUserID: "target", AccessState: entity.AccountAccessSuspended,
+	})
+
+	require.EqualError(t, err, apiError.ForbiddenAccess)
+	require.Zero(t, iam.suspended)
+	require.Empty(t, commandRepository.updates)
+}
+
+func TestDeleteUsesCurrentStoredActorRoleInsteadOfCachedSessionRole(t *testing.T) {
+	service, commandRepository, iam := newAccountAccessService(repositoryTypes.GetTenantUser{
+		ID: "target", TenantID: "tenant-a", Role: iamEntity.UserRole, AccessState: entity.AccountAccessActive,
+	})
+	query := service.UserQueryRepositoryInterface.(*accountAccessQueryRepository)
+	query.users["demoted-admin"] = repositoryTypes.GetTenantUser{
+		ID: "demoted-admin", TenantID: "tenant-a", Role: iamEntity.UserRole, AccessState: entity.AccountAccessActive,
+	}
+
+	err := service.DeleteTenantUser(context.Background(), serviceTypes.DeleteTenantUser{
+		TenantID: "tenant-a", ActorUserID: "demoted-admin", ActorRole: iamEntity.AdminRole, TargetUserID: "target",
+	})
+
+	require.EqualError(t, err, apiError.ForbiddenAccess)
+	require.Zero(t, iam.suspended)
+	require.Empty(t, commandRepository.deleted)
+}
+
+func TestConcurrentAccountAccessTransitionsAreSerialized(t *testing.T) {
+	service, _, iam := newAccountAccessService(repositoryTypes.GetTenantUser{
+		ID: "target", TenantID: "tenant-a", Role: iamEntity.UserRole, AccessState: entity.AccountAccessActive,
+	})
+	iam.suspendStarted = make(chan struct{})
+	iam.continueSuspend = make(chan struct{})
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- service.ChangeTenantUserAccess(context.Background(), serviceTypes.ChangeTenantUserAccess{
+			TenantID: "tenant-a", ActorUserID: "owner", ActorRole: iamEntity.OwnerRole,
+			TargetUserID: "target", AccessState: entity.AccountAccessSuspended,
+		})
+	}()
+	<-iam.suspendStarted
+
+	secondErr := service.ChangeTenantUserAccess(context.Background(), serviceTypes.ChangeTenantUserAccess{
+		TenantID: "tenant-a", ActorUserID: "owner", ActorRole: iamEntity.OwnerRole,
+		TargetUserID: "target", AccessState: entity.AccountAccessActive,
+	})
+	close(iam.continueSuspend)
+
+	require.EqualError(t, secondErr, apiError.AccountAccessTransitionInProgress)
+	require.NoError(t, <-firstDone)
+	require.Equal(t, 2, iam.acquired)
+	require.Equal(t, 1, iam.released)
+}
+
 func TestDeleteRevokesSessionsBeforeRemovingUser(t *testing.T) {
 	service, commandRepository, iam := newAccountAccessService(repositoryTypes.GetTenantUser{
 		ID: "target", TenantID: "tenant-a", Role: iamEntity.UserRole, AccessState: entity.AccountAccessActive,
@@ -248,6 +392,21 @@ func TestDeleteFailureClearsTemporarySuspensionMarker(t *testing.T) {
 			require.Empty(t, commandRepository.deleted)
 		})
 	}
+}
+
+func TestDeleteFailurePreservesExistingSuspensionMarker(t *testing.T) {
+	service, commandRepository, iam := newAccountAccessService(repositoryTypes.GetTenantUser{
+		ID: "target", TenantID: "tenant-a", Role: iamEntity.UserRole,
+		AccessState: entity.AccountAccessSuspended, IsAccountDisabled: true,
+	})
+	commandRepository.deleteErr = errors.New(apiError.FirestoreError)
+
+	err := service.DeleteTenantUser(context.Background(), serviceTypes.DeleteTenantUser{
+		TenantID: "tenant-a", ActorUserID: "owner", ActorRole: iamEntity.OwnerRole, TargetUserID: "target",
+	})
+
+	require.EqualError(t, err, apiError.FirestoreError)
+	require.Zero(t, iam.cleared)
 }
 
 func TestAccessStateRejectsUnknownValue(t *testing.T) {

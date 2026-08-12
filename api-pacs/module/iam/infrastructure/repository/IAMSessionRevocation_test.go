@@ -14,11 +14,18 @@ import (
 
 type sessionRevocationRedis struct {
 	redisTypes.RedisDBHandlerInterface
-	values      map[string]string
-	deleted     []string
-	blocked     bool
-	blockingKey string
-	writtenKey  string
+	values            map[string]string
+	deleted           []string
+	blocked           bool
+	blockingKey       string
+	writtenKey        string
+	setIfAbsentResult bool
+	setIfAbsentKey    string
+}
+
+func (redis *sessionRevocationRedis) SetIfAbsent(key string, _ interface{}, _ time.Duration) (bool, error) {
+	redis.setIfAbsentKey = key
+	return redis.setIfAbsentResult, nil
 }
 
 func (redis *sessionRevocationRedis) Scan(string) ([]string, error) {
@@ -60,6 +67,21 @@ func TestSetTokenSessionCannotWriteThroughSuspensionMarker(t *testing.T) {
 	require.EqualError(t, err, apiError.AccountSuspended)
 	require.Equal(t, "iam:suspended:tenant-a:user-a", redis.blockingKey)
 	require.Equal(t, "session-a", redis.writtenKey)
+}
+
+func TestSetUserSuspendedReportsWhetherItCreatedMarker(t *testing.T) {
+	for name, created := range map[string]bool{"new marker": true, "existing marker": false} {
+		t.Run(name, func(t *testing.T) {
+			redis := &sessionRevocationRedis{setIfAbsentResult: created}
+			repository := &IAMCommandRepository{RedisDBHandlerInterface: redis}
+
+			actual, err := repository.SetUserSuspended("tenant-a", "user-a")
+
+			require.NoError(t, err)
+			require.Equal(t, created, actual)
+			require.Equal(t, "iam:suspended:tenant-a:user-a", redis.setIfAbsentKey)
+		})
+	}
 }
 
 func TestSetTokenSessionWritesWhenUserIsActive(t *testing.T) {

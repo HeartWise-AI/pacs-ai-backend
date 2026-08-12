@@ -283,6 +283,9 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 		if err.Error() == apiError.ForbiddenAccess || err.Error() == apiError.UnauthorizedAccess {
 			status = http.StatusForbidden
 			message = "Forbidden access."
+		} else if err.Error() == apiError.AccountAccessTransitionInProgress {
+			status = http.StatusConflict
+			message = "Another account access change is already in progress."
 		}
 		response := viewmodels.HTTPResponseVM{
 			Status:    status,
@@ -347,6 +350,8 @@ func (controller *UserCommandController) changeTenantUserAccess(w http.ResponseW
 			writeUserAccessError(w, http.StatusForbidden, "Forbidden access.", err.Error())
 		case apiError.MissingRecord:
 			writeUserAccessError(w, http.StatusNotFound, "User not found.", err.Error())
+		case apiError.AccountAccessTransitionInProgress:
+			writeUserAccessError(w, http.StatusConflict, "Another account access change is already in progress.", err.Error())
 		default:
 			writeUserAccessError(w, http.StatusInternalServerError, "Unable to update account access.", err.Error())
 		}

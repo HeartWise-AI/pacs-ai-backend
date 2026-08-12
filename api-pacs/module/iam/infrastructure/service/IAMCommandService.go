@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/segmentio/ksuid"
 
@@ -158,8 +159,16 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 	return sessionToken, nil
 }
 
-func (service *IAMCommandService) SetUserSuspended(_ context.Context, tenantID, userID string) error {
+func (service *IAMCommandService) SetUserSuspended(_ context.Context, tenantID, userID string) (bool, error) {
 	return service.IAMCommandRepositoryInterface.SetUserSuspended(tenantID, userID)
+}
+
+func (service *IAMCommandService) AcquireUserAccessTransition(_ context.Context, tenantID, userID, ownerToken string, ttl time.Duration) (bool, error) {
+	return service.IAMCommandRepositoryInterface.AcquireUserAccessTransition(tenantID, userID, ownerToken, ttl)
+}
+
+func (service *IAMCommandService) ReleaseUserAccessTransition(_ context.Context, tenantID, userID, ownerToken string) error {
+	return service.IAMCommandRepositoryInterface.ReleaseUserAccessTransition(tenantID, userID, ownerToken)
 }
 
 func (service *IAMCommandService) ClearUserSuspension(_ context.Context, tenantID, userID string) error {

@@ -21,13 +21,44 @@ func userSuspensionKey(tenantID, userID string) string {
 	return "iam:suspended:" + tenantID + ":" + userID
 }
 
-// SetUserSuspended installs the fail-closed marker checked by every session write.
-func (repository *IAMCommandRepository) SetUserSuspended(tenantID, userID string) error {
-	if err := repository.RedisDBHandlerInterface.Set(userSuspensionKey(tenantID, userID), "1", 0); err != nil {
+func userAccessTransitionKey(tenantID, userID string) string {
+	return "iam:access-transition:" + tenantID + ":" + userID
+}
+
+// AcquireUserAccessTransition serializes account-state decisions across API replicas.
+func (repository *IAMCommandRepository) AcquireUserAccessTransition(tenantID, userID, ownerToken string, ttl time.Duration) (bool, error) {
+	acquired, err := repository.RedisDBHandlerInterface.SetIfAbsent(
+		userAccessTransitionKey(tenantID, userID), ownerToken, ttl,
+	)
+	if err != nil {
+		log.Println(err)
+		return false, errors.New(apiError.DatabaseError)
+	}
+	return acquired, nil
+}
+
+// ReleaseUserAccessTransition removes only the lock owned by this operation.
+func (repository *IAMCommandRepository) ReleaseUserAccessTransition(tenantID, userID, ownerToken string) error {
+	_, err := repository.RedisDBHandlerInterface.DeleteIfValueMatches(
+		userAccessTransitionKey(tenantID, userID), ownerToken,
+	)
+	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.DatabaseError)
 	}
 	return nil
+}
+
+// SetUserSuspended installs the fail-closed marker checked by every session write.
+// It reports whether this call created the marker so callers never remove one
+// that predated their operation during rollback.
+func (repository *IAMCommandRepository) SetUserSuspended(tenantID, userID string) (bool, error) {
+	created, err := repository.RedisDBHandlerInterface.SetIfAbsent(userSuspensionKey(tenantID, userID), "1", 0)
+	if err != nil {
+		log.Println(err)
+		return false, errors.New(apiError.DatabaseError)
+	}
+	return created, nil
 }
 
 // ClearUserSuspension allows sessions to be created again after reactivation.

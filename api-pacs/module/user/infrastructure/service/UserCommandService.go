@@ -48,6 +48,8 @@ type UserCommandService struct {
 const (
 	userInviteTemplate                   string        = "%s/register?t=%s&email=%s&code=%s"
 	registrationVerificationEmailTimeout time.Duration = time.Minute
+	userAccessTransitionLockTTL          time.Duration = 2 * time.Minute
+	userAccessTransitionReleaseTimeout   time.Duration = 10 * time.Second
 )
 
 // ChangeTenantUserAccess applies tenant-scoped role hierarchy and synchronizes
@@ -56,26 +58,36 @@ func (service *UserCommandService) ChangeTenantUserAccess(ctx context.Context, d
 	if data.AccessState != userEntity.AccountAccessActive && data.AccessState != userEntity.AccountAccessSuspended {
 		return errors.New(apiError.InvalidPayload)
 	}
+	lockToken, err := service.acquireUserAccessTransition(ctx, data.TenantID, data.TargetUserID)
+	if err != nil {
+		return err
+	}
+	defer service.releaseUserAccessTransition(ctx, data.TenantID, data.TargetUserID, lockToken)
+
 	target, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, data.TenantID, data.TargetUserID)
 	if err != nil {
 		return err
 	}
+	actor, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, data.TenantID, data.ActorUserID)
+	if err != nil {
+		return err
+	}
+	data.ActorRole = actor.Role
 	if err := authorizeAccountManagement(data.ActorUserID, data.ActorRole, target.ID, target.Role); err != nil {
 		service.logAccountAccessAudit(ctx, data, target, "REJECTED", err.Error())
 		return err
 	}
 
-	previousState := target.AccessState
-	if previousState == "" {
-		previousState = userEntity.ResolveAccountAccessState(previousState, target.IsAccountDisabled)
-	}
+	previousState := userEntity.ResolveAccountAccessState(target.AccessState, target.IsAccountDisabled)
 	if data.AccessState == userEntity.AccountAccessSuspended {
-		if err := service.IAMCommandServiceInterface.SetUserSuspended(ctx, data.TenantID, target.ID); err != nil {
+		markerCreated, err := service.IAMCommandServiceInterface.SetUserSuspended(ctx, data.TenantID, target.ID)
+		if err != nil {
 			service.logAccountAccessAudit(ctx, data, target, "REJECTED", err.Error())
 			return err
 		}
+		rollbackMarker := markerCreated && previousState != userEntity.AccountAccessSuspended
 		if err := service.IAMCommandServiceInterface.RevokeUserSessions(ctx, data.TenantID, target.ID); err != nil {
-			service.clearSuspensionMarkerAfterFailure(ctx, data.TenantID, target.ID)
+			service.clearSuspensionMarkerAfterFailure(ctx, data.TenantID, target.ID, rollbackMarker)
 			service.logAccountAccessAudit(ctx, data, target, "REJECTED", err.Error())
 			return err
 		}
@@ -83,7 +95,7 @@ func (service *UserCommandService) ChangeTenantUserAccess(ctx context.Context, d
 			if err := service.UserCommandRepositoryInterface.UpdateTenantUserAccessState(ctx, repositoryTypes.UpdateTenantUserAccessState{
 				ID: target.ID, TenantID: data.TenantID, AccessState: data.AccessState,
 			}); err != nil {
-				service.clearSuspensionMarkerAfterFailure(ctx, data.TenantID, target.ID)
+				service.clearSuspensionMarkerAfterFailure(ctx, data.TenantID, target.ID, rollbackMarker)
 				service.logAccountAccessAudit(ctx, data, target, "REJECTED", err.Error())
 				return err
 			}
@@ -107,7 +119,32 @@ func (service *UserCommandService) ChangeTenantUserAccess(ctx context.Context, d
 	return nil
 }
 
-func (service *UserCommandService) clearSuspensionMarkerAfterFailure(ctx context.Context, tenantID, userID string) {
+func (service *UserCommandService) acquireUserAccessTransition(ctx context.Context, tenantID, userID string) (string, error) {
+	lockToken := ksuid.New().String()
+	acquired, err := service.IAMCommandServiceInterface.AcquireUserAccessTransition(
+		ctx, tenantID, userID, lockToken, userAccessTransitionLockTTL,
+	)
+	if err != nil {
+		return "", err
+	}
+	if !acquired {
+		return "", errors.New(apiError.AccountAccessTransitionInProgress)
+	}
+	return lockToken, nil
+}
+
+func (service *UserCommandService) releaseUserAccessTransition(ctx context.Context, tenantID, userID, lockToken string) {
+	releaseContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), userAccessTransitionReleaseTimeout)
+	defer cancel()
+	if err := service.IAMCommandServiceInterface.ReleaseUserAccessTransition(releaseContext, tenantID, userID, lockToken); err != nil {
+		log.Printf("[security] severity=critical event=account_access_transition_lock_release_failed tenant_id=%s user_id=%s error=%v", tenantID, userID, err)
+	}
+}
+
+func (service *UserCommandService) clearSuspensionMarkerAfterFailure(ctx context.Context, tenantID, userID string, markerCreated bool) {
+	if !markerCreated {
+		return
+	}
 	rollbackContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	if err := service.IAMCommandServiceInterface.ClearUserSuspension(rollbackContext, tenantID, userID); err != nil {
@@ -245,24 +282,38 @@ func (service *UserCommandService) CreateTenantUser(ctx context.Context, data ty
 
 // DeleteTenantUser delete tenant user by id
 func (service *UserCommandService) DeleteTenantUser(ctx context.Context, data types.DeleteTenantUser) error {
+	lockToken, err := service.acquireUserAccessTransition(ctx, data.TenantID, data.TargetUserID)
+	if err != nil {
+		return err
+	}
+	defer service.releaseUserAccessTransition(ctx, data.TenantID, data.TargetUserID, lockToken)
+
 	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, data.TenantID, data.TargetUserID)
 	if err != nil {
 		return err
 	}
+	actor, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, data.TenantID, data.ActorUserID)
+	if err != nil {
+		return err
+	}
+	data.ActorRole = actor.Role
 	if err := authorizeAccountManagement(data.ActorUserID, data.ActorRole, user.ID, user.Role); err != nil {
 		return err
 	}
-	if err := service.IAMCommandServiceInterface.SetUserSuspended(ctx, data.TenantID, user.ID); err != nil {
+	previousState := userEntity.ResolveAccountAccessState(user.AccessState, user.IsAccountDisabled)
+	markerCreated, err := service.IAMCommandServiceInterface.SetUserSuspended(ctx, data.TenantID, user.ID)
+	if err != nil {
 		return err
 	}
+	rollbackMarker := markerCreated && previousState != userEntity.AccountAccessSuspended
 	if err := service.IAMCommandServiceInterface.RevokeUserSessions(ctx, data.TenantID, user.ID); err != nil {
-		service.clearSuspensionMarkerAfterFailure(ctx, data.TenantID, user.ID)
+		service.clearSuspensionMarkerAfterFailure(ctx, data.TenantID, user.ID, rollbackMarker)
 		return err
 	}
 
 	err = service.UserCommandRepositoryInterface.DeleteTenantUser(ctx, data.TenantID, user.ID)
 	if err != nil {
-		service.clearSuspensionMarkerAfterFailure(ctx, data.TenantID, user.ID)
+		service.clearSuspensionMarkerAfterFailure(ctx, data.TenantID, user.ID, rollbackMarker)
 		log.Println(err)
 		return err
 	}

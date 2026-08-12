@@ -26,6 +26,13 @@ redis.call("SET", KEYS[2], ARGV[1], "PX", ARGV[2])
 return 1
 `)
 
+var deleteIfValueMatchesScript = db.NewScript(`
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+end
+return 0
+`)
+
 // RedisDBHandler handles the methods for the redis database
 type RedisDBHandler struct {
 	rw     sync.RWMutex
@@ -144,6 +151,27 @@ func (r *RedisDBHandler) Set(key string, val interface{}, exp time.Duration) err
 	err := r.Client.Set(key, val, exp).Err()
 
 	return err
+}
+
+// SetIfAbsent writes a key only when it does not already exist.
+func (r *RedisDBHandler) SetIfAbsent(key string, val interface{}, exp time.Duration) (bool, error) {
+	r.rw.Lock()
+	defer r.rw.Unlock()
+
+	return r.Client.SetNX(key, val, exp).Result()
+}
+
+// DeleteIfValueMatches deletes a key only when it is still owned by val.
+func (r *RedisDBHandler) DeleteIfValueMatches(key string, val interface{}) (bool, error) {
+	r.rw.Lock()
+	defer r.rw.Unlock()
+
+	result, err := deleteIfValueMatchesScript.Run(r.Client, []string{key}, val).Int()
+	if err != nil {
+		return false, err
+	}
+
+	return result == 1, nil
 }
 
 // SetIfKeyAbsent atomically writes key only when blockingKey does not exist.
