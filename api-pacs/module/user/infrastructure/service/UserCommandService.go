@@ -75,6 +75,7 @@ func (service *UserCommandService) ChangeTenantUserAccess(ctx context.Context, d
 			return err
 		}
 		if err := service.IAMCommandServiceInterface.RevokeUserSessions(ctx, data.TenantID, target.ID); err != nil {
+			service.clearSuspensionMarkerAfterFailure(ctx, data.TenantID, target.ID)
 			service.logAccountAccessAudit(ctx, data, target, "REJECTED", err.Error())
 			return err
 		}
@@ -82,7 +83,7 @@ func (service *UserCommandService) ChangeTenantUserAccess(ctx context.Context, d
 			if err := service.UserCommandRepositoryInterface.UpdateTenantUserAccessState(ctx, repositoryTypes.UpdateTenantUserAccessState{
 				ID: target.ID, TenantID: data.TenantID, AccessState: data.AccessState,
 			}); err != nil {
-				_ = service.IAMCommandServiceInterface.ClearUserSuspension(context.WithoutCancel(ctx), data.TenantID, target.ID)
+				service.clearSuspensionMarkerAfterFailure(ctx, data.TenantID, target.ID)
 				service.logAccountAccessAudit(ctx, data, target, "REJECTED", err.Error())
 				return err
 			}
@@ -104,6 +105,14 @@ func (service *UserCommandService) ChangeTenantUserAccess(ctx context.Context, d
 
 	service.logAccountAccessAudit(ctx, data, target, "SUCCESS", "")
 	return nil
+}
+
+func (service *UserCommandService) clearSuspensionMarkerAfterFailure(ctx context.Context, tenantID, userID string) {
+	rollbackContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	if err := service.IAMCommandServiceInterface.ClearUserSuspension(rollbackContext, tenantID, userID); err != nil {
+		log.Printf("[security] severity=critical event=account_suspension_marker_rollback_failed tenant_id=%s user_id=%s error=%v", tenantID, userID, err)
+	}
 }
 
 func authorizeAccountManagement(actorID, actorRole, targetID, targetRole string) error {
@@ -247,11 +256,13 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, data ty
 		return err
 	}
 	if err := service.IAMCommandServiceInterface.RevokeUserSessions(ctx, data.TenantID, user.ID); err != nil {
+		service.clearSuspensionMarkerAfterFailure(ctx, data.TenantID, user.ID)
 		return err
 	}
 
 	err = service.UserCommandRepositoryInterface.DeleteTenantUser(ctx, data.TenantID, user.ID)
 	if err != nil {
+		service.clearSuspensionMarkerAfterFailure(ctx, data.TenantID, user.ID)
 		log.Println(err)
 		return err
 	}

@@ -21,6 +21,7 @@ type accountAccessCommandRepository struct {
 	updates   []repositoryTypes.UpdateTenantUserAccessState
 	deleted   string
 	updateErr error
+	deleteErr error
 	sequence  *[]string
 }
 
@@ -34,6 +35,9 @@ func (repository *accountAccessCommandRepository) UpdateTenantUserAccessState(_ 
 
 func (repository *accountAccessCommandRepository) DeleteTenantUser(_ context.Context, _, id string) error {
 	*repository.sequence = append(*repository.sequence, "delete")
+	if repository.deleteErr != nil {
+		return repository.deleteErr
+	}
 	repository.deleted = id
 	return nil
 }
@@ -176,7 +180,7 @@ func TestChangeTenantUserAccessPropagatesFailClosedErrors(t *testing.T) {
 		}, 1, 0, 0},
 		{"session revocation", entity.AccountAccessSuspended, func(_ *accountAccessCommandRepository, iam *accountAccessIAM) {
 			iam.revokeErr = errors.New(apiError.DatabaseError)
-		}, 1, 1, 0},
+		}, 1, 1, 1},
 		{"durable update", entity.AccountAccessSuspended, func(repository *accountAccessCommandRepository, _ *accountAccessIAM) {
 			repository.updateErr = errors.New(apiError.FirestoreError)
 		}, 1, 1, 1},
@@ -220,6 +224,30 @@ func TestDeleteRevokesSessionsBeforeRemovingUser(t *testing.T) {
 	require.Equal(t, 1, iam.revoked)
 	require.Equal(t, "target", commandRepository.deleted)
 	require.Equal(t, []string{"suspend", "revoke", "delete"}, *iam.sequence)
+}
+
+func TestDeleteFailureClearsTemporarySuspensionMarker(t *testing.T) {
+	for name, configure := range map[string]func(*accountAccessCommandRepository, *accountAccessIAM){
+		"revocation failure": func(_ *accountAccessCommandRepository, iam *accountAccessIAM) {
+			iam.revokeErr = errors.New(apiError.DatabaseError)
+		},
+		"repository failure": func(repository *accountAccessCommandRepository, _ *accountAccessIAM) {
+			repository.deleteErr = errors.New(apiError.FirestoreError)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service, commandRepository, iam := newAccountAccessService(repositoryTypes.GetTenantUser{
+				ID: "target", TenantID: "tenant-a", Role: iamEntity.UserRole, AccessState: entity.AccountAccessActive,
+			})
+			configure(commandRepository, iam)
+			err := service.DeleteTenantUser(context.Background(), serviceTypes.DeleteTenantUser{
+				TenantID: "tenant-a", ActorUserID: "owner", ActorRole: iamEntity.OwnerRole, TargetUserID: "target",
+			})
+			require.Error(t, err)
+			require.Equal(t, 1, iam.cleared)
+			require.Empty(t, commandRepository.deleted)
+		})
+	}
 }
 
 func TestAccessStateRejectsUnknownValue(t *testing.T) {

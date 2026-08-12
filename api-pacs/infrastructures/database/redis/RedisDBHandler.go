@@ -76,8 +76,8 @@ func (r *RedisDBHandler) Flush() {
 
 // Get the value stored using a specified key (case-sensitive)
 func (r *RedisDBHandler) Get(key string) (string, error) {
-	r.rw.Lock()
-	defer r.rw.Unlock()
+	r.rw.RLock()
+	defer r.rw.RUnlock()
 
 	val, err := r.Client.Get(key).Result()
 	if err == db.Nil {
@@ -119,13 +119,12 @@ func (r *RedisDBHandler) IncrementWithExpiry(key string, expiry time.Duration) (
 
 // Scan returns all keys matching pattern without blocking Redis with KEYS.
 func (r *RedisDBHandler) Scan(pattern string) ([]string, error) {
-	r.rw.RLock()
-	defer r.rw.RUnlock()
-
 	var keys []string
 	var cursor uint64
 	for {
+		r.rw.RLock()
 		batch, nextCursor, err := r.Client.Scan(cursor, pattern, 100).Result()
+		r.rw.RUnlock()
 		if err != nil {
 			return nil, err
 		}
