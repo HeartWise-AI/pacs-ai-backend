@@ -3,13 +3,12 @@ services:
     build: .
     container_name: nginx
     restart: unless-stopped
+    env_file: .env
     ports:
       - 80:80
       - 443:443
     volumes:
       - ./ssl:/etc/nginx/ssl
-    environment:
-      - SERVER_NAME=${SERVER_NAME}
     depends_on:
       - orthanc
       - api-pacs

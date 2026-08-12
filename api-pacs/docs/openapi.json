@@ -425,7 +425,7 @@
       "post": {
         "tags": ["inference"],
         "summary": "Predict Inference Model",
-        "description": "Predict inference model.",
+        "description": "Predict an inference model. The selected model's dicomUploadMin/dicomUploadMax series bounds are enforced server-side before DICOM retrieval; deployments also apply a hard series ceiling and bounded metadata.",
         "security": [
           {
             "bearerAuth": []
@@ -472,6 +472,9 @@
           },
           "503": {
             "description": "Inference quota enforcement is unavailable and fails closed"
+          },
+          "413": {
+            "description": "Request body exceeds the configured limit (REQUEST_BODY_TOO_LARGE)"
           },
           "4xx": {
             "description": "Client side errors"
@@ -636,6 +639,9 @@
         "responses": {
           "2xx": {
             "description": "Success"
+          },
+          "413": {
+            "description": "Multipart request or CSV file exceeds the configured limit (REQUEST_BODY_TOO_LARGE)"
           },
           "4xx": {
             "description": "Client side errors"
@@ -2990,17 +2996,24 @@
         "type": "object",
         "properties": {
           "studyInstanceUID": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 64,
+            "description": "DICOM UID"
           },
           "seriesInstanceUIDs": {
             "type": "array",
+            "minItems": 1,
+            "maxItems": 256,
+            "description": "Must also satisfy the selected model's authoritative dicomUploadMin/dicomUploadMax range.",
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 64
             }
           },
           "additionalMetadata": {
             "type": "object",
-            "nullable": true
+            "nullable": true,
+            "description": "Bounded by encoded size, nesting depth, and entry count."
           }
         }
       },

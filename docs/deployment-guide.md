@@ -1026,10 +1026,31 @@ docker compose images > pacs-ai-versions.txt
 | `INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS` | optional | `2` | Active direct predictions or manual reprocessing runs per tenant/user |
 | `INFERENCE_USER_RESERVATION_TTL_SECONDS` | optional | `7200` | Recovery TTL for an active reservation that never receives a terminal outcome |
 | `INFERENCE_USER_QUOTA_TENANT_OVERRIDES_JSON` | optional | empty | JSON object keyed by tenant ID; supports `windowSeconds`, `allowance`, `maxConcurrentExecutions`, and `reservationTtlSeconds` |
+| **Request and input safety** | | | |
+| `API_MAX_REQUEST_BODY_BYTES` | optional | `16777216` | Hard body limit for regular `/v1` API requests |
+| `INFERENCE_PREDICT_MAX_REQUEST_BODY_BYTES` | optional | `1048576` | Stricter JSON body limit for direct model predictions |
+| `DICOMWEB_MAX_REQUEST_BODY_BYTES` | optional | `6442450944` | Go-side ceiling for the authenticated DICOMweb large-upload exception; keep consistent with the Nginx 6g default |
+| `INFERENCE_MAX_SERIES_UIDS` | optional | `256` | Hard series-count ceiling before a model request is assembled |
+| `INFERENCE_MAX_METADATA_BYTES` | optional | `65536` | Maximum encoded prediction metadata size |
+| `INFERENCE_MAX_METADATA_DEPTH` / `INFERENCE_MAX_METADATA_ENTRIES` | optional | `8` / `256` | Prediction metadata structural limits |
+| `ORCHESTRATOR_MAX_REQUEST_BODY_BYTES` | optional | `8388608` | Body limit for orchestrator thread, chat, and DICOM-selection JSON |
+| `ORCHESTRATOR_MAX_STUDIES_PER_REQUEST` | optional | `20` | Maximum studies in one orchestrator DICOM-selection request |
+| `ORCHESTRATOR_MAX_SERIES_UIDS_PER_STUDY` | optional | `256` | Maximum series UIDs selected for each orchestrator study |
+| `ORCHESTRATOR_MAX_PREVIEW_BASE64_BYTES` | optional | `2097152` | Maximum encoded preview/image string size |
+| `ORCHESTRATOR_MAX_METADATA_BYTES` | optional | `65536` | Maximum encoded metadata size per orchestrator object |
+| `ORCHESTRATOR_MAX_METADATA_DEPTH` / `ORCHESTRATOR_MAX_METADATA_ENTRIES` | optional | `8` / `256` | Orchestrator metadata structural limits |
+| `ORCHESTRATOR_MAX_MESSAGE_BYTES` | optional | `32768` | Maximum chat message length in bytes |
+| `HTTP_SERVER_READ_HEADER_TIMEOUT_SECONDS` | optional | `10` | Time allowed to receive request headers |
+| `HTTP_SERVER_READ_TIMEOUT_SECONDS` | optional | `30` | Time allowed to receive a regular request |
+| `HTTP_SERVER_IDLE_TIMEOUT_SECONDS` | optional | `120` | Keep-alive idle timeout |
 | **Optional integrations** | | | |
 | `DOCUSIGN_*` (6 vars) | optional | — | DocuSign integration |
 | `OPENAPI_DOCS_PASSWORD` | optional | — | Basic-auth on `/docs` |
 | `ORCHESTRATOR_API_URL` | optional | — | URL of the optional orchestrator service |
+
+The bundled production Nginx terminates HTTPS and always redirects port 80 to
+port 443. When Cloudflare proxies the deployment, configure its origin SSL mode
+as **Full** or **Full (strict)**; Flexible mode is not supported.
 
 Registration counters are stored in the IAM Redis database and use hashed,
 tenant-scoped identifiers. When `REGISTRATION_TRUSTED_PROXY_CIDRS` is empty or
@@ -1051,6 +1072,32 @@ Clients can read `GET /v1/inference/quota`. Limit rejections return HTTP 429,
 `Retry-After`, and either `INFERENCE_QUOTA_EXCEEDED` or
 `INFERENCE_CONCURRENCY_EXCEEDED`. Redis unavailability fails closed with HTTP
 503 and `INFERENCE_QUOTA_UNAVAILABLE`.
+
+Regular JSON and multipart API requests are bounded both at Nginx and inside
+api-pacs. Oversized bodies return HTTP 413 with the stable error code
+`REQUEST_BODY_TOO_LARGE`; decoded fields that exceed structural limits return
+HTTP 400 with a bounded error response. Prediction series are validated before
+DICOM retrieval or model request allocation. The selected model's advertised
+`dicomUploadMin` and `dicomUploadMax` are authoritative; an invalid model range
+fails closed with HTTP 503.
+
+The authenticated DICOMweb proxy is the only bundled large-upload exception.
+Nginx-specific settings belong in `nginx/.env`; the root `.env` remains for
+shared platform settings such as `APP_TIMEZONE`. Nginx defaults are
+`NGINX_FRONTEND_MAX_BODY_SIZE=1m`,
+`NGINX_API_MAX_BODY_SIZE=16m`, and `NGINX_DICOMWEB_MAX_BODY_SIZE=6g`. Its route
+extends api-pacs' regular 30-second request-read deadline to the finite
+`DICOMWEB_READ_TIMEOUT_SECONDS` value (7200 seconds by default), while retaining
+the Nginx client-body timeout and the explicit DICOMweb size ceiling. Nginx body
+size settings must be positive; zero and malformed values fail startup rather
+than disabling the limit. Do not raise the general API limits to accommodate
+DICOM uploads; tune only the DICOMweb variables when a deployment genuinely
+requires it, and keep the Nginx and Go ceilings consistent. The Go server keeps
+its write timeout disabled because `/v1/inference/worklist/events` is a
+long-lived SSE stream; Nginx applies the external write/read timeouts.
+
+After changing Nginx limits, rebuild the Nginx service. After changing api-pacs
+limits or timeout values, recreate api-pacs so it receives the new environment.
 
 #### cardio-agent / study-service (`cardio-agent/study-service/.env`)
 

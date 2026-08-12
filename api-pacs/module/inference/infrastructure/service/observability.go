@@ -25,6 +25,7 @@ var (
 	worklistSSEConnectionsTotal       = expvar.NewMap("worklist_sse_connections_total")
 	worklistNotificationsTotal        = expvar.NewMap("worklist_notifications_total")
 	inferenceQuotaEventsTotal         = expvar.NewMap("inference_quota_events_total")
+	inferenceInputRejectionsTotal     = expvar.NewMap("inference_input_rejections_total")
 )
 
 var inferenceQuotaEvents = map[string]struct{}{
@@ -32,10 +33,20 @@ var inferenceQuotaEvents = map[string]struct{}{
 	"completed": {}, "released": {}, "refunded": {}, "unavailable": {},
 }
 
+var inferenceInputRejectionReasons = map[string]struct{}{
+	"invalid_input": {}, "model_bounds": {}, "invalid_model_configuration": {},
+}
+
 // ObserveInferenceQuotaEvent records bounded operational outcomes without
 // tenant, user, study, model, or reservation identifiers.
 func ObserveInferenceQuotaEvent(event string) {
 	inferenceQuotaEventsTotal.Add(boundedMetricLabelValue(event, inferenceQuotaEvents), 1)
+}
+
+// ObserveInferenceInputRejection records only bounded reason labels; DICOM
+// identifiers, metadata, tenant IDs, and model payloads are never metrics.
+func ObserveInferenceInputRejection(reason string) {
+	inferenceInputRejectionsTotal.Add(boundedMetricLabelValue(reason, inferenceInputRejectionReasons), 1)
 }
 
 var dispatchLatencyBuckets = []time.Duration{

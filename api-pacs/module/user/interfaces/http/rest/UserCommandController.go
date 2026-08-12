@@ -14,6 +14,7 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
+	"api-pacs/interfaces/http/rest/middlewares/requestbody"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
@@ -301,10 +302,20 @@ func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWrite
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil {
+		if requestbody.IsTooLarge(err) {
+			requestbody.ObserveRejection(r, maxPublicRegistrationBodyBytes, "registration")
+			requestbody.WriteTooLarge(w)
+			return
+		}
 		writeInvalidRegistrationRequest(w)
 		return
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if requestbody.IsTooLarge(err) {
+			requestbody.ObserveRejection(r, maxPublicRegistrationBodyBytes, "registration")
+			requestbody.WriteTooLarge(w)
+			return
+		}
 		writeInvalidRegistrationRequest(w)
 		return
 	}

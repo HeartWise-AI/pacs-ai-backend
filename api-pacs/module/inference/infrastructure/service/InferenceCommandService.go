@@ -2378,6 +2378,15 @@ func (service *InferenceCommandService) isStudyPresentLocally(ctx context.Contex
 
 // GenerateInferenceModelPredictRequest generates a predict request for inference model
 func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error) {
+	if err := validateBoundedPredictInput(data, configuredInferenceInputLimits()); err != nil {
+		ObserveInferenceInputRejection("invalid_input")
+		log.Printf("[security] event=inference_input_rejected reason=invalid_input tenant_id=%s container_id=%s series_count=%d", tenantID, containerID, len(data.SeriesInstanceUIDs))
+		return dockerInferenceTypes.PredictRequest{}, "", err
+	}
+	// Validation must happen before sorting so an attacker cannot force
+	// unbounded CPU or allocation work with a very large UID collection.
+	data.SeriesInstanceUIDs = sortedSeriesInstanceUIDs(data.SeriesInstanceUIDs)
+
 	// get inference model
 	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)
 	if err != nil {
@@ -2395,6 +2404,15 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 	modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerName) // remove "/" prefix
 	if err != nil {
 		return dockerInferenceTypes.PredictRequest{}, "", errors.New(apiError.DockerInferenceError)
+	}
+	if err := validateModelSeriesBounds(modelInfo, len(data.SeriesInstanceUIDs)); err != nil {
+		reason := "model_bounds"
+		if err.Error() == apiError.InferenceModelConfigurationInvalid {
+			reason = "invalid_model_configuration"
+		}
+		ObserveInferenceInputRejection(reason)
+		log.Printf("[security] event=inference_input_rejected reason=%s tenant_id=%s container_id=%s series_count=%d", reason, tenantID, containerID, len(data.SeriesInstanceUIDs))
+		return dockerInferenceTypes.PredictRequest{}, "", err
 	}
 
 	seriesInstanceImages := map[int]map[int]string{}
@@ -2487,11 +2505,6 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 			return dockerInferenceTypes.PredictRequest{}, "", err
 		}
 
-		// check if SeriesInstanceImages is empty
-		if len(seriesInstanceImages) == 0 {
-			log.Println("[predict] empty series instance images")
-			return dockerInferenceTypes.PredictRequest{}, "", errors.New(apiError.InferenceError)
-		}
 	} else {
 		/// ---------------------- for DICOM metadata
 		// get allowed dicom tags
@@ -2632,12 +2645,16 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 		if err := eg.Wait(); err != nil {
 			return dockerInferenceTypes.PredictRequest{}, "", err
 		}
+	}
 
-		// check if SeriesInstanceMetadata is empty
-		if len(seriesInstanceMetadata) == 0 {
-			log.Println("[predict] empty series instance metadata")
-			return dockerInferenceTypes.PredictRequest{}, "", errors.New(apiError.InferenceError)
-		}
+	actualSeriesCount := nonEmptySeriesCount(seriesInstanceImages)
+	if len(seriesInstanceImages) == 0 {
+		actualSeriesCount = nonEmptySeriesCount(seriesInstanceMetadata)
+	}
+	if err := validateModelSeriesBounds(modelInfo, actualSeriesCount); err != nil {
+		ObserveInferenceInputRejection("model_bounds")
+		log.Printf("[security] event=inference_input_rejected reason=model_bounds stage=retrieved tenant_id=%s container_id=%s series_count=%d", tenantID, containerID, actualSeriesCount)
+		return dockerInferenceTypes.PredictRequest{}, "", err
 	}
 
 	// create predict request

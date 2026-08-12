@@ -75,6 +75,17 @@ func TestInferenceQuotaObservabilityUsesBoundedLabels(t *testing.T) {
 	require.Equal(t, unknownBefore+1, expvarMapIntValue(inferenceQuotaEventsTotal, "unknown"))
 }
 
+func TestInferenceInputObservabilityUsesBoundedLabels(t *testing.T) {
+	modelBoundsBefore := expvarMapIntValue(inferenceInputRejectionsTotal, "model_bounds")
+	unknownBefore := expvarMapIntValue(inferenceInputRejectionsTotal, "unknown")
+
+	ObserveInferenceInputRejection("model_bounds")
+	ObserveInferenceInputRejection("patient-or-study-controlled-value")
+
+	require.Equal(t, modelBoundsBefore+1, expvarMapIntValue(inferenceInputRejectionsTotal, "model_bounds"))
+	require.Equal(t, unknownBefore+1, expvarMapIntValue(inferenceInputRejectionsTotal, "unknown"))
+}
+
 func expvarMapIntValue(metric *expvar.Map, key string) int64 {
 	value := metric.Get(key)
 	if value == nil {

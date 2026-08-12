@@ -15,6 +15,7 @@ import (
 	"github.com/gocarina/gocsv"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
+	"api-pacs/interfaces/http/rest/middlewares/requestbody"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
@@ -463,15 +464,22 @@ func (controller *InferenceCommandController) StudyServiceProcessingCallback(w h
 func (controller *InferenceCommandController) ImportInferenceIngestionJobsCSVFile(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
-	// define max upload size
-	r.Body = http.MaxBytesReader(w, r.Body, mediaMaxFileSize)
+	// Allow a small amount of multipart framing overhead while keeping the CSV
+	// file itself bounded to mediaMaxFileSize.
+	maxRequestBytes := mediaMaxFileSize + mediaMultipartOverheadAllowance
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
 	err := r.ParseMultipartForm(mediaMaxFileSize)
 	if err != nil {
+		if requestbody.IsTooLarge(err) {
+			requestbody.ObserveRejection(r, maxRequestBytes, "inference_ingestion_csv")
+			requestbody.WriteTooLarge(w)
+			return
+		}
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
-			Message:   "Maximum file size reached.",
-			ErrorCode: errors.MaximumLimitReached,
+			Message:   "Invalid multipart request.",
+			ErrorCode: errors.InvalidRequestPayload,
 		}
 
 		response.JSON(w)
@@ -492,6 +500,11 @@ func (controller *InferenceCommandController) ImportInferenceIngestionJobsCSVFil
 		return
 	}
 	defer file.Close()
+	if fileHeader.Size > mediaMaxFileSize {
+		requestbody.ObserveRejection(r, mediaMaxFileSize, "inference_ingestion_csv")
+		requestbody.WriteTooLarge(w)
+		return
+	}
 
 	mimeType := fileHeader.Header.Get("Content-Type")
 
