@@ -1048,6 +1048,10 @@ docker compose images > pacs-ai-versions.txt
 | `OPENAPI_DOCS_PASSWORD` | optional | — | Basic-auth on `/docs` |
 | `ORCHESTRATOR_API_URL` | optional | — | URL of the optional orchestrator service |
 
+The bundled production Nginx terminates HTTPS and always redirects port 80 to
+port 443. When Cloudflare proxies the deployment, configure its origin SSL mode
+as **Full** or **Full (strict)**; Flexible mode is not supported.
+
 Registration counters are stored in the IAM Redis database and use hashed,
 tenant-scoped identifiers. When `REGISTRATION_TRUSTED_PROXY_CIDRS` is empty or
 the direct peer is outside those networks, api-pacs ignores `X-Real-IP` and
@@ -1082,10 +1086,13 @@ Nginx-specific settings belong in `nginx/.env`; the root `.env` remains for
 shared platform settings such as `APP_TIMEZONE`. Nginx defaults are
 `NGINX_FRONTEND_MAX_BODY_SIZE=1m`,
 `NGINX_API_MAX_BODY_SIZE=16m`, and `NGINX_DICOMWEB_MAX_BODY_SIZE=6g`. Its route
-also clears api-pacs' regular 30-second request-read deadline, while retaining
-the Nginx client-body timeout and the explicit DICOMweb size ceiling. Do not
-raise the general API limits to accommodate DICOM uploads; tune only the
-DICOMweb variable when a deployment genuinely requires it. The Go server keeps
+extends api-pacs' regular 30-second request-read deadline to the finite
+`DICOMWEB_READ_TIMEOUT_SECONDS` value (7200 seconds by default), while retaining
+the Nginx client-body timeout and the explicit DICOMweb size ceiling. Nginx body
+size settings must be positive; zero and malformed values fail startup rather
+than disabling the limit. Do not raise the general API limits to accommodate
+DICOM uploads; tune only the DICOMweb variables when a deployment genuinely
+requires it, and keep the Nginx and Go ceilings consistent. The Go server keeps
 its write timeout disabled because `/v1/inference/worklist/events` is a
 long-lived SSE stream; Nginx applies the external write/read timeouts.
 
