@@ -22,6 +22,57 @@ import (
 // UserCommandRepository handles the user command repository logic
 type UserCommandRepository struct {
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
+	userCreator      tenantUserCreator
+}
+
+const registrationRollbackTimeout = 10 * time.Second
+
+type tenantUserCreator interface {
+	CreateAuthUser(context.Context, repositoryTypes.CreateTenantUser) (string, error)
+	CreateProfile(context.Context, string, repositoryTypes.CreateTenantUser) error
+	DeleteAuthUser(context.Context, string) error
+}
+
+type firebaseTenantUserCreator struct {
+	tenantAuth      *auth.TenantClient
+	firestoreClient *firestore.Client
+}
+
+func (creator *firebaseTenantUserCreator) CreateAuthUser(ctx context.Context, data repositoryTypes.CreateTenantUser) (string, error) {
+	params := (&auth.UserToCreate{}).
+		Email(data.Email).
+		EmailVerified(data.IsEmailVerified).
+		Password(data.Password).
+		DisplayName(data.Name).
+		Disabled(false)
+
+	authUser, err := creator.tenantAuth.CreateUser(ctx, params)
+	if err != nil {
+		return "", err
+	}
+
+	return authUser.UID, nil
+}
+
+func (creator *firebaseTenantUserCreator) CreateProfile(ctx context.Context, userID string, data repositoryTypes.CreateTenantUser) error {
+	now := int(time.Now().Unix())
+	user := entity.User{
+		TenantID:       data.TenantID,
+		Role:           data.Role,
+		LicenseNo:      data.LicenseNo,
+		Specialty:      data.Specialty,
+		IsAdminCreated: data.IsAdminCreated,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+
+	collectionPath := fmt.Sprintf("%s/%s", user.GetModelName(), userID)
+	_, err := creator.firestoreClient.Doc(collectionPath).Create(ctx, user)
+	return err
+}
+
+func (creator *firebaseTenantUserCreator) DeleteAuthUser(ctx context.Context, userID string) error {
+	return creator.tenantAuth.DeleteUser(ctx, userID)
 }
 
 // DeleteTenantUser delete tenant user for tenant
@@ -93,35 +144,12 @@ func (repository *UserCommandRepository) DeleteTenantUserEmailInvite(ctx context
 
 // InsertTenantUser creates a new tenant user for tenant
 func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, data repositoryTypes.CreateTenantUser) (string, error) {
-	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
+	creator, err := repository.tenantUserCreatorFor(ctx, data.TenantID)
 	if err != nil {
-		log.Println(err)
-		return "", errors.New(apiError.FirebaseAuthError)
+		return "", err
 	}
 
-	// tenant auth
-	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(data.TenantID)
-	if err != nil {
-		log.Println(err)
-		return "", errors.New(apiError.FirebaseAuthError)
-	}
-
-	// firestore client
-	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
-	if err != nil {
-		log.Println(err)
-		return "", errors.New(apiError.FirestoreError)
-	}
-
-	// create user in firebase auth
-	params := (&auth.UserToCreate{}).
-		Email(data.Email).
-		EmailVerified(data.IsEmailVerified).
-		Password(data.Password).
-		DisplayName(data.Name).
-		Disabled(false)
-
-	authUser, err := tenantAuth.CreateUser(ctx, params)
+	userID, err := creator.CreateAuthUser(ctx, data)
 	if err != nil {
 		if strings.Contains(err.Error(), "already exist") {
 			return "", errors.New(apiError.DuplicateRecord)
@@ -131,27 +159,48 @@ func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, d
 		return "", errors.New(apiError.FirebaseAuthError)
 	}
 
-	// create user in firestore
-	user := entity.User{
-		TenantID:       data.TenantID,
-		Role:           data.Role,
-		LicenseNo:      data.LicenseNo,
-		Specialty:      data.Specialty,
-		IsAdminCreated: data.IsAdminCreated,
-		CreatedAt:      int(time.Now().Unix()),
-		UpdatedAt:      int(time.Now().Unix()),
-	}
-
-	collectionPath := fmt.Sprintf("%s/%s", user.GetModelName(), authUser.UID)
-	docRef := firestoreClient.Doc(collectionPath)
-
-	_, err = docRef.Create(ctx, user)
-	if err != nil {
+	if err := creator.CreateProfile(ctx, userID, data); err != nil {
 		log.Println(err)
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), registrationRollbackTimeout)
+		defer cancel()
+		if cleanupErr := creator.DeleteAuthUser(cleanupCtx, userID); cleanupErr != nil {
+			log.Printf("[security] severity=critical event=registration_auth_rollback_failed tenant_id=%s user_id=%s error=%v", data.TenantID, userID, cleanupErr)
+		} else {
+			log.Printf("[security] event=registration_auth_rollback_completed tenant_id=%s user_id=%s", data.TenantID, userID)
+		}
 		return "", errors.New(apiError.FirestoreError)
 	}
 
-	return authUser.UID, nil
+	return userID, nil
+}
+
+func (repository *UserCommandRepository) tenantUserCreatorFor(ctx context.Context, tenantID string) (tenantUserCreator, error) {
+	if repository.userCreator != nil {
+		return repository.userCreator, nil
+	}
+
+	firebaseAuth, err := repository.FirebaseAdminSDK.App.Auth(ctx)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirebaseAuthError)
+	}
+
+	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirebaseAuthError)
+	}
+
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	return &firebaseTenantUserCreator{
+		tenantAuth:      tenantAuth,
+		firestoreClient: firestoreClient,
+	}, nil
 }
 
 // GenerateTenantUserEmailVerificationLink generates a Firebase email verification link.

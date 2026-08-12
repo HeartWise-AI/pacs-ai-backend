@@ -3015,32 +3015,49 @@
           "specialty"
         ],
         "type": "object",
+        "additionalProperties": false,
         "properties": {
           "tenantId": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
           },
           "turnstileToken": {
             "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
             "description": "Single-use Cloudflare Turnstile response generated for this registration attempt."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
           },
           "email": {
-            "type": "string"
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
           },
           "password": {
-            "type": "string"
+            "type": "string",
+            "format": "password",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Must contain at least one uppercase letter, one lowercase letter, and one special character."
           },
-
           "licenseNo": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
           },
           "specialty": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
           },
           "code": {
             "type": "string",
+            "maxLength": 256,
             "nullable": true
           }
         }
