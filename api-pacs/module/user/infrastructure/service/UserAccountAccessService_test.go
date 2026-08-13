@@ -72,6 +72,7 @@ type accountAccessIAM struct {
 	lockToken       string
 	acquired        int
 	released        int
+	suspendDeadline time.Time
 	suspendStarted  chan struct{}
 	continueSuspend chan struct{}
 }
@@ -98,9 +99,10 @@ func (iam *accountAccessIAM) ReleaseUserAccessTransition(_ context.Context, _, _
 	return nil
 }
 
-func (iam *accountAccessIAM) SetUserSuspended(context.Context, string, string) (bool, error) {
+func (iam *accountAccessIAM) SetUserSuspended(ctx context.Context, _, _ string) (bool, error) {
 	iam.suspended++
 	*iam.sequence = append(*iam.sequence, "suspend")
+	iam.suspendDeadline, _ = ctx.Deadline()
 	if iam.suspendStarted != nil {
 		close(iam.suspendStarted)
 		<-iam.continueSuspend
@@ -307,6 +309,126 @@ func TestUsesCurrentStoredActorRoleInsteadOfCachedSessionRole(t *testing.T) {
 	require.EqualError(t, err, apiError.ForbiddenAccess)
 	require.Zero(t, iam.suspended)
 	require.Empty(t, commandRepository.updates)
+}
+
+func TestSuspendedActorCannotManageTenantUsers(t *testing.T) {
+	actors := []struct {
+		name string
+		user repositoryTypes.GetTenantUser
+	}{
+		{
+			name: "suspended access state",
+			user: repositoryTypes.GetTenantUser{
+				ID: "suspended-owner", TenantID: "tenant-a", Role: iamEntity.OwnerRole,
+				AccessState: entity.AccountAccessSuspended,
+			},
+		},
+		{
+			name: "legacy Firebase disabled state",
+			user: repositoryTypes.GetTenantUser{
+				ID: "suspended-owner", TenantID: "tenant-a", Role: iamEntity.OwnerRole,
+				IsAccountDisabled: true,
+			},
+		},
+	}
+	tests := []struct {
+		name string
+		act  func(*UserCommandService) error
+	}{
+		{
+			name: "suspend",
+			act: func(service *UserCommandService) error {
+				return service.ChangeTenantUserAccess(context.Background(), serviceTypes.ChangeTenantUserAccess{
+					TenantID: "tenant-a", ActorUserID: "suspended-owner", ActorRole: iamEntity.OwnerRole,
+					TargetUserID: "target", AccessState: entity.AccountAccessSuspended,
+				})
+			},
+		},
+		{
+			name: "reactivate",
+			act: func(service *UserCommandService) error {
+				return service.ChangeTenantUserAccess(context.Background(), serviceTypes.ChangeTenantUserAccess{
+					TenantID: "tenant-a", ActorUserID: "suspended-owner", ActorRole: iamEntity.OwnerRole,
+					TargetUserID: "target", AccessState: entity.AccountAccessActive,
+				})
+			},
+		},
+		{
+			name: "delete",
+			act: func(service *UserCommandService) error {
+				return service.DeleteTenantUser(context.Background(), serviceTypes.DeleteTenantUser{
+					TenantID: "tenant-a", ActorUserID: "suspended-owner", ActorRole: iamEntity.OwnerRole,
+					TargetUserID: "target",
+				})
+			},
+		},
+	}
+
+	for _, actor := range actors {
+		t.Run(actor.name, func(t *testing.T) {
+			for _, testCase := range tests {
+				t.Run(testCase.name, func(t *testing.T) {
+					service, commandRepository, iam := newAccountAccessService(repositoryTypes.GetTenantUser{
+						ID: "target", TenantID: "tenant-a", Role: iamEntity.UserRole, AccessState: entity.AccountAccessSuspended,
+					})
+					query := service.UserQueryRepositoryInterface.(*accountAccessQueryRepository)
+					query.users["suspended-owner"] = actor.user
+
+					err := testCase.act(service)
+
+					require.EqualError(t, err, apiError.ForbiddenAccess)
+					require.Zero(t, iam.suspended)
+					require.Zero(t, iam.revoked)
+					require.Zero(t, iam.cleared)
+					require.Empty(t, commandRepository.updates)
+					require.Empty(t, commandRepository.deleted)
+				})
+			}
+		})
+	}
+}
+
+func TestAccountAccessTransitionCriticalOperationsUseDeadlineBelowLockTTL(t *testing.T) {
+	tests := []struct {
+		name string
+		act  func(*UserCommandService) error
+	}{
+		{
+			name: "access state change",
+			act: func(service *UserCommandService) error {
+				return service.ChangeTenantUserAccess(context.Background(), serviceTypes.ChangeTenantUserAccess{
+					TenantID: "tenant-a", ActorUserID: "owner", ActorRole: iamEntity.OwnerRole,
+					TargetUserID: "target", AccessState: entity.AccountAccessSuspended,
+				})
+			},
+		},
+		{
+			name: "delete",
+			act: func(service *UserCommandService) error {
+				return service.DeleteTenantUser(context.Background(), serviceTypes.DeleteTenantUser{
+					TenantID: "tenant-a", ActorUserID: "owner", ActorRole: iamEntity.OwnerRole,
+					TargetUserID: "target",
+				})
+			},
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			service, _, iam := newAccountAccessService(repositoryTypes.GetTenantUser{
+				ID: "target", TenantID: "tenant-a", Role: iamEntity.UserRole, AccessState: entity.AccountAccessActive,
+			})
+			startedAt := time.Now()
+
+			err := testCase.act(service)
+
+			require.NoError(t, err)
+			require.False(t, iam.suspendDeadline.IsZero())
+			require.WithinDuration(t, startedAt.Add(userAccessTransitionOperationTimeout), iam.suspendDeadline, time.Second)
+			require.Less(t, userAccessTransitionOperationTimeout, userAccessTransitionLockTTL)
+			require.Less(t, iam.suspendDeadline.Sub(startedAt), userAccessTransitionLockTTL)
+		})
+	}
 }
 
 func TestDeleteUsesCurrentStoredActorRoleInsteadOfCachedSessionRole(t *testing.T) {
