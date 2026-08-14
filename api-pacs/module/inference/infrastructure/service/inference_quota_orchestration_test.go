@@ -30,12 +30,13 @@ func (api *quotaDockerInferenceAPI) Predict(context.Context, string, dockerInfer
 }
 
 type recordingInferenceQuotaManager struct {
-	mu         sync.Mutex
-	reserved   []serviceTypes.InferenceQuotaReservation
-	released   []serviceTypes.InferenceQuotaReservation
-	refunded   []serviceTypes.InferenceQuotaReservation
-	reserveErr error
-	refundCall chan serviceTypes.InferenceQuotaReservation
+	mu          sync.Mutex
+	reserved    []serviceTypes.InferenceQuotaReservation
+	released    []serviceTypes.InferenceQuotaReservation
+	refunded    []serviceTypes.InferenceQuotaReservation
+	reserveErr  error
+	refundCall  chan serviceTypes.InferenceQuotaReservation
+	releaseCall chan serviceTypes.InferenceQuotaReservation
 }
 
 func (manager *recordingInferenceQuotaManager) Reserve(_ context.Context, data serviceTypes.InferenceQuotaReservation) (serviceTypes.InferenceQuotaStatus, error) {
@@ -49,6 +50,9 @@ func (manager *recordingInferenceQuotaManager) Release(_ context.Context, data s
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	manager.released = append(manager.released, data)
+	if manager.releaseCall != nil {
+		manager.releaseCall <- data
+	}
 	return serviceTypes.InferenceQuotaStatus{}, nil
 }
 
@@ -302,6 +306,65 @@ func TestManualReprocessCorrelationFailureRefundsQuotaAndLeavesStudyRetryable(t 
 	case <-time.After(time.Second):
 		t.Fatal("retryable manual run was not queued")
 	}
+}
+
+func TestManualReprocessAcceptedCorrelationFailureRemainsCharged(t *testing.T) {
+	job := entity.InferenceIngestionJob{
+		ID: "job-a", TenantID: "tenant-a", ModelName: "EchoModel", DICOMModality: "US",
+	}
+	candidate := entity.InferenceIngestionCandidate{
+		ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: job.ID,
+		StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved,
+	}
+	state := &realtimeWorklistE2EState{
+		candidates: map[string]entity.InferenceIngestionCandidate{candidate.ID: candidate},
+		jobs:       map[string]entity.InferenceIngestionJob{job.ID: job},
+		runs:       map[string]entity.InferenceIngestionProcessingRun{},
+		executions: map[string]entity.InferenceIngestionProcessingJob{},
+	}
+	releaseCalls := make(chan serviceTypes.InferenceQuotaReservation, 1)
+	quotaManager := &recordingInferenceQuotaManager{releaseCall: releaseCalls}
+	foreignRunID := "run-foreign"
+	foreignExecutionID := "execution-foreign"
+	dispatcher := &guardedProcessingDispatcher{response: serviceTypes.DispatchStudyResponse{
+		JobID: "accepted-foreign-job", StatusCode: http.StatusAccepted,
+		ProcessingRunID: &foreignRunID, ProcessingExecutionID: &foreignExecutionID,
+	}}
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface:         state,
+		InferenceCommandRepositoryInterface:       state,
+		InferenceProcessingRunRepositoryInterface: state,
+		InferenceQuotaManagerInterface:            quotaManager,
+		ProcessingDispatcherInterface:             dispatcher,
+		StudyServiceDispatchSemaphore:             make(chan struct{}, 1),
+	}
+	userID := "user-a"
+
+	result, err := service.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
+		TenantID: "tenant-a", StudyInstanceUID: candidate.StudyInstanceUID, UserID: &userID,
+	})
+	require.NoError(t, err)
+
+	select {
+	case released := <-releaseCalls:
+		require.Equal(t, result.Run.ID, released.ReservationID)
+	case <-time.After(time.Second):
+		t.Fatal("accepted manual correlation failure did not release quota reservation")
+	}
+
+	terminalRun := state.runs[result.Run.ID]
+	require.Equal(t, entity.InferenceIngestionProcessingRunPhaseTerminal, terminalRun.Phase)
+	require.True(t, hasProcessingRunAttentionReason(
+		terminalRun.AttentionReasons, entity.InferenceIngestionProcessingRunAttentionStateConflict,
+	))
+	require.False(t, hasProcessingRunAttentionReason(
+		terminalRun.AttentionReasons, entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+	))
+	require.Empty(t, quotaManager.refunded)
+	require.Len(t, result.Executions, 1)
+	failedExecution := state.executions[result.Executions[0].ID]
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, failedExecution.Status)
+	require.Nil(t, failedExecution.StudyServiceJobID)
 }
 
 func TestTerminalManualRunReleasesOrRefundsReservationByDispatchPolicy(t *testing.T) {

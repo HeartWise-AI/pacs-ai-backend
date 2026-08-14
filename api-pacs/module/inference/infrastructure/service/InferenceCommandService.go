@@ -1943,7 +1943,13 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 						candidate.ID, job.ID, requestID, persistErr,
 					)
 				}
-				service.recordFailedProcessingDispatch(ctx, candidate, job, dispatchRequest, correlationErr)
+				attentionReasonCode := entity.InferenceIngestionProcessingRunAttentionDispatchFailed
+				if dispatchResponse.StatusCode == http.StatusAccepted {
+					attentionReasonCode = entity.InferenceIngestionProcessingRunAttentionStateConflict
+				}
+				service.recordFailedProcessingDispatchWithAttention(
+					ctx, candidate, job, dispatchRequest, correlationErr, attentionReasonCode,
+				)
 				return correlationErr
 			}
 			if recordErr := service.recordQueuedProcessingDispatch(ctx, candidate, job, dispatchRequest, dispatchResponse); recordErr != nil {
@@ -2217,6 +2223,24 @@ func (service *InferenceCommandService) markProcessingRunDispatchAttention(ctx c
 }
 
 func (service *InferenceCommandService) recordFailedProcessingDispatch(ctx context.Context, candidate entity.InferenceIngestionCandidate, job entity.InferenceIngestionJob, dispatchRequest types.DispatchStudyRequest, dispatchErr error) {
+	service.recordFailedProcessingDispatchWithAttention(
+		ctx,
+		candidate,
+		job,
+		dispatchRequest,
+		dispatchErr,
+		entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+	)
+}
+
+func (service *InferenceCommandService) recordFailedProcessingDispatchWithAttention(
+	ctx context.Context,
+	candidate entity.InferenceIngestionCandidate,
+	job entity.InferenceIngestionJob,
+	dispatchRequest types.DispatchStudyRequest,
+	dispatchErr error,
+	attentionReasonCode string,
+) {
 	if processingRunID := trimmedPointerValue(dispatchRequest.ProcessingRunID); processingRunID != "" {
 		existing, err := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(
 			ctx, candidate.TenantID, processingRunID, candidate.ID, job.ModelName,
@@ -2245,7 +2269,7 @@ func (service *InferenceCommandService) recordFailedProcessingDispatch(ctx conte
 		if _, err := service.RecalculateStudyProcessingRun(ctx, types.RecalculateStudyProcessingRun{
 			TenantID: candidate.TenantID, ProcessingRunID: processingRunID,
 			AttentionReasonsToAdd: entity.InferenceIngestionProcessingRunAttentionReasons{{
-				Code: entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+				Code: attentionReasonCode,
 			}},
 		}); err != nil {
 			log.Printf("[Ingestion dispatch] cannot aggregate correlated failed execution candidate_id=%s processing_run_id=%s model_name=%s err=%v",
