@@ -169,7 +169,7 @@ back study-service.
 ## Recovery of pre-contract `STATE_CONFLICT` runs
 
 This recovery applies only to manual runs created before the run-scoped
-contract was deployed. Treat it as coordinated Go-database, study-service
+contract was deployed. Treat it as coordinated Go database, study-service
 database, and quota maintenance. Never relink an old Python job to the newer Go
 run, and never change or delete the prior terminal job or its result.
 
