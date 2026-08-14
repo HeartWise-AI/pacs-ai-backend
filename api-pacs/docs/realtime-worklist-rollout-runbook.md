@@ -21,7 +21,8 @@ The rollout owner must record:
 Before the write window:
 
 - Go migrations `000004` through `000006` are applied;
-- study-service Alembic migrations `0008` and `0009` are applied;
+- study-service Alembic migrations `0008` and `0009` are applied, and revision
+  `20260814_0010` is applied before enabling the manual-reprocess contract;
 - cardio-agent contains processing-run job lookup and ordered callbacks;
 - Go contains processing-run planning, guarded dispatch, ordered callback
   application, reconciliation, REST worklist APIs, and SSE events;
@@ -145,26 +146,51 @@ study-service remains compatible with its own execution mode.
 
 The manual-reprocess contract is additive, but deployment order still matters:
 
-1. Deploy the study-service schema and code that accept `dispatch_intent` and
+1. Pause manual reprocessing for the short cross-version deployment window.
+2. Deploy the study-service schema and code that accept `dispatch_intent` and
    `processing_execution_id`. Confirm a manual request returns the same
    `processing_run_id` and `processing_execution_id` that it received.
-2. Deploy Go. Confirm automatic ingestion still omits the two manual-only
+3. Deploy Go. Confirm automatic ingestion still omits the two manual-only
    fields.
-3. In staging, manually reprocess a study with an existing terminal result.
+4. Resume manual reprocessing. In staging, manually reprocess a study with an
+   existing terminal result.
    Confirm new Python job IDs are created for the new run, their response
    correlation matches, and `rerun_of` identifies the prior job when present.
-4. Replay one dispatch with the same processing execution ID. Confirm the
+5. Replay one dispatch with the same processing execution ID. Confirm the
    response returns the same Python job with `already_present=true`.
-5. Reuse that execution ID with different immutable correlation and confirm a
+6. Reuse that execution ID with different immutable correlation and confirm a
    `409` response with no new job.
-6. Confirm a different processing execution creates a different Python job and
+7. Confirm a different processing execution creates a different Python job and
    leaves the prior result and run history unchanged.
 
 Old Go remains compatible with the additive study-service response. New Go
-fails closed against an old study-service response: it does not persist an
-uncorrelated job ID, marks the execution as a dispatch failure, and refunds a
-manual run when no downstream work was accepted. Roll back Go before rolling
-back study-service.
+fails closed against an uncorrelated study-service response and never persists
+the returned job ID:
+
+- an HTTP `200` foreign `already_present` response means no new downstream work
+  was accepted for this execution; Go records `DISPATCH_FAILED`, terminalizes
+  only an execution that is still atomically `pending`, and refunds the manual
+  quota reservation;
+- an HTTP `202` response may mean downstream work was accepted even when its
+  correlation is missing or wrong; Go records `STATE_CONFLICT`, does not attach
+  the job, and releases the reservation as charged rather than refunding it.
+
+Roll back Go before changing study-service behavior, but do not deploy a
+pre-contract cardio-agent image directly after the database reaches Alembic
+revision `20260814_0010`. An image whose migration graph ends at `0009` cannot
+start against that revision. Use one of these reviewed rollback paths:
+
+1. Prefer a forward-compatible rollback image that retains revision
+   `20260814_0010` and its nullable `processing_execution_id` schema handling
+   while reverting the application behavior.
+2. If a database downgrade is unavoidable, pause dispatch and callbacks, take
+   and restore-test a backup, prove no retained or in-flight job depends on the
+   new field, and use a `20260814_0010`-aware image to perform the reviewed
+   downgrade before deploying the old image. The old image must not be used to
+   attempt the downgrade.
+
+Resume manual reprocessing only after the chosen Go and study-service versions
+pass the correlation smoke test together.
 
 ## Recovery of pre-contract `STATE_CONFLICT` runs
 
