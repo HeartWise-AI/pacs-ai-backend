@@ -37,6 +37,12 @@ const (
 	AccountAccessTransitionInProgress string = "ACCOUNT_ACCESS_TRANSITION_IN_PROGRESS"
 	// RegistrationRateLimited is returned when public registration exceeds an anti-abuse limit.
 	RegistrationRateLimited string = "REGISTRATION_RATE_LIMITED"
+	// LoginChallengeRequired tells the client to obtain a fresh login Turnstile token.
+	LoginChallengeRequired string = "LOGIN_CHALLENGE_REQUIRED"
+	// LoginRateLimited is returned when adaptive login protection reaches a hard limit.
+	LoginRateLimited string = "LOGIN_RATE_LIMITED"
+	// LoginProtectionUnavailable is returned when adaptive login protection cannot make a safe decision.
+	LoginProtectionUnavailable string = "LOGIN_PROTECTION_UNAVAILABLE"
 	// RequestBodyTooLarge is returned when an HTTP request exceeds its configured body limit.
 	RequestBodyTooLarge string = "REQUEST_BODY_TOO_LARGE"
 	// RequestInputLimitExceeded is returned when a decoded variable-length field exceeds a safe bound.

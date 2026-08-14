@@ -13,7 +13,8 @@ services:
     expose:
       - ${API_URL_REST_PORT}
     ports:
-      - ${API_URL_REST_PORT}:${API_URL_REST_PORT}
+      # Keep direct host access loopback-only; public traffic must terminate TLS at Nginx.
+      - 127.0.0.1:${API_URL_REST_PORT}:${API_URL_REST_PORT}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:

@@ -111,7 +111,7 @@ Customer must whitelist the api-pacs host in their source PACS.
 |---|---|---|---|---|
 | nginx | 80 | 80 | Public | Browsers, redirect to 443 |
 | nginx | 443 | 443 | Public | Browsers, API clients |
-| api-pacs | 8000 | — (proxied) | Internal | nginx |
+| api-pacs | 8000 | `127.0.0.1:8000` | Loopback + internal | nginx, local diagnostics |
 | Orthanc REST | 8042 | — | Internal | api-pacs, study-service |
 | Orthanc DIMSE | 4242 | 4242 | Customer LAN | Remote PACS (C-STORE) |
 | study-service | 8600 | — | Internal | api-pacs |
@@ -1014,12 +1014,21 @@ docker compose images > pacs-ai-versions.txt
 | `MAILGUN_API_KEY` / `MAILGUN_DOMAIN` / `MAILGUN_SENDER_EMAIL` | yes | — | Transactional email |
 | `MAILCHIMP_API_KEY` / `MAILCHIMP_BASE_URL` / `MAILCHIMP_LIST_ID` | optional | — | Marketing list sync |
 | **Public registration protection** | | | |
-| `CLOUDFLARE_SECRET_KEY` / `CLOUDFLARE_TURNSTILE_BASE_URL` | required when public registration is enabled | — | Server-side Turnstile registration verification |
+| `CLOUDFLARE_SECRET_KEY` / `CLOUDFLARE_TURNSTILE_BASE_URL` | required when public registration or adaptive login is enabled | — | Server-side Turnstile verification |
 | `REGISTRATION_RATE_LIMIT_WINDOW_SECONDS` | optional | `600` | Fixed registration throttle window in seconds |
 | `REGISTRATION_RATE_LIMIT_TENANT_ATTEMPTS` | optional | `100` | Maximum attempts per tenant and window |
 | `REGISTRATION_RATE_LIMIT_EMAIL_ATTEMPTS` | optional | `5` | Maximum attempts per normalized email within its tenant and window |
 | `REGISTRATION_RATE_LIMIT_IP_ATTEMPTS` | optional | `10` | Maximum attempts per trusted client IP within its tenant and window |
 | `REGISTRATION_TRUSTED_PROXY_CIDRS` | required behind a reverse proxy | empty | Comma-separated CIDRs of direct proxies allowed to supply `X-Real-IP`; use the exact `pacs-net` subnet for the bundled Nginx deployment |
+| **Adaptive login protection** | | | |
+| `FIREBASE_WEB_API_KEY` | yes | — | Firebase Web API key used for tenant-aware backend password authentication; allow the Identity Toolkit API |
+| `LOGIN_ABUSE_PROTECTION_ENABLED` | optional | `true` | Emergency-only switch for Redis/Turnstile policy; disabling logs a security warning but keeps backend-owned Firebase authentication |
+| `LOGIN_FAILURE_WINDOW_SECONDS` | optional | `600` | Fixed login failure window in seconds |
+| `LOGIN_ACCOUNT_CHALLENGE_FAILURES` | optional | `3` | Normalized account failures before Turnstile is required; account scope has no hard lock |
+| `LOGIN_IP_CHALLENGE_FAILURES` / `LOGIN_IP_MAX_FAILURES` | optional | `5` / `30` | Trusted client-IP challenge and hard-limit thresholds |
+| `LOGIN_TENANT_CHALLENGE_FAILURES` / `LOGIN_TENANT_MAX_FAILURES` | optional | `50` / `500` | Tenant challenge and hard-limit thresholds |
+| `LOGIN_TURNSTILE_ALLOWED_HOSTNAMES` | yes when protection is enabled | — | Comma-separated exact frontend hostnames returned by Siteverify for the `login` action |
+| `LOGIN_TRUSTED_PROXY_CIDRS` | required behind a reverse proxy | empty | Direct-proxy CIDRs allowed to supply login `X-Real-IP`; normally the same exact `pacs-net` subnet used for registration |
 | **Public-demo inference quotas** | | | |
 | `INFERENCE_USER_QUOTA_WINDOW_SECONDS` | optional | `86400` | Fixed usage-allowance window in seconds |
 | `INFERENCE_USER_QUOTA_ALLOWANCE` | optional | `50` | User-triggered inference units per tenant/user and window |
@@ -1057,6 +1066,52 @@ tenant-scoped identifiers. When `REGISTRATION_TRUSTED_PROXY_CIDRS` is empty or
 the direct peer is outside those networks, api-pacs ignores `X-Real-IP` and
 uses the socket peer address. Throttled requests return
 `REGISTRATION_RATE_LIMITED`, HTTP 429, and a `Retry-After` header in seconds.
+
+### Adaptive login rollout and failure behavior
+
+`POST /v1/iam/login` is the server-controlled authentication boundary. The
+browser sends `tenantId`, `email`, `password`, and an optional single-use
+`turnstileToken`. api-pacs calls Firebase Identity Toolkit
+`accounts:signInWithPassword`, verifies the returned ID token with the tenant
+Admin SDK, discards Firebase ID/refresh tokens, and creates only the existing
+PACS Redis session. Passwords, provider tokens, Turnstile tokens, API keys, and
+raw account/IP identifiers are never written to application logs.
+
+Failures use hashed tenant/account/IP Redis counters. Account failures require
+Turnstile but never hard-lock an email, limiting targeted denial of service.
+IP and tenant counters first require Turnstile and later return HTTP 429 with
+the longest breached counter TTL in `Retry-After`. Only a fully created PACS
+session clears its account counter; aggregate IP and tenant counters decay.
+Redis failures return `LOGIN_PROTECTION_UNAVAILABLE` (503). Siteverify transport
+or configuration failures return `CLOUDFLARE_API_ERROR` (503) and do not poison
+failure counters. Turnstile must return `action=login` and a hostname in
+`LOGIN_TURNSTILE_ALLOWED_HOSTNAMES`; missing, expired, replayed, or mismatched
+tokens fail closed.
+
+The login request contract changes incompatibly from `{tenantId,idToken}` to
+`{tenantId,email,password,turnstileToken?}`. Deploy the paired frontend and
+backend together (or during a maintenance window); do not retain the old ID-token
+route because it bypasses adaptive enforcement. For emergency recovery,
+`LOGIN_ABUSE_PROTECTION_ENABLED=false` skips Redis and Turnstile after restart
+while still keeping password verification server-side. Restore it promptly.
+
+Because this request now carries the user's password to api-pacs, every
+public or non-local login endpoint **must** be served through HTTPS/TLS and
+must never be exposed over plain HTTP. The bundled production Nginx HTTPS
+listener is the expected public security boundary. Its HTTP hop to api-pacs is
+acceptable only while that hop stays on the private Docker `pacs-net`; use TLS
+for that hop as well if it crosses a host or any untrusted network. The bundled
+production Compose file binds the direct api-pacs host port to `127.0.0.1` for
+local diagnostics only. An operator who intentionally exposes api-pacs through
+a different TLS-terminating proxy must add an explicit Compose port override;
+never publish port 8000 directly to an external interface as plain HTTP.
+
+Use a Firebase API key that permits the Identity Toolkit API and test its
+restrictions from the api-pacs host before rollout. If Identity Platform
+reCAPTCHA Enterprise enforcement is enabled, `signInWithPassword` also requires
+Google reCAPTCHA fields; this Turnstile integration does not replace that
+provider-specific requirement. See the official Identity Platform REST and
+Cloudflare Siteverify documentation before enabling that setting.
 
 Inference quotas use the same Redis deployment but separate hashed tenant/user
 keys. One direct model prediction and one manual study reprocessing run each
