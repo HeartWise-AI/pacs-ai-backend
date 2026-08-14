@@ -55,6 +55,15 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ApplyProcessin
 	)
 }
 
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) FailPendingProcessingRunExecution(
+	ctx context.Context,
+	data types.FailPendingInferenceIngestionProcessingJob,
+) (bool, error) {
+	return withProcessingRunCircuit("fail_pending_processing_run_execution", func() (bool, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.FailPendingProcessingRunExecution(ctx, data)
+	})
+}
+
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) CreateProcessingRun(ctx context.Context, data types.CreateInferenceIngestionProcessingRun) (entity.InferenceIngestionProcessingRun, error) {
 	return withProcessingRunCircuit("create_processing_run", func() (entity.InferenceIngestionProcessingRun, error) {
 		return repository.InferenceProcessingRunRepositoryInterface.CreateProcessingRun(ctx, data)

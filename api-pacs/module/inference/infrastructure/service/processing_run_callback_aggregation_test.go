@@ -36,10 +36,12 @@ type processingRunCallbackCommandRepository struct {
 
 type processingRunCallbackRunRepository struct {
 	*processingRunAggregationRepository
-	selectedExecution entity.InferenceIngestionProcessingJob
-	transitions       []repositoryTypes.ApplyInferenceIngestionProcessingTransition
-	transitionResult  *repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult
-	transitionErr     error
+	selectedExecution      entity.InferenceIngestionProcessingJob
+	transitions            []repositoryTypes.ApplyInferenceIngestionProcessingTransition
+	transitionResult       *repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult
+	transitionErr          error
+	failPendingCalls       []repositoryTypes.FailPendingInferenceIngestionProcessingJob
+	failPendingBeforeApply func(*processingRunCallbackRunRepository)
 }
 
 func (repository *processingRunCallbackRunRepository) SelectProcessingRunExecution(context.Context, string, string, string, string) (entity.InferenceIngestionProcessingJob, error) {
@@ -62,6 +64,22 @@ func (repository *processingRunCallbackRunRepository) ApplyProcessingRunExecutio
 		outcome = "replayed"
 	}
 	return repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult{Outcome: outcome}, nil
+}
+
+func (repository *processingRunCallbackRunRepository) FailPendingProcessingRunExecution(
+	_ context.Context,
+	data repositoryTypes.FailPendingInferenceIngestionProcessingJob,
+) (bool, error) {
+	repository.failPendingCalls = append(repository.failPendingCalls, data)
+	if repository.failPendingBeforeApply != nil {
+		repository.failPendingBeforeApply(repository)
+	}
+	if repository.selectedExecution.ID != data.ID ||
+		repository.selectedExecution.Status != entity.InferenceIngestionProcessingJobStatusPending {
+		return false, nil
+	}
+	repository.selectedExecution.Status = entity.InferenceIngestionProcessingJobStatusFailed
+	return true, nil
 }
 
 type recordingWorklistNotificationPublisher struct {
@@ -721,9 +739,44 @@ func TestCorrelatedFailedDispatchMarksRunForAttention(t *testing.T) {
 		errors.New("study-service rejected dispatch"),
 	)
 
-	require.Len(t, commandRepository.updates, 1)
-	require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, commandRepository.updates[0].Status)
+	require.Len(t, runRepository.failPendingCalls, 1)
+	require.Equal(t, "execution-1", runRepository.failPendingCalls[0].ID)
 	require.Len(t, runRepository.updates, 1)
 	require.True(t, runRepository.updates[0].AttentionRequired)
 	require.Equal(t, entity.InferenceIngestionProcessingRunAttentionDispatchFailed, runRepository.updates[0].AttentionReasons[0].Code)
+}
+
+func TestCorrelatedFailedDispatchPreservesAdvancedExecution(t *testing.T) {
+	processingRunID := "run-1"
+	for _, status := range []entity.InferenceIngestionProcessingJobStatus{
+		entity.InferenceIngestionProcessingJobStatusQueued,
+		entity.InferenceIngestionProcessingJobStatusRunning,
+		entity.InferenceIngestionProcessingJobStatusCompleted,
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			runRepository := &processingRunCallbackRunRepository{
+				selectedExecution: entity.InferenceIngestionProcessingJob{
+					ID: "execution-1", ProcessingRunID: &processingRunID, Status: status,
+				},
+				processingRunAggregationRepository: &processingRunAggregationRepository{},
+			}
+			commandRepository := &processingRunCallbackCommandRepository{}
+			service := &InferenceCommandService{
+				InferenceCommandRepositoryInterface:       commandRepository,
+				InferenceProcessingRunRepositoryInterface: runRepository,
+			}
+
+			service.recordFailedProcessingDispatch(
+				context.Background(),
+				entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+				entity.InferenceIngestionJob{ModelName: "model-one"},
+				serviceTypes.DispatchStudyRequest{ProcessingRunID: &processingRunID},
+				errors.New("study-service response was lost"),
+			)
+
+			require.Empty(t, commandRepository.updates)
+			require.Empty(t, runRepository.failPendingCalls)
+			require.Empty(t, runRepository.updates)
+		})
+	}
 }

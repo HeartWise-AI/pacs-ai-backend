@@ -2250,21 +2250,29 @@ func (service *InferenceCommandService) recordFailedProcessingDispatchWithAttent
 				candidate.ID, processingRunID, job.ModelName, err)
 			return
 		}
-		if !existing.Status.CanTransitionTo(entity.InferenceIngestionProcessingJobStatusFailed) {
+		if existing.Status != entity.InferenceIngestionProcessingJobStatusPending {
 			return
 		}
-		if existing.Status != entity.InferenceIngestionProcessingJobStatusFailed {
-			if err := service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionProcessingJob(repositoryTypes.UpdateInferenceIngestionProcessingJob{
-				ID:           existing.ID,
-				Status:       entity.InferenceIngestionProcessingJobStatusFailed,
-				ModelVersion: nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
-				Modality:     nonEmptyStringPointer(strings.TrimSpace(dispatchRequest.Modality)),
-				ErrorMessage: stringPointer(dispatchErr.Error()),
-			}); err != nil {
-				log.Printf("[Ingestion dispatch] cannot update correlated failed execution candidate_id=%s processing_run_id=%s model_name=%s err=%v",
-					candidate.ID, processingRunID, job.ModelName, err)
-				return
-			}
+		transitioned, err := service.InferenceProcessingRunRepositoryInterface.FailPendingProcessingRunExecution(
+			ctx,
+			repositoryTypes.FailPendingInferenceIngestionProcessingJob{
+				ID:              existing.ID,
+				ProcessingRunID: processingRunID,
+				CandidateID:     candidate.ID,
+				TenantID:        candidate.TenantID,
+				ModelName:       job.ModelName,
+				ModelVersion:    nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
+				Modality:        nonEmptyStringPointer(strings.TrimSpace(dispatchRequest.Modality)),
+				ErrorMessage:    stringPointer(dispatchErr.Error()),
+			},
+		)
+		if err != nil {
+			log.Printf("[Ingestion dispatch] cannot update correlated failed execution candidate_id=%s processing_run_id=%s model_name=%s err=%v",
+				candidate.ID, processingRunID, job.ModelName, err)
+			return
+		}
+		if !transitioned {
+			return
 		}
 		if _, err := service.RecalculateStudyProcessingRun(ctx, types.RecalculateStudyProcessingRun{
 			TenantID: candidate.TenantID, ProcessingRunID: processingRunID,

@@ -11,6 +11,8 @@ import (
 type InferenceProcessingRunRepositoryInterface interface {
 	// ApplyProcessingRunExecutionTransition atomically applies one execution event and recalculates its run.
 	ApplyProcessingRunExecutionTransition(ctx context.Context, data types.ApplyInferenceIngestionProcessingTransition) (types.ApplyInferenceIngestionProcessingTransitionResult, error)
+	// FailPendingProcessingRunExecution atomically fails an execution only while it remains pending.
+	FailPendingProcessingRunExecution(ctx context.Context, data types.FailPendingInferenceIngestionProcessingJob) (bool, error)
 	// CreateProcessingRun atomically allocates the next study-local run number and inserts the run.
 	CreateProcessingRun(ctx context.Context, data types.CreateInferenceIngestionProcessingRun) (entity.InferenceIngestionProcessingRun, error)
 	// CreateProcessingRunPlan atomically freezes a run and its expected executions.

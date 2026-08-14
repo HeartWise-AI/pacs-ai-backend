@@ -24,6 +24,7 @@ type processingRunTestHandler struct {
 	db       *sqlx.DB
 	query    func(string, interface{}, interface{}) error
 	queryRow func(string, interface{}, interface{}) error
+	execute  func(string, interface{}) (sql.Result, error)
 }
 
 func TestProcessingRunStudyLockKeyIsPostgresSafeAndUnambiguous(t *testing.T) {
@@ -45,6 +46,10 @@ func (handler *processingRunTestHandler) Query(query string, model interface{}, 
 
 func (handler *processingRunTestHandler) QueryRow(query string, model interface{}, target interface{}) error {
 	return handler.queryRow(query, model, target)
+}
+
+func (handler *processingRunTestHandler) Execute(query string, model interface{}) (sql.Result, error) {
+	return handler.execute(query, model)
 }
 
 func emptyProcessingRunRows() *sqlmock.Rows {
@@ -105,6 +110,55 @@ func processingExecutionStateRows(
 		"US", status, "python-job-1", nil, nil, nil, lastEventID, lastEventSequence,
 		startedAt, nil, now, now,
 	)
+}
+
+func TestFailPendingProcessingRunExecutionUsesAtomicScopedUpdate(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		rowsAffected int64
+		wantApplied  bool
+	}{
+		{name: "pending transition applied", rowsAffected: 1, wantApplied: true},
+		{name: "callback already advanced execution", rowsAffected: 0, wantApplied: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var capturedQuery string
+			var capturedData map[string]interface{}
+			handler := &processingRunTestHandler{execute: func(query string, model interface{}) (sql.Result, error) {
+				capturedQuery = query
+				capturedData = model.(map[string]interface{})
+				return sqlmock.NewResult(0, test.rowsAffected), nil
+			}}
+			repository := &InferenceProcessingRunRepository{PostgresSQLDBHandlerInterface: handler}
+
+			applied, err := repository.FailPendingProcessingRunExecution(
+				context.Background(),
+				types.FailPendingInferenceIngestionProcessingJob{
+					ID: "execution-1", ProcessingRunID: "run-1", CandidateID: "candidate-1",
+					TenantID: "tenant-a", ModelName: "EchoPrime",
+					ModelVersion: stringPointer("1.0"), Modality: stringPointer("US"),
+					ErrorMessage: stringPointer("dispatch failed"),
+				},
+			)
+
+			require.NoError(t, err)
+			require.Equal(t, test.wantApplied, applied)
+			normalizedQuery := strings.Join(strings.Fields(capturedQuery), " ")
+			require.Contains(t, normalizedQuery, "WHERE id = :id")
+			require.Contains(t, normalizedQuery, "AND processing_run_id = :processing_run_id")
+			require.Contains(t, normalizedQuery, "AND candidate_id = :candidate_id")
+			require.Contains(t, normalizedQuery, "AND tenant_id = :tenant_id")
+			require.Contains(t, normalizedQuery, "AND model_name = :model_name")
+			require.Contains(t, normalizedQuery, "AND status = :pending_status")
+			require.Equal(t, entity.InferenceIngestionProcessingJobStatusPending, capturedData["pending_status"])
+			require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, capturedData["failed_status"])
+			require.Equal(t, "execution-1", capturedData["id"])
+			require.Equal(t, "run-1", capturedData["processing_run_id"])
+			require.Equal(t, "candidate-1", capturedData["candidate_id"])
+			require.Equal(t, "tenant-a", capturedData["tenant_id"])
+			require.Equal(t, "EchoPrime", capturedData["model_name"])
+		})
+	}
 }
 
 func TestApplyProcessingRunExecutionTransitionUpdatesExecutionAndAggregateAtomically(t *testing.T) {

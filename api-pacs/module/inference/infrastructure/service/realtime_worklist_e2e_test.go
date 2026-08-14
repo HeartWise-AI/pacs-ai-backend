@@ -148,6 +148,25 @@ func (state *realtimeWorklistE2EState) SelectProcessingRunExecution(_ context.Co
 	return entity.InferenceIngestionProcessingJob{}, errors.New(apiError.MissingRecord)
 }
 
+func (state *realtimeWorklistE2EState) FailPendingProcessingRunExecution(
+	_ context.Context,
+	data repositoryTypes.FailPendingInferenceIngestionProcessingJob,
+) (bool, error) {
+	execution, exists := state.executions[data.ID]
+	if !exists || execution.ProcessingRunID == nil || *execution.ProcessingRunID != data.ProcessingRunID ||
+		execution.CandidateID != data.CandidateID || execution.TenantID != data.TenantID ||
+		execution.ModelName != data.ModelName || execution.Status != entity.InferenceIngestionProcessingJobStatusPending {
+		return false, nil
+	}
+	execution.Status = entity.InferenceIngestionProcessingJobStatusFailed
+	execution.ModelVersion = data.ModelVersion
+	execution.Modality = data.Modality
+	execution.ErrorMessage = data.ErrorMessage
+	execution.UpdatedAt = time.Now().UTC()
+	state.executions[data.ID] = execution
+	return true, nil
+}
+
 func (state *realtimeWorklistE2EState) UpdateInferenceIngestionProcessingJob(data repositoryTypes.UpdateInferenceIngestionProcessingJob) error {
 	execution, exists := state.executions[data.ID]
 	if !exists {

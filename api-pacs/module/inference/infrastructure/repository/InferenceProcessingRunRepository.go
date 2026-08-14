@@ -167,6 +167,49 @@ func (repository *InferenceProcessingRunRepository) ApplyProcessingRunExecutionT
 	}, nil
 }
 
+// FailPendingProcessingRunExecution atomically fails one exact pending execution.
+func (repository *InferenceProcessingRunRepository) FailPendingProcessingRunExecution(
+	_ context.Context,
+	data types.FailPendingInferenceIngestionProcessingJob,
+) (bool, error) {
+	var processingJob entity.InferenceIngestionProcessingJob
+	result, err := repository.PostgresSQLDBHandlerInterface.Execute(fmt.Sprintf(`
+		UPDATE %s SET
+			status = :failed_status,
+			model_version = COALESCE(:model_version, model_version),
+			modality = COALESCE(:modality, modality),
+			error_message = :error_message
+		WHERE id = :id
+		  AND processing_run_id = :processing_run_id
+		  AND candidate_id = :candidate_id
+		  AND tenant_id = :tenant_id
+		  AND model_name = :model_name
+		  AND status = :pending_status
+	`, processingJob.GetModelName()), map[string]interface{}{
+		"id":                data.ID,
+		"processing_run_id": data.ProcessingRunID,
+		"candidate_id":      data.CandidateID,
+		"tenant_id":         data.TenantID,
+		"model_name":        data.ModelName,
+		"model_version":     nullableStringValue(data.ModelVersion),
+		"modality":          nullableStringValue(data.Modality),
+		"error_message":     nullableStringValue(data.ErrorMessage),
+		"failed_status":     entity.InferenceIngestionProcessingJobStatusFailed,
+		"pending_status":    entity.InferenceIngestionProcessingJobStatusPending,
+	})
+	if err != nil {
+		return false, processingRunError(err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil || rowsAffected > 1 {
+		if err == nil {
+			err = fmt.Errorf("pending execution failure updated %d rows", rowsAffected)
+		}
+		return false, processingRunError(err)
+	}
+	return rowsAffected == 1, nil
+}
+
 // CreateProcessingRun atomically allocates the next study-local run number and inserts the run.
 func (repository *InferenceProcessingRunRepository) CreateProcessingRun(ctx context.Context, data types.CreateInferenceIngestionProcessingRun) (entity.InferenceIngestionProcessingRun, error) {
 	tx, err := repository.PostgresSQLDBHandlerInterface.Begin()
