@@ -65,33 +65,47 @@ type RecalculateStudyProcessingRunResult struct {
 	Counts entity.InferenceIngestionProcessingRunExecutionCounts
 }
 
+type DispatchStudyIntent string
+
+const (
+	DispatchStudyIntentAutomatic       DispatchStudyIntent = "automatic"
+	DispatchStudyIntentManualReprocess DispatchStudyIntent = "manual_reprocess"
+)
+
 type BuildStudyServiceDispatchRequestInput struct {
-	IngestionJob       entity.InferenceIngestionJob
-	Candidate          entity.InferenceIngestionCandidate
-	OrthancStudyID     *string
-	RetrievalAttemptID *string
-	ProcessingRunID    *string
-	RequestID          *string
+	IngestionJob          entity.InferenceIngestionJob
+	Candidate             entity.InferenceIngestionCandidate
+	OrthancStudyID        *string
+	RetrievalAttemptID    *string
+	ProcessingRunID       *string
+	ProcessingExecutionID *string
+	DispatchIntent        DispatchStudyIntent
+	RequestID             *string
 }
 
 type DispatchStudyRequest struct {
-	XRequestID         string  `json:"-"`
-	TenantID           *string `json:"tenant_id"`
-	IngestionJobID     *string `json:"ingestion_job_id"`
-	CandidateID        *string `json:"candidate_id"`
-	RetrievalAttemptID *string `json:"retrieval_attempt_id"`
-	ProcessingRunID    *string `json:"processing_run_id,omitempty"`
-	StudyInstanceUID   string  `json:"study_instance_uid"`
-	OrthancStudyID     string  `json:"orthanc_study_id"`
-	Modality           string  `json:"modality"`
-	ModelName          string  `json:"model_name"`
-	ModelVersion       string  `json:"model_version"`
+	XRequestID            string              `json:"-"`
+	TenantID              *string             `json:"tenant_id"`
+	IngestionJobID        *string             `json:"ingestion_job_id"`
+	CandidateID           *string             `json:"candidate_id"`
+	RetrievalAttemptID    *string             `json:"retrieval_attempt_id"`
+	ProcessingRunID       *string             `json:"processing_run_id,omitempty"`
+	ProcessingExecutionID *string             `json:"processing_execution_id,omitempty"`
+	DispatchIntent        DispatchStudyIntent `json:"dispatch_intent,omitempty"`
+	StudyInstanceUID      string              `json:"study_instance_uid"`
+	OrthancStudyID        string              `json:"orthanc_study_id"`
+	Modality              string              `json:"modality"`
+	ModelName             string              `json:"model_name"`
+	ModelVersion          string              `json:"model_version"`
 }
 
 type DispatchStudyResponse struct {
-	JobID          string `json:"job_id"`
-	AlreadyPresent bool   `json:"already_present"`
-	StatusCode     int    `json:"-"`
+	JobID                 string  `json:"job_id"`
+	AlreadyPresent        bool    `json:"already_present"`
+	ProcessingRunID       *string `json:"processing_run_id"`
+	ProcessingExecutionID *string `json:"processing_execution_id"`
+	RerunOf               *string `json:"rerun_of"`
+	StatusCode            int     `json:"-"`
 }
 
 type StudyServiceJob struct {

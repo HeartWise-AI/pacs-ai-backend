@@ -26,6 +26,7 @@ func TestStudyServiceDispatcherDispatchStudyDecodesAcceptedResponses(t *testing.
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			processingRunID := "run-123"
+			processingExecutionID := "execution-123"
 			var (
 				request      serviceTypes.DispatchStudyRequest
 				requestErr   error
@@ -43,8 +44,11 @@ func TestStudyServiceDispatcherDispatchStudyDecodesAcceptedResponses(t *testing.
 				requestErr = json.NewDecoder(r.Body).Decode(&request)
 				w.WriteHeader(testCase.statusCode)
 				responseErr = json.NewEncoder(w).Encode(map[string]any{
-					"job_id":          "study-job-123",
-					"already_present": testCase.alreadyPresent,
+					"job_id":                  "study-job-123",
+					"already_present":         testCase.alreadyPresent,
+					"processing_run_id":       processingRunID,
+					"processing_execution_id": processingExecutionID,
+					"rerun_of":                "study-job-source",
 				})
 			}))
 			defer server.Close()
@@ -56,12 +60,14 @@ func TestStudyServiceDispatcherDispatchStudyDecodesAcceptedResponses(t *testing.
 			}
 
 			response, err := dispatcher.DispatchStudy(context.Background(), serviceTypes.DispatchStudyRequest{
-				XRequestID:       "request-123",
-				ProcessingRunID:  &processingRunID,
-				StudyInstanceUID: "study-123",
-				OrthancStudyID:   "orthanc-study-123",
-				Modality:         "US",
-				ModelName:        "model-one",
+				XRequestID:            "request-123",
+				ProcessingRunID:       &processingRunID,
+				ProcessingExecutionID: &processingExecutionID,
+				DispatchIntent:        serviceTypes.DispatchStudyIntentManualReprocess,
+				StudyInstanceUID:      "study-123",
+				OrthancStudyID:        "orthanc-study-123",
+				Modality:              "US",
+				ModelName:             "model-one",
 			})
 
 			if err != nil {
@@ -82,13 +88,59 @@ func TestStudyServiceDispatcherDispatchStudyDecodesAcceptedResponses(t *testing.
 			if request.ProcessingRunID == nil || *request.ProcessingRunID != processingRunID {
 				t.Fatalf("unexpected processing run ID: %#v", request.ProcessingRunID)
 			}
+			if request.ProcessingExecutionID == nil || *request.ProcessingExecutionID != processingExecutionID {
+				t.Fatalf("unexpected processing execution ID: %#v", request.ProcessingExecutionID)
+			}
+			if request.DispatchIntent != serviceTypes.DispatchStudyIntentManualReprocess {
+				t.Fatalf("unexpected dispatch intent: %q", request.DispatchIntent)
+			}
 			if response.JobID != "study-job-123" || response.AlreadyPresent != testCase.alreadyPresent {
 				t.Fatalf("unexpected dispatch response: %#v", response)
+			}
+			if response.ProcessingRunID == nil || *response.ProcessingRunID != processingRunID {
+				t.Fatalf("unexpected response processing run ID: %#v", response.ProcessingRunID)
+			}
+			if response.ProcessingExecutionID == nil || *response.ProcessingExecutionID != processingExecutionID {
+				t.Fatalf("unexpected response processing execution ID: %#v", response.ProcessingExecutionID)
+			}
+			if response.RerunOf == nil || *response.RerunOf != "study-job-source" {
+				t.Fatalf("unexpected response rerun source: %#v", response.RerunOf)
 			}
 			if response.StatusCode != testCase.statusCode {
 				t.Fatalf("unexpected status code: %d", response.StatusCode)
 			}
 		})
+	}
+}
+
+func TestStudyServiceDispatcherDispatchStudyOmitsManualFieldsForLegacyAutomaticRequest(t *testing.T) {
+	var payload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"job_id": "study-job-123", "already_present": false,
+		}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceClient: server.Client()}
+	_, err := dispatcher.DispatchStudy(context.Background(), serviceTypes.DispatchStudyRequest{
+		XRequestID: "request-123", StudyInstanceUID: "study-123", OrthancStudyID: "orthanc-study-123",
+		Modality: "US", ModelName: "model-one",
+	})
+	if err != nil {
+		t.Fatalf("DispatchStudy returned error: %v", err)
+	}
+	if _, exists := payload["dispatch_intent"]; exists {
+		t.Fatalf("legacy automatic payload unexpectedly included dispatch_intent: %#v", payload)
+	}
+	if _, exists := payload["processing_execution_id"]; exists {
+		t.Fatalf("legacy automatic payload unexpectedly included processing_execution_id: %#v", payload)
 	}
 }
 
@@ -141,6 +193,7 @@ func TestStudyServiceDispatcherDispatchStudyReturnsTypedPermanentError(t *testin
 func TestBuildDispatchStudyRequestIncludesProcessingRunID(t *testing.T) {
 	orthancStudyID := "orthanc-study-1"
 	processingRunID := " run-123 "
+	processingExecutionID := " execution-123 "
 	dispatcher := &StudyServiceDispatcher{}
 
 	request, err := dispatcher.BuildDispatchStudyRequest(context.Background(), serviceTypes.BuildStudyServiceDispatchRequestInput{
@@ -150,8 +203,10 @@ func TestBuildDispatchStudyRequestIncludesProcessingRunID(t *testing.T) {
 		Candidate: entity.InferenceIngestionCandidate{
 			ID: "candidate-1", TenantID: "tenant-a", IngestionJobID: "ingestion-1", StudyInstanceUID: "study-1",
 		},
-		OrthancStudyID:  &orthancStudyID,
-		ProcessingRunID: &processingRunID,
+		OrthancStudyID:        &orthancStudyID,
+		ProcessingRunID:       &processingRunID,
+		ProcessingExecutionID: &processingExecutionID,
+		DispatchIntent:        serviceTypes.DispatchStudyIntentManualReprocess,
 	})
 
 	if err != nil {
@@ -159,6 +214,12 @@ func TestBuildDispatchStudyRequestIncludesProcessingRunID(t *testing.T) {
 	}
 	if request.ProcessingRunID == nil || *request.ProcessingRunID != "run-123" {
 		t.Fatalf("unexpected processing run id: %#v", request.ProcessingRunID)
+	}
+	if request.ProcessingExecutionID == nil || *request.ProcessingExecutionID != "execution-123" {
+		t.Fatalf("unexpected processing execution id: %#v", request.ProcessingExecutionID)
+	}
+	if request.DispatchIntent != serviceTypes.DispatchStudyIntentManualReprocess {
+		t.Fatalf("unexpected dispatch intent: %q", request.DispatchIntent)
 	}
 	if request.Modality != "echocardiogram" {
 		t.Fatalf("unexpected canonical modality: %q", request.Modality)
