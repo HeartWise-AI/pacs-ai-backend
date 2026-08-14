@@ -8,10 +8,12 @@ import (
 
 // UserCommandServiceInterface holds the implementable methods for the user command service
 type UserCommandServiceInterface interface {
+	// ChangeTenantUserAccess suspends or reactivates a tenant user.
+	ChangeTenantUserAccess(ctx context.Context, data types.ChangeTenantUserAccess) error
 	// CreateTenantUser creates a tenant user
 	CreateTenantUser(ctx context.Context, data types.CreateTenantUser) (string, error)
 	// DeleteTenantUser deletes a tenant user
-	DeleteTenantUser(ctx context.Context, tenantID, id string) error
+	DeleteTenantUser(ctx context.Context, data types.DeleteTenantUser) error
 	// DeleteTenantUserEmailInvite deletes a tenant user email invite
 	DeleteTenantUserEmailInvite(ctx context.Context, ID string) error
 	// ResetTutorial resets the tutorial for a user

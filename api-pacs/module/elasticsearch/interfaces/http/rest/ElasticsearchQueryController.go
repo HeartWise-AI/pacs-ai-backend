@@ -227,16 +227,23 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 
 		for _, adminMember := range res {
 			adminMembers = append(adminMembers, types.AdminMemberLogResponse{
-				TenantID:   adminMember.TenantID,
-				TenantName: adminMember.TenantName,
-				UserID:     adminMember.UserID,
-				Email:      adminMember.Email,
-				Name:       adminMember.Name,
-				Role:       adminMember.Role,
-				LicenseNo:  adminMember.LicenseNo,
-				Specialty:  adminMember.Specialty,
-				Action:     adminMember.Action,
-				Timestamp:  adminMember.Timestamp,
+				TenantID:      adminMember.TenantID,
+				TenantName:    adminMember.TenantName,
+				UserID:        adminMember.UserID,
+				Email:         adminMember.Email,
+				Name:          adminMember.Name,
+				Role:          adminMember.Role,
+				LicenseNo:     adminMember.LicenseNo,
+				Specialty:     adminMember.Specialty,
+				Action:        adminMember.Action,
+				ActorUserID:   adminMember.ActorUserID,
+				ActorRole:     adminMember.ActorRole,
+				PreviousState: adminMember.PreviousState,
+				NewState:      adminMember.NewState,
+				Reason:        adminMember.Reason,
+				Outcome:       adminMember.Outcome,
+				FailureReason: adminMember.FailureReason,
+				Timestamp:     adminMember.Timestamp,
 			})
 
 		}

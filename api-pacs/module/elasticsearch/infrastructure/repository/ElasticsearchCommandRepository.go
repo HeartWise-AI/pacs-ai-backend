@@ -40,16 +40,23 @@ func (repository *ElasticsearchCommandRepository) InsertAdminInviteLog(ctx conte
 // InsertAdminMemberLog insert admin member log
 func (repository *ElasticsearchCommandRepository) InsertAdminMemberLog(ctx context.Context, data repositoryTypes.CreateAdminMemberLog) (*index.Response, error) {
 	adminMember := entity.AdminMember{
-		TenantID:   data.TenantID,
-		TenantName: data.TenantName,
-		UserID:     data.UserID,
-		Email:      data.Email,
-		Name:       data.Name,
-		Role:       data.Role,
-		LicenseNo:  data.LicenseNo,
-		Specialty:  data.Specialty,
-		Action:     data.Action,
-		Timestamp:  uint(time.Now().Unix()),
+		TenantID:      data.TenantID,
+		TenantName:    data.TenantName,
+		UserID:        data.UserID,
+		Email:         data.Email,
+		Name:          data.Name,
+		Role:          data.Role,
+		LicenseNo:     data.LicenseNo,
+		Specialty:     data.Specialty,
+		Action:        data.Action,
+		ActorUserID:   data.ActorUserID,
+		ActorRole:     data.ActorRole,
+		PreviousState: data.PreviousState,
+		NewState:      data.NewState,
+		Reason:        data.Reason,
+		Outcome:       data.Outcome,
+		FailureReason: data.FailureReason,
+		Timestamp:     uint(time.Now().Unix()),
 	}
 
 	res, err := repository.ElasticsearchDBHandlerInterface.IndexDocument(ctx, adminMember.GetModelName(), adminMember)

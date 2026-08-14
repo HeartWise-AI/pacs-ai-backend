@@ -26,6 +26,7 @@ type GetTenantUser struct {
 	ID                string
 	TenantID          string
 	Role              string
+	AccessState       string
 	Name              string
 	Email             string
 	LicenseNo         string
@@ -36,6 +37,12 @@ type GetTenantUser struct {
 	IsAdminCreated    bool
 	CreatedAt         uint
 	UpdatedAt         uint
+}
+
+type UpdateTenantUserAccessState struct {
+	ID          string
+	TenantID    string
+	AccessState string
 }
 
 type UpdateTenantUser struct {

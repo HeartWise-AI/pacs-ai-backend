@@ -2140,6 +2140,56 @@
         }
       }
     },
+    "/user/{id}/suspend": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Suspend Tenant User",
+        "description": "Disables Firebase login and immediately revokes every platform session. Owners may suspend admins or users; admins may suspend users. Self-suspension and owner suspension are forbidden.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{
+          "name": "id",
+          "in": "path",
+          "description": "Target user ID",
+          "required": true,
+          "schema": { "type": "string" }
+        }],
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChangeTenantUserAccessRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "User suspended; repeated requests are idempotent." },
+          "403": { "description": "Role hierarchy or self-management violation." },
+          "404": { "description": "Target user not found in the authenticated tenant." },
+          "5xx": { "description": "Server side errors" }
+        }
+      }
+    },
+    "/user/{id}/reactivate": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Reactivate Tenant User",
+        "description": "Restores Firebase login and platform session creation without changing the user's profile or role. The same role hierarchy as suspension applies.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{
+          "name": "id",
+          "in": "path",
+          "description": "Target user ID",
+          "required": true,
+          "schema": { "type": "string" }
+        }],
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChangeTenantUserAccessRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "User reactivated; repeated requests are idempotent." },
+          "403": { "description": "Role hierarchy or self-management violation." },
+          "404": { "description": "Target user not found in the authenticated tenant." },
+          "5xx": { "description": "Server side errors" }
+        }
+      }
+    },
     "/user/{id}/remove": {
       "delete": {
         "tags": ["user"],
@@ -3209,6 +3259,16 @@
         "properties": {
           "onboardingEnableRegistration": {
             "type": "boolean"
+          }
+        }
+      },
+      "ChangeTenantUserAccessRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Optional administrative reason recorded in the audit trail."
           }
         }
       },

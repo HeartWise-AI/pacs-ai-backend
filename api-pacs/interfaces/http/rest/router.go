@@ -306,6 +306,8 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Get("/all", userQueryController.GetTenantUsers)
 						r.Get("/invites", userQueryController.GetTenantUserEmailInvites)
 						r.Put("/update", userCommandController.UpdateTenantUser)
+						r.Post("/{ID}/suspend", userCommandController.SuspendTenantUser)
+						r.Post("/{ID}/reactivate", userCommandController.ReactivateTenantUser)
 						r.Delete("/{ID}/remove", userCommandController.DeleteTenantUser)
 						r.Delete("/invite/{ID}/remove", userCommandController.RemoveTenantUserEmailInvite)
 					})

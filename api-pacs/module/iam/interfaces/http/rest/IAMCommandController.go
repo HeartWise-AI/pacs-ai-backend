@@ -72,6 +72,9 @@ func (controller *IAMCommandController) ForgotTenantUserPassword(w http.Response
 		case errors.UnauthorizedAccess:
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Unauthorized access."
+		case errors.AccountSuspended:
+			httpCode = http.StatusForbidden
+			errorMsg = "Account is suspended."
 		case errors.FirebaseAuthEmailNotVerified:
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Email is not verified."
@@ -152,6 +155,9 @@ func (controller *IAMCommandController) LoginTenantUser(w http.ResponseWriter, r
 		case errors.UnauthorizedAccess:
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Unauthorized access."
+		case errors.AccountSuspended:
+			httpCode = http.StatusForbidden
+			errorMsg = "Account is suspended."
 		case errors.FirebaseAuthEmailNotVerified:
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Email is not verified."

@@ -16,6 +16,7 @@ var (
 		"CreateTenantUserRequest.LicenseNo":           "License number is required.",
 		"CreateTenantUserRequest.Specialty":           "Specialty is required.",
 		"DeleteTenantUserRequest.UserID":              "User ID is required.",
+		"ChangeTenantUserAccessRequest.Reason":        "Reason must not exceed 500 characters.",
 		"SendTenantEmailInviteRequest.Email":          "Valid email is required.",
 		"RegisterTenantUserRequest.TenantID":          "Tenant ID is required and must not exceed 128 characters.",
 		"RegisterTenantUserRequest.TurnstileToken":    "Turnstile token is required and must not exceed 4096 characters.",
@@ -75,6 +76,10 @@ type DeleteTenantUserRequest struct {
 	UserID string `json:"userId" validate:"required"`
 }
 
+type ChangeTenantUserAccessRequest struct {
+	Reason string `json:"reason" validate:"max=500"`
+}
+
 type SendTenantEmailInviteRequest struct {
 	Email string `json:"email" validate:"email"`
 }
@@ -121,6 +126,7 @@ type GetTenantUserResponse struct {
 	ID                string `json:"id"`
 	TenantID          string `json:"tenantId"`
 	Role              string `json:"role"`
+	AccessState       string `json:"accessState"`
 	Name              string `json:"name"`
 	Email             string `json:"email"`
 	LicenseNo         string `json:"licenseNo"`

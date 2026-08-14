@@ -6,6 +6,7 @@ import (
 	"log"
 	"sync"
 
+	"cloud.google.com/go/firestore"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/api/iterator"
 	"google.golang.org/grpc/codes"
@@ -73,11 +74,14 @@ func (repository *UserQueryRepository) SelectTenantUserByEmail(ctx context.Conte
 		log.Println(err)
 		return repositoryTypes.GetTenantUser{}, errors.New(apiError.FirestoreError)
 	}
+	accessState := entity.ResolveAccountAccessState(user.AccessState, authUser.Disabled)
+	backfillAccountAccessState(ctx, firestoreRes[0], user.AccessState, accessState)
 
 	return repositoryTypes.GetTenantUser{
 		ID:                authUser.UID,
 		TenantID:          authUser.TenantID,
 		Role:              user.Role,
+		AccessState:       accessState,
 		Name:              authUser.DisplayName,
 		Email:             authUser.Email,
 		LicenseNo:         user.LicenseNo,
@@ -134,11 +138,14 @@ func (repository *UserQueryRepository) SelectTenantUserByID(ctx context.Context,
 		log.Println(err)
 		return repositoryTypes.GetTenantUser{}, errors.New(apiError.FirestoreError)
 	}
+	accessState := entity.ResolveAccountAccessState(user.AccessState, authUser.Disabled)
+	backfillAccountAccessState(ctx, firestoreRes, user.AccessState, accessState)
 
 	return repositoryTypes.GetTenantUser{
 		ID:                authUser.UID,
 		TenantID:          authUser.TenantID,
 		Role:              user.Role,
+		AccessState:       accessState,
 		Name:              authUser.DisplayName,
 		Email:             authUser.Email,
 		LicenseNo:         user.LicenseNo,
@@ -207,11 +214,14 @@ func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, te
 				log.Println(err)
 				return err
 			}
+			accessState := entity.ResolveAccountAccessState(user.AccessState, authUser.Disabled)
+			backfillAccountAccessState(egCtx, doc, user.AccessState, accessState)
 
 			users = append(users, types.GetTenantUser{
 				ID:                authUser.UID,
 				TenantID:          user.TenantID,
 				Role:              user.Role,
+				AccessState:       accessState,
 				Name:              authUser.DisplayName,
 				Email:             authUser.Email,
 				LicenseNo:         user.LicenseNo,
@@ -237,6 +247,17 @@ func (repository *UserQueryRepository) SelectTenantUsers(ctx context.Context, te
 	}
 
 	return users, nil
+}
+
+// backfillAccountAccessState lazily migrates existing profiles. Reads remain
+// available if the compatibility write fails; subsequent reads retry it.
+func backfillAccountAccessState(ctx context.Context, doc *firestore.DocumentSnapshot, storedState, resolvedState string) {
+	if storedState != "" {
+		return
+	}
+	if _, err := doc.Ref.Update(ctx, []firestore.Update{{Path: "access_state", Value: resolvedState}}); err != nil {
+		log.Printf("[security] event=account_access_state_backfill_failed user_id=%s error=%v", doc.Ref.ID, err)
+	}
 }
 
 // SelectTenantUserEmailInviteByEmail get tenant user email invite by email

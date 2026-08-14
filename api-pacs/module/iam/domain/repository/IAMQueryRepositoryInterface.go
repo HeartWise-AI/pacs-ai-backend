@@ -6,4 +6,5 @@ import (
 
 type IAMQueryRepositoryInterface interface {
 	GetTokenSession(key string) (entity.TokenSession, error)
+	IsUserSuspended(tenantID, userID string) (bool, error)
 }

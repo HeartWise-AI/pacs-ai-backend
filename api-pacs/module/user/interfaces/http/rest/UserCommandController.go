@@ -20,6 +20,7 @@ import (
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/iam/domain/entity"
 	"api-pacs/module/user/application"
+	userEntity "api-pacs/module/user/domain/entity"
 	serviceTypes "api-pacs/module/user/infrastructure/service/types"
 	types "api-pacs/module/user/interfaces/http"
 )
@@ -257,6 +258,8 @@ func (controller *UserCommandController) CreateTenantUser(w http.ResponseWriter,
 // DeleteTenantUser delete a tenant user. Only callable by admin or owner.
 func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	actorUserID := r.Context().Value(iamTypes.UserIDCtx).(string)
+	actorRole := r.Context().Value(iamTypes.RoleCtx).(string)
 
 	userID := chi.URLParam(r, "ID")
 	if len(userID) == 0 {
@@ -271,13 +274,23 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 		return
 	}
 
-	// TODO: check user role and target user role to be deleted
-	err := controller.UserCommandServiceInterface.DeleteTenantUser(context.TODO(), tenantID, userID)
+	err := controller.UserCommandServiceInterface.DeleteTenantUser(r.Context(), serviceTypes.DeleteTenantUser{
+		TenantID: tenantID, ActorUserID: actorUserID, ActorRole: actorRole, TargetUserID: userID,
+	})
 	if err != nil {
+		status := http.StatusInternalServerError
+		message := "Database error."
+		if err.Error() == apiError.ForbiddenAccess || err.Error() == apiError.UnauthorizedAccess {
+			status = http.StatusForbidden
+			message = "Forbidden access."
+		} else if err.Error() == apiError.AccountAccessTransitionInProgress {
+			status = http.StatusConflict
+			message = "Another account access change is already in progress."
+		}
 		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusInternalServerError,
+			Status:    status,
 			Success:   false,
-			Message:   "Database error.",
+			Message:   message,
 			ErrorCode: err.Error(),
 		}
 
@@ -291,6 +304,69 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 		Message: "Successfully deleted tenant user.",
 	}
 
+	response.JSON(w)
+}
+
+// SuspendTenantUser immediately blocks new and existing platform sessions.
+func (controller *UserCommandController) SuspendTenantUser(w http.ResponseWriter, r *http.Request) {
+	controller.changeTenantUserAccess(w, r, userEntity.AccountAccessSuspended)
+}
+
+// ReactivateTenantUser restores login without changing the user's profile or role.
+func (controller *UserCommandController) ReactivateTenantUser(w http.ResponseWriter, r *http.Request) {
+	controller.changeTenantUserAccess(w, r, userEntity.AccountAccessActive)
+}
+
+func (controller *UserCommandController) changeTenantUserAccess(w http.ResponseWriter, r *http.Request, accessState string) {
+	targetUserID := chi.URLParam(r, "ID")
+	if targetUserID == "" {
+		writeUserAccessError(w, http.StatusBadRequest, "Invalid user ID.", apiError.InvalidRequestPayload)
+		return
+	}
+
+	var request types.ChangeTenantUserAccessRequest
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&request); err != nil && err != io.EOF {
+		writeUserAccessError(w, http.StatusBadRequest, "Invalid payload request.", apiError.InvalidRequestPayload)
+		return
+	}
+	request.Reason = strings.TrimSpace(request.Reason)
+	if err := types.Validate.Struct(request); err != nil {
+		writeUserAccessError(w, http.StatusBadRequest, "Invalid payload request.", apiError.InvalidPayload)
+		return
+	}
+
+	err := controller.UserCommandServiceInterface.ChangeTenantUserAccess(r.Context(), serviceTypes.ChangeTenantUserAccess{
+		TenantID:     r.Context().Value(iamTypes.TenantIDCtx).(string),
+		ActorUserID:  r.Context().Value(iamTypes.UserIDCtx).(string),
+		ActorRole:    r.Context().Value(iamTypes.RoleCtx).(string),
+		TargetUserID: targetUserID,
+		AccessState:  accessState,
+		Reason:       request.Reason,
+	})
+	if err != nil {
+		switch err.Error() {
+		case apiError.ForbiddenAccess, apiError.UnauthorizedAccess:
+			writeUserAccessError(w, http.StatusForbidden, "Forbidden access.", err.Error())
+		case apiError.MissingRecord:
+			writeUserAccessError(w, http.StatusNotFound, "User not found.", err.Error())
+		case apiError.AccountAccessTransitionInProgress:
+			writeUserAccessError(w, http.StatusConflict, "Another account access change is already in progress.", err.Error())
+		default:
+			writeUserAccessError(w, http.StatusInternalServerError, "Unable to update account access.", err.Error())
+		}
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status: http.StatusOK, Success: true, Message: "Successfully updated tenant user access.",
+		Data: map[string]string{"userId": targetUserID, "accessState": accessState},
+	}
+	response.JSON(w)
+}
+
+func writeUserAccessError(w http.ResponseWriter, status int, message, code string) {
+	response := viewmodels.HTTPResponseVM{Status: status, Success: false, Message: message, ErrorCode: code}
 	response.JSON(w)
 }
 
