@@ -609,16 +609,24 @@ func TestManualProcessingCallbackRequiresExactExecutionIdentity(t *testing.T) {
 		name                  string
 		trigger               entity.InferenceIngestionProcessingRunTrigger
 		processingExecutionID string
+		unbound               bool
 		wantErr               bool
 	}{
 		{
 			name:                  "manual exact execution",
 			trigger:               entity.InferenceIngestionProcessingRunTriggerManualReprocess,
 			processingExecutionID: executionID,
+			unbound:               true,
 		},
 		{
 			name:    "manual legacy callback without execution",
 			trigger: entity.InferenceIngestionProcessingRunTriggerManualReprocess,
+		},
+		{
+			name:    "manual unbound callback without execution",
+			trigger: entity.InferenceIngestionProcessingRunTriggerManualReprocess,
+			unbound: true,
+			wantErr: true,
 		},
 		{
 			name:                  "manual foreign execution",
@@ -647,6 +655,9 @@ func TestManualProcessingCallbackRequiresExactExecutionIdentity(t *testing.T) {
 				ModelVersion: nonEmptyStringPointer("1.0"), Modality: nonEmptyStringPointer("US"),
 				StudyServiceJobID: nonEmptyStringPointer("python-job-1"),
 				Status:            entity.InferenceIngestionProcessingJobStatusQueued,
+			}
+			if test.unbound {
+				execution.StudyServiceJobID = nil
 			}
 			callback := serviceTypes.HandleStudyServiceProcessingCallback{
 				CandidateID: candidate.ID, PayloadCandidateID: candidate.ID,

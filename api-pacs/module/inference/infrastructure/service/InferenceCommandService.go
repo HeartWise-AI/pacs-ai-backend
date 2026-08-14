@@ -438,8 +438,12 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		incomingExecutionID := strings.TrimSpace(data.ProcessingExecutionID)
 		expectedExecutionID := strings.TrimSpace(existing.ID)
 		// Pre-contract manual jobs have no downstream execution ID. Preserve their
-		// callback path, but fail closed whenever the new correlation is supplied.
+		// callback path only after Go has bound the expected downstream job, but fail
+		// closed whenever the new correlation is supplied.
 		if incomingExecutionID != "" && (expectedExecutionID == "" || incomingExecutionID != expectedExecutionID) {
+			return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
+		}
+		if incomingExecutionID == "" && trimmedPointerValue(existing.StudyServiceJobID) == "" {
 			return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
 		}
 	}
@@ -1488,9 +1492,15 @@ func validateReconciledStudyServiceJob(
 		return fmt.Errorf("reconciliation job %s processing-run mismatch", strings.TrimSpace(job.JobID))
 	}
 	processingExecutionID := strings.TrimSpace(trimmedPointerValue(job.ProcessingExecutionID))
-	if run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess &&
-		processingExecutionID != "" && processingExecutionID != strings.TrimSpace(execution.ID) {
-		return fmt.Errorf("reconciliation job %s processing-execution mismatch", strings.TrimSpace(job.JobID))
+	if run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess {
+		if processingExecutionID != "" && processingExecutionID != strings.TrimSpace(execution.ID) {
+			return fmt.Errorf("reconciliation job %s processing-execution mismatch", strings.TrimSpace(job.JobID))
+		}
+		if processingExecutionID == "" &&
+			(strings.TrimSpace(trimmedPointerValue(execution.StudyServiceJobID)) == "" ||
+				strings.TrimSpace(job.JobID) != strings.TrimSpace(trimmedPointerValue(execution.StudyServiceJobID))) {
+			return fmt.Errorf("reconciliation job %s lacks execution correlation for an unbound manual job", strings.TrimSpace(job.JobID))
+		}
 	}
 	if candidateID := strings.TrimSpace(trimmedPointerValue(job.CandidateID)); candidateID != "" && candidateID != strings.TrimSpace(execution.CandidateID) {
 		return fmt.Errorf("reconciliation job %s candidate mismatch", strings.TrimSpace(job.JobID))

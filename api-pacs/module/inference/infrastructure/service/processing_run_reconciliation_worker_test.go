@@ -698,6 +698,8 @@ func TestValidateReconciledManualJobRequiresExactExecutionIdentity(t *testing.T)
 
 	require.NoError(t, validateReconciledStudyServiceJob(run, execution, job))
 	job.ProcessingExecutionID = nil
+	require.ErrorContains(t, validateReconciledStudyServiceJob(run, execution, job), "unbound manual job")
+	execution.StudyServiceJobID = &job.JobID
 	require.NoError(t, validateReconciledStudyServiceJob(run, execution, job))
 	job.ProcessingExecutionID = &otherExecutionID
 	require.ErrorContains(t, validateReconciledStudyServiceJob(run, execution, job), "processing-execution mismatch")
