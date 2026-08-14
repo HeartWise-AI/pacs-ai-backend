@@ -193,6 +193,50 @@ func TestDispatchCallsStudyServiceForCommittedPendingExecution(t *testing.T) {
 	require.Equal(t, "study-job-1", *commandRepository.executionUpdates[0].StudyServiceJobID)
 }
 
+func TestManualDispatchRejectsExecutionOutsideCommittedIdentity(t *testing.T) {
+	processingRunID := "run-1"
+	committedExecutionID := "execution-committed"
+	runRepository := &processingRunCallbackRunRepository{
+		selectedExecution: entity.InferenceIngestionProcessingJob{
+			ID: committedExecutionID, ProcessingRunID: &processingRunID,
+			Status: entity.InferenceIngestionProcessingJobStatusPending,
+		},
+		processingRunAggregationRepository: &processingRunAggregationRepository{
+			runs: []entity.InferenceIngestionProcessingRun{{ID: processingRunID, TenantID: "tenant-a", Version: 1}},
+			executions: []entity.InferenceIngestionProcessingJob{{
+				ID: committedExecutionID, ProcessingRunID: &processingRunID,
+				Status: entity.InferenceIngestionProcessingJobStatusFailed,
+			}},
+		},
+	}
+	commandRepository := &guardedDispatchCommandRepository{}
+	dispatcher := &guardedProcessingDispatcher{}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+
+	err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
+		context.Background(),
+		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		processingRunID,
+		"request-1",
+		"execution-foreign",
+		serviceTypes.DispatchStudyIntentManualReprocess,
+	)
+
+	require.ErrorIs(t, err, errManualDispatchExecutionOwnership)
+	require.Zero(t, dispatcher.buildCalls)
+	require.Zero(t, dispatcher.dispatchCalls)
+	require.Len(t, commandRepository.executionUpdates, 1)
+	require.Equal(t, committedExecutionID, commandRepository.executionUpdates[0].ID)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, commandRepository.executionUpdates[0].Status)
+	require.Len(t, runRepository.updates, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingRunAttentionDispatchFailed, runRepository.updates[0].AttentionReasons[0].Code)
+}
+
 func TestValidateManualDispatchResponseCorrelationAcceptsOnlyExactExecutionOwnership(t *testing.T) {
 	runID := "run-1"
 	executionID := "execution-1"

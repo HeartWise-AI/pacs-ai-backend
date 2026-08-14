@@ -77,21 +77,24 @@ func manualQuotaPlannerService(t *testing.T, quotaManager *recordingInferenceQuo
 			"job-a": {ID: "job-a", TenantID: "tenant-a", ModelName: "EchoModel"},
 		},
 	}
-	runRepository := &processingRunPlannerRepository{
-		selectedExecution: entity.InferenceIngestionProcessingJob{
-			ID: "execution-a", Status: entity.InferenceIngestionProcessingJobStatusPending,
-		},
-		create: func(data repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error) {
-			if createErr != nil {
-				return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{}, createErr
-			}
-			run := entity.InferenceIngestionProcessingRun{
-				ID: data.Run.ID, TenantID: data.Run.TenantID, StudyInstanceUID: data.Run.StudyInstanceUID,
-				RunTrigger: data.Run.RunTrigger, Phase: data.Run.Phase,
-				RequestedByUserID: data.Run.RequestedByUserID,
-			}
-			return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{Run: run, Created: true}, nil
-		},
+	runRepository := &processingRunPlannerRepository{}
+	runRepository.create = func(data repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error) {
+		if createErr != nil {
+			return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{}, createErr
+		}
+		run := entity.InferenceIngestionProcessingRun{
+			ID: data.Run.ID, TenantID: data.Run.TenantID, StudyInstanceUID: data.Run.StudyInstanceUID,
+			RunTrigger: data.Run.RunTrigger, Phase: data.Run.Phase,
+			RequestedByUserID: data.Run.RequestedByUserID,
+		}
+		execution := entity.InferenceIngestionProcessingJob{
+			ID: data.Executions[0].ID, ProcessingRunID: &run.ID,
+			Status: entity.InferenceIngestionProcessingJobStatusPending,
+		}
+		runRepository.selectedExecution = execution
+		return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{
+			Run: run, Executions: []entity.InferenceIngestionProcessingJob{execution}, Created: true,
+		}, nil
 	}
 	dispatchCalls := make(chan serviceTypes.DispatchStudyRequest, 1)
 	service := &InferenceCommandService{
