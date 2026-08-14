@@ -141,6 +141,86 @@ run-less traffic:
 This flag applies to Go-orchestrated work. Standalone Orthanc ingestion in
 study-service remains compatible with its own execution mode.
 
+## Manual-reprocess contract rollout
+
+The manual-reprocess contract is additive, but deployment order still matters:
+
+1. Deploy the study-service schema and code that accept `dispatch_intent` and
+   `processing_execution_id`. Confirm a manual request returns the same
+   `processing_run_id` and `processing_execution_id` that it received.
+2. Deploy Go. Confirm automatic ingestion still omits the two manual-only
+   fields.
+3. In staging, manually reprocess a study with an existing terminal result.
+   Confirm new Python job IDs are created for the new run, their response
+   correlation matches, and `rerun_of` identifies the prior job when present.
+4. Replay one dispatch with the same processing execution ID. Confirm the
+   response returns the same Python job with `already_present=true`.
+5. Reuse that execution ID with different immutable correlation and confirm a
+   `409` response with no new job.
+6. Confirm a different processing execution creates a different Python job and
+   leaves the prior result and run history unchanged.
+
+Old Go remains compatible with the additive study-service response. New Go
+fails closed against an old study-service response: it does not persist an
+uncorrelated job ID, marks the execution as a dispatch failure, and refunds a
+manual run when no downstream work was accepted. Roll back Go before rolling
+back study-service.
+
+## Recovery of pre-contract `STATE_CONFLICT` runs
+
+This recovery applies only to manual runs created before the run-scoped
+contract was deployed. Treat it as coordinated Go-database, study-service
+database, and quota maintenance. Never relink an old Python job to the newer Go
+run, and never change or delete the prior terminal job or its result.
+
+Keep tenant, user, run, execution, candidate, study, and Python job identifiers
+inside the restricted operator session. Shared evidence must contain aggregate
+counts and outcomes only.
+
+An affected run is eligible only when all of these statements are true:
+
+- its trigger is `MANUAL_REPROCESS`, its phase is not `TERMINAL`, and its
+  structured attention includes `STATE_CONFLICT`;
+- every persisted Python job reference resolves to a job owned by a different
+  processing run;
+- no Python job or in-flight task is owned by the affected run;
+- none of the affected Go executions reached `running` or a terminal state;
+- `started_at` is null and the requesting user is present, so no downstream
+  work was accepted and quota refund is appropriate.
+
+If any condition is false or cannot be proved, stop and escalate. Do not infer
+ownership from study, modality, or model equality.
+
+For an eligible run:
+
+1. Pause new manual reprocessing and take restorable backups of both databases.
+   Record the Redis backup or persistence checkpoint used for the quota audit.
+2. Use a reviewed, tenant-and-run-scoped maintenance invocation. It must lock
+   and recheck the run before changing only its pending or queued executions to
+   `failed`, clearing the foreign `study_service_job_id`, and setting one
+   captured UTC completion time plus the generic manual-dispatch correlation
+   error. Do not copy identifiers into the error message.
+3. Recalculate the run through `RecalculateStudyProcessingRun`, adding
+   `DISPATCH_FAILED` and removing `STATE_CONFLICT`. This preserves domain
+   aggregation, optimistic versioning, and quota finalization. Do not reproduce
+   these side effects with ad hoc SQL.
+4. Confirm the run is `TERMINAL` with outcome `FAILED`, no active run remains
+   for the study, and all repaired executions have no Python job reference.
+5. Confirm the idempotent quota refund removed the active reservation and
+   restored usage when that reservation still existed. If the reservation had
+   already expired, do not decrement Redis usage directly; retain the audit
+   evidence and allow the fixed usage window to expire.
+6. Resume manual reprocessing and verify a new run sends `manual_reprocess`
+   with a fresh processing execution ID, receives a Python job owned by that
+   exact run and execution, and leaves the prior terminal result unchanged.
+
+The maintenance invocation must use the application domain service and a
+narrow repository operation that can atomically clear the foreign job
+references. It must be peer-reviewed for the exact environment. Do not run
+interactive or unreviewed SQL, delete processing runs, edit quota keys directly,
+reuse a candidate ID as the idempotency key, or expose identifiers in tickets
+or deployment logs.
+
 ## Observability gates
 
 Go `/debug/vars` must expose bounded metrics for:
