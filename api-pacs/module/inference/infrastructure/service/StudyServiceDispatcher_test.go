@@ -392,7 +392,7 @@ func TestStudyServiceDispatcherGetJobsByProcessingRun(t *testing.T) {
 		if err := json.NewEncoder(w).Encode(map[string]any{
 			"jobs": []map[string]any{{
 				"job_id": "job-1", "processing_run_id": "run-123", "candidate_id": "candidate-1",
-				"model_name": "EchoPrime", "status": "running",
+				"processing_execution_id": "execution-123", "model_name": "EchoPrime", "status": "running",
 			}},
 			"page": 1, "page_size": 250,
 		}); err != nil {
@@ -409,6 +409,9 @@ func TestStudyServiceDispatcherGetJobsByProcessingRun(t *testing.T) {
 	}
 	if len(jobs) != 1 || jobs[0].JobID != "job-1" {
 		t.Fatalf("unexpected jobs: %#v", jobs)
+	}
+	if jobs[0].ProcessingExecutionID == nil || *jobs[0].ProcessingExecutionID != "execution-123" {
+		t.Fatalf("unexpected processing execution ID: %#v", jobs[0].ProcessingExecutionID)
 	}
 }
 

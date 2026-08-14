@@ -130,24 +130,25 @@ type UpdateModelFeedbackRequest struct {
 }
 
 type StudyServiceProcessingCallbackRequest struct {
-	EventID            string                                            `json:"event_id" validate:"omitempty,uuid"`
-	Sequence           *int64                                            `json:"sequence" validate:"omitempty,gt=0"`
-	OccurredAt         *string                                           `json:"occurred_at"`
-	TenantID           string                                            `json:"tenant_id"`
-	IngestionJobID     string                                            `json:"ingestion_job_id"`
-	CandidateID        string                                            `json:"candidate_id"`
-	RetrievalAttemptID string                                            `json:"retrieval_attempt_id"`
-	StudyInstanceUID   string                                            `json:"study_instance_uid" validate:"required"`
-	ProcessingRunID    *string                                           `json:"processing_run_id"`
-	ModelName          string                                            `json:"model_name" validate:"required"`
-	ModelVersion       string                                            `json:"model_version" validate:"required"`
-	Modality           string                                            `json:"modality" validate:"required"`
-	Status             string                                            `json:"status" validate:"required"`
-	SkipReason         *entity.InferenceIngestionProcessingJobSkipReason `json:"skip_reason"`
-	ErrorMessage       *string                                           `json:"error_message"`
-	StudyServiceJobID  string                                            `json:"study_service_job_id" validate:"required"`
-	StartedAt          *string                                           `json:"started_at"`
-	CompletedAt        *string                                           `json:"completed_at"`
+	EventID               string                                            `json:"event_id" validate:"omitempty,uuid"`
+	Sequence              *int64                                            `json:"sequence" validate:"omitempty,gt=0"`
+	OccurredAt            *string                                           `json:"occurred_at"`
+	TenantID              string                                            `json:"tenant_id"`
+	IngestionJobID        string                                            `json:"ingestion_job_id"`
+	CandidateID           string                                            `json:"candidate_id"`
+	RetrievalAttemptID    string                                            `json:"retrieval_attempt_id"`
+	StudyInstanceUID      string                                            `json:"study_instance_uid" validate:"required"`
+	ProcessingRunID       *string                                           `json:"processing_run_id"`
+	ProcessingExecutionID *string                                           `json:"processing_execution_id"`
+	ModelName             string                                            `json:"model_name" validate:"required"`
+	ModelVersion          string                                            `json:"model_version" validate:"required"`
+	Modality              string                                            `json:"modality" validate:"required"`
+	Status                string                                            `json:"status" validate:"required"`
+	SkipReason            *entity.InferenceIngestionProcessingJobSkipReason `json:"skip_reason"`
+	ErrorMessage          *string                                           `json:"error_message"`
+	StudyServiceJobID     string                                            `json:"study_service_job_id" validate:"required"`
+	StartedAt             *string                                           `json:"started_at"`
+	CompletedAt           *string                                           `json:"completed_at"`
 }
 
 type GetContainerInfoResponse struct {

@@ -109,22 +109,23 @@ type DispatchStudyResponse struct {
 }
 
 type StudyServiceJob struct {
-	JobID              string     `json:"job_id"`
-	StudyInstanceUID   string     `json:"study_instance_uid"`
-	PatientID          string     `json:"patient_id"`
-	TenantID           *string    `json:"tenant_id"`
-	IngestionJobID     *string    `json:"ingestion_job_id"`
-	CandidateID        *string    `json:"candidate_id"`
-	RetrievalAttemptID *string    `json:"retrieval_attempt_id"`
-	ProcessingRunID    *string    `json:"processing_run_id"`
-	Modality           string     `json:"modality"`
-	ModelName          string     `json:"model_name"`
-	ModelVersion       *string    `json:"model_version"`
-	Status             string     `json:"status"`
-	ErrorMessage       *string    `json:"error_message"`
-	CreatedAt          *time.Time `json:"created_at"`
-	StartedAt          *time.Time `json:"started_at"`
-	CompletedAt        *time.Time `json:"completed_at"`
+	JobID                 string     `json:"job_id"`
+	StudyInstanceUID      string     `json:"study_instance_uid"`
+	PatientID             string     `json:"patient_id"`
+	TenantID              *string    `json:"tenant_id"`
+	IngestionJobID        *string    `json:"ingestion_job_id"`
+	CandidateID           *string    `json:"candidate_id"`
+	RetrievalAttemptID    *string    `json:"retrieval_attempt_id"`
+	ProcessingRunID       *string    `json:"processing_run_id"`
+	ProcessingExecutionID *string    `json:"processing_execution_id"`
+	Modality              string     `json:"modality"`
+	ModelName             string     `json:"model_name"`
+	ModelVersion          *string    `json:"model_version"`
+	Status                string     `json:"status"`
+	ErrorMessage          *string    `json:"error_message"`
+	CreatedAt             *time.Time `json:"created_at"`
+	StartedAt             *time.Time `json:"started_at"`
+	CompletedAt           *time.Time `json:"completed_at"`
 }
 
 type StudyServiceJobsResponse struct {
@@ -154,26 +155,27 @@ type StudyServiceCallbackDeadLettersResponse struct {
 }
 
 type HandleStudyServiceProcessingCallback struct {
-	CandidateID        string
-	RequestID          string
-	EventID            string
-	Sequence           *int64
-	OccurredAt         *time.Time
-	TenantID           string
-	IngestionJobID     string
-	PayloadCandidateID string
-	RetrievalAttemptID string
-	ProcessingRunID    string
-	StudyInstanceUID   string
-	ModelName          string
-	ModelVersion       string
-	Modality           string
-	Status             string
-	SkipReason         *entity.InferenceIngestionProcessingJobSkipReason
-	ErrorMessage       *string
-	StudyServiceJobID  string
-	StartedAt          *time.Time
-	CompletedAt        *time.Time
+	CandidateID           string
+	RequestID             string
+	EventID               string
+	Sequence              *int64
+	OccurredAt            *time.Time
+	TenantID              string
+	IngestionJobID        string
+	PayloadCandidateID    string
+	RetrievalAttemptID    string
+	ProcessingRunID       string
+	ProcessingExecutionID string
+	StudyInstanceUID      string
+	ModelName             string
+	ModelVersion          string
+	Modality              string
+	Status                string
+	SkipReason            *entity.InferenceIngestionProcessingJobSkipReason
+	ErrorMessage          *string
+	StudyServiceJobID     string
+	StartedAt             *time.Time
+	CompletedAt           *time.Time
 }
 
 type HandleStudyServiceProcessingCallbackResult struct {

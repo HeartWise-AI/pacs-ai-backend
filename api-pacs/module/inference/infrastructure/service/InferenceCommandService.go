@@ -376,6 +376,7 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 	if service.RequireProcessingRunID && processingRunID == "" {
 		return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
 	}
+	manualProcessingRun := false
 	var existing entity.InferenceIngestionProcessingJob
 	if processingRunID != "" {
 		run, runErr := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRun(
@@ -392,6 +393,7 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 			strings.TrimSpace(run.StudyInstanceUID) != strings.TrimSpace(candidate.StudyInstanceUID) {
 			return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
 		}
+		manualProcessingRun = run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess
 
 		existing, err = service.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(
 			ctx, candidate.TenantID, processingRunID, candidate.ID, modelName,
@@ -430,6 +432,16 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		}
 
 		return types.HandleStudyServiceProcessingCallbackResult{Outcome: "applied"}, nil
+	}
+
+	if manualProcessingRun {
+		incomingExecutionID := strings.TrimSpace(data.ProcessingExecutionID)
+		expectedExecutionID := strings.TrimSpace(existing.ID)
+		// Pre-contract manual jobs have no downstream execution ID. Preserve their
+		// callback path, but fail closed whenever the new correlation is supplied.
+		if incomingExecutionID != "" && (expectedExecutionID == "" || incomingExecutionID != expectedExecutionID) {
+			return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
+		}
 	}
 
 	if processingRunID != "" && !processingCallbackMatchesExecution(
@@ -1475,6 +1487,11 @@ func validateReconciledStudyServiceJob(
 	if strings.TrimSpace(trimmedPointerValue(job.ProcessingRunID)) != strings.TrimSpace(run.ID) {
 		return fmt.Errorf("reconciliation job %s processing-run mismatch", strings.TrimSpace(job.JobID))
 	}
+	processingExecutionID := strings.TrimSpace(trimmedPointerValue(job.ProcessingExecutionID))
+	if run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess &&
+		processingExecutionID != "" && processingExecutionID != strings.TrimSpace(execution.ID) {
+		return fmt.Errorf("reconciliation job %s processing-execution mismatch", strings.TrimSpace(job.JobID))
+	}
 	if candidateID := strings.TrimSpace(trimmedPointerValue(job.CandidateID)); candidateID != "" && candidateID != strings.TrimSpace(execution.CandidateID) {
 		return fmt.Errorf("reconciliation job %s candidate mismatch", strings.TrimSpace(job.JobID))
 	}
@@ -1494,18 +1511,19 @@ func (service *InferenceCommandService) handleReconciledStudyServiceJob(
 	job types.StudyServiceJob,
 ) (types.HandleStudyServiceProcessingCallbackResult, error) {
 	result, err := service.HandleStudyServiceProcessingCallback(ctx, types.HandleStudyServiceProcessingCallback{
-		CandidateID:       strings.TrimSpace(candidateID),
-		RequestID:         fmt.Sprintf("reconcile:%s:%s", strings.TrimSpace(candidateID), strings.TrimSpace(job.JobID)),
-		ProcessingRunID:   trimmedPointerValue(job.ProcessingRunID),
-		StudyInstanceUID:  strings.TrimSpace(job.StudyInstanceUID),
-		ModelName:         strings.TrimSpace(job.ModelName),
-		ModelVersion:      trimmedPointerValue(job.ModelVersion),
-		Modality:          strings.TrimSpace(job.Modality),
-		Status:            strings.TrimSpace(job.Status),
-		ErrorMessage:      job.ErrorMessage,
-		StudyServiceJobID: strings.TrimSpace(job.JobID),
-		StartedAt:         job.StartedAt,
-		CompletedAt:       job.CompletedAt,
+		CandidateID:           strings.TrimSpace(candidateID),
+		RequestID:             fmt.Sprintf("reconcile:%s:%s", strings.TrimSpace(candidateID), strings.TrimSpace(job.JobID)),
+		ProcessingRunID:       trimmedPointerValue(job.ProcessingRunID),
+		ProcessingExecutionID: trimmedPointerValue(job.ProcessingExecutionID),
+		StudyInstanceUID:      strings.TrimSpace(job.StudyInstanceUID),
+		ModelName:             strings.TrimSpace(job.ModelName),
+		ModelVersion:          trimmedPointerValue(job.ModelVersion),
+		Modality:              strings.TrimSpace(job.Modality),
+		Status:                strings.TrimSpace(job.Status),
+		ErrorMessage:          job.ErrorMessage,
+		StudyServiceJobID:     strings.TrimSpace(job.JobID),
+		StartedAt:             job.StartedAt,
+		CompletedAt:           job.CompletedAt,
 	})
 	if err != nil {
 		return types.HandleStudyServiceProcessingCallbackResult{}, err
