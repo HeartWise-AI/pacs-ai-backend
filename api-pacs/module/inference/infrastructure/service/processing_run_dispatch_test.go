@@ -68,10 +68,12 @@ func (dispatcher *guardedProcessingDispatcher) BuildDispatchStudyRequest(_ conte
 		return serviceTypes.DispatchStudyRequest{}, dispatcher.buildErr
 	}
 	return serviceTypes.DispatchStudyRequest{
-		XRequestID:      trimmedPointerValue(data.RequestID),
-		ProcessingRunID: data.ProcessingRunID,
-		Modality:        "US",
-		ModelName:       data.IngestionJob.ModelName,
+		XRequestID:            trimmedPointerValue(data.RequestID),
+		ProcessingRunID:       data.ProcessingRunID,
+		ProcessingExecutionID: data.ProcessingExecutionID,
+		DispatchIntent:        data.DispatchIntent,
+		Modality:              "US",
+		ModelName:             data.IngestionJob.ModelName,
 	}, nil
 }
 

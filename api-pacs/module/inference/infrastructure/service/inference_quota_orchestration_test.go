@@ -126,6 +126,8 @@ func TestManualReprocessReservesOneUserScopedUnitAndPersistsRequester(t *testing
 	select {
 	case request := <-dispatchCalls:
 		require.Equal(t, result.Run.ID, trimmedPointerValue(request.ProcessingRunID))
+		require.Equal(t, serviceTypes.DispatchStudyIntentManualReprocess, request.DispatchIntent)
+		require.Equal(t, request.XRequestID, trimmedPointerValue(request.ProcessingExecutionID))
 		require.NotEmpty(t, request.XRequestID)
 		require.NotEqual(t, "candidate-a", request.XRequestID)
 	case <-time.After(time.Second):

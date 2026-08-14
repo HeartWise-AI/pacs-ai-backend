@@ -278,7 +278,8 @@ func (dispatcher *realtimeWorklistE2EDispatcher) BuildDispatchStudyRequest(_ con
 	return serviceTypes.DispatchStudyRequest{
 		XRequestID: requestID, TenantID: &data.Candidate.TenantID,
 		IngestionJobID: &data.IngestionJob.ID, CandidateID: &data.Candidate.ID,
-		ProcessingRunID: data.ProcessingRunID, StudyInstanceUID: data.Candidate.StudyInstanceUID,
+		ProcessingRunID: data.ProcessingRunID, ProcessingExecutionID: data.ProcessingExecutionID,
+		DispatchIntent: data.DispatchIntent, StudyInstanceUID: data.Candidate.StudyInstanceUID,
 		OrthancStudyID: "orthanc-study", Modality: "US", ModelName: data.IngestionJob.ModelName,
 		ModelVersion: data.IngestionJob.ModelVersion,
 	}, nil
@@ -362,6 +363,8 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 	require.Len(t, dispatched, 2)
 	for _, dispatch := range dispatched {
 		require.Equal(t, automatic.Run.ID, *dispatch.request.ProcessingRunID)
+		require.Empty(t, dispatch.request.DispatchIntent)
+		require.Nil(t, dispatch.request.ProcessingExecutionID)
 	}
 
 	tenantAEvents, unsubscribeA := broker.SubscribeWorklistNotifications("tenant-a", 4)
@@ -430,6 +433,8 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 	require.Len(t, dispatched, 4)
 	for _, dispatch := range dispatched[2:] {
 		require.Equal(t, manual.Run.ID, trimmedPointerValue(dispatch.request.ProcessingRunID))
+		require.Equal(t, serviceTypes.DispatchStudyIntentManualReprocess, dispatch.request.DispatchIntent)
+		require.Equal(t, dispatch.requestID, trimmedPointerValue(dispatch.request.ProcessingExecutionID))
 		require.NotEmpty(t, dispatch.requestID)
 		require.NotEqual(t, trimmedPointerValue(dispatch.request.CandidateID), dispatch.requestID)
 	}
