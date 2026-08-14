@@ -21,8 +21,8 @@ The rollout owner must record:
 Before the write window:
 
 - Go migrations `000004` through `000006` are applied;
-- study-service Alembic migrations `0008` and `0009` are applied, and revision
-  `20260814_0010` is applied before enabling the manual-reprocess contract;
+- study-service Alembic migrations through revision `20260814_0012` are applied
+  before enabling the manual-reprocess contract;
 - cardio-agent contains processing-run job lookup and ordered callbacks;
 - Go contains processing-run planning, guarded dispatch, ordered callback
   application, reconciliation, REST worklist APIs, and SSE events;
@@ -177,17 +177,19 @@ the returned job ID:
 
 Roll back Go before changing study-service behavior, but do not deploy a
 pre-contract cardio-agent image directly after the database reaches Alembic
-revision `20260814_0010`. An image whose migration graph ends at `0009` cannot
+revision `20260814_0012`. An image whose migration graph ends at `0009` cannot
 start against that revision. Use one of these reviewed rollback paths:
 
 1. Prefer a forward-compatible rollback image that retains revision
-   `20260814_0010` and its nullable `processing_execution_id` schema handling
-   while reverting the application behavior.
+   `20260814_0012` and handles the nullable processing-execution and dispatch
+   publication columns plus the active-manual uniqueness index while reverting
+   the application behavior.
 2. If a database downgrade is unavoidable, pause dispatch and callbacks, take
    and restore-test a backup, prove no retained or in-flight job depends on the
-   new field, and use a `20260814_0010`-aware image to perform the reviewed
-   downgrade before deploying the old image. The old image must not be used to
-   attempt the downgrade.
+   new execution/publication fields or the active-manual guard, and use a
+   `20260814_0012`-aware image to perform the reviewed downgrade before
+   deploying the old image. The old image must not be used to attempt the
+   downgrade.
 
 Resume manual reprocessing only after the chosen Go and study-service versions
 pass the correlation smoke test together.
