@@ -100,8 +100,9 @@ func manualQuotaPlannerService(t *testing.T, quotaManager *recordingInferenceQuo
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		InferenceQuotaManagerInterface:            quotaManager,
 		ProcessingDispatcherInterface: &guardedProcessingDispatcher{
-			dispatchCall: dispatchCalls,
-			response:     serviceTypes.DispatchStudyResponse{JobID: "study-service-job-a"},
+			dispatchCall:          dispatchCalls,
+			response:              serviceTypes.DispatchStudyResponse{JobID: "study-service-job-a"},
+			echoManualCorrelation: true,
 		},
 		StudyServiceDispatchSemaphore: make(chan struct{}, 1),
 	}
@@ -228,6 +229,76 @@ func TestManualReprocessRefundsQuotaWhenPreDispatchRequestBuildFails(t *testing.
 	require.Len(t, result.Executions, 1)
 	require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, state.executions[result.Executions[0].ID].Status)
 	require.Zero(t, dispatcher.dispatchCalls)
+}
+
+func TestManualReprocessCorrelationFailureRefundsQuotaAndLeavesStudyRetryable(t *testing.T) {
+	job := entity.InferenceIngestionJob{
+		ID: "job-a", TenantID: "tenant-a", ModelName: "EchoModel", DICOMModality: "US",
+	}
+	candidate := entity.InferenceIngestionCandidate{
+		ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: job.ID,
+		StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved,
+	}
+	state := &realtimeWorklistE2EState{
+		candidates: map[string]entity.InferenceIngestionCandidate{candidate.ID: candidate},
+		jobs:       map[string]entity.InferenceIngestionJob{job.ID: job},
+		runs:       map[string]entity.InferenceIngestionProcessingRun{},
+		executions: map[string]entity.InferenceIngestionProcessingJob{},
+	}
+	refundCalls := make(chan serviceTypes.InferenceQuotaReservation, 2)
+	quotaManager := &recordingInferenceQuotaManager{refundCall: refundCalls}
+	foreignRunID := "run-previous"
+	foreignExecutionID := "execution-previous"
+	dispatcher := &guardedProcessingDispatcher{response: serviceTypes.DispatchStudyResponse{
+		JobID: "foreign-study-job", AlreadyPresent: true,
+		ProcessingRunID: &foreignRunID, ProcessingExecutionID: &foreignExecutionID,
+	}}
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface:         state,
+		InferenceCommandRepositoryInterface:       state,
+		InferenceProcessingRunRepositoryInterface: state,
+		InferenceQuotaManagerInterface:            quotaManager,
+		ProcessingDispatcherInterface:             dispatcher,
+		StudyServiceDispatchSemaphore:             make(chan struct{}, 1),
+	}
+	userID := "user-a"
+
+	first, err := service.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
+		TenantID: "tenant-a", StudyInstanceUID: candidate.StudyInstanceUID, UserID: &userID,
+	})
+	require.NoError(t, err)
+
+	select {
+	case refunded := <-refundCalls:
+		require.Equal(t, first.Run.ID, refunded.ReservationID)
+	case <-time.After(time.Second):
+		t.Fatal("manual correlation failure did not refund quota")
+	}
+
+	terminalRun := state.runs[first.Run.ID]
+	require.Equal(t, entity.InferenceIngestionProcessingRunPhaseTerminal, terminalRun.Phase)
+	require.True(t, terminalRun.AttentionRequired)
+	require.True(t, hasProcessingRunAttentionReason(
+		terminalRun.AttentionReasons, entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+	))
+	require.Len(t, first.Executions, 1)
+	failedExecution := state.executions[first.Executions[0].ID]
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, failedExecution.Status)
+	require.Nil(t, failedExecution.StudyServiceJobID)
+
+	dispatcher.response = serviceTypes.DispatchStudyResponse{JobID: "new-study-job"}
+	dispatcher.echoManualCorrelation = true
+	state.dispatchUpdates = make(chan string, 1)
+	second, err := service.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
+		TenantID: "tenant-a", StudyInstanceUID: candidate.StudyInstanceUID, UserID: &userID,
+	})
+	require.NoError(t, err)
+	require.NotEqual(t, first.Run.ID, second.Run.ID)
+	select {
+	case <-state.dispatchUpdates:
+	case <-time.After(time.Second):
+		t.Fatal("retryable manual run was not queued")
+	}
 }
 
 func TestTerminalManualRunReleasesOrRefundsReservationByDispatchPolicy(t *testing.T) {

@@ -70,6 +70,10 @@ var studyServiceDispatchRetrySchedule = []time.Duration{
 	8 * time.Second,
 }
 
+var errManualDispatchCorrelation = errors.New(
+	"study-service manual dispatch response correlation is missing or mismatched",
+)
+
 type candidateRetrievalOutcome string
 
 const (
@@ -1908,6 +1912,16 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 		cancel()
 
 		if dispatchErr == nil {
+			if correlationErr := validateManualDispatchResponseCorrelation(dispatchRequest, dispatchResponse); correlationErr != nil {
+				ObserveStudyServiceDispatchAttempt("permanent_error", attemptDuration)
+				if persistErr := service.persistDispatchFailure(candidate.ID, correlationErr); persistErr != nil {
+					log.Printf("[Ingestion dispatch] cannot persist manual response correlation failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
+						candidate.ID, job.ID, requestID, persistErr,
+					)
+				}
+				service.recordFailedProcessingDispatch(ctx, candidate, job, dispatchRequest, correlationErr)
+				return correlationErr
+			}
 			if recordErr := service.recordQueuedProcessingDispatch(ctx, candidate, job, dispatchRequest, dispatchResponse); recordErr != nil {
 				persistErr := fmt.Errorf("study-service accepted job but Go could not persist dispatch state: %w", recordErr)
 				ObserveStudyServiceDispatchAttempt("persistence_error", attemptDuration)
@@ -1994,6 +2008,24 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 			attemptIndex+1,
 			dispatchErr,
 		)
+	}
+
+	return nil
+}
+
+func validateManualDispatchResponseCorrelation(request types.DispatchStudyRequest, response types.DispatchStudyResponse) error {
+	if request.DispatchIntent != types.DispatchStudyIntentManualReprocess {
+		return nil
+	}
+
+	expectedRunID := trimmedPointerValue(request.ProcessingRunID)
+	expectedExecutionID := trimmedPointerValue(request.ProcessingExecutionID)
+	if strings.TrimSpace(response.JobID) == "" ||
+		expectedRunID == "" ||
+		expectedExecutionID == "" ||
+		trimmedPointerValue(response.ProcessingRunID) != expectedRunID ||
+		trimmedPointerValue(response.ProcessingExecutionID) != expectedExecutionID {
+		return errManualDispatchCorrelation
 	}
 
 	return nil

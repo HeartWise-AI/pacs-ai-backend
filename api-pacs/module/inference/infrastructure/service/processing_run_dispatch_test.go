@@ -53,13 +53,14 @@ func (repository *guardedDispatchCommandRepository) InsertInferenceIngestionProc
 }
 
 type guardedProcessingDispatcher struct {
-	buildCalls        int
-	buildErr          error
-	dispatchCalls     int
-	dispatchCall      chan serviceTypes.DispatchStudyRequest
-	response          serviceTypes.DispatchStudyResponse
-	dispatchResponses []serviceTypes.DispatchStudyResponse
-	dispatchErrors    []error
+	buildCalls            int
+	buildErr              error
+	dispatchCalls         int
+	dispatchCall          chan serviceTypes.DispatchStudyRequest
+	response              serviceTypes.DispatchStudyResponse
+	dispatchResponses     []serviceTypes.DispatchStudyResponse
+	dispatchErrors        []error
+	echoManualCorrelation bool
 }
 
 func (dispatcher *guardedProcessingDispatcher) BuildDispatchStudyRequest(_ context.Context, data serviceTypes.BuildStudyServiceDispatchRequestInput) (serviceTypes.DispatchStudyRequest, error) {
@@ -86,10 +87,15 @@ func (dispatcher *guardedProcessingDispatcher) DispatchStudy(_ context.Context, 
 	if index < len(dispatcher.dispatchErrors) && dispatcher.dispatchErrors[index] != nil {
 		return serviceTypes.DispatchStudyResponse{}, dispatcher.dispatchErrors[index]
 	}
+	response := dispatcher.response
 	if index < len(dispatcher.dispatchResponses) {
-		return dispatcher.dispatchResponses[index], nil
+		response = dispatcher.dispatchResponses[index]
 	}
-	return dispatcher.response, nil
+	if dispatcher.echoManualCorrelation && request.DispatchIntent == serviceTypes.DispatchStudyIntentManualReprocess {
+		response.ProcessingRunID = request.ProcessingRunID
+		response.ProcessingExecutionID = request.ProcessingExecutionID
+	}
+	return response, nil
 }
 
 func (dispatcher *guardedProcessingDispatcher) GetJobByID(context.Context, string, string) (serviceTypes.StudyServiceJob, bool, error) {
@@ -185,6 +191,179 @@ func TestDispatchCallsStudyServiceForCommittedPendingExecution(t *testing.T) {
 	require.Len(t, commandRepository.executionUpdates, 1)
 	require.Equal(t, entity.InferenceIngestionProcessingJobStatusQueued, commandRepository.executionUpdates[0].Status)
 	require.Equal(t, "study-job-1", *commandRepository.executionUpdates[0].StudyServiceJobID)
+}
+
+func TestValidateManualDispatchResponseCorrelationAcceptsOnlyExactExecutionOwnership(t *testing.T) {
+	runID := "run-1"
+	executionID := "execution-1"
+	otherRunID := "run-2"
+	otherExecutionID := "execution-2"
+	request := serviceTypes.DispatchStudyRequest{
+		DispatchIntent:        serviceTypes.DispatchStudyIntentManualReprocess,
+		ProcessingRunID:       &runID,
+		ProcessingExecutionID: &executionID,
+	}
+
+	tests := []struct {
+		name     string
+		response serviceTypes.DispatchStudyResponse
+		wantErr  bool
+	}{
+		{
+			name: "new job with exact correlation",
+			response: serviceTypes.DispatchStudyResponse{
+				JobID: "study-job-1", ProcessingRunID: &runID, ProcessingExecutionID: &executionID,
+			},
+		},
+		{
+			name: "same execution replay with exact correlation",
+			response: serviceTypes.DispatchStudyResponse{
+				JobID: "study-job-1", AlreadyPresent: true,
+				ProcessingRunID: &runID, ProcessingExecutionID: &executionID,
+			},
+		},
+		{name: "missing correlation", response: serviceTypes.DispatchStudyResponse{JobID: "study-job-1"}, wantErr: true},
+		{
+			name: "different run",
+			response: serviceTypes.DispatchStudyResponse{
+				JobID: "study-job-1", ProcessingRunID: &otherRunID, ProcessingExecutionID: &executionID,
+			},
+			wantErr: true,
+		},
+		{
+			name: "different execution",
+			response: serviceTypes.DispatchStudyResponse{
+				JobID: "study-job-1", ProcessingRunID: &runID, ProcessingExecutionID: &otherExecutionID,
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing job ID",
+			response: serviceTypes.DispatchStudyResponse{
+				ProcessingRunID: &runID, ProcessingExecutionID: &executionID,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateManualDispatchResponseCorrelation(request, test.response)
+			if test.wantErr {
+				require.ErrorIs(t, err, errManualDispatchCorrelation)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+
+	require.NoError(t, validateManualDispatchResponseCorrelation(
+		serviceTypes.DispatchStudyRequest{}, serviceTypes.DispatchStudyResponse{},
+	))
+}
+
+func TestManualDispatchAcceptsSameExecutionReplay(t *testing.T) {
+	originalRetrySchedule := studyServiceDispatchRetrySchedule
+	studyServiceDispatchRetrySchedule = []time.Duration{0, 0}
+	t.Cleanup(func() { studyServiceDispatchRetrySchedule = originalRetrySchedule })
+
+	processingRunID := "run-1"
+	processingExecutionID := "execution-1"
+	runRepository := &committedExecutionRepository{execution: entity.InferenceIngestionProcessingJob{
+		ID: processingExecutionID, ProcessingRunID: &processingRunID,
+		Status: entity.InferenceIngestionProcessingJobStatusPending,
+	}}
+	commandRepository := &guardedDispatchCommandRepository{}
+	dispatchCalls := make(chan serviceTypes.DispatchStudyRequest, 2)
+	dispatcher := &guardedProcessingDispatcher{
+		dispatchCall: dispatchCalls,
+		dispatchErrors: []error{
+			&DispatchStudyHTTPError{StatusCode: http.StatusServiceUnavailable}, nil,
+		},
+		dispatchResponses: []serviceTypes.DispatchStudyResponse{{}, {
+			JobID: "study-job-1", AlreadyPresent: true,
+			ProcessingRunID: &processingRunID, ProcessingExecutionID: &processingExecutionID,
+		}},
+	}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+
+	err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
+		context.Background(),
+		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		processingRunID,
+		"request-1",
+		processingExecutionID,
+		serviceTypes.DispatchStudyIntentManualReprocess,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 2, dispatcher.dispatchCalls)
+	firstRequest := <-dispatchCalls
+	secondRequest := <-dispatchCalls
+	require.Equal(t, firstRequest.XRequestID, secondRequest.XRequestID)
+	require.Equal(t, processingRunID, trimmedPointerValue(firstRequest.ProcessingRunID))
+	require.Equal(t, processingRunID, trimmedPointerValue(secondRequest.ProcessingRunID))
+	require.Equal(t, processingExecutionID, trimmedPointerValue(firstRequest.ProcessingExecutionID))
+	require.Equal(t, processingExecutionID, trimmedPointerValue(secondRequest.ProcessingExecutionID))
+	require.Len(t, commandRepository.executionUpdates, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusQueued, commandRepository.executionUpdates[0].Status)
+	require.Equal(t, "study-job-1", *commandRepository.executionUpdates[0].StudyServiceJobID)
+}
+
+func TestManualDispatchRejectsForeignCorrelationWithoutPersistingJob(t *testing.T) {
+	processingRunID := "run-1"
+	processingExecutionID := "execution-1"
+	foreignRunID := "run-previous"
+	foreignExecutionID := "execution-previous"
+	runRepository := &processingRunCallbackRunRepository{
+		selectedExecution: entity.InferenceIngestionProcessingJob{
+			ID: processingExecutionID, ProcessingRunID: &processingRunID,
+			Status: entity.InferenceIngestionProcessingJobStatusPending,
+		},
+		processingRunAggregationRepository: &processingRunAggregationRepository{
+			runs: []entity.InferenceIngestionProcessingRun{{ID: processingRunID, TenantID: "tenant-a", Version: 1}},
+			executions: []entity.InferenceIngestionProcessingJob{{
+				ID: processingExecutionID, ProcessingRunID: &processingRunID,
+				Status: entity.InferenceIngestionProcessingJobStatusFailed,
+			}},
+		},
+	}
+	commandRepository := &guardedDispatchCommandRepository{}
+	dispatcher := &guardedProcessingDispatcher{response: serviceTypes.DispatchStudyResponse{
+		JobID: "foreign-study-job", AlreadyPresent: true,
+		ProcessingRunID: &foreignRunID, ProcessingExecutionID: &foreignExecutionID,
+	}}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+
+	err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
+		context.Background(),
+		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		processingRunID,
+		"request-1",
+		processingExecutionID,
+		serviceTypes.DispatchStudyIntentManualReprocess,
+	)
+
+	require.ErrorIs(t, err, errManualDispatchCorrelation)
+	require.Equal(t, 1, dispatcher.dispatchCalls)
+	require.Len(t, commandRepository.dispatchStateUpdates, 1)
+	require.NotNil(t, commandRepository.dispatchStateUpdates[0].LastDispatchError)
+	require.Len(t, commandRepository.executionUpdates, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, commandRepository.executionUpdates[0].Status)
+	require.Nil(t, commandRepository.executionUpdates[0].StudyServiceJobID)
+	require.Len(t, runRepository.updates, 1)
+	require.True(t, runRepository.updates[0].AttentionRequired)
+	require.Equal(t, entity.InferenceIngestionProcessingRunAttentionDispatchFailed, runRepository.updates[0].AttentionReasons[0].Code)
 }
 
 func TestAcceptedDispatchReturnsErrorWhenJobCorrelationCannotBePersisted(t *testing.T) {

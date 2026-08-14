@@ -332,7 +332,11 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 			request: payload, requestID: request.Header.Get("X-Request-ID"),
 		})
 		w.WriteHeader(http.StatusAccepted)
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"job_id": "python-" + strings.ToLower(payload.ModelName)}))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"job_id":                  "python-" + strings.ToLower(payload.ModelName),
+			"processing_run_id":       payload.ProcessingRunID,
+			"processing_execution_id": payload.ProcessingExecutionID,
+		}))
 	}))
 	defer python.Close()
 	dispatcher := &realtimeWorklistE2EDispatcher{http: &StudyServiceDispatcher{
