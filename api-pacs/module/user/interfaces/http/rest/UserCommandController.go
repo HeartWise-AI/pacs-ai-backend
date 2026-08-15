@@ -33,6 +33,66 @@ type UserCommandController struct {
 
 const maxPublicRegistrationBodyBytes = 16 << 10
 
+// AcceptPolicies records acceptance of every current required policy version.
+func (controller *UserCommandController) AcceptPolicies(w http.ResponseWriter, r *http.Request) {
+	var request types.AcceptPoliciesRequest
+	r.Body = http.MaxBytesReader(w, r.Body, maxPublicRegistrationBodyBytes)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		writeInvalidPolicyAcceptanceRequest(w)
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		writeInvalidPolicyAcceptanceRequest(w)
+		return
+	}
+	for index := range request.Acceptances {
+		request.Acceptances[index].PolicyKey = strings.TrimSpace(request.Acceptances[index].PolicyKey)
+		request.Acceptances[index].Version = strings.TrimSpace(request.Acceptances[index].Version)
+	}
+	if err := types.Validate.Struct(request); err != nil {
+		writeInvalidPolicyAcceptanceRequest(w)
+		return
+	}
+
+	acceptances := make([]serviceTypes.PolicyAcceptanceInput, 0, len(request.Acceptances))
+	for _, acceptance := range request.Acceptances {
+		acceptances = append(acceptances, serviceTypes.PolicyAcceptanceInput{PolicyKey: acceptance.PolicyKey, Version: acceptance.Version})
+	}
+	err := controller.UserCommandServiceInterface.AcceptPolicies(r.Context(), serviceTypes.AcceptPolicies{
+		TenantID:    r.Context().Value(iamTypes.TenantIDCtx).(string),
+		UserID:      r.Context().Value(iamTypes.UserIDCtx).(string),
+		Source:      userEntity.PolicyAcceptanceSourceAuthenticated,
+		Acceptances: acceptances,
+	})
+	if err != nil {
+		status := http.StatusInternalServerError
+		message := "Unable to record policy acceptance."
+		switch err.Error() {
+		case apiError.PolicyAcceptanceRequired:
+			status, message = http.StatusPreconditionRequired, "Acceptance of all current policies is required."
+		case apiError.PolicyVersionStale:
+			status, message = http.StatusConflict, "The policies have changed. Please review the current versions."
+		case apiError.InvalidPayload:
+			status, message = http.StatusBadRequest, "Invalid policy acceptance payload."
+		case apiError.PolicyConfigurationUnavailable:
+			status, message = http.StatusServiceUnavailable, "Policy information is temporarily unavailable."
+		}
+		response := viewmodels.HTTPResponseVM{Status: status, Success: false, Message: message, ErrorCode: err.Error()}
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{Status: http.StatusOK, Success: true, Message: "Successfully recorded policy acceptance."}
+	response.JSON(w)
+}
+
+func writeInvalidPolicyAcceptanceRequest(w http.ResponseWriter) {
+	response := viewmodels.HTTPResponseVM{Status: http.StatusBadRequest, Success: false, Message: "Invalid policy acceptance payload.", ErrorCode: apiError.InvalidRequestPayload}
+	response.JSON(w)
+}
+
 // CreateTenantOwner create a tenant owner. Only callable by superuser.
 func (controller *UserCommandController) CreateTenantOwner(w http.ResponseWriter, r *http.Request) {
 	var request types.CreateTenantOwnerRequest

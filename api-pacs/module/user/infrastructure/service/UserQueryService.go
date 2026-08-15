@@ -30,6 +30,49 @@ type UserQueryService struct {
 	tenantApplication.TenantQueryServiceInterface
 	elasticsearchAppliction.ElasticsearchCommandServiceInterface
 	docusignTypes.DocusignAPIInterface
+	PolicyCatalog *PolicyCatalog
+}
+
+// GetRegistrationPolicies returns deployment-authoritative policy metadata for
+// an unauthenticated tenant-aware registration screen.
+func (service *UserQueryService) GetRegistrationPolicies(_ context.Context, tenantID string) ([]types.PolicyDefinition, error) {
+	return service.PolicyCatalog.CurrentPolicies(tenantID)
+}
+
+// GetPolicyStatus reports acceptance only for the current required versions.
+func (service *UserQueryService) GetPolicyStatus(ctx context.Context, tenantID, userID string) (types.PolicyStatus, error) {
+	policies, err := service.PolicyCatalog.CurrentPolicies(tenantID)
+	if err != nil {
+		return types.PolicyStatus{}, err
+	}
+	references := make([]entity.PolicyReference, 0, len(policies))
+	for _, policy := range policies {
+		if policy.Required {
+			references = append(references, entity.PolicyReference{PolicyKey: policy.PolicyKey, Version: policy.Version})
+		}
+	}
+	accepted, err := service.UserQueryRepositoryInterface.SelectUserPolicyAcceptances(ctx, tenantID, userID, references)
+	if err != nil {
+		return types.PolicyStatus{}, err
+	}
+	acceptedByReference := make(map[entity.PolicyReference]int64, len(accepted))
+	for _, acceptance := range accepted {
+		acceptedByReference[acceptance.Reference()] = acceptance.AcceptedAt
+	}
+
+	status := types.PolicyStatus{Policies: make([]types.PolicyStatusItem, 0, len(policies))}
+	for _, policy := range policies {
+		acceptedAt, isAccepted := acceptedByReference[entity.PolicyReference{PolicyKey: policy.PolicyKey, Version: policy.Version}]
+		item := types.PolicyStatusItem{PolicyDefinition: policy, Accepted: isAccepted}
+		if isAccepted {
+			item.AcceptedAt = &acceptedAt
+		}
+		if policy.Required && !isAccepted {
+			status.AcceptanceRequired = true
+		}
+		status.Policies = append(status.Policies, item)
+	}
+	return status, nil
 }
 
 // GetDoctorSpecialties get doctor specialties

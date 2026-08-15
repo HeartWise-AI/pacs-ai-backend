@@ -279,6 +279,7 @@ func (router *router) InitRouter() *chi.Mux {
 			r.Route("/user", func(r chi.Router) {
 				r.Post("/register", userCommandController.RegisterTenantUser)
 				r.Get("/specialties", userQueryController.GetDoctorSpecialties)
+				r.Get("/policies/registration", userQueryController.GetRegistrationPolicies)
 
 				// superuser only
 				r.Group(func(r chi.Router) {
@@ -290,6 +291,8 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
+					r.Get("/policies/status", userQueryController.GetCurrentUserPolicyStatus)
+					r.Post("/policies/accept", userCommandController.AcceptPolicies)
 					r.Post("/tutorial/reset", userCommandController.ResetTutorial)
 					r.Get("/me", userQueryController.GetCurrentTenantUser)
 					r.Get("/metadata", userQueryController.GetUserMetadata)
@@ -305,6 +308,7 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Post("/invite/resend", userCommandController.ResendTenantEmailInvite)
 						r.Get("/all", userQueryController.GetTenantUsers)
 						r.Get("/invites", userQueryController.GetTenantUserEmailInvites)
+						r.Get("/{ID}/policies/status", userQueryController.GetTenantUserPolicyStatus)
 						r.Put("/update", userCommandController.UpdateTenantUser)
 						r.Post("/{ID}/suspend", userCommandController.SuspendTenantUser)
 						r.Post("/{ID}/reactivate", userCommandController.ReactivateTenantUser)

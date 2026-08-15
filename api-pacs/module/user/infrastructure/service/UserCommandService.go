@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/segmentio/ksuid"
@@ -43,6 +44,7 @@ type UserCommandService struct {
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	iamApplication.IAMCommandServiceInterface
 	mailgunTypes.MailgunSDKInterface
+	PolicyCatalog *PolicyCatalog
 }
 
 const (
@@ -52,6 +54,36 @@ const (
 	userAccessTransitionOperationTimeout time.Duration = 90 * time.Second
 	userAccessTransitionReleaseTimeout   time.Duration = 10 * time.Second
 )
+
+// AcceptPolicies records the exact current required policy versions for an
+// authenticated user. Repeating the same request is idempotent in persistence.
+func (service *UserCommandService) AcceptPolicies(ctx context.Context, data types.AcceptPolicies) error {
+	if strings.TrimSpace(data.TenantID) == "" || strings.TrimSpace(data.UserID) == "" ||
+		(data.Source != userEntity.PolicyAcceptanceSourceRegistration && data.Source != userEntity.PolicyAcceptanceSourceAuthenticated) {
+		return errors.New(apiError.InvalidPayload)
+	}
+	current, err := service.PolicyCatalog.ValidateAcceptances(data.TenantID, data.Acceptances)
+	if err != nil {
+		return err
+	}
+
+	acceptedAt := time.Now().Unix()
+	acceptances := make([]userEntity.UserPolicyAcceptance, 0, len(current))
+	for _, policy := range current {
+		if !policy.Required {
+			continue
+		}
+		acceptances = append(acceptances, userEntity.UserPolicyAcceptance{
+			TenantID: data.TenantID, UserID: data.UserID, PolicyKey: policy.PolicyKey,
+			Version: policy.Version, AcceptedAt: acceptedAt, Source: data.Source,
+		})
+	}
+	if err := service.UserCommandRepositoryInterface.InsertUserPolicyAcceptances(ctx, acceptances); err != nil {
+		return err
+	}
+	log.Printf("[audit] event=policy_acceptance tenant_id=%s user_id=%s policy_count=%d source=%s", data.TenantID, data.UserID, len(acceptances), data.Source)
+	return nil
+}
 
 // ChangeTenantUserAccess applies tenant-scoped role hierarchy and synchronizes
 // durable account state with immediate Redis session enforcement.

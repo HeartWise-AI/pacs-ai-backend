@@ -26,6 +26,9 @@ var (
 		"RegisterTenantUserRequest.LicenseNo":         "License number is required and must not exceed 100 characters.",
 		"RegisterTenantUserRequest.Specialty":         "Specialty is required and must not exceed 100 characters.",
 		"RegisterTenantUserRequest.Code":              "Invitation code must not exceed 256 characters.",
+		"AcceptPoliciesRequest.Acceptances":           "Current policy acceptances are required.",
+		"PolicyAcceptanceRequest.PolicyKey":           "Policy key is required.",
+		"PolicyAcceptanceRequest.Version":             "Policy version is required.",
 		"ResendTenantEmailInviteRequest.ID":           "ID is required.",
 		"UpdateTenantUserRequest.ID":                  "ID is required.",
 		"UpdateTenantUserRequest.Role":                "Role is required.",
@@ -96,6 +99,36 @@ type RegisterTenantUserRequest struct {
 	// Role is accepted only for compatibility with the current frontend and is
 	// never passed to the service. Public registration remains server-owned USER.
 	Role *string `json:"role" validate:"omitempty,max=64"`
+}
+
+type PolicyAcceptanceRequest struct {
+	PolicyKey string `json:"policyKey" validate:"required,max=64"`
+	Version   string `json:"version" validate:"required,max=64"`
+}
+
+type AcceptPoliciesRequest struct {
+	Acceptances []PolicyAcceptanceRequest `json:"acceptances" validate:"required,min=1,max=8,dive"`
+}
+
+type PolicyDefinitionResponse struct {
+	PolicyKey        string `json:"policyKey"`
+	Version          string `json:"version"`
+	Title            string `json:"title"`
+	URL              string `json:"url"`
+	EffectiveAt      string `json:"effectiveAt"`
+	AcceptanceAction string `json:"acceptanceAction"`
+	Required         bool   `json:"required"`
+}
+
+type PolicyStatusItemResponse struct {
+	PolicyDefinitionResponse
+	Accepted   bool   `json:"accepted"`
+	AcceptedAt *int64 `json:"acceptedAt,omitempty"`
+}
+
+type PolicyStatusResponse struct {
+	Policies           []PolicyStatusItemResponse `json:"policies"`
+	AcceptanceRequired bool                       `json:"acceptanceRequired"`
 }
 
 type ResendTenantEmailInviteRequest struct {

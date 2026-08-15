@@ -9,6 +9,10 @@ import (
 
 // UserQueryServiceInterface holds the implementable methods for the user query service
 type UserQueryServiceInterface interface {
+	// GetRegistrationPolicies returns current policy metadata before authentication.
+	GetRegistrationPolicies(ctx context.Context, tenantID string) ([]types.PolicyDefinition, error)
+	// GetPolicyStatus returns current policy acceptance state for one tenant user.
+	GetPolicyStatus(ctx context.Context, tenantID, userID string) (types.PolicyStatus, error)
 	// GetDoctorSpecialties gets doctor specialties
 	GetDoctorSpecialties(ctx context.Context) ([]map[string]interface{}, error)
 	// GetTenantUserByID gets tenant user by id
