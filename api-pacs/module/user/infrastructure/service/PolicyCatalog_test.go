@@ -2,6 +2,7 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -26,6 +27,21 @@ func TestPolicyCatalogDefaultsToCanonicalVitrinePolicies(t *testing.T) {
 	require.Equal(t, defaultPrivacyURL, policies[1].URL)
 	require.True(t, policies[0].Required)
 	require.True(t, policies[1].Required)
+}
+
+func TestPolicyCatalogSupportsExistingUserGracePeriod(t *testing.T) {
+	t.Setenv("POLICY_EXISTING_USER_GRACE_UNTIL", "2099-01-01T00:00:00Z")
+	catalog := PolicyCatalogFromEnvironment()
+
+	active, err := catalog.EnforcementActive("tenant-a", time.Date(2026, time.August, 15, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.False(t, active)
+}
+
+func TestPolicyCatalogRejectsInvalidGracePeriod(t *testing.T) {
+	t.Setenv("POLICY_EXISTING_USER_GRACE_UNTIL", "not-a-date")
+	_, err := PolicyCatalogFromEnvironment().CurrentPolicies("tenant-a")
+	require.EqualError(t, err, apiError.PolicyConfigurationUnavailable)
 }
 
 func TestPolicyCatalogRejectsMissingAndStaleAcceptance(t *testing.T) {

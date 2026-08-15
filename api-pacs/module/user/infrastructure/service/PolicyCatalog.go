@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/user/domain/entity"
@@ -21,8 +22,9 @@ const (
 // PolicyCatalog is the deployment-owned source of current policy metadata.
 // URLs and versions are never accepted as authoritative client input.
 type PolicyCatalog struct {
-	policies []types.PolicyDefinition
-	err      error
+	policies               []types.PolicyDefinition
+	existingUserGraceUntil *time.Time
+	err                    error
 }
 
 func PolicyCatalogFromEnvironment() *PolicyCatalog {
@@ -44,6 +46,14 @@ func PolicyCatalogFromEnvironment() *PolicyCatalog {
 	}
 
 	catalog := &PolicyCatalog{policies: policies}
+	if rawGraceUntil := strings.TrimSpace(os.Getenv("POLICY_EXISTING_USER_GRACE_UNTIL")); rawGraceUntil != "" {
+		graceUntil, err := time.Parse(time.RFC3339, rawGraceUntil)
+		if err != nil {
+			catalog.err = errors.New(apiError.PolicyConfigurationUnavailable)
+		} else {
+			catalog.existingUserGraceUntil = &graceUntil
+		}
+	}
 	for _, policy := range policies {
 		if err := validatePolicyDefinition(policy); err != nil {
 			catalog.err = errors.New(apiError.PolicyConfigurationUnavailable)
@@ -51,6 +61,15 @@ func PolicyCatalogFromEnvironment() *PolicyCatalog {
 		}
 	}
 	return catalog
+}
+
+// EnforcementActive implements the existing-user migration policy. An empty
+// grace setting means immediate enforcement; registration is always enforced.
+func (catalog *PolicyCatalog) EnforcementActive(tenantID string, now time.Time) (bool, error) {
+	if _, err := catalog.CurrentPolicies(tenantID); err != nil {
+		return false, err
+	}
+	return catalog.existingUserGraceUntil == nil || !now.Before(*catalog.existingUserGraceUntil), nil
 }
 
 func NewPolicyCatalog(policies []types.PolicyDefinition) *PolicyCatalog {

@@ -61,6 +61,10 @@ func (service *UserQueryService) GetPolicyStatus(ctx context.Context, tenantID, 
 	}
 
 	status := types.PolicyStatus{Policies: make([]types.PolicyStatusItem, 0, len(policies))}
+	status.EnforcementActive, err = service.PolicyCatalog.EnforcementActive(tenantID, time.Now())
+	if err != nil {
+		return types.PolicyStatus{}, err
+	}
 	for _, policy := range policies {
 		acceptedAt, isAccepted := acceptedByReference[entity.PolicyReference{PolicyKey: policy.PolicyKey, Version: policy.Version}]
 		item := types.PolicyStatusItem{PolicyDefinition: policy, Accepted: isAccepted}

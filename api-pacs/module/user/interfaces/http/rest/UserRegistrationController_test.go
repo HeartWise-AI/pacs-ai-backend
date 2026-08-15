@@ -60,6 +60,10 @@ func registrationPayload(role *string) map[string]interface{} {
 		"password":       "ValidPassword!",
 		"licenseNo":      "demo-license",
 		"specialty":      "demo-specialty",
+		"policyAcceptances": []map[string]string{
+			{"policyKey": "TERMS_OF_SERVICE", "version": "2026-08-15"},
+			{"policyKey": "PRIVACY_POLICY", "version": "2026-08-15"},
+		},
 	}
 	if role != nil {
 		payload["role"] = *role
@@ -246,6 +250,9 @@ func TestRegisterTenantUserMapsTurnstileFailures(t *testing.T) {
 	}{
 		{name: "invalid response", serviceErr: errors.New(apiError.TurnstileInvalid), status: http.StatusBadRequest},
 		{name: "provider unavailable", serviceErr: errors.New(apiError.CloudflareAPIError), status: http.StatusServiceUnavailable},
+		{name: "policy acceptance missing", serviceErr: errors.New(apiError.PolicyAcceptanceRequired), status: http.StatusPreconditionRequired},
+		{name: "policy version stale", serviceErr: errors.New(apiError.PolicyVersionStale), status: http.StatusConflict},
+		{name: "policy configuration unavailable", serviceErr: errors.New(apiError.PolicyConfigurationUnavailable), status: http.StatusServiceUnavailable},
 	}
 
 	for _, testCase := range testCases {
@@ -378,6 +385,7 @@ func TestRegisterTenantUserOpenAPIExcludesClientControlledRole(t *testing.T) {
 	require.NotContains(t, schema.Required, "role")
 	require.NotContains(t, schema.Properties, "role")
 	require.Contains(t, schema.Required, "turnstileToken")
+	require.Contains(t, schema.Required, "policyAcceptances")
 	require.Contains(t, schema.Properties, "turnstileToken")
 	require.NotNil(t, schema.AdditionalProperties)
 	require.False(t, *schema.AdditionalProperties)

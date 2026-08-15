@@ -121,6 +121,7 @@ func (k *kernel) RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware {
 	middleware := iamMiddleware.IAMMiddleware{
 		IAMCommandServiceInterface: k.iamCommandServiceContainer(),
 		IAMQueryServiceInterface:   k.iamQueryServiceContainer(),
+		UserQueryServiceInterface:  k.userQueryServiceContainer(),
 	}
 
 	return middleware

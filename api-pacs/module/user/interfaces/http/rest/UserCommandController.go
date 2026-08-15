@@ -466,6 +466,10 @@ func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWrite
 		code := strings.TrimSpace(*request.Code)
 		request.Code = &code
 	}
+	for index := range request.PolicyAcceptances {
+		request.PolicyAcceptances[index].PolicyKey = strings.TrimSpace(request.PolicyAcceptances[index].PolicyKey)
+		request.PolicyAcceptances[index].Version = strings.TrimSpace(request.PolicyAcceptances[index].Version)
+	}
 
 	// validate request
 	err := types.Validate.Struct(request)
@@ -491,16 +495,21 @@ func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWrite
 		return
 	}
 
+	policyAcceptances := make([]serviceTypes.PolicyAcceptanceInput, 0, len(request.PolicyAcceptances))
+	for _, acceptance := range request.PolicyAcceptances {
+		policyAcceptances = append(policyAcceptances, serviceTypes.PolicyAcceptanceInput{PolicyKey: acceptance.PolicyKey, Version: acceptance.Version})
+	}
 	err = controller.UserCommandServiceInterface.RegisterTenantUser(r.Context(), serviceTypes.RegisterTenantUser{
-		TenantID:       request.TenantID,
-		TurnstileToken: request.TurnstileToken,
-		ClientIP:       controller.registrationClientIP(r),
-		Name:           request.Name,
-		Email:          request.Email,
-		Password:       request.Password,
-		LicenseNo:      request.LicenseNo,
-		Specialty:      request.Specialty,
-		Code:           request.Code,
+		TenantID:          request.TenantID,
+		TurnstileToken:    request.TurnstileToken,
+		ClientIP:          controller.registrationClientIP(r),
+		Name:              request.Name,
+		Email:             request.Email,
+		Password:          request.Password,
+		LicenseNo:         request.LicenseNo,
+		Specialty:         request.Specialty,
+		Code:              request.Code,
+		PolicyAcceptances: policyAcceptances,
 	})
 	if err != nil {
 		var httpCode int
@@ -530,6 +539,15 @@ func (controller *UserCommandController) RegisterTenantUser(w http.ResponseWrite
 		case err.Error() == errors.UnauthorizedAccess:
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Unauthorized access."
+		case err.Error() == errors.PolicyAcceptanceRequired:
+			httpCode = http.StatusPreconditionRequired
+			errorMsg = "Acceptance of all current policies is required."
+		case err.Error() == errors.PolicyVersionStale:
+			httpCode = http.StatusConflict
+			errorMsg = "The policies have changed. Please review the current versions."
+		case err.Error() == errors.PolicyConfigurationUnavailable:
+			httpCode = http.StatusServiceUnavailable
+			errorMsg = "Policy information is temporarily unavailable."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Please contact technical support."

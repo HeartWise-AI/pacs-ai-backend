@@ -143,6 +143,7 @@ func (router *router) InitRouter() *chi.Mux {
 				// admin or owner only
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
+					r.Use(iamMiddleware.PolicyAcceptanceGuard)
 					r.Get("/quota", inferenceQueryController.GetInferenceQuota)
 
 					r.Post("/onboarding-model-questionnaire-answers/add", inferenceCommandController.AddOnboardingModelQuestionnaireAnswers)
@@ -225,6 +226,7 @@ func (router *router) InitRouter() *chi.Mux {
 			r.Route("/orchestrator", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
+					r.Use(iamMiddleware.PolicyAcceptanceGuard)
 
 					// Thread management
 					r.Post("/threads", orchestratorController.CreateThread)
@@ -240,6 +242,7 @@ func (router *router) InitRouter() *chi.Mux {
 			r.Route("/orthanc", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
+					r.Use(iamMiddleware.PolicyAcceptanceGuard)
 
 					r.Post("/modality/studies", orthancQueryController.FindModalityStudies)
 					r.Post("/modality/retrieve", orthancCommandController.RetrieveModalityStudy)
@@ -326,6 +329,7 @@ func (router *router) InitRouter() *chi.Mux {
 			// protected routes
 			r.Group(func(r chi.Router) {
 				r.Use(iamMiddleware.TokenSessionOrthancProxyAuthGuard)
+				r.Use(iamMiddleware.PolicyAcceptanceGuard)
 
 				dicomWebProxy := requestbody.LimitWithScope(requestbody.PositiveInt64FromEnvironment(
 					"DICOMWEB_MAX_REQUEST_BODY_BYTES",

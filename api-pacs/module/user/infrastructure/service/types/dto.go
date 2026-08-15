@@ -44,15 +44,16 @@ type DeleteTenantUser struct {
 }
 
 type RegisterTenantUser struct {
-	TenantID       string
-	TurnstileToken string
-	ClientIP       string
-	Name           string
-	Email          string
-	Password       string
-	LicenseNo      string
-	Specialty      string
-	Code           *string
+	TenantID          string
+	TurnstileToken    string
+	ClientIP          string
+	Name              string
+	Email             string
+	Password          string
+	LicenseNo         string
+	Specialty         string
+	Code              *string
+	PolicyAcceptances []PolicyAcceptanceInput
 }
 
 type RegistrationRateLimit struct {
@@ -85,6 +86,7 @@ type PolicyStatusItem struct {
 type PolicyStatus struct {
 	Policies           []PolicyStatusItem
 	AcceptanceRequired bool
+	EnforcementActive  bool
 }
 
 type AcceptPolicies struct {

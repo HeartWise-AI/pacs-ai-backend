@@ -3210,7 +3210,8 @@
           "email",
           "password",
           "licenseNo",
-          "specialty"
+          "specialty",
+          "policyAcceptances"
         ],
         "type": "object",
         "additionalProperties": false,
@@ -3257,6 +3258,13 @@
             "type": "string",
             "maxLength": 256,
             "nullable": true
+          },
+          "policyAcceptances": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 8,
+            "description": "Exact current policy identifiers and versions obtained from /user/policies/registration.",
+            "items": {"$ref": "#/components/schemas/PolicyAcceptanceRequest"}
           }
         }
       },

@@ -71,7 +71,7 @@ func (controller *UserQueryController) getPolicyStatus(w http.ResponseWriter, r 
 			Accepted:                 item.Accepted, AcceptedAt: item.AcceptedAt,
 		})
 	}
-	response := viewmodels.HTTPResponseVM{Status: http.StatusOK, Success: true, Message: "Successfully fetched policy status.", Data: types.PolicyStatusResponse{Policies: items, AcceptanceRequired: status.AcceptanceRequired}}
+	response := viewmodels.HTTPResponseVM{Status: http.StatusOK, Success: true, Message: "Successfully fetched policy status.", Data: types.PolicyStatusResponse{Policies: items, AcceptanceRequired: status.AcceptanceRequired, EnforcementActive: status.EnforcementActive}}
 	response.JSON(w)
 }
 

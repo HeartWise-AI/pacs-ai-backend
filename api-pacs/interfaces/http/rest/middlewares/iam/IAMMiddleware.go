@@ -12,11 +12,50 @@ import (
 	"api-pacs/module/iam/application"
 	"api-pacs/module/iam/domain/entity"
 	serviceTypes "api-pacs/module/iam/infrastructure/service/types"
+	userApplication "api-pacs/module/user/application"
 )
 
 type IAMMiddleware struct {
 	application.IAMCommandServiceInterface
 	application.IAMQueryServiceInterface
+	userApplication.UserQueryServiceInterface
+}
+
+// PolicyAcceptanceGuard blocks protected demo functionality until the signed-in
+// user has accepted every current required policy. Policy recovery endpoints are
+// deliberately mounted outside this middleware.
+func (middleware *IAMMiddleware) PolicyAcceptanceGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tenantID, tenantOK := r.Context().Value(types.TenantIDCtx).(string)
+		userID, userOK := r.Context().Value(types.UserIDCtx).(string)
+		if !tenantOK || !userOK || tenantID == "" || userID == "" || middleware.UserQueryServiceInterface == nil {
+			writePolicyUnavailable(w, apiError.PolicyConfigurationUnavailable)
+			return
+		}
+		status, err := middleware.UserQueryServiceInterface.GetPolicyStatus(r.Context(), tenantID, userID)
+		if err != nil {
+			writePolicyUnavailable(w, err.Error())
+			return
+		}
+		if status.EnforcementActive && status.AcceptanceRequired {
+			response := viewmodels.HTTPResponseVM{
+				Status: http.StatusPreconditionRequired, Success: false,
+				Message:   "Acceptance of the current Terms and Privacy Policy is required.",
+				ErrorCode: apiError.PolicyAcceptanceRequired,
+			}
+			response.JSON(w)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func writePolicyUnavailable(w http.ResponseWriter, errorCode string) {
+	response := viewmodels.HTTPResponseVM{
+		Status: http.StatusServiceUnavailable, Success: false,
+		Message: "Policy acceptance verification is temporarily unavailable.", ErrorCode: errorCode,
+	}
+	response.JSON(w)
 }
 
 // FirebaseSuperUserGuard firebase superuser guard middleware

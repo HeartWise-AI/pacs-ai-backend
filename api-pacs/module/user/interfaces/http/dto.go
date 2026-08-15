@@ -26,6 +26,7 @@ var (
 		"RegisterTenantUserRequest.LicenseNo":         "License number is required and must not exceed 100 characters.",
 		"RegisterTenantUserRequest.Specialty":         "Specialty is required and must not exceed 100 characters.",
 		"RegisterTenantUserRequest.Code":              "Invitation code must not exceed 256 characters.",
+		"RegisterTenantUserRequest.PolicyAcceptances": "Acceptance of the current Terms and Privacy Policy is required.",
 		"AcceptPoliciesRequest.Acceptances":           "Current policy acceptances are required.",
 		"PolicyAcceptanceRequest.PolicyKey":           "Policy key is required.",
 		"PolicyAcceptanceRequest.Version":             "Policy version is required.",
@@ -88,14 +89,15 @@ type SendTenantEmailInviteRequest struct {
 }
 
 type RegisterTenantUserRequest struct {
-	TenantID       string  `json:"tenantId" validate:"required,max=128"`
-	TurnstileToken string  `json:"turnstileToken" validate:"required,max=4096"`
-	Name           string  `json:"name" validate:"required,max=100"`
-	Email          string  `json:"email" validate:"required,email,max=254"`
-	Password       string  `json:"password" validate:"required,min=8,max=128,public_password"`
-	LicenseNo      string  `json:"licenseNo" validate:"required,max=100"`
-	Specialty      string  `json:"specialty" validate:"required,max=100"`
-	Code           *string `json:"code" validate:"omitempty,max=256"`
+	TenantID          string                    `json:"tenantId" validate:"required,max=128"`
+	TurnstileToken    string                    `json:"turnstileToken" validate:"required,max=4096"`
+	Name              string                    `json:"name" validate:"required,max=100"`
+	Email             string                    `json:"email" validate:"required,email,max=254"`
+	Password          string                    `json:"password" validate:"required,min=8,max=128,public_password"`
+	LicenseNo         string                    `json:"licenseNo" validate:"required,max=100"`
+	Specialty         string                    `json:"specialty" validate:"required,max=100"`
+	Code              *string                   `json:"code" validate:"omitempty,max=256"`
+	PolicyAcceptances []PolicyAcceptanceRequest `json:"policyAcceptances" validate:"required,min=2,max=8,dive"`
 	// Role is accepted only for compatibility with the current frontend and is
 	// never passed to the service. Public registration remains server-owned USER.
 	Role *string `json:"role" validate:"omitempty,max=64"`
@@ -129,6 +131,7 @@ type PolicyStatusItemResponse struct {
 type PolicyStatusResponse struct {
 	Policies           []PolicyStatusItemResponse `json:"policies"`
 	AcceptanceRequired bool                       `json:"acceptanceRequired"`
+	EnforcementActive  bool                       `json:"enforcementActive"`
 }
 
 type ResendTenantEmailInviteRequest struct {
