@@ -17,11 +17,25 @@ import (
 
 // ValidateTurnstileToken validates the turnstile token
 func (t *CloudflareAPI) ValidateTurnstileToken(ctx context.Context, token string) (types.ValidateTurnstileTokenResponse, error) {
+	return t.validateTurnstileToken(ctx, token, "")
+}
+
+// ValidateTurnstileTokenWithRemoteIP validates a login token and binds the
+// provider assessment to the trusted socket-derived client IP.
+func (t *CloudflareAPI) ValidateTurnstileTokenWithRemoteIP(ctx context.Context, token, remoteIP string) (types.ValidateTurnstileTokenResponse, error) {
+	return t.validateTurnstileToken(ctx, token, remoteIP)
+}
+
+func (t *CloudflareAPI) validateTurnstileToken(ctx context.Context, token, remoteIP string) (types.ValidateTurnstileTokenResponse, error) {
 	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(map[string]interface{}{
+	payload := map[string]interface{}{
 		"secret":   t.SecretKey,
 		"response": token,
-	})
+	}
+	if remoteIP != "" && remoteIP != "unknown" {
+		payload["remoteip"] = remoteIP
+	}
+	err := json.NewEncoder(buf).Encode(payload)
 	if err != nil {
 		return types.ValidateTurnstileTokenResponse{}, err
 	}
@@ -42,20 +56,15 @@ func (t *CloudflareAPI) ValidateTurnstileToken(ctx context.Context, token string
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		response, err := io.ReadAll(resp.Body)
+		_, err := io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024))
 		if err != nil {
-			log.Printf("Error: %v", err)
 			return types.ValidateTurnstileTokenResponse{}, errors.New(apiError.CloudflareAPIError)
 		}
-
-		errorMessage := string(response)
-		log.Println("Error:", errorMessage)
-
 		return types.ValidateTurnstileTokenResponse{}, errors.New(apiError.CloudflareAPIError)
 	}
 
 	var response types.ValidateTurnstileTokenResponse
-	err = json.NewDecoder(resp.Body).Decode(&response)
+	err = json.NewDecoder(io.LimitReader(resp.Body, 64*1024)).Decode(&response)
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return types.ValidateTurnstileTokenResponse{}, errors.New(apiError.CloudflareAPIError)

@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"os"
 	"testing"
 	"time"
 )
@@ -102,7 +103,7 @@ func TestFlushDB(t *testing.T) {
 
 func TestIncrementWithExpiry(t *testing.T) {
 	db := new(RedisDBHandler)
-	_, err := db.Connect("localhost:6379", "", 0)
+	_, err := db.Connect("localhost:6379", os.Getenv("REDIS_PASSWORD"), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,6 +127,34 @@ func TestIncrementWithExpiry(t *testing.T) {
 	}
 	if secondTTL <= 0 || secondTTL > firstTTL {
 		t.Fatalf("expected the original expiry window to be preserved, got first=%s second=%s", firstTTL, secondTTL)
+	}
+}
+
+func TestGetCounterWithExpiry(t *testing.T) {
+	db := new(RedisDBHandler)
+	_, err := db.Connect("localhost:6379", os.Getenv("REDIS_PASSWORD"), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const key = "test:get-counter-with-expiry"
+	requireNoError(t, db.Delete(key))
+	t.Cleanup(func() { _ = db.Delete(key) })
+
+	count, ttl, err := db.GetCounterWithExpiry(key)
+	requireNoError(t, err)
+	if count != 0 || ttl != 0 {
+		t.Fatalf("expected a missing counter to return zero values, got count=%d ttl=%s", count, ttl)
+	}
+
+	_, _, err = db.IncrementWithExpiry(key, time.Minute)
+	requireNoError(t, err)
+	count, ttl, err = db.GetCounterWithExpiry(key)
+	requireNoError(t, err)
+	if count != 1 {
+		t.Fatalf("expected count 1, got %d", count)
+	}
+	if ttl <= 0 || ttl > time.Minute {
+		t.Fatalf("expected a positive TTL no greater than one minute, got %s", ttl)
 	}
 }
 

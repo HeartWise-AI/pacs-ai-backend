@@ -15,7 +15,15 @@ local count = redis.call("INCR", KEYS[1])
 if count == 1 then
   redis.call("PEXPIRE", KEYS[1], ARGV[1])
 end
-return {count, redis.call("PTTL", KEYS[1])}
+return {tonumber(count), redis.call("PTTL", KEYS[1])}
+`)
+
+var getCounterWithExpiryScript = db.NewScript(`
+local count = redis.call("GET", KEYS[1])
+if not count then
+  return {0, -2}
+end
+return {tonumber(count), redis.call("PTTL", KEYS[1])}
 `)
 
 var setIfKeyAbsentScript = db.NewScript(`
@@ -119,6 +127,36 @@ func (r *RedisDBHandler) IncrementWithExpiry(key string, expiry time.Duration) (
 	ttlMilliseconds, ok := values[1].(int64)
 	if !ok {
 		return 0, 0, fmt.Errorf("unexpected increment ttl: %T", values[1])
+	}
+
+	return count, time.Duration(ttlMilliseconds) * time.Millisecond, nil
+}
+
+// GetCounterWithExpiry atomically reads a numeric counter and its remaining TTL.
+// A missing key is represented by a zero count and zero TTL.
+func (r *RedisDBHandler) GetCounterWithExpiry(key string) (int64, time.Duration, error) {
+	r.rw.RLock()
+	defer r.rw.RUnlock()
+
+	result, err := getCounterWithExpiryScript.Run(r.Client, []string{key}).Result()
+	if err != nil {
+		return 0, 0, err
+	}
+
+	values, ok := result.([]interface{})
+	if !ok || len(values) != 2 {
+		return 0, 0, fmt.Errorf("unexpected counter result: %T", result)
+	}
+	count, ok := values[0].(int64)
+	if !ok {
+		return 0, 0, fmt.Errorf("unexpected counter value: %T", values[0])
+	}
+	ttlMilliseconds, ok := values[1].(int64)
+	if !ok {
+		return 0, 0, fmt.Errorf("unexpected counter ttl: %T", values[1])
+	}
+	if count == 0 || ttlMilliseconds <= 0 {
+		return count, 0, nil
 	}
 
 	return count, time.Duration(ttlMilliseconds) * time.Millisecond, nil

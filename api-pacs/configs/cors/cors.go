@@ -38,7 +38,10 @@ func (c *Config) AllowedMethods() []string {
 
 // ExposedHeaders returns list of exposed headers
 func (c *Config) ExposedHeaders() []string {
-	return []string{"Link"}
+	return []string{
+		"Link",
+		"Retry-After",
+	}
 }
 
 // MaxAge returns the maximum number of age in browser in seconds
