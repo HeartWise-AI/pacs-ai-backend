@@ -384,28 +384,33 @@ func (controller *InferenceCommandController) StudyServiceProcessingCallback(w h
 	if request.ProcessingRunID != nil {
 		processingRunID = strings.TrimSpace(*request.ProcessingRunID)
 	}
+	processingExecutionID := ""
+	if request.ProcessingExecutionID != nil {
+		processingExecutionID = strings.TrimSpace(*request.ProcessingExecutionID)
+	}
 
 	result, err := controller.InferenceCommandServiceInterface.HandleStudyServiceProcessingCallback(context.TODO(), serviceTypes.HandleStudyServiceProcessingCallback{
-		CandidateID:        candidateID,
-		RequestID:          requestID,
-		EventID:            strings.TrimSpace(request.EventID),
-		Sequence:           request.Sequence,
-		OccurredAt:         occurredAt,
-		TenantID:           strings.TrimSpace(request.TenantID),
-		IngestionJobID:     strings.TrimSpace(request.IngestionJobID),
-		PayloadCandidateID: strings.TrimSpace(request.CandidateID),
-		RetrievalAttemptID: strings.TrimSpace(request.RetrievalAttemptID),
-		ProcessingRunID:    processingRunID,
-		StudyInstanceUID:   request.StudyInstanceUID,
-		ModelName:          request.ModelName,
-		ModelVersion:       request.ModelVersion,
-		Modality:           request.Modality,
-		Status:             request.Status,
-		SkipReason:         skipReason,
-		ErrorMessage:       request.ErrorMessage,
-		StudyServiceJobID:  request.StudyServiceJobID,
-		StartedAt:          startedAt,
-		CompletedAt:        completedAt,
+		CandidateID:           candidateID,
+		RequestID:             requestID,
+		EventID:               strings.TrimSpace(request.EventID),
+		Sequence:              request.Sequence,
+		OccurredAt:            occurredAt,
+		TenantID:              strings.TrimSpace(request.TenantID),
+		IngestionJobID:        strings.TrimSpace(request.IngestionJobID),
+		PayloadCandidateID:    strings.TrimSpace(request.CandidateID),
+		RetrievalAttemptID:    strings.TrimSpace(request.RetrievalAttemptID),
+		ProcessingRunID:       processingRunID,
+		ProcessingExecutionID: processingExecutionID,
+		StudyInstanceUID:      request.StudyInstanceUID,
+		ModelName:             request.ModelName,
+		ModelVersion:          request.ModelVersion,
+		Modality:              request.Modality,
+		Status:                request.Status,
+		SkipReason:            skipReason,
+		ErrorMessage:          request.ErrorMessage,
+		StudyServiceJobID:     request.StudyServiceJobID,
+		StartedAt:             startedAt,
+		CompletedAt:           completedAt,
 	})
 	if err != nil {
 		var httpCode int

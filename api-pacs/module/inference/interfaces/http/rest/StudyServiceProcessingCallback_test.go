@@ -61,6 +61,7 @@ func TestStudyServiceProcessingCallbackMapsOrderedEventContract(t *testing.T) {
 		"retrieval_attempt_id":"retrieval-123",
 		"study_instance_uid":"1.2.3.4",
 		"processing_run_id":"run-123",
+		"processing_execution_id":"execution-123",
 		"model_name":"PanEcho",
 		"model_version":"1.0.0",
 		"modality":"echocardiogram",
@@ -86,6 +87,7 @@ func TestStudyServiceProcessingCallbackMapsOrderedEventContract(t *testing.T) {
 	require.Equal(t, "candidate-123", service.input.PayloadCandidateID)
 	require.Equal(t, "retrieval-123", service.input.RetrievalAttemptID)
 	require.Equal(t, "run-123", service.input.ProcessingRunID)
+	require.Equal(t, "execution-123", service.input.ProcessingExecutionID)
 	require.Equal(t, "1.2.3.4", service.input.StudyInstanceUID)
 	require.Equal(t, "python-job-123", service.input.StudyServiceJobID)
 	require.Equal(t, time.Date(2026, 8, 5, 12, 3, 4, 0, time.UTC), *service.input.OccurredAt)

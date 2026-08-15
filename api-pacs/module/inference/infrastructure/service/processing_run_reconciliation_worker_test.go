@@ -679,3 +679,31 @@ func TestValidateReconciledStudyServiceJobRejectsCorrelationMismatch(t *testing.
 		})
 	}
 }
+
+func TestValidateReconciledManualJobRequiresExactExecutionIdentity(t *testing.T) {
+	runID := "run-1"
+	executionID := "execution-1"
+	otherExecutionID := "execution-other"
+	run := entity.InferenceIngestionProcessingRun{
+		ID: runID, TenantID: "tenant-a",
+		RunTrigger: entity.InferenceIngestionProcessingRunTriggerManualReprocess,
+	}
+	execution := entity.InferenceIngestionProcessingJob{
+		ID: executionID, CandidateID: "candidate-1", ModelName: "EchoPrime",
+	}
+	job := serviceTypes.StudyServiceJob{
+		JobID: "job-1", ProcessingRunID: &runID, ProcessingExecutionID: &executionID,
+		ModelName: "EchoPrime",
+	}
+
+	require.NoError(t, validateReconciledStudyServiceJob(run, execution, job))
+	job.ProcessingExecutionID = nil
+	require.ErrorContains(t, validateReconciledStudyServiceJob(run, execution, job), "unbound manual job")
+	execution.StudyServiceJobID = &job.JobID
+	require.NoError(t, validateReconciledStudyServiceJob(run, execution, job))
+	job.ProcessingExecutionID = &otherExecutionID
+	require.ErrorContains(t, validateReconciledStudyServiceJob(run, execution, job), "processing-execution mismatch")
+
+	run.RunTrigger = entity.InferenceIngestionProcessingRunTriggerAuto
+	require.NoError(t, validateReconciledStudyServiceJob(run, execution, job))
+}

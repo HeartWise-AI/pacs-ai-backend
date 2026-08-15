@@ -148,6 +148,25 @@ func (state *realtimeWorklistE2EState) SelectProcessingRunExecution(_ context.Co
 	return entity.InferenceIngestionProcessingJob{}, errors.New(apiError.MissingRecord)
 }
 
+func (state *realtimeWorklistE2EState) FailPendingProcessingRunExecution(
+	_ context.Context,
+	data repositoryTypes.FailPendingInferenceIngestionProcessingJob,
+) (bool, error) {
+	execution, exists := state.executions[data.ID]
+	if !exists || execution.ProcessingRunID == nil || *execution.ProcessingRunID != data.ProcessingRunID ||
+		execution.CandidateID != data.CandidateID || execution.TenantID != data.TenantID ||
+		execution.ModelName != data.ModelName || execution.Status != entity.InferenceIngestionProcessingJobStatusPending {
+		return false, nil
+	}
+	execution.Status = entity.InferenceIngestionProcessingJobStatusFailed
+	execution.ModelVersion = data.ModelVersion
+	execution.Modality = data.Modality
+	execution.ErrorMessage = data.ErrorMessage
+	execution.UpdatedAt = time.Now().UTC()
+	state.executions[data.ID] = execution
+	return true, nil
+}
+
 func (state *realtimeWorklistE2EState) UpdateInferenceIngestionProcessingJob(data repositoryTypes.UpdateInferenceIngestionProcessingJob) error {
 	execution, exists := state.executions[data.ID]
 	if !exists {
@@ -278,7 +297,8 @@ func (dispatcher *realtimeWorklistE2EDispatcher) BuildDispatchStudyRequest(_ con
 	return serviceTypes.DispatchStudyRequest{
 		XRequestID: requestID, TenantID: &data.Candidate.TenantID,
 		IngestionJobID: &data.IngestionJob.ID, CandidateID: &data.Candidate.ID,
-		ProcessingRunID: data.ProcessingRunID, StudyInstanceUID: data.Candidate.StudyInstanceUID,
+		ProcessingRunID: data.ProcessingRunID, ProcessingExecutionID: data.ProcessingExecutionID,
+		DispatchIntent: data.DispatchIntent, StudyInstanceUID: data.Candidate.StudyInstanceUID,
 		OrthancStudyID: "orthanc-study", Modality: "US", ModelName: data.IngestionJob.ModelName,
 		ModelVersion: data.IngestionJob.ModelVersion,
 	}, nil
@@ -331,7 +351,11 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 			request: payload, requestID: request.Header.Get("X-Request-ID"),
 		})
 		w.WriteHeader(http.StatusAccepted)
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"job_id": "python-" + strings.ToLower(payload.ModelName)}))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"job_id":                  "python-" + strings.ToLower(payload.ModelName),
+			"processing_run_id":       payload.ProcessingRunID,
+			"processing_execution_id": payload.ProcessingExecutionID,
+		}))
 	}))
 	defer python.Close()
 	dispatcher := &realtimeWorklistE2EDispatcher{http: &StudyServiceDispatcher{
@@ -362,6 +386,8 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 	require.Len(t, dispatched, 2)
 	for _, dispatch := range dispatched {
 		require.Equal(t, automatic.Run.ID, *dispatch.request.ProcessingRunID)
+		require.Empty(t, dispatch.request.DispatchIntent)
+		require.Nil(t, dispatch.request.ProcessingExecutionID)
 	}
 
 	tenantAEvents, unsubscribeA := broker.SubscribeWorklistNotifications("tenant-a", 4)
@@ -430,6 +456,8 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 	require.Len(t, dispatched, 4)
 	for _, dispatch := range dispatched[2:] {
 		require.Equal(t, manual.Run.ID, trimmedPointerValue(dispatch.request.ProcessingRunID))
+		require.Equal(t, serviceTypes.DispatchStudyIntentManualReprocess, dispatch.request.DispatchIntent)
+		require.Equal(t, dispatch.requestID, trimmedPointerValue(dispatch.request.ProcessingExecutionID))
 		require.NotEmpty(t, dispatch.requestID)
 		require.NotEqual(t, trimmedPointerValue(dispatch.request.CandidateID), dispatch.requestID)
 	}

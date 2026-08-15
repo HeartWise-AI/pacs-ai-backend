@@ -83,17 +83,19 @@ func (service *StudyServiceDispatcher) BuildDispatchStudyRequest(ctx context.Con
 	)
 
 	return serviceTypes.DispatchStudyRequest{
-		XRequestID:         requestID,
-		TenantID:           tenantID,
-		IngestionJobID:     ingestionJobID,
-		CandidateID:        nonEmptyStringPointer(strings.TrimSpace(data.Candidate.ID)),
-		RetrievalAttemptID: trimmedPointer(data.RetrievalAttemptID),
-		ProcessingRunID:    trimmedPointer(data.ProcessingRunID),
-		StudyInstanceUID:   strings.TrimSpace(data.Candidate.StudyInstanceUID),
-		OrthancStudyID:     orthancStudyID,
-		Modality:           modality,
-		ModelName:          strings.TrimSpace(data.IngestionJob.ModelName),
-		ModelVersion:       strings.TrimSpace(data.IngestionJob.ModelVersion),
+		XRequestID:            requestID,
+		TenantID:              tenantID,
+		IngestionJobID:        ingestionJobID,
+		CandidateID:           nonEmptyStringPointer(strings.TrimSpace(data.Candidate.ID)),
+		RetrievalAttemptID:    trimmedPointer(data.RetrievalAttemptID),
+		ProcessingRunID:       trimmedPointer(data.ProcessingRunID),
+		ProcessingExecutionID: trimmedPointer(data.ProcessingExecutionID),
+		DispatchIntent:        data.DispatchIntent,
+		StudyInstanceUID:      strings.TrimSpace(data.Candidate.StudyInstanceUID),
+		OrthancStudyID:        orthancStudyID,
+		Modality:              modality,
+		ModelName:             strings.TrimSpace(data.IngestionJob.ModelName),
+		ModelVersion:          strings.TrimSpace(data.IngestionJob.ModelVersion),
 	}, nil
 }
 

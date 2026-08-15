@@ -229,6 +229,17 @@ type UpdateInferenceIngestionProcessingJob struct {
 	CompletedAt       *time.Time
 }
 
+type FailPendingInferenceIngestionProcessingJob struct {
+	ID              string
+	ProcessingRunID string
+	CandidateID     string
+	TenantID        string
+	ModelName       string
+	ModelVersion    *string
+	Modality        *string
+	ErrorMessage    *string
+}
+
 type CreateInferenceIngestionJob struct {
 	ID                     string
 	TenantID               string

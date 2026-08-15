@@ -36,10 +36,12 @@ type processingRunCallbackCommandRepository struct {
 
 type processingRunCallbackRunRepository struct {
 	*processingRunAggregationRepository
-	selectedExecution entity.InferenceIngestionProcessingJob
-	transitions       []repositoryTypes.ApplyInferenceIngestionProcessingTransition
-	transitionResult  *repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult
-	transitionErr     error
+	selectedExecution      entity.InferenceIngestionProcessingJob
+	transitions            []repositoryTypes.ApplyInferenceIngestionProcessingTransition
+	transitionResult       *repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult
+	transitionErr          error
+	failPendingCalls       []repositoryTypes.FailPendingInferenceIngestionProcessingJob
+	failPendingBeforeApply func(*processingRunCallbackRunRepository)
 }
 
 func (repository *processingRunCallbackRunRepository) SelectProcessingRunExecution(context.Context, string, string, string, string) (entity.InferenceIngestionProcessingJob, error) {
@@ -62,6 +64,22 @@ func (repository *processingRunCallbackRunRepository) ApplyProcessingRunExecutio
 		outcome = "replayed"
 	}
 	return repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult{Outcome: outcome}, nil
+}
+
+func (repository *processingRunCallbackRunRepository) FailPendingProcessingRunExecution(
+	_ context.Context,
+	data repositoryTypes.FailPendingInferenceIngestionProcessingJob,
+) (bool, error) {
+	repository.failPendingCalls = append(repository.failPendingCalls, data)
+	if repository.failPendingBeforeApply != nil {
+		repository.failPendingBeforeApply(repository)
+	}
+	if repository.selectedExecution.ID != data.ID ||
+		repository.selectedExecution.Status != entity.InferenceIngestionProcessingJobStatusPending {
+		return false, nil
+	}
+	repository.selectedExecution.Status = entity.InferenceIngestionProcessingJobStatusFailed
+	return true, nil
 }
 
 type recordingWorklistNotificationPublisher struct {
@@ -584,6 +602,98 @@ func TestProcessingCallbackRejectsCorrelatedIdentityMismatchesBeforeMutation(t *
 	}
 }
 
+func TestManualProcessingCallbackRequiresExactExecutionIdentity(t *testing.T) {
+	processingRunID := "run-1"
+	executionID := "execution-1"
+	tests := []struct {
+		name                  string
+		trigger               entity.InferenceIngestionProcessingRunTrigger
+		processingExecutionID string
+		unbound               bool
+		wantErr               bool
+	}{
+		{
+			name:                  "manual exact execution",
+			trigger:               entity.InferenceIngestionProcessingRunTriggerManualReprocess,
+			processingExecutionID: executionID,
+			unbound:               true,
+		},
+		{
+			name:    "manual legacy callback without execution",
+			trigger: entity.InferenceIngestionProcessingRunTriggerManualReprocess,
+		},
+		{
+			name:    "manual unbound callback without execution",
+			trigger: entity.InferenceIngestionProcessingRunTriggerManualReprocess,
+			unbound: true,
+			wantErr: true,
+		},
+		{
+			name:                  "manual foreign execution",
+			trigger:               entity.InferenceIngestionProcessingRunTriggerManualReprocess,
+			processingExecutionID: "execution-other",
+			wantErr:               true,
+		},
+		{
+			name:                  "automatic ignores execution field",
+			trigger:               entity.InferenceIngestionProcessingRunTriggerAuto,
+			processingExecutionID: "execution-other",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := entity.InferenceIngestionCandidate{
+				ID: "candidate-1", TenantID: "tenant-a", IngestionJobID: "ingestion-1", StudyInstanceUID: "study-1",
+			}
+			run := entity.InferenceIngestionProcessingRun{
+				ID: processingRunID, TenantID: "tenant-a", StudyInstanceUID: "study-1", RunTrigger: test.trigger, Version: 1,
+			}
+			execution := entity.InferenceIngestionProcessingJob{
+				ID: executionID, ProcessingRunID: &processingRunID, CandidateID: candidate.ID,
+				TenantID: candidate.TenantID, ModelName: "model-one",
+				ModelVersion: nonEmptyStringPointer("1.0"), Modality: nonEmptyStringPointer("US"),
+				StudyServiceJobID: nonEmptyStringPointer("python-job-1"),
+				Status:            entity.InferenceIngestionProcessingJobStatusQueued,
+			}
+			if test.unbound {
+				execution.StudyServiceJobID = nil
+			}
+			callback := serviceTypes.HandleStudyServiceProcessingCallback{
+				CandidateID: candidate.ID, PayloadCandidateID: candidate.ID,
+				TenantID: candidate.TenantID, IngestionJobID: candidate.IngestionJobID,
+				ProcessingRunID: processingRunID, ProcessingExecutionID: test.processingExecutionID,
+				StudyInstanceUID: candidate.StudyInstanceUID,
+				ModelName:        "model-one", ModelVersion: "1.0", Modality: "US",
+				StudyServiceJobID: "python-job-1", Status: "running",
+			}
+			queryRepository := &processingRunCallbackQueryRepository{candidate: candidate}
+			commandRepository := &processingRunCallbackCommandRepository{}
+			runRepository := &processingRunCallbackRunRepository{
+				selectedExecution: execution,
+				processingRunAggregationRepository: &processingRunAggregationRepository{
+					runs: []entity.InferenceIngestionProcessingRun{run},
+				},
+			}
+			service := &InferenceCommandService{
+				InferenceQueryRepositoryInterface:         queryRepository,
+				InferenceCommandRepositoryInterface:       commandRepository,
+				InferenceProcessingRunRepositoryInterface: runRepository,
+			}
+
+			_, err := service.HandleStudyServiceProcessingCallback(context.Background(), callback)
+			if test.wantErr {
+				require.EqualError(t, err, apiError.InvalidPayload)
+				require.Empty(t, runRepository.transitions)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, runRepository.transitions, 1)
+			require.Equal(t, executionID, runRepository.transitions[0].ExecutionID)
+		})
+	}
+}
+
 func TestCorrelatedQueuedDispatchUpdatesPlannedExecution(t *testing.T) {
 	processingRunID := "run-1"
 	runRepository := &processingRunCallbackRunRepository{
@@ -640,9 +750,44 @@ func TestCorrelatedFailedDispatchMarksRunForAttention(t *testing.T) {
 		errors.New("study-service rejected dispatch"),
 	)
 
-	require.Len(t, commandRepository.updates, 1)
-	require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, commandRepository.updates[0].Status)
+	require.Len(t, runRepository.failPendingCalls, 1)
+	require.Equal(t, "execution-1", runRepository.failPendingCalls[0].ID)
 	require.Len(t, runRepository.updates, 1)
 	require.True(t, runRepository.updates[0].AttentionRequired)
 	require.Equal(t, entity.InferenceIngestionProcessingRunAttentionDispatchFailed, runRepository.updates[0].AttentionReasons[0].Code)
+}
+
+func TestCorrelatedFailedDispatchPreservesAdvancedExecution(t *testing.T) {
+	processingRunID := "run-1"
+	for _, status := range []entity.InferenceIngestionProcessingJobStatus{
+		entity.InferenceIngestionProcessingJobStatusQueued,
+		entity.InferenceIngestionProcessingJobStatusRunning,
+		entity.InferenceIngestionProcessingJobStatusCompleted,
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			runRepository := &processingRunCallbackRunRepository{
+				selectedExecution: entity.InferenceIngestionProcessingJob{
+					ID: "execution-1", ProcessingRunID: &processingRunID, Status: status,
+				},
+				processingRunAggregationRepository: &processingRunAggregationRepository{},
+			}
+			commandRepository := &processingRunCallbackCommandRepository{}
+			service := &InferenceCommandService{
+				InferenceCommandRepositoryInterface:       commandRepository,
+				InferenceProcessingRunRepositoryInterface: runRepository,
+			}
+
+			service.recordFailedProcessingDispatch(
+				context.Background(),
+				entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+				entity.InferenceIngestionJob{ModelName: "model-one"},
+				serviceTypes.DispatchStudyRequest{ProcessingRunID: &processingRunID},
+				errors.New("study-service response was lost"),
+			)
+
+			require.Empty(t, commandRepository.updates)
+			require.Empty(t, runRepository.failPendingCalls)
+			require.Empty(t, runRepository.updates)
+		})
+	}
 }

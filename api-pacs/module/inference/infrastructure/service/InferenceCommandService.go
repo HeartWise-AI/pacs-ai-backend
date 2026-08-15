@@ -70,6 +70,14 @@ var studyServiceDispatchRetrySchedule = []time.Duration{
 	8 * time.Second,
 }
 
+var errManualDispatchCorrelation = errors.New(
+	"study-service manual dispatch response correlation is missing or mismatched",
+)
+
+var errManualDispatchExecutionOwnership = errors.New(
+	"manual dispatch execution does not match the committed processing run execution",
+)
+
 type candidateRetrievalOutcome string
 
 const (
@@ -290,7 +298,12 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 	if trigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess {
 		for _, target := range dispatchTargets {
 			service.scheduleStudyServiceDispatchWithRequestID(
-				target.job, target.candidate, result.Run.ID, target.requestID, target.requestID,
+				target.job,
+				target.candidate,
+				result.Run.ID,
+				target.requestID,
+				target.requestID,
+				types.DispatchStudyIntentManualReprocess,
 			)
 		}
 	}
@@ -363,6 +376,7 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 	if service.RequireProcessingRunID && processingRunID == "" {
 		return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
 	}
+	manualProcessingRun := false
 	var existing entity.InferenceIngestionProcessingJob
 	if processingRunID != "" {
 		run, runErr := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRun(
@@ -379,6 +393,7 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 			strings.TrimSpace(run.StudyInstanceUID) != strings.TrimSpace(candidate.StudyInstanceUID) {
 			return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
 		}
+		manualProcessingRun = run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess
 
 		existing, err = service.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(
 			ctx, candidate.TenantID, processingRunID, candidate.ID, modelName,
@@ -417,6 +432,20 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 		}
 
 		return types.HandleStudyServiceProcessingCallbackResult{Outcome: "applied"}, nil
+	}
+
+	if manualProcessingRun {
+		incomingExecutionID := strings.TrimSpace(data.ProcessingExecutionID)
+		expectedExecutionID := strings.TrimSpace(existing.ID)
+		// Pre-contract manual jobs have no downstream execution ID. Preserve their
+		// callback path only after Go has bound the expected downstream job, but fail
+		// closed whenever the new correlation is supplied.
+		if incomingExecutionID != "" && (expectedExecutionID == "" || incomingExecutionID != expectedExecutionID) {
+			return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
+		}
+		if incomingExecutionID == "" && trimmedPointerValue(existing.StudyServiceJobID) == "" {
+			return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
+		}
 	}
 
 	if processingRunID != "" && !processingCallbackMatchesExecution(
@@ -1462,6 +1491,17 @@ func validateReconciledStudyServiceJob(
 	if strings.TrimSpace(trimmedPointerValue(job.ProcessingRunID)) != strings.TrimSpace(run.ID) {
 		return fmt.Errorf("reconciliation job %s processing-run mismatch", strings.TrimSpace(job.JobID))
 	}
+	processingExecutionID := strings.TrimSpace(trimmedPointerValue(job.ProcessingExecutionID))
+	if run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess {
+		if processingExecutionID != "" && processingExecutionID != strings.TrimSpace(execution.ID) {
+			return fmt.Errorf("reconciliation job %s processing-execution mismatch", strings.TrimSpace(job.JobID))
+		}
+		if processingExecutionID == "" &&
+			(strings.TrimSpace(trimmedPointerValue(execution.StudyServiceJobID)) == "" ||
+				strings.TrimSpace(job.JobID) != strings.TrimSpace(trimmedPointerValue(execution.StudyServiceJobID))) {
+			return fmt.Errorf("reconciliation job %s lacks execution correlation for an unbound manual job", strings.TrimSpace(job.JobID))
+		}
+	}
 	if candidateID := strings.TrimSpace(trimmedPointerValue(job.CandidateID)); candidateID != "" && candidateID != strings.TrimSpace(execution.CandidateID) {
 		return fmt.Errorf("reconciliation job %s candidate mismatch", strings.TrimSpace(job.JobID))
 	}
@@ -1481,18 +1521,19 @@ func (service *InferenceCommandService) handleReconciledStudyServiceJob(
 	job types.StudyServiceJob,
 ) (types.HandleStudyServiceProcessingCallbackResult, error) {
 	result, err := service.HandleStudyServiceProcessingCallback(ctx, types.HandleStudyServiceProcessingCallback{
-		CandidateID:       strings.TrimSpace(candidateID),
-		RequestID:         fmt.Sprintf("reconcile:%s:%s", strings.TrimSpace(candidateID), strings.TrimSpace(job.JobID)),
-		ProcessingRunID:   trimmedPointerValue(job.ProcessingRunID),
-		StudyInstanceUID:  strings.TrimSpace(job.StudyInstanceUID),
-		ModelName:         strings.TrimSpace(job.ModelName),
-		ModelVersion:      trimmedPointerValue(job.ModelVersion),
-		Modality:          strings.TrimSpace(job.Modality),
-		Status:            strings.TrimSpace(job.Status),
-		ErrorMessage:      job.ErrorMessage,
-		StudyServiceJobID: strings.TrimSpace(job.JobID),
-		StartedAt:         job.StartedAt,
-		CompletedAt:       job.CompletedAt,
+		CandidateID:           strings.TrimSpace(candidateID),
+		RequestID:             fmt.Sprintf("reconcile:%s:%s", strings.TrimSpace(candidateID), strings.TrimSpace(job.JobID)),
+		ProcessingRunID:       trimmedPointerValue(job.ProcessingRunID),
+		ProcessingExecutionID: trimmedPointerValue(job.ProcessingExecutionID),
+		StudyInstanceUID:      strings.TrimSpace(job.StudyInstanceUID),
+		ModelName:             strings.TrimSpace(job.ModelName),
+		ModelVersion:          trimmedPointerValue(job.ModelVersion),
+		Modality:              strings.TrimSpace(job.Modality),
+		Status:                strings.TrimSpace(job.Status),
+		ErrorMessage:          job.ErrorMessage,
+		StudyServiceJobID:     strings.TrimSpace(job.JobID),
+		StartedAt:             job.StartedAt,
+		CompletedAt:           job.CompletedAt,
 	})
 	if err != nil {
 		return types.HandleStudyServiceProcessingCallbackResult{}, err
@@ -1794,7 +1835,7 @@ func (service *InferenceCommandService) persistCandidateRetrievalResult(ctx cont
 }
 
 func (service *InferenceCommandService) scheduleStudyServiceDispatch(job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate, processingRunID string) {
-	service.scheduleStudyServiceDispatchWithRequestID(job, candidate, processingRunID, candidate.ID, "")
+	service.scheduleStudyServiceDispatchWithRequestID(job, candidate, processingRunID, candidate.ID, "", "")
 }
 
 func (service *InferenceCommandService) scheduleStudyServiceDispatchWithRequestID(
@@ -1803,6 +1844,7 @@ func (service *InferenceCommandService) scheduleStudyServiceDispatchWithRequestI
 	processingRunID string,
 	requestID string,
 	processingExecutionID string,
+	dispatchIntent types.DispatchStudyIntent,
 ) {
 	requestID = strings.TrimSpace(requestID)
 	if requestID == "" {
@@ -1821,7 +1863,7 @@ func (service *InferenceCommandService) scheduleStudyServiceDispatchWithRequestI
 		}
 
 		if err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
-			context.Background(), job, candidate, processingRunID, requestID, processingExecutionID,
+			context.Background(), job, candidate, processingRunID, requestID, processingExecutionID, dispatchIntent,
 		); err != nil {
 			log.Printf("[Ingestion dispatch] final dispatch failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
 				candidate.ID,
@@ -1835,7 +1877,7 @@ func (service *InferenceCommandService) scheduleStudyServiceDispatchWithRequestI
 
 func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService(ctx context.Context, job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate, processingRunID, requestID string) error {
 	return service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
-		ctx, job, candidate, processingRunID, requestID, "",
+		ctx, job, candidate, processingRunID, requestID, "", "",
 	)
 }
 
@@ -1846,11 +1888,14 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 	processingRunID string,
 	requestID string,
 	processingExecutionID string,
+	dispatchIntent types.DispatchStudyIntent,
 ) error {
 	if service.RequireProcessingRunID && strings.TrimSpace(processingRunID) == "" {
 		return errors.New(apiError.InvalidPayload)
 	}
-	shouldDispatch, err := service.shouldDispatchCommittedProcessingExecution(ctx, candidate, job, processingRunID)
+	shouldDispatch, committedExecutionID, err := service.shouldDispatchCommittedProcessingExecution(
+		ctx, candidate, job, processingRunID, processingExecutionID, dispatchIntent,
+	)
 	if err != nil {
 		ObserveStudyServiceDispatchAttempt("permanent_error", 0)
 		if persistErr := service.persistDispatchFailure(candidate.ID, err); persistErr != nil {
@@ -1859,7 +1904,7 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 			)
 		}
 		service.recordKnownProcessingExecutionDispatchFailure(
-			ctx, candidate, job, processingRunID, processingExecutionID, err,
+			ctx, candidate, job, processingRunID, committedExecutionID, err,
 		)
 		return err
 	}
@@ -1868,10 +1913,12 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 	}
 
 	dispatchRequest, err := service.BuildStudyServiceDispatchRequest(ctx, types.BuildStudyServiceDispatchRequestInput{
-		IngestionJob:    job,
-		Candidate:       candidate,
-		ProcessingRunID: nonEmptyStringPointer(strings.TrimSpace(processingRunID)),
-		RequestID:       &requestID,
+		IngestionJob:          job,
+		Candidate:             candidate,
+		ProcessingRunID:       nonEmptyStringPointer(strings.TrimSpace(processingRunID)),
+		ProcessingExecutionID: nonEmptyStringPointer(strings.TrimSpace(processingExecutionID)),
+		DispatchIntent:        dispatchIntent,
+		RequestID:             &requestID,
 	})
 	if err != nil {
 		ObserveStudyServiceDispatchAttempt("permanent_error", 0)
@@ -1899,6 +1946,22 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 		cancel()
 
 		if dispatchErr == nil {
+			if correlationErr := validateManualDispatchResponseCorrelation(dispatchRequest, dispatchResponse); correlationErr != nil {
+				ObserveStudyServiceDispatchAttempt("permanent_error", attemptDuration)
+				if persistErr := service.persistDispatchFailure(candidate.ID, correlationErr); persistErr != nil {
+					log.Printf("[Ingestion dispatch] cannot persist manual response correlation failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
+						candidate.ID, job.ID, requestID, persistErr,
+					)
+				}
+				attentionReasonCode := entity.InferenceIngestionProcessingRunAttentionDispatchFailed
+				if dispatchResponse.StatusCode == http.StatusAccepted {
+					attentionReasonCode = entity.InferenceIngestionProcessingRunAttentionStateConflict
+				}
+				service.recordFailedProcessingDispatchWithAttention(
+					ctx, candidate, job, dispatchRequest, correlationErr, attentionReasonCode,
+				)
+				return correlationErr
+			}
 			if recordErr := service.recordQueuedProcessingDispatch(ctx, candidate, job, dispatchRequest, dispatchResponse); recordErr != nil {
 				persistErr := fmt.Errorf("study-service accepted job but Go could not persist dispatch state: %w", recordErr)
 				ObserveStudyServiceDispatchAttempt("persistence_error", attemptDuration)
@@ -1990,6 +2053,24 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 	return nil
 }
 
+func validateManualDispatchResponseCorrelation(request types.DispatchStudyRequest, response types.DispatchStudyResponse) error {
+	if request.DispatchIntent != types.DispatchStudyIntentManualReprocess {
+		return nil
+	}
+
+	expectedRunID := trimmedPointerValue(request.ProcessingRunID)
+	expectedExecutionID := trimmedPointerValue(request.ProcessingExecutionID)
+	if strings.TrimSpace(response.JobID) == "" ||
+		expectedRunID == "" ||
+		expectedExecutionID == "" ||
+		trimmedPointerValue(response.ProcessingRunID) != expectedRunID ||
+		trimmedPointerValue(response.ProcessingExecutionID) != expectedExecutionID {
+		return errManualDispatchCorrelation
+	}
+
+	return nil
+}
+
 func (service *InferenceCommandService) recordKnownProcessingExecutionDispatchFailure(
 	ctx context.Context,
 	candidate entity.InferenceIngestionCandidate,
@@ -2028,10 +2109,17 @@ func (service *InferenceCommandService) recordKnownProcessingExecutionDispatchFa
 	}
 }
 
-func (service *InferenceCommandService) shouldDispatchCommittedProcessingExecution(ctx context.Context, candidate entity.InferenceIngestionCandidate, job entity.InferenceIngestionJob, processingRunID string) (bool, error) {
+func (service *InferenceCommandService) shouldDispatchCommittedProcessingExecution(
+	ctx context.Context,
+	candidate entity.InferenceIngestionCandidate,
+	job entity.InferenceIngestionJob,
+	processingRunID string,
+	processingExecutionID string,
+	dispatchIntent types.DispatchStudyIntent,
+) (bool, string, error) {
 	processingRunID = strings.TrimSpace(processingRunID)
 	if processingRunID == "" {
-		return true, nil
+		return true, "", nil
 	}
 
 	execution, err := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(
@@ -2042,10 +2130,16 @@ func (service *InferenceCommandService) shouldDispatchCommittedProcessingExecuti
 		strings.TrimSpace(job.ModelName),
 	)
 	if err != nil {
-		return false, fmt.Errorf("cannot dispatch execution outside committed processing run: %w", err)
+		return false, "", fmt.Errorf("cannot dispatch execution outside committed processing run: %w", err)
 	}
 
-	return execution.Status == entity.InferenceIngestionProcessingJobStatusPending, nil
+	committedExecutionID := strings.TrimSpace(execution.ID)
+	if dispatchIntent == types.DispatchStudyIntentManualReprocess &&
+		strings.TrimSpace(processingExecutionID) != committedExecutionID {
+		return false, committedExecutionID, errManualDispatchExecutionOwnership
+	}
+
+	return execution.Status == entity.InferenceIngestionProcessingJobStatusPending, committedExecutionID, nil
 }
 
 func (service *InferenceCommandService) persistDispatchFailure(candidateID string, dispatchErr error) error {
@@ -2139,6 +2233,24 @@ func (service *InferenceCommandService) markProcessingRunDispatchAttention(ctx c
 }
 
 func (service *InferenceCommandService) recordFailedProcessingDispatch(ctx context.Context, candidate entity.InferenceIngestionCandidate, job entity.InferenceIngestionJob, dispatchRequest types.DispatchStudyRequest, dispatchErr error) {
+	service.recordFailedProcessingDispatchWithAttention(
+		ctx,
+		candidate,
+		job,
+		dispatchRequest,
+		dispatchErr,
+		entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+	)
+}
+
+func (service *InferenceCommandService) recordFailedProcessingDispatchWithAttention(
+	ctx context.Context,
+	candidate entity.InferenceIngestionCandidate,
+	job entity.InferenceIngestionJob,
+	dispatchRequest types.DispatchStudyRequest,
+	dispatchErr error,
+	attentionReasonCode string,
+) {
 	if processingRunID := trimmedPointerValue(dispatchRequest.ProcessingRunID); processingRunID != "" {
 		existing, err := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(
 			ctx, candidate.TenantID, processingRunID, candidate.ID, job.ModelName,
@@ -2148,26 +2260,34 @@ func (service *InferenceCommandService) recordFailedProcessingDispatch(ctx conte
 				candidate.ID, processingRunID, job.ModelName, err)
 			return
 		}
-		if !existing.Status.CanTransitionTo(entity.InferenceIngestionProcessingJobStatusFailed) {
+		if existing.Status != entity.InferenceIngestionProcessingJobStatusPending {
 			return
 		}
-		if existing.Status != entity.InferenceIngestionProcessingJobStatusFailed {
-			if err := service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionProcessingJob(repositoryTypes.UpdateInferenceIngestionProcessingJob{
-				ID:           existing.ID,
-				Status:       entity.InferenceIngestionProcessingJobStatusFailed,
-				ModelVersion: nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
-				Modality:     nonEmptyStringPointer(strings.TrimSpace(dispatchRequest.Modality)),
-				ErrorMessage: stringPointer(dispatchErr.Error()),
-			}); err != nil {
-				log.Printf("[Ingestion dispatch] cannot update correlated failed execution candidate_id=%s processing_run_id=%s model_name=%s err=%v",
-					candidate.ID, processingRunID, job.ModelName, err)
-				return
-			}
+		transitioned, err := service.InferenceProcessingRunRepositoryInterface.FailPendingProcessingRunExecution(
+			ctx,
+			repositoryTypes.FailPendingInferenceIngestionProcessingJob{
+				ID:              existing.ID,
+				ProcessingRunID: processingRunID,
+				CandidateID:     candidate.ID,
+				TenantID:        candidate.TenantID,
+				ModelName:       job.ModelName,
+				ModelVersion:    nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
+				Modality:        nonEmptyStringPointer(strings.TrimSpace(dispatchRequest.Modality)),
+				ErrorMessage:    stringPointer(dispatchErr.Error()),
+			},
+		)
+		if err != nil {
+			log.Printf("[Ingestion dispatch] cannot update correlated failed execution candidate_id=%s processing_run_id=%s model_name=%s err=%v",
+				candidate.ID, processingRunID, job.ModelName, err)
+			return
+		}
+		if !transitioned {
+			return
 		}
 		if _, err := service.RecalculateStudyProcessingRun(ctx, types.RecalculateStudyProcessingRun{
 			TenantID: candidate.TenantID, ProcessingRunID: processingRunID,
 			AttentionReasonsToAdd: entity.InferenceIngestionProcessingRunAttentionReasons{{
-				Code: entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+				Code: attentionReasonCode,
 			}},
 		}); err != nil {
 			log.Printf("[Ingestion dispatch] cannot aggregate correlated failed execution candidate_id=%s processing_run_id=%s model_name=%s err=%v",
