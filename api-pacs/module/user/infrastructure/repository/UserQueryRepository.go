@@ -19,6 +19,57 @@ import (
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
 )
 
+// SelectUserPolicyAcceptances fetches only the exact versions needed for a
+// policy status decision, avoiding a cross-field Firestore query and ensuring
+// tenant/user isolation is part of each deterministic document key.
+func (repository *UserQueryRepository) SelectUserPolicyAcceptances(ctx context.Context, tenantID, userID string, policies []entity.PolicyReference) ([]entity.UserPolicyAcceptance, error) {
+	if len(policies) == 0 {
+		return []entity.UserPolicyAcceptance{}, nil
+	}
+
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	var model entity.UserPolicyAcceptance
+	refs := make([]*firestore.DocumentRef, 0, len(policies))
+	for _, policy := range policies {
+		acceptance := entity.UserPolicyAcceptance{
+			TenantID:  tenantID,
+			UserID:    userID,
+			PolicyKey: policy.PolicyKey,
+			Version:   policy.Version,
+		}
+		refs = append(refs, firestoreClient.Collection(model.GetModelName()).Doc(acceptance.DocumentID()))
+	}
+
+	snapshots, err := firestoreClient.GetAll(ctx, refs)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	acceptances := make([]entity.UserPolicyAcceptance, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		if !snapshot.Exists() {
+			continue
+		}
+		var acceptance entity.UserPolicyAcceptance
+		if err := snapshot.DataTo(&acceptance); err != nil {
+			log.Println(err)
+			return nil, errors.New(apiError.FirestoreError)
+		}
+		if acceptance.TenantID != tenantID || acceptance.UserID != userID {
+			log.Printf("[security] event=policy_acceptance_scope_mismatch tenant_id=%s user_id=%s", tenantID, userID)
+			return nil, errors.New(apiError.FirestoreError)
+		}
+		acceptances = append(acceptances, acceptance)
+	}
+	return acceptances, nil
+}
+
 // UserQueryRepository handles the user query repository logic
 type UserQueryRepository struct {
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK

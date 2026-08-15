@@ -96,6 +96,32 @@ func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUsers(ctx conte
 	}
 }
 
+// SelectUserPolicyAcceptances decorates exact-version policy acceptance reads.
+func (repository *UserQueryRepositoryCircuitBreaker) SelectUserPolicyAcceptances(ctx context.Context, tenantID, userID string, policies []entity.PolicyReference) ([]entity.UserPolicyAcceptance, error) {
+	output := make(chan []entity.UserPolicyAcceptance, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_user_policy_acceptances", config.Settings())
+	errors := hystrix.Go("select_user_policy_acceptances", func() error {
+		acceptances, err := repository.UserQueryRepositoryInterface.SelectUserPolicyAcceptances(ctx, tenantID, userID, policies)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+		output <- acceptances
+		return nil
+	}, nil)
+
+	select {
+	case out := <-output:
+		return out, nil
+	case err := <-errChan:
+		return nil, err
+	case err := <-errors:
+		return nil, err
+	}
+}
+
 // SelectTenantUserEmailInviteByEmail is a decorator for the get tenant user email invite by email
 func (repository *UserQueryRepositoryCircuitBreaker) SelectTenantUserEmailInviteByEmail(ctx context.Context, tenantID, email string) (entity.UserEmailInvite, error) {
 	output := make(chan entity.UserEmailInvite, 1)

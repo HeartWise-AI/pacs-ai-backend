@@ -6,6 +6,7 @@ import (
 	"github.com/afex/hystrix-go/hystrix"
 
 	hystrix_config "api-pacs/configs/hystrix"
+	"api-pacs/module/user/domain/entity"
 	"api-pacs/module/user/domain/repository"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
 )
@@ -95,6 +96,31 @@ func (repository *UserCommandRepositoryCircuitBreaker) InsertTenantUser(ctx cont
 		return "", err
 	case err := <-errors:
 		return "", err
+	}
+}
+
+// InsertUserPolicyAcceptances decorates append-only policy acceptance persistence.
+func (repository *UserCommandRepositoryCircuitBreaker) InsertUserPolicyAcceptances(ctx context.Context, acceptances []entity.UserPolicyAcceptance) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("insert_user_policy_acceptances", config.Settings())
+	errors := hystrix.Go("insert_user_policy_acceptances", func() error {
+		if err := repository.UserCommandRepositoryInterface.InsertUserPolicyAcceptances(ctx, acceptances); err != nil {
+			errChan <- err
+			return nil
+		}
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
 	}
 }
 

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 
+	"api-pacs/module/user/domain/entity"
 	repositoryTypes "api-pacs/module/user/infrastructure/repository/types"
 )
 
@@ -13,6 +14,8 @@ type UserCommandRepositoryInterface interface {
 	DeleteTenantUserEmailInvite(ctx context.Context, ID string) error
 	// InsertTenantUser inserts a tenant user and returns the inserted ID
 	InsertTenantUser(ctx context.Context, data repositoryTypes.CreateTenantUser) (string, error)
+	// InsertUserPolicyAcceptances creates immutable, idempotent policy acceptance records.
+	InsertUserPolicyAcceptances(ctx context.Context, acceptances []entity.UserPolicyAcceptance) error
 	// GenerateTenantUserEmailVerificationLink generates a Firebase email verification link
 	GenerateTenantUserEmailVerificationLink(ctx context.Context, tenantID, email string) (string, error)
 	// InsertTenantUserEmailInvite inserts a tenant user email invite

@@ -222,6 +222,63 @@ func (repository *UserCommandRepository) InsertTenantUser(ctx context.Context, d
 	return userID, nil
 }
 
+// InsertUserPolicyAcceptances atomically creates append-only acceptance records.
+// Deterministic document IDs make retries idempotent without overwriting history.
+func (repository *UserCommandRepository) InsertUserPolicyAcceptances(ctx context.Context, acceptances []entity.UserPolicyAcceptance) error {
+	if len(acceptances) == 0 {
+		return nil
+	}
+
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	var model entity.UserPolicyAcceptance
+	err = firestoreClient.RunTransaction(ctx, func(ctx context.Context, transaction *firestore.Transaction) error {
+		type pendingAcceptance struct {
+			ref        *firestore.DocumentRef
+			acceptance entity.UserPolicyAcceptance
+		}
+		pending := make([]pendingAcceptance, 0, len(acceptances))
+
+		// Firestore requires every transaction read to happen before its first write.
+		for _, acceptance := range acceptances {
+			ref := firestoreClient.Collection(model.GetModelName()).Doc(acceptance.DocumentID())
+			snapshot, getErr := transaction.Get(ref)
+			if getErr == nil {
+				var existing entity.UserPolicyAcceptance
+				if dataErr := snapshot.DataTo(&existing); dataErr != nil {
+					return dataErr
+				}
+				if existing.TenantID != acceptance.TenantID || existing.UserID != acceptance.UserID ||
+					existing.PolicyKey != acceptance.PolicyKey || existing.Version != acceptance.Version {
+					return errors.New("policy acceptance document identity mismatch")
+				}
+				continue
+			}
+			if status.Code(getErr) != codes.NotFound {
+				return getErr
+			}
+			pending = append(pending, pendingAcceptance{ref: ref, acceptance: acceptance})
+		}
+
+		for _, item := range pending {
+			if createErr := transaction.Create(item.ref, item.acceptance); createErr != nil {
+				return createErr
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
 func (repository *UserCommandRepository) tenantUserCreatorFor(ctx context.Context, tenantID string) (tenantUserCreator, error) {
 	if repository.userCreator != nil {
 		return repository.userCreator, nil
