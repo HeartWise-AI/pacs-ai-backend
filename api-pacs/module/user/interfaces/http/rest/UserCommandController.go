@@ -35,6 +35,7 @@ const maxPublicRegistrationBodyBytes = 16 << 10
 
 // AcceptPolicies records acceptance of every current required policy version.
 func (controller *UserCommandController) AcceptPolicies(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	var request types.AcceptPoliciesRequest
 	r.Body = http.MaxBytesReader(w, r.Body, maxPublicRegistrationBodyBytes)
 	decoder := json.NewDecoder(r.Body)

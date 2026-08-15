@@ -23,6 +23,7 @@ type UserQueryController struct {
 
 // GetRegistrationPolicies returns current deployment-owned policy metadata.
 func (controller *UserQueryController) GetRegistrationPolicies(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	tenantID := strings.TrimSpace(r.URL.Query().Get("tenantId"))
 	if tenantID == "" || len(tenantID) > 128 {
 		response := viewmodels.HTTPResponseVM{Status: http.StatusBadRequest, Success: false, Message: "A valid tenant ID is required.", ErrorCode: errors.InvalidPayload}
@@ -54,6 +55,7 @@ func (controller *UserQueryController) GetTenantUserPolicyStatus(w http.Response
 }
 
 func (controller *UserQueryController) getPolicyStatus(w http.ResponseWriter, r *http.Request, tenantID, userID string) {
+	w.Header().Set("Cache-Control", "no-store")
 	if userID == "" || len(userID) > 128 {
 		response := viewmodels.HTTPResponseVM{Status: http.StatusBadRequest, Success: false, Message: "A valid user ID is required.", ErrorCode: errors.InvalidPayload}
 		response.JSON(w)
