@@ -273,13 +273,21 @@ Update `api-pacs/.env` with the following variables:
 | `API_URL_REST_PORT`         | Should be set to `8000` (do not change)                                                                                   |
 | `APP_TIMEZONE`              | Deployment timezone for API logs, ingestion windows, and PostgreSQL sessions (default: `America/Toronto`)                |
 | `APP_URL`                   | Should be set to `http://localhost:3000`                                                                                  |
-| `CLOUDFLARE_SECRET_KEY`    | Server-side Turnstile secret key; required when public registration is enabled                                            |
+| `CLOUDFLARE_SECRET_KEY`    | Server-side Turnstile secret key; required for public registration and adaptive login challenges                           |
 | `CLOUDFLARE_TURNSTILE_BASE_URL` | Turnstile verification base URL; set to `https://challenges.cloudflare.com/turnstile/v0`                             |
 | `REGISTRATION_RATE_LIMIT_WINDOW_SECONDS` | Registration counter window; defaults to `600` seconds                                                        |
 | `REGISTRATION_RATE_LIMIT_TENANT_ATTEMPTS` | Maximum attempts per tenant and window; defaults to `100`                                                   |
 | `REGISTRATION_RATE_LIMIT_EMAIL_ATTEMPTS` | Maximum attempts per normalized email and tenant; defaults to `5`                                             |
 | `REGISTRATION_RATE_LIMIT_IP_ATTEMPTS` | Maximum attempts per trusted client IP and tenant; defaults to `10`                                                |
 | `REGISTRATION_TRUSTED_PROXY_CIDRS` | Comma-separated direct-proxy CIDRs allowed to supply `X-Real-IP`; leave empty for direct access                    |
+| `FIREBASE_WEB_API_KEY` | Firebase Web API key used by api-pacs for tenant-aware `signInWithPassword`; restrict it to the Identity Toolkit API              |
+| `LOGIN_ABUSE_PROTECTION_ENABLED` | Enables Redis-backed adaptive login protection; defaults to `true`; emergency-only disable emits a warning                 |
+| `LOGIN_FAILURE_WINDOW_SECONDS` | Fixed login failure window; defaults to `600` seconds                                                                        |
+| `LOGIN_ACCOUNT_CHALLENGE_FAILURES` | Account failures before Turnstile is required; defaults to `3`; account scope never hard-locks                 |
+| `LOGIN_IP_CHALLENGE_FAILURES` / `LOGIN_IP_MAX_FAILURES` | IP challenge/hard-limit thresholds; defaults to `5` / `30`                                  |
+| `LOGIN_TENANT_CHALLENGE_FAILURES` / `LOGIN_TENANT_MAX_FAILURES` | Tenant challenge/hard-limit thresholds; defaults to `50` / `500`                  |
+| `LOGIN_TURNSTILE_ALLOWED_HOSTNAMES` | Comma-separated exact frontend hostnames accepted for the login action                                             |
+| `LOGIN_TRUSTED_PROXY_CIDRS` | Comma-separated direct-proxy CIDRs allowed to supply login `X-Real-IP`; leave empty for direct access                         |
 | `INFERENCE_USER_QUOTA_WINDOW_SECONDS` | Per-user fixed quota window; defaults to `86400` seconds                                                        |
 | `INFERENCE_USER_QUOTA_ALLOWANCE` | Maximum accepted user-triggered inference units per window; defaults to `50`                                      |
 | `INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS` | Maximum active direct predictions or manual reprocessing runs per tenant/user; defaults to `2`           |
@@ -318,6 +326,14 @@ Update `api-pacs/.env` with the following variables:
 | `REDIS_PORT`                | Should be set to `6379` (do not change)                                                                                   |
 | `REDIS_PASSWORD`            | Should be set to `pacs.staging` (requires update in `redis/redis.conf` if changed)                                        |
 | `REDIS_IAM_DB`              | Should be set to `1` (do not change)                                                                                      |
+
+Outside local development, expose the password-bearing `/v1/iam/login`
+endpoint only through HTTPS/TLS. The bundled Nginx TLS listener is the intended
+public boundary; its plain HTTP hop to api-pacs must remain private to the
+Docker network. Production Compose binds direct api-pacs host access to
+`127.0.0.1` for local diagnostics only. A different TLS-terminating proxy
+requires an explicit Compose override; never publish port 8000 externally as
+plain HTTP.
 
 #### Database Migrations
 

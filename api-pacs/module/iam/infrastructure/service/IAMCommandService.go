@@ -10,18 +10,23 @@ import (
 
 	"github.com/segmentio/ksuid"
 
+	cloudflareAPITypes "api-pacs/infrastructures/providers/api/cloudflare/types"
+	identitytoolkit "api-pacs/infrastructures/providers/api/identitytoolkit"
+	identitytoolkitTypes "api-pacs/infrastructures/providers/api/identitytoolkit/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	"api-pacs/infrastructures/providers/sdk/mailgun"
 	mailgunTypes "api-pacs/infrastructures/providers/sdk/mailgun/types"
 	apiError "api-pacs/internal/errors"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
+	iamApplication "api-pacs/module/iam/application"
 	"api-pacs/module/iam/domain/entity"
 	"api-pacs/module/iam/domain/repository"
 	repositoryTypes "api-pacs/module/iam/infrastructure/repository/types"
 	"api-pacs/module/iam/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
 	userApplication "api-pacs/module/user/application"
+	userServiceTypes "api-pacs/module/user/infrastructure/service/types"
 )
 
 // IAMCommandService handles the IAM command service logic
@@ -30,8 +35,13 @@ type IAMCommandService struct {
 	userApplication.UserQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	tenantApplication.TenantQueryServiceInterface
-	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
-	MailgunSDK       *mailgun.MailgunSDK
+	FirebaseAdminSDK               *firebaseadmin.FirebaseAdminSDK
+	TenantIDTokenVerifierInterface firebaseadmin.TenantIDTokenVerifierInterface
+	IdentityToolkitAPIInterface    identitytoolkitTypes.IdentityToolkitAPIInterface
+	LoginTurnstileAPIInterface     cloudflareAPITypes.LoginTurnstileAPIInterface
+	LoginAbuseProtectionInterface  iamApplication.LoginAbuseProtectionInterface
+	LoginTurnstileAllowedHostnames map[string]struct{}
+	MailgunSDK                     *mailgun.MailgunSDK
 }
 
 // ForgotTenantUserPassword forgot password
@@ -87,60 +97,229 @@ func (service *IAMCommandService) ForgotTenantUserPassword(ctx context.Context, 
 	return nil
 }
 
-// LoginTenantUser login tenant user by tenant
-func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID, idToken string) (string, error) {
-	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
-	if err != nil {
-		log.Println(err)
-		return "", errors.New(apiError.FirebaseAuthError)
+// LoginTenantUser authenticates credentials through Identity Platform and only
+// creates a PACS session after the server-owned adaptive policy is satisfied.
+func (service *IAMCommandService) LoginTenantUser(ctx context.Context, data types.LoginTenantUser) (string, error) {
+	data.TenantID = strings.TrimSpace(data.TenantID)
+	data.Email = normalizedLoginEmail(data.Email)
+	data.TurnstileToken = strings.TrimSpace(data.TurnstileToken)
+	signals := types.LoginAbuseSignals{
+		TenantID: data.TenantID,
+		Email:    data.Email,
+		ClientIP: strings.TrimSpace(data.ClientIP),
 	}
 
-	// tenant auth
-	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
+	decision, err := service.evaluateLoginAttempt(ctx, signals)
 	if err != nil {
-		log.Println(err)
-		return "", errors.New(apiError.FirebaseAuthError)
+		return "", newLoginError(apiError.LoginProtectionUnavailable, false, 0)
+	}
+	if decision.RetryAfter > 0 {
+		return "", newLoginRateLimitError(decision.RetryAfter)
+	}
+	if decision.ChallengeRequired {
+		if data.TurnstileToken == "" {
+			log.Printf("[security] event=login_challenge_required tenant_id=%s", data.TenantID)
+			return "", service.handleDeniedLogin(ctx, signals, apiError.LoginChallengeRequired)
+		}
+		if err := service.validateLoginTurnstile(ctx, data.TurnstileToken, signals); err != nil {
+			return "", err
+		}
 	}
 
-	authToken, err := tenantAuth.VerifyIDToken(ctx, idToken)
+	if service.IdentityToolkitAPIInterface == nil {
+		log.Printf("[security] event=login_identity_provider_unavailable reason=not_configured")
+		return "", newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
+	}
+	signInResponse, err := service.IdentityToolkitAPIInterface.SignInWithPassword(ctx, identitytoolkitTypes.SignInWithPasswordRequest{
+		TenantID: data.TenantID,
+		Email:    data.Email,
+		Password: data.Password,
+	})
 	if err != nil {
-		log.Println(err)
-		return "", errors.New(apiError.UnauthorizedAccess)
+		if errors.Is(err, identitytoolkit.ErrCredentialsRejected) {
+			return "", service.handleRejectedLogin(ctx, signals)
+		}
+		log.Printf("[security] event=login_identity_provider_unavailable")
+		return "", newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
+	}
+	if service.TenantIDTokenVerifierInterface == nil {
+		log.Printf("[security] event=login_identity_provider_unavailable reason=verifier_not_configured")
+		return "", newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
+	}
+	userID, err := service.TenantIDTokenVerifierInterface.VerifyTenantIDToken(ctx, data.TenantID, signInResponse.IDToken)
+	if err != nil || userID == "" || userID != signInResponse.LocalID {
+		log.Printf("[security] event=login_identity_token_verification_failed tenant_id=%s", data.TenantID)
+		return "", newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
+	}
+	if normalizedLoginEmail(signInResponse.Email) != data.Email {
+		log.Printf("[security] event=login_identity_mismatch tenant_id=%s", data.TenantID)
+		return "", newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
 	}
 
-	// persist to token session cache
-	sessionToken := generateID()
-
-	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, tenantID, authToken.UID)
+	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, userID)
 	if err != nil {
-		return "", err
+		log.Printf("[security] event=login_user_profile_unavailable tenant_id=%s", data.TenantID)
+		return "", newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
 	}
 	if !user.IsEmailVerified && !user.IsAdminCreated {
-		return "", errors.New(apiError.FirebaseAuthEmailNotVerified)
+		return "", newLoginError(apiError.FirebaseAuthEmailNotVerified, decision.ChallengeRequired, 0)
 	}
 	if user.IsAccountDisabled || user.AccessState == "SUSPENDED" {
-		return "", errors.New(apiError.AccountSuspended)
+		return "", newLoginError(apiError.AccountSuspended, decision.ChallengeRequired, 0)
 	}
 
+	sessionToken := generateID()
 	err = service.SetTokenSession(ctx, types.SetTokenSession{
 		SessionID:           sessionToken,
-		TenantID:            tenantID,
+		TenantID:            data.TenantID,
 		UserID:              user.ID,
 		Role:                user.Role,
 		ExpireTimeInSeconds: entity.ExpireTimeInSeconds,
 	})
 	if err != nil {
-		return "", err
+		if err.Error() == apiError.AccountSuspended {
+			return "", newLoginError(apiError.AccountSuspended, decision.ChallengeRequired, 0)
+		}
+		return "", newLoginError(apiError.LoginProtectionUnavailable, decision.ChallengeRequired, 0)
+	}
+	if err := service.resetLoginAccountFailures(ctx, signals); err != nil {
+		if rollbackErr := service.IAMCommandRepositoryInterface.DeleteTokenSession(sessionToken); rollbackErr != nil {
+			log.Printf("[security] event=login_session_rollback_failed tenant_id=%s", data.TenantID)
+		}
+		return "", newLoginError(apiError.LoginProtectionUnavailable, decision.ChallengeRequired, 0)
 	}
 
-	// log to elasticsearch
+	service.logSuccessfulLogin(ctx, sessionToken, data.TenantID, user)
+	log.Printf("[security] event=login_success tenant_id=%s challenged=%t", data.TenantID, decision.ChallengeRequired)
+	return sessionToken, nil
+}
+
+func (service *IAMCommandService) evaluateLoginAttempt(ctx context.Context, signals types.LoginAbuseSignals) (types.LoginProtectionDecision, error) {
+	if service.LoginAbuseProtectionInterface == nil {
+		log.Printf("[security] event=login_protection_unavailable operation=evaluate reason=not_configured")
+		return types.LoginProtectionDecision{}, errors.New(apiError.LoginProtectionUnavailable)
+	}
+	return service.LoginAbuseProtectionInterface.EvaluateLoginAttempt(ctx, signals)
+}
+
+func (service *IAMCommandService) handleRejectedLogin(ctx context.Context, signals types.LoginAbuseSignals) error {
+	if service.LoginAbuseProtectionInterface == nil {
+		return newLoginError(apiError.LoginProtectionUnavailable, false, 0)
+	}
+	decision, err := service.LoginAbuseProtectionInterface.RecordLoginFailure(ctx, signals)
+	if err != nil {
+		return newLoginError(apiError.LoginProtectionUnavailable, false, 0)
+	}
+	log.Printf("[security] event=login_credentials_rejected tenant_id=%s challenge_required=%t rate_limited=%t",
+		signals.TenantID, decision.ChallengeRequired, decision.RetryAfter > 0)
+	if decision.RetryAfter > 0 {
+		return newLoginRateLimitError(decision.RetryAfter)
+	}
+	return newLoginError(apiError.UnauthorizedAccess, decision.ChallengeRequired, 0)
+}
+
+func (service *IAMCommandService) handleDeniedLogin(ctx context.Context, signals types.LoginAbuseSignals, originalCode string) error {
+	if service.LoginAbuseProtectionInterface == nil {
+		return newLoginError(apiError.LoginProtectionUnavailable, true, 0)
+	}
+	decision, err := service.LoginAbuseProtectionInterface.RecordLoginFailure(ctx, signals)
+	if err != nil {
+		return newLoginError(apiError.LoginProtectionUnavailable, true, 0)
+	}
+	if decision.RetryAfter > 0 {
+		return newLoginRateLimitError(decision.RetryAfter)
+	}
+	return newLoginError(originalCode, true, 0)
+}
+
+func (service *IAMCommandService) validateLoginTurnstile(ctx context.Context, token string, signals types.LoginAbuseSignals) error {
+	if service.LoginTurnstileAPIInterface == nil || len(service.LoginTurnstileAllowedHostnames) == 0 {
+		log.Printf("[security] event=login_turnstile_unavailable reason=not_configured")
+		return newLoginError(apiError.CloudflareAPIError, true, 0)
+	}
+	response, err := service.LoginTurnstileAPIInterface.ValidateTurnstileTokenWithRemoteIP(ctx, token, signals.ClientIP)
+	if err != nil {
+		log.Printf("[security] event=login_turnstile_unavailable reason=provider")
+		return newLoginError(apiError.CloudflareAPIError, true, 0)
+	}
+	if !response.Success {
+		if isLoginTurnstileProviderFailure(response.ErrorCodes) {
+			log.Printf("[security] event=login_turnstile_unavailable reason=provider_response")
+			return newLoginError(apiError.CloudflareAPIError, true, 0)
+		}
+		log.Printf("[security] event=login_turnstile_rejected reason=invalid")
+		return service.handleDeniedLogin(ctx, signals, apiError.TurnstileInvalid)
+	}
+	if response.Action != "login" {
+		log.Printf("[security] event=login_turnstile_rejected reason=action_mismatch")
+		return service.handleDeniedLogin(ctx, signals, apiError.TurnstileInvalid)
+	}
+	hostname := strings.ToLower(strings.TrimSpace(response.Hostname))
+	if _, allowed := service.LoginTurnstileAllowedHostnames[hostname]; !allowed {
+		log.Printf("[security] event=login_turnstile_rejected reason=hostname_mismatch")
+		return service.handleDeniedLogin(ctx, signals, apiError.TurnstileInvalid)
+	}
+	return nil
+}
+
+func isLoginTurnstileProviderFailure(errorCodes []string) bool {
+	for _, errorCode := range errorCodes {
+		switch errorCode {
+		case "missing-input-secret", "invalid-input-secret", "bad-request", "internal-error":
+			return true
+		}
+	}
+	return false
+}
+
+func (service *IAMCommandService) resetLoginAccountFailures(ctx context.Context, signals types.LoginAbuseSignals) error {
+	if service.LoginAbuseProtectionInterface == nil {
+		return errors.New(apiError.LoginProtectionUnavailable)
+	}
+	return service.LoginAbuseProtectionInterface.ResetAccountFailures(ctx, signals)
+}
+
+func newLoginError(code string, challengeRequired bool, retryAfterSeconds int) error {
+	return &apiError.LoginError{
+		Code:              code,
+		ChallengeRequired: challengeRequired,
+		RetryAfterSeconds: retryAfterSeconds,
+	}
+}
+
+func newLoginRateLimitError(retryAfter time.Duration) error {
+	retryAfterSeconds := int(retryAfter / time.Second)
+	if retryAfter%time.Second != 0 {
+		retryAfterSeconds++
+	}
+	return newLoginError(apiError.LoginRateLimited, true, retryAfterSeconds)
+}
+
+func LoginTurnstileAllowedHostnamesFromEnvironment(value string) map[string]struct{} {
+	hostnames := make(map[string]struct{})
+	for _, hostname := range strings.Split(value, ",") {
+		hostname = strings.ToLower(strings.TrimSpace(hostname))
+		if hostname != "" {
+			hostnames[hostname] = struct{}{}
+		}
+	}
+	return hostnames
+}
+
+func (service *IAMCommandService) logSuccessfulLogin(ctx context.Context, sessionToken, tenantID string, user userServiceTypes.GetTenantUser) {
+	if service.TenantQueryServiceInterface == nil || service.ElasticsearchCommandServiceInterface == nil {
+		return
+	}
+	auditContext := context.WithoutCancel(ctx)
 	go func() {
-		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, tenantID)
+		auditContext, cancel := context.WithTimeout(auditContext, 10*time.Second)
+		defer cancel()
+
+		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(auditContext, tenantID)
 		if err != nil {
 			return
 		}
-
-		_, err = service.ElasticsearchCommandServiceInterface.CreateLoginLog(ctx, elasticsearchTypes.CreateLoginLog{
+		_, err = service.ElasticsearchCommandServiceInterface.CreateLoginLog(auditContext, elasticsearchTypes.CreateLoginLog{
 			SessionID:  sessionToken,
 			TenantID:   tenantID,
 			TenantName: tenant.Name,
@@ -152,11 +331,8 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, tenantID,
 		})
 		if err != nil {
 			log.Println(err)
-			return
 		}
 	}()
-
-	return sessionToken, nil
 }
 
 func (service *IAMCommandService) SetUserSuspended(_ context.Context, tenantID, userID string) (bool, error) {

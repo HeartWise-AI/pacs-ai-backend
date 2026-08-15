@@ -29,6 +29,7 @@ import (
 	"api-pacs/infrastructures/providers/api/dockerinference"
 	"api-pacs/infrastructures/providers/api/docusign"
 	docusignTypes "api-pacs/infrastructures/providers/api/docusign/types"
+	"api-pacs/infrastructures/providers/api/identitytoolkit"
 	"api-pacs/infrastructures/providers/api/kibana"
 	"api-pacs/infrastructures/providers/api/mailchimp"
 	mailchimpTypes "api-pacs/infrastructures/providers/api/mailchimp/types"
@@ -38,6 +39,7 @@ import (
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
 	"api-pacs/infrastructures/providers/sdk/mailgun"
 	mailgunTypes "api-pacs/infrastructures/providers/sdk/mailgun/types"
+	"api-pacs/interfaces/http/rest/clientip"
 	iamMiddleware "api-pacs/interfaces/http/rest/middlewares/iam"
 	dockerInferenceProxy "api-pacs/interfaces/http/rest/proxies/dockerinference"
 	orthancProxy "api-pacs/interfaces/http/rest/proxies/orthanc"
@@ -103,6 +105,7 @@ var (
 	kibanaAPI                  *kibana.KibanaAPI
 	mailchimpAPI               *mailchimp.MailchimpAPI
 	cloudflareAPI              *cloudflare.CloudflareAPI
+	identityToolkitAPI         *identitytoolkit.IdentityToolkitAPI
 	mailgunSDK                 *mailgun.MailgunSDK
 	dockerSDK                  *docker.DockerSDK
 	dockerInferenceAPI         *dockerinference.DockerInferenceAPI
@@ -172,9 +175,14 @@ func (k *kernel) RegisterElasticsearchRESTQueryController() elasticsearchREST.El
 // RegisterIAMRESTCommandController performs dependency injection to the RegisterIAMRESTCommandController
 func (k *kernel) RegisterIAMRESTCommandController() iamREST.IAMCommandController {
 	service := k.iamCommandServiceContainer()
+	trustedProxyCIDRs, err := clientip.ParseTrustedProxyCIDRs(os.Getenv("LOGIN_TRUSTED_PROXY_CIDRS"))
+	if err != nil {
+		log.Printf("[security] event=login_trusted_proxy_config_invalid err=%v", err)
+	}
 
 	controller := iamREST.IAMCommandController{
 		IAMCommandServiceInterface: service,
+		TrustedProxyCIDRs:          trustedProxyCIDRs,
 	}
 
 	return controller
@@ -429,7 +437,17 @@ func (k *kernel) iamCommandServiceContainer() *iamService.IAMCommandService {
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		FirebaseAdminSDK:                     firebaseAdminSDK,
-		MailgunSDK:                           mailgunSDK,
+		TenantIDTokenVerifierInterface:       firebaseAdminSDK,
+		IdentityToolkitAPIInterface:          identityToolkitAPI,
+		LoginTurnstileAPIInterface:           cloudflareAPI,
+		LoginAbuseProtectionInterface: &iamService.RedisLoginAbuseProtection{
+			RedisDBHandlerInterface: redisIAMDBHandler,
+			Config:                  iamService.LoginAbuseProtectionConfigFromEnvironment(),
+		},
+		LoginTurnstileAllowedHostnames: iamService.LoginTurnstileAllowedHostnamesFromEnvironment(
+			os.Getenv("LOGIN_TURNSTILE_ALLOWED_HOSTNAMES"),
+		),
+		MailgunSDK: mailgunSDK,
 	}
 
 	return service
@@ -677,6 +695,9 @@ func registerHandlers() {
 
 	// init cloudflare API
 	cloudflareAPI = cloudflare.Init(os.Getenv("CLOUDFLARE_SECRET_KEY"))
+
+	// init Firebase Identity Toolkit password authentication API
+	identityToolkitAPI = identitytoolkit.Init(os.Getenv("FIREBASE_WEB_API_KEY"))
 
 	// init mailgun sdk
 	mailgunSDK, err = mailgun.NewMailgun(mailgunTypes.Config{

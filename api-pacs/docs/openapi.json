@@ -170,7 +170,7 @@
       "post": {
         "tags": ["iam"],
         "summary": "Login Tenant User",
-        "description": "Login tenant user.",
+        "description": "Authenticates tenant email/password through Firebase on the server. The server may require a single-use Turnstile token with action login and an approved hostname after suspicious failures. Outside local development, this password-bearing endpoint must be served only through HTTPS/TLS.",
         "requestBody": {
           "description": "Login tenant user request",
           "content": {
@@ -183,14 +183,32 @@
           "required": true
         },
         "responses": {
-          "2xx": {
-            "description": "Success"
+          "201": {
+            "description": "PACS session created"
           },
-          "4xx": {
-            "description": "Client side errors"
+          "400": {
+            "description": "Invalid request payload"
           },
-          "5xx": {
-            "description": "Server side errors"
+          "401": {
+            "description": "Generic authentication failure, or verified account email is not confirmed. data.challengeRequired indicates whether the next attempt needs Turnstile."
+          },
+          "403": {
+            "description": "LOGIN_CHALLENGE_REQUIRED, TURNSTILE_INVALID, or a verified suspended account"
+          },
+          "429": {
+            "description": "LOGIN_RATE_LIMITED. Retry timing is an integer number of seconds.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the longest breached login counter expires.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Firebase, Turnstile, or Redis login protection is unavailable. Login fails closed."
           }
         }
       }
@@ -3021,14 +3039,28 @@
         }
       },
       "LoginTenantUserRequest": {
-        "required": ["tenantId", "idToken"],
+        "required": ["tenantId", "email", "password"],
         "type": "object",
         "properties": {
           "tenantId": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 128
           },
-          "idToken": {
-            "type": "string"
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 256
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "maxLength": 4096,
+            "writeOnly": true
+          },
+          "turnstileToken": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Single-use Turnstile token. Omit until the server returns LOGIN_CHALLENGE_REQUIRED or data.challengeRequired=true."
           }
         }
       },
