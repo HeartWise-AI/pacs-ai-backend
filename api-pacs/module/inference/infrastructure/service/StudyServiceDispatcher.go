@@ -31,6 +31,16 @@ type DispatchStudyHTTPError struct {
 	RetryAfter time.Duration
 }
 
+// StudyServiceLookupHTTPError describes an operator lookup failure without
+// retaining the upstream response body, which may contain sensitive data.
+type StudyServiceLookupHTTPError struct {
+	StatusCode int
+}
+
+func (err *StudyServiceLookupHTTPError) Error() string {
+	return fmt.Sprintf("study-service lookup failed with status %d", err.StatusCode)
+}
+
 func (err *DispatchStudyHTTPError) Error() string {
 	body := strings.TrimSpace(err.Body)
 	if body == "" {
@@ -181,15 +191,7 @@ func (service *StudyServiceDispatcher) GetJobByID(
 		return serviceTypes.StudyServiceJob{}, false, nil
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		body, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			return serviceTypes.StudyServiceJob{}, false, readErr
-		}
-		return serviceTypes.StudyServiceJob{}, false, fmt.Errorf(
-			"study-service job lookup failed with status %d: %s",
-			resp.StatusCode,
-			strings.TrimSpace(string(body)),
-		)
+		return serviceTypes.StudyServiceJob{}, false, &StudyServiceLookupHTTPError{StatusCode: resp.StatusCode}
 	}
 
 	var job serviceTypes.StudyServiceJob
