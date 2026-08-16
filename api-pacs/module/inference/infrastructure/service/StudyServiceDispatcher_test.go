@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -330,6 +331,7 @@ func TestStudyServiceDispatcherGetJobByID(t *testing.T) {
 			"processing_run_id":  "run-1",
 			"model_name":         "EchoPrime",
 			"status":             "running",
+			"result_json":        map[string]any{"must_be_discarded": true},
 		}); err != nil {
 			t.Fatalf("encode response: %v", err)
 		}
@@ -360,6 +362,53 @@ func TestStudyServiceDispatcherGetJobByID(t *testing.T) {
 	}
 	if gotHeaders.Get("X-Request-ID") == "" {
 		t.Fatal("expected X-Request-ID header")
+	}
+}
+
+func TestStudyServiceDispatcherGetJobResultByIDDecodesOpaqueResultOnlyOnDemand(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"job_id":             "python-job-123",
+			"study_instance_uid": "1.2.3",
+			"status":             "completed",
+			"result_json":        map[string]any{"score": 24.5},
+		})
+	}))
+	defer server.Close()
+
+	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceClient: server.Client()}
+	job, found, err := dispatcher.GetJobResultByID(context.Background(), "tenant-a", "python-job-123")
+
+	if err != nil || !found {
+		t.Fatalf("GetJobResultByID returned found=%t error=%v", found, err)
+	}
+	if string(job.ResultJSON) != `{"score":24.5}` {
+		t.Fatalf("unexpected opaque result JSON: %s", job.ResultJSON)
+	}
+}
+
+func TestStudyServiceDispatcherGetJobByIDDoesNotRetainUpstreamErrorBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"detail":"patient-sensitive upstream failure"}`))
+	}))
+	defer server.Close()
+
+	dispatcher := &StudyServiceDispatcher{
+		StudyServiceBaseURL: server.URL,
+		StudyServiceClient:  server.Client(),
+	}
+	_, _, err := dispatcher.GetJobResultByID(context.Background(), "tenant-a", "python-job-123")
+
+	var lookupError *StudyServiceLookupHTTPError
+	if !errors.As(err, &lookupError) {
+		t.Fatalf("expected safe lookup error, got %T: %v", err, err)
+	}
+	if lookupError.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("unexpected status: %d", lookupError.StatusCode)
+	}
+	if strings.Contains(err.Error(), "patient-sensitive") {
+		t.Fatalf("upstream response body leaked into error: %v", err)
 	}
 }
 

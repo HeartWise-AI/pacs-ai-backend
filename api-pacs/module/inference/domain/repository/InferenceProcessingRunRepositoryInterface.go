@@ -47,6 +47,8 @@ type InferenceProcessingRunRepositoryInterface interface {
 	ListProcessingRunExecutionsByRunIDs(ctx context.Context, data types.ListInferenceIngestionProcessingRunExecutions) ([]entity.InferenceIngestionProcessingJob, error)
 	// SelectProcessingRunExecution returns one exact tenant/run/candidate/model execution.
 	SelectProcessingRunExecution(ctx context.Context, tenantID, processingRunID, candidateID, modelName string) (entity.InferenceIngestionProcessingJob, error)
+	// SelectProcessingRunExecutionByID returns one exact tenant/run/execution match.
+	SelectProcessingRunExecutionByID(ctx context.Context, tenantID, processingRunID, executionID string) (entity.InferenceIngestionProcessingJob, error)
 	// UpdateProcessingRunAggregate applies an optimistic versioned aggregate update.
 	UpdateProcessingRunAggregate(ctx context.Context, data types.UpdateInferenceIngestionProcessingRunAggregate) (entity.InferenceIngestionProcessingRun, error)
 }

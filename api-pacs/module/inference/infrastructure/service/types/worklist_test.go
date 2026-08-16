@@ -79,6 +79,37 @@ func TestProcessingRunDetailContractExcludesPythonResults(t *testing.T) {
 	require.NotContains(t, string(payload), "tenantId")
 }
 
+func TestProcessingRunExecutionResultContractKeepsModelPayloadOpaque(t *testing.T) {
+	modelVersion := "1.0.0"
+	result := ProcessingRunExecutionResult{
+		RunID:            "run-1",
+		ExecutionID:      "execution-1",
+		StudyInstanceUID: "1.2.3",
+		ModelName:        "CardioSyntax",
+		ModelVersion:     &modelVersion,
+		Status:           entity.InferenceIngestionProcessingJobStatusCompleted,
+		CompletedAt:      time.Date(2026, 8, 11, 14, 30, 0, 0, time.UTC),
+		Result:           json.RawMessage(`{"syntax_score":24.5,"classification":"intermediate"}`),
+	}
+
+	payload, err := json.Marshal(result)
+
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"runId":"run-1",
+		"executionId":"execution-1",
+		"studyInstanceUID":"1.2.3",
+		"modelName":"CardioSyntax",
+		"modelVersion":"1.0.0",
+		"status":"completed",
+		"completedAt":"2026-08-11T14:30:00Z",
+		"result":{"syntax_score":24.5,"classification":"intermediate"}
+	}`, string(payload))
+	for _, forbidden := range []string{"tenantId", "studyServiceJobId", "patientId", "operatorToken"} {
+		require.NotContains(t, string(payload), forbidden)
+	}
+}
+
 func TestWorklistPagesExposeBoundariesAndHasMore(t *testing.T) {
 	page := WorklistStudyStatusPage{
 		Studies:      []WorklistStudyStatus{},
