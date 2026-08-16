@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/segmentio/ksuid"
@@ -43,15 +44,47 @@ type UserCommandService struct {
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	iamApplication.IAMCommandServiceInterface
 	mailgunTypes.MailgunSDKInterface
+	PolicyCatalog *PolicyCatalog
 }
 
 const (
 	userInviteTemplate                   string        = "%s/register?t=%s&email=%s&code=%s"
 	registrationVerificationEmailTimeout time.Duration = time.Minute
+	registrationPolicyRollbackTimeout    time.Duration = 10 * time.Second
 	userAccessTransitionLockTTL          time.Duration = 2 * time.Minute
 	userAccessTransitionOperationTimeout time.Duration = 90 * time.Second
 	userAccessTransitionReleaseTimeout   time.Duration = 10 * time.Second
 )
+
+// AcceptPolicies records the exact current required policy versions for an
+// authenticated user. Repeating the same request is idempotent in persistence.
+func (service *UserCommandService) AcceptPolicies(ctx context.Context, data types.AcceptPolicies) error {
+	if strings.TrimSpace(data.TenantID) == "" || strings.TrimSpace(data.UserID) == "" ||
+		(data.Source != userEntity.PolicyAcceptanceSourceRegistration && data.Source != userEntity.PolicyAcceptanceSourceAuthenticated) {
+		return errors.New(apiError.InvalidPayload)
+	}
+	current, err := service.PolicyCatalog.ValidateAcceptances(data.TenantID, data.Acceptances)
+	if err != nil {
+		return err
+	}
+
+	acceptedAt := time.Now().Unix()
+	acceptances := make([]userEntity.UserPolicyAcceptance, 0, len(current))
+	for _, policy := range current {
+		if !policy.Required {
+			continue
+		}
+		acceptances = append(acceptances, userEntity.UserPolicyAcceptance{
+			TenantID: data.TenantID, UserID: data.UserID, PolicyKey: policy.PolicyKey,
+			Version: policy.Version, AcceptedAt: acceptedAt, Source: data.Source,
+		})
+	}
+	if err := service.UserCommandRepositoryInterface.InsertUserPolicyAcceptances(ctx, acceptances); err != nil {
+		return err
+	}
+	log.Printf("[audit] event=policy_acceptance tenant_id=%s user_id=%s policy_count=%d source=%s", data.TenantID, data.UserID, len(acceptances), data.Source)
+	return nil
+}
 
 // ChangeTenantUserAccess applies tenant-scoped role hierarchy and synchronizes
 // durable account state with immediate Redis session enforcement.
@@ -427,6 +460,11 @@ func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data 
 		return errors.New(apiError.ForbiddenAccess)
 	}
 
+	// Validate the exact deployment-owned versions before creating any identity.
+	if _, err := service.PolicyCatalog.ValidateAcceptances(data.TenantID, data.PolicyAcceptances); err != nil {
+		return err
+	}
+
 	// check if email already exists
 	_, err = service.UserQueryRepositoryInterface.SelectTenantUserByEmail(ctx, data.TenantID, data.Email)
 	if err == nil {
@@ -466,7 +504,7 @@ func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data 
 	}
 
 	// insert tenant user
-	_, err = service.UserCommandRepositoryInterface.InsertTenantUser(ctx, repositoryTypes.CreateTenantUser{
+	userID, err := service.UserCommandRepositoryInterface.InsertTenantUser(ctx, repositoryTypes.CreateTenantUser{
 		TenantID:        data.TenantID,
 		Role:            iamEntity.UserRole,
 		Email:           data.Email,
@@ -477,6 +515,19 @@ func (service *UserCommandService) RegisterTenantUser(ctx context.Context, data 
 		IsEmailVerified: isEmailVerified,
 	})
 	if err != nil {
+		return err
+	}
+	if err := service.AcceptPolicies(ctx, types.AcceptPolicies{
+		TenantID: data.TenantID, UserID: userID, Source: userEntity.PolicyAcceptanceSourceRegistration,
+		Acceptances: data.PolicyAcceptances,
+	}); err != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), registrationPolicyRollbackTimeout)
+		defer cancel()
+		if cleanupErr := service.UserCommandRepositoryInterface.DeleteTenantUser(cleanupCtx, data.TenantID, userID); cleanupErr != nil {
+			log.Printf("[security] severity=critical event=registration_policy_rollback_failed tenant_id=%s user_id=%s error=%v", data.TenantID, userID, cleanupErr)
+		} else {
+			log.Printf("[security] event=registration_policy_rollback_completed tenant_id=%s user_id=%s", data.TenantID, userID)
+		}
 		return err
 	}
 	if !isEmailVerified {

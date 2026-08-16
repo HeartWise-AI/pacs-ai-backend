@@ -14,6 +14,8 @@ type UserQueryRepositoryInterface interface {
 	SelectTenantUserByID(ctx context.Context, tenantID, id string) (repositoryTypes.GetTenantUser, error)
 	// SelectTenantUsers selects tenant users
 	SelectTenantUsers(ctx context.Context, tenantID string) ([]repositoryTypes.GetTenantUser, error)
+	// SelectUserPolicyAcceptances returns exact requested policy versions accepted by a tenant user.
+	SelectUserPolicyAcceptances(ctx context.Context, tenantID, userID string, policies []entity.PolicyReference) ([]entity.UserPolicyAcceptance, error)
 	// SelectTenantUserEmailInviteByEmail selects a tenant user email invite by email
 	SelectTenantUserEmailInviteByEmail(ctx context.Context, tenantID, email string) (entity.UserEmailInvite, error)
 	// SelectTenantUserEmailInviteByID selects a tenant user email invite by id

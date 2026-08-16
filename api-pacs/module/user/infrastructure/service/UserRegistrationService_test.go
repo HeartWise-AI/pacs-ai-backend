@@ -26,12 +26,25 @@ type registrationCommandRepository struct {
 	verifiedInvite       string
 	verificationContexts chan context.Context
 	verificationRelease  chan struct{}
+	policyAcceptances    []entity.UserPolicyAcceptance
+	policyAcceptanceErr  error
+	deleteCalls          int
 }
 
 func (repository *registrationCommandRepository) InsertTenantUser(_ context.Context, data repositoryTypes.CreateTenantUser) (string, error) {
 	repository.insertedUser = data
 	repository.insertCalls++
 	return "user-id", nil
+}
+
+func (repository *registrationCommandRepository) InsertUserPolicyAcceptances(_ context.Context, acceptances []entity.UserPolicyAcceptance) error {
+	repository.policyAcceptances = append(repository.policyAcceptances, acceptances...)
+	return repository.policyAcceptanceErr
+}
+
+func (repository *registrationCommandRepository) DeleteTenantUser(_ context.Context, _, _ string) error {
+	repository.deleteCalls++
+	return nil
 }
 
 func (repository *registrationCommandRepository) UpdateTenantUserEmailInviteVerifiedAt(_ context.Context, id string) error {
@@ -121,17 +134,19 @@ func TestRegisterTenantUserPersistsServerOwnedUserRole(t *testing.T) {
 		UserCommandRepositoryInterface:   commandRepository,
 		UserQueryRepositoryInterface:     queryRepository,
 		TenantQueryServiceInterface:      &registrationTenantQueryService{},
+		PolicyCatalog:                    testPolicyCatalog(),
 	}
 
 	err := service.RegisterTenantUser(context.Background(), serviceTypes.RegisterTenantUser{
-		TenantID:       "tenant-a",
-		TurnstileToken: "valid-turnstile-token",
-		Name:           "Public User",
-		Email:          "public.user@example.com",
-		Password:       "ValidPassword!",
-		LicenseNo:      "demo-license",
-		Specialty:      "demo-specialty",
-		Code:           &code,
+		TenantID:          "tenant-a",
+		TurnstileToken:    "valid-turnstile-token",
+		Name:              "Public User",
+		Email:             "public.user@example.com",
+		Password:          "ValidPassword!",
+		LicenseNo:         "demo-license",
+		Specialty:         "demo-specialty",
+		Code:              &code,
+		PolicyAcceptances: currentPolicyAcceptanceInputs(),
 	})
 
 	require.NoError(t, err)
@@ -140,6 +155,8 @@ func TestRegisterTenantUserPersistsServerOwnedUserRole(t *testing.T) {
 	require.Equal(t, iamEntity.UserRole, commandRepository.insertedUser.Role)
 	require.Equal(t, "invite-id", commandRepository.verifiedInvite)
 	require.True(t, commandRepository.insertedUser.IsEmailVerified)
+	require.Len(t, commandRepository.policyAcceptances, 2)
+	require.Equal(t, entity.PolicyAcceptanceSourceRegistration, commandRepository.policyAcceptances[0].Source)
 }
 
 func TestRegisterTenantUserVerificationEmailOutlivesRequestContext(t *testing.T) {
@@ -156,17 +173,19 @@ func TestRegisterTenantUserVerificationEmailOutlivesRequestContext(t *testing.T)
 		UserCommandRepositoryInterface:   commandRepository,
 		UserQueryRepositoryInterface:     &registrationQueryRepository{},
 		TenantQueryServiceInterface:      &registrationTenantQueryService{},
+		PolicyCatalog:                    testPolicyCatalog(),
 	}
 	requestContext, cancelRequest := context.WithCancel(context.Background())
 
 	err := service.RegisterTenantUser(requestContext, serviceTypes.RegisterTenantUser{
-		TenantID:       "tenant-a",
-		TurnstileToken: "valid-turnstile-token",
-		Name:           "Public User",
-		Email:          "public.user@example.com",
-		Password:       "ValidPassword!",
-		LicenseNo:      "demo-license",
-		Specialty:      "demo-specialty",
+		TenantID:          "tenant-a",
+		TurnstileToken:    "valid-turnstile-token",
+		Name:              "Public User",
+		Email:             "public.user@example.com",
+		Password:          "ValidPassword!",
+		LicenseNo:         "demo-license",
+		Specialty:         "demo-specialty",
+		PolicyAcceptances: currentPolicyAcceptanceInputs(),
 	})
 	require.NoError(t, err)
 	cancelRequest()
@@ -227,13 +246,15 @@ func TestRegisterTenantUserRejectsDuplicateAfterRateLimitAndTurnstile(t *testing
 		UserCommandRepositoryInterface:   commandRepository,
 		UserQueryRepositoryInterface:     queryRepository,
 		TenantQueryServiceInterface:      &registrationTenantQueryService{},
+		PolicyCatalog:                    testPolicyCatalog(),
 	}
 
 	err := service.RegisterTenantUser(context.Background(), serviceTypes.RegisterTenantUser{
-		TenantID:       "tenant-a",
-		TurnstileToken: "valid-turnstile-token",
-		ClientIP:       "203.0.113.10",
-		Email:          "existing.user@example.com",
+		TenantID:          "tenant-a",
+		TurnstileToken:    "valid-turnstile-token",
+		ClientIP:          "203.0.113.10",
+		Email:             "existing.user@example.com",
+		PolicyAcceptances: currentPolicyAcceptanceInputs(),
 	})
 
 	require.EqualError(t, err, apiError.DuplicateRecord)
@@ -241,6 +262,58 @@ func TestRegisterTenantUserRejectsDuplicateAfterRateLimitAndTurnstile(t *testing
 	require.Equal(t, 1, turnstileAPI.calls)
 	require.Equal(t, 1, queryRepository.selectEmailCalls)
 	require.Equal(t, 0, commandRepository.insertCalls)
+}
+
+func currentPolicyAcceptanceInputs() []serviceTypes.PolicyAcceptanceInput {
+	return []serviceTypes.PolicyAcceptanceInput{
+		{PolicyKey: entity.PolicyTermsOfService, Version: "v1"},
+		{PolicyKey: entity.PolicyPrivacyPolicy, Version: "v1"},
+	}
+}
+
+func TestRegisterTenantUserRollsBackAccountWhenPolicyPersistenceFails(t *testing.T) {
+	commandRepository := &registrationCommandRepository{policyAcceptanceErr: errors.New(apiError.FirestoreError)}
+	service := UserCommandService{
+		CloudflareAPIInterface:           &registrationTurnstileAPI{response: cloudflareAPITypes.ValidateTurnstileTokenResponse{Success: true}},
+		RegistrationRateLimiterInterface: &registrationRateLimiter{},
+		UserCommandRepositoryInterface:   commandRepository,
+		UserQueryRepositoryInterface:     &registrationQueryRepository{},
+		TenantQueryServiceInterface:      &registrationTenantQueryService{},
+		PolicyCatalog:                    testPolicyCatalog(),
+	}
+
+	err := service.RegisterTenantUser(context.Background(), serviceTypes.RegisterTenantUser{
+		TenantID: "tenant-a", TurnstileToken: "valid-token", Name: "Public User",
+		Email: "public.user@example.com", Password: "ValidPassword!", LicenseNo: "demo", Specialty: "demo",
+		PolicyAcceptances: currentPolicyAcceptanceInputs(),
+	})
+
+	require.EqualError(t, err, apiError.FirestoreError)
+	require.Equal(t, 1, commandRepository.insertCalls)
+	require.Equal(t, 1, commandRepository.deleteCalls)
+}
+
+func TestRegisterTenantUserRejectsStalePoliciesBeforeCreatingAccount(t *testing.T) {
+	commandRepository := &registrationCommandRepository{}
+	service := UserCommandService{
+		CloudflareAPIInterface:           &registrationTurnstileAPI{response: cloudflareAPITypes.ValidateTurnstileTokenResponse{Success: true}},
+		RegistrationRateLimiterInterface: &registrationRateLimiter{},
+		UserCommandRepositoryInterface:   commandRepository,
+		UserQueryRepositoryInterface:     &registrationQueryRepository{},
+		TenantQueryServiceInterface:      &registrationTenantQueryService{},
+		PolicyCatalog:                    testPolicyCatalog(),
+	}
+
+	err := service.RegisterTenantUser(context.Background(), serviceTypes.RegisterTenantUser{
+		TenantID: "tenant-a", TurnstileToken: "valid-token", Email: "public.user@example.com",
+		PolicyAcceptances: []serviceTypes.PolicyAcceptanceInput{
+			{PolicyKey: entity.PolicyTermsOfService, Version: "old"},
+			{PolicyKey: entity.PolicyPrivacyPolicy, Version: "v1"},
+		},
+	})
+
+	require.EqualError(t, err, apiError.PolicyVersionStale)
+	require.Zero(t, commandRepository.insertCalls)
 }
 
 type duplicateRegistrationQueryRepository struct {

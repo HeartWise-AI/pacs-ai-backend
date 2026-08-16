@@ -47,6 +47,12 @@ const (
 	RequestBodyTooLarge string = "REQUEST_BODY_TOO_LARGE"
 	// RequestInputLimitExceeded is returned when a decoded variable-length field exceeds a safe bound.
 	RequestInputLimitExceeded string = "REQUEST_INPUT_LIMIT_EXCEEDED"
+	// PolicyAcceptanceRequired is returned when one or more current required policies were omitted.
+	PolicyAcceptanceRequired string = "POLICY_ACCEPTANCE_REQUIRED"
+	// PolicyVersionStale is returned when a client submits a policy version that is no longer current.
+	PolicyVersionStale string = "POLICY_VERSION_STALE"
+	// PolicyConfigurationUnavailable fails closed when current policy metadata is invalid.
+	PolicyConfigurationUnavailable string = "POLICY_CONFIGURATION_UNAVAILABLE"
 
 	// Firebase-related errors
 	FirebaseAuthError            string = "FIREBASE_AUTH_ERROR"

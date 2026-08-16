@@ -4,17 +4,103 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	"api-pacs/internal/errors"
 	"api-pacs/module/user/application"
+	serviceTypes "api-pacs/module/user/infrastructure/service/types"
 	types "api-pacs/module/user/interfaces/http"
 )
 
 // UserQueryController request controller for record query
 type UserQueryController struct {
 	application.UserQueryServiceInterface
+}
+
+// GetRegistrationPolicies returns current deployment-owned policy metadata.
+func (controller *UserQueryController) GetRegistrationPolicies(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	tenantID := strings.TrimSpace(r.URL.Query().Get("tenantId"))
+	if tenantID == "" || len(tenantID) > 128 {
+		response := viewmodels.HTTPResponseVM{Status: http.StatusBadRequest, Success: false, Message: "A valid tenant ID is required.", ErrorCode: errors.InvalidPayload}
+		response.JSON(w)
+		return
+	}
+
+	policies, err := controller.UserQueryServiceInterface.GetRegistrationPolicies(r.Context(), tenantID)
+	if err != nil {
+		writePolicyQueryError(w, err)
+		return
+	}
+	response := viewmodels.HTTPResponseVM{Status: http.StatusOK, Success: true, Message: "Successfully fetched registration policies.", Data: policyDefinitionResponses(policies)}
+	response.JSON(w)
+}
+
+// GetCurrentUserPolicyStatus returns the signed-in user's current policy state.
+func (controller *UserQueryController) GetCurrentUserPolicyStatus(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+	controller.getPolicyStatus(w, r, tenantID, userID)
+}
+
+// GetTenantUserPolicyStatus gives tenant administrators audit visibility into
+// current-version acceptance without exposing request metadata.
+func (controller *UserQueryController) GetTenantUserPolicyStatus(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	controller.getPolicyStatus(w, r, tenantID, strings.TrimSpace(chi.URLParam(r, "ID")))
+}
+
+func (controller *UserQueryController) getPolicyStatus(w http.ResponseWriter, r *http.Request, tenantID, userID string) {
+	w.Header().Set("Cache-Control", "no-store")
+	if userID == "" || len(userID) > 128 {
+		response := viewmodels.HTTPResponseVM{Status: http.StatusBadRequest, Success: false, Message: "A valid user ID is required.", ErrorCode: errors.InvalidPayload}
+		response.JSON(w)
+		return
+	}
+	status, err := controller.UserQueryServiceInterface.GetPolicyStatus(r.Context(), tenantID, userID)
+	if err != nil {
+		writePolicyQueryError(w, err)
+		return
+	}
+	items := make([]types.PolicyStatusItemResponse, 0, len(status.Policies))
+	for _, item := range status.Policies {
+		items = append(items, types.PolicyStatusItemResponse{
+			PolicyDefinitionResponse: policyDefinitionResponse(item.PolicyDefinition),
+			Accepted:                 item.Accepted, AcceptedAt: item.AcceptedAt,
+		})
+	}
+	response := viewmodels.HTTPResponseVM{Status: http.StatusOK, Success: true, Message: "Successfully fetched policy status.", Data: types.PolicyStatusResponse{Policies: items, AcceptanceRequired: status.AcceptanceRequired, EnforcementActive: status.EnforcementActive}}
+	response.JSON(w)
+}
+
+func policyDefinitionResponses(policies []serviceTypes.PolicyDefinition) []types.PolicyDefinitionResponse {
+	responses := make([]types.PolicyDefinitionResponse, 0, len(policies))
+	for _, policy := range policies {
+		responses = append(responses, policyDefinitionResponse(policy))
+	}
+	return responses
+}
+
+func policyDefinitionResponse(policy serviceTypes.PolicyDefinition) types.PolicyDefinitionResponse {
+	return types.PolicyDefinitionResponse{
+		PolicyKey: policy.PolicyKey, Version: policy.Version, Title: policy.Title, URL: policy.URL,
+		EffectiveAt: policy.EffectiveAt, AcceptanceAction: policy.AcceptanceAction, Required: policy.Required,
+	}
+}
+
+func writePolicyQueryError(w http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	message := "Unable to retrieve policy status."
+	if err.Error() == errors.PolicyConfigurationUnavailable {
+		status = http.StatusServiceUnavailable
+		message = "Policy information is temporarily unavailable."
+	}
+	response := viewmodels.HTTPResponseVM{Status: status, Success: false, Message: message, ErrorCode: err.Error()}
+	response.JSON(w)
 }
 
 // GetCurrentTenantUser get current tenant user

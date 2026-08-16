@@ -8,6 +8,8 @@ import (
 
 // UserCommandServiceInterface holds the implementable methods for the user command service
 type UserCommandServiceInterface interface {
+	// AcceptPolicies records acceptance of every current required policy.
+	AcceptPolicies(ctx context.Context, data types.AcceptPolicies) error
 	// ChangeTenantUserAccess suspends or reactivates a tenant user.
 	ChangeTenantUserAccess(ctx context.Context, data types.ChangeTenantUserAccess) error
 	// CreateTenantUser creates a tenant user

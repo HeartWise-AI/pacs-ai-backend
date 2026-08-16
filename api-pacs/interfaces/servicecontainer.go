@@ -121,6 +121,7 @@ func (k *kernel) RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware {
 	middleware := iamMiddleware.IAMMiddleware{
 		IAMCommandServiceInterface: k.iamCommandServiceContainer(),
 		IAMQueryServiceInterface:   k.iamQueryServiceContainer(),
+		UserQueryServiceInterface:  k.userQueryServiceContainer(),
 	}
 
 	return middleware
@@ -602,6 +603,7 @@ func (k *kernel) userCommandServiceContainer() *userService.UserCommandService {
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
 		IAMCommandServiceInterface:           k.iamCommandServiceContainer(),
 		MailgunSDKInterface:                  mailgunSDK,
+		PolicyCatalog:                        userService.PolicyCatalogFromEnvironment(),
 	}
 
 	return service
@@ -626,6 +628,7 @@ func (k *kernel) userQueryServiceContainer() *userService.UserQueryService {
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
 		DocusignAPIInterface:                 docusignAPI,
+		PolicyCatalog:                        userService.PolicyCatalogFromEnvironment(),
 	}
 
 	return service

@@ -143,6 +143,7 @@ func (router *router) InitRouter() *chi.Mux {
 				// admin or owner only
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
+					r.Use(iamMiddleware.PolicyAcceptanceGuard)
 					r.Get("/quota", inferenceQueryController.GetInferenceQuota)
 
 					r.Post("/onboarding-model-questionnaire-answers/add", inferenceCommandController.AddOnboardingModelQuestionnaireAnswers)
@@ -225,6 +226,7 @@ func (router *router) InitRouter() *chi.Mux {
 			r.Route("/orchestrator", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
+					r.Use(iamMiddleware.PolicyAcceptanceGuard)
 
 					// Thread management
 					r.Post("/threads", orchestratorController.CreateThread)
@@ -240,6 +242,7 @@ func (router *router) InitRouter() *chi.Mux {
 			r.Route("/orthanc", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
+					r.Use(iamMiddleware.PolicyAcceptanceGuard)
 
 					r.Post("/modality/studies", orthancQueryController.FindModalityStudies)
 					r.Post("/modality/retrieve", orthancCommandController.RetrieveModalityStudy)
@@ -279,6 +282,7 @@ func (router *router) InitRouter() *chi.Mux {
 			r.Route("/user", func(r chi.Router) {
 				r.Post("/register", userCommandController.RegisterTenantUser)
 				r.Get("/specialties", userQueryController.GetDoctorSpecialties)
+				r.Get("/policies/registration", userQueryController.GetRegistrationPolicies)
 
 				// superuser only
 				r.Group(func(r chi.Router) {
@@ -290,6 +294,8 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 
+					r.Get("/policies/status", userQueryController.GetCurrentUserPolicyStatus)
+					r.Post("/policies/accept", userCommandController.AcceptPolicies)
 					r.Post("/tutorial/reset", userCommandController.ResetTutorial)
 					r.Get("/me", userQueryController.GetCurrentTenantUser)
 					r.Get("/metadata", userQueryController.GetUserMetadata)
@@ -305,6 +311,7 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Post("/invite/resend", userCommandController.ResendTenantEmailInvite)
 						r.Get("/all", userQueryController.GetTenantUsers)
 						r.Get("/invites", userQueryController.GetTenantUserEmailInvites)
+						r.Get("/{ID}/policies/status", userQueryController.GetTenantUserPolicyStatus)
 						r.Put("/update", userCommandController.UpdateTenantUser)
 						r.Post("/{ID}/suspend", userCommandController.SuspendTenantUser)
 						r.Post("/{ID}/reactivate", userCommandController.ReactivateTenantUser)
@@ -322,6 +329,7 @@ func (router *router) InitRouter() *chi.Mux {
 			// protected routes
 			r.Group(func(r chi.Router) {
 				r.Use(iamMiddleware.TokenSessionOrthancProxyAuthGuard)
+				r.Use(iamMiddleware.PolicyAcceptanceGuard)
 
 				dicomWebProxy := requestbody.LimitWithScope(requestbody.PositiveInt64FromEnvironment(
 					"DICOMWEB_MAX_REQUEST_BODY_BYTES",
