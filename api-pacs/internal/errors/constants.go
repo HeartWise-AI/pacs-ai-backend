@@ -92,7 +92,13 @@ const (
 	InferenceInputInvalid string = "INFERENCE_INPUT_INVALID"
 	// InferenceModelConfigurationInvalid is returned when a model publishes unsafe upload bounds.
 	InferenceModelConfigurationInvalid string = "INFERENCE_MODEL_CONFIGURATION_INVALID"
-	TorchServeError                    string = "TORCHSERVE_ERROR"
+	// InferenceExecutionResultNotAvailable is returned when an execution is not completed and result-ready.
+	InferenceExecutionResultNotAvailable string = "INFERENCE_EXECUTION_RESULT_NOT_AVAILABLE"
+	// InferenceExecutionResultInvalid is returned when a completed execution has no valid authoritative JSON result.
+	InferenceExecutionResultInvalid string = "INFERENCE_EXECUTION_RESULT_INVALID"
+	// InferenceResultServiceUnavailable is returned when authoritative result retrieval is temporarily unavailable.
+	InferenceResultServiceUnavailable string = "INFERENCE_RESULT_SERVICE_UNAVAILABLE"
+	TorchServeError                   string = "TORCHSERVE_ERROR"
 
 	// Cloudflare-related errors
 	CloudflareAPIError string = "CLOUDFLARE_API_ERROR"

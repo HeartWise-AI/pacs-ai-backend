@@ -53,6 +53,7 @@ func TestWorklistOpenAPIDocumentsExactRoutesAndVisibleStudyFilter(t *testing.T) 
 
 	require.Contains(t, paths, "/inference/worklist/studies/{studyInstanceUID}/runs")
 	require.Contains(t, paths, "/inference/processing/runs/{runId}")
+	require.Contains(t, paths, "/inference/processing/runs/{runId}/executions/{executionId}/result")
 }
 
 func TestWorklistOpenAPIPublicSchemasExcludeTenantAndPythonInternals(t *testing.T) {
@@ -65,13 +66,34 @@ func TestWorklistOpenAPIPublicSchemasExcludeTenantAndPythonInternals(t *testing.
 		"ProcessingRunExecutionSummary",
 		"ProcessingRunSummary",
 		"ProcessingRunDetail",
+		"ProcessingRunExecutionResult",
 	}
 
 	for _, schemaName := range publicSchemas {
 		payload, err := json.Marshal(schemas[schemaName])
 		require.NoError(t, err)
-		for _, forbidden := range []string{"tenantId", "tenant_id", "studyServiceJobId", "resultJson"} {
+		for _, forbidden := range []string{"tenantId", "tenant_id", "studyServiceJobId", "study_service_job_id", "resultJson", "result_json", "patientId", "patient_id"} {
 			require.NotContains(t, string(payload), forbidden, "%s must not expose %s", schemaName, forbidden)
 		}
 	}
+}
+
+func TestExecutionResultOpenAPIDocumentsLazyNoStoreContractAndSafeErrors(t *testing.T) {
+	document := loadWorklistOpenAPI(t)
+	paths := openAPIMap(t, document["paths"])
+	path := openAPIMap(t, paths["/inference/processing/runs/{runId}/executions/{executionId}/result"])
+	operation := openAPIMap(t, path["get"])
+	require.Contains(t, operation["description"], "Lazily")
+	require.Contains(t, operation["description"], "authenticated owner or administrator")
+
+	responses := openAPIMap(t, operation["responses"])
+	for _, status := range []string{"200", "400", "401", "403", "404", "409", "422", "500", "503"} {
+		require.Contains(t, responses, status)
+	}
+
+	okResponse := openAPIMap(t, responses["200"])
+	headers := openAPIMap(t, okResponse["headers"])
+	cacheControl := openAPIMap(t, headers["Cache-Control"])
+	cacheControlSchema := openAPIMap(t, cacheControl["schema"])
+	require.Equal(t, []interface{}{"no-store"}, cacheControlSchema["enum"])
 }

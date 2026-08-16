@@ -2484,6 +2484,52 @@
         }
       }
     },
+    "/inference/processing/runs/{runId}/executions/{executionId}/result": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get a completed model execution result",
+        "description": "Lazily returns one authoritative JSON model result only after the authenticated owner or administrator's tenant, run, and execution have been correlated. Internal study-service identifiers and credentials are never exposed.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Completed execution result",
+            "headers": {
+              "Cache-Control": {
+                "description": "Prevents inference results from being stored by browsers or intermediaries",
+                "schema": { "type": "string", "enum": ["no-store"] }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProcessingRunExecutionResultResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "404": { "$ref": "#/components/responses/ProcessingExecutionResultNotFound" },
+          "409": { "$ref": "#/components/responses/ProcessingExecutionResultNotAvailable" },
+          "422": { "$ref": "#/components/responses/ProcessingExecutionResultInvalid" },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/ProcessingExecutionResultServiceUnavailable" }
+        }
+      }
+    },
     "/inference/worklist/studies/{studyInstanceUID}/reprocess": {
       "post": {
         "tags": ["inference"],
@@ -2760,6 +2806,24 @@
           }
         ]
       },
+      "ProcessingRunExecutionResult": {
+        "type": "object",
+        "required": ["runId", "executionId", "studyInstanceUID", "modelName", "modelVersion", "status", "completedAt", "result"],
+        "properties": {
+          "runId": { "type": "string" },
+          "executionId": { "type": "string" },
+          "studyInstanceUID": { "type": "string" },
+          "modelName": { "type": "string" },
+          "modelVersion": { "type": "string", "nullable": true },
+          "status": { "type": "string", "enum": ["completed"] },
+          "completedAt": { "type": "string", "format": "date-time" },
+          "result": {
+            "description": "Opaque model-specific JSON. Consumers must not assume one shared model schema.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "WorklistStudyStatusPage": {
         "allOf": [
           { "$ref": "#/components/schemas/WorklistPage" },
@@ -2815,6 +2879,15 @@
           "success": { "type": "boolean", "enum": [true] },
           "message": { "type": "string" },
           "data": { "$ref": "#/components/schemas/ProcessingRunDetail" }
+        }
+      },
+      "ProcessingRunExecutionResultResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/ProcessingRunExecutionResult" }
         }
       },
       "WorklistErrorResponse": {
@@ -3592,6 +3665,38 @@
       },
       "ProcessingRunNotFound": {
         "description": "The run does not exist in the authenticated tenant",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "ProcessingExecutionResultNotFound": {
+        "description": "The run or execution does not exist in the authenticated tenant",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "ProcessingExecutionResultNotAvailable": {
+        "description": "The execution is not completed and result-ready",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "ProcessingExecutionResultInvalid": {
+        "description": "The completed execution has no valid authoritative JSON result",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+          }
+        }
+      },
+      "ProcessingExecutionResultServiceUnavailable": {
+        "description": "The authoritative result service is temporarily unavailable",
         "content": {
           "application/json": {
             "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
