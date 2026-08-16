@@ -96,4 +96,11 @@ func TestExecutionResultOpenAPIDocumentsLazyNoStoreContractAndSafeErrors(t *test
 	cacheControl := openAPIMap(t, headers["Cache-Control"])
 	cacheControlSchema := openAPIMap(t, cacheControl["schema"])
 	require.Equal(t, []interface{}{"no-store"}, cacheControlSchema["enum"])
+
+	components := openAPIMap(t, document["components"])
+	schemas := openAPIMap(t, components["schemas"])
+	resultSchema := openAPIMap(t, schemas["ProcessingRunExecutionResult"])
+	resultProperties := openAPIMap(t, resultSchema["properties"])
+	opaqueResult := openAPIMap(t, resultProperties["result"])
+	require.Equal(t, false, opaqueResult["nullable"])
 }

@@ -2819,7 +2819,7 @@
           "completedAt": { "type": "string", "format": "date-time" },
           "result": {
             "description": "Opaque model-specific JSON. Consumers must not assume one shared model schema.",
-            "nullable": true
+            "nullable": false
           }
         },
         "additionalProperties": false
