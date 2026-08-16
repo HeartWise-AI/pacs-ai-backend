@@ -491,6 +491,11 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		DockerSDKInterface:             dockerSDK,
 		DockerInferenceAPIInterface:    dockerInferenceAPI,
 		InferenceQuotaManagerInterface: inferenceQuotaManager,
+		ProcessingResultProviderInterface: &inferenceService.StudyServiceDispatcher{
+			StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
+			StudyServiceOperatorToken: os.Getenv("STUDY_SERVICE_OPERATOR_TOKEN"),
+			StudyServiceClient:        &http.Client{Timeout: 5 * time.Second},
+		},
 	}
 
 	return service
