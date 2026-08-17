@@ -205,6 +205,7 @@ func (router *router) InitRouter() *chi.Mux {
 						r.Get("/worklist/events", inferenceQueryController.StreamWorklistEvents)
 						r.Get("/worklist/studies/{studyInstanceUID}/runs", inferenceQueryController.GetStudyProcessingRunHistory)
 						r.Get("/processing/runs/{runId}", inferenceQueryController.GetProcessingRunDetail)
+						r.Get("/processing/runs/{runId}/executions/{executionId}/result", inferenceQueryController.GetProcessingRunExecutionResult)
 						r.Post("/worklist/studies/{studyInstanceUID}/reprocess", inferenceCommandController.ReprocessStudy)
 					})
 				})

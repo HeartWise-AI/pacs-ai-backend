@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"time"
 
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
@@ -126,6 +127,13 @@ type StudyServiceJob struct {
 	CreatedAt             *time.Time `json:"created_at"`
 	StartedAt             *time.Time `json:"started_at"`
 	CompletedAt           *time.Time `json:"completed_at"`
+}
+
+// StudyServiceJobResult is used only by the user-triggered result lookup so
+// reconciliation and list paths continue discarding detailed model payloads.
+type StudyServiceJobResult struct {
+	StudyServiceJob
+	ResultJSON json.RawMessage `json:"result_json"`
 }
 
 type StudyServiceJobsResponse struct {

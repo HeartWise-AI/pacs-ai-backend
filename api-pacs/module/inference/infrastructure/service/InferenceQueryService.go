@@ -1,7 +1,9 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"strings"
@@ -27,6 +29,7 @@ type InferenceQueryService struct {
 	dockerTypes.DockerSDKInterface
 	dockerInferenceTypes.DockerInferenceAPIInterface
 	application.InferenceQuotaManagerInterface
+	application.ProcessingResultProviderInterface
 }
 
 // GetInferenceQuota returns the current tenant/user allowance and active work.
@@ -464,6 +467,76 @@ func (service *InferenceQueryService) GetProcessingRunDetail(ctx context.Context
 	}
 
 	return buildProcessingRunDetail(run, executions), nil
+}
+
+// GetProcessingRunExecutionResult returns an opaque result only after local
+// tenant/run/execution ownership and upstream job correlation are validated.
+func (service *InferenceQueryService) GetProcessingRunExecutionResult(ctx context.Context, data types.GetProcessingRunExecutionResult) (types.ProcessingRunExecutionResult, error) {
+	tenantID := strings.TrimSpace(data.TenantID)
+	runID := strings.TrimSpace(data.RunID)
+	executionID := strings.TrimSpace(data.ExecutionID)
+	if tenantID == "" || runID == "" || executionID == "" {
+		return types.ProcessingRunExecutionResult{}, errors.New(apiError.InvalidPayload)
+	}
+
+	run, err := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRun(ctx, tenantID, runID)
+	if err != nil {
+		return types.ProcessingRunExecutionResult{}, err
+	}
+	execution, err := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecutionByID(ctx, tenantID, runID, executionID)
+	if err != nil {
+		return types.ProcessingRunExecutionResult{}, err
+	}
+	if execution.Status != entity.InferenceIngestionProcessingJobStatusCompleted {
+		return types.ProcessingRunExecutionResult{}, errors.New(apiError.InferenceExecutionResultNotAvailable)
+	}
+	if execution.CompletedAt == nil || execution.StudyServiceJobID == nil || strings.TrimSpace(*execution.StudyServiceJobID) == "" {
+		return types.ProcessingRunExecutionResult{}, errors.New(apiError.InferenceExecutionResultInvalid)
+	}
+	if service.ProcessingResultProviderInterface == nil {
+		return types.ProcessingRunExecutionResult{}, errors.New(apiError.InferenceResultServiceUnavailable)
+	}
+
+	jobID := strings.TrimSpace(*execution.StudyServiceJobID)
+	job, found, err := service.ProcessingResultProviderInterface.GetJobResultByID(ctx, tenantID, jobID)
+	if err != nil {
+		return types.ProcessingRunExecutionResult{}, errors.New(apiError.InferenceResultServiceUnavailable)
+	}
+	if !found || !executionResultJobMatches(job.StudyServiceJob, run, execution, tenantID, runID, executionID, jobID) || !validExecutionResultJSON(job.ResultJSON) {
+		return types.ProcessingRunExecutionResult{}, errors.New(apiError.InferenceExecutionResultInvalid)
+	}
+
+	return types.ProcessingRunExecutionResult{
+		RunID:            runID,
+		ExecutionID:      executionID,
+		StudyInstanceUID: run.StudyInstanceUID,
+		ModelName:        execution.ModelName,
+		ModelVersion:     execution.ModelVersion,
+		Status:           execution.Status,
+		CompletedAt:      *execution.CompletedAt,
+		Result:           append(json.RawMessage(nil), job.ResultJSON...),
+	}, nil
+}
+
+func executionResultJobMatches(job types.StudyServiceJob, run entity.InferenceIngestionProcessingRun, execution entity.InferenceIngestionProcessingJob, tenantID, runID, executionID, jobID string) bool {
+	if strings.TrimSpace(job.JobID) != jobID ||
+		strings.TrimSpace(job.StudyInstanceUID) != strings.TrimSpace(run.StudyInstanceUID) ||
+		trimmedPointerValue(job.TenantID) != tenantID ||
+		trimmedPointerValue(job.ProcessingRunID) != runID ||
+		trimmedPointerValue(job.ProcessingExecutionID) != executionID ||
+		trimmedPointerValue(job.CandidateID) != strings.TrimSpace(execution.CandidateID) ||
+		strings.TrimSpace(job.ModelName) != strings.TrimSpace(execution.ModelName) ||
+		!strings.EqualFold(strings.TrimSpace(job.Status), string(entity.InferenceIngestionProcessingJobStatusCompleted)) {
+		return false
+	}
+
+	localVersion := trimmedPointerValue(execution.ModelVersion)
+	return localVersion == "" || trimmedPointerValue(job.ModelVersion) == localVersion
+}
+
+func validExecutionResultJSON(result json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(result)
+	return len(trimmed) > 0 && !bytes.Equal(trimmed, []byte("null")) && json.Valid(trimmed)
 }
 
 func normalizeWorklistPagination(tenantID string, limit, offset int) (int, error) {

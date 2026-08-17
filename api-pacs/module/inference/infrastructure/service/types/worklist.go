@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"time"
 
 	"api-pacs/module/inference/domain/entity"
@@ -30,6 +31,14 @@ type GetStudyProcessingRunHistory struct {
 type GetProcessingRunDetail struct {
 	TenantID string
 	RunID    string
+}
+
+// GetProcessingRunExecutionResult scopes one lazy result lookup to the
+// authenticated tenant, parent run, and stable model execution identifier.
+type GetProcessingRunExecutionResult struct {
+	TenantID    string
+	RunID       string
+	ExecutionID string
 }
 
 // WorklistPage describes bounded list results without requiring a separate
@@ -122,6 +131,19 @@ type ProcessingRunExecutionSummary struct {
 type ProcessingRunDetail struct {
 	ProcessingRunSummary
 	Executions []ProcessingRunExecutionSummary `json:"executions"`
+}
+
+// ProcessingRunExecutionResult is the stable public envelope for one completed
+// execution. Result remains opaque JSON so the transport is model-agnostic.
+type ProcessingRunExecutionResult struct {
+	RunID            string                                       `json:"runId"`
+	ExecutionID      string                                       `json:"executionId"`
+	StudyInstanceUID string                                       `json:"studyInstanceUID"`
+	ModelName        string                                       `json:"modelName"`
+	ModelVersion     *string                                      `json:"modelVersion"`
+	Status           entity.InferenceIngestionProcessingJobStatus `json:"status"`
+	CompletedAt      time.Time                                    `json:"completedAt"`
+	Result           json.RawMessage                              `json:"result"`
 }
 
 // StudyProcessingRunHistoryPage returns complete runs newest first.

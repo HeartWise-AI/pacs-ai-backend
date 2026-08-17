@@ -32,6 +32,8 @@ type InferenceQueryServiceInterface interface {
 	GetStudyProcessingRunHistory(ctx context.Context, data types.GetStudyProcessingRunHistory) (types.StudyProcessingRunHistoryPage, error)
 	// GetProcessingRunDetail returns one tenant-scoped run and its frozen model plan.
 	GetProcessingRunDetail(ctx context.Context, data types.GetProcessingRunDetail) (types.ProcessingRunDetail, error)
+	// GetProcessingRunExecutionResult lazily returns one correlated completed model result.
+	GetProcessingRunExecutionResult(ctx context.Context, data types.GetProcessingRunExecutionResult) (types.ProcessingRunExecutionResult, error)
 	// GetModelFeedBackByUser gets the model feedback by user
 	GetModelFeedBackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (types.GetModelFeedbackResult, error)
 	// GetOnboardingModelQuestionnaireAnswers gets the onboarding model questionnaire answers

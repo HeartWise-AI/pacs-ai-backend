@@ -570,6 +570,43 @@ func TestSelectProcessingRunExecutionIsFullyScoped(t *testing.T) {
 	require.Equal(t, "execution-1", execution.ID)
 }
 
+func TestSelectProcessingRunExecutionByIDIsFullyScoped(t *testing.T) {
+	handler := &processingRunTestHandler{}
+	handler.queryRow = func(query string, model interface{}, target interface{}) error {
+		require.Contains(t, query, "JOIN ingestion_processing_runs runs")
+		require.Contains(t, query, "runs.tenant_id = :tenant_id")
+		require.Contains(t, query, "jobs.tenant_id = :tenant_id")
+		require.Contains(t, query, "runs.id = :processing_run_id")
+		require.Contains(t, query, "jobs.id = :execution_id")
+		arguments := model.(map[string]interface{})
+		require.Equal(t, "tenant-a", arguments["tenant_id"])
+		require.Equal(t, "run-1", arguments["processing_run_id"])
+		require.Equal(t, "execution-1", arguments["execution_id"])
+		*target.(*entity.InferenceIngestionProcessingJob) = entity.InferenceIngestionProcessingJob{ID: "execution-1"}
+		return nil
+	}
+
+	repository := InferenceProcessingRunRepository{PostgresSQLDBHandlerInterface: handler}
+	execution, err := repository.SelectProcessingRunExecutionByID(
+		context.Background(), "tenant-a", "run-1", "execution-1",
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "execution-1", execution.ID)
+}
+
+func TestSelectProcessingRunExecutionByIDHidesWrongTenantOrParentAsMissing(t *testing.T) {
+	handler := &processingRunTestHandler{}
+	handler.queryRow = func(_ string, _ interface{}, _ interface{}) error { return sql.ErrNoRows }
+	repository := InferenceProcessingRunRepository{PostgresSQLDBHandlerInterface: handler}
+
+	_, err := repository.SelectProcessingRunExecutionByID(
+		context.Background(), "tenant-b", "wrong-run", "execution-1",
+	)
+
+	require.EqualError(t, err, apiError.MissingRecord)
+}
+
 func TestListProcessingRunHistoryUsesTenantStudyAndPagination(t *testing.T) {
 	handler := &processingRunTestHandler{}
 	handler.query = func(query string, model interface{}, target interface{}) error {

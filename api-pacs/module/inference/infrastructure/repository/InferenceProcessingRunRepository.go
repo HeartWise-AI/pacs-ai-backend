@@ -851,6 +851,23 @@ func (repository *InferenceProcessingRunRepository) SelectProcessingRunExecution
 	return execution, processingRunError(err)
 }
 
+// SelectProcessingRunExecutionByID returns one execution only when its ID and
+// parent run both belong to the authenticated tenant.
+func (repository *InferenceProcessingRunRepository) SelectProcessingRunExecutionByID(ctx context.Context, tenantID, processingRunID, executionID string) (entity.InferenceIngestionProcessingJob, error) {
+	var execution entity.InferenceIngestionProcessingJob
+	err := repository.PostgresSQLDBHandlerInterface.QueryRow(`
+		SELECT jobs.* FROM ingestion_processing_jobs jobs
+		JOIN ingestion_processing_runs runs ON runs.id = jobs.processing_run_id
+		WHERE runs.tenant_id = :tenant_id
+		  AND jobs.tenant_id = :tenant_id
+		  AND runs.id = :processing_run_id
+		  AND jobs.id = :execution_id
+	`, map[string]interface{}{
+		"tenant_id": tenantID, "processing_run_id": processingRunID, "execution_id": executionID,
+	}, &execution)
+	return execution, processingRunError(err)
+}
+
 // UpdateProcessingRunAggregate applies an optimistic versioned aggregate update.
 func (repository *InferenceProcessingRunRepository) UpdateProcessingRunAggregate(ctx context.Context, data types.UpdateInferenceIngestionProcessingRunAggregate) (entity.InferenceIngestionProcessingRun, error) {
 	var run entity.InferenceIngestionProcessingRun

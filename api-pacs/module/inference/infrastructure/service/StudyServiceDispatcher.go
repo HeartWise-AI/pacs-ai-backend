@@ -31,6 +31,16 @@ type DispatchStudyHTTPError struct {
 	RetryAfter time.Duration
 }
 
+// StudyServiceLookupHTTPError describes an operator lookup failure without
+// retaining the upstream response body, which may contain sensitive data.
+type StudyServiceLookupHTTPError struct {
+	StatusCode int
+}
+
+func (err *StudyServiceLookupHTTPError) Error() string {
+	return fmt.Sprintf("study-service lookup failed with status %d", err.StatusCode)
+}
+
 func (err *DispatchStudyHTTPError) Error() string {
 	body := strings.TrimSpace(err.Body)
 	if body == "" {
@@ -152,9 +162,27 @@ func (service *StudyServiceDispatcher) GetJobByID(
 	ctx context.Context,
 	tenantID, jobID string,
 ) (serviceTypes.StudyServiceJob, bool, error) {
+	return getStudyServiceJobByID[serviceTypes.StudyServiceJob](service, ctx, tenantID, jobID)
+}
+
+// GetJobResultByID fetches one exact job including result_json only for the
+// explicit lazy result flow.
+func (service *StudyServiceDispatcher) GetJobResultByID(
+	ctx context.Context,
+	tenantID, jobID string,
+) (serviceTypes.StudyServiceJobResult, bool, error) {
+	return getStudyServiceJobByID[serviceTypes.StudyServiceJobResult](service, ctx, tenantID, jobID)
+}
+
+func getStudyServiceJobByID[T any](
+	service *StudyServiceDispatcher,
+	ctx context.Context,
+	tenantID, jobID string,
+) (T, bool, error) {
+	var empty T
 	baseURL := strings.TrimRight(strings.TrimSpace(service.StudyServiceBaseURL), "/")
 	if baseURL == "" {
-		return serviceTypes.StudyServiceJob{}, false, errStudyServiceBaseURLMissing
+		return empty, false, errStudyServiceBaseURLMissing
 	}
 
 	requestID := generateID()
@@ -165,7 +193,7 @@ func (service *StudyServiceDispatcher) GetJobByID(
 		nil,
 	)
 	if err != nil {
-		return serviceTypes.StudyServiceJob{}, false, err
+		return empty, false, err
 	}
 	req.Header.Set("X-Request-ID", requestID)
 	req.Header.Set("X-Tenant-ID", strings.TrimSpace(tenantID))
@@ -173,28 +201,20 @@ func (service *StudyServiceDispatcher) GetJobByID(
 
 	resp, err := service.StudyServiceClient.Do(req)
 	if err != nil {
-		return serviceTypes.StudyServiceJob{}, false, err
+		return empty, false, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return serviceTypes.StudyServiceJob{}, false, nil
+		return empty, false, nil
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		body, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			return serviceTypes.StudyServiceJob{}, false, readErr
-		}
-		return serviceTypes.StudyServiceJob{}, false, fmt.Errorf(
-			"study-service job lookup failed with status %d: %s",
-			resp.StatusCode,
-			strings.TrimSpace(string(body)),
-		)
+		return empty, false, &StudyServiceLookupHTTPError{StatusCode: resp.StatusCode}
 	}
 
-	var job serviceTypes.StudyServiceJob
+	var job T
 	if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
-		return serviceTypes.StudyServiceJob{}, false, err
+		return empty, false, err
 	}
 	return job, true, nil
 }

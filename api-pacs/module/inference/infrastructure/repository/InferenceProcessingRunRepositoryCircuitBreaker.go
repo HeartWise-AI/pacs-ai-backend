@@ -166,6 +166,12 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) SelectProcessi
 	})
 }
 
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) SelectProcessingRunExecutionByID(ctx context.Context, tenantID, processingRunID, executionID string) (entity.InferenceIngestionProcessingJob, error) {
+	return withProcessingRunCircuit("select_processing_run_execution_by_id", func() (entity.InferenceIngestionProcessingJob, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecutionByID(ctx, tenantID, processingRunID, executionID)
+	})
+}
+
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) UpdateProcessingRunAggregate(ctx context.Context, data types.UpdateInferenceIngestionProcessingRunAggregate) (entity.InferenceIngestionProcessingRun, error) {
 	return withProcessingRunCircuit("update_processing_run_aggregate", func() (entity.InferenceIngestionProcessingRun, error) {
 		return repository.InferenceProcessingRunRepositoryInterface.UpdateProcessingRunAggregate(ctx, data)
