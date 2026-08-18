@@ -2523,19 +2523,6 @@ func (service *InferenceCommandService) waitForCandidateRetrieval(ctx context.Co
 	deadline := time.Now().Add(inferenceIngestionRetrievalTimeout)
 
 	for {
-		isLocal, err := service.isStudyPresentLocally(ctx, studyInstanceUID)
-		if err != nil {
-			return candidateRetrievalResult{}, err
-		}
-
-		if isLocal {
-			return candidateRetrievalResult{
-				Outcome:            candidateRetrievalOutcomeLocal,
-				OrthancJobIDs:      orthancJobIDs,
-				LastRetrievalState: stringPointer(string(candidateRetrievalOutcomeLocal)),
-			}, nil
-		}
-
 		jobs, err := service.OrthancQueryServiceInterface.GetJobsInfo(ctx, orthancJobIDs)
 		if err != nil {
 			return candidateRetrievalResult{}, err
