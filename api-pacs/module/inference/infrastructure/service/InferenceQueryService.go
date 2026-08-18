@@ -523,10 +523,21 @@ func executionResultJobMatches(job types.StudyServiceJob, run entity.InferenceIn
 		strings.TrimSpace(job.StudyInstanceUID) != strings.TrimSpace(run.StudyInstanceUID) ||
 		trimmedPointerValue(job.TenantID) != tenantID ||
 		trimmedPointerValue(job.ProcessingRunID) != runID ||
-		trimmedPointerValue(job.ProcessingExecutionID) != executionID ||
 		trimmedPointerValue(job.CandidateID) != strings.TrimSpace(execution.CandidateID) ||
 		strings.TrimSpace(job.ModelName) != strings.TrimSpace(execution.ModelName) ||
 		!strings.EqualFold(strings.TrimSpace(job.Status), string(entity.InferenceIngestionProcessingJobStatusCompleted)) {
+		return false
+	}
+
+	processingExecutionID := trimmedPointerValue(job.ProcessingExecutionID)
+	if run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerAuto {
+		// Automatic study-service jobs intentionally use their tenant/run/candidate/
+		// model/job correlation and may omit the manual-only execution identity.
+		// If a rolling-upgrade job supplies one, it must still match exactly.
+		if processingExecutionID != "" && processingExecutionID != executionID {
+			return false
+		}
+	} else if processingExecutionID != executionID {
 		return false
 	}
 
