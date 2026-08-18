@@ -11,12 +11,36 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
+	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
 	domainRepository "api-pacs/module/inference/domain/repository"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 )
+
+type manualReprocessOrthancAPI struct {
+	orthancAPITypes.OrthancAPIInterface
+	local          bool
+	localResponses []bool
+	calls          int
+	err            error
+}
+
+func (api *manualReprocessOrthancAPI) FindLocalResources(context.Context, orthancAPITypes.QueryLocalResourceRequest) ([]orthancAPITypes.GetLocalResourceResponse, error) {
+	if api.err != nil {
+		return nil, api.err
+	}
+	local := api.local
+	if api.calls < len(api.localResponses) {
+		local = api.localResponses[api.calls]
+	}
+	api.calls++
+	if !local {
+		return []orthancAPITypes.GetLocalResourceResponse{}, nil
+	}
+	return []orthancAPITypes.GetLocalResourceResponse{{ID: "orthanc-study-a"}}, nil
+}
 
 type quotaDockerInferenceAPI struct {
 	dockerInferenceTypes.DockerInferenceAPIInterface
@@ -107,6 +131,7 @@ func manualQuotaPlannerService(t *testing.T, quotaManager *recordingInferenceQuo
 		InferenceQueryRepositoryInterface:         queryRepository,
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		InferenceQuotaManagerInterface:            quotaManager,
+		OrthancAPIInterface:                       &manualReprocessOrthancAPI{local: true},
 		ProcessingDispatcherInterface: &guardedProcessingDispatcher{
 			dispatchCall:          dispatchCalls,
 			response:              serviceTypes.DispatchStudyResponse{JobID: "study-service-job-a"},
@@ -211,6 +236,7 @@ func TestManualReprocessRefundsQuotaWhenPreDispatchRequestBuildFails(t *testing.
 		InferenceCommandRepositoryInterface:       state,
 		InferenceProcessingRunRepositoryInterface: state,
 		InferenceQuotaManagerInterface:            quotaManager,
+		OrthancAPIInterface:                       &manualReprocessOrthancAPI{local: true},
 		ProcessingDispatcherInterface:             dispatcher,
 		StudyServiceDispatchSemaphore:             make(chan struct{}, 1),
 	}
@@ -266,6 +292,7 @@ func TestManualReprocessCorrelationFailureRefundsQuotaAndLeavesStudyRetryable(t 
 		InferenceCommandRepositoryInterface:       state,
 		InferenceProcessingRunRepositoryInterface: state,
 		InferenceQuotaManagerInterface:            quotaManager,
+		OrthancAPIInterface:                       &manualReprocessOrthancAPI{local: true},
 		ProcessingDispatcherInterface:             dispatcher,
 		StudyServiceDispatchSemaphore:             make(chan struct{}, 1),
 	}
@@ -336,6 +363,7 @@ func TestManualReprocessAcceptedCorrelationFailureRemainsCharged(t *testing.T) {
 		InferenceCommandRepositoryInterface:       state,
 		InferenceProcessingRunRepositoryInterface: state,
 		InferenceQuotaManagerInterface:            quotaManager,
+		OrthancAPIInterface:                       &manualReprocessOrthancAPI{local: true},
 		ProcessingDispatcherInterface:             dispatcher,
 		StudyServiceDispatchSemaphore:             make(chan struct{}, 1),
 	}
