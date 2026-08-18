@@ -31,9 +31,11 @@ func (command *manualRetrievalOrthancCommand) RetrieveModalityStudyBySeries(
 type manualRetrievalOrthancQuery struct {
 	orthancApplication.OrthancQueryServiceInterface
 	jobs []orthancAPITypes.GetJobResponse
+	calls int
 }
 
 func (query *manualRetrievalOrthancQuery) GetJobsInfo(context.Context, []string) ([]orthancAPITypes.GetJobResponse, error) {
+	query.calls++
 	return query.jobs, nil
 }
 
@@ -174,7 +176,7 @@ func TestFreshManualRetrievalTriggersCMoveAndConfirmsLocalStudy(t *testing.T) {
 	service := &InferenceCommandService{
 		InferenceCommandRepositoryInterface: state,
 		OrthancAPIInterface: &manualReprocessOrthancAPI{
-			localResponses: []bool{false, false, true},
+			localResponses: []bool{false, true},
 		},
 		OrthancCommandServiceInterface: command,
 		OrthancQueryServiceInterface: &manualRetrievalOrthancQuery{jobs: []orthancAPITypes.GetJobResponse{{
@@ -205,6 +207,24 @@ func TestSuccessfulCMoveWithoutLocalStudyIsRetrievalFailure(t *testing.T) {
 	require.Equal(t, candidateRetrievalOutcomeFailure, result.Outcome)
 	require.NotNil(t, result.LastRetrievalError)
 	require.Contains(t, *result.LastRetrievalError, "still missing locally")
+}
+
+func TestPartialLocalStudyDoesNotCompleteRetrievalWhileCMoveIsPending(t *testing.T) {
+	query := &manualRetrievalOrthancQuery{jobs: []orthancAPITypes.GetJobResponse{
+		{ID: "cmove-job-a", State: string(orthancAPITypes.JobSuccess)},
+		{ID: "cmove-job-b", State: string(orthancAPITypes.JobRunning)},
+	}}
+	service := &InferenceCommandService{
+		OrthancAPIInterface:          &manualReprocessOrthancAPI{local: true},
+		OrthancQueryServiceInterface: query,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := service.waitForCandidateRetrieval(ctx, "1.2.3", []string{"cmove-job-a", "cmove-job-b"})
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 1, query.calls, "retrieval must inspect every C-MOVE job before accepting a locally visible study")
 }
 
 func TestManualReprocessLocalCheckFailureDoesNotReserveQuotaOrCreateRun(t *testing.T) {
