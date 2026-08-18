@@ -70,6 +70,7 @@ func validExecutionResultFixture() (*executionResultRepository, *executionResult
 	repository := &executionResultRepository{
 		run: entity.InferenceIngestionProcessingRun{
 			ID: runID, TenantID: tenantID, StudyInstanceUID: "1.2.3",
+			RunTrigger: entity.InferenceIngestionProcessingRunTriggerManualReprocess,
 		},
 		execution: entity.InferenceIngestionProcessingJob{
 			ID: executionID, ProcessingRunID: &runID, CandidateID: candidateID, TenantID: tenantID,
@@ -92,6 +93,37 @@ func validExecutionResultFixture() (*executionResultRepository, *executionResult
 	return repository, dispatcher, serviceTypes.GetProcessingRunExecutionResult{
 		TenantID: tenantID, RunID: runID, ExecutionID: executionID,
 	}
+}
+
+func TestGetProcessingRunExecutionResultAcceptsAutomaticJobWithoutExecutionIdentity(t *testing.T) {
+	repository, dispatcher, input := validExecutionResultFixture()
+	repository.run.RunTrigger = entity.InferenceIngestionProcessingRunTriggerAuto
+	dispatcher.job.ProcessingExecutionID = nil
+	service := InferenceQueryService{
+		InferenceProcessingRunRepositoryInterface: repository,
+		ProcessingResultProviderInterface:         dispatcher,
+	}
+
+	result, err := service.GetProcessingRunExecutionResult(context.Background(), input)
+
+	require.NoError(t, err)
+	require.Equal(t, input.ExecutionID, result.ExecutionID)
+	require.JSONEq(t, `{"syntax_score":24.5}`, string(result.Result))
+}
+
+func TestGetProcessingRunExecutionResultRejectsForeignAutomaticExecutionIdentity(t *testing.T) {
+	repository, dispatcher, input := validExecutionResultFixture()
+	repository.run.RunTrigger = entity.InferenceIngestionProcessingRunTriggerAuto
+	otherExecutionID := "execution-2"
+	dispatcher.job.ProcessingExecutionID = &otherExecutionID
+	service := InferenceQueryService{
+		InferenceProcessingRunRepositoryInterface: repository,
+		ProcessingResultProviderInterface:         dispatcher,
+	}
+
+	_, err := service.GetProcessingRunExecutionResult(context.Background(), input)
+
+	require.EqualError(t, err, apiError.InferenceExecutionResultInvalid)
 }
 
 func TestGetProcessingRunExecutionResultValidatesAllCorrelations(t *testing.T) {
@@ -178,6 +210,9 @@ func TestGetProcessingRunExecutionResultRejectsMismatchedOrInvalidAuthoritativeD
 		{name: "execution mismatch", mutate: func(_ *executionResultRepository, dispatcher *executionResultDispatcher) {
 			other := "execution-2"
 			dispatcher.job.ProcessingExecutionID = &other
+		}},
+		{name: "manual execution missing", mutate: func(_ *executionResultRepository, dispatcher *executionResultDispatcher) {
+			dispatcher.job.ProcessingExecutionID = nil
 		}},
 		{name: "candidate mismatch", mutate: func(_ *executionResultRepository, dispatcher *executionResultDispatcher) {
 			other := "candidate-2"
