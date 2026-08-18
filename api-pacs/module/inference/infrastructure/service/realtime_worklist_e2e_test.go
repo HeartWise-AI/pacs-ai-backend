@@ -188,6 +188,60 @@ func (state *realtimeWorklistE2EState) UpdateCandidateDispatchState(repositoryTy
 	return nil
 }
 
+func (state *realtimeWorklistE2EState) MarkCandidateRetrievalQueued(id string) error {
+	candidate, exists := state.candidates[id]
+	if !exists {
+		return errors.New(apiError.MissingRecord)
+	}
+	queued := "queued"
+	candidate.Status = entity.InferenceIngestionCandidateStatusRetrievalQueued
+	candidate.OrthancJobIDs = nil
+	candidate.LastRetrievalState = &queued
+	candidate.LastRetrievalError = nil
+	candidate.LastRetrievalErrorDetails = nil
+	state.candidates[id] = candidate
+	return nil
+}
+
+func (state *realtimeWorklistE2EState) MarkCandidateRetrievedWithContext(data repositoryTypes.UpdateCandidateRetrievalState) error {
+	candidate, exists := state.candidates[data.ID]
+	if !exists {
+		return errors.New(apiError.MissingRecord)
+	}
+	candidate.Status = entity.InferenceIngestionCandidateStatusRetrieved
+	if len(data.OrthancJobIDs) > 0 {
+		candidate.OrthancJobIDs = append(candidate.OrthancJobIDs[:0], data.OrthancJobIDs...)
+	}
+	candidate.LastRetrievalState = data.LastRetrievalState
+	candidate.LastRetrievalError = data.LastRetrievalError
+	candidate.LastRetrievalErrorDetails = data.LastRetrievalErrorDetails
+	state.candidates[data.ID] = candidate
+	return nil
+}
+
+func (state *realtimeWorklistE2EState) MarkCandidateFailedWithContext(data repositoryTypes.UpdateCandidateRetrievalState) error {
+	candidate, exists := state.candidates[data.ID]
+	if !exists {
+		return errors.New(apiError.MissingRecord)
+	}
+	candidate.Status = entity.InferenceIngestionCandidateStatusFailed
+	candidate.LastRetrievalState = data.LastRetrievalState
+	candidate.LastRetrievalError = data.LastRetrievalError
+	candidate.LastRetrievalErrorDetails = data.LastRetrievalErrorDetails
+	state.candidates[data.ID] = candidate
+	return nil
+}
+
+func (state *realtimeWorklistE2EState) SaveCandidateOrthancJobIDs(id string, jobIDs []string) error {
+	candidate, exists := state.candidates[id]
+	if !exists {
+		return errors.New(apiError.MissingRecord)
+	}
+	candidate.OrthancJobIDs = append(candidate.OrthancJobIDs[:0], jobIDs...)
+	state.candidates[id] = candidate
+	return nil
+}
+
 func (state *realtimeWorklistE2EState) ApplyProcessingRunExecutionTransition(_ context.Context, data repositoryTypes.ApplyInferenceIngestionProcessingTransition) (repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult, error) {
 	execution, exists := state.executions[data.ExecutionID]
 	if !exists || execution.ProcessingRunID == nil || *execution.ProcessingRunID != data.ProcessingRunID {
@@ -367,6 +421,7 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 		InferenceProcessingRunRepositoryInterface: state, ProcessingDispatcherInterface: dispatcher,
 		WorklistNotificationPublisherInterface: broker,
 		InferenceQuotaManagerInterface:         &allowAllInferenceQuotaManager{},
+		OrthancAPIInterface:                    &manualReprocessOrthancAPI{local: true},
 		StudyServiceDispatchSemaphore:          make(chan struct{}, 1),
 	}
 	query := &InferenceQueryService{InferenceQueryRepositoryInterface: state, InferenceProcessingRunRepositoryInterface: state}

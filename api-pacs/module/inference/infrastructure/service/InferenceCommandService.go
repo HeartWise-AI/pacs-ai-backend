@@ -254,6 +254,14 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		return types.CreateStudyProcessingRunResult{}, errors.New(apiError.MissingRecord)
 	}
 
+	manualStudyIsLocal := false
+	if trigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess {
+		manualStudyIsLocal, err = service.isStudyPresentLocally(ctx, studyInstanceUID)
+		if err != nil {
+			return types.CreateStudyProcessingRunResult{}, fmt.Errorf("cannot verify local study before manual reprocess: %w", err)
+		}
+	}
+
 	slices.SortFunc(expected, func(left, right repositoryTypes.CreateInferenceIngestionProcessingExecution) int {
 		leftKey := left.ModelName + "\x00" + left.CandidateID
 		rightKey := right.ModelName + "\x00" + right.CandidateID
@@ -297,14 +305,37 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 	}
 	if trigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess {
 		for _, target := range dispatchTargets {
-			service.scheduleStudyServiceDispatchWithRequestID(
-				target.job,
-				target.candidate,
-				result.Run.ID,
-				target.requestID,
-				target.requestID,
-				types.DispatchStudyIntentManualReprocess,
-			)
+			if manualStudyIsLocal {
+				if target.candidate.Status != entity.InferenceIngestionCandidateStatusRetrieved {
+					if stateErr := service.InferenceCommandRepositoryInterface.MarkCandidateRetrievedWithContext(
+						repositoryTypes.UpdateCandidateRetrievalState{
+							ID: target.candidate.ID, LastRetrievalState: stringPointer(string(candidateRetrievalOutcomeLocal)),
+						},
+					); stateErr != nil {
+						log.Printf("[Manual reprocess] cannot reconcile local candidate state candidate_id=%s processing_run_id=%s err=%v",
+							target.candidate.ID, result.Run.ID, stateErr)
+					}
+				}
+				service.scheduleStudyServiceDispatchWithRequestID(
+					target.job,
+					target.candidate,
+					result.Run.ID,
+					target.requestID,
+					target.requestID,
+					types.DispatchStudyIntentManualReprocess,
+				)
+				continue
+			}
+
+			if queueErr := service.InferenceCommandRepositoryInterface.MarkCandidateRetrievalQueued(target.candidate.ID); queueErr != nil {
+				retrievalErr := fmt.Errorf("PACS retrieval could not be queued: %w", queueErr)
+				log.Printf("[Manual reprocess] cannot queue missing local candidate candidate_id=%s processing_run_id=%s err=%v",
+					target.candidate.ID, result.Run.ID, queueErr)
+				service.recordManualRetrievalFailure(ctx, target.job, target.candidate, retrievalErr)
+				continue
+			}
+			log.Printf("[Manual reprocess] queued missing local study for PACS retrieval candidate_id=%s processing_run_id=%s study_instance_uid=%s",
+				target.candidate.ID, result.Run.ID, target.candidate.StudyInstanceUID)
 		}
 	}
 
@@ -321,9 +352,11 @@ func (service *InferenceCommandService) finalizeProcessingRunQuota(run entity.In
 	if userID == "" {
 		return
 	}
-	refund := run.StartedAt == nil && hasProcessingRunAttentionReason(
+	refund := run.StartedAt == nil && (hasProcessingRunAttentionReason(
 		run.AttentionReasons, entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
-	)
+	) || hasProcessingRunAttentionReason(
+		run.AttentionReasons, entity.InferenceIngestionProcessingRunAttentionRetrievalFailed,
+	))
 	service.finishInferenceQuotaReservation(&types.InferenceQuotaReservation{
 		TenantID: run.TenantID, UserID: userID, ReservationID: run.ID, Units: 1,
 	}, refund)
@@ -1113,13 +1146,15 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRetrievalWorker
 		}
 
 		if job.Status != entity.InferenceIngestionJobStatusRunning {
-			log.Printf("[Ingestion retrieval worker] skipping queued candidate because ingestion job is not running candidate_id=%s ingestion_job_id=%s study_instance_uid=%s status=%s",
-				candidate.ID,
-				candidate.IngestionJobID,
-				candidate.StudyInstanceUID,
-				job.Status,
-			)
-			continue
+			if !service.hasActiveManualProcessingRun(ctx, candidate) {
+				log.Printf("[Ingestion retrieval worker] skipping queued candidate because ingestion job is not running candidate_id=%s ingestion_job_id=%s study_instance_uid=%s status=%s",
+					candidate.ID,
+					candidate.IngestionJobID,
+					candidate.StudyInstanceUID,
+					job.Status,
+				)
+				continue
+			}
 		}
 
 		err = service.retrieveQueuedIngestionCandidate(ctx, job, candidate)
@@ -1769,6 +1804,7 @@ func (service *InferenceCommandService) retrieveQueuedIngestionCandidate(ctx con
 			log.Println("[Ingestion retrieval worker] cannot persist retrieval error for ingestion candidate:", markErr)
 			return markErr
 		}
+		service.recordManualRetrievalFailure(ctx, job, candidate, fmt.Errorf("PACS retrieval failed: %w", err))
 		return nil
 	}
 
@@ -1803,7 +1839,9 @@ func (service *InferenceCommandService) persistCandidateRetrievalResult(ctx cont
 		log.Printf("[Ingestion retrieval worker] processing plan ready candidate_id=%s processing_run_id=%s created=%t expected_executions=%d",
 			candidate.ID, plan.Run.ID, plan.Created, len(plan.Executions))
 
-		service.scheduleStudyServiceDispatch(job, candidate, plan.Run.ID)
+		if err := service.scheduleCandidateForProcessingPlan(job, candidate, plan); err != nil {
+			return err
+		}
 		return nil
 	case candidateRetrievalOutcomeFailure:
 		err := service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
@@ -1815,8 +1853,10 @@ func (service *InferenceCommandService) persistCandidateRetrievalResult(ctx cont
 		})
 		if err != nil {
 			log.Println("[Ingestion retrieval worker] cannot mark ingestion candidate failed:", err)
+			return err
 		}
-		return err
+		service.recordManualRetrievalFailure(ctx, job, candidate, candidateRetrievalError(retrievalResult))
+		return nil
 	case candidateRetrievalOutcomeTimeout:
 		err := service.InferenceCommandRepositoryInterface.MarkCandidateFailedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
 			ID:                        candidate.ID,
@@ -1827,8 +1867,10 @@ func (service *InferenceCommandService) persistCandidateRetrievalResult(ctx cont
 		})
 		if err != nil {
 			log.Println("[Ingestion retrieval worker] cannot persist retrieval timeout for ingestion candidate:", err)
+			return err
 		}
-		return err
+		service.recordManualRetrievalFailure(ctx, job, candidate, candidateRetrievalError(retrievalResult))
+		return nil
 	}
 
 	return nil
@@ -1836,6 +1878,75 @@ func (service *InferenceCommandService) persistCandidateRetrievalResult(ctx cont
 
 func (service *InferenceCommandService) scheduleStudyServiceDispatch(job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate, processingRunID string) {
 	service.scheduleStudyServiceDispatchWithRequestID(job, candidate, processingRunID, candidate.ID, "", "")
+}
+
+func (service *InferenceCommandService) scheduleCandidateForProcessingPlan(
+	job entity.InferenceIngestionJob,
+	candidate entity.InferenceIngestionCandidate,
+	plan types.CreateStudyProcessingRunResult,
+) error {
+	if plan.Run.RunTrigger != entity.InferenceIngestionProcessingRunTriggerManualReprocess {
+		service.scheduleStudyServiceDispatch(job, candidate, plan.Run.ID)
+		return nil
+	}
+
+	for _, execution := range plan.Executions {
+		if strings.TrimSpace(execution.CandidateID) != strings.TrimSpace(candidate.ID) ||
+			strings.TrimSpace(execution.ModelName) != strings.TrimSpace(job.ModelName) {
+			continue
+		}
+		executionID := strings.TrimSpace(execution.ID)
+		if executionID == "" {
+			break
+		}
+		service.scheduleStudyServiceDispatchWithRequestID(
+			job, candidate, plan.Run.ID, executionID, executionID, types.DispatchStudyIntentManualReprocess,
+		)
+		return nil
+	}
+
+	return errors.New("retrieved manual processing candidate has no committed execution")
+}
+
+func (service *InferenceCommandService) hasActiveManualProcessingRun(ctx context.Context, candidate entity.InferenceIngestionCandidate) bool {
+	run, err := service.InferenceProcessingRunRepositoryInterface.SelectActiveProcessingRun(
+		ctx, strings.TrimSpace(candidate.TenantID), strings.TrimSpace(candidate.StudyInstanceUID),
+	)
+	return err == nil && run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess
+}
+
+func candidateRetrievalError(result candidateRetrievalResult) error {
+	message := strings.TrimSpace(trimmedPointerValue(result.LastRetrievalError))
+	if message == "" {
+		message = "Orthanc did not confirm the study was retrieved from PACS"
+	}
+	return fmt.Errorf("PACS retrieval %s: %s", result.Outcome, message)
+}
+
+func (service *InferenceCommandService) recordManualRetrievalFailure(
+	ctx context.Context,
+	job entity.InferenceIngestionJob,
+	candidate entity.InferenceIngestionCandidate,
+	retrievalErr error,
+) {
+	run, err := service.InferenceProcessingRunRepositoryInterface.SelectActiveProcessingRun(
+		ctx, strings.TrimSpace(candidate.TenantID), strings.TrimSpace(candidate.StudyInstanceUID),
+	)
+	if err != nil || run.RunTrigger != entity.InferenceIngestionProcessingRunTriggerManualReprocess {
+		return
+	}
+
+	service.recordFailedProcessingDispatchWithAttention(
+		ctx,
+		candidate,
+		job,
+		types.DispatchStudyRequest{
+			ProcessingRunID: &run.ID,
+			Modality:        canonicalStudyServiceModality(job.DICOMModality),
+		},
+		retrievalErr,
+		entity.InferenceIngestionProcessingRunAttentionRetrievalFailed,
+	)
 }
 
 func (service *InferenceCommandService) scheduleStudyServiceDispatchWithRequestID(
@@ -2412,19 +2523,6 @@ func (service *InferenceCommandService) waitForCandidateRetrieval(ctx context.Co
 	deadline := time.Now().Add(inferenceIngestionRetrievalTimeout)
 
 	for {
-		isLocal, err := service.isStudyPresentLocally(ctx, studyInstanceUID)
-		if err != nil {
-			return candidateRetrievalResult{}, err
-		}
-
-		if isLocal {
-			return candidateRetrievalResult{
-				Outcome:            candidateRetrievalOutcomeLocal,
-				OrthancJobIDs:      orthancJobIDs,
-				LastRetrievalState: stringPointer(string(candidateRetrievalOutcomeLocal)),
-			}, nil
-		}
-
 		jobs, err := service.OrthancQueryServiceInterface.GetJobsInfo(ctx, orthancJobIDs)
 		if err != nil {
 			return candidateRetrievalResult{}, err
@@ -2446,15 +2544,20 @@ func (service *InferenceCommandService) waitForCandidateRetrieval(ctx context.Co
 				return candidateRetrievalResult{}, localErr
 			}
 
-			outcome := candidateRetrievalOutcomeSuccess
 			if isLocalAfterSuccess {
-				outcome = candidateRetrievalOutcomeLocal
+				return candidateRetrievalResult{
+					Outcome:                   candidateRetrievalOutcomeLocal,
+					OrthancJobIDs:             orthancJobIDs,
+					LastRetrievalState:        stringPointer(string(candidateRetrievalOutcomeLocal)),
+					LastRetrievalErrorDetails: marshalOrthancJobs(jobs),
+				}, nil
 			}
 
 			return candidateRetrievalResult{
-				Outcome:                   outcome,
+				Outcome:                   candidateRetrievalOutcomeFailure,
 				OrthancJobIDs:             orthancJobIDs,
-				LastRetrievalState:        stringPointer(string(outcome)),
+				LastRetrievalState:        stringPointer(string(candidateRetrievalOutcomeFailure)),
+				LastRetrievalError:        stringPointer("Orthanc C-MOVE completed but the study is still missing locally"),
 				LastRetrievalErrorDetails: marshalOrthancJobs(jobs),
 			}, nil
 		}

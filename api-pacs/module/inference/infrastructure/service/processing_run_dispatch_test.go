@@ -174,7 +174,11 @@ func TestDispatchCallsStudyServiceForCommittedPendingExecution(t *testing.T) {
 		ID: "execution-1", Status: entity.InferenceIngestionProcessingJobStatusPending,
 	}}
 	commandRepository := &guardedDispatchCommandRepository{}
-	dispatcher := &guardedProcessingDispatcher{response: serviceTypes.DispatchStudyResponse{JobID: "study-job-1"}}
+	dispatchCall := make(chan serviceTypes.DispatchStudyRequest, 1)
+	dispatcher := &guardedProcessingDispatcher{
+		response:      serviceTypes.DispatchStudyResponse{JobID: "study-job-1"},
+		dispatchCall:  dispatchCall,
+	}
 	service := &InferenceCommandService{
 		InferenceCommandRepositoryInterface:       commandRepository,
 		InferenceProcessingRunRepositoryInterface: runRepository,
@@ -190,6 +194,8 @@ func TestDispatchCallsStudyServiceForCommittedPendingExecution(t *testing.T) {
 	)
 
 	require.NoError(t, err)
+	dispatched := <-dispatchCall
+	require.Nil(t, dispatched.ProcessingExecutionID)
 	require.Equal(t, 1, dispatcher.buildCalls)
 	require.Equal(t, 1, dispatcher.dispatchCalls)
 	require.Len(t, commandRepository.executionUpdates, 1)

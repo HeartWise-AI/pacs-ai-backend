@@ -673,7 +673,15 @@ WHERE id = :id`, candidate.GetModelName())
 func (repository *InferenceCommandRepository) MarkCandidateRetrievalQueued(ID string) error {
 	var candidate entity.InferenceIngestionCandidate
 
-	stmt := fmt.Sprintf("UPDATE %s SET status = :status, retrieval_queued_at = CURRENT_TIMESTAMP WHERE id = :id", candidate.GetModelName())
+	stmt := fmt.Sprintf(`UPDATE %s
+SET status = :status,
+	retrieval_queued_at = CURRENT_TIMESTAMP,
+	orthanc_job_ids = NULL,
+	last_retrieval_state = 'queued',
+	last_retrieval_error = NULL,
+	last_retrieval_error_details = NULL,
+	last_retrieval_checked_at = CURRENT_TIMESTAMP
+WHERE id = :id`, candidate.GetModelName())
 	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
 		"id":     ID,
 		"status": entity.InferenceIngestionCandidateStatusRetrievalQueued,
@@ -711,9 +719,9 @@ func (repository *InferenceCommandRepository) MarkCandidateRetrievedWithContext(
 SET status = :status,
 	retrieved_at = CURRENT_TIMESTAMP,
 	orthanc_job_ids = COALESCE(:orthanc_job_ids, orthanc_job_ids),
-	last_retrieval_state = COALESCE(:last_retrieval_state, last_retrieval_state),
-	last_retrieval_error = COALESCE(:last_retrieval_error, last_retrieval_error),
-	last_retrieval_error_details = COALESCE(:last_retrieval_error_details, last_retrieval_error_details),
+	last_retrieval_state = :last_retrieval_state,
+	last_retrieval_error = :last_retrieval_error,
+	last_retrieval_error_details = :last_retrieval_error_details,
 	last_retrieval_checked_at = CURRENT_TIMESTAMP
 WHERE id = :id`, candidate.GetModelName())
 	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{

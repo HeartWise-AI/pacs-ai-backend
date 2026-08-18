@@ -73,6 +73,7 @@ var callbackOutcomes = map[string]struct{}{
 var processingAttentionReasons = map[string]struct{}{
 	"empty_model_plan":          {},
 	"invalid_execution_state":   {},
+	"retrieval_failed":          {},
 	"dispatch_failed":           {},
 	"expected_job_missing":      {},
 	"pending_stale":             {},

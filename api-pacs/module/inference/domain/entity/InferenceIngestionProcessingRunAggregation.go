@@ -8,6 +8,7 @@ import (
 const (
 	InferenceIngestionProcessingRunAttentionEmptyModelPlan         = "EMPTY_MODEL_PLAN"
 	InferenceIngestionProcessingRunAttentionInvalidExecutionState  = "INVALID_EXECUTION_STATE"
+	InferenceIngestionProcessingRunAttentionRetrievalFailed        = "RETRIEVAL_FAILED"
 	InferenceIngestionProcessingRunAttentionDispatchFailed         = "DISPATCH_FAILED"
 	InferenceIngestionProcessingRunAttentionExpectedJobMissing     = "EXPECTED_JOB_MISSING"
 	InferenceIngestionProcessingRunAttentionPendingStale           = "PENDING_STALE"
