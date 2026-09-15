@@ -107,91 +107,121 @@ class CustomPredictionService(BasePredictionService):
             "cuda" if torch.cuda.is_available() else "cpu"
         )
         CustomPredictionService.is_initialized = True
-        print(f"CathEF-CLIP loaded. CUDA: {torch.cuda.is_available()}")
+        print(f"DeepCORO-SYNTAX loaded. CUDA: {torch.cuda.is_available()}")
 
     # -- post-processing -------------------------------------------------
 
-    def _postprocess(self, outputs: dict[str, torch.Tensor]) -> dict[str, float]:
-        cm = CustomPredictionService._class_mapping
-        result: dict[str, float] = {}
+    def _postprocess(self, outputs: dict[str, torch.Tensor]) -> dict[str, object]:
+        """Return every head. Three are continuous scores, three are severity logits.
+
+        The continuous heads are clamped at zero because a SYNTAX score cannot be
+        negative, but the raw regressor is unconstrained and places uncertain
+        disease-free studies slightly below zero.
+        """
+        result: dict[str, object] = {}
         for key, value in outputs.items():
-            task = cm.get(key, {}).get("task")
-            v = value.detach().float()
-            if task == "binary_classification":
-                result[key] = float(torch.sigmoid(v).item())
-            else:
-                # Regression: LVEF %, clamp to [0, 100]
-                result[key] = float(torch.clamp(v, min=0.0, max=100.0).item())
+            v = value.detach().float().squeeze()
+            if v.ndim == 0:                                   # regression head
+                result[key] = float(torch.clamp(v, min=0.0))
+            else:                                             # severity logits
+                probs = torch.softmax(v, dim=-1)
+                result[key] = [float(p) for p in probs]
+                result[f"{key}_argmax"] = int(torch.argmax(probs).item())
         return result
 
     # -- clinical formatting --------------------------------------------
 
-    def _format_predictions(self, preds: dict[str, float]) -> dict[str, object]:
+    @staticmethod
+    def _band(score: float) -> tuple[int, str]:
+        """Severity band from the continuous score, on the bands the model reports."""
+        if score < 0.5:
+            return 0, "Zero"
+        if score < 23.0:
+            return 1, "Low (1-22)"
+        if score < 33.0:
+            return 2, "Intermediate (23-32)"
+        return 3, "High (>=33)"
+
+    def _format_predictions(self, preds: dict[str, object]) -> dict[str, object]:
         cm = CustomPredictionService._class_mapping
-        lvef_value = float(preds.get("Value", 0.0))
-        reduced_ef_prob = float(preds.get("y_true_cat", 0.0))
-        reduced_ef_threshold = cm["y_true_cat"]["threshold"]
+        threshold = cm["syntax_category"]["threshold_binary_ge23"]
+        labels = cm["syntax_category"]["labels"]
+
+        glob = float(preds.get("syntax", 0.0))
+        band_idx, band_label = self._band(glob)
+        cat_probs = preds.get("syntax_category") or []
+        head_idx = preds.get("syntax_category_argmax")
+
         return {
-            "LVEF": {
-                "value": round(lvef_value, 1),
-                "unit": "%",
+            "syntax": {"value": round(glob, 1), "unit": "points",
+                       "band": band_label, "bandIndex": band_idx},
+            "territory": {
+                "left": round(float(preds.get("syntax_left", 0.0)), 1),
+                "right": round(float(preds.get("syntax_right", 0.0)), 1),
+                "unit": "points",
             },
-            "reducedEF": {
-                "probability": round(reduced_ef_prob, 3),
-                "threshold": reduced_ef_threshold,
-                "diagnosis": "reduced" if reduced_ef_prob >= reduced_ef_threshold else "preserved",
+            "severityHead": {
+                "class": labels[head_idx] if head_idx is not None else None,
+                "probabilities": {labels[i]: round(float(p), 3)
+                                  for i, p in enumerate(cat_probs)} if cat_probs else {},
+            },
+            "intermediateToHigh": {
+                # the operating threshold is on the CONTINUOUS head and was selected once
+                # on the validation partition; it is not tuned on test data
+                "positive": bool(glob >= threshold),
+                "threshold": threshold,
+                "note": "Rule-out use. High NPV at modest PPV; a positive result is not confirmatory.",
             },
         }
 
-    def _diagnosis_text(self, preds: dict[str, float]) -> str:
-        lvef = round(float(preds.get("Value", 0.0)), 1)
-        prob = float(preds.get("y_true_cat", 0.0))
-        threshold = CustomPredictionService._class_mapping["y_true_cat"]["threshold"]
-        label = "Reduced EF (<40%)" if prob >= threshold else "Preserved EF"
-        return f"CathEF-CLIP: LVEF = {lvef}% | {label} (P={prob:.2f})"
+    def _diagnosis_text(self, preds: dict[str, object]) -> str:
+        glob = round(float(preds.get("syntax", 0.0)), 1)
+        _, band = self._band(float(preds.get("syntax", 0.0)))
+        left = round(float(preds.get("syntax_left", 0.0)), 1)
+        right = round(float(preds.get("syntax_right", 0.0)), 1)
+        return (f"DeepCORO-SYNTAX: modified SYNTAX = {glob} points ({band}) "
+                f"| left {left}, right {right}")
 
-    def _recommendations(self, preds: dict[str, float]) -> dict[str, object]:
-        lvef = float(preds.get("Value", 0.0))
-        prob = float(preds.get("y_true_cat", 0.0))
-        threshold = CustomPredictionService._class_mapping["y_true_cat"]["threshold"]
-        reduced = prob >= threshold or lvef < 40.0
+    def _recommendations(self, preds: dict[str, object]) -> dict[str, object]:
+        glob = float(preds.get("syntax", 0.0))
+        threshold = CustomPredictionService._class_mapping["syntax_category"]["threshold_binary_ge23"]
+        _, band = self._band(glob)
+        flagged = glob >= threshold
 
-        if reduced:
+        if flagged:
             return {
                 "en": (
-                    f"<strong>Reduced LVEF detected (predicted {lvef:.1f}%, P(EF<40%)={prob:.2f}).</strong> "
-                    "Obtain transthoracic echocardiogram to confirm systolic dysfunction and consider "
-                    "guideline-directed heart failure management."
+                    f"<strong>Estimated modified SYNTAX {glob:.1f} points ({band}).</strong> "
+                    "Above the intermediate-to-high operating threshold. Confirm the score against "
+                    "the images before it informs any decision, and refer to the Heart Team for "
+                    "PCI-versus-CABG discussion if confirmed. This estimate is a triage aid: its "
+                    "positive predictive value is modest, and it is biased downward in occlusive "
+                    "and multivessel disease."
                 ),
                 "fr": (
-                    f"<strong>LVEF réduite détectée (prédite {lvef:.1f}%, P(FEVG<40%)={prob:.2f}).</strong> "
-                    "Obtenir une échocardiographie transthoracique pour confirmer la dysfonction systolique "
-                    "et envisager la prise en charge de l'insuffisance cardiaque selon les recommandations."
+                    f"<strong>Score SYNTAX modifié estimé à {glob:.1f} points ({band}).</strong> "
+                    "Au-dessus du seuil intermédiaire-à-élevé. Confirmer le score sur les images "
+                    "avant toute décision et référer à l'équipe cardiaque pour la discussion "
+                    "ICP-versus-PAC si confirmé. Cette estimation est une aide au triage : sa "
+                    "valeur prédictive positive est modeste et le score est sous-estimé en cas de "
+                    "maladie occlusive ou pluritronculaire."
                 ),
-                "presentable": True,
-            }
-        if lvef < 50.0:
-            return {
-                "en": (
-                    f"<strong>Borderline LVEF ({lvef:.1f}%).</strong> "
-                    "Consider transthoracic echocardiogram for confirmation."
-                ),
-                "fr": (
-                    f"<strong>LVEF limite ({lvef:.1f}%).</strong> "
-                    "Envisager une échocardiographie transthoracique pour confirmation."
-                ),
-                "presentable": True,
             }
         return {
             "en": (
-                f"<strong>Preserved LVEF ({lvef:.1f}%).</strong> "
-                "No further cardiac imaging required based on this prediction alone."
+                f"<strong>Estimated modified SYNTAX {glob:.1f} points ({band}).</strong> "
+                "Below the intermediate-to-high operating threshold. The model's value here is "
+                "rule-out: negative predictive value was 0.98 and 0.95 in the two held-out "
+                "cohorts. Confirm against the images; the score is biased downward, so a "
+                "borderline result deserves a closer look."
             ),
             "fr": (
-                f"<strong>LVEF préservée ({lvef:.1f}%).</strong> "
-                "Aucune imagerie cardiaque supplémentaire requise sur la seule base de cette prédiction."
+                f"<strong>Score SYNTAX modifié estimé à {glob:.1f} points ({band}).</strong> "
+                "Sous le seuil intermédiaire-à-élevé. L'utilité du modèle ici est l'exclusion : "
+                "valeur prédictive négative de 0,98 et 0,95 dans les deux cohortes de test. "
+                "Confirmer sur les images ; le score étant sous-estimé, un résultat limite mérite "
+                "un examen attentif."
             ),
-            "presentable": True,
         }
 
     # -- DICOM filtering -------------------------------------------------
@@ -199,52 +229,72 @@ class CustomPredictionService(BasePredictionService):
     def _filter_dicoms_with_metadata(
         self, dicoms: list[pydicom.Dataset], metadata: dict
     ) -> list[pydicom.Dataset]:
-        """CathEF operates on left coronary diagnostic frames only."""
+        """SYNTAX is a whole-study score, so BOTH territories are kept.
+
+        This is the substantive difference from CathEF, which sees left coronary
+        acquisitions only. Dropping the right coronary acquisitions here would remove
+        the evidence for the right-territory head entirely.
+        """
         filtered = []
         for dicom in dicoms:
-            name = str(dicom.SeriesInstanceUID)
-            meta = metadata.get(name)
+            meta = metadata.get(str(dicom.SeriesInstanceUID))
             if not meta:
                 continue
-            if meta.get("main_structure") != "Left Coronary":
-                continue
             if meta.get("status") != "diagnostic":
+                continue
+            if meta.get("main_structure") not in ("Left Coronary", "Right Coronary"):
                 continue
             filtered.append(dicom)
         return filtered
 
     # -- HTML report -----------------------------------------------------
 
-    def _render_html(self, preds: dict[str, float], recs: dict[str, object]) -> str:
-        lvef = round(float(preds.get("Value", 0.0)), 1)
-        prob = float(preds.get("y_true_cat", 0.0))
-        threshold = CustomPredictionService._class_mapping["y_true_cat"]["threshold"]
-        is_reduced = prob >= threshold
-        badge_color = "#e74c3c" if is_reduced else "#27ae60"
-        badge_label = "Reduced EF (<40%)" if is_reduced else "Preserved EF"
+    def _render_html(self, preds: dict[str, object], recs: dict[str, object]) -> str:
+        cm = CustomPredictionService._class_mapping
+        threshold = cm["syntax_category"]["threshold_binary_ge23"]
+        glob = round(float(preds.get("syntax", 0.0)), 1)
+        left = round(float(preds.get("syntax_left", 0.0)), 1)
+        right = round(float(preds.get("syntax_right", 0.0)), 1)
+        _, band = self._band(float(preds.get("syntax", 0.0)))
+        flagged = float(preds.get("syntax", 0.0)) >= threshold
+        badge_color = "#c0392b" if flagged else "#27ae60"
+        badge_label = "Intermediate-to-high (>=23)" if flagged else "Below >=23 threshold"
         en = recs.get("en", "")
 
         html = f"""<!DOCTYPE html>
-<html><head><meta charset=\"utf-8\"><title>CathEF-CLIP Report</title>
+<html><head><meta charset=\"utf-8\"><title>DeepCORO-SYNTAX Report</title>
 <style>
  body{{font-family:Segoe UI,Arial,sans-serif;background:#f8f9fa;color:#2c3e50;padding:24px;}}
  .card{{max-width:900px;margin:0 auto;background:#fff;border-radius:12px;padding:28px;box-shadow:0 4px 6px rgba(0,0,0,0.1);}}
  h1{{margin:0 0 8px;font-size:22px;}}
  .subtitle{{color:#7f8c8d;margin-bottom:18px;}}
- .metric{{display:flex;gap:24px;align-items:center;padding:20px;background:#f1f3f5;border-radius:8px;margin-bottom:18px;}}
+ .metric{{display:flex;gap:24px;align-items:center;padding:20px;background:#f1f3f5;border-radius:8px;margin-bottom:14px;}}
  .metric .val{{font-size:48px;font-weight:700;color:#2c3e50;}}
  .metric .lbl{{font-size:14px;color:#6c757d;text-transform:uppercase;letter-spacing:1px;}}
+ .terr{{display:flex;gap:16px;margin-bottom:18px;}}
+ .terr div{{flex:1;background:#f1f3f5;border-radius:8px;padding:14px;text-align:center;}}
+ .terr .v{{font-size:24px;font-weight:600;}}
  .badge{{display:inline-block;padding:6px 14px;border-radius:20px;color:#fff;font-weight:600;font-size:13px;background:{badge_color};}}
- .rec{{background:#eaf4ff;border-left:4px solid #3498db;padding:14px 18px;border-radius:6px;}}
+ .rec{{background:#eaf4ff;border-left:4px solid #3498db;padding:14px 18px;border-radius:6px;margin-bottom:14px;}}
+ .warn{{background:#fff4e5;border-left:4px solid #e67e22;padding:12px 16px;border-radius:6px;font-size:13px;color:#7a4a12;}}
 </style></head>
 <body><div class=\"card\">
- <h1>CathEF-CLIP LVEF Prediction</h1>
- <div class=\"subtitle\">DeepCORO-CLIP linear-probe estimate from left coronary angiogram</div>
+ <h1>DeepCORO-SYNTAX</h1>
+ <div class=\"subtitle\">Modified SYNTAX score (16-segment) estimated from the whole angiographic study</div>
  <div class=\"metric\">
-   <div><div class=\"val\">{lvef}%</div><div class=\"lbl\">Predicted LVEF</div></div>
-   <div style=\"flex:1;text-align:right;\"><span class=\"badge\">{badge_label}</span><div style=\"margin-top:8px;color:#6c757d;\">P(EF&lt;40%) = {prob:.2f}</div></div>
+   <div><div class=\"val\">{glob}</div><div class=\"lbl\">Modified SYNTAX, points</div></div>
+   <div style=\"flex:1;text-align:right;\"><span class=\"badge\">{badge_label}</span><div style=\"margin-top:8px;color:#6c757d;\">{band}</div></div>
+ </div>
+ <div class=\"terr\">
+   <div><div class=\"v\">{left}</div><div class=\"lbl\">Left territory</div></div>
+   <div><div class=\"v\">{right}</div><div class=\"lbl\">Right territory</div></div>
  </div>
  <div class=\"rec\">{en}</div>
+ <div class=\"warn\"><strong>Research use only — not for clinical decision-making.</strong>
+ The reference standard is a <em>modified</em> 16-segment SYNTAX score, not a core-laboratory
+ score: it omits severe tortuosity and the total-occlusion sub-modifiers, so it is biased
+ downward, most in occlusive and multivessel disease. The model does not localise the points it
+ assigns. Manuscript under peer review; no regulatory clearance.</div>
 </div></body></html>"""
         return html
 

@@ -15,12 +15,13 @@
   "MultiInstanceLinearProbing": {
     "embedding_dim": 512,
     "pooling_mode": "attention+cls_token",
-    "attention_hidden": 128,
-    "dropout": 0.2937411487340935,
+    "attention_hidden": 512,
+    "dropout": 0.2,
     "use_cls_token": true,
     "num_attention_heads": 8,
     "separate_video_attention": true,
-    "normalization_strategy": "post_norm"
+    "normalization_strategy": "post_norm",
+    "_num_attention_heads_note": "The training config records 24, which cannot divide the 512-d embedding; DeepCORO_CLIP scripts/attention_rollout.py rebuilds this checkpoint with 8 and that value is used here."
   },
   "VideoMILWrapper": {
     "num_videos": 10,

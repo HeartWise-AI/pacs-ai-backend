@@ -4,8 +4,8 @@ Automated estimation of a modified SYNTAX score from a complete multi-view coron
 study. Fine-tuned from DeepCORO-CLIP; same architecture family as `CathEF-CLIP`, which this
 service is derived from.
 
-> **Under peer review — not for clinical use.** EuroIntervention EIJ-D-26-00383. Weights live in
-> a **private** HF repo and are released publicly on acceptance.
+> **Under peer review — not for clinical use.** EuroIntervention EIJ-D-26-00383; these results
+> are not yet peer-reviewed. No regulatory clearance.
 
 ## Outputs
 
@@ -48,31 +48,48 @@ high complexity; no segment-level attribution; untested in grafted anatomy.
 
 ## Weights
 
-`download_model.py` pulls `heartwise/deepcoro_clip_cardiosyntax_v5`. The repo is **private**, so
-`HF_API_KEY` must have read access:
+`download_model.py` pulls `heartwise/deepcoro_clip_cardiosyntax`, which is public. The token
+argument is kept for interface parity with the other model services but is not required for read
+access:
 
 ```bash
 python download_model.py --token "$HF_API_KEY"
 ```
 
+That repo holds both versions. The service uses `v5_20260822-164504/` — the sibling
+`rxt2fz27_20250711-171619/` is the superseded CardioSYNTAX-only model and must not be loaded.
+
 ## Status of this service
 
-The metadata, weights wiring and model configuration are complete and derived from the training
-config that produced the reported numbers:
+`logic.py` has been adapted from CathEF-CLIP and the model configuration is verified against the
+checkpoint:
 
-- `models/config.json` — encoder, MIL and head structure read from the training config
-  (`num_videos` 10, `freeze_ratio` 0.918, six heads)
-- `models/class_mapping.json` — severity bands and the validation-selected threshold
-- `data/model_info.json`, `data/model_facts.json` — registry entry and model-facts card
-- `download_model.py` — points at the v5 weights
+- `MultiInstanceLinearProbing` loads the v5 checkpoint **strictly** — 31 tensors, no missing or
+  unexpected keys — and a forward pass returns all six heads with the expected shapes
+  (`syntax` 1, `syntax_left` 1, `syntax_right` 1, `syntax_category` 4, `syntax_left_category` 4,
+  `syntax_right_category` 3).
+- `_postprocess` returns every head: continuous scores clamped at zero, severity heads softmaxed
+  with an argmax class.
+- `_filter_dicoms_with_metadata` keeps **both** coronary territories. This is the substantive
+  difference from CathEF, which sees left coronary acquisitions only; dropping the right
+  acquisitions would remove the evidence for the right-territory head.
+- Study assembly uses `num_videos` from `models/config.json` (**10**, not CathEF's 4).
+- HTML and JSON output report the continuous score, both territory scores, the severity band and
+  the >=23 decision, with the rule-out framing and the modified-reference-standard caveat on the
+  report itself.
 
-**`logic.py` is still CathEF-CLIP's and must be adapted before this is deployed.** It is carried
-over because the architecture is the same family, but its pre/post-processing and presentation
-are written for a single LVEF regression plus a binary head. For SYNTAX it needs:
+Two configuration values were wrong when this was first drafted and are worth recording, because
+both would have loaded silently as a differently-shaped model:
 
-1. `_postprocess` to return all six heads rather than `Value` / `y_true_cat`.
-2. Study-level input assembly for up to **10** projections, not 4.
-3. HTML/JSON presentation for a continuous score plus a severity band, with the >=23 threshold.
+| Value | CathEF default | Correct for this checkpoint |
+|---|---|---|
+| `attention_hidden` | 128 | **512** |
+| `num_attention_heads` | 8 | **8** — the training config records 24, which cannot divide the 512-d embedding; `DeepCORO_CLIP/scripts/attention_rollout.py` rebuilds this checkpoint with 8 |
 
-Until that is done and checked against `05_data/frozen_predictions_v5_epoch12.csv` in the
-submission bundle, this directory registers the model but does not serve correct predictions.
+### Still to do before deployment
+
+End-to-end serving has **not** been exercised: no DICOM study has been pushed through the running
+container. What is verified is that the model builds, loads strictly and runs a forward pass.
+Before this serves patients, run a study through the container and reconcile the output against
+`05_data/frozen_predictions_v5_epoch12.csv` in the submission bundle, which holds the per-study
+predictions for all 496 held-out studies.

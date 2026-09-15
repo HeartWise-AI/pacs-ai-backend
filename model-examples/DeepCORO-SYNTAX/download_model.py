@@ -10,7 +10,7 @@ def download_model(token):
     if not token:
         raise ValueError("HF_API_KEY environment variable is not set")
 
-    repo_id = "heartwise/deepcoro_clip_cardiosyntax_v5"
+    repo_id = "heartwise/deepcoro_clip_cardiosyntax"
     output_dir = "models"
     
     # Ensure the models directory exists
