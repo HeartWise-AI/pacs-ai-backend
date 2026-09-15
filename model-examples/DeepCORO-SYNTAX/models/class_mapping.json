@@ -1,0 +1,35 @@
+{
+  "syntax": {
+    "type": "regression",
+    "unit": "points",
+    "range": [
+      0,
+      100
+    ]
+  },
+  "syntax_category": {
+    "type": "classification",
+    "classes": [
+      "zero",
+      "low",
+      "intermediate",
+      "high"
+    ],
+    "labels": [
+      "0",
+      "1-22",
+      "23-32",
+      ">=33"
+    ],
+    "threshold_binary_ge23": 16.902657,
+    "threshold_note": "Operating threshold for SYNTAX>=23 on the continuous head. Selected once on the merged validation partition and held fixed for both held-out test cohorts."
+  },
+  "syntax_left": {
+    "type": "regression",
+    "unit": "points"
+  },
+  "syntax_right": {
+    "type": "regression",
+    "unit": "points"
+  }
+}

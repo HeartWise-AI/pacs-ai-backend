@@ -1,0 +1,38 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "DeepCORO-SYNTAX",
+      "Description": "DeepCORO-CLIP based estimator of a modified SYNTAX score from a complete multi-view coronary angiography study. Emits continuous global, left and right scores plus four-class severity.",
+      "Developed_by": "HeartWise.AI / Montreal Heart Institute",
+      "Development_period": "2025-2026",
+      "Version": "5.0.0 (16-segment reference standard)"
+    },
+    "Mechanism": {
+      "Outcome": "Modified SYNTAX score (continuous) and four-class severity",
+      "Output": "syntax: points; syntax_left / syntax_right: territory points; syntax_category: zero / 1-22 / 23-32 / >=33",
+      "Target_population": "Adults undergoing diagnostic coronary angiography. Not validated in grafted anatomy; prior-CABG studies were excluded from development.",
+      "Input_data_source": "Diagnostic coronary angiogram, up to 10 projections per study",
+      "Input_data_type": "dicom",
+      "Model_type": "Deep Learning (MViT encoder + multiple-instance linear probing)",
+      "Supported_DICOM_modalities": "XA"
+    },
+    "Model_Components": {
+      "Model": {
+        "Purpose": "Estimate modified SYNTAX score and severity band from a whole angiographic study",
+        "Output": "Continuous score, territory scores, severity class"
+      }
+    },
+    "Uses_and_directions": {
+      "Intended_use": "Triage and consistency aid. A clinician confirms the output against the images. High negative predictive value makes it a rule-out step for intermediate-to-high complexity (>=23), not a confirmatory test.",
+      "Not_intended_use": "Autonomous scoring, treatment decisions without Heart Team review, grafted anatomy, or any use where a fully specified SYNTAX score is required.",
+      "Directions": "Submit a complete diagnostic study. Read the severity band alongside the continuous score; the two can disagree near a cut-point."
+    },
+    "Warnings": {
+      "Reference_standard": "The reference is a MODIFIED SYNTAX score (16-segment, segment-based), not a core-laboratory SYNTAX score. It covers 16 of 25 segments, never records severe tortuosity, and captures none of the five total-occlusion sub-modifiers. All omissions are one-directional: the score is biased downward, most in occlusive and multivessel disease.",
+      "Validation_status": "No fully external validation. Both development cohorts contributed training data; the second-institution result is held-out internal performance. Manuscript under peer review (EuroIntervention EIJ-D-26-00383).",
+      "Known_bias": "Proportional bias persists: the model scores progressively lower than the reference as complexity rises (slope -0.168, p<0.001; -0.164, p=0.009).",
+      "Explainability": "No segment-level attribution. Attention weights indicate which projections were used, not which anatomic structures.",
+      "Performance": "CardioSYNTAX n=369: AUROC 0.97 (0.94-0.99), Se 0.86, Sp 0.93, NPV 0.98, rho 0.77, ICC 0.83, MAE 3.36. MHI held-out n=127: AUROC 0.88 (0.79-0.95), Se 0.72, Sp 0.80, NPV 0.95, rho 0.80, ICC 0.76, MAE 4.98. Versus physicians (n=171): AI accuracy 0.74, kappa 0.71; physician consensus 0.70, kappa 0.69 - comparable, not superior."
+    }
+  }
+}

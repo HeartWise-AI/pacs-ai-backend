@@ -1,0 +1,66 @@
+{
+  "modelId": "DeepCORO_SYNTAX",
+  "modelName": "DeepCORO-SYNTAX",
+  "domainName": "Cardiology",
+  "stage": "ai_inference",
+  "modality": "Angiogram",
+  "version": "5.0.0",
+  "dicomTargetLevel": "STUDY",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 10,
+  "supportedDicomModalities": [
+    "XA"
+  ],
+  "supportedDicomTags": [
+    "*"
+  ],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": [
+    "HTML",
+    "JSON"
+  ],
+  "approveFeedbackQuestionnaires": [
+    {
+      "id": "confidence",
+      "type": "RADIO",
+      "questionEn": "How confident are you in the model's SYNTAX estimate?",
+      "questionFr": "Quelle confiance accordez-vous \u00e0 l'estimation SYNTAX du mod\u00e8le ?",
+      "answerOptionsEn": [
+        {
+          "id": "very",
+          "answer": "Very confident"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Somewhat confident"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutral"
+        },
+        {
+          "id": "not",
+          "answer": "Not confident"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "very",
+          "answer": "Tr\u00e8s confiant"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Assez confiant"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutre"
+        },
+        {
+          "id": "not",
+          "answer": "Peu confiant"
+        }
+      ]
+    }
+  ]
+}
