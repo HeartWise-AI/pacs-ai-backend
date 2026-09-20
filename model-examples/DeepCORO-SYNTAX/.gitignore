@@ -1,2 +1,6 @@
 __pycache__
 .env
+
+# Locally downloaded model checkpoints (including nested version directories).
+*.pt
+hf_token.txt

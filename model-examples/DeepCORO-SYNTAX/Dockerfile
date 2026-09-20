@@ -9,6 +9,7 @@ RUN pip install uv
 WORKDIR /app
 
 # Copy requirements first to leverage Docker cache
+# requirements.txt installs the matched PyTorch/torchvision CUDA 12.4 wheels.
 COPY requirements.txt .
 
 # Use uv instead of pip for much faster installation

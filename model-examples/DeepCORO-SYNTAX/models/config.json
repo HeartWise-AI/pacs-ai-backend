@@ -21,7 +21,7 @@
     "num_attention_heads": 8,
     "separate_video_attention": true,
     "normalization_strategy": "post_norm",
-    "_num_attention_heads_note": "The training config records 24, which cannot divide the 512-d embedding; DeepCORO_CLIP scripts/attention_rollout.py rebuilds this checkpoint with 8 and that value is used here."
+    "_num_attention_heads_note": "The training YAML records 24, but the tracked DeepCORO_CLIP training and inference constructors omit num_attention_heads and use the class default of 8; see README training provenance."
   },
   "VideoMILWrapper": {
     "num_videos": 10,
@@ -32,14 +32,14 @@
     "model_path": "v5_20260822-164504/models/best_model_epoch_12.pt"
   },
   "dataset_mean": [
-    96.57122802734375,
-    96.57122802734375,
-    96.57122802734375
+    110.4954833984375,
+    110.4954833984375,
+    110.4954833984375
   ],
   "dataset_std": [
-    44.76901626586914,
-    44.76901626586914,
-    44.76901626586914
+    37.805782318115234,
+    37.805782318115234,
+    37.805782318115234
   ],
   "heads": {
     "syntax": {

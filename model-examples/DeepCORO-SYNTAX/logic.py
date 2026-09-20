@@ -62,8 +62,8 @@ class VideoMILWrapper(torch.nn.Module):
 
 
 class CustomPredictionService(BasePredictionService):
-    DEFAULT_DATASET_MEAN = [96.57122802734375, 96.57122802734375, 96.57122802734375]
-    DEFAULT_DATASET_STD = [44.76901626586914, 44.76901626586914, 44.76901626586914]
+    DEFAULT_DATASET_MEAN = [110.4954833984375, 110.4954833984375, 110.4954833984375]
+    DEFAULT_DATASET_STD = [37.805782318115234, 37.805782318115234, 37.805782318115234]
 
     def load_model(self, config: Config):
         if CustomPredictionService.is_initialized:
@@ -82,8 +82,13 @@ class CustomPredictionService(BasePredictionService):
             head: value["head_dim"]
             for head, value in CustomPredictionService._class_mapping.items()
         }
+        mil_config = {
+            key: value
+            for key, value in CustomPredictionService.model_config["MultiInstanceLinearProbing"].items()
+            if not key.startswith("_")
+        }
         mil_model = MultiInstanceLinearProbing(
-            **CustomPredictionService.model_config["MultiInstanceLinearProbing"],
+            **mil_config,
             head_structure=head_structure,
         )
 
@@ -303,9 +308,7 @@ class CustomPredictionService(BasePredictionService):
     async def _handle_html_output(self, request: PredictRequest):
         dicoms = self._decode_dicoms(request)
         if request.additionalMetadata:
-            filtered = self._filter_dicoms_with_metadata(dicoms, request.additionalMetadata)
-            if filtered:
-                dicoms = filtered
+            dicoms = self._filter_dicoms_with_metadata(dicoms, request.additionalMetadata)
 
         outputs = self._run_inference(dicoms)
         if outputs is None:
@@ -323,9 +326,7 @@ class CustomPredictionService(BasePredictionService):
     async def _handle_json_output(self, request: PredictRequest):
         dicoms = self._decode_dicoms(request)
         if request.additionalMetadata:
-            filtered = self._filter_dicoms_with_metadata(dicoms, request.additionalMetadata)
-            if filtered:
-                dicoms = filtered
+            dicoms = self._filter_dicoms_with_metadata(dicoms, request.additionalMetadata)
 
         outputs = self._run_inference(dicoms)
         if outputs is None:
@@ -418,7 +419,7 @@ class CustomPredictionService(BasePredictionService):
                             os.remove(p)
                         except Exception:
                             pass
-            return np.asarray(frames)
+            return np.asarray(frames) if frames else None
         except Exception as e:
             print(f"process_dicom_to_video error: {e}")
             return None
@@ -443,7 +444,7 @@ class CustomPredictionService(BasePredictionService):
                 except Exception:
                     dicom_name = f"tmp_{uuid.uuid4()}"
                 video = self._process_dicom_to_video(dicom, dicom_name)
-                if video is None:
+                if video is None or video.size == 0:
                     continue
 
                 video = video.astype(np.float32)
@@ -504,8 +505,8 @@ def _dicom_to_avi(dicom: pydicom.Dataset, output_path: str) -> Optional[str]:
         if video.ndim != 3:
             print(f"Unexpected pixel_array shape: {video.shape}")
             return None
-        frame_height = dicom[(0x028, 0x0011)].value
-        frame_width = dicom[(0x028, 0x0010)].value
+        frame_height = dicom[(0x028, 0x0010)].value
+        frame_width = dicom[(0x028, 0x0011)].value
         if frame_height != video.shape[1] or frame_width != video.shape[2]:
             return None
         fps = 30.0

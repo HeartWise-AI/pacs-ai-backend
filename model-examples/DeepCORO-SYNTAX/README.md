@@ -48,9 +48,9 @@ high complexity; no segment-level attribution; untested in grafted anatomy.
 
 ## Weights
 
-`download_model.py` pulls `heartwise/deepcoro_clip_cardiosyntax`, which is public. The token
-argument is kept for interface parity with the other model services but is not required for read
-access:
+`download_model.py` pulls `heartwise/deepcoro_clip_cardiosyntax`. The repository metadata is
+public, but weight and configuration downloads require an approved Hugging Face account
+and its access token (the repository uses manual gating):
 
 ```bash
 python download_model.py --token "$HF_API_KEY"
@@ -58,6 +58,34 @@ python download_model.py --token "$HF_API_KEY"
 
 That repo holds both versions. The service uses `v5_20260822-164504/` — the sibling
 `rxt2fz27_20250711-171619/` is the superseded CardioSYNTAX-only model and must not be loaded.
+
+## Training provenance
+
+Normalization is taken from the frozen submission bundle
+`SUBMISSION_DeepCORO_SYNTAX_FINAL_20260825/SUBMISSION/06_provenance/training_config.yaml`,
+for run `20260822-164504_no_wandb` (`DeepCORO_syntax_merged_v5_16segment_clean_encoder`):
+
+- `dataset_mean`: `[110.4954833984375, 110.4954833984375, 110.4954833984375]`
+- `dataset_std`: `[37.805782318115234, 37.805782318115234, 37.805782318115234]`
+- Source file SHA-256: `a3b4e6db824714cd81758f782d57fc5c915e4f41dc15953e2a63cf446f1691c6`.
+
+These values replace the copied CathEF statistics. The same source specifies ten videos,
+16 frames, stride two, resize 224, and all six head dimensions and class orders used here.
+`05_data/manuscript_numbers_v5.json` in that bundle identifies `best_model_epoch_12.pt`
+and the validation operating threshold `16.902657`. The submission bundle contains clinical
+study data and is kept in approved storage; only configuration provenance is recorded here.
+The corresponding hosted configuration is
+[`v5_20260822-164504/config.yaml`](https://huggingface.co/heartwise/deepcoro_clip_cardiosyntax/blob/main/v5_20260822-164504/config.yaml);
+its contents require approved access and were not used for this local verification.
+
+The YAML records `num_attention_heads: 24`, but the tracked training and inference
+[constructors](https://github.com/HeartWise-AI/DeepCORO_CLIP/blob/ddefcce38c89f1e3d3c6eae2b21a66e767add4c3/projects/linear_probing_project.py#L439-L446)
+do not pass that field. They use the MIL class
+[default of eight heads](https://github.com/HeartWise-AI/DeepCORO_CLIP/blob/ddefcce38c89f1e3d3c6eae2b21a66e767add4c3/models/multi_instance_linear_probing.py#L104-L115).
+These links pin the latest project-file revision preceding the training run. The bundle
+does not record the experiment working-tree commit, so this establishes the tracked code
+path, not whether the experiment had uncommitted changes. Strict checkpoint loading alone
+cannot verify the attention head count because it does not change parameter shapes.
 
 ## Status of this service
 
@@ -84,7 +112,7 @@ both would have loaded silently as a differently-shaped model:
 | Value | CathEF default | Correct for this checkpoint |
 |---|---|---|
 | `attention_hidden` | 128 | **512** |
-| `num_attention_heads` | 8 | **8** — the training config records 24, which cannot divide the 512-d embedding; `DeepCORO_CLIP/scripts/attention_rollout.py` rebuilds this checkpoint with 8 |
+| `num_attention_heads` | 8 | **8** — the tracked training constructor uses the class default, ignoring the YAML value of 24; see Training provenance |
 
 ### Still to do before deployment
 

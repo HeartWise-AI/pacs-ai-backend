@@ -1,9 +1,9 @@
-# Build without HuggingFace download — expects the .pt checkpoint to already
-# sit in ./models/ on the build host. Use this when you have the weights
-# locally (e.g. /media/data1/models/CathEF_CLIP/best_model_epoch_43.pt).
+# Build without HuggingFace download. Place the checkpoint at the relative path
+# configured by models/config.json before building:
 #
-#   cp /media/data1/models/CathEF_CLIP/best_model_epoch_43.pt models/
-#   docker build -f Dockerfile.local -t heartwisehub/cathef-clip:1.0 .
+#   mkdir -p models/v5_20260822-164504/models
+#   cp /path/to/best_model_epoch_12.pt models/v5_20260822-164504/models/
+#   docker build --platform linux/amd64 -f Dockerfile.local -t heartwisehub/deepcoro-syntax:local .
 FROM python:3.12.1-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends nginx supervisor git
@@ -12,6 +12,7 @@ RUN pip install uv
 
 WORKDIR /app
 
+# requirements.txt installs the matched PyTorch/torchvision CUDA 12.4 wheels.
 COPY requirements.txt .
 RUN uv pip install -r requirements.txt --system
 
