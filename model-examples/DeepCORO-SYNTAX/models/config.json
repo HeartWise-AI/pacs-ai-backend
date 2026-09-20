@@ -1,0 +1,70 @@
+{
+  "VideoEncoder": {
+    "backbone": "mvit",
+    "input_channels": 3,
+    "num_frames": 16,
+    "pretrained": false,
+    "output_dim": 512,
+    "freeze_ratio": 0.9179658719319556,
+    "dropout": 0.11352391058706925,
+    "num_heads": 16,
+    "aggregator_depth": 1,
+    "aggregate_videos_tokens": false,
+    "per_video_pool": false
+  },
+  "MultiInstanceLinearProbing": {
+    "embedding_dim": 512,
+    "pooling_mode": "attention+cls_token",
+    "attention_hidden": 512,
+    "dropout": 0.2,
+    "use_cls_token": true,
+    "num_attention_heads": 8,
+    "separate_video_attention": true,
+    "normalization_strategy": "post_norm",
+    "_num_attention_heads_note": "The training YAML records 24, but the tracked DeepCORO_CLIP training and inference constructors omit num_attention_heads and use the class default of 8; see README training provenance."
+  },
+  "VideoMILWrapper": {
+    "num_videos": 10,
+    "stride": 2,
+    "resize": 224
+  },
+  "ModelStateDict": {
+    "model_path": "v5_20260822-164504/models/best_model_epoch_12.pt"
+  },
+  "dataset_mean": [
+    110.4954833984375,
+    110.4954833984375,
+    110.4954833984375
+  ],
+  "dataset_std": [
+    37.805782318115234,
+    37.805782318115234,
+    37.805782318115234
+  ],
+  "heads": {
+    "syntax": {
+      "head_dim": 1,
+      "task": "regression"
+    },
+    "syntax_right": {
+      "head_dim": 1,
+      "task": "regression"
+    },
+    "syntax_left": {
+      "head_dim": 1,
+      "task": "regression"
+    },
+    "syntax_category": {
+      "head_dim": 4,
+      "task": "multiclass_classification"
+    },
+    "syntax_left_category": {
+      "head_dim": 4,
+      "task": "multiclass_classification"
+    },
+    "syntax_right_category": {
+      "head_dim": 3,
+      "task": "multiclass_classification"
+    }
+  }
+}
