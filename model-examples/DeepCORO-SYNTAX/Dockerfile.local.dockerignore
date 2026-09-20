@@ -6,5 +6,4 @@ hf_token.txt
 **/__pycache__
 **/*.pyc
 .pytest_cache
-# Production downloads its configured checkpoint from Hugging Face.
-**/*.pt
+# This override intentionally includes checkpoints for Dockerfile.local.
