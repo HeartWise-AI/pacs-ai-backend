@@ -1,0 +1,32 @@
+# Build without HuggingFace download. Place the checkpoint at the relative path
+# configured by models/config.json before building:
+#
+#   mkdir -p models/v5_20260822-164504/models
+#   cp /path/to/best_model_epoch_12.pt models/v5_20260822-164504/models/
+#   docker build --platform linux/amd64 -f Dockerfile.local -t heartwisehub/deepcoro-syntax:local .
+FROM python:3.12.1-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends nginx supervisor git
+
+RUN pip install uv
+
+WORKDIR /app
+
+# requirements.txt installs the matched PyTorch/torchvision CUDA 12.4 wheels.
+COPY requirements.txt .
+RUN uv pip install -r requirements.txt --system
+
+COPY main.py .
+COPY logic.py .
+COPY config.json .
+COPY data/ ./data/
+COPY docs/ ./docs/
+COPY models/ ./models/
+COPY utils/ ./utils/
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY supervisord.conf /etc/supervisord.conf
+
+EXPOSE 8000
+
+ENTRYPOINT []
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]

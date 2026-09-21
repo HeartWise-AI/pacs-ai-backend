@@ -1,0 +1,554 @@
+{
+  "openapi": "3.0.2",
+  "info": {
+    "title": "DeepCORO-SYNTAX Inference API",
+    "description": "Research inference of modified 16-segment SYNTAX scores from up to 10 coronary angiography videos. Not for clinical use.",
+    "termsOfService": "https://github.com/HeartWise-AI",
+    "contact": {
+      "name": "HeartWise AI",
+      "email": "hello@heartwise.ai"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "Container reverse proxy"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Direct local API"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Inference",
+      "description": "Inference service"
+    }
+  ],
+  "paths": {
+    "/inference/predict": {
+      "post": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Predict",
+        "description": "Creates a prediction request",
+        "requestBody": {
+          "description": "Prediction request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/PredictResponse"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-info": {
+      "get": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Get Model Info",
+        "description": "Get model info",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GetModelInfoResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Model info retrieved successfully",
+                  "data": {
+                    "modelId": "DeepCORO_SYNTAX",
+                    "modelName": "DeepCORO-SYNTAX",
+                    "domainName": "Cardiology",
+                    "stage": "ai_inference",
+                    "modality": "Angiogram",
+                    "version": "5.0.0",
+                    "dicomTargetLevel": "STUDY",
+                    "dicomUploadMin": 1,
+                    "dicomUploadMax": 10,
+                    "supportedDicomModalities": [
+                      "XA"
+                    ],
+                    "supportedDicomTags": [
+                      "*"
+                    ],
+                    "supportedAdditionalMetadata": [],
+                    "supportedOutputModes": [
+                      "HTML",
+                      "JSON"
+                    ],
+                    "approveFeedbackQuestionnaires": [
+                      {
+                        "id": "confidence",
+                        "type": "RADIO",
+                        "questionEn": "How confident are you in the model's SYNTAX estimate?",
+                        "questionFr": "Quelle confiance accordez-vous \u00e0 l'estimation SYNTAX du mod\u00e8le ?",
+                        "answerOptionsEn": [
+                          {
+                            "id": "very",
+                            "answer": "Very confident"
+                          },
+                          {
+                            "id": "somewhat",
+                            "answer": "Somewhat confident"
+                          },
+                          {
+                            "id": "neutral",
+                            "answer": "Neutral"
+                          },
+                          {
+                            "id": "not",
+                            "answer": "Not confident"
+                          }
+                        ],
+                        "answerOptionsFr": [
+                          {
+                            "id": "very",
+                            "answer": "Tr\u00e8s confiant"
+                          },
+                          {
+                            "id": "somewhat",
+                            "answer": "Assez confiant"
+                          },
+                          {
+                            "id": "neutral",
+                            "answer": "Neutre"
+                          },
+                          {
+                            "id": "not",
+                            "answer": "Peu confiant"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-facts": {
+      "get": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Get Model Facts",
+        "description": "Get model facts",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GetModelFactsResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Model facts retrieved successfully",
+                  "data": {
+                    "en": {
+                      "Summary": {
+                        "Name": "DeepCORO-SYNTAX",
+                        "Description": "DeepCORO-CLIP based estimator of a modified SYNTAX score from a complete multi-view coronary angiography study. Emits continuous global, left and right scores plus four-class severity.",
+                        "Developed_by": "HeartWise.AI / Montreal Heart Institute",
+                        "Development_period": "2025-2026",
+                        "Version": "5.0.0 (16-segment reference standard)"
+                      },
+                      "Mechanism": {
+                        "Outcome": "Modified SYNTAX score (continuous) and four-class severity",
+                        "Output": "syntax: points; syntax_left / syntax_right: territory points; syntax_category: zero / 1-22 / 23-32 / >=33",
+                        "Target_population": "Adults undergoing diagnostic coronary angiography. Not validated in grafted anatomy; prior-CABG studies were excluded from development.",
+                        "Input_data_source": "Diagnostic coronary angiogram, up to 10 projections per study",
+                        "Input_data_type": "dicom",
+                        "Model_type": "Deep Learning (MViT encoder + multiple-instance linear probing)",
+                        "Supported_DICOM_modalities": "XA"
+                      },
+                      "Model_Components": {
+                        "Model": {
+                          "Purpose": "Estimate modified SYNTAX score and severity band from a whole angiographic study",
+                          "Output": "Continuous score, territory scores, severity class"
+                        }
+                      },
+                      "Uses_and_directions": {
+                        "Intended_use": "Triage and consistency aid. A clinician confirms the output against the images. High negative predictive value makes it a rule-out step for intermediate-to-high complexity (>=23), not a confirmatory test.",
+                        "Not_intended_use": "Autonomous scoring, treatment decisions without Heart Team review, grafted anatomy, or any use where a fully specified SYNTAX score is required.",
+                        "Directions": "Submit a complete diagnostic study. Read the severity band alongside the continuous score; the two can disagree near a cut-point."
+                      },
+                      "Warnings": {
+                        "Reference_standard": "The reference is a MODIFIED SYNTAX score (16-segment, segment-based), not a core-laboratory SYNTAX score. It covers 16 of 25 segments, never records severe tortuosity, and captures none of the five total-occlusion sub-modifiers. All omissions are one-directional: the score is biased downward, most in occlusive and multivessel disease.",
+                        "Validation_status": "No fully external validation. Both development cohorts contributed training data; the second-institution result is held-out internal performance. Manuscript under peer review (EuroIntervention EIJ-D-26-00383).",
+                        "Known_bias": "Proportional bias persists: the model scores progressively lower than the reference as complexity rises (slope -0.168, p<0.001; -0.164, p=0.009).",
+                        "Explainability": "No segment-level attribution. Attention weights indicate which projections were used, not which anatomic structures.",
+                        "Performance": "CardioSYNTAX n=369: AUROC 0.97 (0.94-0.99), Se 0.86, Sp 0.93, NPV 0.98, rho 0.77, ICC 0.83, MAE 3.36. MHI held-out n=127: AUROC 0.88 (0.79-0.95), Se 0.72, Sp 0.80, NPV 0.95, rho 0.80, ICC 0.76, MAE 4.98. Versus physicians (n=171): AI accuracy 0.74, kappa 0.71; physician consensus 0.70, kappa 0.69 - comparable, not superior."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PredictRequest": {
+        "required": [
+          "outputMode"
+        ],
+        "type": "object",
+        "properties": {
+          "seriesInstanceMetadata": {
+            "type": "object"
+          },
+          "additionalMetadata": {
+            "type": "object",
+            "nullable": true
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": [
+              "HTML",
+              "JSON"
+            ],
+            "description": "Output mode"
+          },
+          "seriesInstanceImages": {
+            "type": "object",
+            "nullable": true,
+            "description": "Series and instance indices mapped to base64-encoded DICOM files.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "APIResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Operation successful"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "APIErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "Bad Request"
+          },
+          "errorCode": {
+            "type": "string",
+            "example": "BAD_REQUEST"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "GetModelInfoResponse": {
+        "type": "object",
+        "properties": {
+          "modelName": {
+            "type": "string",
+            "description": "Model display name",
+            "example": "DeepCORO-SYNTAX"
+          },
+          "version": {
+            "type": "string",
+            "description": "Model version",
+            "example": "5.0.0"
+          },
+          "dicomTargetLevel": {
+            "type": "string",
+            "enum": [
+              "PATIENT",
+              "STUDY",
+              "SERIES",
+              "INSTANCE"
+            ],
+            "description": "DICOM target level",
+            "example": "STUDY"
+          },
+          "dicomUploadMin": {
+            "type": "integer",
+            "description": "Minimum number of DICOM instances to upload for inference",
+            "example": 1
+          },
+          "dicomUploadMax": {
+            "type": "integer",
+            "description": "Maximum number of DICOM instances to upload for inference",
+            "example": 10
+          },
+          "supportedDicomModalities": {
+            "type": "array",
+            "description": "Supported DICOM modalities",
+            "items": {
+              "type": "string",
+              "example": "XA"
+            },
+            "example": [
+              "XA"
+            ]
+          },
+          "supportedDicomTags": {
+            "type": "array",
+            "description": "Supported DICOM tags",
+            "items": {
+              "type": "string",
+              "example": "00200011"
+            },
+            "example": [
+              "*"
+            ]
+          },
+          "supportedAdditionalMetadata": {
+            "type": "array",
+            "description": "Supported additional metadata",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "example": "smoking"
+                },
+                "name": {
+                  "type": "string",
+                  "example": "Smoking"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "boolean",
+                    "number",
+                    "string"
+                  ],
+                  "example": "boolean"
+                },
+                "required": {
+                  "type": "boolean",
+                  "example": true
+                }
+              }
+            },
+            "example": []
+          },
+          "supportedOutputModes": {
+            "type": "array",
+            "description": "Supported output modes",
+            "items": {
+              "type": "string",
+              "enum": [
+                "HTML",
+                "JSON"
+              ],
+              "example": "JSON"
+            },
+            "example": [
+              "HTML",
+              "JSON"
+            ]
+          }
+        }
+      },
+      "GetModelFactsResponse": {
+        "type": "object",
+        "properties": {
+          "en": {
+            "type": "object",
+            "description": "Model facts in English. See example for more details."
+          }
+        }
+      },
+      "PredictResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "htmlBase64"
+            ],
+            "properties": {
+              "htmlBase64": {
+                "type": "string",
+                "description": "Base64-encoded DeepCORO-SYNTAX HTML report."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "predictions",
+              "modelRecommendations"
+            ],
+            "properties": {
+              "predictions": {
+                "type": "object",
+                "description": "Global and territory SYNTAX scores, category probabilities and threshold interpretation."
+              },
+              "diagnosis": {
+                "type": "string",
+                "nullable": true
+              },
+              "modelRecommendations": {
+                "type": "object",
+                "nullable": true,
+                "properties": {
+                  "en": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "fr": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "presentable": {
+                    "type": "boolean",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
