@@ -1,5 +1,6 @@
 import base64
 import json
+import math
 import os
 import uuid
 from io import BytesIO
@@ -124,6 +125,19 @@ class CustomPredictionService(BasePredictionService):
     ]
     SCORE_HEAD = "jcto_score"
 
+    # Per-artery checkpoints (v2) expose ``<head>_<artery>`` heads only. The
+    # service reports the artery with the highest predicted J-CTO score.
+    ARTERIES = {"lad": "LAD", "rca": "RCA", "lcx": "LCx"}
+    ARTERY_KEY = "cto_artery_key"
+
+    _GENERIC_NAMES = {
+        "jcto_blunt_stump": "Blunt / flush stump",
+        "jcto_calcification": "Calcification at occlusion",
+        "jcto_bending_gt45": "Bending > 45°",
+        "jcto_occlusion_length_gt20": "Occlusion length ≥ 20 mm",
+        "jcto_score": "J-CTO score",
+    }
+
     def load_model(self, config: Config):
         if CustomPredictionService.is_initialized:
             return
@@ -216,37 +230,104 @@ class CustomPredictionService(BasePredictionService):
                 lo = float(meta.get("min", 0.0))
                 hi = float(meta.get("max", 100.0))
                 result[key] = float(torch.clamp(v, min=lo, max=hi).item())
-        return result
+        return self._select_artery(result)
+
+    def _select_artery(self, preds: dict) -> dict:
+        """Collapse per-artery heads onto the generic head names.
+
+        Non-CTO arteries were trained to 0, so the artery with the highest
+        predicted J-CTO score is taken as the CTO artery and its component /
+        score heads are aliased onto ``COMPONENT_HEADS`` / ``SCORE_HEAD`` so the
+        report code is shared with the overall (v1) checkpoints. Overall
+        checkpoints (generic heads present) pass through unchanged.
+        """
+        if self.SCORE_HEAD in preds:
+            return preds
+        scores = {
+            a: float(preds[f"{self.SCORE_HEAD}_{a}"])
+            for a in self.ARTERIES
+            if f"{self.SCORE_HEAD}_{a}" in preds
+        }
+        if not scores:
+            return preds
+        best = max(scores, key=scores.get)
+        for head in self.COMPONENT_HEADS + [self.SCORE_HEAD]:
+            preds[head] = float(preds.get(f"{head}_{best}", 0.0))
+        preds[self.ARTERY_KEY] = best
+        return preds
 
     # -- clinical formatting --------------------------------------------
 
-    def _component_label(self, head: str) -> str:
-        return CustomPredictionService._class_mapping.get(head, {}).get("name", head)
+    def _mapping_key(self, head: str, preds: Optional[dict] = None) -> str:
+        """Resolve a generic head name to its class_mapping entry (per-artery aware)."""
+        cm = CustomPredictionService._class_mapping
+        if head in cm:
+            return head
+        artery = (preds or {}).get(self.ARTERY_KEY)
+        if artery and f"{head}_{artery}" in cm:
+            return f"{head}_{artery}"
+        return head
 
-    def _threshold(self, head: str) -> float:
-        return float(CustomPredictionService._class_mapping.get(head, {}).get("threshold", 0.5))
+    def _component_label(self, head: str, preds: Optional[dict] = None) -> str:
+        cm = CustomPredictionService._class_mapping
+        key = self._mapping_key(head, preds)
+        if key in cm and cm[key].get("name"):
+            name = cm[key]["name"]
+            # Per-artery entries are named "<ARTERY> — <label>"; report the bare label.
+            return name.split(" — ", 1)[-1] if key != head else name
+        return self._GENERIC_NAMES.get(head, head)
+
+    def _threshold(self, head: str, preds: Optional[dict] = None) -> float:
+        cm = CustomPredictionService._class_mapping
+        return float(cm.get(self._mapping_key(head, preds), {}).get("threshold", 0.5))
+
+    @staticmethod
+    def _score_int(score: float) -> int:
+        """J-CTO score rounded to the nearest integer (half rounds up), clamped to 0-4."""
+        return int(min(4, max(0, math.floor(float(score) + 0.5))))
+
+    def _cto_artery(self, preds: dict) -> Optional[str]:
+        key = preds.get(self.ARTERY_KEY)
+        return self.ARTERIES.get(key) if key else None
 
     def _format_predictions(self, preds: dict[str, float]) -> dict[str, object]:
         components = {}
         for head in self.COMPONENT_HEADS:
             prob = float(preds.get(head, 0.0))
-            threshold = self._threshold(head)
+            threshold = self._threshold(head, preds)
             components[head] = {
-                "name": self._component_label(head),
+                "name": self._component_label(head, preds),
                 "probability": round(prob, 3),
                 "threshold": threshold,
                 "present": bool(prob >= threshold),
             }
         score_value = float(preds.get(self.SCORE_HEAD, 0.0))
+        score_int = self._score_int(score_value)
         n_above = sum(1 for c in components.values() if c["present"])
-        return {
+        out: dict[str, object] = {
             "jctoScore": {
                 "predicted": round(score_value, 2),
+                "predictedInteger": score_int,
                 "componentsAboveThreshold": n_above,
-                "difficulty": self._difficulty_band(score_value),
+                "difficulty": self._difficulty_band(score_int),
             },
             "components": components,
         }
+        artery = self._cto_artery(preds)
+        if artery is not None:
+            out["ctoArtery"] = artery
+            out["perArtery"] = {
+                name: {
+                    "jctoScore": round(float(preds.get(f"{self.SCORE_HEAD}_{a}", 0.0)), 2),
+                    "jctoScoreInteger": self._score_int(preds.get(f"{self.SCORE_HEAD}_{a}", 0.0)),
+                    "components": {
+                        h: round(float(preds.get(f"{h}_{a}", 0.0)), 3) for h in self.COMPONENT_HEADS
+                    },
+                }
+                for a, name in self.ARTERIES.items()
+                if f"{self.SCORE_HEAD}_{a}" in preds
+            }
+        return out
 
     @staticmethod
     def _difficulty_band(score: float) -> str:
@@ -259,22 +340,30 @@ class CustomPredictionService(BasePredictionService):
         return "very difficult"
 
     def _diagnosis_text(self, preds: dict[str, float]) -> str:
-        score = round(float(preds.get(self.SCORE_HEAD, 0.0)), 1)
-        band = self._difficulty_band(float(preds.get(self.SCORE_HEAD, 0.0)))
+        raw = float(preds.get(self.SCORE_HEAD, 0.0))
+        score_int = self._score_int(raw)
+        band = self._difficulty_band(score_int)
         present = [
-            self._component_label(h)
+            self._component_label(h, preds)
             for h in self.COMPONENT_HEADS
-            if float(preds.get(h, 0.0)) >= self._threshold(h)
+            if float(preds.get(h, 0.0)) >= self._threshold(h, preds)
         ]
         comp_txt = ", ".join(present) if present else "no J-CTO components above threshold"
-        return f"DeepCORO-CTO: J-CTO score = {score} ({band}) | {comp_txt}"
+        artery = self._cto_artery(preds)
+        artery_txt = f" [{artery}]" if artery else ""
+        return f"DeepCORO-CTO{artery_txt}: J-CTO score = {score_int} (raw {raw:.1f}, {band}) | {comp_txt}"
 
     def _recommendations(self, preds: dict[str, float]) -> dict[str, object]:
         score = float(preds.get(self.SCORE_HEAD, 0.0))
-        band = self._difficulty_band(score)
+        score_int = self._score_int(score)
+        band = self._difficulty_band(score_int)
+        artery = self._cto_artery(preds)
+        artery_en = f" in the {artery}" if artery else ""
+        artery_fr = f" pour l’artère {artery}" if artery else ""
         return {
             "en": (
-                f"<strong>Predicted imaging J-CTO score {score:.1f} ({band}).</strong> "
+                f"<strong>Predicted imaging J-CTO score {score_int}{artery_en} "
+                f"(raw {score:.1f}, {band}).</strong> "
                 "This is the four morphological imaging components only (range 0–4); it does not "
                 "include the classic fifth point for a previously failed attempt. The score estimates "
                 "the difficulty of successful guidewire crossing within 30 minutes. Higher scores "
@@ -283,7 +372,8 @@ class CustomPredictionService(BasePredictionService):
                 "by an operator review of the angiogram."
             ),
             "fr": (
-                f"<strong>Score J-CTO morphologique prédit {score:.1f} ({band}).</strong> "
+                f"<strong>Score J-CTO morphologique prédit {score_int}{artery_fr} "
+                f"(brut {score:.1f}, {band}).</strong> "
                 "Il s'agit des quatre composantes morphologiques d'imagerie seulement (plage 0–4); "
                 "le cinquième point classique pour une tentative antérieure échouée n'est pas inclus. "
                 "Le score estime la difficulté du franchissement du guide en moins de 30 minutes. "
@@ -297,8 +387,11 @@ class CustomPredictionService(BasePredictionService):
     # -- HTML report -----------------------------------------------------
 
     def _render_html(self, preds: dict[str, float], recs: dict[str, object]) -> str:
-        score = round(float(preds.get(self.SCORE_HEAD, 0.0)), 1)
-        band = self._difficulty_band(float(preds.get(self.SCORE_HEAD, 0.0)))
+        raw = float(preds.get(self.SCORE_HEAD, 0.0))
+        score = round(raw, 1)
+        score_int = self._score_int(raw)
+        band = self._difficulty_band(score_int)
+        artery = self._cto_artery(preds)
         badge_color = {
             "easy": "#27ae60",
             "intermediate": "#f39c12",
@@ -309,16 +402,37 @@ class CustomPredictionService(BasePredictionService):
         rows = ""
         for head in self.COMPONENT_HEADS:
             prob = float(preds.get(head, 0.0))
-            present = prob >= self._threshold(head)
+            present = prob >= self._threshold(head, preds)
             chip = "#e74c3c" if present else "#27ae60"
             label = "Present" if present else "Absent"
             rows += (
-                f"<tr><td>{self._component_label(head)}</td>"
+                f"<tr><td>{self._component_label(head, preds)}</td>"
                 f"<td style='text-align:right'>{prob:.2f}</td>"
                 f"<td style='text-align:center'><span style='display:inline-block;padding:3px 10px;"
                 f"border-radius:12px;color:#fff;font-size:12px;background:{chip}'>{label}</span></td></tr>"
             )
         en = recs.get("en", "")
+
+        artery_block = ""
+        if artery is not None:
+            artery_rows = ""
+            for a, name in self.ARTERIES.items():
+                key = f"{self.SCORE_HEAD}_{a}"
+                if key not in preds:
+                    continue
+                a_raw = float(preds[key])
+                mark = " <strong>(selected)</strong>" if a == preds.get(self.ARTERY_KEY) else ""
+                artery_rows += (
+                    f"<tr><td>{name}{mark}</td>"
+                    f"<td style='text-align:right'>{self._score_int(a_raw)}</td>"
+                    f"<td style='text-align:right'>{a_raw:.2f}</td></tr>"
+                )
+            artery_block = f"""
+ <table>
+   <thead><tr><th>Artery</th><th style='text-align:right'>J-CTO score</th><th style='text-align:right'>Raw</th></tr></thead>
+   <tbody>{artery_rows}</tbody>
+ </table>"""
+        artery_lbl = f" &middot; CTO artery: {artery}" if artery else ""
 
         html = f"""<!DOCTYPE html>
 <html><head><meta charset=\"utf-8\"><title>DeepCORO-CTO Report</title>
@@ -340,13 +454,13 @@ class CustomPredictionService(BasePredictionService):
  <h1>DeepCORO-CTO J-CTO Assessment</h1>
  <div class=\"subtitle\">DeepCORO-CLIP linear-probe J-CTO scoring from coronary angiograms</div>
  <div class=\"metric\">
-   <div><div class=\"val\">{score}</div><div class=\"lbl\">Imaging J-CTO score (0-4; no prior-failure point)</div></div>
+   <div><div class=\"val\">{score_int}</div><div class=\"lbl\">Imaging J-CTO score (0-4; no prior-failure point) &middot; raw {score}{artery_lbl}</div></div>
    <div style=\"flex:1;text-align:right;\"><span class=\"badge\">{band.title()}</span></div>
  </div>
  <table>
    <thead><tr><th>J-CTO component</th><th style='text-align:right'>Probability</th><th style='text-align:center'>Call</th></tr></thead>
    <tbody>{rows}</tbody>
- </table>
+ </table>{artery_block}
  <div class=\"rec\">{en}</div>
 </div></body></html>"""
         return html
