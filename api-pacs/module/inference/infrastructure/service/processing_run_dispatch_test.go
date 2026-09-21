@@ -119,17 +119,14 @@ func configureReadyInferenceContainer(service *InferenceCommandService) {
 }
 
 func TestEnsureInferenceContainerReadyStartsStoppedContainerAndWaitsForReadiness(t *testing.T) {
-	originalPollInterval := inferenceContainerReadinessPollInterval
-	inferenceContainerReadinessPollInterval = time.Millisecond
-	t.Cleanup(func() { inferenceContainerReadinessPollInterval = originalPollInterval })
-
 	sdk := &guardedDispatchDockerSDK{containerInfos: []dockerTypes.GetContainerInfoResult{{
 		Name: "/model-one", Running: false,
 	}}}
 	readinessAPI := &guardedDispatchDockerInferenceAPI{errors: []error{errors.New("starting"), nil}}
 	service := &InferenceCommandService{
-		DockerSDKInterface:          sdk,
-		DockerInferenceAPIInterface: readinessAPI,
+		DockerSDKInterface:                      sdk,
+		DockerInferenceAPIInterface:             readinessAPI,
+		inferenceContainerReadinessPollInterval: time.Millisecond,
 	}
 
 	err := service.ensureInferenceContainerReady(context.Background(), entity.InferenceIngestionJob{
@@ -185,20 +182,13 @@ func TestEnsureInferenceContainerReadyToleratesConcurrentStart(t *testing.T) {
 }
 
 func TestEnsureInferenceContainerReadyReturnsReadinessTimeout(t *testing.T) {
-	originalTimeout := inferenceContainerReadinessTimeout
-	originalPollInterval := inferenceContainerReadinessPollInterval
-	inferenceContainerReadinessTimeout = 5 * time.Millisecond
-	inferenceContainerReadinessPollInterval = time.Millisecond
-	t.Cleanup(func() {
-		inferenceContainerReadinessTimeout = originalTimeout
-		inferenceContainerReadinessPollInterval = originalPollInterval
-	})
-
 	service := &InferenceCommandService{
 		DockerSDKInterface: &guardedDispatchDockerSDK{containerInfos: []dockerTypes.GetContainerInfoResult{{
 			Name: "/model-one", Running: true,
 		}}},
-		DockerInferenceAPIInterface: &guardedDispatchDockerInferenceAPI{defaultError: errors.New("not ready")},
+		DockerInferenceAPIInterface:             &guardedDispatchDockerInferenceAPI{defaultError: errors.New("not ready")},
+		inferenceContainerReadinessTimeout:      5 * time.Millisecond,
+		inferenceContainerReadinessPollInterval: time.Millisecond,
 	}
 
 	err := service.ensureInferenceContainerReady(context.Background(), entity.InferenceIngestionJob{

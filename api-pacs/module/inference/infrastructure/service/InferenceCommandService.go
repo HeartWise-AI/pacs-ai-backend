@@ -51,15 +51,16 @@ type InferenceCommandService struct {
 	StudyServiceDispatchSemaphore           chan struct{}
 	ProcessingReconciliationMetricsRecorder ProcessingReconciliationMetricsRecorder
 	RequireProcessingRunID                  bool
+	inferenceContainerReadinessTimeout      time.Duration
+	inferenceContainerReadinessPollInterval time.Duration
 }
 
 const inferenceIngestionRetrievalTimeout = 3 * time.Minute
 const inferenceIngestionRetrievalPollInterval = 2 * time.Second
 const studyServiceDispatchAttemptTimeout = 2 * time.Second
 const processingRunAggregateUpdateAttempts = 3
-
-var inferenceContainerReadinessTimeout = 30 * time.Second
-var inferenceContainerReadinessPollInterval = 500 * time.Millisecond
+const defaultInferenceContainerReadinessTimeout = 30 * time.Second
+const defaultInferenceContainerReadinessPollInterval = 500 * time.Millisecond
 
 const (
 	defaultRecentWindowMinutes   uint = 240
@@ -2219,7 +2220,16 @@ func (service *InferenceCommandService) ensureInferenceContainerReady(ctx contex
 		return fmt.Errorf("inference container %s for model %s has no resolvable name", containerID, strings.TrimSpace(job.ModelName))
 	}
 
-	readinessCtx, cancel := context.WithTimeout(ctx, inferenceContainerReadinessTimeout)
+	readinessTimeout := service.inferenceContainerReadinessTimeout
+	if readinessTimeout <= 0 {
+		readinessTimeout = defaultInferenceContainerReadinessTimeout
+	}
+	readinessPollInterval := service.inferenceContainerReadinessPollInterval
+	if readinessPollInterval <= 0 {
+		readinessPollInterval = defaultInferenceContainerReadinessPollInterval
+	}
+
+	readinessCtx, cancel := context.WithTimeout(ctx, readinessTimeout)
 	defer cancel()
 
 	var readinessErr error
@@ -2228,7 +2238,7 @@ func (service *InferenceCommandService) ensureInferenceContainerReady(ctx contex
 			return nil
 		}
 
-		timer := time.NewTimer(inferenceContainerReadinessPollInterval)
+		timer := time.NewTimer(readinessPollInterval)
 		select {
 		case <-readinessCtx.Done():
 			if !timer.Stop() {
