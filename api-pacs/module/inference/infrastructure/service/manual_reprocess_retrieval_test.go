@@ -30,7 +30,7 @@ func (command *manualRetrievalOrthancCommand) RetrieveModalityStudyBySeries(
 
 type manualRetrievalOrthancQuery struct {
 	orthancApplication.OrthancQueryServiceInterface
-	jobs []orthancAPITypes.GetJobResponse
+	jobs  []orthancAPITypes.GetJobResponse
 	calls int
 }
 
@@ -45,7 +45,7 @@ func manualReprocessRetrievalFixture() (
 	entity.InferenceIngestionCandidate,
 ) {
 	job := entity.InferenceIngestionJob{
-		ID: "job-a", TenantID: "tenant-a", ModelName: "EchoModel", ModelVersion: "v1",
+		ID: "job-a", TenantID: "tenant-a", ContainerID: "container-a", ModelName: "EchoModel", ModelVersion: "v1",
 		DICOMModality: "US", Status: entity.InferenceIngestionJobStatusRunning,
 	}
 	lastRetrievalState := "local"
@@ -145,6 +145,7 @@ func TestSuccessfulReretrievalDispatchesCommittedManualExecution(t *testing.T) {
 		ProcessingDispatcherInterface:             dispatcher,
 		StudyServiceDispatchSemaphore:             make(chan struct{}, 1),
 	}
+	configureReadyInferenceContainer(service)
 	userID := "user-a"
 	result, err := service.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
 		TenantID: candidate.TenantID, StudyInstanceUID: candidate.StudyInstanceUID, UserID: &userID,
