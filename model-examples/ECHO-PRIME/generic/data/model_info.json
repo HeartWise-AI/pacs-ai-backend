@@ -4,7 +4,7 @@
   "domainName": "Cardiology",
   "stage": "ai_inference",
   "modality": "Echocardiogram",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 99,
@@ -64,6 +64,165 @@
       "questionFr": "Veuillez décrire ce qui était incorrect :",
       "answerOptionsEn": null,
       "answerOptionsFr": null
+    }
+  ],
+  "onboardingModelQuestionnaires": [
+    {
+      "id": "echoprime_bias_sources",
+      "type": "CHECKBOX",
+      "questionEn": "What could introduce bias into EchoPrime's performance across diverse patient populations? (Select all that apply)",
+      "questionFr": "Quels éléments pourraient introduire un biais dans les performances d'EchoPrime auprès de populations de patients diversifiées ? (Sélectionnez toutes les réponses applicables)",
+      "answerOptionsEn": [
+        {
+          "id": "mostly_single_institution",
+          "answer": "The training data is mostly from a single institution"
+        },
+        {
+          "id": "large_training_dataset",
+          "answer": "It was trained on more than 12 million videos from more than 100,000 patients"
+        },
+        {
+          "id": "handheld_views_excluded",
+          "answer": "Echo views from handheld devices were excluded from training"
+        },
+        {
+          "id": "external_acquisition_shift",
+          "answer": "Acquisition protocols and vendors differ between the training site and external sites"
+        },
+        {
+          "id": "vision_language_interpretations",
+          "answer": "Interpretations are generated using a vision-language model"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "mostly_single_institution",
+          "answer": "Les données d'entraînement proviennent principalement d'un seul établissement"
+        },
+        {
+          "id": "large_training_dataset",
+          "answer": "Il a été entraîné sur plus de 12 millions de vidéos provenant de plus de 100 000 patients"
+        },
+        {
+          "id": "handheld_views_excluded",
+          "answer": "Les vues échocardiographiques acquises à l'aide d'appareils portatifs ont été exclues de l'entraînement"
+        },
+        {
+          "id": "external_acquisition_shift",
+          "answer": "Les protocoles d'acquisition et les fournisseurs diffèrent entre le centre d'entraînement et les centres externes"
+        },
+        {
+          "id": "vision_language_interpretations",
+          "answer": "Les interprétations sont générées à l'aide d'un modèle vision-langage"
+        }
+      ],
+      "correctAnswerIds": [
+        "mostly_single_institution",
+        "handheld_views_excluded",
+        "external_acquisition_shift"
+      ]
+    },
+    {
+      "id": "echoprime_bias_reduction",
+      "type": "RADIO",
+      "questionEn": "Which of the following reduces the risk of bias in EchoPrime?",
+      "questionFr": "Lequel des éléments suivants réduit le risque de biais dans EchoPrime ?",
+      "answerOptionsEn": [
+        {
+          "id": "not_evaluated_non_academic",
+          "answer": "The model has not been evaluated in non-academic hospitals"
+        },
+        {
+          "id": "diverse_annotators",
+          "answer": "Annotations were made by a diverse group of sonographers and cardiologists"
+        },
+        {
+          "id": "not_calibrated_low_resource",
+          "answer": "Output is not calibrated for low-resource settings"
+        },
+        {
+          "id": "encoder_architecture",
+          "answer": "The model uses mVIT and BioMedBERT encoders"
+        },
+        {
+          "id": "view_completeness_unchecked",
+          "answer": "Echo view completeness is not checked before inference"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "not_evaluated_non_academic",
+          "answer": "Le modèle n'a pas été évalué dans des hôpitaux non universitaires"
+        },
+        {
+          "id": "diverse_annotators",
+          "answer": "Les annotations ont été réalisées par un groupe diversifié d'échographistes et de cardiologues"
+        },
+        {
+          "id": "not_calibrated_low_resource",
+          "answer": "Les résultats ne sont pas étalonnés pour les milieux à faibles ressources"
+        },
+        {
+          "id": "encoder_architecture",
+          "answer": "Le modèle utilise des encodeurs mVIT et BioMedBERT"
+        },
+        {
+          "id": "view_completeness_unchecked",
+          "answer": "L'exhaustivité des vues échocardiographiques n'est pas vérifiée avant l'inférence"
+        }
+      ],
+      "correctAnswerIds": ["diverse_annotators"]
+    },
+    {
+      "id": "echoprime_fairness_blind_spot",
+      "type": "RADIO",
+      "questionEn": "Which scenario illustrates a fairness blind spot in EchoPrime?",
+      "questionFr": "Quel scénario illustre un angle mort en matière d'équité dans EchoPrime ?",
+      "answerOptionsEn": [
+        {
+          "id": "high_performance_all_vendors",
+          "answer": "Model performance is consistently high across all echo vendors"
+        },
+        {
+          "id": "preliminary_reporting_support",
+          "answer": "Model outputs are used to support preliminary reporting by clinicians"
+        },
+        {
+          "id": "poor_quality_older_patients",
+          "answer": "Echo studies with poor image quality are disproportionately from older patients"
+        },
+        {
+          "id": "similar_auc_across_sexes",
+          "answer": "Subgroup AUC for valve disease is similar across sexes"
+        },
+        {
+          "id": "version_locked",
+          "answer": "The model is version-locked and not updated automatically"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "high_performance_all_vendors",
+          "answer": "Les performances du modèle sont uniformément élevées pour tous les fournisseurs d'échographes"
+        },
+        {
+          "id": "preliminary_reporting_support",
+          "answer": "Les résultats du modèle sont utilisés pour appuyer les rapports préliminaires des cliniciens"
+        },
+        {
+          "id": "poor_quality_older_patients",
+          "answer": "Les examens échocardiographiques de mauvaise qualité proviennent de façon disproportionnée de patients plus âgés"
+        },
+        {
+          "id": "similar_auc_across_sexes",
+          "answer": "L'ASC par sous-groupe pour les valvulopathies est semblable chez les femmes et les hommes"
+        },
+        {
+          "id": "version_locked",
+          "answer": "La version du modèle est verrouillée et n'est pas mise à jour automatiquement"
+        }
+      ],
+      "correctAnswerIds": ["poor_quality_older_patients"]
     }
   ]
 }
