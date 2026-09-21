@@ -103,7 +103,7 @@ func manualQuotaPlannerService(t *testing.T, quotaManager *recordingInferenceQuo
 			StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved,
 		}},
 		jobs: map[string]entity.InferenceIngestionJob{
-			"job-a": {ID: "job-a", TenantID: "tenant-a", ModelName: "EchoModel"},
+			"job-a": {ID: "job-a", TenantID: "tenant-a", ContainerID: "container-a", ModelName: "EchoModel"},
 		},
 	}
 	runRepository := &processingRunPlannerRepository{}
@@ -139,6 +139,7 @@ func manualQuotaPlannerService(t *testing.T, quotaManager *recordingInferenceQuo
 		},
 		StudyServiceDispatchSemaphore: make(chan struct{}, 1),
 	}
+	configureReadyInferenceContainer(service)
 	return service, dispatchCalls
 }
 
@@ -216,7 +217,7 @@ func TestManualReprocessPropagatesQuotaRejectionBeforeCreatingPlan(t *testing.T)
 
 func TestManualReprocessRefundsQuotaWhenPreDispatchRequestBuildFails(t *testing.T) {
 	job := entity.InferenceIngestionJob{
-		ID: "job-a", TenantID: "tenant-a", ModelName: "EchoModel", DICOMModality: "US",
+		ID: "job-a", TenantID: "tenant-a", ContainerID: "container-a", ModelName: "EchoModel", DICOMModality: "US",
 	}
 	candidate := entity.InferenceIngestionCandidate{
 		ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: job.ID,
@@ -240,6 +241,7 @@ func TestManualReprocessRefundsQuotaWhenPreDispatchRequestBuildFails(t *testing.
 		ProcessingDispatcherInterface:             dispatcher,
 		StudyServiceDispatchSemaphore:             make(chan struct{}, 1),
 	}
+	configureReadyInferenceContainer(service)
 	userID := "user-a"
 
 	result, err := service.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
@@ -267,7 +269,7 @@ func TestManualReprocessRefundsQuotaWhenPreDispatchRequestBuildFails(t *testing.
 
 func TestManualReprocessCorrelationFailureRefundsQuotaAndLeavesStudyRetryable(t *testing.T) {
 	job := entity.InferenceIngestionJob{
-		ID: "job-a", TenantID: "tenant-a", ModelName: "EchoModel", DICOMModality: "US",
+		ID: "job-a", TenantID: "tenant-a", ContainerID: "container-a", ModelName: "EchoModel", DICOMModality: "US",
 	}
 	candidate := entity.InferenceIngestionCandidate{
 		ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: job.ID,
@@ -296,6 +298,7 @@ func TestManualReprocessCorrelationFailureRefundsQuotaAndLeavesStudyRetryable(t 
 		ProcessingDispatcherInterface:             dispatcher,
 		StudyServiceDispatchSemaphore:             make(chan struct{}, 1),
 	}
+	configureReadyInferenceContainer(service)
 	userID := "user-a"
 
 	first, err := service.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
@@ -338,7 +341,7 @@ func TestManualReprocessCorrelationFailureRefundsQuotaAndLeavesStudyRetryable(t 
 
 func TestManualReprocessAcceptedCorrelationFailureRemainsCharged(t *testing.T) {
 	job := entity.InferenceIngestionJob{
-		ID: "job-a", TenantID: "tenant-a", ModelName: "EchoModel", DICOMModality: "US",
+		ID: "job-a", TenantID: "tenant-a", ContainerID: "container-a", ModelName: "EchoModel", DICOMModality: "US",
 	}
 	candidate := entity.InferenceIngestionCandidate{
 		ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: job.ID,
@@ -367,6 +370,7 @@ func TestManualReprocessAcceptedCorrelationFailureRemainsCharged(t *testing.T) {
 		ProcessingDispatcherInterface:             dispatcher,
 		StudyServiceDispatchSemaphore:             make(chan struct{}, 1),
 	}
+	configureReadyInferenceContainer(service)
 	userID := "user-a"
 
 	result, err := service.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{

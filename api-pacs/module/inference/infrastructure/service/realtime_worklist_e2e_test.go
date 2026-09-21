@@ -383,7 +383,8 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 		jobID, candidateID := "job-"+fixture.suffix, "candidate-"+fixture.suffix
 		modalities := pq.StringArray{"US"}
 		state.jobs[jobID] = entity.InferenceIngestionJob{
-			ID: jobID, TenantID: "tenant-a", ModelName: fixture.model, ModelVersion: "v1", DICOMModality: "US", Modalities: modalities,
+			ID: jobID, TenantID: "tenant-a", ContainerID: "container-" + fixture.suffix,
+			ModelName: fixture.model, ModelVersion: "v1", DICOMModality: "US", Modalities: modalities,
 		}
 		state.candidates[candidateID] = entity.InferenceIngestionCandidate{
 			ID: candidateID, TenantID: "tenant-a", IngestionJobID: jobID, StudyInstanceUID: "study-1",
@@ -424,6 +425,7 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 		OrthancAPIInterface:                    &manualReprocessOrthancAPI{local: true},
 		StudyServiceDispatchSemaphore:          make(chan struct{}, 1),
 	}
+	configureReadyInferenceContainer(command)
 	query := &InferenceQueryService{InferenceQueryRepositoryInterface: state, InferenceProcessingRunRepositoryInterface: state}
 
 	automatic, err := command.CreateAutomaticStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{

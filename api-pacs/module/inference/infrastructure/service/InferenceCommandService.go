@@ -58,6 +58,9 @@ const inferenceIngestionRetrievalPollInterval = 2 * time.Second
 const studyServiceDispatchAttemptTimeout = 2 * time.Second
 const processingRunAggregateUpdateAttempts = 3
 
+var inferenceContainerReadinessTimeout = 30 * time.Second
+var inferenceContainerReadinessPollInterval = 500 * time.Millisecond
+
 const (
 	defaultRecentWindowMinutes   uint = 240
 	defaultStabilityMinutes      uint = 10
@@ -2023,6 +2026,19 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 		return nil
 	}
 
+	if err := service.ensureInferenceContainerReady(ctx, job); err != nil {
+		ObserveStudyServiceDispatchAttempt("permanent_error", 0)
+		if persistErr := service.persistDispatchFailure(candidate.ID, err); persistErr != nil {
+			log.Printf("[Ingestion dispatch] cannot persist model container readiness failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
+				candidate.ID, job.ID, requestID, persistErr,
+			)
+		}
+		service.recordKnownProcessingExecutionDispatchFailure(
+			ctx, candidate, job, processingRunID, committedExecutionID, err,
+		)
+		return err
+	}
+
 	dispatchRequest, err := service.BuildStudyServiceDispatchRequest(ctx, types.BuildStudyServiceDispatchRequestInput{
 		IngestionJob:          job,
 		Candidate:             candidate,
@@ -2162,6 +2178,69 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 	}
 
 	return nil
+}
+
+func (service *InferenceCommandService) ensureInferenceContainerReady(ctx context.Context, job entity.InferenceIngestionJob) error {
+	containerID := strings.TrimSpace(job.ContainerID)
+	if containerID == "" {
+		return fmt.Errorf("inference model %s has no registered container", strings.TrimSpace(job.ModelName))
+	}
+	if service.DockerSDKInterface == nil {
+		return errors.New("inference container lifecycle service is unavailable")
+	}
+	if service.DockerInferenceAPIInterface == nil {
+		return errors.New("inference container readiness service is unavailable")
+	}
+
+	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
+	if err != nil {
+		return fmt.Errorf("cannot inspect inference container %s for model %s: %w", containerID, strings.TrimSpace(job.ModelName), err)
+	}
+
+	if !containerInfo.Running {
+		if startErr := service.DockerSDKInterface.StartContainer(ctx, containerID); startErr != nil {
+			// Another concurrent dispatch may have started the same container after
+			// the initial inspection. Treat that race as success when a fresh
+			// inspection confirms the container is now running.
+			refreshedInfo, inspectErr := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
+			if inspectErr != nil || !refreshedInfo.Running {
+				return fmt.Errorf("cannot start inference container %s for model %s: %w", containerID, strings.TrimSpace(job.ModelName), startErr)
+			}
+			containerInfo = refreshedInfo
+		} else {
+			log.Printf("[Ingestion dispatch] started inference container container_id=%s model_name=%s",
+				containerID, strings.TrimSpace(job.ModelName),
+			)
+		}
+	}
+
+	containerName := strings.TrimPrefix(strings.TrimSpace(containerInfo.Name), "/")
+	if containerName == "" {
+		return fmt.Errorf("inference container %s for model %s has no resolvable name", containerID, strings.TrimSpace(job.ModelName))
+	}
+
+	readinessCtx, cancel := context.WithTimeout(ctx, inferenceContainerReadinessTimeout)
+	defer cancel()
+
+	var readinessErr error
+	for {
+		if _, readinessErr = service.DockerInferenceAPIInterface.GetModelInfo(readinessCtx, containerName); readinessErr == nil {
+			return nil
+		}
+
+		timer := time.NewTimer(inferenceContainerReadinessPollInterval)
+		select {
+		case <-readinessCtx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return fmt.Errorf("inference container %s for model %s did not become ready: %w", containerID, strings.TrimSpace(job.ModelName), readinessErr)
+		case <-timer.C:
+		}
+	}
 }
 
 func validateManualDispatchResponseCorrelation(request types.DispatchStudyRequest, response types.DispatchStudyResponse) error {
