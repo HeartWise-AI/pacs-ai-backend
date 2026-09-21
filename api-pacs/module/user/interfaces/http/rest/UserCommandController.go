@@ -585,12 +585,12 @@ func writeInvalidRegistrationRequest(w http.ResponseWriter) {
 	response.JSON(w)
 }
 
-// ResetTutorial resets the tutorial onboarding questionnaires by user
+// ResetTutorial deletes the authenticated user's general and model-specific onboarding questionnaire answers.
 func (controller *UserCommandController) ResetTutorial(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
 
-	err := controller.UserCommandServiceInterface.ResetTutorial(context.TODO(), serviceTypes.ResetTutorial{
+	err := controller.UserCommandServiceInterface.ResetTutorial(r.Context(), serviceTypes.ResetTutorial{
 		TenantID: tenantID,
 		UserID:   userID,
 	})
