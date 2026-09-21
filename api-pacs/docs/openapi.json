@@ -1995,7 +1995,7 @@
       "post": {
         "tags": ["user"],
         "summary": "Reset Tutorial",
-        "description": "Reset tutorial.",
+        "description": "Delete all general and model-specific onboarding questionnaire answers stored for the authenticated user in the current tenant. The operation is idempotent.",
         "security": [
           {
             "bearerAuth": []
