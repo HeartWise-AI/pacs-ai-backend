@@ -9,6 +9,169 @@
   "supportedDicomTags": ["*"],
   "supportedAdditionalMetadata": [],
   "supportedOutputModes": ["OHIF_ANNOTATIONS"],
+  "onboardingModelQuestionnaires": [
+    {
+      "id": "ich_ivh_phe_fairness_blind_spot",
+      "type": "RADIO",
+      "questionEn": "Which scenario illustrates a fairness blind spot in ICH-IVH-PHE segmentation?",
+      "questionFr": "Quel scénario illustre un angle mort en matière d'équité dans la segmentation ICH-IVH-PHE ?",
+      "answerOptionsEn": [
+        {
+          "id": "overall_dice_without_race_ethnicity_stratification",
+          "answer": "High overall Dice is reported, but performance is never stratified by race or ethnicity"
+        },
+        {
+          "id": "performance_by_anticoagulation",
+          "answer": "Performance is reported separately for anticoagulated and non-anticoagulated patients"
+        },
+        {
+          "id": "masks_overlaid_for_verification",
+          "answer": "Segmentation masks are overlaid on the source CT for visual verification"
+        },
+        {
+          "id": "performance_by_sex",
+          "answer": "Performance is reported by sex in the testing cohort"
+        },
+        {
+          "id": "written_annotation_protocol",
+          "answer": "Expert annotations followed a written annotation protocol"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "overall_dice_without_race_ethnicity_stratification",
+          "answer": "Un score Dice global élevé est rapporté, mais les performances ne sont jamais stratifiées selon la race ou l'origine ethnique"
+        },
+        {
+          "id": "performance_by_anticoagulation",
+          "answer": "Les performances sont rapportées séparément pour les patients sous anticoagulants et ceux qui ne le sont pas"
+        },
+        {
+          "id": "masks_overlaid_for_verification",
+          "answer": "Les masques de segmentation sont superposés à la TDM source pour une vérification visuelle"
+        },
+        {
+          "id": "performance_by_sex",
+          "answer": "Les performances sont rapportées selon le sexe dans la cohorte d'évaluation"
+        },
+        {
+          "id": "written_annotation_protocol",
+          "answer": "Les annotations des experts ont suivi un protocole d'annotation écrit"
+        }
+      ],
+      "correctAnswerIds": [
+        "overall_dice_without_race_ethnicity_stratification"
+      ]
+    },
+    {
+      "id": "ich_ivh_phe_underrepresented_population",
+      "type": "RADIO",
+      "questionEn": "Based on the model's training data, which patient population might be underrepresented and require extra clinical caution when interpreting model results?",
+      "questionFr": "Selon les données d'entraînement du modèle, quelle population de patients pourrait être sous-représentée et nécessiter une prudence clinique accrue lors de l'interprétation des résultats du modèle ?",
+      "answerOptionsEn": [
+        {
+          "id": "patients_over_75",
+          "answer": "Elderly patients over 75 years old"
+        },
+        {
+          "id": "anticoagulation_related_hemorrhage",
+          "answer": "Patients with anticoagulation-related hemorrhages"
+        },
+        {
+          "id": "pediatric_patients_under_18",
+          "answer": "Pediatric patients under 18 years old"
+        },
+        {
+          "id": "post_surgical_changes",
+          "answer": "Patients with post-surgical changes"
+        },
+        {
+          "id": "male_patients",
+          "answer": "Male patients"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "patients_over_75",
+          "answer": "Les patients âgés de plus de 75 ans"
+        },
+        {
+          "id": "anticoagulation_related_hemorrhage",
+          "answer": "Les patients présentant des hémorragies liées à l'anticoagulation"
+        },
+        {
+          "id": "pediatric_patients_under_18",
+          "answer": "Les patients pédiatriques âgés de moins de 18 ans"
+        },
+        {
+          "id": "post_surgical_changes",
+          "answer": "Les patients présentant des changements postopératoires"
+        },
+        {
+          "id": "male_patients",
+          "answer": "Les patients de sexe masculin"
+        }
+      ],
+      "correctAnswerIds": [
+        "pediatric_patients_under_18"
+      ]
+    },
+    {
+      "id": "ich_ivh_phe_bias_sources",
+      "type": "CHECKBOX",
+      "questionEn": "What could introduce bias into ICH-IVH-PHE performance across diverse patient populations? (Select all that apply)",
+      "questionFr": "Quels éléments pourraient introduire un biais dans les performances d'ICH-IVH-PHE auprès de populations de patients diversifiées ? (Sélectionnez toutes les réponses applicables)",
+      "answerOptionsEn": [
+        {
+          "id": "older_generation_ct_scanners",
+          "answer": "Training on older generation CT scanners"
+        },
+        {
+          "id": "unknown_demographic_representation",
+          "answer": "Unknown demographic representation in training data"
+        },
+        {
+          "id": "focal_intracerebral_hemorrhage_emphasis",
+          "answer": "Emphasis on focal intracerebral hemorrhage"
+        },
+        {
+          "id": "annotation_protocol_guideline",
+          "answer": "Availability of an annotation protocol guideline for expert annotations"
+        },
+        {
+          "id": "independent_canadian_external_test",
+          "answer": "External testing in an independent Canadian cohort"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "older_generation_ct_scanners",
+          "answer": "L'entraînement sur des scanners TDM d'ancienne génération"
+        },
+        {
+          "id": "unknown_demographic_representation",
+          "answer": "La représentation démographique inconnue dans les données d'entraînement"
+        },
+        {
+          "id": "focal_intracerebral_hemorrhage_emphasis",
+          "answer": "L'accent mis sur les hémorragies intracérébrales focales"
+        },
+        {
+          "id": "annotation_protocol_guideline",
+          "answer": "La disponibilité de lignes directrices pour le protocole d'annotation des experts"
+        },
+        {
+          "id": "independent_canadian_external_test",
+          "answer": "L'évaluation externe dans une cohorte canadienne indépendante"
+        }
+      ],
+      "correctAnswerIds": [
+        "older_generation_ct_scanners",
+        "unknown_demographic_representation",
+        "focal_intracerebral_hemorrhage_emphasis"
+      ]
+    }
+  ],
   "approveFeedbackQuestionnaires": [
     {
       "id": "confidence",
