@@ -89,12 +89,17 @@ def extract_weights(archive_path: Path, output_dir: Path) -> None:
     weights_dir = output_dir / "weights"
     weights_dir.mkdir(parents=True, exist_ok=True)
 
-    with zipfile.ZipFile(archive_path) as archive:
-        for member, (filename, expected_sha256) in WEIGHT_FILES.items():
-            destination = weights_dir / filename
-            with archive.open(member) as source, destination.open("wb") as output:
-                shutil.copyfileobj(source, output, length=1024 * 1024)
-            verify(destination, expected_sha256)
+    with tempfile.TemporaryDirectory(prefix=".weights-", dir=output_dir) as temporary_dir:
+        temporary_weights_dir = Path(temporary_dir)
+        with zipfile.ZipFile(archive_path) as archive:
+            for member, (filename, expected_sha256) in WEIGHT_FILES.items():
+                destination = temporary_weights_dir / filename
+                with archive.open(member) as source, destination.open("wb") as output:
+                    shutil.copyfileobj(source, output, length=1024 * 1024)
+                verify(destination, expected_sha256)
+
+        for filename, _ in WEIGHT_FILES.values():
+            (temporary_weights_dir / filename).replace(weights_dir / filename)
 
 
 def download_model(output_dir: Path) -> None:
