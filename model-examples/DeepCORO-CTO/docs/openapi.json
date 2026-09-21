@@ -146,7 +146,7 @@
                         },
                         "modelRecommendations": {
                           "en": "<strong>Predicted imaging J-CTO score 2 in the RCA (raw 2.1, difficult).</strong> This is the four morphological imaging components only (range 0–4); it does not include the classic fifth point for a previously failed attempt.",
-                          "fr": "<strong>Score J-CTO morphologique prédit 2 pour l’artère RCA (brut 2.1, difficult).</strong> Il s'agit des quatre composantes morphologiques d'imagerie seulement (plage 0–4).",
+                          "fr": "<strong>Score J-CTO morphologique prédit 2 pour l’artère coronaire droite (brut 2.1, difficult).</strong> Il s'agit des quatre composantes morphologiques d'imagerie seulement (plage 0–4).",
                           "presentable": true
                         }
                       }
@@ -536,7 +536,7 @@
           },
           "predictions": {
             "type": "object",
-            "description": "jctoScore (predicted, predictedInteger, componentsAboveThreshold, difficulty) plus per-component probabilities for the selected artery; per-artery checkpoints also return ctoArtery (LAD/RCA/LCx) and perArtery raw outputs (JSON mode)"
+            "description": "jctoScore (predicted, predictedInteger, componentsAboveThreshold, difficulty) plus per-component probabilities for the selected artery; per-artery checkpoints also return ctoArtery (LAD/RCA/LCx) and perArtery raw outputs (JSON mode); an LCx call also returns ctoArteryWarning (EN/FR) because LCx grading is unreliable"
           },
           "modelRecommendations": {
             "type": "object",

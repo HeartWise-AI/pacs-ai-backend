@@ -187,8 +187,37 @@ def test_recommendations_and_html_mention_artery(service: CustomPredictionServic
     preds = service._select_artery(_per_artery_preds())
     recs = service._recommendations(preds)
     assert "score 2 in the RCA (raw 2.1, difficult)" in recs["en"]
-    assert "prédit 2 pour l’artère RCA (brut 2.1, difficult)" in recs["fr"]
+    assert "prédit 2 pour l’artère coronaire droite (brut 2.1, difficult)" in recs["fr"]
+    assert "Caution" not in recs["en"]
     html = service._render_html(preds, recs)
     assert "CTO artery: RCA" in html
     assert "RCA <strong>(selected)</strong>" in html
     assert "<td>LAD</td>" in html
+
+
+def test_lcx_call_carries_warning(service: CustomPredictionService):
+    preds = _per_artery_preds()
+    preds["jcto_score_lcx"] = 3.2  # make LCx the selected artery
+    preds = service._select_artery(preds)
+    assert preds[CustomPredictionService.ARTERY_KEY] == "lcx"
+    formatted = service._format_predictions(preds)
+    assert formatted["ctoArtery"] == "LCx"
+    assert "unreliable" in formatted["ctoArteryWarning"]["en"]
+    assert "circonflexe" in formatted["ctoArteryWarning"]["fr"]
+    assert service._diagnosis_text(preds).endswith("| CAUTION: LCx predictions unreliable")
+    recs = service._recommendations(preds)
+    assert "pour l’artère circonflexe" in recs["fr"]
+    assert "Caution: LCx predictions are unreliable" in recs["en"]
+    assert "Attention : les prédictions pour l’artère circonflexe" in recs["fr"]
+    html = service._render_html(preds, recs)
+    assert "LCx predictions are unreliable" in html
+    assert "LCx <strong>(selected)</strong>" in html
+
+
+def test_lad_call_uses_french_artery_name(service: CustomPredictionService):
+    preds = _per_artery_preds()
+    preds["jcto_score_lad"] = 3.6
+    preds = service._select_artery(preds)
+    recs = service._recommendations(preds)
+    assert "pour l’artère interventriculaire antérieure" in recs["fr"]
+    assert "ctoArteryWarning" not in service._format_predictions(preds)

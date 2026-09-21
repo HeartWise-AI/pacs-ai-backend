@@ -128,7 +128,25 @@ class CustomPredictionService(BasePredictionService):
     # Per-artery checkpoints (v2) expose ``<head>_<artery>`` heads only. The
     # service reports the artery with the highest predicted J-CTO score.
     ARTERIES = {"lad": "LAD", "rca": "RCA", "lcx": "LCx"}
+    ARTERIES_FR = {
+        "lad": "l’artère interventriculaire antérieure",
+        "rca": "l’artère coronaire droite",
+        "lcx": "l’artère circonflexe",
+    }
     ARTERY_KEY = "cto_artery_key"
+    # LCx grading was validated on very few studies (20 test / 108 train CTOs);
+    # the within-artery CIs span chance, so flag every LCx call.
+    UNRELIABLE_ARTERIES = {"lcx"}
+    LCX_WARNING_EN = (
+        "Caution: LCx predictions are unreliable — the model was validated on only 20 "
+        "held-out LCx CTOs (score ≥ 3 AUROC 0.56, 95% CI 0.24–0.86). Interpret with care "
+        "and rely on operator review."
+    )
+    LCX_WARNING_FR = (
+        "Attention : les prédictions pour l’artère circonflexe ne sont pas fiables — le "
+        "modèle n’a été validé que sur 20 CTO circonflexes (AUROC score ≥ 3 : 0,56, IC 95 % "
+        "0,24–0,86). À interpréter avec prudence et à confirmer par l’opérateur."
+    )
 
     _GENERIC_NAMES = {
         "jcto_blunt_stump": "Blunt / flush stump",
@@ -290,6 +308,9 @@ class CustomPredictionService(BasePredictionService):
         key = preds.get(self.ARTERY_KEY)
         return self.ARTERIES.get(key) if key else None
 
+    def _artery_unreliable(self, preds: dict) -> bool:
+        return preds.get(self.ARTERY_KEY) in self.UNRELIABLE_ARTERIES
+
     def _format_predictions(self, preds: dict[str, float]) -> dict[str, object]:
         components = {}
         for head in self.COMPONENT_HEADS:
@@ -316,6 +337,8 @@ class CustomPredictionService(BasePredictionService):
         artery = self._cto_artery(preds)
         if artery is not None:
             out["ctoArtery"] = artery
+            if self._artery_unreliable(preds):
+                out["ctoArteryWarning"] = {"en": self.LCX_WARNING_EN, "fr": self.LCX_WARNING_FR}
             out["perArtery"] = {
                 name: {
                     "jctoScore": round(float(preds.get(f"{self.SCORE_HEAD}_{a}", 0.0)), 2),
@@ -351,7 +374,8 @@ class CustomPredictionService(BasePredictionService):
         comp_txt = ", ".join(present) if present else "no J-CTO components above threshold"
         artery = self._cto_artery(preds)
         artery_txt = f" [{artery}]" if artery else ""
-        return f"DeepCORO-CTO{artery_txt}: J-CTO score = {score_int} (raw {raw:.1f}, {band}) | {comp_txt}"
+        caution = " | CAUTION: LCx predictions unreliable" if self._artery_unreliable(preds) else ""
+        return f"DeepCORO-CTO{artery_txt}: J-CTO score = {score_int} (raw {raw:.1f}, {band}) | {comp_txt}{caution}"
 
     def _recommendations(self, preds: dict[str, float]) -> dict[str, object]:
         score = float(preds.get(self.SCORE_HEAD, 0.0))
@@ -359,7 +383,9 @@ class CustomPredictionService(BasePredictionService):
         band = self._difficulty_band(score_int)
         artery = self._cto_artery(preds)
         artery_en = f" in the {artery}" if artery else ""
-        artery_fr = f" pour l’artère {artery}" if artery else ""
+        artery_fr = f" pour {self.ARTERIES_FR[preds[self.ARTERY_KEY]]}" if artery else ""
+        warn_en = f" <strong>{self.LCX_WARNING_EN}</strong>" if self._artery_unreliable(preds) else ""
+        warn_fr = f" <strong>{self.LCX_WARNING_FR}</strong>" if self._artery_unreliable(preds) else ""
         return {
             "en": (
                 f"<strong>Predicted imaging J-CTO score {score_int}{artery_en} "
@@ -370,6 +396,7 @@ class CustomPredictionService(BasePredictionService):
                 "indicate greater procedural complexity and may favour a hybrid or retrograde strategy "
                 "and dedicated operator/lab planning. This is a research preview and must be confirmed "
                 "by an operator review of the angiogram."
+                f"{warn_en}"
             ),
             "fr": (
                 f"<strong>Score J-CTO morphologique prédit {score_int}{artery_fr} "
@@ -380,6 +407,7 @@ class CustomPredictionService(BasePredictionService):
                 "Un score plus élevé indique une complexité procédurale accrue et peut orienter vers une "
                 "stratégie hybride ou rétrograde. Il s'agit d'un aperçu de recherche qui doit être confirmé "
                 "par la revue de l'angiogramme par l'opérateur."
+                f"{warn_fr}"
             ),
             "presentable": True,
         }
@@ -433,6 +461,13 @@ class CustomPredictionService(BasePredictionService):
    <tbody>{artery_rows}</tbody>
  </table>"""
         artery_lbl = f" &middot; CTO artery: {artery}" if artery else ""
+        warning_block = ""
+        if self._artery_unreliable(preds):
+            warning_block = (
+                "\n <div style=\"background:#fff4e5;border-left:4px solid #e67e22;padding:14px 18px;"
+                "border-radius:6px;margin-bottom:18px;\"><strong>&#9888; "
+                f"{self.LCX_WARNING_EN}</strong></div>"
+            )
 
         html = f"""<!DOCTYPE html>
 <html><head><meta charset=\"utf-8\"><title>DeepCORO-CTO Report</title>
@@ -456,7 +491,7 @@ class CustomPredictionService(BasePredictionService):
  <div class=\"metric\">
    <div><div class=\"val\">{score_int}</div><div class=\"lbl\">Imaging J-CTO score (0-4; no prior-failure point) &middot; raw {score}{artery_lbl}</div></div>
    <div style=\"flex:1;text-align:right;\"><span class=\"badge\">{band.title()}</span></div>
- </div>
+ </div>{warning_block}
  <table>
    <thead><tr><th>J-CTO component</th><th style='text-align:right'>Probability</th><th style='text-align:center'>Call</th></tr></thead>
    <tbody>{rows}</tbody>

@@ -66,6 +66,9 @@ docker run -it --network pacs-net --gpus all --entrypoint /bin/bash heartwisehub
 - `predictions.ctoArtery` — `LAD` / `RCA` / `LCx` (per-artery checkpoints only).
 - `predictions.perArtery.<artery>` — raw `jctoScore`, `jctoScoreInteger` and component
   probabilities for every artery (per-artery checkpoints only).
+- `predictions.ctoArteryWarning` — EN/FR caution returned only when the selected artery is the LCx
+  (validated on 20 held-out LCx CTOs; also appended to `diagnosis`, the recommendations and the HTML report).
+- French recommendations name the artery as *artère interventriculaire antérieure* / *coronaire droite* / *circonflexe*.
 
 ## Deploy
 
