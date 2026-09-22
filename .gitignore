@@ -10,6 +10,11 @@
 !**/requirements.txt
 !**/requirements_*.txt
 
+# Python-generated caches and bytecode
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
 # deploy script credentials
 scripts/.env.deploy
 
