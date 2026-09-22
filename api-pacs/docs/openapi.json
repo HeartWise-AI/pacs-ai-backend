@@ -2361,7 +2361,7 @@
       "get": {
         "tags": ["inference"],
         "summary": "Get current worklist study statuses",
-        "description": "Returns one current ingestion and processing summary per logical study for the authenticated tenant. Callable by an owner or administrator only.",
+        "description": "Returns one current ingestion and processing summary per logical study for the authenticated tenant. Callable by any authenticated tenant user.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {
@@ -2400,7 +2400,7 @@
       "get": {
         "tags": ["inference"],
         "summary": "Stream real-time worklist study updates",
-        "description": "Opens a tenant-scoped Server-Sent Events connection. Reload GET /inference/worklist/status after every reconnect because events are not durably replayed. Callable by an owner or administrator only.",
+        "description": "Opens a tenant-scoped Server-Sent Events connection. Reload GET /inference/worklist/status after every reconnect because events are not durably replayed. Callable by any authenticated tenant user.",
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
@@ -2423,7 +2423,7 @@
       "get": {
         "tags": ["inference"],
         "summary": "Get study processing-run history",
-        "description": "Returns processing attempts newest first, including each run's frozen model execution plan, for the authenticated tenant. Callable by an owner or administrator only.",
+        "description": "Returns processing attempts newest first, including each run's frozen model execution plan, for the authenticated tenant. Callable by any authenticated tenant user.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {
@@ -2456,7 +2456,7 @@
       "get": {
         "tags": ["inference"],
         "summary": "Get processing-run detail",
-        "description": "Returns one processing attempt and its frozen model execution plan only when it belongs to the authenticated tenant. Callable by an owner or administrator only.",
+        "description": "Returns one processing attempt and its frozen model execution plan only when it belongs to the authenticated tenant. Callable by any authenticated tenant user.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {
@@ -2488,7 +2488,7 @@
       "get": {
         "tags": ["inference"],
         "summary": "Get a completed model execution result",
-        "description": "Lazily returns one authoritative JSON model result only after the authenticated owner or administrator's tenant, run, and execution have been correlated. Internal study-service identifiers and credentials are never exposed.",
+        "description": "Lazily returns one authoritative JSON model result only after the authenticated tenant user's tenant, run, and execution have been correlated. Internal study-service identifiers and credentials are never exposed.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {

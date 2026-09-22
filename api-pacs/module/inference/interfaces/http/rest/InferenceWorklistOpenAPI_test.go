@@ -56,6 +56,25 @@ func TestWorklistOpenAPIDocumentsExactRoutesAndVisibleStudyFilter(t *testing.T) 
 	require.Contains(t, paths, "/inference/processing/runs/{runId}/executions/{executionId}/result")
 }
 
+func TestWorklistOpenAPIDocumentsReadAndMutationAuthorization(t *testing.T) {
+	document := loadWorklistOpenAPI(t)
+	paths := openAPIMap(t, document["paths"])
+
+	for _, route := range []string{
+		"/inference/worklist/status",
+		"/inference/worklist/events",
+		"/inference/worklist/studies/{studyInstanceUID}/runs",
+		"/inference/processing/runs/{runId}",
+		"/inference/processing/runs/{runId}/executions/{executionId}/result",
+	} {
+		operation := openAPIMap(t, openAPIMap(t, paths[route])["get"])
+		require.Contains(t, operation["description"], "authenticated tenant user", route)
+	}
+
+	reprocess := openAPIMap(t, openAPIMap(t, paths["/inference/worklist/studies/{studyInstanceUID}/reprocess"])["post"])
+	require.Contains(t, reprocess["description"], "owner or administrator")
+}
+
 func TestWorklistOpenAPIPublicSchemasExcludeTenantAndPythonInternals(t *testing.T) {
 	document := loadWorklistOpenAPI(t)
 	components := openAPIMap(t, document["components"])
@@ -84,7 +103,7 @@ func TestExecutionResultOpenAPIDocumentsLazyNoStoreContractAndSafeErrors(t *test
 	path := openAPIMap(t, paths["/inference/processing/runs/{runId}/executions/{executionId}/result"])
 	operation := openAPIMap(t, path["get"])
 	require.Contains(t, operation["description"], "Lazily")
-	require.Contains(t, operation["description"], "authenticated owner or administrator")
+	require.Contains(t, operation["description"], "authenticated tenant user")
 
 	responses := openAPIMap(t, operation["responses"])
 	for _, status := range []string{"200", "400", "401", "403", "404", "409", "422", "500", "503"} {
