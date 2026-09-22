@@ -48,23 +48,29 @@ type inferenceWorklistHandlers struct {
 	reprocessStudy     http.HandlerFunc
 }
 
-// mountInferenceWorklistRoutes keeps tenant-scoped reads available to every
-// authenticated user while applying the owner/admin guard only to mutations.
-// Authentication and policy acceptance are mounted by the enclosing group.
+// mountInferenceWorklistRoutes keeps authentication and policy acceptance
+// structurally attached to every tenant-scoped route while applying the
+// owner/admin guard only to mutations.
 func mountInferenceWorklistRoutes(
 	r chi.Router,
+	authenticate func(http.Handler) http.Handler,
+	acceptPolicy func(http.Handler) http.Handler,
 	ownerOrAdmin func(http.Handler) http.Handler,
 	handlers inferenceWorklistHandlers,
 ) {
-	r.Get("/worklist/status", handlers.getStatuses)
-	r.Get("/worklist/events", handlers.streamEvents)
-	r.Get("/worklist/studies/{studyInstanceUID}/runs", handlers.getRunHistory)
-	r.Get("/processing/runs/{runId}", handlers.getRunDetail)
-	r.Get("/processing/runs/{runId}/executions/{executionId}/result", handlers.getExecutionResult)
-
 	r.Group(func(r chi.Router) {
-		r.Use(ownerOrAdmin)
-		r.Post("/worklist/studies/{studyInstanceUID}/reprocess", handlers.reprocessStudy)
+		r.Use(authenticate)
+		r.Use(acceptPolicy)
+		r.Get("/worklist/status", handlers.getStatuses)
+		r.Get("/worklist/events", handlers.streamEvents)
+		r.Get("/worklist/studies/{studyInstanceUID}/runs", handlers.getRunHistory)
+		r.Get("/processing/runs/{runId}", handlers.getRunDetail)
+		r.Get("/processing/runs/{runId}/executions/{executionId}/result", handlers.getExecutionResult)
+
+		r.Group(func(r chi.Router) {
+			r.Use(ownerOrAdmin)
+			r.Post("/worklist/studies/{studyInstanceUID}/reprocess", handlers.reprocessStudy)
+		})
 	})
 }
 
@@ -227,15 +233,22 @@ func (router *router) InitRouter() *chi.Mux {
 						})
 					})
 
-					mountInferenceWorklistRoutes(r, iamMiddleware.RBACOwnerOrAdminGuard, inferenceWorklistHandlers{
+				})
+
+				mountInferenceWorklistRoutes(
+					r,
+					iamMiddleware.TokenSessionAuthGuard,
+					iamMiddleware.PolicyAcceptanceGuard,
+					iamMiddleware.RBACOwnerOrAdminGuard,
+					inferenceWorklistHandlers{
 						getStatuses:        inferenceQueryController.GetWorklistStudyStatuses,
 						streamEvents:       inferenceQueryController.StreamWorklistEvents,
 						getRunHistory:      inferenceQueryController.GetStudyProcessingRunHistory,
 						getRunDetail:       inferenceQueryController.GetProcessingRunDetail,
 						getExecutionResult: inferenceQueryController.GetProcessingRunExecutionResult,
 						reprocessStudy:     inferenceCommandController.ReprocessStudy,
-					})
-				})
+					},
+				)
 			})
 
 			r.Route("/internal", func(r chi.Router) {
