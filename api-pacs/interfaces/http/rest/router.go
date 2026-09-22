@@ -39,6 +39,35 @@ type ChiRouterInterface interface {
 
 type router struct{}
 
+type inferenceWorklistHandlers struct {
+	getStatuses        http.HandlerFunc
+	streamEvents       http.HandlerFunc
+	getRunHistory      http.HandlerFunc
+	getRunDetail       http.HandlerFunc
+	getExecutionResult http.HandlerFunc
+	reprocessStudy     http.HandlerFunc
+}
+
+// mountInferenceWorklistRoutes keeps tenant-scoped reads available to every
+// authenticated user while applying the owner/admin guard only to mutations.
+// Authentication and policy acceptance are mounted by the enclosing group.
+func mountInferenceWorklistRoutes(
+	r chi.Router,
+	ownerOrAdmin func(http.Handler) http.Handler,
+	handlers inferenceWorklistHandlers,
+) {
+	r.Get("/worklist/status", handlers.getStatuses)
+	r.Get("/worklist/events", handlers.streamEvents)
+	r.Get("/worklist/studies/{studyInstanceUID}/runs", handlers.getRunHistory)
+	r.Get("/processing/runs/{runId}", handlers.getRunDetail)
+	r.Get("/processing/runs/{runId}/executions/{executionId}/result", handlers.getExecutionResult)
+
+	r.Group(func(r chi.Router) {
+		r.Use(ownerOrAdmin)
+		r.Post("/worklist/studies/{studyInstanceUID}/reprocess", handlers.reprocessStudy)
+	})
+}
+
 var (
 	m          *router
 	routerOnce sync.Once
@@ -140,7 +169,6 @@ func (router *router) InitRouter() *chi.Mux {
 
 			// inference module
 			r.Route("/inference", func(r chi.Router) {
-				// admin or owner only
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 					r.Use(iamMiddleware.PolicyAcceptanceGuard)
@@ -199,14 +227,13 @@ func (router *router) InitRouter() *chi.Mux {
 						})
 					})
 
-					r.Group(func(r chi.Router) {
-						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
-						r.Get("/worklist/status", inferenceQueryController.GetWorklistStudyStatuses)
-						r.Get("/worklist/events", inferenceQueryController.StreamWorklistEvents)
-						r.Get("/worklist/studies/{studyInstanceUID}/runs", inferenceQueryController.GetStudyProcessingRunHistory)
-						r.Get("/processing/runs/{runId}", inferenceQueryController.GetProcessingRunDetail)
-						r.Get("/processing/runs/{runId}/executions/{executionId}/result", inferenceQueryController.GetProcessingRunExecutionResult)
-						r.Post("/worklist/studies/{studyInstanceUID}/reprocess", inferenceCommandController.ReprocessStudy)
+					mountInferenceWorklistRoutes(r, iamMiddleware.RBACOwnerOrAdminGuard, inferenceWorklistHandlers{
+						getStatuses:        inferenceQueryController.GetWorklistStudyStatuses,
+						streamEvents:       inferenceQueryController.StreamWorklistEvents,
+						getRunHistory:      inferenceQueryController.GetStudyProcessingRunHistory,
+						getRunDetail:       inferenceQueryController.GetProcessingRunDetail,
+						getExecutionResult: inferenceQueryController.GetProcessingRunExecutionResult,
+						reprocessStudy:     inferenceCommandController.ReprocessStudy,
 					})
 				})
 			})
