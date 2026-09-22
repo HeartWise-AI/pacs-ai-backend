@@ -78,6 +78,11 @@ Preferred:
 ```bash
 DEFAULT_OUTPUT_MODE=HTML ./scripts/deploy-model.sh model-examples/<ModelName> --hf-token-file hf_token.txt
 ```
+The script authenticates through the backend's server-controlled `/v1/iam/login` endpoint using
+`TENANT_ID`, `PACS_ADMIN_EMAIL`, and `PACS_ADMIN_PASSWORD` from `scripts/.env.deploy`. Because the request
+contains the admin password, `API_BASE_URL` must use HTTPS unless it points to `localhost` or `127.0.0.1`.
+See `scripts/.env.deploy.example` for the complete configuration.
+
 Or manually:
 ```bash
 docker login
