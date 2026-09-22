@@ -1,0 +1,110 @@
+{
+  "modelId": "DeepCORO_MACE",
+  "modelName": "DeepCORO-MACE",
+  "domainName": "Cardiology",
+  "stage": "ai_inference",
+  "modality": "Angiogram",
+  "version": "1.0.0",
+  "dicomTargetLevel": "STUDY",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 3,
+  "supportedDicomModalities": [
+    "XA"
+  ],
+  "supportedDicomTags": [
+    "*"
+  ],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": [
+    "HTML",
+    "JSON"
+  ],
+  "approveFeedbackQuestionnaires": [
+    {
+      "id": "confidence",
+      "type": "RADIO",
+      "questionEn": "How confident are you that these research scores are consistent with the angiogram?",
+      "questionFr": "À quel point êtes-vous confiant que ces scores de recherche concordent avec la coronarographie ?",
+      "answerOptionsEn": [
+        {
+          "id": "very",
+          "answer": "Very confident"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Somewhat confident"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutral"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "very",
+          "answer": "Très confiant"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Assez confiant"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutre"
+        }
+      ]
+    },
+    {
+      "id": "comments",
+      "type": "TEXT",
+      "questionEn": "Any additional comments?",
+      "questionFr": "Des commentaires supplémentaires ?",
+      "answerOptionsEn": null,
+      "answerOptionsFr": null
+    }
+  ],
+  "rejectFeedbackQuestionnaires": [
+    {
+      "id": "reason",
+      "type": "CHECKBOX",
+      "questionEn": "Why do you disagree with the output?",
+      "questionFr": "Pourquoi êtes-vous en désaccord avec le résultat ?",
+      "answerOptionsEn": [
+        {
+          "id": "composite",
+          "answer": "Composite MACE score"
+        },
+        {
+          "id": "component",
+          "answer": "One or more component scores"
+        },
+        {
+          "id": "quality",
+          "answer": "Poor image quality"
+        },
+        {
+          "id": "other",
+          "answer": "Other"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "composite",
+          "answer": "Score MACE composite"
+        },
+        {
+          "id": "component",
+          "answer": "Un ou plusieurs scores de composantes"
+        },
+        {
+          "id": "quality",
+          "answer": "Mauvaise qualité d'image"
+        },
+        {
+          "id": "other",
+          "answer": "Autre"
+        }
+      ]
+    }
+  ]
+}

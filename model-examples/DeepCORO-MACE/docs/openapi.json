@@ -1,0 +1,610 @@
+{
+  "openapi": "3.0.2",
+  "info": {
+    "title": "DeepCORO-MACE Inference API",
+    "description": "Research-only one-year cardiovascular outcome scores from up to three coronary angiography videos. Not for clinical use.",
+    "termsOfService": "https://github.com/HeartWise-AI",
+    "contact": {
+      "name": "HeartWise AI",
+      "email": "hello@heartwise.ai"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "Container reverse proxy"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Direct local API"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Inference",
+      "description": "Inference service"
+    }
+  ],
+  "paths": {
+    "/inference/predict": {
+      "post": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Predict",
+        "description": "Creates a prediction request",
+        "requestBody": {
+          "description": "Prediction request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/PredictResponse"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-info": {
+      "get": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Get Model Info",
+        "description": "Get model info",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GetModelInfoResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Model info retrieved successfully",
+                  "data": {
+                    "modelId": "DeepCORO_MACE",
+                    "modelName": "DeepCORO-MACE",
+                    "domainName": "Cardiology",
+                    "stage": "ai_inference",
+                    "modality": "Angiogram",
+                    "version": "1.0.0",
+                    "dicomTargetLevel": "STUDY",
+                    "dicomUploadMin": 1,
+                    "dicomUploadMax": 3,
+                    "supportedDicomModalities": [
+                      "XA"
+                    ],
+                    "supportedDicomTags": [
+                      "*"
+                    ],
+                    "supportedAdditionalMetadata": [],
+                    "supportedOutputModes": [
+                      "HTML",
+                      "JSON"
+                    ],
+                    "approveFeedbackQuestionnaires": [
+                      {
+                        "id": "confidence",
+                        "type": "RADIO",
+                        "questionEn": "How confident are you that these research scores are consistent with the angiogram?",
+                        "questionFr": "À quel point êtes-vous confiant que ces scores de recherche concordent avec la coronarographie ?",
+                        "answerOptionsEn": [
+                          {
+                            "id": "very",
+                            "answer": "Very confident"
+                          },
+                          {
+                            "id": "somewhat",
+                            "answer": "Somewhat confident"
+                          },
+                          {
+                            "id": "neutral",
+                            "answer": "Neutral"
+                          }
+                        ],
+                        "answerOptionsFr": [
+                          {
+                            "id": "very",
+                            "answer": "Très confiant"
+                          },
+                          {
+                            "id": "somewhat",
+                            "answer": "Assez confiant"
+                          },
+                          {
+                            "id": "neutral",
+                            "answer": "Neutre"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "comments",
+                        "type": "TEXT",
+                        "questionEn": "Any additional comments?",
+                        "questionFr": "Des commentaires supplémentaires ?",
+                        "answerOptionsEn": null,
+                        "answerOptionsFr": null
+                      }
+                    ],
+                    "rejectFeedbackQuestionnaires": [
+                      {
+                        "id": "reason",
+                        "type": "CHECKBOX",
+                        "questionEn": "Why do you disagree with the output?",
+                        "questionFr": "Pourquoi êtes-vous en désaccord avec le résultat ?",
+                        "answerOptionsEn": [
+                          {
+                            "id": "composite",
+                            "answer": "Composite MACE score"
+                          },
+                          {
+                            "id": "component",
+                            "answer": "One or more component scores"
+                          },
+                          {
+                            "id": "quality",
+                            "answer": "Poor image quality"
+                          },
+                          {
+                            "id": "other",
+                            "answer": "Other"
+                          }
+                        ],
+                        "answerOptionsFr": [
+                          {
+                            "id": "composite",
+                            "answer": "Score MACE composite"
+                          },
+                          {
+                            "id": "component",
+                            "answer": "Un ou plusieurs scores de composantes"
+                          },
+                          {
+                            "id": "quality",
+                            "answer": "Mauvaise qualité d'image"
+                          },
+                          {
+                            "id": "other",
+                            "answer": "Autre"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-facts": {
+      "get": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Get Model Facts",
+        "description": "Get model facts",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GetModelFactsResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Model facts retrieved successfully",
+                  "data": {
+                    "en": {
+                      "Summary": {
+                        "Name": "DeepCORO-MACE",
+                        "Description": "DeepCORO-CLIP based research model that produces nine one-year cardiovascular outcome scores from up to three coronary angiography videos.",
+                        "Developed_by": "HeartWise.AI / Montreal Heart Institute",
+                        "Version": "1.0.0"
+                      },
+                      "Mechanism": {
+                        "Outcome": "One-year composite MACE and component outcome scores",
+                        "Output": "Sigmoid scores for composite MACE, urgent revascularization, non-fatal myocardial infarction, complete coronary occlusion, cardiovascular death, non-fatal stroke, heart-failure hospitalization, life-threatening arrhythmia, and cardiogenic shock",
+                        "Target_population": "Adults undergoing coronary angiography represented by the model development cohort",
+                        "Input_data_source": "Coronary angiography study, up to three videos ordered by DICOM SeriesTime",
+                        "Input_data_type": "dicom",
+                        "Model_type": "Deep Learning (MViT video encoder plus multiple-instance linear probing)",
+                        "Supported_DICOM_modalities": "XA"
+                      },
+                      "Uses_and_directions": {
+                        "General_use": "Research and demonstration of angiography-derived one-year outcome scores.",
+                        "Directions": "Submit one complete diagnostic XA study. Interpret every value as a model score, not a calibrated clinical probability.",
+                        "Not_intended_use": "Diagnosis, autonomous risk stratification, or changing monitoring, treatment, revascularization, or discharge decisions."
+                      },
+                      "Warnings_and_limitations": {
+                        "Research_only": "No regulatory clearance. The model and the 0.5 display thresholds are not validated for clinical decision-making.",
+                        "Calibration": "Displayed sigmoid values are not established as calibrated absolute risks. A score above 0.5 is only an uncalibrated research flag.",
+                        "Primary_outputs": "Composite MACE, urgent revascularization, non-fatal myocardial infarction, and complete coronary occlusion are emphasized in the report.",
+                        "Low_event_outputs": "Cardiovascular death had only four events in the held-out cohort and is not reliable as a standalone estimate. Non-fatal stroke, heart-failure hospitalization, life-threatening arrhythmia, and cardiogenic shock are exploratory low-event outputs.",
+                        "Clinical_context": "Angiography alone does not capture all clinical determinants of cardiovascular outcomes. Use validated clinical assessment and clinician review.",
+                        "Input_selection": "The service uses at most the first three processable videos after ordering by DICOM SeriesTime; additional videos are ignored and missing slots are masked."
+                      },
+                      "Artifact_provenance": {
+                        "Repository": "heartwise/deepcoro_clip_mace",
+                        "Pinned_revision": "7be030d1c7b62e41f45a4dd35adff9dae21d884f",
+                        "Checkpoint": "11zt0zl5_20250723-162407/models/best_model_epoch_18.pt",
+                        "Checkpoint_heads": "Nine binary heads under the linear_probing state-dict key"
+                      }
+                    },
+                    "fr": {
+                      "Résumé": {
+                        "Nom": "DeepCORO-MACE",
+                        "Description": "Modèle de recherche fondé sur DeepCORO-CLIP qui produit neuf scores d'événements cardiovasculaires à un an à partir d'au plus trois vidéos de coronarographie.",
+                        "Version": "1.0.0"
+                      },
+                      "Avertissements": {
+                        "Recherche_uniquement": "Aucune autorisation réglementaire. Le modèle et les seuils d'affichage de 0,5 ne sont pas validés pour la prise de décision clinique.",
+                        "Interprétation": "Les valeurs sigmoid affichées ne sont pas des risques absolus étalonnés. Elles ne doivent pas modifier la surveillance, le traitement, la revascularisation ou le congé.",
+                        "Sorties_exploratoires": "Le décès cardiovasculaire ne comptait que quatre événements dans la cohorte de test. Cette sortie et les autres composantes à faible nombre d'événements doivent être considérées comme exploratoires."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PredictRequest": {
+        "required": [
+          "outputMode"
+        ],
+        "type": "object",
+        "properties": {
+          "seriesInstanceMetadata": {
+            "type": "object"
+          },
+          "additionalMetadata": {
+            "type": "object",
+            "nullable": true
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": [
+              "HTML",
+              "JSON"
+            ],
+            "description": "Output mode"
+          },
+          "seriesInstanceImages": {
+            "type": "object",
+            "nullable": true,
+            "description": "Series and instance indices mapped to base64-encoded DICOM files.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "APIResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Operation successful"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "APIErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "Bad Request"
+          },
+          "errorCode": {
+            "type": "string",
+            "example": "BAD_REQUEST"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "GetModelInfoResponse": {
+        "type": "object",
+        "properties": {
+          "modelName": {
+            "type": "string",
+            "description": "Model display name",
+            "example": "DeepCORO-MACE"
+          },
+          "version": {
+            "type": "string",
+            "description": "Model version",
+            "example": "5.0.0"
+          },
+          "dicomTargetLevel": {
+            "type": "string",
+            "enum": [
+              "PATIENT",
+              "STUDY",
+              "SERIES",
+              "INSTANCE"
+            ],
+            "description": "DICOM target level",
+            "example": "STUDY"
+          },
+          "dicomUploadMin": {
+            "type": "integer",
+            "description": "Minimum number of DICOM instances to upload for inference",
+            "example": 1
+          },
+          "dicomUploadMax": {
+            "type": "integer",
+            "description": "Maximum number of DICOM instances to upload for inference",
+            "example": 10
+          },
+          "supportedDicomModalities": {
+            "type": "array",
+            "description": "Supported DICOM modalities",
+            "items": {
+              "type": "string",
+              "example": "XA"
+            },
+            "example": [
+              "XA"
+            ]
+          },
+          "supportedDicomTags": {
+            "type": "array",
+            "description": "Supported DICOM tags",
+            "items": {
+              "type": "string",
+              "example": "00200011"
+            },
+            "example": [
+              "*"
+            ]
+          },
+          "supportedAdditionalMetadata": {
+            "type": "array",
+            "description": "Supported additional metadata",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "example": "smoking"
+                },
+                "name": {
+                  "type": "string",
+                  "example": "Smoking"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "boolean",
+                    "number",
+                    "string"
+                  ],
+                  "example": "boolean"
+                },
+                "required": {
+                  "type": "boolean",
+                  "example": true
+                }
+              }
+            },
+            "example": []
+          },
+          "supportedOutputModes": {
+            "type": "array",
+            "description": "Supported output modes",
+            "items": {
+              "type": "string",
+              "enum": [
+                "HTML",
+                "JSON"
+              ],
+              "example": "JSON"
+            },
+            "example": [
+              "HTML",
+              "JSON"
+            ]
+          }
+        }
+      },
+      "GetModelFactsResponse": {
+        "type": "object",
+        "properties": {
+          "en": {
+            "type": "object",
+            "description": "Model facts in English. See example for more details."
+          }
+        }
+      },
+      "PredictResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "htmlBase64"
+            ],
+            "properties": {
+              "htmlBase64": {
+                "type": "string",
+                "description": "Base64-encoded DeepCORO-MACE HTML research report."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "predictions",
+              "modelRecommendations"
+            ],
+            "properties": {
+              "predictions": {
+                "type": "object",
+                "description": "One-year composite and component MACE research scores, grouped into primary and exploratory outputs."
+              },
+              "diagnosis": {
+                "type": "string",
+                "nullable": true
+              },
+              "modelRecommendations": {
+                "type": "object",
+                "nullable": true,
+                "properties": {
+                  "en": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "fr": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "presentable": {
+                    "type": "boolean",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "VideoEncoder": {
+    "backbone": "mvit",
+    "input_channels": 3,
+    "num_frames": 16,
+    "pretrained": false,
+    "output_dim": 512,
+    "freeze_ratio": 0.9654072781946612,
+    "dropout": 0.24672149086631012,
+    "num_heads": 16,
+    "aggregator_depth": 1,
+    "aggregate_videos_tokens": false,
+    "per_video_pool": false
+  },
+  "MultiInstanceLinearProbing": {
+    "embedding_dim": 512,
+    "pooling_mode": "cls_token",
+    "attention_hidden": 256,
+    "dropout": 0.20766862431013644,
+    "use_cls_token": true,
+    "num_attention_heads": 8,
+    "separate_video_attention": true,
+    "normalization_strategy": "post_norm",
+    "num_view_classes": 0,
+    "_constructor_note": "Values match the effective training constructor. The checkpoint is always loaded strictly."
+  },
+  "VideoMILWrapper": {
+    "num_videos": 3,
+    "stride": 1,
+    "resize": 224
+  },
+  "ModelStateDict": {
+    "model_path": "11zt0zl5_20250723-162407/models/best_model_epoch_18.pt",
+    "state_dict_key": "linear_probing"
+  },
+  "dataset_mean": [
+    107.3622055053711,
+    107.3622055053711,
+    107.3622055053711
+  ],
+  "dataset_std": [
+    34.67802429199219,
+    34.67802429199219,
+    34.67802429199219
+  ]
+}

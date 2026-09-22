@@ -1,0 +1,75 @@
+{
+  "complete_occlusion_coronary_disease_binary": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Complete coronary occlusion",
+    "nameFr": "Occlusion coronarienne complète",
+    "threshold": 0.5,
+    "category": "primary"
+  },
+  "mace_cv_death_binary": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Cardiovascular death",
+    "nameFr": "Décès cardiovasculaire",
+    "threshold": 0.5,
+    "category": "exploratory",
+    "warning": "Only four cardiovascular deaths were available in the held-out cohort; this component is not reliable as a standalone estimate."
+  },
+  "mace_non_fatal_mi_binary": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Non-fatal myocardial infarction",
+    "nameFr": "Infarctus du myocarde non fatal",
+    "threshold": 0.5,
+    "category": "primary"
+  },
+  "mace_non_fatal_stroke_binary": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Non-fatal stroke",
+    "nameFr": "AVC non fatal",
+    "threshold": 0.5,
+    "category": "exploratory"
+  },
+  "mace_urgent_revascularization_binary": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Urgent revascularization",
+    "nameFr": "Revascularisation urgente",
+    "threshold": 0.5,
+    "category": "primary"
+  },
+  "mace_heart_failure_hosp_binary": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Heart-failure hospitalization",
+    "nameFr": "Hospitalisation pour insuffisance cardiaque",
+    "threshold": 0.5,
+    "category": "exploratory"
+  },
+  "mace_life_threatening_arrhythmia_binary": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Life-threatening arrhythmia",
+    "nameFr": "Arythmie menaçant le pronostic vital",
+    "threshold": 0.5,
+    "category": "exploratory"
+  },
+  "mace_cardiogenic_shock_binary": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Cardiogenic shock",
+    "nameFr": "Choc cardiogénique",
+    "threshold": 0.5,
+    "category": "exploratory"
+  },
+  "mace_binary": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Composite MACE",
+    "nameFr": "Événement cardiovasculaire indésirable majeur composite",
+    "threshold": 0.5,
+    "category": "primary"
+  }
+}
