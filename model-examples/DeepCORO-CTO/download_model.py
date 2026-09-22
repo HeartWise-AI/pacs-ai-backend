@@ -1,35 +1,38 @@
-import os
 import argparse
+import os
+
 from huggingface_hub import snapshot_download
 
+REPO_ID = "heartwise/DeepCORO_CTO"
+# Weights are pinned to a release tag so image builds are reproducible:
+#   v1.0 — overall 5-head model, epoch 24 (W&B pdnzpnpy), up to 8 videos
+#   v2.0 — per-artery 15-head model, epoch 18 (W&B dg1o32md), up to 10 videos
+DEFAULT_REVISION = os.environ.get("DEEPCORO_CTO_HF_REVISION", "v2.0")
+OUTPUT_DIR = "models"
+# alt_models/ holds alternative overall checkpoints for research comparisons;
+# they are not used by the service and would add ~330 MB to the image.
+IGNORE_PATTERNS = ["alt_models/*", "alt_models/**"]
 
-def download_model(token):
-    # Retrieve the Hugging Face API key from environment (required at build time)
-    token = token
 
+def download_model(token: str, revision: str = DEFAULT_REVISION) -> None:
     if not token:
-        raise ValueError("HF_API_KEY environment variable is not set")
+        raise ValueError("A HuggingFace token is required (--token)")
 
-    repo_id = "heartwise/DeepCORO_CTO"
-    output_dir = "models"
-    
-    # Ensure the models directory exists
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Download all files from the repository
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     local_dir = snapshot_download(
-        repo_id=repo_id,
+        repo_id=REPO_ID,
+        revision=revision,
         token=token,
-        local_dir=output_dir,
-        local_dir_use_symlinks=False  # Use actual files instead of symlinks
+        local_dir=OUTPUT_DIR,
+        ignore_patterns=IGNORE_PATTERNS,
     )
-    print(f"Downloaded all files from repository to {local_dir}")
+    print(f"Downloaded {REPO_ID}@{revision} to {local_dir}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--token", type=str, required=True)
+    parser.add_argument("--revision", type=str, default=DEFAULT_REVISION)
     args = parser.parse_args()
-    token = args.token
-    
-    download_model(token)
+
+    download_model(args.token, args.revision)

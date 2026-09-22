@@ -2,13 +2,13 @@
   "openapi": "3.0.2",
   "info": {
     "title": "DeepCORO-CTO Inference Model API",
-    "description": "PACS.AI inference API for DeepCORO-CTO, a research-preview J-CTO scorer for chronic total occlusions on coronary angiography (XA).",
+    "description": "PACS.AI inference API for DeepCORO-CTO, a research-preview per-artery J-CTO scorer for chronic total occlusions on coronary angiography (XA).",
     "termsOfService": "https://github.com/HeartWise-AI",
     "contact": {
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "1.0.0"
+    "version": "2.0.0"
   },
   "servers": [
     {
@@ -37,7 +37,7 @@
           "Inference"
         ],
         "summary": "Predict",
-        "description": "Run DeepCORO-CTO inference on up to 8 coronary angiogram DICOM videos. Supported output modes: JSON and HTML.",
+        "description": "Run DeepCORO-CTO inference on up to 10 coronary angiogram DICOM videos. Supported output modes: JSON and HTML.",
         "requestBody": {
           "description": "Prediction request",
           "content": {
@@ -76,12 +76,13 @@
                       "success": true,
                       "message": "Prediction successful",
                       "data": {
-                        "diagnosis": "DeepCORO-CTO: J-CTO score = 2.1 (difficult) | Calcification at occlusion, Bending > 45°",
+                        "diagnosis": "DeepCORO-CTO [RCA]: J-CTO score = 2 (raw 2.1, difficult) | Calcification at occlusion, Bending > 45°",
                         "predictions": {
                           "jctoScore": {
                             "predicted": 2.1,
-                            "difficulty": "difficult",
-                            "componentsAboveThreshold": 2
+                            "predictedInteger": 2,
+                            "componentsAboveThreshold": 2,
+                            "difficulty": "difficult"
                           },
                           "components": {
                             "jcto_blunt_stump": {
@@ -108,11 +109,44 @@
                               "threshold": 0.5,
                               "present": false
                             }
+                          },
+                          "ctoArtery": "RCA",
+                          "perArtery": {
+                            "LAD": {
+                              "jctoScore": 0.31,
+                              "jctoScoreInteger": 0,
+                              "components": {
+                                "jcto_blunt_stump": 0.08,
+                                "jcto_calcification": 0.11,
+                                "jcto_bending_gt45": 0.05,
+                                "jcto_occlusion_length_gt20": 0.09
+                              }
+                            },
+                            "RCA": {
+                              "jctoScore": 2.1,
+                              "jctoScoreInteger": 2,
+                              "components": {
+                                "jcto_blunt_stump": 0.32,
+                                "jcto_calcification": 0.71,
+                                "jcto_bending_gt45": 0.64,
+                                "jcto_occlusion_length_gt20": 0.41
+                              }
+                            },
+                            "LCx": {
+                              "jctoScore": 0.12,
+                              "jctoScoreInteger": 0,
+                              "components": {
+                                "jcto_blunt_stump": 0.04,
+                                "jcto_calcification": 0.06,
+                                "jcto_bending_gt45": 0.03,
+                                "jcto_occlusion_length_gt20": 0.05
+                              }
+                            }
                           }
                         },
                         "modelRecommendations": {
-                          "en": "<strong>Predicted imaging J-CTO score 2.1 (difficult).</strong> This is the four morphological imaging components only (range 0–4); it does not include the classic fifth point for a previously failed attempt.",
-                          "fr": "<strong>Score J-CTO morphologique prédit 2.1 (difficult).</strong> Il s'agit des quatre composantes morphologiques d'imagerie seulement (plage 0–4).",
+                          "en": "<strong>Predicted imaging J-CTO score 2 in the RCA (raw 2.1, difficult).</strong> This is the four morphological imaging components only (range 0–4); it does not include the classic fifth point for a previously failed attempt.",
+                          "fr": "<strong>Score J-CTO morphologique prédit 2 pour l’artère coronaire droite (brut 2.1, difficult).</strong> Il s'agit des quatre composantes morphologiques d'imagerie seulement (plage 0–4).",
                           "presentable": true
                         }
                       }
@@ -191,10 +225,10 @@
                     "domainName": "Cardiology",
                     "stage": "ai_inference",
                     "modality": "Angiogram",
-                    "version": "1.0.0",
+                    "version": "2.0.0",
                     "dicomTargetLevel": "SERIES",
                     "dicomUploadMin": 1,
-                    "dicomUploadMax": 8,
+                    "dicomUploadMax": 10,
                     "supportedDicomModalities": [
                       "XA"
                     ],
@@ -502,7 +536,7 @@
           },
           "predictions": {
             "type": "object",
-            "description": "jctoScore plus per-component probabilities (JSON mode)"
+            "description": "jctoScore (predicted, predictedInteger, componentsAboveThreshold, difficulty) plus per-component probabilities for the selected artery; per-artery checkpoints also return ctoArtery (LAD/RCA/LCx) and perArtery raw outputs (JSON mode); an LCx call also returns ctoArteryWarning (EN/FR) because LCx grading is unreliable"
           },
           "modelRecommendations": {
             "type": "object",

@@ -1,32 +1,96 @@
 {
-  "jcto_blunt_stump": {
+  "jcto_blunt_stump_lad": {
     "head_dim": 1,
     "task": "binary_classification",
-    "name": "Blunt / flush stump",
+    "name": "LAD — Blunt / flush stump",
     "threshold": 0.5
   },
-  "jcto_calcification": {
+  "jcto_calcification_lad": {
     "head_dim": 1,
     "task": "binary_classification",
-    "name": "Calcification at occlusion",
+    "name": "LAD — Calcification at occlusion",
     "threshold": 0.5
   },
-  "jcto_bending_gt45": {
+  "jcto_bending_gt45_lad": {
     "head_dim": 1,
     "task": "binary_classification",
-    "name": "Bending > 45°",
+    "name": "LAD — Bending > 45°",
     "threshold": 0.5
   },
-  "jcto_occlusion_length_gt20": {
+  "jcto_occlusion_length_gt20_lad": {
     "head_dim": 1,
     "task": "binary_classification",
-    "name": "Occlusion length ≥ 20 mm",
+    "name": "LAD — Occlusion length ≥ 20 mm",
     "threshold": 0.5
   },
-  "jcto_score": {
+  "jcto_blunt_stump_rca": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "RCA — Blunt / flush stump",
+    "threshold": 0.5
+  },
+  "jcto_calcification_rca": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "RCA — Calcification at occlusion",
+    "threshold": 0.5
+  },
+  "jcto_bending_gt45_rca": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "RCA — Bending > 45°",
+    "threshold": 0.5
+  },
+  "jcto_occlusion_length_gt20_rca": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "RCA — Occlusion length ≥ 20 mm",
+    "threshold": 0.5
+  },
+  "jcto_blunt_stump_lcx": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "LCx — Blunt / flush stump",
+    "threshold": 0.5
+  },
+  "jcto_calcification_lcx": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "LCx — Calcification at occlusion",
+    "threshold": 0.5
+  },
+  "jcto_bending_gt45_lcx": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "LCx — Bending > 45°",
+    "threshold": 0.5
+  },
+  "jcto_occlusion_length_gt20_lcx": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "LCx — Occlusion length ≥ 20 mm",
+    "threshold": 0.5
+  },
+  "jcto_score_lad": {
     "head_dim": 1,
     "task": "regression",
-    "name": "J-CTO score",
+    "name": "LAD — J-CTO score",
+    "unit": "points",
+    "min": 0,
+    "max": 4
+  },
+  "jcto_score_rca": {
+    "head_dim": 1,
+    "task": "regression",
+    "name": "RCA — J-CTO score",
+    "unit": "points",
+    "min": 0,
+    "max": 4
+  },
+  "jcto_score_lcx": {
+    "head_dim": 1,
+    "task": "regression",
+    "name": "LCx — J-CTO score",
     "unit": "points",
     "min": 0,
     "max": 4

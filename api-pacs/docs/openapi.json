@@ -3282,7 +3282,6 @@
           "name",
           "email",
           "password",
-          "licenseNo",
           "specialty",
           "policyAcceptances"
         ],
@@ -3319,7 +3318,6 @@
           },
           "licenseNo": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 100
           },
           "specialty": {

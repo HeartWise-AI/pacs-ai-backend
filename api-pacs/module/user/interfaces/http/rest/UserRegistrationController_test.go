@@ -129,6 +129,39 @@ func TestRegisterTenantUserNormalizesSupportedTextFields(t *testing.T) {
 	require.Equal(t, "invite-code", *service.registrationInput.Code)
 }
 
+func TestRegisterTenantUserAcceptsOptionalLicenseNumber(t *testing.T) {
+	testCases := []struct {
+		name          string
+		licenseNumber *string
+	}{
+		{name: "license omitted"},
+		{name: "license empty", licenseNumber: stringPointer("")},
+		{name: "license whitespace", licenseNumber: stringPointer("   ")},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			service := &registrationCommandService{}
+			controller := UserCommandController{UserCommandServiceInterface: service}
+			payload := registrationPayload(nil)
+			if testCase.licenseNumber == nil {
+				delete(payload, "licenseNo")
+			} else {
+				payload["licenseNo"] = *testCase.licenseNumber
+			}
+			body, err := json.Marshal(payload)
+			require.NoError(t, err)
+			recorder := httptest.NewRecorder()
+
+			controller.RegisterTenantUser(recorder, httptest.NewRequest(http.MethodPost, "/v1/user/register", bytes.NewReader(body)))
+
+			require.Equal(t, http.StatusCreated, recorder.Code)
+			require.Equal(t, 1, service.registrationCalls)
+			require.Empty(t, service.registrationInput.LicenseNo)
+		})
+	}
+}
+
 func TestRegisterTenantUserRejectsInvalidPublicInputs(t *testing.T) {
 	testCases := []struct {
 		name   string
@@ -144,7 +177,7 @@ func TestRegisterTenantUserRejectsInvalidPublicInputs(t *testing.T) {
 		{name: "password without lowercase", field: "password", value: "UPPERCASE!"},
 		{name: "password without special character", field: "password", value: "MixedCase123"},
 		{name: "name too long", field: "name", value: string(make([]byte, 101))},
-		{name: "blank license", field: "licenseNo", value: "   "},
+		{name: "license too long", field: "licenseNo", value: string(make([]byte, 101))},
 		{name: "blank specialty", field: "specialty", value: "   "},
 		{name: "invite code too long", field: "code", value: string(make([]byte, 257))},
 		{name: "legacy role too long", field: "role", value: string(make([]byte, 65))},
@@ -383,6 +416,7 @@ func TestRegisterTenantUserOpenAPIExcludesClientControlledRole(t *testing.T) {
 	schema, ok := document.Components.Schemas["RegisterTenantUserRequest"]
 	require.True(t, ok)
 	require.NotContains(t, schema.Required, "role")
+	require.NotContains(t, schema.Required, "licenseNo")
 	require.NotContains(t, schema.Properties, "role")
 	require.Contains(t, schema.Required, "turnstileToken")
 	require.Contains(t, schema.Required, "policyAcceptances")
