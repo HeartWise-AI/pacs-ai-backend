@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
+	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
 	domainRepository "api-pacs/module/inference/domain/repository"
@@ -62,6 +64,138 @@ type guardedProcessingDispatcher struct {
 	dispatchErrors        []error
 	echoManualCorrelation bool
 	dispatchRelease       <-chan struct{}
+}
+
+type guardedDispatchDockerSDK struct {
+	dockerTypes.DockerSDKInterface
+	containerInfos []dockerTypes.GetContainerInfoResult
+	inspectErrors  []error
+	inspectCalls   int
+	startCalls     int
+	startError     error
+}
+
+func (sdk *guardedDispatchDockerSDK) GetContainerInfo(context.Context, string) (dockerTypes.GetContainerInfoResult, error) {
+	index := sdk.inspectCalls
+	sdk.inspectCalls++
+	if index < len(sdk.inspectErrors) && sdk.inspectErrors[index] != nil {
+		return dockerTypes.GetContainerInfoResult{}, sdk.inspectErrors[index]
+	}
+	if len(sdk.containerInfos) == 0 {
+		return dockerTypes.GetContainerInfoResult{Name: "/model-one", Running: true}, nil
+	}
+	if index >= len(sdk.containerInfos) {
+		index = len(sdk.containerInfos) - 1
+	}
+	return sdk.containerInfos[index], nil
+}
+
+func (sdk *guardedDispatchDockerSDK) StartContainer(context.Context, string) error {
+	sdk.startCalls++
+	return sdk.startError
+}
+
+type guardedDispatchDockerInferenceAPI struct {
+	dockerInferenceTypes.DockerInferenceAPIInterface
+	errors       []error
+	defaultError error
+	calls        int
+	names        []string
+}
+
+func (api *guardedDispatchDockerInferenceAPI) GetModelInfo(_ context.Context, containerName string) (dockerInferenceTypes.GetModelInfoResponse, error) {
+	index := api.calls
+	api.calls++
+	api.names = append(api.names, containerName)
+	if index < len(api.errors) {
+		return dockerInferenceTypes.GetModelInfoResponse{}, api.errors[index]
+	}
+	return dockerInferenceTypes.GetModelInfoResponse{}, api.defaultError
+}
+
+func configureReadyInferenceContainer(service *InferenceCommandService) {
+	service.DockerSDKInterface = &guardedDispatchDockerSDK{}
+	service.DockerInferenceAPIInterface = &guardedDispatchDockerInferenceAPI{}
+}
+
+func TestEnsureInferenceContainerReadyStartsStoppedContainerAndWaitsForReadiness(t *testing.T) {
+	sdk := &guardedDispatchDockerSDK{containerInfos: []dockerTypes.GetContainerInfoResult{{
+		Name: "/model-one", Running: false,
+	}}}
+	readinessAPI := &guardedDispatchDockerInferenceAPI{errors: []error{errors.New("starting"), nil}}
+	service := &InferenceCommandService{
+		DockerSDKInterface:                      sdk,
+		DockerInferenceAPIInterface:             readinessAPI,
+		inferenceContainerReadinessPollInterval: time.Millisecond,
+	}
+
+	err := service.ensureInferenceContainerReady(context.Background(), entity.InferenceIngestionJob{
+		ContainerID: "container-1", ModelName: "model-one",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, sdk.inspectCalls)
+	require.Equal(t, 1, sdk.startCalls)
+	require.Equal(t, 2, readinessAPI.calls)
+	require.Equal(t, []string{"model-one", "model-one"}, readinessAPI.names)
+}
+
+func TestEnsureInferenceContainerReadyDoesNotRestartReadyContainer(t *testing.T) {
+	sdk := &guardedDispatchDockerSDK{containerInfos: []dockerTypes.GetContainerInfoResult{{
+		Name: "/model-one", Running: true,
+	}}}
+	readinessAPI := &guardedDispatchDockerInferenceAPI{}
+	service := &InferenceCommandService{
+		DockerSDKInterface:          sdk,
+		DockerInferenceAPIInterface: readinessAPI,
+	}
+
+	err := service.ensureInferenceContainerReady(context.Background(), entity.InferenceIngestionJob{
+		ContainerID: "container-1", ModelName: "model-one",
+	})
+
+	require.NoError(t, err)
+	require.Zero(t, sdk.startCalls)
+	require.Equal(t, 1, readinessAPI.calls)
+}
+
+func TestEnsureInferenceContainerReadyToleratesConcurrentStart(t *testing.T) {
+	sdk := &guardedDispatchDockerSDK{
+		containerInfos: []dockerTypes.GetContainerInfoResult{
+			{Name: "/model-one", Running: false},
+			{Name: "/model-one", Running: true},
+		},
+		startError: errors.New("container already started"),
+	}
+	service := &InferenceCommandService{
+		DockerSDKInterface:          sdk,
+		DockerInferenceAPIInterface: &guardedDispatchDockerInferenceAPI{},
+	}
+
+	err := service.ensureInferenceContainerReady(context.Background(), entity.InferenceIngestionJob{
+		ContainerID: "container-1", ModelName: "model-one",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, sdk.inspectCalls)
+	require.Equal(t, 1, sdk.startCalls)
+}
+
+func TestEnsureInferenceContainerReadyReturnsReadinessTimeout(t *testing.T) {
+	service := &InferenceCommandService{
+		DockerSDKInterface: &guardedDispatchDockerSDK{containerInfos: []dockerTypes.GetContainerInfoResult{{
+			Name: "/model-one", Running: true,
+		}}},
+		DockerInferenceAPIInterface:             &guardedDispatchDockerInferenceAPI{defaultError: errors.New("not ready")},
+		inferenceContainerReadinessTimeout:      5 * time.Millisecond,
+		inferenceContainerReadinessPollInterval: time.Millisecond,
+	}
+
+	err := service.ensureInferenceContainerReady(context.Background(), entity.InferenceIngestionJob{
+		ContainerID: "container-1", ModelName: "model-one",
+	})
+
+	require.ErrorContains(t, err, "did not become ready")
 }
 
 func (dispatcher *guardedProcessingDispatcher) BuildDispatchStudyRequest(_ context.Context, data serviceTypes.BuildStudyServiceDispatchRequestInput) (serviceTypes.DispatchStudyRequest, error) {
@@ -127,10 +261,11 @@ func TestDispatchRejectsExecutionOutsideCommittedRunBeforeCallingStudyService(t 
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		ProcessingDispatcherInterface:             dispatcher,
 	}
+	configureReadyInferenceContainer(service)
 
 	err := service.dispatchRetrievedCandidateToStudyService(
 		context.Background(),
-		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one"},
 		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
 		"run-1",
 		"request-1",
@@ -154,10 +289,11 @@ func TestDispatchSkipsExecutionThatAlreadyAdvancedBeyondPending(t *testing.T) {
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		ProcessingDispatcherInterface:             dispatcher,
 	}
+	configureReadyInferenceContainer(service)
 
 	err := service.dispatchRetrievedCandidateToStudyService(
 		context.Background(),
-		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one"},
 		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
 		"run-1",
 		"request-1",
@@ -176,18 +312,19 @@ func TestDispatchCallsStudyServiceForCommittedPendingExecution(t *testing.T) {
 	commandRepository := &guardedDispatchCommandRepository{}
 	dispatchCall := make(chan serviceTypes.DispatchStudyRequest, 1)
 	dispatcher := &guardedProcessingDispatcher{
-		response:      serviceTypes.DispatchStudyResponse{JobID: "study-job-1"},
-		dispatchCall:  dispatchCall,
+		response:     serviceTypes.DispatchStudyResponse{JobID: "study-job-1"},
+		dispatchCall: dispatchCall,
 	}
 	service := &InferenceCommandService{
 		InferenceCommandRepositoryInterface:       commandRepository,
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		ProcessingDispatcherInterface:             dispatcher,
 	}
+	configureReadyInferenceContainer(service)
 
 	err := service.dispatchRetrievedCandidateToStudyService(
 		context.Background(),
-		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one", ModelVersion: "1.0"},
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one", ModelVersion: "1.0"},
 		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
 		"run-1",
 		"request-1",
@@ -201,6 +338,58 @@ func TestDispatchCallsStudyServiceForCommittedPendingExecution(t *testing.T) {
 	require.Len(t, commandRepository.executionUpdates, 1)
 	require.Equal(t, entity.InferenceIngestionProcessingJobStatusQueued, commandRepository.executionUpdates[0].Status)
 	require.Equal(t, "study-job-1", *commandRepository.executionUpdates[0].StudyServiceJobID)
+}
+
+func TestDispatchFailsCommittedExecutionWhenContainerCannotStart(t *testing.T) {
+	processingRunID := "run-1"
+	processingExecutionID := "execution-1"
+	runRepository := &processingRunCallbackRunRepository{
+		selectedExecution: entity.InferenceIngestionProcessingJob{
+			ID: processingExecutionID, ProcessingRunID: &processingRunID,
+			Status: entity.InferenceIngestionProcessingJobStatusPending,
+		},
+		processingRunAggregationRepository: &processingRunAggregationRepository{
+			runs: []entity.InferenceIngestionProcessingRun{{ID: processingRunID, TenantID: "tenant-a", Version: 1}},
+			executions: []entity.InferenceIngestionProcessingJob{{
+				ID: processingExecutionID, ProcessingRunID: &processingRunID,
+				Status: entity.InferenceIngestionProcessingJobStatusFailed,
+			}},
+		},
+	}
+	commandRepository := &guardedDispatchCommandRepository{}
+	dispatcher := &guardedProcessingDispatcher{}
+	sdk := &guardedDispatchDockerSDK{
+		containerInfos: []dockerTypes.GetContainerInfoResult{
+			{Name: "/model-one", Running: false},
+			{Name: "/model-one", Running: false},
+		},
+		startError: errors.New("docker unavailable"),
+	}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+		DockerSDKInterface:                        sdk,
+		DockerInferenceAPIInterface:               &guardedDispatchDockerInferenceAPI{},
+	}
+
+	err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
+		context.Background(),
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one"},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		processingRunID,
+		"request-1",
+		processingExecutionID,
+		serviceTypes.DispatchStudyIntentManualReprocess,
+	)
+
+	require.ErrorContains(t, err, "cannot start inference container")
+	require.Zero(t, dispatcher.buildCalls)
+	require.Zero(t, dispatcher.dispatchCalls)
+	require.Len(t, commandRepository.executionUpdates, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, commandRepository.executionUpdates[0].Status)
+	require.Len(t, runRepository.updates, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingRunAttentionDispatchFailed, runRepository.updates[0].AttentionReasons[0].Code)
 }
 
 func TestManualDispatchRejectsExecutionOutsideCommittedIdentity(t *testing.T) {
@@ -226,10 +415,11 @@ func TestManualDispatchRejectsExecutionOutsideCommittedIdentity(t *testing.T) {
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		ProcessingDispatcherInterface:             dispatcher,
 	}
+	configureReadyInferenceContainer(service)
 
 	err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
 		context.Background(),
-		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one"},
 		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
 		processingRunID,
 		"request-1",
@@ -344,10 +534,11 @@ func TestManualDispatchAcceptsSameExecutionReplay(t *testing.T) {
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		ProcessingDispatcherInterface:             dispatcher,
 	}
+	configureReadyInferenceContainer(service)
 
 	err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
 		context.Background(),
-		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one"},
 		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
 		processingRunID,
 		"request-1",
@@ -397,10 +588,11 @@ func TestManualDispatchRejectsForeignCorrelationWithoutPersistingJob(t *testing.
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		ProcessingDispatcherInterface:             dispatcher,
 	}
+	configureReadyInferenceContainer(service)
 
 	err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
 		context.Background(),
-		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one"},
 		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
 		processingRunID,
 		"request-1",
@@ -439,10 +631,11 @@ func TestAcceptedDispatchReturnsErrorWhenJobCorrelationCannotBePersisted(t *test
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		ProcessingDispatcherInterface:             dispatcher,
 	}
+	configureReadyInferenceContainer(service)
 
 	err := service.dispatchRetrievedCandidateToStudyService(
 		context.Background(),
-		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one"},
 		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
 		processingRunID,
 		"request-1",
@@ -478,10 +671,11 @@ func TestDispatchRetriesTransientResponseAndPersistsAcceptedJob(t *testing.T) {
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		ProcessingDispatcherInterface:             dispatcher,
 	}
+	configureReadyInferenceContainer(service)
 
 	err := service.dispatchRetrievedCandidateToStudyService(
 		context.Background(),
-		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one"},
 		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
 		"run-1",
 		"request-1",
@@ -530,12 +724,13 @@ func TestFinalDispatchFailurePreservesExecutionAdvancedByCallback(t *testing.T) 
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		ProcessingDispatcherInterface:             dispatcher,
 	}
+	configureReadyInferenceContainer(service)
 	errCh := make(chan error, 1)
 
 	go func() {
 		errCh <- service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
 			context.Background(),
-			entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+			entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one"},
 			entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
 			processingRunID,
 			"request-1",
@@ -617,10 +812,11 @@ func TestDispatchDoesNotRetryPermanentResponse(t *testing.T) {
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		ProcessingDispatcherInterface:             dispatcher,
 	}
+	configureReadyInferenceContainer(service)
 
 	err := service.dispatchRetrievedCandidateToStudyService(
 		context.Background(),
-		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "model-one"},
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one"},
 		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
 		processingRunID,
 		"request-1",
@@ -643,10 +839,11 @@ func TestLegacyDispatchWithoutProcessingRunIDRemainsSupported(t *testing.T) {
 		InferenceProcessingRunRepositoryInterface: runRepository,
 		ProcessingDispatcherInterface:             dispatcher,
 	}
+	configureReadyInferenceContainer(service)
 
 	err := service.dispatchRetrievedCandidateToStudyService(
 		context.Background(),
-		entity.InferenceIngestionJob{ID: "ingestion-1", ModelName: "legacy-model", ModelVersion: "1.0"},
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "legacy-model", ModelVersion: "1.0"},
 		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
 		"",
 		"request-1",

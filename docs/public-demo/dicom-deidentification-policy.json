@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "policy_id": "pacs-ai-public-demo-dicom-deidentification",
+  "policy_version": "1.0-draft",
+  "approval": {
+    "status": "pending",
+    "approved_by": "",
+    "approved_at": ""
+  },
+  "profile_basis": "DICOM PS3.15 Basic Application Confidentiality Profile (https://dicom.nema.org/medical/dicom/current/output/html/part15.html#chapter_E); project-specific approval is required before launch evidence can pass.",
+  "require_pixel_review_attestation": true,
+  "private_tags": {
+    "mode": "prohibit"
+  },
+  "required_values": {
+    "00100020": {
+      "keyword": "PatientID",
+      "non_empty": true,
+      "reason": "Every public-demo object must contain a project-issued pseudonymous PatientID."
+    },
+    "00120062": {
+      "keyword": "PatientIdentityRemoved",
+      "equals": "YES",
+      "reason": "Every public-demo object must assert that patient identity was removed."
+    },
+    "00120063": {
+      "keyword": "DeidentificationMethod",
+      "non_empty": true,
+      "reason": "Every public-demo object must identify the de-identification method."
+    },
+    "00280301": {
+      "keyword": "BurnedInAnnotation",
+      "equals": "NO",
+      "reason": "Objects must assert that burned-in identifying annotations are absent; pixel review is also required."
+    }
+  },
+  "allowed_value_patterns": {
+    "00100020": {
+      "keyword": "PatientID",
+      "pattern": "^(DEMO|ANON|SYNTHETIC)[-_][A-Za-z0-9._-]{4,64}$",
+      "reason": "PatientID may contain only a project-issued public-demo pseudonym."
+    }
+  },
+  "prohibited_nonempty_tags": {
+    "00080050": {"keyword": "AccessionNumber", "reason": "Source accession identifiers are prohibited."},
+    "00080080": {"keyword": "InstitutionName", "reason": "Source institution identifiers are prohibited."},
+    "00080081": {"keyword": "InstitutionAddress", "reason": "Institution addresses are prohibited."},
+    "00080090": {"keyword": "ReferringPhysicianName", "reason": "Clinician names are prohibited."},
+    "00080092": {"keyword": "ReferringPhysicianAddress", "reason": "Clinician addresses are prohibited."},
+    "00080094": {"keyword": "ReferringPhysicianTelephoneNumbers", "reason": "Clinician telephone numbers are prohibited."},
+    "00081010": {"keyword": "StationName", "reason": "Source workstation identifiers are prohibited."},
+    "00081048": {"keyword": "PhysiciansOfRecord", "reason": "Clinician names are prohibited."},
+    "00081050": {"keyword": "PerformingPhysicianName", "reason": "Clinician names are prohibited."},
+    "00081060": {"keyword": "NameOfPhysiciansReadingStudy", "reason": "Clinician names are prohibited."},
+    "00081070": {"keyword": "OperatorsName", "reason": "Operator names are prohibited."},
+    "00100010": {"keyword": "PatientName", "reason": "Patient names are prohibited."},
+    "00100021": {"keyword": "IssuerOfPatientID", "reason": "Patient-ID issuers are prohibited."},
+    "00100030": {"keyword": "PatientBirthDate", "reason": "Patient birth dates are prohibited."},
+    "00100032": {"keyword": "PatientBirthTime", "reason": "Patient birth times are prohibited."},
+    "00101000": {"keyword": "OtherPatientIDs", "reason": "Other patient identifiers are prohibited."},
+    "00101001": {"keyword": "OtherPatientNames", "reason": "Other patient names are prohibited."},
+    "00101005": {"keyword": "PatientBirthName", "reason": "Patient birth names are prohibited."},
+    "00101040": {"keyword": "PatientAddress", "reason": "Patient addresses are prohibited."},
+    "00101090": {"keyword": "MedicalRecordLocator", "reason": "Medical-record locators are prohibited."},
+    "00102154": {"keyword": "PatientTelephoneNumbers", "reason": "Patient telephone numbers are prohibited."},
+    "00102160": {"keyword": "EthnicGroup", "reason": "This public demo does not retain patient ethnicity."},
+    "00102180": {"keyword": "Occupation", "reason": "Patient occupation is prohibited."},
+    "001021F0": {"keyword": "PatientReligiousPreference", "reason": "Patient religious preference is prohibited."},
+    "00321032": {"keyword": "RequestingPhysician", "reason": "Clinician names are prohibited."},
+    "00401101": {"keyword": "PersonIdentificationCodeSequence", "reason": "Person identification codes are prohibited."}
+  },
+  "ignore_value_scan_tags": [
+    "00080016",
+    "00080018",
+    "0020000D",
+    "0020000E",
+    "7FE00010"
+  ],
+  "suspicious_value_patterns": [
+    {"id": "email_address", "pattern": "\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b"},
+    {"id": "north_american_phone", "pattern": "(?:\\+?1[-. (]*)?(?:[2-9][0-9]{2})[-. )]*(?:[2-9][0-9]{2})[-. ]*[0-9]{4}"},
+    {"id": "identifier_label", "pattern": "\\b(?:MRN|MEDICAL RECORD|PATIENT ID|ACCESSION)\\s*[:#-]"}
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "status": "passed",
+  "reviewer": "REPLACE_WITH_REVIEWER_NAME",
+  "reviewed_at": "2026-08-19T00:00:00Z",
+  "dataset_fingerprint": "REPLACE_WITH_FINGERPRINT_FROM_INITIAL_VALIDATION",
+  "method": "Reviewed representative frames from every series for burned-in identifying text.",
+  "notes": "Do not include patient names, identifiers, UIDs, or other sensitive values in this file."
+}

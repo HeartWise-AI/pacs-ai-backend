@@ -1,7 +1,7 @@
 {
   "modelId": "CathEF",
   "modelName": "CathEF",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 5,
@@ -61,6 +61,165 @@
       "questionFr": "Veuillez décrire ce qui était incorrect :",
       "answerOptionsEn": null,
       "answerOptionsFr": null
+    }
+  ],
+  "onboardingModelQuestionnaires": [
+    {
+      "id": "cathef_bias_limitations",
+      "type": "CHECKBOX",
+      "questionEn": "Which of the following limitations of CathEF could introduce bias into LVEF prediction? (Select all that apply)",
+      "questionFr": "Lesquelles des limites suivantes de CathEF pourraient introduire un biais dans la prédiction de la FEVG ? (Sélectionnez toutes les réponses applicables)",
+      "answerOptionsEn": [
+        {
+          "id": "left_coronary_only",
+          "answer": "The training data includes only left coronary angiograms"
+        },
+        {
+          "id": "internal_external_evaluation",
+          "answer": "Model performance was evaluated on both internal and external cohorts"
+        },
+        {
+          "id": "atrial_fibrillation_underrepresented",
+          "answer": "The dataset underrepresents patients with atrial fibrillation"
+        },
+        {
+          "id": "non_simultaneous_reference",
+          "answer": "Reference TTE and angiogram were not acquired simultaneously, so true LVEF may have changed in between"
+        },
+        {
+          "id": "gradcam_septal_perforators",
+          "answer": "GradCAMs show model attention to septal perforators during systole"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "left_coronary_only",
+          "answer": "Les données d'entraînement comprennent uniquement des angiographies coronariennes gauches"
+        },
+        {
+          "id": "internal_external_evaluation",
+          "answer": "Les performances du modèle ont été évaluées sur des cohortes internes et externes"
+        },
+        {
+          "id": "atrial_fibrillation_underrepresented",
+          "answer": "Les patients atteints de fibrillation auriculaire sont sous-représentés dans le jeu de données"
+        },
+        {
+          "id": "non_simultaneous_reference",
+          "answer": "L'ETT de référence et la coronarographie n'ont pas été réalisées simultanément; la FEVG réelle a donc pu varier entre les deux examens"
+        },
+        {
+          "id": "gradcam_septal_perforators",
+          "answer": "Les cartes GradCAM montrent que le modèle porte son attention sur les artères perforantes septales pendant la systole"
+        }
+      ],
+      "correctAnswerIds": [
+        "left_coronary_only",
+        "atrial_fibrillation_underrepresented",
+        "non_simultaneous_reference"
+      ]
+    },
+    {
+      "id": "cathef_generalizability",
+      "type": "RADIO",
+      "questionEn": "Which scenario is most likely to affect the generalizability of CathEF?",
+      "questionFr": "Quel scénario est le plus susceptible d'affecter la généralisabilité de CathEF ?",
+      "answerOptionsEn": [
+        {
+          "id": "three_dimensional_cnns",
+          "answer": "The model uses 3D CNNs to encode video input"
+        },
+        {
+          "id": "single_academic_center",
+          "answer": "It was trained on angiograms performed at a single academic center"
+        },
+        {
+          "id": "continuous_lvef",
+          "answer": "The model predicts continuous LVEF rather than binary classification"
+        },
+        {
+          "id": "clinician_validation",
+          "answer": "Clinicians validate the model's predictions before clinical use"
+        },
+        {
+          "id": "visual_explanation_maps",
+          "answer": "The model provides visual explanation maps post-inference"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "three_dimensional_cnns",
+          "answer": "Le modèle utilise des réseaux neuronaux convolutifs 3D pour encoder les vidéos"
+        },
+        {
+          "id": "single_academic_center",
+          "answer": "Il a été entraîné à partir de coronarographies réalisées dans un seul centre universitaire"
+        },
+        {
+          "id": "continuous_lvef",
+          "answer": "Le modèle prédit une FEVG continue plutôt qu'une classification binaire"
+        },
+        {
+          "id": "clinician_validation",
+          "answer": "Les cliniciens valident les prédictions du modèle avant leur utilisation clinique"
+        },
+        {
+          "id": "visual_explanation_maps",
+          "answer": "Le modèle fournit des cartes d'explication visuelles après l'inférence"
+        }
+      ],
+      "correctAnswerIds": ["single_academic_center"]
+    },
+    {
+      "id": "cathef_fairness_concern",
+      "type": "RADIO",
+      "questionEn": "Which of the following does NOT indicate a potential fairness concern with CathEF?",
+      "questionFr": "Lequel des éléments suivants n'indique PAS une préoccupation potentielle en matière d'équité pour CathEF ?",
+      "answerOptionsEn": [
+        {
+          "id": "congenital_heart_disease_underrepresented",
+          "answer": "Lack of representation of congenital heart disease patients in the training set"
+        },
+        {
+          "id": "underestimates_very_low_output",
+          "answer": "The model underestimates LVEF in patients with very low cardiac output"
+        },
+        {
+          "id": "similar_correlation_across_sexes",
+          "answer": "The model shows similar Pearson correlation across sexes"
+        },
+        {
+          "id": "no_right_coronary_training",
+          "answer": "The model was not trained on right coronary angiograms"
+        },
+        {
+          "id": "training_population_65_percent_male",
+          "answer": "The training population was 65% male"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "congenital_heart_disease_underrepresented",
+          "answer": "Les patients atteints de cardiopathie congénitale sont sous-représentés dans le jeu d'entraînement"
+        },
+        {
+          "id": "underestimates_very_low_output",
+          "answer": "Le modèle sous-estime la FEVG chez les patients ayant un débit cardiaque très faible"
+        },
+        {
+          "id": "similar_correlation_across_sexes",
+          "answer": "Le modèle présente une corrélation de Pearson semblable chez les femmes et les hommes"
+        },
+        {
+          "id": "no_right_coronary_training",
+          "answer": "Le modèle n'a pas été entraîné sur des angiographies de la coronaire droite"
+        },
+        {
+          "id": "training_population_65_percent_male",
+          "answer": "La population d'entraînement était composée à 65 % d'hommes"
+        }
+      ],
+      "correctAnswerIds": ["similar_correlation_across_sexes"]
     }
   ]
 }
