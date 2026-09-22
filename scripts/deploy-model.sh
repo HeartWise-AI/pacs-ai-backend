@@ -100,9 +100,14 @@ for var in DOCKERHUB_USER; do
   [[ -n "${!var:-}" ]] || die "$var must be set in $ENV_FILE"
 done
 if ! $BUILD_ONLY && ! $PUSH_ONLY; then
-  for var in API_BASE_URL TENANT_ID PACS_ADMIN_EMAIL PACS_ADMIN_PASSWORD FIREBASE_API_KEY; do
+  for var in API_BASE_URL TENANT_ID PACS_ADMIN_EMAIL PACS_ADMIN_PASSWORD; do
     [[ -n "${!var:-}" ]] || die "$var must be set in $ENV_FILE"
   done
+
+  if [[ "$API_BASE_URL" != https://* ]] \
+    && [[ ! "$API_BASE_URL" =~ ^http://(localhost|127\.0\.0\.1)(:[0-9]+)?(/|$) ]]; then
+    die "API_BASE_URL must use HTTPS unless it targets localhost or 127.0.0.1; deploy-model.sh sends the admin password to /v1/iam/login"
+  fi
 fi
 
 IMAGE_PREFIX="${IMAGE_PREFIX:-pacs-ai}"
@@ -120,9 +125,14 @@ SESSION_TOKEN=""
 # api METHOD PATH [JSON_BODY] -> prints response body; fails on transport error
 api() {
   local method="$1" path="$2" body="${3:-}"
-  local args=(-sS -X "$method" -H "Accept: application/json" -H "Authorization: Bearer $SESSION_TOKEN")
-  [[ -n "$body" ]] && args+=(-H "Content-Type: application/json" -d "$body")
-  curl "${args[@]}" "$API$path"
+  local args=(-sS -X "$method" -H "Accept: application/json")
+  [[ -n "$SESSION_TOKEN" ]] && args+=(-H "Authorization: Bearer $SESSION_TOKEN")
+  if [[ -n "$body" ]]; then
+    args+=(-H "Content-Type: application/json" --data-binary @-)
+    curl "${args[@]}" "$API$path" <<<"$body"
+  else
+    curl "${args[@]}" "$API$path"
+  fi
 }
 
 # assert_success RESPONSE CONTEXT -> dies with the API message if success != true
@@ -133,21 +143,29 @@ assert_success() {
   fi
 }
 
-# Firebase sign-in, then session token exchange. Sets SESSION_TOKEN (done once per run).
+# Server-controlled email/password sign-in. Sets SESSION_TOKEN (done once per run).
 authenticate() {
   log "Signing in as $PACS_ADMIN_EMAIL..."
-  local firebase_resp id_token login_resp
-  firebase_resp=$(curl -sS -X POST \
-    -H "Content-Type: application/json" \
-    -d "$(jq -n --arg e "$PACS_ADMIN_EMAIL" --arg p "$PACS_ADMIN_PASSWORD" --arg t "$TENANT_ID" \
-          '{email:$e, password:$p, tenantId:$t, returnSecureToken:true}')" \
-    "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$FIREBASE_API_KEY")
-  id_token=$(jq -r '.idToken // empty' <<<"$firebase_resp")
-  [[ -n "$id_token" ]] || die "Firebase sign-in failed: $(jq -r '.error.message // .' <<<"$firebase_resp")"
+  local login_payload login_resp error_code error_message challenge_required detail
+  login_payload=$(jq -n \
+    --arg t "$TENANT_ID" \
+    --arg e "$PACS_ADMIN_EMAIL" \
+    --arg p "$PACS_ADMIN_PASSWORD" \
+    --arg c "${PACS_LOGIN_TURNSTILE_TOKEN:-}" \
+    '{tenantId:$t, email:$e, password:$p}
+     + (if $c == "" then {} else {turnstileToken:$c} end)')
+  login_resp=$(api POST "/v1/iam/login" "$login_payload")
 
-  login_resp=$(api POST "/v1/iam/login" \
-    "$(jq -n --arg t "$TENANT_ID" --arg i "$id_token" '{tenantId:$t, idToken:$i}')")
-  assert_success "$login_resp" "API login"
+  if [[ "$(jq -r '.success' <<<"$login_resp" 2>/dev/null)" != "true" ]]; then
+    error_code=$(jq -r '.errorCode // empty' <<<"$login_resp" 2>/dev/null || true)
+    error_message=$(jq -r '.message // "Unknown login error"' <<<"$login_resp" 2>/dev/null || echo "Unknown login error")
+    challenge_required=$(jq -r '.data.challengeRequired // false' <<<"$login_resp" 2>/dev/null || echo "false")
+    detail=""
+    [[ -n "$error_code" ]] && detail=" [$error_code]"
+    [[ "$challenge_required" == "true" ]] && detail+=" (interactive login challenge required)"
+    die "API login failed$detail: $error_message"
+  fi
+
   SESSION_TOKEN=$(jq -r '.data.sessionToken' <<<"$login_resp")
   [[ -n "$SESSION_TOKEN" && "$SESSION_TOKEN" != "null" ]] || die "API login returned no session token"
   log "Authenticated."
