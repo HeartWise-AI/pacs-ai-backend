@@ -61,11 +61,22 @@ def test_all_nine_heads_are_postprocessed_and_grouped_in_report(service):
     assert formatted["exploratory"]["cardiovascularDeath"]["warning"]
     assert "uncalibrated" in formatted["thresholdNote"]
 
-    html = service._render_html(preds, service._recommendations(preds))
+    recommendations = service._recommendations(preds)
+    assert "not a calibrated clinical probability" in recommendations["en"]
+    assert "pas une probabilité clinique étalonnée" in recommendations["fr"]
+
+    html = service._render_html(preds, recommendations)
     assert "DeepCORO-MACE" in html
     assert "Composite MACE research score" in html
+    assert "Score de recherche du MACE composite" in html
     assert "Exploratory low-event outputs" in html
+    assert "Sorties exploratoires à faible nombre d'événements" in html
+    assert "Urgent revascularization" in html
+    assert "Revascularisation urgente" in html
     assert "Research use only" in html
+    assert "Usage en recherche seulement" in html
+    assert "not calibrated clinical risks" in html
+    assert "non des risques cliniques étalonnés" in html
 
 
 def test_metadata_keeps_both_diagnostic_coronary_territories(service):

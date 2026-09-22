@@ -16,8 +16,9 @@ exploratory: cardiovascular death, non-fatal stroke, heart-failure hospitalizati
 life-threatening arrhythmia, and cardiogenic shock. Cardiovascular death had only four events in
 the held-out cohort and must not be interpreted as a reliable standalone estimate.
 
-The API supports `HTML` and `JSON`. JSON keeps the primary and exploratory outputs separate and
-includes the threshold and `aboveResearchThreshold` flag for every endpoint.
+The API supports `HTML` and `JSON`. The HTML report presents endpoint labels, recommendations, and
+research/calibration warnings in English and French. JSON keeps the primary and exploratory
+outputs separate and includes the threshold and `aboveResearchThreshold` flag for every endpoint.
 
 ## Pinned artifact and architecture
 

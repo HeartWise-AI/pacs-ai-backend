@@ -191,16 +191,18 @@ class CustomPredictionService(BasePredictionService):
         return {
             "en": (
                 f"<strong>Composite one-year MACE research score: {composite:.3f}.</strong> "
-                "Use for research demonstration only. This output is derived from coronary "
-                "angiography alone and must not change monitoring, treatment, or discharge "
-                "decisions. Assess the patient with validated clinical tools and clinician review."
+                "Use for research demonstration only. This sigmoid output is not a calibrated "
+                "clinical probability. It is derived from coronary angiography alone and must "
+                "not change monitoring, treatment, or discharge decisions. Assess the patient "
+                "with validated clinical tools and clinician review."
             ),
             "fr": (
                 f"<strong>Score de recherche du MACE composite à un an : {composite:.3f}.</strong> "
-                "Utiliser uniquement à des fins de démonstration en recherche. Ce résultat est "
-                "dérivé de la coronarographie seule et ne doit pas modifier la surveillance, le "
-                "traitement ou le congé. Évaluer le patient avec des outils cliniques validés et "
-                "une révision médicale."
+                "Utiliser uniquement à des fins de démonstration en recherche. Cette sortie "
+                "sigmoïde n'est pas une probabilité clinique étalonnée. Elle est dérivée de la "
+                "coronarographie seule et ne doit pas modifier la surveillance, le traitement "
+                "ou le congé. Évaluer le patient avec des outils cliniques validés et une "
+                "révision médicale."
             ),
             "presentable": True,
         }
@@ -232,8 +234,11 @@ class CustomPredictionService(BasePredictionService):
             probability = preds[head]
             flag = probability >= float(spec["threshold"])
             row = (
-                f"<tr><td>{spec['name']}</td><td>{probability:.3f}</td>"
-                f"<td>{'Yes' if flag else 'No'}</td></tr>"
+                f"<tr><td><span lang=\"en\">{spec['name']}</span>"
+                f"<span class=\"translation\" lang=\"fr\">{spec['nameFr']}</span></td>"
+                f"<td>{probability:.3f}</td>"
+                f"<td><span lang=\"en\">{'Yes' if flag else 'No'}</span> / "
+                f"<span lang=\"fr\">{'Oui' if flag else 'Non'}</span></td></tr>"
             )
             if spec["category"] == "primary":
                 primary_rows.append(row)
@@ -242,6 +247,7 @@ class CustomPredictionService(BasePredictionService):
 
         composite = preds["mace_binary"]
         en = recs.get("en", "")
+        fr = recs.get("fr", "")
         return f"""<!DOCTYPE html>
 <html><head><meta charset=\"utf-8\"><title>DeepCORO-MACE Report</title>
 <style>
@@ -252,18 +258,30 @@ class CustomPredictionService(BasePredictionService):
  .score strong{{font-size:40px;display:block}} table{{width:100%;border-collapse:collapse}}
  th,td{{padding:9px;border-bottom:1px solid #e3e7eb;text-align:left}} th{{background:#f4f6f8}}
  .rec{{background:#eaf4ff;border-left:4px solid #3498db;padding:14px 18px;border-radius:6px;margin-top:20px}}
+ .rec p{{margin:8px 0}} .translation{{display:block;color:#526171;font-size:.94em;margin-top:2px}}
  .warn{{background:#fff4e5;border-left:4px solid #e67e22;padding:14px 18px;border-radius:6px;margin-top:16px}}
+ .warn p{{margin:8px 0}}
 </style></head><body><div class=\"card\">
  <h1>DeepCORO-MACE</h1>
- <div class=\"subtitle\">One-year cardiovascular outcome research scores from coronary angiography</div>
- <div class=\"score\"><strong>{composite:.3f}</strong>Composite MACE research score</div>
- <h2>Primary outputs</h2><table><tr><th>Endpoint</th><th>Probability</th><th>Above 0.5</th></tr>{''.join(primary_rows)}</table>
- <h2>Exploratory low-event outputs</h2><table><tr><th>Endpoint</th><th>Probability</th><th>Above 0.5</th></tr>{''.join(exploratory_rows)}</table>
- <div class=\"rec\">{en}</div>
- <div class=\"warn\"><strong>Research use only — not for clinical decision-making.</strong>
+ <div class=\"subtitle\"><span lang=\"en\">One-year cardiovascular outcome research scores from coronary angiography</span>
+ <span class=\"translation\" lang=\"fr\">Scores de recherche sur les événements cardiovasculaires à un an dérivés de la coronarographie</span></div>
+ <div class=\"score\"><strong>{composite:.3f}</strong><span lang=\"en\">Composite MACE research score</span>
+ <span class=\"translation\" lang=\"fr\">Score de recherche du MACE composite</span></div>
+ <h2><span lang=\"en\">Primary outputs</span> / <span lang=\"fr\">Sorties principales</span></h2>
+ <table><tr><th>Endpoint / Critère d'évaluation</th><th>Probability / Probabilité</th><th>Above 0.5 / Au-dessus de 0,5</th></tr>{''.join(primary_rows)}</table>
+ <h2><span lang=\"en\">Exploratory low-event outputs</span> / <span lang=\"fr\">Sorties exploratoires à faible nombre d'événements</span></h2>
+ <table><tr><th>Endpoint / Critère d'évaluation</th><th>Probability / Probabilité</th><th>Above 0.5 / Au-dessus de 0,5</th></tr>{''.join(exploratory_rows)}</table>
+ <div class=\"rec\"><h2>Research recommendation / Recommandation de recherche</h2>
+ <p lang=\"en\">{en}</p><p lang=\"fr\">{fr}</p></div>
+ <div class=\"warn\"><p lang=\"en\"><strong>Research use only — not for clinical decision-making.</strong>
  Values are model sigmoid outputs, not calibrated clinical risks. The 0.5 flags are uncalibrated
  research thresholds. Cardiovascular death had only four events in the held-out cohort, and the
- other low-event component outputs are exploratory. No regulatory clearance.</div>
+ other low-event component outputs are exploratory. No regulatory clearance.</p>
+ <p lang=\"fr\"><strong>Usage en recherche seulement — non destiné à la prise de décision clinique.</strong>
+ Les valeurs sont des sorties sigmoïdes du modèle et non des risques cliniques étalonnés. Les
+ indicateurs au seuil de 0,5 utilisent des seuils de recherche non étalonnés. Le décès
+ cardiovasculaire ne comptait que quatre événements dans la cohorte de test et les autres
+ composantes à faible nombre d'événements sont exploratoires. Aucune autorisation réglementaire.</p></div>
 </div></body></html>"""
 
     # -- handlers --------------------------------------------------------
