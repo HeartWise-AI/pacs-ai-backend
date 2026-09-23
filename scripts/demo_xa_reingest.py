@@ -666,6 +666,7 @@ def rewrite_dataset(
     uid_mapping: dict[str, str],
     shift: timedelta,
     patient_id: str,
+    discovery_time: datetime,
 ) -> None:
     for element in dataset.iterall():
         if element.VR == "UI":
@@ -680,6 +681,12 @@ def rewrite_dataset(
         parsed = parse_dicom_dt(dataset.get(keyword))
         if parsed:
             setattr(dataset, keyword, (parsed + shift).strftime("%Y%m%d%H%M%S.%f").rstrip("0"))
+    # PACS_QUERY discovery is constrained by StudyDate/StudyTime. Some valid XA
+    # studies only carry content-level timestamps, so shifting existing values
+    # is insufficient: missing study-level values make the replay invisible to
+    # C-FIND. Stamp every instance consistently at the intended replay time.
+    dataset.StudyDate = discovery_time.strftime("%Y%m%d")
+    dataset.StudyTime = format_dicom_time(discovery_time)
     dataset.PatientID = patient_id
     for keyword in DEIDENTIFY_KEYWORDS:
         if keyword in dataset:
@@ -714,7 +721,7 @@ def build_replay(
     output_dir.mkdir(parents=True, exist_ok=False)
     outputs: list[str] = []
     for index, (source_path, dataset, pixel_hash) in enumerate(datasets, 1):
-        rewrite_dataset(dataset, uid_mapping, shift, patient_id)
+        rewrite_dataset(dataset, uid_mapping, shift, patient_id, target_time)
         if hashlib.sha256(bytes(dataset.get("PixelData", b""))).hexdigest() != pixel_hash:
             raise ReingestionError("pixel-data invariant failed during DICOM rewrite")
         suffix = source_path.suffix if source_path.suffix else ".dcm"

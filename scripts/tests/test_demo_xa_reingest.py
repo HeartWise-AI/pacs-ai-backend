@@ -151,6 +151,46 @@ class DicomReplayTests(unittest.TestCase):
             with self.assertRaisesRegex(MODULE.ReingestionError, "exactly one DICOM study"):
                 MODULE.inspect_study_files(seed)
 
+    def test_replay_adds_study_timestamp_when_source_only_has_content_timestamp(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            seed = root / "seed"
+            seed.mkdir()
+            source_path = seed / "xa.dcm"
+            source_time = datetime(2020, 1, 2, 10, 0, 0)
+            write_xa(
+                source_path,
+                study_uid=generate_uid(),
+                series_uid=generate_uid(),
+                sop_uid=generate_uid(),
+                when=source_time,
+            )
+            source = pydicom.dcmread(source_path)
+            del source.StudyDate
+            del source.StudyTime
+            del source.SeriesDate
+            del source.SeriesTime
+            source.ContentDate = source_time.strftime("%Y%m%d")
+            source.ContentTime = source_time.strftime("%H%M%S")
+            source.save_as(source_path, enforce_file_format=True)
+
+            inventory = MODULE.inspect_study_files(seed)
+            target = datetime(2026, 9, 23, 12, 0, 0)
+            replay = MODULE.build_replay(
+                inventory,
+                root / "out",
+                target_time=target,
+                patient_id="DEMO-XA-TEST",
+            )
+            rewritten = pydicom.dcmread(root / "out" / replay["files"][0])
+
+            self.assertEqual(str(rewritten.StudyDate), "20260923")
+            self.assertEqual(str(rewritten.StudyTime), "120000")
+            self.assertEqual(
+                MODULE.parse_dicom_datetime(rewritten.ContentDate, rewritten.ContentTime),
+                target,
+            )
+
 
 class OrthancInventoryTests(unittest.TestCase):
     def client(self, responses: dict[str, object]) -> MODULE.OrthancClient:
