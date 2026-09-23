@@ -859,7 +859,7 @@ class DemoXaReingestion:
         self.study.check()
         for job in jobs:
             self.api.check_model(str(job["containerId"]))
-        current_studies = self.destination.xa_studies()
+        current_studies = self.source.xa_studies()
         log(
             f"Preflight passed: {len(jobs)} XA models, {len(current_studies)} studies, "
             f"{sum(item.instance_count for item in current_studies)} instances, "
@@ -1039,7 +1039,7 @@ class DemoXaReingestion:
             "expected_model_results": running_count * len(current_studies),
             "cleanup_requested": self.prune_previous,
             "database_cleanup_requested": self.allow_database_cleanup,
-            "cleanup_target_source": "website Orthanc XA snapshot",
+            "cleanup_target_source": "PACS_QUERY source Orthanc XA snapshot",
         }
         print(json.dumps(plan, indent=2))
         if not self.execute:
@@ -1055,7 +1055,7 @@ class DemoXaReingestion:
             "started_at": iso_now(),
             "status": "running",
             "input": {
-                "orthanc": "destination",
+                "orthanc": "source",
                 "study_count": len(current_studies),
                 "instance_count": sum(item.instance_count for item in current_studies),
                 "series_count": sum(item.series_count for item in current_studies),
@@ -1093,9 +1093,10 @@ class DemoXaReingestion:
         restored = False
         try:
             self._pause(jobs, routes)
-            if self.destination.xa_studies() != current_studies:
+            if self.source.xa_studies() != current_studies:
                 raise ReingestionError(
-                    "website XA inventory changed while discovery was draining; rerun the dry-run"
+                    "PACS_QUERY XA inventory changed while discovery was draining; "
+                    "rerun the dry-run"
                 )
             target_time = (
                 datetime.now(ZoneInfo(self.config.timezone_name)) - timedelta(seconds=5)
@@ -1103,7 +1104,7 @@ class DemoXaReingestion:
             replays: list[dict[str, Any]] = []
             for index, current_study in enumerate(current_studies, 1):
                 study_name = f"study-{index:04d}"
-                inventory = self.destination.download_study(
+                inventory = self.source.download_study(
                     current_study, run_dir / "snapshot" / study_name
                 )
                 patient_id = f"{self.config.patient_id_prefix}-{run_id[-8:]}-{index:04d}"

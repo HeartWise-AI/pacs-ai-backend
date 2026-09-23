@@ -365,7 +365,7 @@ class StateMachineTests(unittest.TestCase):
             latest_timestamp=datetime(2020, 1, 1),
         )
 
-    def test_preflight_inventories_the_website_facing_orthanc(self):
+    def test_preflight_inventories_the_pacs_query_source_orthanc(self):
         with tempfile.TemporaryDirectory() as temporary:
             runner = self.make_runner(Path(temporary))
             job = {
@@ -384,12 +384,12 @@ class StateMachineTests(unittest.TestCase):
                 "active_queues": {"worker": [{"name": "deepcoro-mace"}]},
             }
             studies = self.preflight_data()[2]
-            runner.destination.xa_studies.return_value = studies
+            runner.source.xa_studies.return_value = studies
 
             self.assertEqual(runner._preflight(), ([job], {"job-1": "deepcoro-mace"}, studies))
 
-            runner.destination.xa_studies.assert_called_once_with()
-            runner.source.xa_studies.assert_not_called()
+            runner.source.xa_studies.assert_called_once_with()
+            runner.destination.xa_studies.assert_not_called()
 
     def test_failure_restores_jobs_and_never_cleans_previous(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -398,8 +398,8 @@ class StateMachineTests(unittest.TestCase):
             runner._pause = Mock(return_value=["job-1"])
             runner._restore = Mock()
             runner._cleanup_previous = Mock()
-            runner.destination.xa_studies.return_value = self.preflight_data()[2]
-            runner.destination.download_study.return_value = self.study_inventory("1.2.3")
+            runner.source.xa_studies.return_value = self.preflight_data()[2]
+            runner.source.download_study.return_value = self.study_inventory("1.2.3")
             with (
                 patch.object(MODULE, "build_replay", side_effect=MODULE.ReingestionError("boom")),
                 self.assertRaisesRegex(MODULE.ReingestionError, "boom"),
@@ -432,8 +432,8 @@ class StateMachineTests(unittest.TestCase):
             runner._wait_for_uploaded_studies = Mock()
             runner._monitor = Mock(return_value=[{"models": {"job-1": {"status": "completed"}}}])
             runner._cleanup_previous = Mock(return_value={"status": "deleted"})
-            runner.destination.xa_studies.return_value = current_studies
-            runner.destination.download_study.side_effect = [
+            runner.source.xa_studies.return_value = current_studies
+            runner.source.download_study.side_effect = [
                 self.study_inventory("1.2.3"),
                 self.study_inventory("1.2.4"),
             ]
@@ -473,8 +473,8 @@ class StateMachineTests(unittest.TestCase):
             runner._wait_for_uploaded_studies = Mock()
             runner._monitor = Mock(side_effect=MODULE.ReingestionError("model failed"))
             runner._cleanup_previous = Mock()
-            runner.destination.xa_studies.return_value = self.preflight_data()[2]
-            runner.destination.download_study.side_effect = [
+            runner.source.xa_studies.return_value = self.preflight_data()[2]
+            runner.source.download_study.side_effect = [
                 self.study_inventory("1.2.3"),
                 self.study_inventory("1.2.4"),
             ]
@@ -509,12 +509,12 @@ class StateMachineTests(unittest.TestCase):
             runner._pause = Mock(return_value=["job-1"])
             runner._restore = Mock()
             runner._cleanup_previous = Mock()
-            runner.destination.xa_studies.return_value = current_studies[:1]
+            runner.source.xa_studies.return_value = current_studies[:1]
 
             with self.assertRaisesRegex(MODULE.ReingestionError, "inventory changed"):
                 runner.run()
 
-            runner.destination.download_study.assert_not_called()
+            runner.source.download_study.assert_not_called()
             runner._cleanup_previous.assert_not_called()
             runner._restore.assert_called_once_with(["job-1"])
 

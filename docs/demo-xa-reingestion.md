@@ -16,10 +16,10 @@ cp scripts/.env.demo-xa.example scripts/.env.demo-xa
 chmod 600 scripts/.env.demo-xa
 ```
 
-Fill in `scripts/.env.demo-xa`. The destination/PACS-AI Orthanc is the canonical
-input because it backs the demo website: the script discovers every study that
-contains an XA series and snapshots the complete study, including any associated
-DOC or other non-XA series. No local seed directory is needed.
+Fill in `scripts/.env.demo-xa`. The source Orthanc is the canonical input because
+it backs the demo website's `PACS_QUERY` worklist: the script discovers every
+study that contains an XA series and snapshots the complete study, including any
+associated DOC or other non-XA series. No local seed directory is needed.
 Run the command on the staging host from this repository so Docker Compose can
 inspect the live study-service registry, workers, queues, and—only when
 explicitly authorized—delete exact-study database history.
@@ -35,7 +35,7 @@ make demo-xa-reingest-dry-run
 The preflight checks API authentication, both Orthanc endpoints, study-service,
 every registered XA model endpoint, exact model name/version routing, and a live
 Celery consumer for each routed queue. It inventories all XA studies in the
-website-facing Orthanc and reports the total expected model-study results. It
+PACS_QUERY source Orthanc and reports the total expected model-study results. It
 does not stop jobs, download or write DICOMs, upload, or delete anything. Mixed
 studies are counted and later replayed in full so whole-study cleanup does not
 discard their associated non-XA series.
@@ -50,8 +50,8 @@ Without `EXECUTE=1`, `make demo-xa-reingest` performs the same read-only
 preflight as the dedicated dry-run target.
 
 This pauses only XA discovery jobs that were running, drains their queues, and
-rechecks that the website inventory has not changed. It then snapshots each
-current website XA study, creates new Study/Series/SOP UIDs, shifts DICOM dates
+rechecks that the PACS_QUERY inventory has not changed. It then snapshots each
+current PACS_QUERY XA study, creates new Study/Series/SOP UIDs, shifts DICOM dates
 and times together while preserving relative ordering, replaces each demo
 PatientID, verifies that pixel bytes are unchanged, uploads every replay to the
 source PACS, restores the original discovery states, and waits for a completed
@@ -66,8 +66,8 @@ To keep the previous study and history for comparison:
 make demo-xa-reingest EXECUTE=1 KEEP_PREVIOUS=1
 ```
 
-Cleanup uses only the exact StudyInstanceUID values captured from the
-website-facing Orthanc during that run; the script never performs a broad
+Cleanup uses only the exact StudyInstanceUID values captured from the PACS_QUERY
+source Orthanc during that run; the script never performs a broad
 modality, patient, or date-range deletion. If any study/model result fails,
 every snapshotted original is retained. XA job states are restored from
 `finally`, including on Ctrl-C.
