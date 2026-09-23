@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Safely replay one XA demo study through every configured XA ingestion job.
+"""Safely replay every XA demo study through every configured XA ingestion job.
 
 The command is deliberately dry-run-first.  ``--execute`` is required before it
 will stop jobs, write DICOMs, upload data, or delete a previous managed replay.
@@ -36,7 +36,7 @@ from pydicom.dataset import Dataset
 from pydicom.multival import MultiValue
 from pydicom.uid import generate_uid
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 TERMINAL_FAILURES = {"failed", "skipped", "cancelled", "partial"}
 UID_PATTERN = re.compile(r"^[0-9]+(?:\.[0-9]+)*$")
 TENANT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$")
@@ -135,7 +135,6 @@ class Config:
     admin_email: str
     admin_password: str
     turnstile_token: str
-    seed_dir: Path
     source_orthanc_url: str
     source_orthanc_user: str
     source_orthanc_password: str
@@ -166,7 +165,6 @@ class Config:
             admin_email=require(values, "PACS_ADMIN_EMAIL"),
             admin_password=require(values, "PACS_ADMIN_PASSWORD"),
             turnstile_token=env_value(values, "PACS_LOGIN_TURNSTILE_TOKEN"),
-            seed_dir=Path(require(values, "DEMO_XA_SEED_DIR")).expanduser().resolve(),
             source_orthanc_url=require(values, "DEMO_XA_SOURCE_ORTHANC_URL").rstrip("/"),
             source_orthanc_user=env_value(values, "DEMO_XA_SOURCE_ORTHANC_USER"),
             source_orthanc_password=env_value(values, "DEMO_XA_SOURCE_ORTHANC_PASSWORD"),
@@ -258,6 +256,26 @@ class JsonHttpClient:
         except json.JSONDecodeError as exc:
             raise ReingestionError(f"{method} {path} returned invalid JSON") from exc
 
+    def request_bytes(self, path: str) -> bytes:
+        url = f"{self.base_url}{path}"
+        request = urllib.request.Request(
+            url, headers={"Accept": "application/dicom", **self.headers}, method="GET"
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                payload = response.read()
+                status = response.status
+        except urllib.error.HTTPError as exc:
+            payload = exc.read()
+            status = exc.code
+        except urllib.error.URLError as exc:
+            raise ReingestionError(
+                f"cannot reach {urllib.parse.urlsplit(url).netloc}: {exc.reason}"
+            ) from exc
+        if status != 200:
+            raise ReingestionError(f"GET {path} returned HTTP {status}")
+        return payload
+
 
 class ApiPacsClient:
     def __init__(self, config: Config) -> None:
@@ -306,6 +324,18 @@ class ApiPacsClient:
         )
 
 
+@dataclass(frozen=True)
+class XaStudy:
+    orthanc_id: str
+    study_uid: str
+    series_count: int
+    instance_ids: tuple[str, ...]
+
+    @property
+    def instance_count(self) -> int:
+        return len(self.instance_ids)
+
+
 class OrthancClient:
     def __init__(self, url: str, username: str = "", password: str = "") -> None:
         self.http = JsonHttpClient(url, username=username, password=password, timeout=60)
@@ -332,6 +362,70 @@ class OrthancClient:
 
     def study(self, orthanc_id: str) -> dict[str, Any]:
         return self.http.request("GET", f"/studies/{urllib.parse.quote(orthanc_id)}")
+
+    def series(self, orthanc_id: str) -> dict[str, Any]:
+        return self.http.request("GET", f"/series/{urllib.parse.quote(orthanc_id)}")
+
+    def xa_studies(self) -> tuple[XaStudy, ...]:
+        studies: list[XaStudy] = []
+        study_ids = self.http.request("GET", "/studies") or []
+        for orthanc_id_value in study_ids:
+            orthanc_id = str(orthanc_id_value)
+            study = self.study(orthanc_id)
+            study_uid = str(study.get("MainDicomTags", {}).get("StudyInstanceUID", "")).strip()
+            if not UID_PATTERN.fullmatch(study_uid):
+                raise ReingestionError("Orthanc study has no valid StudyInstanceUID")
+            xa_series: list[dict[str, Any]] = []
+            other_modalities: set[str] = set()
+            for series_id_value in study.get("Series", []):
+                series = self.series(str(series_id_value))
+                modality = str(series.get("MainDicomTags", {}).get("Modality", "")).upper()
+                if modality == "XA":
+                    xa_series.append(series)
+                else:
+                    other_modalities.add(modality or "UNKNOWN")
+            if not xa_series:
+                continue
+            if other_modalities:
+                modalities = ", ".join(sorted(other_modalities))
+                raise ReingestionError(
+                    "Orthanc contains an XA study with non-XA series "
+                    f"({modalities}); refusing unsafe whole-study cleanup"
+                )
+            instance_ids = tuple(
+                str(instance_id)
+                for series in xa_series
+                for instance_id in series.get("Instances", [])
+            )
+            if not instance_ids:
+                raise ReingestionError("Orthanc XA study contains no instances")
+            studies.append(
+                XaStudy(
+                    orthanc_id=orthanc_id,
+                    study_uid=study_uid,
+                    series_count=len(xa_series),
+                    instance_ids=instance_ids,
+                )
+            )
+        if not studies:
+            raise ReingestionError("Orthanc contains no XA studies")
+        return tuple(sorted(studies, key=lambda item: item.study_uid))
+
+    def download_study(self, study: XaStudy, target_dir: Path) -> StudyInventory:
+        target_dir.mkdir(parents=True, exist_ok=False)
+        for index, instance_id in enumerate(study.instance_ids, 1):
+            payload = self.http.request_bytes(
+                f"/instances/{urllib.parse.quote(instance_id)}/file"
+            )
+            (target_dir / f"instance-{index:04d}.dcm").write_bytes(payload)
+        inventory = inspect_study_files(target_dir)
+        if inventory.study_uid != study.study_uid:
+            raise ReingestionError("Orthanc study changed during snapshot")
+        if inventory.instance_count != study.instance_count:
+            raise ReingestionError("Orthanc instance count changed during snapshot")
+        if inventory.series_count != study.series_count:
+            raise ReingestionError("Orthanc series count changed during snapshot")
+        return inventory
 
     def delete_study(self, orthanc_id: str) -> None:
         self.http.request("DELETE", f"/studies/{urllib.parse.quote(orthanc_id)}", expected=(200, 204))
@@ -472,7 +566,7 @@ print('DEMO_XA_JSON=' + json.dumps(payload, default=str))
 
 
 @dataclass(frozen=True)
-class SeedInventory:
+class StudyInventory:
     files: tuple[Path, ...]
     study_uid: str
     series_count: int
@@ -516,10 +610,10 @@ def parse_dicom_dt(value: Any) -> datetime | None:
         return None
 
 
-def inspect_seed(seed_dir: Path) -> SeedInventory:
-    if not seed_dir.is_dir():
-        raise ReingestionError(f"seed directory does not exist: {seed_dir}")
-    files = tuple(sorted(path for path in seed_dir.rglob("*") if path.is_file()))
+def inspect_study_files(study_dir: Path) -> StudyInventory:
+    if not study_dir.is_dir():
+        raise ReingestionError(f"study snapshot directory does not exist: {study_dir}")
+    files = tuple(sorted(path for path in study_dir.rglob("*") if path.is_file()))
     dicom_files: list[Path] = []
     study_uids: set[str] = set()
     series_uids: set[str] = set()
@@ -531,12 +625,14 @@ def inspect_seed(seed_dir: Path) -> SeedInventory:
             continue
         modality = str(dataset.get("Modality", "")).upper()
         if modality != "XA":
-            raise ReingestionError("seed contains a readable non-XA DICOM instance")
+            raise ReingestionError("study snapshot contains a readable non-XA DICOM instance")
         study_uid = str(dataset.get("StudyInstanceUID", "")).strip()
         series_uid = str(dataset.get("SeriesInstanceUID", "")).strip()
         sop_uid = str(dataset.get("SOPInstanceUID", "")).strip()
         if not study_uid or not series_uid or not sop_uid:
-            raise ReingestionError("seed DICOM is missing a required study, series, or SOP UID")
+            raise ReingestionError(
+                "study snapshot DICOM is missing a required study, series, or SOP UID"
+            )
         dicom_files.append(path)
         study_uids.add(study_uid)
         series_uids.add(series_uid)
@@ -545,15 +641,21 @@ def inspect_seed(seed_dir: Path) -> SeedInventory:
             if parsed:
                 timestamps.append(parsed)
     if not dicom_files:
-        raise ReingestionError("seed directory contains no readable XA DICOM instances")
+        raise ReingestionError("study snapshot contains no readable XA DICOM instances")
     if len(study_uids) != 1:
-        raise ReingestionError("seed directory must contain exactly one XA study")
+        raise ReingestionError("study snapshot must contain exactly one XA study")
     latest = (
         max(timestamps)
         if timestamps
         else datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
     )
-    return SeedInventory(tuple(dicom_files), next(iter(study_uids)), len(series_uids), len(dicom_files), latest)
+    return StudyInventory(
+        tuple(dicom_files),
+        next(iter(study_uids)),
+        len(series_uids),
+        len(dicom_files),
+        latest,
+    )
 
 
 def _replace_uid_value(value: Any, mapping: dict[str, str]) -> Any:
@@ -593,7 +695,7 @@ def rewrite_dataset(
 
 
 def build_replay(
-    inventory: SeedInventory,
+    inventory: StudyInventory,
     output_dir: Path,
     *,
     target_time: datetime,
@@ -744,23 +846,17 @@ class DemoXaReingestion:
     def latest_path(self) -> Path:
         return self.config.work_dir / "latest-success.json"
 
-    def _previous_cleanup_uid(self, inventory: SeedInventory) -> str:
-        if self.latest_path.exists():
-            previous = json.loads(self.latest_path.read_text(encoding="utf-8"))
-            value = str(previous.get("replay", {}).get("study_uid", ""))
-            if UID_PATTERN.fullmatch(value):
-                return value
-            raise ReingestionError("latest-success manifest has no valid replay StudyInstanceUID")
-        return inventory.study_uid
-
-    def _preflight(self) -> tuple[list[dict[str, Any]], dict[str, str], SeedInventory, str]:
+    def _preflight(
+        self,
+    ) -> tuple[list[dict[str, Any]], dict[str, str], tuple[XaStudy, ...]]:
         log("Authenticating and running read-only preflight checks")
         self.api.login()
         jobs = xa_jobs(self.api.ingestion_jobs())
         if not jobs:
             raise ReingestionError("no XA ingestion jobs are registered for this tenant")
+        if not any(str(job.get("status", "")).upper() == "RUNNING" for job in jobs):
+            raise ReingestionError("no XA ingestion jobs are running for this tenant")
         validate_active_job_windows(jobs, datetime.now(ZoneInfo(self.config.timezone_name)))
-        inventory = inspect_seed(self.config.seed_dir)
         snapshot = self.runtime.snapshot()
         routes = validate_routes(jobs, snapshot)
         self.source.check()
@@ -768,12 +864,13 @@ class DemoXaReingestion:
         self.study.check()
         for job in jobs:
             self.api.check_model(str(job["containerId"]))
-        cleanup_uid = self._previous_cleanup_uid(inventory)
+        current_studies = self.destination.xa_studies()
         log(
-            f"Preflight passed: {len(jobs)} XA models, {inventory.instance_count} instances, "
-            f"{inventory.series_count} series"
+            f"Preflight passed: {len(jobs)} XA models, {len(current_studies)} studies, "
+            f"{sum(item.instance_count for item in current_studies)} instances, "
+            f"{sum(item.series_count for item in current_studies)} series"
         )
-        return jobs, routes, inventory, cleanup_uid
+        return jobs, routes, current_studies
 
     def _wait_for_idle(self, queues: set[str]) -> None:
         deadline = time.monotonic() + self.config.drain_timeout_seconds
@@ -809,89 +906,114 @@ class DemoXaReingestion:
         if running_job_ids:
             log(f"Restored {len(running_job_ids)} XA discovery job(s) to RUNNING")
 
-    def _upload(self, run_dir: Path, file_names: list[str], expected_count: int) -> str:
+    def _upload(self, dicom_dir: Path, file_names: list[str]) -> str:
         orthanc_study_ids: set[str] = set()
         for name in file_names:
-            response = self.source.upload((run_dir / "dicom" / name).read_bytes())
+            response = self.source.upload((dicom_dir / name).read_bytes())
             parent = str(response.get("ParentStudy") or "")
             if parent:
                 orthanc_study_ids.add(parent)
         if len(orthanc_study_ids) != 1:
             raise ReingestionError("Orthanc upload did not produce exactly one study")
-        orthanc_id = next(iter(orthanc_study_ids))
+        return next(iter(orthanc_study_ids))
+
+    def _wait_for_uploaded_studies(self, expected_counts: dict[str, int]) -> None:
+        pending = dict(expected_counts)
         deadline = time.monotonic() + self.config.stable_timeout_seconds
-        while True:
-            study = self.source.study(orthanc_id)
-            actual_count = len(study.get("Instances", []))
-            if bool(study.get("IsStable")) and (actual_count == expected_count or not actual_count):
-                return orthanc_id
+        while pending:
+            for orthanc_id, expected_count in tuple(pending.items()):
+                study = self.source.study(orthanc_id)
+                actual_count = len(study.get("Instances", []))
+                if bool(study.get("IsStable")) and (
+                    actual_count == expected_count or not actual_count
+                ):
+                    del pending[orthanc_id]
+            if not pending:
+                return
             if time.monotonic() >= deadline:
-                raise ReingestionError("timed out waiting for the uploaded XA study to become stable")
+                raise ReingestionError(
+                    f"timed out waiting for {len(pending)} uploaded XA study/studies to become stable"
+                )
             self.sleep(self.config.poll_seconds)
 
-    def _monitor(self, jobs: list[dict[str, Any]], study_uid: str) -> dict[str, Any]:
-        expected = {str(job["id"]): job for job in jobs if str(job.get("status", "")).upper() == "RUNNING"}
-        if not expected:
+    def _monitor(
+        self, jobs: list[dict[str, Any]], study_uids: list[str]
+    ) -> list[dict[str, Any]]:
+        expected_jobs = {
+            str(job["id"]): job
+            for job in jobs
+            if str(job.get("status", "")).upper() == "RUNNING"
+        }
+        if not expected_jobs:
             raise ReingestionError("no XA ingestion jobs were running before the replay")
-        completed: dict[str, Any] = {}
+        if not study_uids:
+            raise ReingestionError("no replayed XA studies to monitor")
+        completed: dict[str, dict[str, Any]] = {study_uid: {} for study_uid in study_uids}
+        expected_total = len(expected_jobs) * len(study_uids)
         deadline = time.monotonic() + self.config.processing_timeout_seconds
-        while len(completed) < len(expected):
-            for job_id, ingestion_job in expected.items():
-                if job_id in completed:
-                    continue
-                candidate = self.api.candidate(job_id, study_uid)
-                if not candidate:
-                    continue
-                if str(candidate.get("status", "")).upper() == "FAILED":
-                    raise ReingestionError(
-                        f"{ingestion_job['modelName']} {ingestion_job['modelVersion']} retrieval failed"
-                    )
-                candidate_status = str(candidate.get("processingStatus", "")).lower()
-                if candidate_status in TERMINAL_FAILURES:
-                    raise ReingestionError(
-                        f"{ingestion_job['modelName']} {ingestion_job['modelVersion']} ended as "
-                        f"{candidate_status or candidate.get('status', 'failed')}"
-                    )
-                pipeline_jobs = self.study.jobs_by_candidate(str(candidate["id"]))
-                matching = [
-                    item
-                    for item in pipeline_jobs
-                    if item.get("model_name") == ingestion_job.get("modelName")
-                    and str(item.get("model_version") or "") == str(ingestion_job.get("modelVersion") or "")
-                ]
-                if not matching:
-                    continue
-                newest = matching[0]
-                status = str(newest.get("status", "")).lower()
-                if status in TERMINAL_FAILURES:
-                    raise ReingestionError(
-                        f"{ingestion_job['modelName']} {ingestion_job['modelVersion']} pipeline ended as {status}"
-                    )
-                if status == "completed":
-                    detail = self.study.job(str(newest["job_id"]))
-                    if detail.get("result_json") is None:
+        while sum(len(results) for results in completed.values()) < expected_total:
+            for study_uid, study_results in completed.items():
+                for job_id, ingestion_job in expected_jobs.items():
+                    if job_id in study_results:
+                        continue
+                    candidate = self.api.candidate(job_id, study_uid)
+                    if not candidate:
+                        continue
+                    if str(candidate.get("status", "")).upper() == "FAILED":
                         raise ReingestionError(
-                            f"{ingestion_job['modelName']} completed without a stored result"
+                            f"{ingestion_job['modelName']} {ingestion_job['modelVersion']} "
+                            "retrieval failed"
                         )
-                    completed[job_id] = {
-                        "model_name": ingestion_job["modelName"],
-                        "model_version": ingestion_job["modelVersion"],
-                        "candidate_id": candidate["id"],
-                        "pipeline_job_id": newest["job_id"],
-                        "status": "completed",
-                    }
-                    log(f"Completed {len(completed)}/{len(expected)} XA model result(s)")
-            if len(completed) == len(expected):
+                    candidate_status = str(candidate.get("processingStatus", "")).lower()
+                    if candidate_status in TERMINAL_FAILURES:
+                        raise ReingestionError(
+                            f"{ingestion_job['modelName']} {ingestion_job['modelVersion']} ended as "
+                            f"{candidate_status or candidate.get('status', 'failed')}"
+                        )
+                    pipeline_jobs = self.study.jobs_by_candidate(str(candidate["id"]))
+                    matching = [
+                        item
+                        for item in pipeline_jobs
+                        if item.get("model_name") == ingestion_job.get("modelName")
+                        and str(item.get("model_version") or "")
+                        == str(ingestion_job.get("modelVersion") or "")
+                    ]
+                    if not matching:
+                        continue
+                    newest = matching[0]
+                    status = str(newest.get("status", "")).lower()
+                    if status in TERMINAL_FAILURES:
+                        raise ReingestionError(
+                            f"{ingestion_job['modelName']} {ingestion_job['modelVersion']} "
+                            f"pipeline ended as {status}"
+                        )
+                    if status == "completed":
+                        detail = self.study.job(str(newest["job_id"]))
+                        if detail.get("result_json") is None:
+                            raise ReingestionError(
+                                f"{ingestion_job['modelName']} completed without a stored result"
+                            )
+                        study_results[job_id] = {
+                            "model_name": ingestion_job["modelName"],
+                            "model_version": ingestion_job["modelVersion"],
+                            "candidate_id": candidate["id"],
+                            "pipeline_job_id": newest["job_id"],
+                            "status": "completed",
+                        }
+                        completed_count = sum(len(results) for results in completed.values())
+                        log(f"Completed {completed_count}/{expected_total} XA model result(s)")
+            if sum(len(results) for results in completed.values()) == expected_total:
                 break
             if time.monotonic() >= deadline:
-                pending = [
-                    f"{job['modelName']} {job['modelVersion']}"
-                    for job_id, job in expected.items()
-                    if job_id not in completed
-                ]
-                raise ReingestionError("timed out waiting for XA models: " + ", ".join(pending))
+                completed_count = sum(len(results) for results in completed.values())
+                raise ReingestionError(
+                    f"timed out waiting for {expected_total - completed_count} XA model-study result(s)"
+                )
             self.sleep(self.config.poll_seconds)
-        return completed
+        return [
+            {"study_uid": study_uid, "models": completed[study_uid]}
+            for study_uid in study_uids
+        ]
 
     def _cleanup_previous(self, study_uid: str) -> dict[str, Any]:
         result: dict[str, Any] = {"study_uid": study_uid, "source_studies": 0, "destination_studies": 0}
@@ -908,18 +1030,21 @@ class DemoXaReingestion:
         return result
 
     def run(self) -> int:
-        jobs, routes, inventory, cleanup_uid = self._preflight()
+        jobs, routes, current_studies = self._preflight()
+        running_count = sum(
+            1 for job in jobs if str(job.get("status", "")).upper() == "RUNNING"
+        )
         plan = {
             "mode": "execute" if self.execute else "dry-run",
             "xa_models": [f"{job['modelName']} {job['modelVersion']}" for job in jobs],
-            "running_jobs_to_pause": sum(
-                1 for job in jobs if str(job.get("status", "")).upper() == "RUNNING"
-            ),
-            "seed_instances": inventory.instance_count,
-            "seed_series": inventory.series_count,
+            "running_jobs_to_pause": running_count,
+            "current_xa_studies": len(current_studies),
+            "current_xa_instances": sum(item.instance_count for item in current_studies),
+            "current_xa_series": sum(item.series_count for item in current_studies),
+            "expected_model_results": running_count * len(current_studies),
             "cleanup_requested": self.prune_previous,
             "database_cleanup_requested": self.allow_database_cleanup,
-            "cleanup_target_source": "latest managed replay" if self.latest_path.exists() else "seed study",
+            "cleanup_target_source": "website Orthanc XA snapshot",
         }
         print(json.dumps(plan, indent=2))
         if not self.execute:
@@ -934,9 +1059,20 @@ class DemoXaReingestion:
             "run_id": run_id,
             "started_at": iso_now(),
             "status": "running",
-            "seed": {
-                "instance_count": inventory.instance_count,
-                "series_count": inventory.series_count,
+            "input": {
+                "orthanc": "destination",
+                "study_count": len(current_studies),
+                "instance_count": sum(item.instance_count for item in current_studies),
+                "series_count": sum(item.series_count for item in current_studies),
+                "studies": [
+                    {
+                        "orthanc_study_id": item.orthanc_id,
+                        "study_uid": item.study_uid,
+                        "instance_count": item.instance_count,
+                        "series_count": item.series_count,
+                    }
+                    for item in current_studies
+                ],
             },
             "ingestion_jobs": [
                 {
@@ -962,29 +1098,63 @@ class DemoXaReingestion:
         restored = False
         try:
             self._pause(jobs, routes)
-            patient_id = f"{self.config.patient_id_prefix}-{run_id[-8:]}"
+            if self.destination.xa_studies() != current_studies:
+                raise ReingestionError(
+                    "website XA inventory changed while discovery was draining; rerun the dry-run"
+                )
             target_time = (
                 datetime.now(ZoneInfo(self.config.timezone_name)) - timedelta(seconds=5)
             ).replace(tzinfo=None)
-            replay = build_replay(
-                inventory,
-                run_dir / "dicom",
-                target_time=target_time,
-                patient_id=patient_id,
-            )
-            if cleanup_uid == replay["study_uid"]:
-                raise ReingestionError("refusing cleanup because old and new StudyInstanceUID match")
-            self.manifest["replay"] = replay
-            self.manifest["replay"]["patient_id"] = patient_id
+            replays: list[dict[str, Any]] = []
+            for index, current_study in enumerate(current_studies, 1):
+                study_name = f"study-{index:04d}"
+                inventory = self.destination.download_study(
+                    current_study, run_dir / "snapshot" / study_name
+                )
+                patient_id = f"{self.config.patient_id_prefix}-{run_id[-8:]}-{index:04d}"
+                replay = build_replay(
+                    inventory,
+                    run_dir / "dicom" / study_name,
+                    target_time=target_time,
+                    patient_id=patient_id,
+                )
+                replay["input_study_uid"] = current_study.study_uid
+                replay["input_orthanc_study_id"] = current_study.orthanc_id
+                replay["patient_id"] = patient_id
+                replay["directory"] = study_name
+                replays.append(replay)
+                log(f"Prepared {index}/{len(current_studies)} XA study replay(s)")
+            old_uids = {item.study_uid for item in current_studies}
+            new_uids = {str(replay["study_uid"]) for replay in replays}
+            if old_uids & new_uids:
+                raise ReingestionError("refusing cleanup because an old and new StudyInstanceUID match")
+            if len(new_uids) != len(replays):
+                raise ReingestionError("generated duplicate StudyInstanceUID values")
+            self.manifest["replays"] = replays
             write_json(manifest_path, self.manifest)
-            source_id = self._upload(run_dir, replay["files"], inventory.instance_count)
-            self.manifest["replay"]["source_orthanc_study_id"] = source_id
-            write_json(manifest_path, self.manifest)
+            uploaded_counts: dict[str, int] = {}
+            for index, (current_study, replay) in enumerate(
+                zip(current_studies, replays, strict=True), 1
+            ):
+                dicom_dir = run_dir / "dicom" / str(replay["directory"])
+                replay_orthanc_id = self._upload(dicom_dir, replay["files"])
+                if replay_orthanc_id in uploaded_counts:
+                    raise ReingestionError("multiple replay uploads resolved to one Orthanc study")
+                replay["replay_orthanc_study_id"] = replay_orthanc_id
+                uploaded_counts[replay_orthanc_id] = current_study.instance_count
+                write_json(manifest_path, self.manifest)
+                log(f"Uploaded {index}/{len(replays)} XA study replay(s)")
+            self._wait_for_uploaded_studies(uploaded_counts)
             self._restore(running_ids)
             restored = True
-            self.manifest["results"] = self._monitor(jobs, replay["study_uid"])
+            self.manifest["results"] = self._monitor(
+                jobs, [str(replay["study_uid"]) for replay in replays]
+            )
             if self.prune_previous:
-                self.manifest["cleanup"] = self._cleanup_previous(cleanup_uid)
+                self.manifest["cleanup"] = [
+                    self._cleanup_previous(current_study.study_uid)
+                    for current_study in current_studies
+                ]
             else:
                 self.manifest["cleanup"] = {"status": "retained", "reason": "cleanup not requested"}
             self.manifest["status"] = "succeeded"
@@ -1016,7 +1186,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--prune-previous",
         action="store_true",
-        help="after every model succeeds, delete only the prior manifest/seed study",
+        help="after every model succeeds, delete only the snapshotted source XA studies",
     )
     parser.add_argument(
         "--allow-database-cleanup",

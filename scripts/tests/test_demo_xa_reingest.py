@@ -53,14 +53,13 @@ def write_xa(path: Path, *, study_uid: str, series_uid: str, sop_uid: str, when:
     return dataset.PixelData
 
 
-def config(root: Path, seed: Path) -> MODULE.Config:
+def config(root: Path) -> MODULE.Config:
     return MODULE.Config(
         api_base_url="http://127.0.0.1:8085",
         tenant_id="tenant",
         admin_email="admin@example.test",
         admin_password="secret",
         turnstile_token="",
-        seed_dir=seed,
         source_orthanc_url="http://127.0.0.1:8063",
         source_orthanc_user="",
         source_orthanc_password="",
@@ -105,7 +104,7 @@ class DicomReplayTests(unittest.TestCase):
                 when=first_time + timedelta(seconds=9),
             )
 
-            inventory = MODULE.inspect_seed(seed)
+            inventory = MODULE.inspect_study_files(seed)
             target = datetime(2026, 9, 23, 12, 0, 0)
             replay = MODULE.build_replay(
                 inventory, root / "out", target_time=target, patient_id="DEMO-XA-TEST"
@@ -124,7 +123,7 @@ class DicomReplayTests(unittest.TestCase):
             self.assertEqual(rewritten_times[1] - rewritten_times[0], timedelta(seconds=9))
             self.assertEqual(max(rewritten_times), target)
 
-    def test_seed_must_be_one_xa_study(self):
+    def test_each_snapshot_must_be_one_xa_study(self):
         with tempfile.TemporaryDirectory() as temporary:
             seed = Path(temporary)
             write_xa(
@@ -142,7 +141,95 @@ class DicomReplayTests(unittest.TestCase):
                 when=datetime(2020, 1, 1),
             )
             with self.assertRaisesRegex(MODULE.ReingestionError, "exactly one XA study"):
-                MODULE.inspect_seed(seed)
+                MODULE.inspect_study_files(seed)
+
+
+class OrthancInventoryTests(unittest.TestCase):
+    def client(self, responses: dict[str, object]) -> MODULE.OrthancClient:
+        client = MODULE.OrthancClient("http://127.0.0.1:8063")
+        client.http = Mock()
+        client.http.request.side_effect = lambda _method, path: responses[path]
+        return client
+
+    def test_discovers_every_xa_study_and_counts_series_and_instances(self):
+        responses = {
+            "/studies": ["study-b", "study-a", "study-ct"],
+            "/studies/study-a": {
+                "MainDicomTags": {"StudyInstanceUID": "1.2.3"},
+                "Series": ["series-a1", "series-a2"],
+            },
+            "/studies/study-b": {
+                "MainDicomTags": {"StudyInstanceUID": "1.2.4"},
+                "Series": ["series-b1"],
+            },
+            "/studies/study-ct": {
+                "MainDicomTags": {"StudyInstanceUID": "1.2.5"},
+                "Series": ["series-ct"],
+            },
+            "/series/series-a1": {
+                "MainDicomTags": {"Modality": "XA"},
+                "Instances": ["a1"],
+            },
+            "/series/series-a2": {
+                "MainDicomTags": {"Modality": "XA"},
+                "Instances": ["a2", "a3"],
+            },
+            "/series/series-b1": {
+                "MainDicomTags": {"Modality": "XA"},
+                "Instances": ["b1"],
+            },
+            "/series/series-ct": {
+                "MainDicomTags": {"Modality": "CT"},
+                "Instances": ["ct1"],
+            },
+        }
+
+        studies = self.client(responses).xa_studies()
+
+        self.assertEqual([item.study_uid for item in studies], ["1.2.3", "1.2.4"])
+        self.assertEqual([item.series_count for item in studies], [2, 1])
+        self.assertEqual([item.instance_count for item in studies], [3, 1])
+
+    def test_rejects_mixed_modality_study_before_whole_study_cleanup(self):
+        responses = {
+            "/studies": ["mixed"],
+            "/studies/mixed": {
+                "MainDicomTags": {"StudyInstanceUID": "1.2.3"},
+                "Series": ["xa", "ct"],
+            },
+            "/series/xa": {
+                "MainDicomTags": {"Modality": "XA"},
+                "Instances": ["xa1"],
+            },
+            "/series/ct": {
+                "MainDicomTags": {"Modality": "CT"},
+                "Instances": ["ct1"],
+            },
+        }
+
+        with self.assertRaisesRegex(MODULE.ReingestionError, "unsafe whole-study cleanup"):
+            self.client(responses).xa_studies()
+
+    def test_download_validates_the_source_snapshot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_file = root / "source.dcm"
+            write_xa(
+                source_file,
+                study_uid="1.2.3",
+                series_uid="1.2.3.4",
+                sop_uid="1.2.3.4.5",
+                when=datetime(2020, 1, 1),
+            )
+            client = MODULE.OrthancClient("http://127.0.0.1:8063")
+            client.http = Mock()
+            client.http.request_bytes.return_value = source_file.read_bytes()
+            source_study = MODULE.XaStudy("orthanc-study", "1.2.3", 1, ("instance",))
+
+            inventory = client.download_study(source_study, root / "snapshot")
+
+            self.assertEqual(inventory.study_uid, "1.2.3")
+            self.assertEqual(inventory.instance_count, 1)
 
 
 class RoutingTests(unittest.TestCase):
@@ -193,10 +280,8 @@ class RoutingTests(unittest.TestCase):
 
 class StateMachineTests(unittest.TestCase):
     def make_runner(self, root: Path, *, prune: bool = True) -> MODULE.DemoXaReingestion:
-        seed = root / "seed"
-        seed.mkdir()
         return MODULE.DemoXaReingestion(
-            config(root, seed),
+            config(root),
             execute=True,
             prune_previous=prune,
             allow_database_cleanup=prune,
@@ -218,14 +303,47 @@ class StateMachineTests(unittest.TestCase):
                 "status": "RUNNING",
             }
         ]
-        inventory = MODULE.SeedInventory(
+        current_studies = (
+            MODULE.XaStudy("orthanc-1", "1.2.3", 1, ("instance-1",)),
+            MODULE.XaStudy("orthanc-2", "1.2.4", 1, ("instance-2",)),
+        )
+        return jobs, {"job-1": "deepcoro-mace"}, current_studies
+
+    @staticmethod
+    def study_inventory(study_uid: str) -> MODULE.StudyInventory:
+        return MODULE.StudyInventory(
             files=(Path("unused.dcm"),),
-            study_uid="1.2.3",
+            study_uid=study_uid,
             series_count=1,
             instance_count=1,
             latest_timestamp=datetime(2020, 1, 1),
         )
-        return jobs, {"job-1": "deepcoro-mace"}, inventory, "1.2.3"
+
+    def test_preflight_inventories_the_website_facing_orthanc(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = self.make_runner(Path(temporary))
+            job = {
+                "id": "job-1",
+                "containerId": "container-1",
+                "modelName": "DeepCORO-MACE",
+                "modelVersion": "1.0.0",
+                "modalities": ["XA"],
+                "status": "RUNNING",
+            }
+            runner.api.ingestion_jobs.return_value = [job]
+            runner.runtime.snapshot.return_value = {
+                "registry": {
+                    "DeepCORO-MACE": {"version": "1.0.0", "queue": "deepcoro-mace"}
+                },
+                "active_queues": {"worker": [{"name": "deepcoro-mace"}]},
+            }
+            studies = self.preflight_data()[2]
+            runner.destination.xa_studies.return_value = studies
+
+            self.assertEqual(runner._preflight(), ([job], {"job-1": "deepcoro-mace"}, studies))
+
+            runner.destination.xa_studies.assert_called_once_with()
+            runner.source.xa_studies.assert_not_called()
 
     def test_failure_restores_jobs_and_never_cleans_previous(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -234,6 +352,8 @@ class StateMachineTests(unittest.TestCase):
             runner._pause = Mock(return_value=["job-1"])
             runner._restore = Mock()
             runner._cleanup_previous = Mock()
+            runner.destination.xa_studies.return_value = self.preflight_data()[2]
+            runner.destination.download_study.return_value = self.study_inventory("1.2.3")
             with (
                 patch.object(MODULE, "build_replay", side_effect=MODULE.ReingestionError("boom")),
                 self.assertRaisesRegex(MODULE.ReingestionError, "boom"),
@@ -258,25 +378,139 @@ class StateMachineTests(unittest.TestCase):
     def test_cleanup_only_runs_after_all_results_succeed(self):
         with tempfile.TemporaryDirectory() as temporary:
             runner = self.make_runner(Path(temporary))
+            jobs, routes, current_studies = self.preflight_data()
+            runner._preflight = Mock(return_value=(jobs, routes, current_studies))
+            runner._pause = Mock(return_value=["job-1"])
+            runner._restore = Mock()
+            runner._upload = Mock(side_effect=["source-id-1", "source-id-2"])
+            runner._wait_for_uploaded_studies = Mock()
+            runner._monitor = Mock(return_value=[{"models": {"job-1": {"status": "completed"}}}])
+            runner._cleanup_previous = Mock(return_value={"status": "deleted"})
+            runner.destination.xa_studies.return_value = current_studies
+            runner.destination.download_study.side_effect = [
+                self.study_inventory("1.2.3"),
+                self.study_inventory("1.2.4"),
+            ]
+            replays = [
+                {
+                    "study_uid": "9.8.7",
+                    "uid_mapping": {"1.2.3": "9.8.7"},
+                    "files": ["instance-0001.dcm"],
+                    "shift_seconds": 1,
+                },
+                {
+                    "study_uid": "9.8.8",
+                    "uid_mapping": {"1.2.4": "9.8.8"},
+                    "files": ["instance-0001.dcm"],
+                    "shift_seconds": 1,
+                },
+            ]
+            with patch.object(MODULE, "build_replay", side_effect=replays):
+                self.assertEqual(runner.run(), 0)
+            runner._restore.assert_called_once_with(["job-1"])
+            runner._monitor.assert_called_once_with(jobs, ["9.8.7", "9.8.8"])
+            self.assertEqual(
+                [call.args[0] for call in runner._cleanup_previous.call_args_list],
+                ["1.2.3", "1.2.4"],
+            )
+            latest = json.loads(runner.latest_path.read_text())
+            self.assertEqual(latest["status"], "succeeded")
+            self.assertEqual(len(latest["replays"]), 2)
+
+    def test_failure_in_any_model_study_result_keeps_every_original(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = self.make_runner(Path(temporary))
             runner._preflight = Mock(return_value=self.preflight_data())
             runner._pause = Mock(return_value=["job-1"])
             runner._restore = Mock()
-            runner._upload = Mock(return_value="source-id")
-            runner._monitor = Mock(return_value={"job-1": {"status": "completed"}})
-            runner._cleanup_previous = Mock(return_value={"status": "deleted"})
-            replay = {
-                "study_uid": "9.8.7",
-                "uid_mapping": {"1.2.3": "9.8.7"},
-                "files": ["instance-0001.dcm"],
-                "shift_seconds": 1,
-            }
-            with patch.object(MODULE, "build_replay", return_value=replay):
-                self.assertEqual(runner.run(), 0)
+            runner._upload = Mock(side_effect=["source-id-1", "source-id-2"])
+            runner._wait_for_uploaded_studies = Mock()
+            runner._monitor = Mock(side_effect=MODULE.ReingestionError("model failed"))
+            runner._cleanup_previous = Mock()
+            runner.destination.xa_studies.return_value = self.preflight_data()[2]
+            runner.destination.download_study.side_effect = [
+                self.study_inventory("1.2.3"),
+                self.study_inventory("1.2.4"),
+            ]
+            replays = [
+                {
+                    "study_uid": "9.8.7",
+                    "uid_mapping": {"1.2.3": "9.8.7"},
+                    "files": ["instance-0001.dcm"],
+                    "shift_seconds": 1,
+                },
+                {
+                    "study_uid": "9.8.8",
+                    "uid_mapping": {"1.2.4": "9.8.8"},
+                    "files": ["instance-0001.dcm"],
+                    "shift_seconds": 1,
+                },
+            ]
+
+            with (
+                patch.object(MODULE, "build_replay", side_effect=replays),
+                self.assertRaisesRegex(MODULE.ReingestionError, "model failed"),
+            ):
+                runner.run()
+
+            runner._cleanup_previous.assert_not_called()
+
+    def test_inventory_change_after_drain_aborts_before_snapshot_or_cleanup(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = self.make_runner(Path(temporary))
+            jobs, routes, current_studies = self.preflight_data()
+            runner._preflight = Mock(return_value=(jobs, routes, current_studies))
+            runner._pause = Mock(return_value=["job-1"])
+            runner._restore = Mock()
+            runner._cleanup_previous = Mock()
+            runner.destination.xa_studies.return_value = current_studies[:1]
+
+            with self.assertRaisesRegex(MODULE.ReingestionError, "inventory changed"):
+                runner.run()
+
+            runner.destination.download_study.assert_not_called()
+            runner._cleanup_previous.assert_not_called()
             runner._restore.assert_called_once_with(["job-1"])
-            runner._monitor.assert_called_once()
-            runner._cleanup_previous.assert_called_once_with("1.2.3")
-            latest = json.loads(runner.latest_path.read_text())
-            self.assertEqual(latest["status"], "succeeded")
+
+    def test_monitor_requires_completion_for_every_study_and_model(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = self.make_runner(Path(temporary), prune=False)
+            jobs = self.preflight_data()[0]
+            runner.api.candidate.side_effect = lambda job_id, study_uid: {
+                "id": f"candidate-{job_id}-{study_uid}",
+                "status": "SUCCESS",
+                "processingStatus": "completed",
+            }
+            runner.study.jobs_by_candidate.side_effect = lambda candidate_id: [
+                {
+                    "job_id": f"pipeline-{candidate_id}",
+                    "model_name": "DeepCORO-MACE",
+                    "model_version": "1.0.0",
+                    "status": "completed",
+                }
+            ]
+            runner.study.job.return_value = {"result_json": {"score": 0.5}}
+
+            results = runner._monitor(jobs, ["9.8.7", "9.8.8"])
+
+            self.assertEqual(len(results), 2)
+            self.assertEqual(runner.api.candidate.call_count, 2)
+            self.assertTrue(all(len(item["models"]) == 1 for item in results))
+
+    def test_uploaded_studies_are_waited_for_as_one_batch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = self.make_runner(Path(temporary), prune=False)
+            runner.source.study.side_effect = lambda orthanc_id: {
+                "IsStable": True,
+                "Instances": [f"instance-{orthanc_id}"],
+            }
+
+            runner._wait_for_uploaded_studies({"study-a": 1, "study-b": 1})
+
+            self.assertEqual(
+                [call.args[0] for call in runner.source.study.call_args_list],
+                ["study-a", "study-b"],
+            )
 
     def test_cleanup_database_is_explicitly_gated(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -316,10 +550,8 @@ class DryRunTests(unittest.TestCase):
     def test_dry_run_performs_no_mutating_step(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            seed = root / "seed"
-            seed.mkdir()
             runner = MODULE.DemoXaReingestion(
-                config(root, seed),
+                config(root),
                 execute=False,
                 prune_previous=False,
                 allow_database_cleanup=False,

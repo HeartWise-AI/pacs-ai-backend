@@ -16,11 +16,12 @@ cp scripts/.env.demo-xa.example scripts/.env.demo-xa
 chmod 600 scripts/.env.demo-xa
 ```
 
-Fill in `scripts/.env.demo-xa`. The seed directory must be an immutable copy of
-exactly one XA study. The script never edits the seed files. Run the command on
-the staging host from this repository so Docker Compose can inspect the live
-study-service registry, workers, queues, and—only when explicitly authorized—
-delete exact-study database history.
+Fill in `scripts/.env.demo-xa`. The destination/PACS-AI Orthanc is the canonical
+input because it backs the demo website: the script discovers and snapshots
+every XA-only study currently stored there. No local seed directory is needed.
+Run the command on the staging host from this repository so Docker Compose can
+inspect the live study-service registry, workers, queues, and—only when
+explicitly authorized—delete exact-study database history.
 
 ## Routine use
 
@@ -32,8 +33,11 @@ make demo-xa-reingest-dry-run
 
 The preflight checks API authentication, both Orthanc endpoints, study-service,
 every registered XA model endpoint, exact model name/version routing, and a live
-Celery consumer for each routed queue. It also validates the local seed. It does
-not stop jobs, write DICOMs, upload, or delete anything.
+Celery consumer for each routed queue. It inventories all XA studies in the
+website-facing Orthanc and reports the total expected model-study results. It
+does not stop jobs, download or write DICOMs, upload, or delete anything. A
+study that mixes XA and non-XA series fails preflight because whole-study
+cleanup could otherwise delete unrelated data.
 
 For a clean cutover after reviewing the plan:
 
@@ -44,13 +48,16 @@ make demo-xa-reingest EXECUTE=1
 Without `EXECUTE=1`, `make demo-xa-reingest` performs the same read-only
 preflight as the dedicated dry-run target.
 
-This pauses only XA discovery jobs that were running, drains their queues,
-creates new Study/Series/SOP UIDs, shifts DICOM dates and times together while
-preserving relative ordering, replaces the demo PatientID, verifies that pixel
-bytes are unchanged, uploads to the source PACS, restores the original discovery
-states, and waits for a completed stored result from every originally-running XA
-model/version. Only after all models pass does it remove the previous managed
-study from both Orthancs and delete its exact-study pipeline history.
+This pauses only XA discovery jobs that were running, drains their queues, and
+rechecks that the website inventory has not changed. It then snapshots each
+current website XA study, creates new Study/Series/SOP UIDs, shifts DICOM dates
+and times together while preserving relative ordering, replaces each demo
+PatientID, verifies that pixel bytes are unchanged, uploads every replay to the
+source PACS, restores the original discovery states, and waits for a completed
+stored result from every originally-running XA model/version for every study.
+Only after the complete model × study matrix passes does it remove the
+snapshotted originals from both Orthancs and delete their exact-study pipeline
+history.
 
 To keep the previous study and history for comparison:
 
@@ -58,17 +65,22 @@ To keep the previous study and history for comparison:
 make demo-xa-reingest EXECUTE=1 KEEP_PREVIOUS=1
 ```
 
-The first successful run uses the seed study UID as its cleanup target. Later
-runs use only `.demo-xa-runs/latest-success.json`; the script never performs a
-broad modality, patient, or date-range deletion. If processing fails, previous
-data is retained. XA job states are restored from `finally`, including on Ctrl-C.
+Cleanup uses only the exact StudyInstanceUID values captured from the
+website-facing Orthanc during that run; the script never performs a broad
+modality, patient, or date-range deletion. If any study/model result fails,
+every snapshotted original is retained. XA job states are restored from
+`finally`, including on Ctrl-C.
+`KEEP_PREVIOUS=1` retains both originals and replays, so it should only be used
+for a deliberate comparison run; repeating it increases the next run's study
+count.
 
 ## Evidence and recovery
 
 Each execution writes a mode-0600 JSON manifest below `.demo-xa-runs/<run-id>/`.
-It contains the job/model/version snapshot, UID mapping, generated files, result
-correlations, cleanup actions, and terminal state. Console output deliberately
-does not print DICOM UIDs, PatientID values, passwords, or inference results.
+It contains the input-study inventory, job/model/version snapshot, per-study UID
+mappings, generated files, result correlations, cleanup actions, and terminal
+state. Console output deliberately does not print DICOM UIDs, PatientID values,
+passwords, or inference results.
 
 If a run fails, inspect its manifest and service logs, fix the failing preflight
 or model, then rerun the dry-run command. Failed newly-generated studies are left
