@@ -17,6 +17,8 @@ __pycache__/
 
 # deploy script credentials
 scripts/.env.deploy
+scripts/.env.demo-xa
+.demo-xa-runs/
 
 # Detailed public-demo validation evidence stays in approved private storage.
 docs/public-demo/evidence/dicom-validation-*.json

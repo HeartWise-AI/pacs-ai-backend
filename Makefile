@@ -49,3 +49,22 @@ up-elasticsearch:
 up-torchserve:
 	cd torchserve
 	docker compose -f docker-compose-dev.yml up --build
+
+DEMO_XA_ENV_FILE ?= scripts/.env.demo-xa
+PYTHON ?= .venv/bin/python
+
+.PHONY: demo-xa-reingest-dry-run
+demo-xa-reingest-dry-run:
+	$(PYTHON) scripts/demo_xa_reingest.py --env-file "$(DEMO_XA_ENV_FILE)"
+
+.PHONY: demo-xa-reingest
+demo-xa-reingest:
+ifeq ($(EXECUTE),1)
+ifeq ($(KEEP_PREVIOUS),1)
+	$(PYTHON) scripts/demo_xa_reingest.py --env-file "$(DEMO_XA_ENV_FILE)" --execute
+else
+	$(PYTHON) scripts/demo_xa_reingest.py --env-file "$(DEMO_XA_ENV_FILE)" --execute --prune-previous --allow-database-cleanup
+endif
+else
+	$(PYTHON) scripts/demo_xa_reingest.py --env-file "$(DEMO_XA_ENV_FILE)"
+endif
