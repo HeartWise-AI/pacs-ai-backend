@@ -373,8 +373,6 @@ class OrthancClient:
             orthanc_id = str(orthanc_id_value)
             study = self.study(orthanc_id)
             study_uid = str(study.get("MainDicomTags", {}).get("StudyInstanceUID", "")).strip()
-            if not UID_PATTERN.fullmatch(study_uid):
-                raise ReingestionError("Orthanc study has no valid StudyInstanceUID")
             all_series: list[dict[str, Any]] = []
             has_xa = False
             for series_id_value in study.get("Series", []):
@@ -385,6 +383,10 @@ class OrthancClient:
                 all_series.append(series)
             if not has_xa:
                 continue
+            if not UID_PATTERN.fullmatch(study_uid):
+                raise ReingestionError(
+                    "Orthanc study containing XA has no valid StudyInstanceUID"
+                )
             instance_ids = tuple(
                 str(instance_id)
                 for series in all_series

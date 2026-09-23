@@ -161,7 +161,7 @@ class OrthancInventoryTests(unittest.TestCase):
 
     def test_discovers_every_xa_study_and_counts_series_and_instances(self):
         responses = {
-            "/studies": ["study-b", "study-a", "study-ct"],
+            "/studies": ["study-b", "study-a", "study-ct", "study-invalid-non-xa"],
             "/studies/study-a": {
                 "MainDicomTags": {"StudyInstanceUID": "1.2.3"},
                 "Series": ["series-a1", "series-a2"],
@@ -173,6 +173,10 @@ class OrthancInventoryTests(unittest.TestCase):
             "/studies/study-ct": {
                 "MainDicomTags": {"StudyInstanceUID": "1.2.5"},
                 "Series": ["series-ct"],
+            },
+            "/studies/study-invalid-non-xa": {
+                "MainDicomTags": {},
+                "Series": ["series-invalid-non-xa"],
             },
             "/series/series-a1": {
                 "MainDicomTags": {"Modality": "XA"},
@@ -189,6 +193,10 @@ class OrthancInventoryTests(unittest.TestCase):
             "/series/series-ct": {
                 "MainDicomTags": {"Modality": "CT"},
                 "Instances": ["ct1"],
+            },
+            "/series/series-invalid-non-xa": {
+                "MainDicomTags": {"Modality": "SR"},
+                "Instances": ["sr1"],
             },
         }
 
@@ -220,6 +228,22 @@ class OrthancInventoryTests(unittest.TestCase):
         self.assertEqual(len(studies), 1)
         self.assertEqual(studies[0].series_count, 2)
         self.assertEqual(studies[0].instance_ids, ("xa1", "ct1"))
+
+    def test_rejects_an_xa_study_without_a_valid_study_uid(self):
+        responses = {
+            "/studies": ["invalid-xa"],
+            "/studies/invalid-xa": {
+                "MainDicomTags": {},
+                "Series": ["xa"],
+            },
+            "/series/xa": {
+                "MainDicomTags": {"Modality": "XA"},
+                "Instances": ["xa1"],
+            },
+        }
+
+        with self.assertRaisesRegex(MODULE.ReingestionError, "containing XA"):
+            self.client(responses).xa_studies()
 
     def test_download_validates_the_orthanc_snapshot(self):
         with tempfile.TemporaryDirectory() as temporary:
