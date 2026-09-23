@@ -23,7 +23,15 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
-def write_xa(path: Path, *, study_uid: str, series_uid: str, sop_uid: str, when: datetime) -> bytes:
+def write_xa(
+    path: Path,
+    *,
+    study_uid: str,
+    series_uid: str,
+    sop_uid: str,
+    when: datetime,
+    modality: str = "XA",
+) -> bytes:
     file_meta = FileMetaDataset()
     file_meta.MediaStorageSOPClassUID = SecondaryCaptureImageStorage
     file_meta.MediaStorageSOPInstanceUID = sop_uid
@@ -33,7 +41,7 @@ def write_xa(path: Path, *, study_uid: str, series_uid: str, sop_uid: str, when:
     dataset.SOPInstanceUID = sop_uid
     dataset.StudyInstanceUID = study_uid
     dataset.SeriesInstanceUID = series_uid
-    dataset.Modality = "XA"
+    dataset.Modality = modality
     dataset.PatientID = "ORIGINAL"
     dataset.PatientName = "Demo^Original"
     dataset.StudyDate = when.strftime("%Y%m%d")
@@ -140,7 +148,7 @@ class DicomReplayTests(unittest.TestCase):
                 sop_uid=generate_uid(),
                 when=datetime(2020, 1, 1),
             )
-            with self.assertRaisesRegex(MODULE.ReingestionError, "exactly one XA study"):
+            with self.assertRaisesRegex(MODULE.ReingestionError, "exactly one DICOM study"):
                 MODULE.inspect_study_files(seed)
 
 
@@ -190,7 +198,7 @@ class OrthancInventoryTests(unittest.TestCase):
         self.assertEqual([item.series_count for item in studies], [2, 1])
         self.assertEqual([item.instance_count for item in studies], [3, 1])
 
-    def test_rejects_mixed_modality_study_before_whole_study_cleanup(self):
+    def test_includes_every_series_from_a_study_that_contains_xa(self):
         responses = {
             "/studies": ["mixed"],
             "/studies/mixed": {
@@ -207,10 +215,13 @@ class OrthancInventoryTests(unittest.TestCase):
             },
         }
 
-        with self.assertRaisesRegex(MODULE.ReingestionError, "unsafe whole-study cleanup"):
-            self.client(responses).xa_studies()
+        studies = self.client(responses).xa_studies()
 
-    def test_download_validates_the_source_snapshot(self):
+        self.assertEqual(len(studies), 1)
+        self.assertEqual(studies[0].series_count, 2)
+        self.assertEqual(studies[0].instance_ids, ("xa1", "ct1"))
+
+    def test_download_validates_the_orthanc_snapshot(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source_file = root / "source.dcm"
@@ -230,6 +241,41 @@ class OrthancInventoryTests(unittest.TestCase):
 
             self.assertEqual(inventory.study_uid, "1.2.3")
             self.assertEqual(inventory.instance_count, 1)
+
+    def test_snapshot_preserves_non_xa_series_in_an_xa_study(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            study_uid = "1.2.3"
+            write_xa(
+                root / "xa.dcm",
+                study_uid=study_uid,
+                series_uid="1.2.3.1",
+                sop_uid="1.2.3.1.1",
+                when=datetime(2020, 1, 1),
+            )
+            write_xa(
+                root / "doc.dcm",
+                study_uid=study_uid,
+                series_uid="1.2.3.2",
+                sop_uid="1.2.3.2.1",
+                when=datetime(2020, 1, 1),
+                modality="DOC",
+            )
+
+            inventory = MODULE.inspect_study_files(root)
+            replay = MODULE.build_replay(
+                inventory,
+                root / "replay",
+                target_time=datetime(2026, 9, 23, 12, 0, 0),
+                patient_id="DEMO-XA-TEST",
+            )
+            modalities = {
+                str(pydicom.dcmread(root / "replay" / name).Modality)
+                for name in replay["files"]
+            }
+
+            self.assertEqual(inventory.series_count, 2)
+            self.assertEqual(modalities, {"XA", "DOC"})
 
 
 class RoutingTests(unittest.TestCase):

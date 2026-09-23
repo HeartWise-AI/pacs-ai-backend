@@ -375,35 +375,28 @@ class OrthancClient:
             study_uid = str(study.get("MainDicomTags", {}).get("StudyInstanceUID", "")).strip()
             if not UID_PATTERN.fullmatch(study_uid):
                 raise ReingestionError("Orthanc study has no valid StudyInstanceUID")
-            xa_series: list[dict[str, Any]] = []
-            other_modalities: set[str] = set()
+            all_series: list[dict[str, Any]] = []
+            has_xa = False
             for series_id_value in study.get("Series", []):
                 series = self.series(str(series_id_value))
                 modality = str(series.get("MainDicomTags", {}).get("Modality", "")).upper()
                 if modality == "XA":
-                    xa_series.append(series)
-                else:
-                    other_modalities.add(modality or "UNKNOWN")
-            if not xa_series:
+                    has_xa = True
+                all_series.append(series)
+            if not has_xa:
                 continue
-            if other_modalities:
-                modalities = ", ".join(sorted(other_modalities))
-                raise ReingestionError(
-                    "Orthanc contains an XA study with non-XA series "
-                    f"({modalities}); refusing unsafe whole-study cleanup"
-                )
             instance_ids = tuple(
                 str(instance_id)
-                for series in xa_series
+                for series in all_series
                 for instance_id in series.get("Instances", [])
             )
-            if not instance_ids:
-                raise ReingestionError("Orthanc XA study contains no instances")
+            if not instance_ids or not all_series:
+                raise ReingestionError("Orthanc study containing XA has no instances")
             studies.append(
                 XaStudy(
                     orthanc_id=orthanc_id,
                     study_uid=study_uid,
-                    series_count=len(xa_series),
+                    series_count=len(all_series),
                     instance_ids=instance_ids,
                 )
             )
@@ -617,6 +610,7 @@ def inspect_study_files(study_dir: Path) -> StudyInventory:
     dicom_files: list[Path] = []
     study_uids: set[str] = set()
     series_uids: set[str] = set()
+    modalities: set[str] = set()
     timestamps: list[datetime] = []
     for path in files:
         try:
@@ -624,8 +618,7 @@ def inspect_study_files(study_dir: Path) -> StudyInventory:
         except Exception:
             continue
         modality = str(dataset.get("Modality", "")).upper()
-        if modality != "XA":
-            raise ReingestionError("study snapshot contains a readable non-XA DICOM instance")
+        modalities.add(modality or "UNKNOWN")
         study_uid = str(dataset.get("StudyInstanceUID", "")).strip()
         series_uid = str(dataset.get("SeriesInstanceUID", "")).strip()
         sop_uid = str(dataset.get("SOPInstanceUID", "")).strip()
@@ -641,9 +634,11 @@ def inspect_study_files(study_dir: Path) -> StudyInventory:
             if parsed:
                 timestamps.append(parsed)
     if not dicom_files:
-        raise ReingestionError("study snapshot contains no readable XA DICOM instances")
+        raise ReingestionError("study snapshot contains no readable DICOM instances")
     if len(study_uids) != 1:
-        raise ReingestionError("study snapshot must contain exactly one XA study")
+        raise ReingestionError("study snapshot must contain exactly one DICOM study")
+    if "XA" not in modalities:
+        raise ReingestionError("study snapshot no longer contains an XA series")
     latest = (
         max(timestamps)
         if timestamps

@@ -17,8 +17,9 @@ chmod 600 scripts/.env.demo-xa
 ```
 
 Fill in `scripts/.env.demo-xa`. The destination/PACS-AI Orthanc is the canonical
-input because it backs the demo website: the script discovers and snapshots
-every XA-only study currently stored there. No local seed directory is needed.
+input because it backs the demo website: the script discovers every study that
+contains an XA series and snapshots the complete study, including any associated
+DOC or other non-XA series. No local seed directory is needed.
 Run the command on the staging host from this repository so Docker Compose can
 inspect the live study-service registry, workers, queues, and—only when
 explicitly authorized—delete exact-study database history.
@@ -35,9 +36,9 @@ The preflight checks API authentication, both Orthanc endpoints, study-service,
 every registered XA model endpoint, exact model name/version routing, and a live
 Celery consumer for each routed queue. It inventories all XA studies in the
 website-facing Orthanc and reports the total expected model-study results. It
-does not stop jobs, download or write DICOMs, upload, or delete anything. A
-study that mixes XA and non-XA series fails preflight because whole-study
-cleanup could otherwise delete unrelated data.
+does not stop jobs, download or write DICOMs, upload, or delete anything. Mixed
+studies are counted and later replayed in full so whole-study cleanup does not
+discard their associated non-XA series.
 
 For a clean cutover after reviewing the plan:
 
