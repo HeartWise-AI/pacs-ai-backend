@@ -443,7 +443,6 @@ print('DEMO_XA_JSON=' + json.dumps(payload, default=str))
             f"AND tenant_id='{tenant_id}'); "
             f"DELETE FROM pipeline_jobs WHERE study_instance_uid='{study_uid}' "
             f"AND tenant_id='{tenant_id}'; "
-            f"DELETE FROM study_preprocess_runs WHERE study_instance_uid='{study_uid}'; "
             "COMMIT;"
         )
         inference_sql = (
@@ -903,7 +902,7 @@ class DemoXaReingestion:
             result[label] = len(ids)
         if self.allow_database_cleanup:
             self.runtime.cleanup_database_rows(study_uid, self.config.tenant_id)
-            result["database_rows"] = "deleted_by_exact_study_uid"
+            result["database_rows"] = "deleted_by_exact_study_uid_and_tenant"
         else:
             result["database_rows"] = "retained"
         return result

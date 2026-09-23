@@ -38,8 +38,11 @@ not stop jobs, write DICOMs, upload, or delete anything.
 For a clean cutover after reviewing the plan:
 
 ```bash
-make demo-xa-reingest
+make demo-xa-reingest EXECUTE=1
 ```
+
+Without `EXECUTE=1`, `make demo-xa-reingest` performs the same read-only
+preflight as the dedicated dry-run target.
 
 This pauses only XA discovery jobs that were running, drains their queues,
 creates new Study/Series/SOP UIDs, shifts DICOM dates and times together while
@@ -52,7 +55,7 @@ study from both Orthancs and delete its exact-study pipeline history.
 To keep the previous study and history for comparison:
 
 ```bash
-make demo-xa-reingest KEEP_PREVIOUS=1
+make demo-xa-reingest EXECUTE=1 KEEP_PREVIOUS=1
 ```
 
 The first successful run uses the seed study UID as its cleanup target. Later

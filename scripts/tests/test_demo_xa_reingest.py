@@ -294,6 +294,23 @@ class StateMachineTests(unittest.TestCase):
         with self.assertRaisesRegex(MODULE.ReingestionError, "invalid tenant ID"):
             runtime.cleanup_database_rows("1.2.3", "tenant'; DROP TABLE pipeline_jobs; --")
 
+    def test_database_cleanup_is_tenant_scoped_and_skips_unscoped_cache(self):
+        calls = []
+
+        def capture(command, **_kwargs):
+            calls.append(command)
+            return MODULE.subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        runtime = MODULE.ComposeRuntime(Path("docker-compose.yml"), runner=capture)
+        runtime.cleanup_database_rows("1.2.3", "tenant-a")
+
+        self.assertEqual(len(calls), 2)
+        study_sql = calls[0][-1]
+        inference_sql = calls[1][-1]
+        self.assertNotIn("study_preprocess_runs", study_sql)
+        self.assertEqual(study_sql.count("tenant_id='tenant-a'"), 2)
+        self.assertEqual(inference_sql.count("tenant_id='tenant-a'"), 2)
+
 
 class DryRunTests(unittest.TestCase):
     def test_dry_run_performs_no_mutating_step(self):
