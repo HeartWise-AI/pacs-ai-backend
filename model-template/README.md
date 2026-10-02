@@ -31,11 +31,14 @@
 
 ## OpenAPI Specification
 
-The API interface is defined in `docs/openapi.json`, an OpenAPI specification file and should be implemented by the Inference Model. It serves 3 endpoints:
+The API interface is defined in `docs/openapi.json`, an OpenAPI specification file and should be implemented by the Inference Model. It serves six endpoints:
 
 - `POST /inference/predict`: Perform inference
 - `GET /inference/model-info`: Get model information
 - `GET /inference/model-facts`: Get model facts
+- `GET /inference/model/runtime`: Get the current model residency and activity state
+- `POST /inference/model/load`: Load model weights into memory
+- `POST /inference/model/unload`: Unload model weights and restart the supervised API process
 
 User should populate the `data` directory with model info and facts.
 
@@ -281,6 +284,14 @@ Response:
 The model version should be defined in the `data/model_info.json` and `data/model_facts.json` files. Both data are served by the API with the former used for the viewer display and the latter used to show the model facts following a common convention for AI models.
 
 > And of course, the Docker image tag should match the model version during releases.
+
+## Model Lifecycle
+
+Every inference image exposes the same lifecycle contract. Runtime responses contain one of `UNLOADED`, `LOADING`, `READY`, `BUSY`, `EVICTING`, or `ERROR`, together with the loaded flag, active request count, and last successful-use time.
+
+Loading and prediction share the semaphore configured by `resources.maxConcurrentInferences`. Unload waits for the current inference to finish before releasing model resources. Because the inference API is supervised with automatic restart, a successful unload terminates only the API process after sending its response; Nginx and the Docker container remain available while Supervisor starts a clean, unloaded API process.
+
+Only prediction and explicit load calls count as model activity. Documentation, health, model metadata, and runtime-status requests do not extend model residency. The existing per-image inactivity watchdog remains available until the central model manager takes ownership of idle eviction.
 
 ## Access and Ports
 

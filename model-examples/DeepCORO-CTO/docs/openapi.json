@@ -362,6 +362,115 @@
           }
         }
       }
+    },
+    "/inference/model/runtime": {
+      "get": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Get model runtime",
+        "description": "Return the current model residency and activity state without loading the model.",
+        "responses": {
+          "200": {
+            "description": "Current runtime state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model/load": {
+      "post": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Load model",
+        "description": "Load model weights into memory. Repeated calls are idempotent.",
+        "responses": {
+          "200": {
+            "description": "Model is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Model failed to load",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model/unload": {
+      "post": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Unload model",
+        "description": "Wait for active inference to finish, release model resources, and restart the supervised API process when needed.",
+        "responses": {
+          "200": {
+            "description": "Model is unloaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -545,6 +654,43 @@
           "htmlBase64": {
             "type": "string",
             "description": "Base64-encoded HTML report (HTML mode)"
+          }
+        }
+      },
+      "ModelRuntime": {
+        "type": "object",
+        "required": [
+          "state",
+          "loaded",
+          "activeRequests",
+          "lastUsedAt"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "UNLOADED",
+              "LOADING",
+              "READY",
+              "BUSY",
+              "EVICTING",
+              "ERROR"
+            ]
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "activeRequests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lastUsedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "error": {
+            "type": "string"
           }
         }
       }
