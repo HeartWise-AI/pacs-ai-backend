@@ -2,6 +2,13 @@
   "modelId": "ModelTemplate",
   "modelName": "Model Template",
   "version": "1.13.0",
+  "resources": {
+    "gpuRequired": false,
+    "residentMemoryMiB": 0,
+    "peakMemoryMiB": 0,
+    "maxConcurrentInferences": 1,
+    "idleTimeoutSeconds": 600
+  },
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 5,

@@ -18,6 +18,7 @@ from utils.http_utils import (
     PredictRequest,
     WebAppPredictionResponse,
 )
+from utils.resource_config import create_inference_semaphore, load_model_info
 
 root_path = os.getcwd()
 
@@ -25,6 +26,8 @@ with open(os.path.join(root_path, "config.json")) as f:
     config_dict = json.load(f)
 
 config = Config(**config_dict)
+model_info = load_model_info(os.path.join(root_path, "data", "model_info.json"))
+inference_lock = create_inference_semaphore(model_info)
 
 app = FastAPI(
     title="PACS.AI Inference Model API",
@@ -72,64 +75,65 @@ async def update_last_request_time(request: Request, call_next):
 
 @app.post("/inference/predict")
 async def predict(request: PredictRequest):
-    try:
-        PredictionService.load_model(config)
-    except Exception as e:
+    async with inference_lock:
+        try:
+            PredictionService.load_model(config)
+        except Exception as e:
+            return HTTPResponse(
+                status=500, success=False, message=str(e), error_code="MODEL_ERROR"
+            ).to_response()
+
+        succes, response = await PredictionService.predict(request)
+        if not succes:
+            return response
+
+        output_mode = request.outputMode
+        if output_mode == "JSON":
+            return HTTPResponse(
+                status=200,
+                success=True,
+                message="Prediction successful",
+                data=JsonPredictionResponse(**response),
+            ).to_response()
+
+        if output_mode == "OHIF_ANNOTATIONS":
+            return HTTPResponse(
+                status=200,
+                success=True,
+                message="Prediction successful",
+                data=OHIFPredictionResponse(**response),
+            ).to_response()
+
+        if output_mode == "HTML":
+            return HTTPResponse(
+                status=200,
+                success=True,
+                message="Prediction successful",
+                data=HTMLPredictionResponse(**response),
+            ).to_response()
+
+        if output_mode == "WEB_APP":
+            return HTTPResponse(
+                status=200,
+                success=True,
+                message="Prediction successful",
+                data=WebAppPredictionResponse(**response),
+            ).to_response()
+
+        if output_mode == "PDF":
+            return HTTPResponse(
+                status=200,
+                success=True,
+                message="Prediction successful",
+                data=PDFPredictionResponse(**response),
+            ).to_response()
+
         return HTTPResponse(
-            status=500, success=False, message=str(e), error_code="MODEL_ERROR"
+            status=400,
+            success=False,
+            message="Unsupported output mode",
+            error_code="UNSUPPORTED_OUTPUT_MODE",
         ).to_response()
-
-    succes, response = await PredictionService.predict(request)
-    if not succes:
-        return response
-
-    output_mode = request.outputMode
-    if output_mode == "JSON":
-        return HTTPResponse(
-            status=200,
-            success=True,
-            message="Prediction successful",
-            data=JsonPredictionResponse(**response),
-        ).to_response()
-
-    if output_mode == "OHIF_ANNOTATIONS":
-        return HTTPResponse(
-            status=200,
-            success=True,
-            message="Prediction successful",
-            data=OHIFPredictionResponse(**response),
-        ).to_response()
-
-    if output_mode == "HTML":
-        return HTTPResponse(
-            status=200,
-            success=True,
-            message="Prediction successful",
-            data=HTMLPredictionResponse(**response),
-        ).to_response()
-
-    if output_mode == "WEB_APP":
-        return HTTPResponse(
-            status=200,
-            success=True,
-            message="Prediction successful",
-            data=WebAppPredictionResponse(**response),
-        ).to_response()
-
-    if output_mode == "PDF":
-        return HTTPResponse(
-            status=200,
-            success=True,
-            message="Prediction successful",
-            data=PDFPredictionResponse(**response),
-        ).to_response()
-
-    return HTTPResponse(
-        status=400,
-        success=False,
-        message="Unsupported output mode",
-        error_code="UNSUPPORTED_OUTPUT_MODE",
-    ).to_response()
 
 
 @app.get("/inference/model-info")

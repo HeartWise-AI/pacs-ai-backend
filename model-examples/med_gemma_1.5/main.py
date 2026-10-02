@@ -18,11 +18,13 @@ from utils.http_utils import (
     WebAppPredictionResponse
 )
 from logic import CustomPredictionService
+from utils.resource_config import create_inference_semaphore, load_model_info
 
 root_path = os.getcwd()
 
 # Semaphore to ensure only 1 inference runs at a time (GPU can only handle one)
-inference_lock = asyncio.Semaphore(1)
+model_info = load_model_info(os.path.join(root_path, "data", "model_info.json"))
+inference_lock = create_inference_semaphore(model_info)
 
 with open(os.path.join(root_path, 'config.json'), 'r') as f:
     config_dict = json.load(f)

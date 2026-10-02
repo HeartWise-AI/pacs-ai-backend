@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from logic import CustomPredictionService
+from utils.resource_config import create_inference_semaphore, load_model_info
 from utils.http_utils import (
     Config,
     HTMLPredictionResponse,
@@ -26,7 +27,8 @@ with open(os.path.join(root_path, "models/config.json")) as f:
 
 config = Config(**config_dict)
 
-inference_lock = asyncio.Semaphore(1)
+model_info = load_model_info(os.path.join(root_path, "data", "model_info.json"))
+inference_lock = create_inference_semaphore(model_info)
 
 app = FastAPI(
     title="PACS.AI Inference Model API",

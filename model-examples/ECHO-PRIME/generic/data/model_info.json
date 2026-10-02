@@ -5,6 +5,13 @@
   "stage": "ai_inference",
   "modality": "Echocardiogram",
   "version": "1.2.1",
+  "resources": {
+    "gpuRequired": true,
+    "residentMemoryMiB": 2266,
+    "peakMemoryMiB": 5154,
+    "maxConcurrentInferences": 1,
+    "idleTimeoutSeconds": 600
+  },
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 99,

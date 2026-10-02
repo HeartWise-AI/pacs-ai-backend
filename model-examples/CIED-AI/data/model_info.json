@@ -2,6 +2,13 @@
   "modelId": "CIED-AI",
   "modelName": "CIED-AI",
   "version": "1.0.0",
+  "resources": {
+    "gpuRequired": true,
+    "residentMemoryMiB": 4392,
+    "peakMemoryMiB": 4392,
+    "maxConcurrentInferences": 1,
+    "idleTimeoutSeconds": 600
+  },
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 1,

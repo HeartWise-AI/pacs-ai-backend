@@ -2,6 +2,13 @@
   "modelId": "CathEF",
   "modelName": "CathEF",
   "version": "1.6.1",
+  "resources": {
+    "gpuRequired": true,
+    "residentMemoryMiB": 600,
+    "peakMemoryMiB": 3794,
+    "maxConcurrentInferences": 1,
+    "idleTimeoutSeconds": 600
+  },
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 5,

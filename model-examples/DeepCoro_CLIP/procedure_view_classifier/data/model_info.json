@@ -5,6 +5,13 @@
   "stage": "preprocessing",
   "modality": "Angiogram",
   "version": "1.0.0",
+  "resources": {
+    "gpuRequired": true,
+    "residentMemoryMiB": 2216,
+    "peakMemoryMiB": 2216,
+    "maxConcurrentInferences": 1,
+    "idleTimeoutSeconds": 600
+  },
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 99,
