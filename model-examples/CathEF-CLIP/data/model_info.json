@@ -5,6 +5,13 @@
   "stage": "ai_inference",
   "modality": "Angiogram",
   "version": "1.0.0",
+  "resources": {
+    "gpuRequired": true,
+    "residentMemoryMiB": 2576,
+    "peakMemoryMiB": 3320,
+    "maxConcurrentInferences": 1,
+    "idleTimeoutSeconds": 600
+  },
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 4,

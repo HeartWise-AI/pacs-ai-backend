@@ -5,6 +5,13 @@
   "stage": "ai_inference",
   "modality": "Chest X-Ray",
   "version": "1.5.0",
+  "resources": {
+    "gpuRequired": true,
+    "residentMemoryMiB": 9712,
+    "peakMemoryMiB": 9712,
+    "maxConcurrentInferences": 1,
+    "idleTimeoutSeconds": 600
+  },
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 99,

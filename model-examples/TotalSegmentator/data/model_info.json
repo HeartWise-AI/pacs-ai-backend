@@ -2,6 +2,13 @@
   "modelId": "TotalSegmentator",
   "modelName": "TotalSegmentator",
   "version": "2.9.0",
+  "resources": {
+    "gpuRequired": true,
+    "residentMemoryMiB": 1254,
+    "peakMemoryMiB": 4246,
+    "maxConcurrentInferences": 1,
+    "idleTimeoutSeconds": 600
+  },
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 1,

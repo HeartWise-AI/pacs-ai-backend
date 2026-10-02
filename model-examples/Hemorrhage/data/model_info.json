@@ -2,6 +2,13 @@
   "modelId": "Hemorrhage",
   "modelName": "Hemorrhage",
   "version": "1.0.0",
+  "resources": {
+    "gpuRequired": true,
+    "residentMemoryMiB": 1440,
+    "peakMemoryMiB": 4632,
+    "maxConcurrentInferences": 1,
+    "idleTimeoutSeconds": 600
+  },
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 1,

@@ -1,5 +1,11 @@
 package types
 
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+)
+
 type Gender string
 type OutputMode string
 
@@ -25,24 +31,113 @@ type PredictRequest struct {
 	OutputMode             OutputMode                  `json:"outputMode"`
 }
 
+type ModelResources struct {
+	GPURequired             bool `json:"gpuRequired"`
+	ResidentMemoryMiB       int  `json:"residentMemoryMiB"`
+	PeakMemoryMiB           int  `json:"peakMemoryMiB"`
+	MaxConcurrentInferences int  `json:"maxConcurrentInferences"`
+	IdleTimeoutSeconds      int  `json:"idleTimeoutSeconds"`
+}
+
+func (resources *ModelResources) UnmarshalJSON(data []byte) error {
+	type modelResourcesAlias ModelResources
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+
+	for _, field := range []string{
+		"gpuRequired",
+		"residentMemoryMiB",
+		"peakMemoryMiB",
+		"maxConcurrentInferences",
+		"idleTimeoutSeconds",
+	} {
+		rawValue, present := fields[field]
+		if !present {
+			return fmt.Errorf("resources.%s is required", field)
+		}
+		if bytes.Equal(bytes.TrimSpace(rawValue), []byte("null")) {
+			return fmt.Errorf("resources.%s cannot be null", field)
+		}
+	}
+
+	var decoded modelResourcesAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*resources = ModelResources(decoded)
+	return resources.Validate()
+}
+
+func (resources ModelResources) Validate() error {
+	if resources.MaxConcurrentInferences != 1 {
+		return fmt.Errorf("resources.maxConcurrentInferences must equal 1 in V1")
+	}
+	if resources.IdleTimeoutSeconds <= 0 {
+		return fmt.Errorf("resources.idleTimeoutSeconds must be greater than 0")
+	}
+
+	if resources.GPURequired {
+		if resources.ResidentMemoryMiB <= 0 {
+			return fmt.Errorf("resources.residentMemoryMiB must be greater than 0 when GPU is required")
+		}
+		if resources.PeakMemoryMiB <= 0 {
+			return fmt.Errorf("resources.peakMemoryMiB must be greater than 0 when GPU is required")
+		}
+		if resources.PeakMemoryMiB < resources.ResidentMemoryMiB {
+			return fmt.Errorf("resources.peakMemoryMiB must be at least resources.residentMemoryMiB")
+		}
+		return nil
+	}
+
+	if resources.ResidentMemoryMiB != 0 || resources.PeakMemoryMiB != 0 {
+		return fmt.Errorf("GPU memory fields must equal 0 when resources.gpuRequired is false")
+	}
+	return nil
+}
+
+type ModelInfo struct {
+	ModelID                       string         `json:"modelId"`
+	ModelName                     string         `json:"modelName"`
+	Version                       string         `json:"version"`
+	DicomTargetLevel              string         `json:"dicomTargetLevel"`
+	DicomUploadMin                int            `json:"dicomUploadMin"`
+	DicomUploadMax                int            `json:"dicomUploadMax"`
+	SupportedDicomModalities      []string       `json:"supportedDicomModalities"`
+	SupportedDicomTags            []string       `json:"supportedDicomTags"`
+	SupportedAdditionalMetadata   []interface{}  `json:"supportedAdditionalMetadata"`
+	SupportedOutputModes          []string       `json:"supportedOutputModes"`
+	ApproveFeedbackQuestionnaires []interface{}  `json:"approveFeedbackQuestionnaires"`
+	RejectFeedbackQuestionnaires  []interface{}  `json:"rejectFeedbackQuestionnaires"`
+	OnboardingModelQuestionnaires []interface{}  `json:"onboardingModelQuestionnaires"`
+	Resources                     ModelResources `json:"resources"`
+}
+
+func (modelInfo *ModelInfo) UnmarshalJSON(data []byte) error {
+	type modelInfoAlias ModelInfo
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if _, present := fields["resources"]; !present {
+		return fmt.Errorf("resources is required")
+	}
+
+	var decoded modelInfoAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*modelInfo = ModelInfo(decoded)
+	return nil
+}
+
 type GetModelInfoResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Data    struct {
-		ModelID                       string        `json:"modelId"`
-		ModelName                     string        `json:"modelName"`
-		Version                       string        `json:"version"`
-		DicomTargetLevel              string        `json:"dicomTargetLevel"`
-		DicomUploadMin                int           `json:"dicomUploadMin"`
-		DicomUploadMax                int           `json:"dicomUploadMax"`
-		SupportedDicomModalities      []string      `json:"supportedDicomModalities"`
-		SupportedDicomTags            []string      `json:"supportedDicomTags"`
-		SupportedAdditionalMetadata   []interface{} `json:"supportedAdditionalMetadata"`
-		SupportedOutputModes          []string      `json:"supportedOutputModes"`
-		ApproveFeedbackQuestionnaires []interface{} `json:"approveFeedbackQuestionnaires"`
-		RejectFeedbackQuestionnaires  []interface{} `json:"rejectFeedbackQuestionnaires"`
-		OnboardingModelQuestionnaires []interface{} `json:"onboardingModelQuestionnaires"`
-	} `json:"data"`
+	Success bool      `json:"success"`
+	Message string    `json:"message"`
+	Data    ModelInfo `json:"data"`
 }
 
 type GetModelFactsResponse struct {

@@ -10,6 +10,7 @@ import contextlib
 
 from utils.http_utils import Config, HTMLPredictionResponse, OHIFPredictionResponse, HTTPResponse, PDFPredictionResponse, PredictRequest, JsonPredictionResponse, WebAppPredictionResponse
 from logic import CustomPredictionService
+from utils.resource_config import create_inference_semaphore, load_model_info
 
 root_path = os.getcwd()
 
@@ -18,7 +19,8 @@ with open(os.path.join(root_path, 'config.json'), 'r') as f:
 
 config = Config(**config_dict)
 
-inference_lock = asyncio.Semaphore(1)
+model_info = load_model_info(os.path.join(root_path, "data", "model_info.json"))
+inference_lock = create_inference_semaphore(model_info)
 
 PredictionService = CustomPredictionService()
 
