@@ -52,6 +52,17 @@ func TestModelResourcesUnmarshalRejectsInvalidContracts(t *testing.T) {
 			errorField: "peakMemoryMiB",
 		},
 		{
+			name: "null required fields",
+			body: `{
+				"gpuRequired": null,
+				"residentMemoryMiB": null,
+				"peakMemoryMiB": null,
+				"maxConcurrentInferences": 1,
+				"idleTimeoutSeconds": 600
+			}`,
+			errorField: "gpuRequired cannot be null",
+		},
+		{
 			name:       "string integer",
 			body:       strings.Replace(validGPUResourcesJSON, `"residentMemoryMiB": 5744`, `"residentMemoryMiB": "5744"`, 1),
 			errorField: "residentMemoryMiB",

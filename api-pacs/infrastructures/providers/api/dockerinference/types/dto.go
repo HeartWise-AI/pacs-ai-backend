@@ -1,6 +1,7 @@
 package types
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -53,8 +54,12 @@ func (resources *ModelResources) UnmarshalJSON(data []byte) error {
 		"maxConcurrentInferences",
 		"idleTimeoutSeconds",
 	} {
-		if _, present := fields[field]; !present {
+		rawValue, present := fields[field]
+		if !present {
 			return fmt.Errorf("resources.%s is required", field)
+		}
+		if bytes.Equal(bytes.TrimSpace(rawValue), []byte("null")) {
+			return fmt.Errorf("resources.%s cannot be null", field)
 		}
 	}
 

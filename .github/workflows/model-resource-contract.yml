@@ -30,8 +30,8 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: model-template/requirements.txt
-      - run: python -m pip install fastapi==0.115.5 pydantic==2.9.2
-      - run: python -m unittest scripts.tests.test_model_resource_contract -v
+      - run: python -m pip install fastapi==0.115.5 pydantic==2.9.2 pydicom==3.0.1
+      - run: python -m unittest scripts.tests.test_model_resource_contract scripts.tests.test_benchmark_model_resources -v
 
   go-contract:
     runs-on: ubuntu-latest

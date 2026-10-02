@@ -9,31 +9,94 @@ import json
 import statistics
 import threading
 import time
+from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pydicom
-import requests
-from pynvml import (
-    nvmlDeviceGetHandleByIndex,
-    nvmlDeviceGetMemoryInfo,
-    nvmlInit,
-    nvmlShutdown,
-)
 
 
 MIB = 1024 * 1024
 
 
+@dataclass(frozen=True)
+class DicomFile:
+    path: Path
+    dataset: Any
+
+
+def _series_sort_key(dicom_file: DicomFile) -> tuple[Any, ...]:
+    dataset = dicom_file.dataset
+    orientation = getattr(dataset, "ImageOrientationPatient", None)
+    position = getattr(dataset, "ImagePositionPatient", None)
+    if (
+        orientation is not None
+        and position is not None
+        and len(orientation) >= 6
+        and len(position) >= 3
+    ):
+        row = [float(value) for value in orientation[:3]]
+        column = [float(value) for value in orientation[3:6]]
+        normal = (
+            row[1] * column[2] - row[2] * column[1],
+            row[2] * column[0] - row[0] * column[2],
+            row[0] * column[1] - row[1] * column[0],
+        )
+        spatial_position = sum(
+            float(position[index]) * normal[index] for index in range(3)
+        )
+        instance_number = int(getattr(dataset, "InstanceNumber", 0) or 0)
+        return (0, spatial_position, instance_number, str(dicom_file.path))
+
+    instance_number = getattr(dataset, "InstanceNumber", None)
+    if instance_number is not None:
+        return (1, int(instance_number or 0), str(dicom_file.path))
+    return (2, str(dicom_file.path))
+
+
 def collect_dicom_files(directory: Path, maximum: int) -> list[Path]:
-    files = sorted(
-        (path for path in directory.rglob("*") if path.suffix.lower() in {".dcm", ".dicom"}),
-        key=lambda path: path.stat().st_size,
-        reverse=True,
-    )
-    if len(files) < maximum:
-        raise ValueError(f"need {maximum} DICOM files, found {len(files)}")
-    return files[:maximum]
+    studies: dict[str, list[DicomFile]] = defaultdict(list)
+    for path in sorted(directory.rglob("*")):
+        if path.suffix.lower() not in {".dcm", ".dicom"}:
+            continue
+        dataset = pydicom.dcmread(path, stop_before_pixels=True)
+        study_uid = str(getattr(dataset, "StudyInstanceUID", f"missing:{path.parent}"))
+        studies[study_uid].append(DicomFile(path=path, dataset=dataset))
+
+    eligible_studies = [
+        (study_uid, files) for study_uid, files in studies.items() if len(files) >= maximum
+    ]
+    if not eligible_studies:
+        largest_study = max((len(files) for files in studies.values()), default=0)
+        raise ValueError(
+            f"need {maximum} DICOM files from one study, largest study has {largest_study}"
+        )
+
+    _, study_files = max(eligible_studies, key=lambda item: (len(item[1]), item[0]))
+    series: dict[str, list[DicomFile]] = defaultdict(list)
+    for dicom_file in study_files:
+        series_uid = str(
+            getattr(
+                dicom_file.dataset,
+                "SeriesInstanceUID",
+                f"missing:{dicom_file.path.parent}",
+            )
+        )
+        series[series_uid].append(dicom_file)
+
+    ordered_files: list[Path] = []
+    for _series_uid, series_files in sorted(
+        series.items(),
+        key=lambda item: (
+            int(getattr(item[1][0].dataset, "SeriesNumber", 0) or 0),
+            item[0],
+        ),
+    ):
+        ordered_files.extend(
+            item.path for item in sorted(series_files, key=_series_sort_key)
+        )
+    return ordered_files[:maximum]
 
 
 def build_payload(
@@ -83,15 +146,16 @@ def build_payload(
 
 
 class VramSampler:
-    def __init__(self, gpu_index: int, interval_seconds: float = 0.05):
-        self.handle = nvmlDeviceGetHandleByIndex(gpu_index)
+    def __init__(self, nvml: Any, gpu_index: int, interval_seconds: float = 0.05):
+        self.nvml = nvml
+        self.handle = nvml.nvmlDeviceGetHandleByIndex(gpu_index)
         self.interval_seconds = interval_seconds
         self.samples_mib: list[float] = []
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
     def used_mib(self) -> float:
-        return nvmlDeviceGetMemoryInfo(self.handle).used / MIB
+        return self.nvml.nvmlDeviceGetMemoryInfo(self.handle).used / MIB
 
     def start(self) -> None:
         self.samples_mib = [self.used_mib()]
@@ -111,7 +175,11 @@ class VramSampler:
         return max(self.samples_mib)
 
 
-def make_request(url: str, payload: bytes, timeout: float, sampler: VramSampler) -> dict[str, Any]:
+def make_request(
+    url: str, payload: bytes, timeout: float, sampler: VramSampler
+) -> dict[str, Any]:
+    import requests
+
     sampler.start()
     started = time.perf_counter()
     response: requests.Response | None = None
@@ -148,6 +216,8 @@ def make_request(url: str, payload: bytes, timeout: float, sampler: VramSampler)
 
 
 def main() -> None:
+    import pynvml
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
     parser.add_argument("--url", required=True)
@@ -187,9 +257,9 @@ def main() -> None:
     )
     payload_seconds = time.perf_counter() - payload_started
 
-    nvmlInit()
+    pynvml.nvmlInit()
     try:
-        sampler = VramSampler(args.gpu_index)
+        sampler = VramSampler(pynvml, args.gpu_index)
         baseline_mib = sampler.used_mib()
         cold = make_request(args.url, payload, args.timeout, sampler)
         warm = [
@@ -222,7 +292,7 @@ def main() -> None:
             ),
         }
     finally:
-        nvmlShutdown()
+        pynvml.nvmlShutdown()
 
     rendered = json.dumps(result, indent=2)
     if args.output:
