@@ -32,6 +32,25 @@ def discover_model_manifests() -> list[Path]:
     return [TEMPLATE_ROOT / "data" / "model_info.json", *manifests]
 
 
+def active_nginx_listeners(config: str) -> list[str]:
+    listeners = []
+    for line in config.splitlines():
+        active_line = line.split("#", maxsplit=1)[0].strip()
+        if not active_line.startswith("listen ") or not active_line.endswith(";"):
+            continue
+        listeners.append(active_line.removeprefix("listen ").removesuffix(";").strip())
+    return listeners
+
+
+def exposed_docker_ports(dockerfile: str) -> list[str]:
+    ports = []
+    for line in dockerfile.splitlines():
+        tokens = line.split("#", maxsplit=1)[0].split()
+        if tokens and tokens[0].upper() == "EXPOSE":
+            ports.extend(tokens[1:])
+    return ports
+
+
 def load_template_main():
     spec = importlib.util.spec_from_file_location("pacs_ai_model_template_main", TEMPLATE_ROOT / "main.py")
     if spec is None or spec.loader is None:
@@ -291,11 +310,17 @@ class ModelResourceContractTests(unittest.TestCase):
                 continue
             with self.subTest(model=str(model_root.relative_to(REPOSITORY_ROOT))):
                 nginx_config = nginx_path.read_text(encoding="utf-8")
-                self.assertIn("listen 80;", nginx_config)
+                self.assertEqual(["80"], active_nginx_listeners(nginx_config))
 
     def test_braingpt_dockerfile_exposes_backend_proxy_port(self):
         dockerfile = REPOSITORY_ROOT / "model-examples" / "BrainGPT_v1" / "Dockerfile"
-        self.assertIn("EXPOSE 80", dockerfile.read_text(encoding="utf-8"))
+        self.assertEqual(["80"], exposed_docker_ports(dockerfile.read_text(encoding="utf-8")))
+
+    def test_port_directive_parsers_ignore_comments_and_detect_conflicts(self):
+        nginx_config = "listen 80;\n# listen 8000;\nlisten 9000; # conflict\n"
+        dockerfile = "EXPOSE 80\n# EXPOSE 8000\nEXPOSE 9000 # conflict\n"
+        self.assertEqual(["80", "9000"], active_nginx_listeners(nginx_config))
+        self.assertEqual(["80", "9000"], exposed_docker_ports(dockerfile))
 
 
 if __name__ == "__main__":

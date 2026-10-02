@@ -9,12 +9,12 @@ docker push heartwisehub/brain_gpt:1.0
 
 To run the docker image locally for testing, run the following command:
 ```
-docker run -p 8000:8000 heartwisehub/brain_gpt:1.0
+docker run -p 8000:80 heartwisehub/brain_gpt:1.0
 ```
 
 If you want to add GPU support, run the following command:
 ```
-docker run -p 8000:8000 --gpus all heartwisehub/brain_gpt:1.0
+docker run -p 8000:80 --gpus all heartwisehub/brain_gpt:1.0
 ```
 
 To run the docker image locally for debugging with the pacs network, run the following command and then you can attach to the container and debug it:
