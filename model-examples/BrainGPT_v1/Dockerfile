@@ -48,7 +48,7 @@ COPY nginx.conf /etc/nginx/nginx.conf
 COPY supervisord.conf /etc/supervisord.conf
 
 # Expose the HTTP port
-EXPOSE 8000
+EXPOSE 80
 
 # Clear any inherited entrypoint
 ENTRYPOINT []

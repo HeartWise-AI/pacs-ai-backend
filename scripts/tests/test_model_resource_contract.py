@@ -283,6 +283,20 @@ class ModelResourceContractTests(unittest.TestCase):
                         self.assertNotIn("--workers", command)
                         self.assertNotIn(" -w ", command)
 
+    def test_inference_nginx_configs_listen_on_backend_proxy_port(self):
+        model_roots = [path.parent.parent for path in discover_model_manifests()]
+        for model_root in model_roots:
+            nginx_path = model_root / "nginx.conf"
+            if not nginx_path.is_file():
+                continue
+            with self.subTest(model=str(model_root.relative_to(REPOSITORY_ROOT))):
+                nginx_config = nginx_path.read_text(encoding="utf-8")
+                self.assertIn("listen 80;", nginx_config)
+
+    def test_braingpt_dockerfile_exposes_backend_proxy_port(self):
+        dockerfile = REPOSITORY_ROOT / "model-examples" / "BrainGPT_v1" / "Dockerfile"
+        self.assertIn("EXPOSE 80", dockerfile.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()
