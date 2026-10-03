@@ -19,6 +19,11 @@ from utils.http_utils import (
 )
 from logic import CustomPredictionService
 from utils.resource_config import create_inference_semaphore, load_model_info
+from utils.model_lifecycle import (
+    ModelLifecycle,
+    install_model_lifecycle_routes,
+    records_model_activity,
+)
 
 root_path = os.getcwd()
 
@@ -43,6 +48,8 @@ PredictionService = CustomPredictionService()
 
 # Mount static files for documentation
 app.mount("/docs", StaticFiles(directory=os.path.join(root_path, "docs"), html=True), name="docs")
+model_lifecycle = ModelLifecycle(PredictionService, config, inference_lock)
+install_model_lifecycle_routes(app, model_lifecycle)
 
 last_request_time = datetime.now()
 
@@ -68,14 +75,15 @@ async def check_inactivity():
 @app.middleware("http")
 async def update_last_request_time(request: Request, call_next):
     global last_request_time
-    last_request_time = datetime.now()
+    if records_model_activity(request.url.path):
+        last_request_time = datetime.now()
     response = await call_next(request)
     return response
 
 @app.post("/inference/predict")
 async def predict(request: PredictRequest):
     # Acquire lock to ensure only one inference at a time
-    async with inference_lock:
+    async with model_lifecycle.inference():
         try:
             PredictionService.load_model(config)
         except Exception as e:

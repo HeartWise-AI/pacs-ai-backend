@@ -33,7 +33,9 @@
   "paths": {
     "/inference/predict": {
       "post": {
-        "tags": ["Inference"],
+        "tags": [
+          "Inference"
+        ],
         "summary": "Predict",
         "description": "Creates a prediction request",
         "requestBody": {
@@ -166,7 +168,9 @@
     },
     "/inference/model-info": {
       "get": {
-        "tags": ["Inference"],
+        "tags": [
+          "Inference"
+        ],
         "summary": "Get Model Info",
         "description": "Get model info",
         "responses": {
@@ -217,7 +221,9 @@
     },
     "/inference/model-facts": {
       "get": {
-        "tags": ["Inference"],
+        "tags": [
+          "Inference"
+        ],
         "summary": "Get Model Facts",
         "description": "Get model facts",
         "responses": {
@@ -366,12 +372,124 @@
           }
         }
       }
+    },
+    "/inference/model/runtime": {
+      "get": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Get model runtime",
+        "description": "Return the current model residency and activity state without loading the model.",
+        "responses": {
+          "200": {
+            "description": "Current runtime state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model/load": {
+      "post": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Load model",
+        "description": "Load model weights into memory. Repeated calls are idempotent.",
+        "responses": {
+          "200": {
+            "description": "Model is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Model failed to load",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model/unload": {
+      "post": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Unload model",
+        "description": "Wait for active inference to finish, release model resources, and restart the supervised API process when needed.",
+        "responses": {
+          "200": {
+            "description": "Model is unloaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
       "PredictRequest": {
-        "required": ["seriesInstanceMetadata", "outputMode"],
+        "required": [
+          "seriesInstanceMetadata",
+          "outputMode"
+        ],
         "type": "object",
         "properties": {
           "seriesInstanceMetadata": {
@@ -383,7 +501,13 @@
           },
           "outputMode": {
             "type": "string",
-            "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"],
+            "enum": [
+              "JSON",
+              "OHIF_ANNOTATIONS",
+              "HTML",
+              "WEB_APP",
+              "PDF"
+            ],
             "description": "Output mode"
           }
         }
@@ -441,7 +565,12 @@
           },
           "dicomTargetLevel": {
             "type": "string",
-            "enum": ["PATIENT", "STUDY", "SERIES", "INSTANCE"],
+            "enum": [
+              "PATIENT",
+              "STUDY",
+              "SERIES",
+              "INSTANCE"
+            ],
             "description": "DICOM target level",
             "example": "SERIES"
           },
@@ -487,7 +616,11 @@
                 },
                 "type": {
                   "type": "string",
-                  "enum": ["boolean", "number", "string"],
+                  "enum": [
+                    "boolean",
+                    "number",
+                    "string"
+                  ],
                   "example": "boolean"
                 },
                 "required": {
@@ -502,7 +635,13 @@
             "description": "Supported output modes",
             "items": {
               "type": "string",
-              "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"],
+              "enum": [
+                "JSON",
+                "OHIF_ANNOTATIONS",
+                "HTML",
+                "WEB_APP",
+                "PDF"
+              ],
               "example": "JSON"
             }
           }
@@ -523,6 +662,43 @@
           "htmlBase64": {
             "type": "string",
             "description": "Base64 encoded HTML"
+          }
+        }
+      },
+      "ModelRuntime": {
+        "type": "object",
+        "required": [
+          "state",
+          "loaded",
+          "activeRequests",
+          "lastUsedAt"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "UNLOADED",
+              "LOADING",
+              "READY",
+              "BUSY",
+              "EVICTING",
+              "ERROR"
+            ]
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "activeRequests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lastUsedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "error": {
+            "type": "string"
           }
         }
       }

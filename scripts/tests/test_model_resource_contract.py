@@ -1,5 +1,6 @@
 import ast
 import asyncio
+import configparser
 import importlib.util
 import json
 import os
@@ -7,7 +8,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE_ROOT = REPOSITORY_ROOT / "model-template"
@@ -126,9 +126,8 @@ class ModelResourceContractTests(unittest.TestCase):
         }
 
         for name, model_info in invalid_cases.items():
-            with self.subTest(name=name):
-                with self.assertRaises(ValueError):
-                    RESOURCE_CONFIG.ModelInfo.model_validate(model_info)
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                RESOURCE_CONFIG.ModelInfo.model_validate(model_info)
 
     def test_every_resource_field_is_required(self):
         for field in (
@@ -198,6 +197,7 @@ class ModelResourceContractTests(unittest.TestCase):
                 if self.fail_next_load:
                     self.fail_next_load = False
                     raise RuntimeError("load failed")
+                self.is_initialized = True
 
             async def predict(self, _request):
                 self.active += 1
@@ -209,6 +209,13 @@ class ModelResourceContractTests(unittest.TestCase):
         async def exercise():
             service = PredictionServiceDouble()
             template_main.PredictionService = service
+            template_main.inference_lock = asyncio.Semaphore(1)
+            template_main.model_lifecycle = template_main.ModelLifecycle(
+                service,
+                template_main.config,
+                template_main.inference_lock,
+                process_terminator=lambda _pid, _signal: None,
+            )
             request = template_main.PredictRequest(outputMode="JSON")
 
             concurrent = await asyncio.gather(
@@ -226,10 +233,13 @@ class ModelResourceContractTests(unittest.TestCase):
         self.assertEqual(500, failed.status_code)
         self.assertEqual(200, recovered.status_code)
 
-    def test_every_model_declares_resources_and_uses_configured_semaphore(self):
+    def test_every_model_declares_resources_and_uses_lifecycle_semaphore(self):
         manifests = discover_model_manifests()
         self.assertGreaterEqual(len(manifests), 19)
         canonical_resource_module = RESOURCE_MODULE_PATH.read_text(encoding="utf-8")
+        canonical_lifecycle_module = (
+            TEMPLATE_ROOT / "utils" / "model_lifecycle.py"
+        ).read_text(encoding="utf-8")
 
         for manifest_path in manifests:
             with self.subTest(manifest=str(manifest_path.relative_to(REPOSITORY_ROOT))):
@@ -242,6 +252,12 @@ class ModelResourceContractTests(unittest.TestCase):
                 self.assertEqual(
                     canonical_resource_module,
                     local_resource_module.read_text(encoding="utf-8"),
+                )
+                local_lifecycle_module = model_root / "utils" / "model_lifecycle.py"
+                self.assertTrue(local_lifecycle_module.is_file())
+                self.assertEqual(
+                    canonical_lifecycle_module,
+                    local_lifecycle_module.read_text(encoding="utf-8"),
                 )
 
                 main_path = model_root / "main.py"
@@ -268,6 +284,22 @@ class ModelResourceContractTests(unittest.TestCase):
                 )
                 self.assertTrue(configured_lock)
 
+                configured_lifecycle = any(
+                    isinstance(node, ast.Assign)
+                    and any(
+                        isinstance(target, ast.Name) and target.id == "model_lifecycle"
+                        for target in node.targets
+                    )
+                    and isinstance(node.value, ast.Call)
+                    and isinstance(node.value.func, ast.Name)
+                    and node.value.func.id == "ModelLifecycle"
+                    and len(node.value.args) == 3
+                    and isinstance(node.value.args[2], ast.Name)
+                    and node.value.args[2].id == "inference_lock"
+                    for node in ast.walk(tree)
+                )
+                self.assertTrue(configured_lifecycle)
+
                 predict_functions = [
                     node
                     for node in tree.body
@@ -279,8 +311,11 @@ class ModelResourceContractTests(unittest.TestCase):
                     for node in ast.walk(predict_functions[0])
                     if isinstance(node, ast.AsyncWith)
                     and any(
-                        isinstance(item.context_expr, ast.Name)
-                        and item.context_expr.id == "inference_lock"
+                        isinstance(item.context_expr, ast.Call)
+                        and isinstance(item.context_expr.func, ast.Attribute)
+                        and isinstance(item.context_expr.func.value, ast.Name)
+                        and item.context_expr.func.value.id == "model_lifecycle"
+                        and item.context_expr.func.attr == "inference"
                         for item in node.items
                     )
                 ]
@@ -288,11 +323,28 @@ class ModelResourceContractTests(unittest.TestCase):
                 self.assertTrue(calls_named(critical_sections[0], "PredictionService", "load_model"))
                 self.assertTrue(calls_named(critical_sections[0], "PredictionService", "predict"))
 
-    def test_inference_servers_do_not_configure_multiple_workers(self):
+                source = main_path.read_text(encoding="utf-8")
+                self.assertIn("install_model_lifecycle_routes(app, model_lifecycle)", source)
+                self.assertIn("if records_model_activity(request.url.path):", source)
+
+                openapi_path = model_root / "docs" / "openapi.json"
+                openapi = json.loads(openapi_path.read_text(encoding="utf-8"))
+                self.assertIn("/inference/model/runtime", openapi["paths"])
+                self.assertIn("/inference/model/load", openapi["paths"])
+                self.assertIn("/inference/model/unload", openapi["paths"])
+
+    def test_inference_servers_are_single_worker_and_supervised(self):
         model_roots = [path.parent.parent for path in discover_model_manifests()]
         for model_root in model_roots:
             with self.subTest(model=str(model_root.relative_to(REPOSITORY_ROOT))):
-                for config_path in model_root.glob("supervisord*.conf"):
+                config_paths = list(model_root.glob("supervisord*.conf"))
+                self.assertTrue(config_paths)
+                for config_path in config_paths:
+                    supervisor = configparser.ConfigParser(interpolation=None)
+                    supervisor.read(config_path, encoding="utf-8")
+                    self.assertTrue(supervisor.getboolean("program:api", "autostart"))
+                    self.assertTrue(supervisor.getboolean("program:api", "autorestart"))
+
                     command_lines = [
                         line.strip()
                         for line in config_path.read_text(encoding="utf-8").splitlines()
