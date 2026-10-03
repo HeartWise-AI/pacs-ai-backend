@@ -528,3 +528,26 @@ func TestUnreachableFirstTouchRuntimeRetainsConservativeReservation(t *testing.T
 	}
 	assertIdle(t, m, 80)
 }
+
+func TestOpaqueProviderErrorPreservesCancellationCause(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	started := make(chan struct{})
+	b.predict = func(ctx context.Context, _ Model, _ types.PredictRequest) (types.PredictResponse, error) {
+		close(started)
+		<-ctx.Done()
+		return types.PredictResponse{}, errors.New("DOCKER_INFERENCE_ERROR")
+	}
+	m := manager(t, b, 100)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := requestCtx(m, ctx, 1)
+	<-started
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("provider masked cancellation: %v", err)
+	}
+	assertIdle(t, m, 0)
+	if len(b.unloads) != 1 {
+		t.Fatal("cancelled inference was not cleaned up")
+	}
+}

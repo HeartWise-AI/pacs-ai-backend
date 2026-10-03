@@ -191,7 +191,7 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 	defer cancelOperation()
 	if !runtime.Loaded {
 		if err = m.backend.Load(opCtx, model); err != nil {
-			return response, err
+			return response, errors.Join(opCtx.Err(), err)
 		}
 	}
 	if err = opCtx.Err(); err != nil {
@@ -204,9 +204,9 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 	if err == nil && !response.Success {
 		err = errors.New("model prediction reported failure")
 	}
-	if err == nil {
-		err = opCtx.Err()
-	}
+	// The legacy prediction client returns an opaque provider error on transport
+	// cancellation. Preserve the operation context's cause for callers as well.
+	err = errors.Join(opCtx.Err(), err)
 	success = err == nil
 	return response, err
 }

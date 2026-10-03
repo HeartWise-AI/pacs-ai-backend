@@ -86,3 +86,30 @@ cleanup quarantine and retry, CPU models, malformed lifecycle responses, stopped
 container startup races, and unload acknowledgement before actual process exit.
 The implementation is tested with fake Docker state and local HTTP lifecycle
 servers; no production inference routing is changed by this PR.
+
+## Live GPU acceptance (2026-10-03)
+
+Validated the Go manager on an A100 80 GB host against temporary CathEF,
+EchoPrime, and TotalSegmentator containers using existing local DICOM fixtures.
+The test used the actual model memory declarations, a 5154 MiB schedulable budget,
+and a one-second idle eligibility timeout in the temporary containers only.
+
+All acceptance checks passed:
+
+- Start a stopped container and complete a cold prediction.
+- Queue real CathEF predictions with maximum active concurrency of one, and cancel
+  a queued request without sending it to the model.
+- Complete angiography, echo and CT predictions through the manager.
+- Evict idle models to admit another peak reservation; confirm LRU order across
+  two resident models and confirm that Docker containers stay running.
+- Cancel an EchoPrime request after its HTTP body is sent. Retain its full 5154 MiB
+  reservation while remote work is uncertain, then confirm process cleanup and
+  successfully run the next prediction.
+- Unload all test models and remove all three temporary containers.
+
+The run exposed an opaque cancellation error from the legacy prediction client;
+the manager now preserves the operation context cause alongside provider errors,
+with a dedicated regression test. Host GPU use returned from a 4413 MiB observed
+peak to its 4 MiB baseline. Production container IDs and start times were unchanged.
+This is isolated acceptance evidence; it does not activate production gateways or
+replace the host-wide startup reconciliation still required for rollout.
