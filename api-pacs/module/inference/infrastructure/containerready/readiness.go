@@ -21,8 +21,6 @@ type Metadata interface {
 }
 
 func Ensure(ctx context.Context, d Docker, a Metadata, id string, timeout, poll time.Duration) (string, api.ModelInfo, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 	info, err := d.GetContainerInfo(ctx, id)
 	if err != nil {
 		return "", api.ModelInfo{}, fmt.Errorf("cannot inspect inference container %s: %w", id, err)
@@ -40,6 +38,10 @@ func Ensure(ctx context.Context, d Docker, a Metadata, id string, timeout, poll 
 	if name == "" {
 		return "", api.ModelInfo{}, fmt.Errorf("inference container %s has no resolvable name", id)
 	}
+	// Preserve the ingestion readiness window after Docker startup. The caller
+	// context still bounds inspect/start (the manager uses its admission deadline).
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	for {
 		response, err := a.GetModelInfo(ctx, name)
 		if err == nil && response.Success {
