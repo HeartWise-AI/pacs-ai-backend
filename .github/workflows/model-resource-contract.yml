@@ -8,6 +8,13 @@ on:
       - "scripts/tests/test_model_resource_contract.py"
       - "scripts/tests/test_model_lifecycle.py"
       - "api-pacs/infrastructures/providers/api/dockerinference/**"
+      - "api-pacs/infrastructures/providers/sdk/docker/**"
+      - "api-pacs/module/inference/infrastructure/modelmanager/**"
+      - "api-pacs/module/inference/infrastructure/containerready/**"
+      - "api-pacs/module/inference/infrastructure/service/**"
+      - "api-pacs/interfaces/**"
+      - "api-pacs/go.mod"
+      - "api-pacs/go.sum"
       - ".github/workflows/model-resource-contract.yml"
   push:
     branches: [master]
@@ -17,6 +24,13 @@ on:
       - "scripts/tests/test_model_resource_contract.py"
       - "scripts/tests/test_model_lifecycle.py"
       - "api-pacs/infrastructures/providers/api/dockerinference/**"
+      - "api-pacs/infrastructures/providers/sdk/docker/**"
+      - "api-pacs/module/inference/infrastructure/modelmanager/**"
+      - "api-pacs/module/inference/infrastructure/containerready/**"
+      - "api-pacs/module/inference/infrastructure/service/**"
+      - "api-pacs/interfaces/**"
+      - "api-pacs/go.mod"
+      - "api-pacs/go.sum"
       - ".github/workflows/model-resource-contract.yml"
 
 permissions:
@@ -46,4 +60,11 @@ jobs:
         with:
           go-version-file: api-pacs/go.mod
           cache-dependency-path: api-pacs/go.sum
-      - run: go test ./infrastructures/providers/api/dockerinference/...
+      - run: >-
+          go test -race
+          ./infrastructures/providers/api/dockerinference/...
+          ./infrastructures/providers/sdk/docker/...
+          ./module/inference/infrastructure/modelmanager/...
+          ./module/inference/infrastructure/containerready/...
+          ./module/inference/infrastructure/service/...
+          ./interfaces/...
