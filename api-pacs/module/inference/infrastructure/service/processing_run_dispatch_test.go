@@ -108,9 +108,9 @@ func (api *guardedDispatchDockerInferenceAPI) GetModelInfo(_ context.Context, co
 	api.calls++
 	api.names = append(api.names, containerName)
 	if index < len(api.errors) {
-		return dockerInferenceTypes.GetModelInfoResponse{}, api.errors[index]
+		return dockerInferenceTypes.GetModelInfoResponse{Success: api.errors[index] == nil}, api.errors[index]
 	}
-	return dockerInferenceTypes.GetModelInfoResponse{}, api.defaultError
+	return dockerInferenceTypes.GetModelInfoResponse{Success: api.defaultError == nil}, api.defaultError
 }
 
 func configureReadyInferenceContainer(service *InferenceCommandService) {

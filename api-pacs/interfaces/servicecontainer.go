@@ -49,6 +49,7 @@ import (
 	iamRepository "api-pacs/module/iam/infrastructure/repository"
 	iamService "api-pacs/module/iam/infrastructure/service"
 	iamREST "api-pacs/module/iam/interfaces/http/rest"
+	"api-pacs/module/inference/infrastructure/modelmanager"
 	inferenceRepository "api-pacs/module/inference/infrastructure/repository"
 	inferenceService "api-pacs/module/inference/infrastructure/service"
 	inferenceREST "api-pacs/module/inference/interfaces/http/rest"
@@ -109,6 +110,7 @@ var (
 	mailgunSDK                 *mailgun.MailgunSDK
 	dockerSDK                  *docker.DockerSDK
 	dockerInferenceAPI         *dockerinference.DockerInferenceAPI
+	modelManager               *modelmanager.Manager
 	docusignAPI                *docusign.DocusignAPI
 	worklistNotificationBroker *inferenceService.RedisWorklistNotificationBroker
 	inferenceQuotaManager      *inferenceService.RedisInferenceQuotaManager
@@ -335,6 +337,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		WorklistNotificationPublisherInterface:  worklistNotificationBroker,
 		ProcessingReconciliationMetricsRecorder: &inferenceService.LoggingProcessingReconciliationMetricsRecorder{},
 		RequireProcessingRunID:                  configuredProcessingRunIDRequirement(),
+		ModelManager:                            modelManager,
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
 			StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
 			StudyServiceIngestToken:   os.Getenv("STUDY_SERVICE_INGEST_TOKEN"),
@@ -728,6 +731,17 @@ func registerHandlers() {
 
 	// init docker inference api
 	dockerInferenceAPI = &dockerinference.DockerInferenceAPI{}
+	managerConfig, managerErr := modelmanager.ConfigFromEnv(os.Getenv)
+	if managerErr != nil {
+		log.Fatalf("[SERVER] invalid model manager configuration: %v", managerErr)
+	}
+	if managerConfig.Enabled {
+		modelManager, managerErr = modelmanager.New(managerConfig, &modelmanager.ContainerBackend{Docker: dockerSDK, API: dockerInferenceAPI})
+		if managerErr != nil {
+			log.Fatalf("[SERVER] cannot initialize model manager: %v", managerErr)
+		}
+		log.Print("[SERVER] model manager initialized; prediction routing is deferred to Phase 4")
+	}
 
 	// init docusign API
 	docusignAPI = docusign.Init(docusignTypes.Credential{
