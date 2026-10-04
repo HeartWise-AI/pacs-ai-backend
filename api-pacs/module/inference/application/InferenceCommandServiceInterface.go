@@ -37,6 +37,8 @@ type InferenceCommandServiceInterface interface {
 	ImportInferenceIngestionJobs(ctx context.Context, data []types.CreateInferenceIngestionJob) error
 	// PredictInferenceModel predicts an inference model
 	PredictInferenceModel(ctx context.Context, tenantID, containerID string, userID *string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictResponse, error)
+	// PredictPreparedInferenceModel authorizes and executes a prepared internal prediction request.
+	PredictPreparedInferenceModel(ctx context.Context, tenantID, containerRef string, request dockerInferenceTypes.PredictRequest) (dockerInferenceTypes.PredictResponse, error)
 	// RemoveInferenceModel deletes an inference model
 	RemoveInferenceModel(ctx context.Context, ID string) error
 	// RemoveInferenceIngestionJob removes an inference ingestion job

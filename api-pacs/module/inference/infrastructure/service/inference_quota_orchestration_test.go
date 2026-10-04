@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -460,7 +461,7 @@ func TestDirectPredictionChargesAcceptedWorkAndRefundsDispatchFailure(t *testing
 			}
 
 			response, err := service.predictInferenceModelWithQuota(
-				context.Background(), "tenant-a", "model-container", &userID, dockerInferenceTypes.PredictRequest{},
+				context.Background(), "tenant-a", strings.Repeat("a", 64), "model-container", &userID, dockerInferenceTypes.PredictRequest{},
 			)
 
 			if test.predictErr == nil {
@@ -489,12 +490,39 @@ func TestDirectPredictionDoesNotDispatchWhenQuotaRejectsReservation(t *testing.T
 	}
 
 	_, err := service.predictInferenceModelWithQuota(
-		context.Background(), "tenant-a", "model-container", &userID, dockerInferenceTypes.PredictRequest{},
+		context.Background(), "tenant-a", strings.Repeat("a", 64), "model-container", &userID, dockerInferenceTypes.PredictRequest{},
 	)
 
 	require.EqualError(t, err, apiError.InferenceConcurrencyExceeded)
 	require.Zero(t, dockerAPI.calls)
 	require.Empty(t, quotaManager.released)
+	require.Empty(t, quotaManager.refunded)
+}
+
+func TestDirectPredictionUsesManagedPredictorAndPreservesQuotaFinalization(t *testing.T) {
+	userID := "user-a"
+	containerID := strings.Repeat("d", 64)
+	quotaManager := &recordingInferenceQuotaManager{}
+	predictor := &recordingManagedPredictor{response: dockerInferenceTypes.PredictResponse{Success: true}}
+	direct := &quotaDockerInferenceAPI{}
+	service := &InferenceCommandService{
+		InferenceQuotaManagerInterface: quotaManager,
+		DockerInferenceAPIInterface:    direct,
+		ModelManager:                   predictor,
+	}
+
+	response, err := service.predictInferenceModelWithQuota(
+		context.Background(), "tenant-a", containerID, "model-container", &userID,
+		dockerInferenceTypes.PredictRequest{},
+	)
+
+	require.NoError(t, err)
+	require.True(t, response.Success)
+	require.Equal(t, containerID, predictor.containerID)
+	require.Equal(t, 1, predictor.calls)
+	require.Zero(t, direct.calls)
+	require.Len(t, quotaManager.reserved, 1)
+	require.Len(t, quotaManager.released, 1)
 	require.Empty(t, quotaManager.refunded)
 }
 

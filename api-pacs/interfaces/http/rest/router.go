@@ -143,6 +143,18 @@ func (router *router) InitRouter() *chi.Mux {
 
 	// API routes
 	r.Group(func(r chi.Router) {
+		r.Route("/internal/v1/inference", func(r chi.Router) {
+			r.Use(requestbody.WithReadDeadline(time.Duration(requestbody.PositiveInt64FromEnvironment(
+				"INTERNAL_INFERENCE_READ_TIMEOUT_SECONDS",
+				int64(requestbody.DefaultDICOMWebReadTimeout/time.Second),
+			)) * time.Second))
+			r.Use(requestbody.LimitWithScope(requestbody.PositiveInt64FromEnvironment(
+				"INTERNAL_INFERENCE_PREDICT_MAX_REQUEST_BODY_BYTES",
+				2*1024*1024*1024,
+			), "internal_inference"))
+			r.Post("/predict", inferenceCommandController.PredictPreparedInferenceModel)
+		})
+
 		r.Route("/v1", func(r chi.Router) {
 			r.Use(requestbody.Limit(requestbody.PositiveInt64FromEnvironment(
 				"API_MAX_REQUEST_BODY_BYTES",

@@ -1038,6 +1038,8 @@ docker compose images > pacs-ai-versions.txt
 | **Request and input safety** | | | |
 | `API_MAX_REQUEST_BODY_BYTES` | optional | `16777216` | Hard body limit for regular `/v1` API requests |
 | `INFERENCE_PREDICT_MAX_REQUEST_BODY_BYTES` | optional | `1048576` | Stricter JSON body limit for direct model predictions |
+| `INTERNAL_INFERENCE_PREDICT_MAX_REQUEST_BODY_BYTES` | optional | `2147483648` | Authenticated study-service inference-gateway body limit; keep above the largest prepared DICOM payload |
+| `INTERNAL_INFERENCE_READ_TIMEOUT_SECONDS` | optional | `7200` | Read deadline for the authenticated prepared-DICOM gateway |
 | `DICOMWEB_MAX_REQUEST_BODY_BYTES` | optional | `6442450944` | Go-side ceiling for the authenticated DICOMweb large-upload exception; keep consistent with the Nginx 6g default |
 | `INFERENCE_MAX_SERIES_UIDS` | optional | `256` | Hard series-count ceiling before a model request is assembled |
 | `INFERENCE_MAX_METADATA_BYTES` | optional | `65536` | Maximum encoded prediction metadata size |
@@ -1182,6 +1184,9 @@ limits or timeout values, recreate api-pacs so it receives the new environment.
 | `STUDY_SERVICE_INGEST_TOKEN` | yes | — | Mirror of api-pacs value |
 | `STUDY_SERVICE_OPERATOR_TOKEN` | yes | — | Mirror of api-pacs value |
 | `STUDY_SERVICE_CALLBACK_TOKEN` | yes | — | Mirror of api-pacs value |
+| `PACS_AI_INFERENCE_GATEWAY_ENABLED` | optional | `false` | Route model and GPU preprocessor predictions through the Go model manager; activate only with the coordinated api-pacs rollout |
+| `PACS_AI_INFERENCE_GATEWAY_URL` | optional | derived | Full gateway URL; otherwise derived from `GO_CALLBACK_BASE_URL` |
+| `PACS_AI_INFERENCE_GATEWAY_TIMEOUT_SECONDS` | optional | `960` | End-to-end timeout, longer than the default manager queue plus operation bounds |
 | `ALLOW_UNAUTHENTICATED_INGEST` | optional | `false` | Dev-only auth bypass |
 | `ALLOW_UNAUTHENTICATED_OPERATOR_ROUTES` | optional | `false` | Dev-only auth bypass |
 | `CELERY_WORKER_CONCURRENCY` | optional | `2` | Worker thread pool size |

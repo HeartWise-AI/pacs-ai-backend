@@ -25,7 +25,6 @@ import (
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
 	"api-pacs/module/inference/infrastructure/containerready"
-	"api-pacs/module/inference/infrastructure/modelmanager"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
 	orthancApplication "api-pacs/module/orthanc/application"
@@ -36,8 +35,8 @@ import (
 
 // InferenceCommandService handles the Inference command service logic
 type InferenceCommandService struct {
-	// Shared process-wide manager; prediction gateway integration follows in Phase 4.
-	ModelManager *modelmanager.Manager
+	// Shared process-wide predictor. A nil value preserves the legacy direct path.
+	ModelManager ManagedPredictor
 	repository.InferenceCommandRepositoryInterface
 	repository.InferenceQueryRepositoryInterface
 	repository.InferenceProcessingRunRepositoryInterface
@@ -57,6 +56,11 @@ type InferenceCommandService struct {
 	RequireProcessingRunID                  bool
 	inferenceContainerReadinessTimeout      time.Duration
 	inferenceContainerReadinessPollInterval time.Duration
+}
+
+// ManagedPredictor is the admission boundary shared by user and internal inference.
+type ManagedPredictor interface {
+	Predict(context.Context, string, dockerInferenceTypes.PredictRequest) (dockerInferenceTypes.PredictResponse, error)
 }
 
 const inferenceIngestionRetrievalTimeout = 3 * time.Minute
@@ -2986,7 +2990,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
 
-	predictionResult, err := service.predictInferenceModelWithQuota(ctx, tenantID, containerName, userID, predictRequest)
+	predictionResult, err := service.predictInferenceModelWithQuota(ctx, tenantID, containerID, containerName, userID, predictRequest)
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
@@ -3058,6 +3062,7 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 func (service *InferenceCommandService) predictInferenceModelWithQuota(
 	ctx context.Context,
 	tenantID string,
+	containerID string,
 	containerName string,
 	userID *string,
 	predictRequest dockerInferenceTypes.PredictRequest,
@@ -3077,13 +3082,56 @@ func (service *InferenceCommandService) predictInferenceModelWithQuota(
 		}
 	}
 
-	predictionResult, err := service.DockerInferenceAPIInterface.Predict(ctx, containerName, predictRequest)
+	predictionResult, err := service.predictPreparedInferenceModel(ctx, containerID, containerName, predictRequest)
 	if err != nil {
 		service.finishInferenceQuotaReservation(quotaReservation, true)
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
 	service.finishInferenceQuotaReservation(quotaReservation, false)
 	return predictionResult, nil
+}
+
+// PredictPreparedInferenceModel authorizes an internal prepared request against
+// the tenant's model registry before using the same predictor as user traffic.
+func (service *InferenceCommandService) PredictPreparedInferenceModel(
+	ctx context.Context,
+	tenantID string,
+	containerRef string,
+	predictRequest dockerInferenceTypes.PredictRequest,
+) (dockerInferenceTypes.PredictResponse, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	containerRef = strings.TrimSpace(containerRef)
+	if tenantID == "" || containerRef == "" {
+		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InvalidPayload)
+	}
+
+	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerRef)
+	if err != nil {
+		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
+	}
+	containerID := strings.TrimSpace(containerInfo.ID)
+	containerName := strings.TrimPrefix(strings.TrimSpace(containerInfo.Name), "/")
+	if containerID == "" || containerName == "" {
+		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
+	}
+
+	if _, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID); err != nil {
+		return dockerInferenceTypes.PredictResponse{}, err
+	}
+
+	return service.predictPreparedInferenceModel(ctx, containerID, containerName, predictRequest)
+}
+
+func (service *InferenceCommandService) predictPreparedInferenceModel(
+	ctx context.Context,
+	containerID string,
+	containerName string,
+	predictRequest dockerInferenceTypes.PredictRequest,
+) (dockerInferenceTypes.PredictResponse, error) {
+	if service.ModelManager != nil {
+		return service.ModelManager.Predict(ctx, containerID, predictRequest)
+	}
+	return service.DockerInferenceAPIInterface.Predict(ctx, containerName, predictRequest)
 }
 
 func (service *InferenceCommandService) finishInferenceQuotaReservation(reservation *types.InferenceQuotaReservation, refund bool) {
