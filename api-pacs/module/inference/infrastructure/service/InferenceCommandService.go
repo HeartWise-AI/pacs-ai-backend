@@ -24,6 +24,8 @@ import (
 	inferenceApplication "api-pacs/module/inference/application"
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
+	"api-pacs/module/inference/infrastructure/containerready"
+	"api-pacs/module/inference/infrastructure/modelmanager"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
 	orthancApplication "api-pacs/module/orthanc/application"
@@ -34,6 +36,8 @@ import (
 
 // InferenceCommandService handles the Inference command service logic
 type InferenceCommandService struct {
+	// Shared process-wide manager; prediction gateway integration follows in Phase 4.
+	ModelManager *modelmanager.Manager
 	repository.InferenceCommandRepositoryInterface
 	repository.InferenceQueryRepositoryInterface
 	repository.InferenceProcessingRunRepositoryInterface
@@ -2193,64 +2197,16 @@ func (service *InferenceCommandService) ensureInferenceContainerReady(ctx contex
 		return errors.New("inference container readiness service is unavailable")
 	}
 
-	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
-	if err != nil {
-		return fmt.Errorf("cannot inspect inference container %s for model %s: %w", containerID, strings.TrimSpace(job.ModelName), err)
+	timeout := service.inferenceContainerReadinessTimeout
+	if timeout <= 0 {
+		timeout = defaultInferenceContainerReadinessTimeout
 	}
-
-	if !containerInfo.Running {
-		if startErr := service.DockerSDKInterface.StartContainer(ctx, containerID); startErr != nil {
-			// Another concurrent dispatch may have started the same container after
-			// the initial inspection. Treat that race as success when a fresh
-			// inspection confirms the container is now running.
-			refreshedInfo, inspectErr := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
-			if inspectErr != nil || !refreshedInfo.Running {
-				return fmt.Errorf("cannot start inference container %s for model %s: %w", containerID, strings.TrimSpace(job.ModelName), startErr)
-			}
-			containerInfo = refreshedInfo
-		} else {
-			log.Printf("[Ingestion dispatch] started inference container container_id=%s model_name=%s",
-				containerID, strings.TrimSpace(job.ModelName),
-			)
-		}
+	poll := service.inferenceContainerReadinessPollInterval
+	if poll <= 0 {
+		poll = defaultInferenceContainerReadinessPollInterval
 	}
-
-	containerName := strings.TrimPrefix(strings.TrimSpace(containerInfo.Name), "/")
-	if containerName == "" {
-		return fmt.Errorf("inference container %s for model %s has no resolvable name", containerID, strings.TrimSpace(job.ModelName))
-	}
-
-	readinessTimeout := service.inferenceContainerReadinessTimeout
-	if readinessTimeout <= 0 {
-		readinessTimeout = defaultInferenceContainerReadinessTimeout
-	}
-	readinessPollInterval := service.inferenceContainerReadinessPollInterval
-	if readinessPollInterval <= 0 {
-		readinessPollInterval = defaultInferenceContainerReadinessPollInterval
-	}
-
-	readinessCtx, cancel := context.WithTimeout(ctx, readinessTimeout)
-	defer cancel()
-
-	var readinessErr error
-	for {
-		if _, readinessErr = service.DockerInferenceAPIInterface.GetModelInfo(readinessCtx, containerName); readinessErr == nil {
-			return nil
-		}
-
-		timer := time.NewTimer(readinessPollInterval)
-		select {
-		case <-readinessCtx.Done():
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			return fmt.Errorf("inference container %s for model %s did not become ready: %w", containerID, strings.TrimSpace(job.ModelName), readinessErr)
-		case <-timer.C:
-		}
-	}
+	_, _, err := containerready.Ensure(ctx, service.DockerSDKInterface, service.DockerInferenceAPIInterface, containerID, timeout, poll)
+	return err
 }
 
 func validateManualDispatchResponseCorrelation(request types.DispatchStudyRequest, response types.DispatchStudyResponse) error {
