@@ -19,6 +19,8 @@ var (
 	ErrQueueTimeout      = errors.New("model admission queue timed out")
 	ErrCapacity          = errors.New("model peak exceeds schedulable GPU budget")
 	ErrUnmanagedResident = errors.New("unaccounted resident model requires startup reconciliation")
+	ErrNotReconciled     = errors.New("model manager startup reconciliation is incomplete")
+	ErrReconciling       = errors.New("model manager reconciliation is already running")
 	containerIDPattern   = regexp.MustCompile(`^[a-f0-9]{64}$`)
 )
 
@@ -38,6 +40,7 @@ type Model struct {
 // Backend.Unload must confirm the old inference process has exited, not merely
 // accept the Python endpoint's acknowledgement of a scheduled restart.
 type Backend interface {
+	Inspect(context.Context, string) (Model, types.ModelRuntime, error)
 	Prepare(context.Context, string) (Model, error)
 	Runtime(context.Context, Model) (types.ModelRuntime, error)
 	Load(context.Context, Model) error
@@ -52,17 +55,21 @@ type entry struct {
 	active   bool // also protects preparation, load, cleanup and eviction
 	leased   bool // includes CPU-only operations with a zero GPU reservation
 	lastUsed time.Time
+	loaded   bool
 }
 type waiter struct{ id string }
 
 type Manager struct {
-	mu        sync.Mutex
-	config    Config
-	backend   Backend
-	models    map[string]*entry
-	queue     []*waiter
-	admitting *waiter
-	changed   chan struct{}
+	mu          sync.Mutex
+	config      Config
+	backend     Backend
+	models      map[string]*entry
+	queue       []*waiter
+	admitting   *waiter
+	changed     chan struct{}
+	ready       bool
+	reconciling bool
+	metrics     Metrics
 }
 
 func New(config Config, backend Backend) (*Manager, error) {
@@ -72,10 +79,20 @@ func New(config Config, backend Backend) (*Manager, error) {
 	if backend == nil {
 		return nil, errors.New("model lifecycle backend is required")
 	}
-	return &Manager{config: config, backend: backend, models: make(map[string]*entry), changed: make(chan struct{})}, nil
+	manager := &Manager{
+		config: config, backend: backend, models: make(map[string]*entry),
+		changed: make(chan struct{}), ready: !config.RequireReconciliation,
+		metrics: defaultMetrics,
+	}
+	manager.metrics.SetSnapshot(manager.snapshotLocked())
+	return manager, nil
 }
 
-func (m *Manager) wakeLocked() { close(m.changed); m.changed = make(chan struct{}) }
+func (m *Manager) wakeLocked() {
+	m.metrics.SetSnapshot(m.snapshotLocked())
+	close(m.changed)
+	m.changed = make(chan struct{})
+}
 func (m *Manager) usedLocked() int {
 	n := 0
 	for _, e := range m.models {
@@ -84,6 +101,119 @@ func (m *Manager) usedLocked() int {
 	return n
 }
 func (m *Manager) capacity() int { return m.config.BudgetMiB - m.config.SafetyMarginMiB }
+
+// Reconcile reconstructs the reservation ledger before the manager admits
+// production traffic. Runtime failures with a valid resource contract are
+// quarantined at peak; missing contracts fail the entire inventory closed.
+func (m *Manager) Reconcile(ctx context.Context, containerIDs []string) (err error) {
+	started := time.Now()
+	outcome := "success"
+	defer func() { m.metrics.ObserveReconciliation(outcome, time.Since(started)) }()
+
+	m.mu.Lock()
+	if m.reconciling {
+		m.mu.Unlock()
+		outcome = "rejected"
+		return ErrReconciling
+	}
+	if len(m.queue) != 0 || m.admitting != nil {
+		m.mu.Unlock()
+		outcome = "rejected"
+		return errors.New("cannot reconcile while admission is active")
+	}
+	for _, e := range m.models {
+		if e.active {
+			m.mu.Unlock()
+			outcome = "rejected"
+			return errors.New("cannot reconcile while a model operation is active")
+		}
+	}
+	m.reconciling = true
+	m.ready = false
+	m.wakeLocked()
+	m.mu.Unlock()
+
+	defer func() {
+		m.mu.Lock()
+		m.reconciling = false
+		if err != nil {
+			m.ready = false
+		}
+		m.wakeLocked()
+		m.mu.Unlock()
+	}()
+
+	staged := make(map[string]*entry, len(containerIDs))
+	seen := make(map[string]struct{}, len(containerIDs))
+	reserved := 0
+	quarantined := false
+	for _, id := range containerIDs {
+		if !containerIDPattern.MatchString(id) {
+			outcome = "failed"
+			return fmt.Errorf("reconcile container %q: full Docker container ID required", id)
+		}
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		model, runtime, inspectErr := m.backend.Inspect(ctx, id)
+		e := &entry{model: model, state: types.RuntimeUnloaded}
+		if inspectErr != nil {
+			if model.Resources.Validate() != nil {
+				outcome = "failed"
+				return fmt.Errorf("reconcile %s without a trustworthy resource contract: %w", id, inspectErr)
+			}
+			e.state = types.RuntimeError
+			e.reserved = model.Resources.PeakMemoryMiB
+			e.loaded = true
+			quarantined = true
+		} else if runtime.State == types.RuntimeUnloaded {
+			if err = runtime.Validate(); err != nil {
+				outcome = "failed"
+				return fmt.Errorf("reconcile %s: %w", id, err)
+			}
+		} else {
+			if err = model.Resources.Validate(); err != nil {
+				outcome = "failed"
+				return fmt.Errorf("reconcile %s resources: %w", id, err)
+			}
+			if err = runtime.Validate(); err != nil {
+				outcome = "failed"
+				return fmt.Errorf("reconcile %s runtime: %w", id, err)
+			}
+			e.loaded = runtime.Loaded
+			if runtime.State == types.RuntimeReady && runtime.Loaded && runtime.ActiveRequests == 0 {
+				e.state = types.RuntimeReady
+				e.reserved = model.Resources.ResidentMemoryMiB
+				if runtime.LastUsedAt != nil {
+					e.lastUsed = *runtime.LastUsedAt
+				} else {
+					e.lastUsed = time.Now()
+				}
+			} else {
+				e.state = types.RuntimeError
+				e.reserved = model.Resources.PeakMemoryMiB
+				quarantined = true
+			}
+		}
+		reserved += e.reserved
+		if reserved > m.capacity() {
+			outcome = "failed"
+			return errors.New("reconciled reservations exceed schedulable GPU capacity")
+		}
+		staged[id] = e
+	}
+
+	m.mu.Lock()
+	m.models = staged
+	m.ready = true
+	m.wakeLocked()
+	m.mu.Unlock()
+	if quarantined {
+		outcome = "quarantined"
+	}
+	return nil
+}
 
 // Predict owns the lease through confirmed completion or cleanup. A canceled
 // HTTP request may leave Python computing; cleanup uses an independent bounded
@@ -97,10 +227,17 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 	}
 	queueCtx, cancelQueue := context.WithTimeout(ctx, m.config.QueueTimeout)
 	defer cancelQueue()
+	queueStarted := time.Now()
 	w, e, err := m.admit(queueCtx, id)
 	if err != nil {
+		outcome := metricOutcome(queueError(ctx, queueCtx, err))
+		m.metrics.ObserveQueueWait(outcome, time.Since(queueStarted))
+		m.metrics.ObserveEvent("admission_failure", outcome)
 		return response, queueError(ctx, queueCtx, err)
 	}
+	m.metrics.ObserveQueueWait("admitted", time.Since(queueStarted))
+	executionStarted := time.Now()
+	defer func() { m.metrics.ObserveOperation("execution", metricOutcome(err), time.Since(executionStarted)) }()
 	success := false
 	defer func() {
 		p := recover()
@@ -119,14 +256,17 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 	m.mu.Unlock()
 	if quarantined {
 		if err = m.backend.Unload(queueCtx, oldModel); err != nil {
+			m.metrics.ObserveEvent("recovery", "failed")
 			return response, queueError(ctx, queueCtx, err)
 		}
 		m.mu.Lock()
 		e.reserved = 0
 		e.leased = false
 		e.state = types.RuntimeUnloaded
+		e.loaded = false
 		m.wakeLocked()
 		m.mu.Unlock()
+		m.metrics.ObserveEvent("recovery", "success")
 	}
 	model, prepareErr := m.backend.Prepare(queueCtx, id)
 	if prepareErr != nil {
@@ -163,6 +303,7 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 		return response, errors.New("model runtime is not idle")
 	}
 	m.mu.Lock()
+	e.loaded = runtime.Loaded
 	if runtime.Loaded && unaccounted && model.Resources.GPURequired {
 		// First-touch discovery cannot authorize more GPU work. Account for this
 		// resident immediately and clean it up before permitting a retry.
@@ -175,10 +316,12 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 		e.reserved = 0
 		e.leased = false
 		e.state = types.RuntimeUnloaded
+		e.loaded = false
 		m.wakeLocked()
 	}
 	m.mu.Unlock()
 	if err = m.reserve(queueCtx, e); err != nil {
+		m.metrics.ObserveEvent("admission_failure", metricOutcome(err))
 		return response, queueError(ctx, queueCtx, err)
 	}
 	// Admission is finished; other models may now load concurrently within budget.
@@ -190,16 +333,25 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 	opCtx, cancelOperation := context.WithTimeout(ctx, m.config.OperationTimeout)
 	defer cancelOperation()
 	if !runtime.Loaded {
+		loadStarted := time.Now()
 		if err = m.backend.Load(opCtx, model); err != nil {
+			m.metrics.ObserveOperation("cold_start", "failed", time.Since(loadStarted))
 			return response, errors.Join(opCtx.Err(), err)
 		}
+		m.metrics.ObserveOperation("cold_start", "success", time.Since(loadStarted))
+		m.mu.Lock()
+		e.loaded = true
+		m.wakeLocked()
+		m.mu.Unlock()
 	}
 	if err = opCtx.Err(); err != nil {
 		return response, err
 	}
 	m.mu.Lock()
 	e.state = types.RuntimeBusy
+	m.wakeLocked()
 	m.mu.Unlock()
+	inferenceStarted := time.Now()
 	response, err = m.backend.Predict(opCtx, model, request)
 	if err == nil && !response.Success {
 		err = errors.New("model prediction reported failure")
@@ -207,6 +359,11 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 	// The legacy prediction client returns an opaque provider error on transport
 	// cancellation. Preserve the operation context's cause for callers as well.
 	err = errors.Join(opCtx.Err(), err)
+	temperature := "cold_inference"
+	if runtime.Loaded {
+		temperature = "warm_inference"
+	}
+	m.metrics.ObserveOperation(temperature, metricOutcome(err), time.Since(inferenceStarted))
 	success = err == nil
 	return response, err
 }
@@ -225,11 +382,19 @@ func queueError(parent, queue context.Context, err error) error {
 // model's queue, while requests targeting the same model retain FIFO order.
 func (m *Manager) admit(ctx context.Context, id string) (*waiter, *entry, error) {
 	m.mu.Lock()
+	// Readiness and queue insertion must be one atomic decision. Otherwise a
+	// reconciliation could start after Predict's readiness check but before this
+	// request becomes visible to Reconcile.
+	if !m.ready || m.reconciling {
+		m.mu.Unlock()
+		return nil, nil, ErrNotReconciled
+	}
 	if _, ok := m.models[id]; !ok {
 		m.models[id] = &entry{state: types.RuntimeUnloaded}
 	}
 	w := &waiter{id: id}
 	m.queue = append(m.queue, w)
+	m.metrics.SetSnapshot(m.snapshotLocked())
 	for {
 		if err := ctx.Err(); err != nil {
 			m.removeLocked(w)
@@ -249,6 +414,7 @@ func (m *Manager) admit(ctx context.Context, id string) (*waiter, *entry, error)
 			e := m.models[id]
 			e.active = true
 			m.admitting = w
+			m.metrics.SetSnapshot(m.snapshotLocked())
 			m.mu.Unlock()
 			return w, e, nil
 		}
@@ -311,6 +477,7 @@ func (m *Manager) reserve(ctx context.Context, target *entry) error {
 			victim.active = true
 			victim.state = types.RuntimeEvicting
 			model := victim.model
+			m.wakeLocked()
 			m.mu.Unlock()
 			err := m.evict(ctx, victim, model)
 			if err != nil {
@@ -333,6 +500,7 @@ func (m *Manager) reserve(ctx context.Context, target *entry) error {
 }
 
 func (m *Manager) evict(ctx context.Context, e *entry, model Model) (err error) {
+	started := time.Now()
 	defer func() {
 		p := recover()
 		m.mu.Lock()
@@ -340,11 +508,18 @@ func (m *Manager) evict(ctx context.Context, e *entry, model Model) (err error) 
 		if err == nil && p == nil {
 			e.reserved = 0
 			e.state = types.RuntimeUnloaded
+			e.loaded = false
 		} else {
 			e.state = types.RuntimeError
 		}
 		m.wakeLocked()
 		m.mu.Unlock()
+		outcome := metricOutcome(err)
+		if p != nil {
+			outcome = "panic"
+		}
+		m.metrics.ObserveOperation("eviction", outcome, time.Since(started))
+		m.metrics.ObserveEvent("eviction", outcome)
 		if p != nil {
 			panic(p)
 		}
@@ -358,6 +533,7 @@ func (m *Manager) finish(ctx context.Context, w *waiter, e *entry, success bool)
 	needsCleanup := e.reserved > 0 || e.leased
 	if !success && needsCleanup {
 		e.state = types.RuntimeEvicting
+		m.wakeLocked()
 	}
 	m.mu.Unlock()
 	// Always release queue ownership, including if a backend implementation panics.
@@ -369,10 +545,12 @@ func (m *Manager) finish(ctx context.Context, w *waiter, e *entry, success bool)
 			e.leased = false
 			e.state = types.RuntimeReady
 			e.lastUsed = time.Now()
+			e.loaded = true
 		} else if err == nil && p == nil {
 			e.reserved = 0
 			e.leased = false
 			e.state = types.RuntimeUnloaded
+			e.loaded = false
 		} else {
 			e.state = types.RuntimeError
 		}
@@ -390,8 +568,10 @@ func (m *Manager) finish(ctx context.Context, w *waiter, e *entry, success bool)
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), m.config.OperationTimeout)
 		defer cancel()
 		if err = m.backend.Unload(cleanupCtx, model); err != nil {
+			m.metrics.ObserveEvent("cleanup", "failed")
 			return fmt.Errorf("GPU reservation retained until cleanup is confirmed: %w", err)
 		}
+		m.metrics.ObserveEvent("cleanup", "success")
 	}
 	return nil
 }
@@ -402,23 +582,38 @@ type ModelSnapshot struct {
 	Active      bool
 	LastUsedAt  time.Time
 	QueueDepth  int
+	Loaded      bool
 }
 type Snapshot struct {
-	CapacityMiB, ReservedMiB int
-	Models                   map[string]ModelSnapshot
+	Ready                                 bool
+	CapacityMiB, ResidentMiB, ActiveMiB   int
+	ReservedMiB, AvailableMiB, QueueDepth int
+	Models                                map[string]ModelSnapshot
 }
 
 func (m *Manager) Snapshot() Snapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := Snapshot{CapacityMiB: m.capacity(), ReservedMiB: m.usedLocked(), Models: make(map[string]ModelSnapshot)}
+	return m.snapshotLocked()
+}
+
+func (m *Manager) snapshotLocked() Snapshot {
+	s := Snapshot{Ready: m.ready && !m.reconciling, CapacityMiB: m.capacity(), ReservedMiB: m.usedLocked(), Models: make(map[string]ModelSnapshot)}
 	for id, e := range m.models {
-		s.Models[id] = ModelSnapshot{State: e.state, ReservedMiB: e.reserved, Active: e.active, LastUsedAt: e.lastUsed}
+		s.Models[id] = ModelSnapshot{State: e.state, ReservedMiB: e.reserved, Active: e.active, LastUsedAt: e.lastUsed, Loaded: e.loaded}
+		resident := 0
+		if e.loaded && e.model.Resources.GPURequired {
+			resident = min(e.reserved, e.model.Resources.ResidentMemoryMiB)
+		}
+		s.ResidentMiB += resident
+		s.ActiveMiB += e.reserved - resident
 	}
 	for _, w := range m.queue {
 		v := s.Models[w.id]
 		v.QueueDepth++
 		s.Models[w.id] = v
+		s.QueueDepth++
 	}
+	s.AvailableMiB = max(0, s.CapacityMiB-s.ReservedMiB)
 	return s
 }

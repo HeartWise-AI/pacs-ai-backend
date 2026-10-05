@@ -132,3 +132,43 @@ func TestBackendMalformedRuntimeCannotReleaseReservation(t *testing.T) {
 		t.Fatal("malformed runtime accepted")
 	}
 }
+
+func TestBackendInspectDoesNotStartStoppedContainer(t *testing.T) {
+	d := &dockerFake{name: "stopped-model", running: false}
+	b := &ContainerBackend{Docker: d, API: &dockerinference.DockerInferenceAPI{}}
+	model, runtime, err := b.Inspect(context.Background(), id(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.starts != 0 || model.Name != "stopped-model" || runtime.State != api.RuntimeUnloaded {
+		t.Fatalf("stopped inspection changed container state: model=%+v runtime=%+v starts=%d", model, runtime, d.starts)
+	}
+}
+
+func TestBackendInspectReadsRunningRuntimeWithoutLoading(t *testing.T) {
+	d := &dockerFake{name: "running-model", running: true}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/inference/model-info":
+			json.NewEncoder(w).Encode(api.GetModelInfoResponse{
+				Success: true, Data: api.ModelInfo{Resources: resources(30, 80)},
+			})
+		case "/api/inference/model/runtime":
+			json.NewEncoder(w).Encode(api.ModelRuntimeResponse{
+				Success: true, Data: api.ModelRuntime{State: api.RuntimeReady, Loaded: true},
+			})
+		default:
+			t.Fatal("unexpected lifecycle request: " + r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	d.name = strings.TrimPrefix(server.URL, "http://")
+	b := &ContainerBackend{Docker: d, API: &dockerinference.DockerInferenceAPI{}}
+	model, runtime, err := b.Inspect(context.Background(), id(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.starts != 0 || model.Resources.PeakMemoryMiB != 80 || runtime.State != api.RuntimeReady {
+		t.Fatalf("running inspection mutated or misread state: model=%+v runtime=%+v starts=%d", model, runtime, d.starts)
+	}
+}

@@ -8,11 +8,12 @@ import (
 
 // Config describes one manager and one GPU. BudgetMiB includes SafetyMarginMiB.
 type Config struct {
-	Enabled          bool
-	BudgetMiB        int
-	SafetyMarginMiB  int
-	QueueTimeout     time.Duration
-	OperationTimeout time.Duration
+	Enabled               bool
+	RequireReconciliation bool
+	BudgetMiB             int
+	SafetyMarginMiB       int
+	QueueTimeout          time.Duration
+	OperationTimeout      time.Duration
 }
 
 func ConfigFromEnv(getenv func(string) string) (Config, error) {
@@ -27,6 +28,7 @@ func ConfigFromEnv(getenv func(string) string) (Config, error) {
 	if !c.Enabled {
 		return c, nil
 	}
+	c.RequireReconciliation = true
 	for _, field := range []struct {
 		name   string
 		target *int
