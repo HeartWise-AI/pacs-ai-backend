@@ -129,6 +129,27 @@ class PayloadTests(unittest.TestCase):
         self.assertIn("seriesInstanceImages", call.kwargs["json"])
         self.assertEqual(500, call.kwargs["timeout"])
 
+    def test_existing_request_tester_skips_an_invalid_dicom(self):
+        tester = load_request_tester()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            valid_path = root / "valid.dcm"
+            invalid_path = root / "invalid.dcm"
+            write_dicom(valid_path, 1)
+            invalid_path.write_text("not a DICOM file")
+            with (
+                mock.patch.object(tester.requests, "post", return_value=object()) as post,
+                mock.patch("builtins.print") as output,
+            ):
+                tester.send_dicom_data(
+                    [str(valid_path), str(invalid_path)],
+                    "http://model.test/predict",
+                )
+
+        images = post.call_args.kwargs["json"]["seriesInstanceImages"]
+        self.assertEqual(1, sum(len(series) for series in images.values()))
+        self.assertTrue(any("invalid.dcm" in str(call) for call in output.call_args_list))
+
 
 class CalculationTests(unittest.TestCase):
     def test_percentiles_use_linear_interpolation_and_support_singletons(self):

@@ -2,3 +2,4 @@ httpx==0.28.1
 numpy==1.26.4
 pydicom==3.0.1
 requests==2.32.5
+tqdm==4.67.1

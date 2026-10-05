@@ -9,6 +9,7 @@ from typing import Union
 
 import requests
 from request_payload import build_request_payload, collect_dicom_files
+from tqdm import tqdm
 
 
 def display_response(response_data, output_mode):
@@ -81,10 +82,13 @@ def send_dicom_data(
     if isinstance(dicom_paths, str):
         dicom_paths = [dicom_paths]
     payload = build_request_payload(
-        dicom_paths,
+        tqdm(dicom_paths, total=len(dicom_paths), desc="Processing DICOM files"),
         output_mode=output_mode,
         send_metadata_only=send_metadata_only,
         group_series=group_series,
+        error_handler=lambda path, exc: print(
+            f"Error processing DICOM file {path}: {exc}"
+        ),
     )
 
     # Send POST request
