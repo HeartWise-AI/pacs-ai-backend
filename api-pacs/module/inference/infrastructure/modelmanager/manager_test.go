@@ -22,6 +22,7 @@ type fakeBackend struct {
 	loaded         map[string]bool
 	loads, unloads []string
 	predict        func(context.Context, Model, types.PredictRequest) (types.PredictResponse, error)
+	inspect        func(context.Context, string) (Model, types.ModelRuntime, error)
 	unload         func(context.Context, Model) error
 	load           func(context.Context, Model) error
 }
@@ -31,6 +32,16 @@ func newFake() *fakeBackend {
 }
 func (b *fakeBackend) add(n, resident, peak int) {
 	b.models[id(n)] = Model{ContainerID: id(n), Name: fmt.Sprint(n), Resources: resources(resident, peak)}
+}
+func (b *fakeBackend) Inspect(ctx context.Context, id string) (Model, types.ModelRuntime, error) {
+	if b.inspect != nil {
+		return b.inspect(ctx, id)
+	}
+	b.mu.Lock()
+	model := b.models[id]
+	b.mu.Unlock()
+	runtime, err := b.Runtime(ctx, model)
+	return model, runtime, err
 }
 func (b *fakeBackend) Prepare(_ context.Context, id string) (Model, error) {
 	b.mu.Lock()
@@ -549,5 +560,166 @@ func TestOpaqueProviderErrorPreservesCancellationCause(t *testing.T) {
 	assertIdle(t, m, 0)
 	if len(b.unloads) != 1 {
 		t.Fatal("cancelled inference was not cleaned up")
+	}
+}
+
+func TestReconcileBlocksAdmissionAndRestoresResidentModels(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	b.add(2, 20, 60)
+	b.loaded[id(1)] = true
+	m, err := New(Config{
+		Enabled: true, RequireReconciliation: true, BudgetMiB: 200,
+		QueueTimeout: time.Second, OperationTimeout: time.Second,
+	}, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = m.Predict(context.Background(), id(1), types.PredictRequest{}); !errors.Is(err, ErrNotReconciled) {
+		t.Fatalf("prediction admitted before reconciliation: %v", err)
+	}
+	if snapshot := m.Snapshot(); snapshot.QueueDepth != 0 || len(snapshot.Models) != 0 {
+		t.Fatalf("closed admission mutated manager state: %+v", snapshot)
+	}
+	if err = m.Reconcile(context.Background(), []string{id(1), id(1), id(2)}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := m.Snapshot()
+	if !snapshot.Ready || snapshot.ReservedMiB != 30 || snapshot.ResidentMiB != 30 || snapshot.AvailableMiB != 170 {
+		t.Fatalf("unexpected reconciled snapshot: %+v", snapshot)
+	}
+	if snapshot.Models[id(1)].State != types.RuntimeReady || snapshot.Models[id(2)].State != types.RuntimeUnloaded {
+		t.Fatalf("unexpected reconciled states: %+v", snapshot.Models)
+	}
+	receive(t, request(m, 1))
+	if len(b.loads) != 0 {
+		t.Fatal("resident model was loaded twice")
+	}
+}
+
+func TestReconcileQuarantinesAmbiguousRuntimeAtPeakAndRequestRecovers(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	b.loaded[id(1)] = true
+	b.inspect = func(_ context.Context, containerID string) (Model, types.ModelRuntime, error) {
+		return b.models[containerID], types.ModelRuntime{
+			State: types.RuntimeBusy, Loaded: true, ActiveRequests: 1,
+		}, nil
+	}
+	m, err := New(Config{
+		Enabled: true, RequireReconciliation: true, BudgetMiB: 100,
+		QueueTimeout: time.Second, OperationTimeout: time.Second,
+	}, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = m.Reconcile(context.Background(), []string{id(1)}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := m.Snapshot()
+	if !snapshot.Ready || snapshot.ReservedMiB != 80 || snapshot.Models[id(1)].State != types.RuntimeError {
+		t.Fatalf("ambiguous runtime not quarantined: %+v", snapshot)
+	}
+	b.inspect = nil
+	receive(t, request(m, 1))
+	if len(b.unloads) != 1 {
+		t.Fatalf("quarantined runtime was not recovered: %v", b.unloads)
+	}
+}
+
+func TestReconcileMissingContractAndOverCapacityFailClosed(t *testing.T) {
+	b := newFake()
+	b.add(1, 60, 80)
+	b.inspect = func(_ context.Context, containerID string) (Model, types.ModelRuntime, error) {
+		return Model{ContainerID: containerID}, types.ModelRuntime{}, errors.New("metadata unavailable")
+	}
+	m, err := New(Config{
+		Enabled: true, RequireReconciliation: true, BudgetMiB: 50,
+		QueueTimeout: time.Second, OperationTimeout: time.Second,
+	}, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = m.Reconcile(context.Background(), []string{id(1)}); err == nil {
+		t.Fatal("missing contract did not fail reconciliation")
+	}
+	if m.Snapshot().Ready {
+		t.Fatal("manager became ready after failed reconciliation")
+	}
+	b.inspect = func(_ context.Context, containerID string) (Model, types.ModelRuntime, error) {
+		return b.models[containerID], types.ModelRuntime{State: types.RuntimeReady, Loaded: true}, nil
+	}
+	if err = m.Reconcile(context.Background(), []string{id(1)}); err == nil {
+		t.Fatal("over-capacity reconciliation succeeded")
+	}
+	if _, err = m.Predict(context.Background(), id(1), types.PredictRequest{}); !errors.Is(err, ErrNotReconciled) {
+		t.Fatalf("failed reconciliation did not block admission: %v", err)
+	}
+}
+
+func TestReconcileQuarantinesMissingContainerWithoutBlockingInventory(t *testing.T) {
+	b := newFake()
+	b.add(2, 30, 80)
+	b.loaded[id(2)] = true
+	b.inspect = func(ctx context.Context, containerID string) (Model, types.ModelRuntime, error) {
+		if containerID == id(1) {
+			return Model{ContainerID: containerID}, types.ModelRuntime{}, ErrContainerMissing
+		}
+		model := b.models[containerID]
+		runtime, err := b.Runtime(ctx, model)
+		return model, runtime, err
+	}
+	m, err := New(Config{
+		Enabled: true, RequireReconciliation: true, BudgetMiB: 100,
+		QueueTimeout: time.Second, OperationTimeout: time.Second,
+	}, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = m.Reconcile(context.Background(), []string{id(1), id(2)}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := m.Snapshot()
+	if !snapshot.Ready || snapshot.ReservedMiB != 30 {
+		t.Fatalf("missing container blocked valid inventory: %+v", snapshot)
+	}
+	missing := snapshot.Models[id(1)]
+	if missing.State != types.RuntimeError || missing.ReservedMiB != 0 || missing.Loaded {
+		t.Fatalf("missing container was not quarantined without reservation: %+v", missing)
+	}
+}
+
+func TestConcurrentReconciliationIsRejectedAndAdmissionStaysClosed(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	inspectStarted := make(chan struct{})
+	releaseInspect := make(chan struct{})
+	b.inspect = func(_ context.Context, containerID string) (Model, types.ModelRuntime, error) {
+		close(inspectStarted)
+		<-releaseInspect
+		return b.models[containerID], types.ModelRuntime{State: types.RuntimeUnloaded}, nil
+	}
+	m, err := New(Config{
+		Enabled: true, RequireReconciliation: true, BudgetMiB: 100,
+		QueueTimeout: time.Second, OperationTimeout: time.Second,
+	}, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- m.Reconcile(context.Background(), []string{id(1)}) }()
+	<-inspectStarted
+	if err = m.Reconcile(context.Background(), nil); !errors.Is(err, ErrReconciling) {
+		t.Fatalf("overlapping reconciliation was not rejected: %v", err)
+	}
+	if _, err = m.Predict(context.Background(), id(1), types.PredictRequest{}); !errors.Is(err, ErrNotReconciled) {
+		t.Fatalf("admission opened during reconciliation: %v", err)
+	}
+	close(releaseInspect)
+	if err = <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !m.Snapshot().Ready {
+		t.Fatal("manager did not become ready")
 	}
 }

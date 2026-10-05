@@ -120,6 +120,30 @@ func (repository *InferenceQueryRepository) SelectInferenceModels(ctx context.Co
 	return inferenceModels, nil
 }
 
+// ListRegisteredModelContainerIDs returns the host-wide scheduling inventory.
+// Tenant information is deliberately not returned because the Model Manager
+// reconciles Docker runtime state, while authorization remains in the gateways.
+func (repository *InferenceQueryRepository) ListRegisteredModelContainerIDs(ctx context.Context) ([]string, error) {
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var model entity.InferenceModel
+	docs, err := firestoreClient.Collection(model.GetModelName()).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, err
+	}
+	containerIDs := make([]string, 0, len(docs))
+	for _, doc := range docs {
+		var registered entity.InferenceModel
+		if err := doc.DataTo(&registered); err != nil {
+			return nil, fmt.Errorf("decode registered inference model %s: %w", doc.Ref.ID, err)
+		}
+		containerIDs = append(containerIDs, registered.ContainerID)
+	}
+	return containerIDs, nil
+}
+
 // SelectInferenceIngestionJobs get inference ingestion jobs
 func (repository *InferenceQueryRepository) SelectInferenceIngestionJobs(tenantID *string) ([]entity.InferenceIngestionJob, error) {
 	var job entity.InferenceIngestionJob

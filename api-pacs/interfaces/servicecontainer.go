@@ -744,7 +744,21 @@ func registerHandlers() {
 		if managerErr != nil {
 			log.Fatalf("[SERVER] cannot initialize model manager: %v", managerErr)
 		}
-		log.Print("[SERVER] model manager initialized; prediction routing is deferred to Phase 4")
+		modelRepository := &inferenceRepository.InferenceQueryRepository{FirebaseAdminSDK: firebaseAdminSDK}
+		reconcileCtx, cancelReconcile := context.WithTimeout(context.Background(), managerConfig.OperationTimeout)
+		containerIDs, catalogErr := modelRepository.ListRegisteredModelContainerIDs(reconcileCtx)
+		if catalogErr == nil {
+			catalogErr = modelManager.Reconcile(reconcileCtx, containerIDs)
+		}
+		cancelReconcile()
+		if catalogErr != nil {
+			log.Fatalf("[SERVER] model manager startup reconciliation failed: %v", catalogErr)
+		}
+		snapshot := modelManager.Snapshot()
+		log.Printf(
+			"[SERVER] model manager reconciled models=%d reserved_mib=%d available_mib=%d",
+			len(snapshot.Models), snapshot.ReservedMiB, snapshot.AvailableMiB,
+		)
 	}
 
 	// init docusign API

@@ -10,6 +10,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -24,8 +25,8 @@ import (
 const defaultAppTimezone = "America/Toronto"
 
 func init() {
-	// load our environmental variables.
-	if err := godotenv.Load(); err != nil {
+	// Local development may use .env; production injects the environment.
+	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
 		panic(err)
 	}
 }

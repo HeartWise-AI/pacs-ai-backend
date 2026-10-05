@@ -2,14 +2,20 @@ package modelmanager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
+
+	dockererrdefs "github.com/docker/docker/errdefs"
 
 	api "api-pacs/infrastructures/providers/api/dockerinference/types"
 	"api-pacs/module/inference/infrastructure/containerready"
 )
+
+var ErrContainerMissing = errors.New("registered model container does not exist")
 
 type Docker interface {
 	containerready.Docker
@@ -21,6 +27,30 @@ type LifecycleAPI interface {
 	LoadModel(context.Context, string) (api.ModelRuntime, error)
 	UnloadModel(context.Context, string) (api.ModelRuntime, error)
 	Predict(context.Context, string, api.PredictRequest) (api.PredictResponse, error)
+}
+
+// Inspect reports current state without starting a stopped container. A
+// stopped container has no resident GPU allocation, so its resource contract
+// can be loaded later by Prepare when the first prediction arrives.
+func (b *ContainerBackend) Inspect(ctx context.Context, id string) (Model, api.ModelRuntime, error) {
+	info, err := b.Docker.GetContainerInfo(ctx, id)
+	if err != nil {
+		if dockererrdefs.IsNotFound(err) {
+			return Model{ContainerID: id}, api.ModelRuntime{}, fmt.Errorf("%w: %v", ErrContainerMissing, err)
+		}
+		return Model{ContainerID: id}, api.ModelRuntime{}, err
+	}
+	model := Model{ContainerID: id, Name: strings.TrimPrefix(info.Name, "/")}
+	if !info.Running {
+		return model, api.ModelRuntime{State: api.RuntimeUnloaded}, nil
+	}
+	metadata, err := b.API.GetModelInfo(ctx, model.Name)
+	if err != nil {
+		return model, api.ModelRuntime{}, err
+	}
+	model.Resources = metadata.Data.Resources
+	runtime, err := b.API.GetModelRuntime(ctx, model.Name)
+	return model, runtime, err
 }
 
 type ContainerBackend struct {
