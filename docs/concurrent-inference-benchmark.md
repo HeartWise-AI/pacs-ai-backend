@@ -81,6 +81,11 @@ The default timestamped directory contains:
 - `summary.json`: grouped results, per-run metric deltas, and final manager state.
 - `report.md`: methodology, limitations, and a reviewer-ready results table.
 
+After every completed burst, the runner refreshes `partial-requests.csv`,
+`partial-samples.csv`, and `partial-summary.json`. These privacy-safe checkpoints remain
+available if a later scenario is interrupted or leaves the manager unclean. A successful
+run replaces them with the final result bundle.
+
 The result bundle never contains access tokens, prediction bodies, DICOM paths, or extracted patient identifiers. DICOM payloads remain in memory.
 
 ## Interpretation
