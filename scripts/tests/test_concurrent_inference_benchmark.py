@@ -549,6 +549,57 @@ class OutputTests(unittest.TestCase):
         self.assertNotIn("must-not-appear-in-results", combined)
         self.assertNotIn("discarded", combined)
 
+    def test_partial_results_are_privacy_safe_and_replaced_on_completion(self):
+        request = benchmark.RequestResult(
+            run_id="warm-model-c1-r1",
+            phase="warm",
+            model="Model",
+            concurrency=1,
+            repetition=1,
+            request_index=1,
+            started_at="2026-01-01T00:00:00+00:00",
+            elapsed_seconds=0.5,
+            status_code=200,
+            success=True,
+            error_code=None,
+            exception_type=None,
+            response_bytes=100,
+        )
+        run = benchmark.RunResult(
+            run_id=request.run_id,
+            phase="warm",
+            model="Model",
+            concurrency=1,
+            repetition=1,
+            started_at=request.started_at,
+            duration_seconds=0.5,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "result"
+            benchmark.write_partial_results(output, [request], [], [run])
+            partial = "\n".join(path.read_text() for path in output.iterdir())
+            self.assertIn("complete", partial)
+            self.assertNotIn("must-not-appear-in-results", partial)
+
+            run_config = {
+                "createdAt": request.started_at,
+                "deploymentName": "test",
+                "loadGeneratorLocation": "local",
+                "notes": "",
+                "serverConfiguration": {},
+                "loadGeneratorHost": {
+                    "gitCommit": "abc",
+                    "platform": "test",
+                    "cpuModel": "test",
+                    "logicalCpuCount": 1,
+                    "systemMemoryMiB": 100,
+                },
+            }
+            benchmark.write_results(output, run_config, [request], [], [run], {})
+
+            self.assertFalse(list(output.glob("partial-*")))
+            self.assertTrue((output / "summary.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

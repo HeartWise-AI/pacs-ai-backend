@@ -709,6 +709,7 @@ async def run_benchmark(
     gateway_token: str,
     metrics_username: str,
     metrics_password: str | None,
+    checkpoint_dir: Path | None = None,
 ) -> tuple[
     dict[str, PreparedModel],
     list[RequestResult],
@@ -723,6 +724,25 @@ async def run_benchmark(
     headers = {"Authorization": f"Bearer {gateway_token}"}
     metrics_client = MetricsClient(config.metrics_url, metrics_username, metrics_password)
     host_sampler = HostSampler(config.local_resource_sampling)
+
+    async def record_burst(**kwargs: Any) -> None:
+        run_results.append(
+            await execute_burst(
+                metrics_client=metrics_client,
+                host_sampler=host_sampler,
+                request_results=request_results,
+                resource_samples=resource_samples,
+                **kwargs,
+            )
+        )
+        if checkpoint_dir is not None:
+            write_partial_results(
+                checkpoint_dir,
+                request_results,
+                resource_samples,
+                run_results,
+            )
+
     try:
         async with (
             httpx.AsyncClient(headers=headers, timeout=config.timeout_seconds) as client,
@@ -746,72 +766,48 @@ async def run_benchmark(
 
             for model in config.models:
                 prepared = prepared_models[model.name]
-                run_results.append(
-                    await execute_burst(
-                        client=client,
-                        gateway_url=config.gateway_url,
-                        assignments=[prepared],
-                        phase="cold",
-                        repetition=1,
-                        metrics_client=metrics_client,
-                        host_sampler=host_sampler,
-                        sample_interval_seconds=config.sample_interval_seconds,
-                        gate_timeout_seconds=config.timeout_seconds,
-                        request_results=request_results,
-                        resource_samples=resource_samples,
-                    )
+                await record_burst(
+                    client=client,
+                    gateway_url=config.gateway_url,
+                    assignments=[prepared],
+                    phase="cold",
+                    repetition=1,
+                    sample_interval_seconds=config.sample_interval_seconds,
+                    gate_timeout_seconds=config.timeout_seconds,
                 )
-                run_results.append(
-                    await execute_burst(
-                        client=client,
-                        gateway_url=config.gateway_url,
-                        assignments=[prepared],
-                        phase="warmup",
-                        repetition=1,
-                        metrics_client=metrics_client,
-                        host_sampler=host_sampler,
-                        sample_interval_seconds=config.sample_interval_seconds,
-                        gate_timeout_seconds=config.timeout_seconds,
-                        request_results=request_results,
-                        resource_samples=resource_samples,
-                    )
+                await record_burst(
+                    client=client,
+                    gateway_url=config.gateway_url,
+                    assignments=[prepared],
+                    phase="warmup",
+                    repetition=1,
+                    sample_interval_seconds=config.sample_interval_seconds,
+                    gate_timeout_seconds=config.timeout_seconds,
                 )
                 for concurrency in config.concurrency_levels:
                     for repetition in range(1, config.repetitions + 1):
-                        run_results.append(
-                            await execute_burst(
-                                client=client,
-                                gateway_url=config.gateway_url,
-                                assignments=[prepared] * concurrency,
-                                phase="warm",
-                                repetition=repetition,
-                                metrics_client=metrics_client,
-                                host_sampler=host_sampler,
-                                sample_interval_seconds=config.sample_interval_seconds,
-                                gate_timeout_seconds=config.timeout_seconds,
-                                request_results=request_results,
-                                resource_samples=resource_samples,
-                            )
+                        await record_burst(
+                            client=client,
+                            gateway_url=config.gateway_url,
+                            assignments=[prepared] * concurrency,
+                            phase="warm",
+                            repetition=repetition,
+                            sample_interval_seconds=config.sample_interval_seconds,
+                            gate_timeout_seconds=config.timeout_seconds,
                         )
                         await asyncio.sleep(config.settle_seconds)
 
             if config.mixed is not None:
                 assignments = mixed_assignments(config.mixed, prepared_models)
                 for repetition in range(1, config.mixed.repetitions + 1):
-                    run_results.append(
-                        await execute_burst(
-                            client=client,
-                            gateway_url=config.gateway_url,
-                            assignments=assignments,
-                            phase="mixed",
-                            repetition=repetition,
-                            metrics_client=metrics_client,
-                            host_sampler=host_sampler,
-                            sample_interval_seconds=config.sample_interval_seconds,
-                            gate_timeout_seconds=config.timeout_seconds,
-                            request_results=request_results,
-                            resource_samples=resource_samples,
-                        )
+                    await record_burst(
+                        client=client,
+                        gateway_url=config.gateway_url,
+                        assignments=assignments,
+                        phase="mixed",
+                        repetition=repetition,
+                        sample_interval_seconds=config.sample_interval_seconds,
+                        gate_timeout_seconds=config.timeout_seconds,
                     )
                     await asyncio.sleep(config.settle_seconds)
 
@@ -1118,7 +1114,7 @@ def write_results(
     run_results: list[RunResult],
     final_metrics: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    output_dir.mkdir(parents=True, exist_ok=False)
+    output_dir.mkdir(parents=True, exist_ok=True)
     summary = summarize_results(request_results, resource_samples, run_results)
     (output_dir / "run-config.json").write_text(
         json.dumps(run_config, indent=2, sort_keys=True) + "\n"
@@ -1154,7 +1150,42 @@ def write_results(
         + "\n"
     )
     (output_dir / "report.md").write_text(render_report(run_config, summary))
+    for partial_name in (
+        "partial-requests.csv",
+        "partial-samples.csv",
+        "partial-summary.json",
+    ):
+        (output_dir / partial_name).unlink(missing_ok=True)
     return summary
+
+
+def write_partial_results(
+    output_dir: Path,
+    request_results: list[RequestResult],
+    resource_samples: list[ResourceSample],
+    run_results: list[RunResult],
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with (output_dir / "partial-requests.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=RESULT_FIELDS)
+        writer.writeheader()
+        writer.writerows(asdict(result) for result in request_results)
+    with (output_dir / "partial-samples.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=SAMPLE_FIELDS)
+        writer.writeheader()
+        writer.writerows(asdict(sample) for sample in resource_samples)
+    (output_dir / "partial-summary.json").write_text(
+        json.dumps(
+            {
+                "complete": False,
+                "summary": summarize_results(request_results, resource_samples, run_results),
+                "runs": [asdict(run) for run in run_results],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
 
 
 def default_output_dir() -> Path:
@@ -1164,6 +1195,9 @@ def default_output_dir() -> Path:
 
 async def async_main(args: argparse.Namespace) -> int:
     config = load_config(args.config)
+    output_dir = args.output_dir or default_output_dir()
+    if output_dir.exists():
+        raise ValueError(f"output directory already exists: {output_dir}")
     gateway_token = os.environ.get(args.gateway_token_env, "")
     if not gateway_token:
         raise ValueError(f"{args.gateway_token_env} is not set")
@@ -1182,6 +1216,7 @@ async def async_main(args: argparse.Namespace) -> int:
         gateway_token=gateway_token,
         metrics_username=args.metrics_username,
         metrics_password=metrics_password,
+        checkpoint_dir=output_dir,
     )
     run_config = sanitized_run_config(
         config,
@@ -1189,7 +1224,6 @@ async def async_main(args: argparse.Namespace) -> int:
         args.gateway_token_env,
         args.metrics_password_env,
     )
-    output_dir = args.output_dir or default_output_dir()
     summary = write_results(
         output_dir,
         run_config,
