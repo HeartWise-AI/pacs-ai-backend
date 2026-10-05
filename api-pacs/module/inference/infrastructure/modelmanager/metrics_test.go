@@ -29,9 +29,15 @@ func TestMetricsExposeOnlyAggregateStateAndMemory(t *testing.T) {
 	}
 
 	before := expvarMapValue(modelManagerDurationCount, "operation=warm_inference,outcome=success")
+	before50ms := expvarMapValue(modelManagerDurationBucket, "operation=warm_inference,outcome=success,le=0.05")
+	beforeInf := expvarMapValue(modelManagerDurationBucket, "operation=warm_inference,outcome=success,le=+Inf")
 	metrics.ObserveOperation("warm_inference", "success", 25*time.Millisecond)
 	if expvarMapValue(modelManagerDurationCount, "operation=warm_inference,outcome=success") != before+1 {
 		t.Fatal("duration metric was not recorded")
+	}
+	if expvarMapValue(modelManagerDurationBucket, "operation=warm_inference,outcome=success,le=0.05") != before50ms+1 ||
+		expvarMapValue(modelManagerDurationBucket, "operation=warm_inference,outcome=success,le=+Inf") != beforeInf+1 {
+		t.Fatal("duration histogram buckets are not cumulative")
 	}
 }
 

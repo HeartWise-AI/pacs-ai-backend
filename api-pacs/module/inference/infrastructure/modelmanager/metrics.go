@@ -92,7 +92,6 @@ func observeModelManagerDuration(key string, duration time.Duration) {
 	for _, bucket := range modelManagerDurationBuckets {
 		if duration <= bucket {
 			modelManagerDurationBucket.Add(fmt.Sprintf("%s,le=%g", key, bucket.Seconds()), 1)
-			return
 		}
 	}
 	modelManagerDurationBucket.Add(key+",le=+Inf", 1)
