@@ -11,23 +11,29 @@ import (
 	"testing"
 	"time"
 
+	dockererrdefs "github.com/docker/docker/errdefs"
+
 	"api-pacs/infrastructures/providers/api/dockerinference"
 	api "api-pacs/infrastructures/providers/api/dockerinference/types"
 	docker "api-pacs/infrastructures/providers/sdk/docker/types"
 )
 
 type dockerFake struct {
-	mu        sync.Mutex
-	name      string
-	running   bool
-	starts    int
-	startRace bool
-	pid       string
+	mu         sync.Mutex
+	name       string
+	running    bool
+	starts     int
+	startRace  bool
+	pid        string
+	inspectErr error
 }
 
 func (d *dockerFake) GetContainerInfo(context.Context, string) (docker.GetContainerInfoResult, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.inspectErr != nil {
+		return docker.GetContainerInfoResult{}, d.inspectErr
+	}
 	return docker.GetContainerInfoResult{Name: "/" + d.name, Running: d.running}, nil
 }
 func (d *dockerFake) StartContainer(context.Context, string) error {
@@ -142,6 +148,15 @@ func TestBackendInspectDoesNotStartStoppedContainer(t *testing.T) {
 	}
 	if d.starts != 0 || model.Name != "stopped-model" || runtime.State != api.RuntimeUnloaded {
 		t.Fatalf("stopped inspection changed container state: model=%+v runtime=%+v starts=%d", model, runtime, d.starts)
+	}
+}
+
+func TestBackendInspectClassifiesMissingContainer(t *testing.T) {
+	d := &dockerFake{inspectErr: dockererrdefs.NotFound(errors.New("no such container"))}
+	b := &ContainerBackend{Docker: d, API: &dockerinference.DockerInferenceAPI{}}
+	model, _, err := b.Inspect(context.Background(), id(1))
+	if !errors.Is(err, ErrContainerMissing) || model.ContainerID != id(1) {
+		t.Fatalf("missing container was not classified: model=%+v err=%v", model, err)
 	}
 }
 

@@ -2,15 +2,20 @@ package modelmanager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	dockererrdefs "github.com/docker/docker/errdefs"
+
 	api "api-pacs/infrastructures/providers/api/dockerinference/types"
 	"api-pacs/module/inference/infrastructure/containerready"
 )
+
+var ErrContainerMissing = errors.New("registered model container does not exist")
 
 type Docker interface {
 	containerready.Docker
@@ -30,6 +35,9 @@ type LifecycleAPI interface {
 func (b *ContainerBackend) Inspect(ctx context.Context, id string) (Model, api.ModelRuntime, error) {
 	info, err := b.Docker.GetContainerInfo(ctx, id)
 	if err != nil {
+		if dockererrdefs.IsNotFound(err) {
+			return Model{ContainerID: id}, api.ModelRuntime{}, fmt.Errorf("%w: %v", ErrContainerMissing, err)
+		}
 		return Model{ContainerID: id}, api.ModelRuntime{}, err
 	}
 	model := Model{ContainerID: id, Name: strings.TrimPrefix(info.Name, "/")}

@@ -105,6 +105,8 @@ func (m *Manager) capacity() int { return m.config.BudgetMiB - m.config.SafetyMa
 // Reconcile reconstructs the reservation ledger before the manager admits
 // production traffic. Runtime failures with a valid resource contract are
 // quarantined at peak; missing contracts fail the entire inventory closed.
+// A definitively absent Docker container is an ERROR with no reservation: it
+// cannot consume GPU memory and must not take unrelated registered models down.
 func (m *Manager) Reconcile(ctx context.Context, containerIDs []string) (err error) {
 	started := time.Now()
 	outcome := "success"
@@ -159,14 +161,19 @@ func (m *Manager) Reconcile(ctx context.Context, containerIDs []string) (err err
 		model, runtime, inspectErr := m.backend.Inspect(ctx, id)
 		e := &entry{model: model, state: types.RuntimeUnloaded}
 		if inspectErr != nil {
-			if model.Resources.Validate() != nil {
+			if errors.Is(inspectErr, ErrContainerMissing) {
+				e.state = types.RuntimeError
+				quarantined = true
+				m.metrics.ObserveEvent("reconciliation", "missing_container")
+			} else if model.Resources.Validate() != nil {
 				outcome = "failed"
 				return fmt.Errorf("reconcile %s without a trustworthy resource contract: %w", id, inspectErr)
+			} else {
+				e.state = types.RuntimeError
+				e.reserved = model.Resources.PeakMemoryMiB
+				e.loaded = true
+				quarantined = true
 			}
-			e.state = types.RuntimeError
-			e.reserved = model.Resources.PeakMemoryMiB
-			e.loaded = true
-			quarantined = true
 		} else if runtime.State == types.RuntimeUnloaded {
 			if err = runtime.Validate(); err != nil {
 				outcome = "failed"

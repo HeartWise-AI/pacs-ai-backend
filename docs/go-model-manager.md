@@ -95,6 +95,10 @@ production service. Predictions are rejected until this inventory succeeds.
 - A running but busy, transitional, or otherwise ambiguous runtime is marked
   `ERROR` and conservatively reserves its declared peak. Its next request must
   confirm an unload before it can be admitted.
+- A registration whose Docker container no longer exists is marked `ERROR`
+  with no reservation, because it cannot consume GPU memory. Requests for that
+  registration fail until the container or registry is repaired, without
+  preventing unrelated models from being managed.
 - A running container whose metadata cannot be trusted, or a reconstructed
   reservation set that exceeds schedulable capacity, fails startup closed.
 - Duplicate registrations sharing one canonical container ID are counted once.

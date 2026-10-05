@@ -657,6 +657,38 @@ func TestReconcileMissingContractAndOverCapacityFailClosed(t *testing.T) {
 	}
 }
 
+func TestReconcileQuarantinesMissingContainerWithoutBlockingInventory(t *testing.T) {
+	b := newFake()
+	b.add(2, 30, 80)
+	b.loaded[id(2)] = true
+	b.inspect = func(ctx context.Context, containerID string) (Model, types.ModelRuntime, error) {
+		if containerID == id(1) {
+			return Model{ContainerID: containerID}, types.ModelRuntime{}, ErrContainerMissing
+		}
+		model := b.models[containerID]
+		runtime, err := b.Runtime(ctx, model)
+		return model, runtime, err
+	}
+	m, err := New(Config{
+		Enabled: true, RequireReconciliation: true, BudgetMiB: 100,
+		QueueTimeout: time.Second, OperationTimeout: time.Second,
+	}, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = m.Reconcile(context.Background(), []string{id(1), id(2)}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := m.Snapshot()
+	if !snapshot.Ready || snapshot.ReservedMiB != 30 {
+		t.Fatalf("missing container blocked valid inventory: %+v", snapshot)
+	}
+	missing := snapshot.Models[id(1)]
+	if missing.State != types.RuntimeError || missing.ReservedMiB != 0 || missing.Loaded {
+		t.Fatalf("missing container was not quarantined without reservation: %+v", missing)
+	}
+}
+
 func TestConcurrentReconciliationIsRejectedAndAdmissionStaysClosed(t *testing.T) {
 	b := newFake()
 	b.add(1, 30, 80)
