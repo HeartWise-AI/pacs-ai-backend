@@ -271,7 +271,7 @@ class HostSampler:
         try:
             completed = subprocess.run(
                 [
-                    self.nvidia_smi,
+                    "nvidia-smi",
                     "--query-gpu=memory.used,memory.total",
                     "--format=csv,noheader,nounits",
                 ],
