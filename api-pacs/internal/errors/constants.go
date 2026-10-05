@@ -98,7 +98,9 @@ const (
 	InferenceExecutionResultInvalid string = "INFERENCE_EXECUTION_RESULT_INVALID"
 	// InferenceResultServiceUnavailable is returned when authoritative result retrieval is temporarily unavailable.
 	InferenceResultServiceUnavailable string = "INFERENCE_RESULT_SERVICE_UNAVAILABLE"
-	TorchServeError                   string = "TORCHSERVE_ERROR"
+	// InferenceAdmissionTimeout asks callers to retry after managed GPU admission times out.
+	InferenceAdmissionTimeout string = "INFERENCE_ADMISSION_TIMEOUT"
+	TorchServeError           string = "TORCHSERVE_ERROR"
 
 	// Cloudflare-related errors
 	CloudflareAPIError string = "CLOUDFLARE_API_ERROR"

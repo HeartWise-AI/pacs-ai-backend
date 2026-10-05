@@ -208,6 +208,9 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 		ForceJSON:          request.ForceJSON,
 	})
 	if err != nil {
+		if writeInferenceManagerError(w, err) {
+			return
+		}
 		if writeInferenceQuotaError(w, err) {
 			return
 		}

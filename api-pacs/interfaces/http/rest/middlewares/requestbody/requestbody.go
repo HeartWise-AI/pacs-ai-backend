@@ -32,6 +32,7 @@ var requestBodyRejectionsTotal = expvar.NewMap("request_body_rejections_total")
 
 var rejectionScopes = map[string]struct{}{
 	"api": {}, "inference_predict": {}, "inference_ingestion_csv": {},
+	"internal_inference":  {},
 	"orchestrator_thread": {}, "orchestrator_chat": {}, "orchestrator_dicom": {},
 	"dicomweb": {}, "registration": {},
 }

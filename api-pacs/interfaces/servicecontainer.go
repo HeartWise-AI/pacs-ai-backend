@@ -313,6 +313,10 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 	processingRunRepository := &inferenceRepository.InferenceProcessingRunRepository{
 		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
 	}
+	var managedPredictor inferenceService.ManagedPredictor
+	if modelManager != nil {
+		managedPredictor = modelManager
+	}
 
 	service := &inferenceService.InferenceCommandService{
 		InferenceCommandRepositoryInterface: &inferenceRepository.InferenceCommandRepositoryCircuitBreaker{
@@ -337,7 +341,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		WorklistNotificationPublisherInterface:  worklistNotificationBroker,
 		ProcessingReconciliationMetricsRecorder: &inferenceService.LoggingProcessingReconciliationMetricsRecorder{},
 		RequireProcessingRunID:                  configuredProcessingRunIDRequirement(),
-		ModelManager:                            modelManager,
+		ModelManager:                            managedPredictor,
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
 			StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
 			StudyServiceIngestToken:   os.Getenv("STUDY_SERVICE_INGEST_TOKEN"),

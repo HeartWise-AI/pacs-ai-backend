@@ -3,6 +3,7 @@ package http
 import (
 	"github.com/go-playground/validator/v10"
 
+	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	"api-pacs/module/inference/domain/entity"
 )
@@ -98,6 +99,13 @@ type PredictInferenceModelRequest struct {
 	SeriesInstanceUIDs []string               `json:"seriesInstanceUIDs" validate:"required"`
 	AdditionalMetadata map[string]interface{} `json:"additionalMetadata"`
 	ForceJSON          *bool                  `json:"forceJSON,omitempty"`
+}
+
+// ManagedInferencePredictRequest is the trusted study-service gateway payload.
+type ManagedInferencePredictRequest struct {
+	TenantID     string                              `json:"tenantId" validate:"required"`
+	ContainerRef string                              `json:"containerRef" validate:"required"`
+	Request      dockerInferenceTypes.PredictRequest `json:"request" validate:"required"`
 }
 
 type UpdateInferenceModelRequest struct {
