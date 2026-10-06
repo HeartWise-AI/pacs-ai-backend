@@ -1,6 +1,6 @@
 # Concurrent Inference Results
 
-Date: 2026-10-05
+Dates: 2026-10-05 to 2026-10-06
 
 ## Environment
 
@@ -25,6 +25,20 @@ The benchmark measured infrastructure behavior, not clinical accuracy. Result bu
 | 50 | 100% | 225.51 | 7.35 | 13.06 | 14.53 | 14.88 | 3,053 | 46 |
 
 Cold-start latency was 1.44 seconds. All 275 measured requests succeeded. Throughput plateaued around 225-233 requests per minute while tail latency increased with FIFO queue depth.
+
+## CathEF-CLIP
+
+CathEF-CLIP was measured on 2026-10-06 with the same de-identified XA fixture and protocol.
+
+| Users | Success | Req/min | Median (s) | p95 (s) | p99 (s) | Max (s) | Peak VRAM MiB | Peak queue |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 100% | 90.59 | 0.66 | 0.69 | 0.70 | 0.70 | 2,579 | 0 |
+| 5 | 100% | 114.71 | 1.61 | 2.63 | 2.71 | 2.73 | 2,579 | 3 |
+| 10 | 100% | 115.11 | 2.97 | 5.19 | 5.25 | 5.25 | 2,579 | 8 |
+| 25 | 100% | 118.50 | 6.52 | 12.20 | 12.68 | 12.86 | 2,579 | 23 |
+| 50 | 100% | 118.38 | 12.92 | 24.25 | 25.26 | 25.47 | 2,579 | 48 |
+
+Cold-start latency was 3.13 seconds. All 275 measured requests succeeded. Throughput plateaued around 115-118 requests per minute. The stable 2,579 MiB physical GPU high-water mark and 3,320 MiB manager reservation remained within the declared resource contract.
 
 ## EchoPrime
 
@@ -54,7 +68,7 @@ The mixed 50-user scenario was not run because it would include the same unstabl
 
 ## Interpretation
 
-- CathEF and EchoPrime accepted 50 simultaneous callers without duplicate model copies, OOM failures, or leaked reservations.
+- CathEF, CathEF-CLIP, and EchoPrime accepted 50 simultaneous callers without duplicate model copies, OOM failures, or leaked reservations.
 - `maxConcurrentInferences=1` protects GPU memory but converts concurrency into queue latency; throughput is bounded by warm single-inference speed.
 - Hardware sizing alone is insufficient for a 50-user service-level claim. Execution time, queue timeout, operation timeout, lifecycle responsiveness, and recovery behavior materially determine capacity.
 - The CT failure was not an A100 memory-capacity failure: physical and declared VRAM remained within budget.
