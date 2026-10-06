@@ -145,6 +145,18 @@ Not measured because the model is not deployed.
 
 Cold-start latency was 12.90 seconds. All 275 measured requests succeeded. Throughput remained near 6.95 requests per minute while latency scaled with queue position under the one-inference semaphore. All 50-user requests completed within the 600-second queue timeout.
 
+## PanEcho
+
+| Users | Success | Req/min | Median (s) | p95 (s) | p99 (s) | Max (s) | Peak VRAM MiB | Peak queue |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 100% | 8.62 | 6.98 | 6.99 | 6.99 | 6.99 | 701 | 0 |
+| 5 | 100% | 8.99 | 20.22 | 33.38 | 33.51 | 33.54 | 2,129 | 4 |
+| 10 | 100% | 8.96 | 36.90 | 66.86 | 67.05 | 67.07 | 2,129 | 9 |
+| 25 | 100% | 9.06 | 86.63 | 159.96 | 166.53 | 166.78 | 2,129 | 24 |
+| 50 | 100% | 9.14 | 167.78 | 314.71 | 327.74 | 328.73 | 2,129 | 49 |
+
+Cold-start latency was 9.72 seconds. All 275 measured requests succeeded. Throughput plateaued near 9.1 requests per minute while latency scaled with queue position. These measurements describe the currently deployed fallback behavior because the configured PanEcho view-classifier checkpoint is absent. All 50-user requests completed within the 600-second queue timeout.
+
 ## TotalSegmentator Boundary
 
 | Users | Repetitions | Success | HTTP status | Median of successes (s) | p95 of successes (s) | Peak queue |
@@ -161,7 +173,7 @@ The mixed 50-user scenario was not run because it would include the same unstabl
 
 ## Interpretation
 
-- All nine deployed XA models and EchoPrime accepted 50 simultaneous callers without duplicate model copies, OOM failures, or leaked reservations.
+- All nine deployed XA models, EchoPrime, and PanEcho accepted 50 simultaneous callers without duplicate model copies, OOM failures, or leaked reservations.
 - `maxConcurrentInferences=1` protects GPU memory but converts concurrency into queue latency; throughput is bounded by warm single-inference speed.
 - Hardware sizing alone is insufficient for a 50-user service-level claim. Execution time, queue timeout, operation timeout, lifecycle responsiveness, and recovery behavior materially determine capacity.
 - The CT failure was not an A100 memory-capacity failure: physical and declared VRAM remained within budget.
