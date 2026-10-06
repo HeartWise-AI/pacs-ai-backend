@@ -4,7 +4,7 @@
   "domainName": "Cardiology",
   "stage": "ai_inference",
   "modality": "Angiogram",
-  "version": "5.0.0",
+  "version": "6.0.0",
   "resources": {
     "gpuRequired": true,
     "residentMemoryMiB": 5746,
@@ -31,7 +31,7 @@
       "id": "confidence",
       "type": "RADIO",
       "questionEn": "How confident are you in the model's SYNTAX estimate?",
-      "questionFr": "Quelle confiance accordez-vous \u00e0 l'estimation SYNTAX du mod\u00e8le ?",
+      "questionFr": "Quelle confiance accordez-vous à l'estimation SYNTAX du modèle ?",
       "answerOptionsEn": [
         {
           "id": "very",
@@ -53,7 +53,7 @@
       "answerOptionsFr": [
         {
           "id": "very",
-          "answer": "Tr\u00e8s confiant"
+          "answer": "Très confiant"
         },
         {
           "id": "somewhat",
