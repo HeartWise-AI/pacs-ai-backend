@@ -216,14 +216,14 @@ class CustomPredictionService(BasePredictionService):
             "en": (
                 f"<strong>Estimated modified SYNTAX {glob:.1f} points ({band}).</strong> "
                 "Below the intermediate-to-high operating threshold. The model's value here is "
-                "rule-out: negative predictive value was 0.98 and 0.95 in the two held-out "
+                "rule-out: negative predictive value was 0.99 and 0.97 in the two held-out "
                 "cohorts. Confirm against the images; the score is biased downward, so a "
                 "borderline result deserves a closer look."
             ),
             "fr": (
                 f"<strong>Score SYNTAX modifié estimé à {glob:.1f} points ({band}).</strong> "
                 "Sous le seuil intermédiaire-à-élevé. L'utilité du modèle ici est l'exclusion : "
-                "valeur prédictive négative de 0,98 et 0,95 dans les deux cohortes de test. "
+                "valeur prédictive négative de 0,99 et 0,97 dans les deux cohortes de test. "
                 "Confirmer sur les images ; le score étant sous-estimé, un résultat limite mérite "
                 "un examen attentif."
             ),

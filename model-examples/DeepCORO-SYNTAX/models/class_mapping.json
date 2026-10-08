@@ -33,7 +33,7 @@
       "23-32",
       ">=33"
     ],
-    "threshold_binary_ge23": 16.902657,
+    "threshold_binary_ge23": 16.979706,
     "threshold_note": "Operating threshold for SYNTAX>=23 on the CONTINUOUS head. Selected once on the merged validation partition and held fixed for both held-out cohorts."
   },
   "syntax_left_category": {

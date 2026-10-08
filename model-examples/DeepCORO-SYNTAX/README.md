@@ -16,9 +16,9 @@ service is derived from.
 | `syntax_category` | 4-class | zero / 1-22 / 23-32 / >=33 |
 | `syntax_left_category` / `syntax_right_category` | 4- and 3-class | Territory severity |
 
-The operating threshold for SYNTAX >=23 on the continuous head is **16.903**, selected once on the
-merged validation partition and held fixed for both held-out cohorts — it is not tuned on test
-data. It lives in `models/class_mapping.json`.
+The operating threshold for SYNTAX >=23 on the continuous head is **16.98** (`16.979706`),
+selected once on the merged validation partition and held fixed for both held-out cohorts — it
+is not tuned on test data. It lives in `models/class_mapping.json`.
 
 ## Performance
 
@@ -75,7 +75,7 @@ v5, with batch size one and two gradient-accumulation steps. Its pinned training
 
 These values replace the copied CathEF statistics. The v6 configuration specifies ten videos,
 16 frames, stride two, resize 224, and all six head dimensions and class orders used here. The
-validation operating threshold remains `16.902657`. Hugging Face's held-out comparison reports
+validation operating threshold is `16.979706`. Hugging Face's held-out comparison reports
 that v6 uses the same keys and tensor shapes as v5 and loads in this service unchanged. It also
 records only one training seed; v6 remains a release candidate until the deployment acceptance
 work in issue #357 is complete.

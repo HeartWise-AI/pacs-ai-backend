@@ -17,11 +17,15 @@ from utils.model_provenance import model_info_payload
 
 def test_runtime_configuration_and_manifest_identify_the_same_v6_checkpoint():
     config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
+    class_mapping = json.loads(
+        (ROOT / "models/class_mapping.json").read_text(encoding="utf-8")
+    )
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     provenance = manifest["provenance"]
 
     assert manifest["version"] == "6.0.0"
     assert config["ModelStateDict"]["model_path"] == download_model.WEIGHTS_PATH
+    assert class_mapping["syntax_category"]["threshold_binary_ge23"] == 16.979706
     assert provenance == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,

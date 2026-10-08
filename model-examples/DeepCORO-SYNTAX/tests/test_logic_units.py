@@ -70,6 +70,13 @@ def test_all_six_heads_are_postprocessed_and_reports_use_syntax(service):
     assert "Research use only" in html
 
 
+def test_negative_recommendation_uses_v6_rule_out_performance(service):
+    recommendations = service._recommendations({"syntax": 0.0})
+
+    assert "0.99 and 0.97" in recommendations["en"]
+    assert "0,99 et 0,97" in recommendations["fr"]
+
+
 def test_metadata_keeps_both_diagnostic_coronary_territories(service):
     dicoms = [SimpleNamespace(SeriesInstanceUID=str(i)) for i in range(4)]
     metadata = {
