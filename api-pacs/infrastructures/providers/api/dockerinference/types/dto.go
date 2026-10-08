@@ -39,6 +39,15 @@ type ModelResources struct {
 	IdleTimeoutSeconds      int  `json:"idleTimeoutSeconds"`
 }
 
+type ModelProvenance struct {
+	SourceRepository string  `json:"sourceRepository"`
+	SourceRevision   *string `json:"sourceRevision"`
+	ModelRepository  string  `json:"modelRepository"`
+	ModelRevision    string  `json:"modelRevision"`
+	WeightsPath      string  `json:"weightsPath"`
+	WeightsSHA256    string  `json:"weightsSha256"`
+}
+
 func (resources *ModelResources) UnmarshalJSON(data []byte) error {
 	type modelResourcesAlias ModelResources
 
@@ -99,20 +108,21 @@ func (resources ModelResources) Validate() error {
 }
 
 type ModelInfo struct {
-	ModelID                       string         `json:"modelId"`
-	ModelName                     string         `json:"modelName"`
-	Version                       string         `json:"version"`
-	DicomTargetLevel              string         `json:"dicomTargetLevel"`
-	DicomUploadMin                int            `json:"dicomUploadMin"`
-	DicomUploadMax                int            `json:"dicomUploadMax"`
-	SupportedDicomModalities      []string       `json:"supportedDicomModalities"`
-	SupportedDicomTags            []string       `json:"supportedDicomTags"`
-	SupportedAdditionalMetadata   []interface{}  `json:"supportedAdditionalMetadata"`
-	SupportedOutputModes          []string       `json:"supportedOutputModes"`
-	ApproveFeedbackQuestionnaires []interface{}  `json:"approveFeedbackQuestionnaires"`
-	RejectFeedbackQuestionnaires  []interface{}  `json:"rejectFeedbackQuestionnaires"`
-	OnboardingModelQuestionnaires []interface{}  `json:"onboardingModelQuestionnaires"`
-	Resources                     ModelResources `json:"resources"`
+	ModelID                       string           `json:"modelId"`
+	ModelName                     string           `json:"modelName"`
+	Version                       string           `json:"version"`
+	DicomTargetLevel              string           `json:"dicomTargetLevel"`
+	DicomUploadMin                int              `json:"dicomUploadMin"`
+	DicomUploadMax                int              `json:"dicomUploadMax"`
+	SupportedDicomModalities      []string         `json:"supportedDicomModalities"`
+	SupportedDicomTags            []string         `json:"supportedDicomTags"`
+	SupportedAdditionalMetadata   []interface{}    `json:"supportedAdditionalMetadata"`
+	SupportedOutputModes          []string         `json:"supportedOutputModes"`
+	ApproveFeedbackQuestionnaires []interface{}    `json:"approveFeedbackQuestionnaires"`
+	RejectFeedbackQuestionnaires  []interface{}    `json:"rejectFeedbackQuestionnaires"`
+	OnboardingModelQuestionnaires []interface{}    `json:"onboardingModelQuestionnaires"`
+	Resources                     ModelResources   `json:"resources"`
+	Provenance                    *ModelProvenance `json:"provenance,omitempty"`
 }
 
 func (modelInfo *ModelInfo) UnmarshalJSON(data []byte) error {

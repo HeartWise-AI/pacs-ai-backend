@@ -29,7 +29,7 @@
     "resize": 224
   },
   "ModelStateDict": {
-    "model_path": "v5_20260822-164504/models/best_model_epoch_12.pt"
+    "model_path": "v6_20260929-203527/models/best_model_epoch_19.pt"
   },
   "dataset_mean": [
     110.4954833984375,

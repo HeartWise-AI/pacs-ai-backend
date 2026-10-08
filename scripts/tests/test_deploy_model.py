@@ -10,6 +10,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parents[2]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "deploy-model.sh"
 MODEL_PATH = REPO_ROOT / "model-examples" / "CathEF-CLIP"
+DEEPCORO_SYNTAX_PATH = REPO_ROOT / "model-examples" / "DeepCORO-SYNTAX"
 
 
 FAKE_CURL = r"""
@@ -52,6 +53,22 @@ elif url.endswith("/v1/inference/model/proxy/container/container-id/info"):
     print(json.dumps({"success": True, "data": {"version": "1.0.0"}}))
 else:
     print(json.dumps({"success": False, "message": "Unexpected test URL: " + url}))
+"""
+
+FAKE_GIT = r"""
+#!/usr/bin/env python3
+import os
+import sys
+
+args = sys.argv[1:]
+if "status" in args:
+    if os.environ.get("FAKE_GIT_DIRTY"):
+        print(" M model-examples/DeepCORO-SYNTAX/logic.py")
+elif args[-2:] == ["rev-parse", "HEAD"]:
+    print("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+else:
+    print("unexpected fake git invocation", file=sys.stderr)
+    sys.exit(2)
 """
 
 
@@ -160,6 +177,94 @@ class DeployModelAuthenticationTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("API_BASE_URL must use HTTPS", result.stderr)
         self.assertEqual([], calls)
+
+    def run_build_script(self, *, dirty=False):
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        root = Path(temp_dir.name)
+        fake_bin = root / "bin"
+        fake_bin.mkdir()
+
+        docker_log = root / "docker.json"
+        fake_docker = fake_bin / "docker"
+        fake_docker.write_text(
+            textwrap.dedent(
+                """
+                #!/usr/bin/env python3
+                import json
+                import os
+                import sys
+                from pathlib import Path
+
+                Path(os.environ["FAKE_DOCKER_LOG"]).write_text(
+                    json.dumps(sys.argv[1:]), encoding="utf-8"
+                )
+                """
+            ).lstrip(),
+            encoding="utf-8",
+        )
+        fake_docker.chmod(0o755)
+
+        fake_git = fake_bin / "git"
+        fake_git.write_text(textwrap.dedent(FAKE_GIT).lstrip(), encoding="utf-8")
+        fake_git.chmod(0o755)
+
+        env_file = root / ".env.deploy"
+        env_file.write_text("DOCKERHUB_USER=heartwisehub\n", encoding="utf-8")
+        token_file = root / "hf_token.txt"
+        token_file.write_text("test-token\n", encoding="utf-8")
+
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "DEPLOY_ENV_FILE": str(env_file),
+                "FAKE_DOCKER_LOG": str(docker_log),
+                "PATH": f"{fake_bin}:{environment['PATH']}",
+            }
+        )
+        if dirty:
+            environment["FAKE_GIT_DIRTY"] = "1"
+        result = subprocess.run(
+            [
+                str(SCRIPT_PATH),
+                str(DEEPCORO_SYNTAX_PATH),
+                "--hf-token-file",
+                str(token_file),
+                "--build-only",
+            ],
+            cwd=REPO_ROOT,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        docker_args = None
+        if docker_log.exists():
+            docker_args = json.loads(docker_log.read_text(encoding="utf-8"))
+        return result, docker_args, token_file
+
+    def test_build_stamps_source_revision_and_passes_token_as_secret(self):
+        result, docker_args, token_file = self.run_build_script()
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIsNotNone(docker_args)
+        self.assertEqual("build", docker_args[0])
+        self.assertIn(
+            "PACS_AI_SOURCE_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            docker_args,
+        )
+        self.assertIn(f"id=hf_token,src={token_file}", docker_args)
+        self.assertIn("heartwisehub/pacs-ai-deepcoro-syntax:6.0.0", docker_args)
+        self.assertIn("heartwisehub/pacs-ai-deepcoro-syntax:latest", docker_args)
+        self.assertEqual(str(DEEPCORO_SYNTAX_PATH), docker_args[-1])
+
+    def test_build_rejects_dirty_worktree_before_invoking_docker(self):
+        result, docker_args, _ = self.run_build_script(dirty=True)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("dirty Git worktree", result.stderr)
+        self.assertIsNone(docker_args)
 
 
 if __name__ == "__main__":
