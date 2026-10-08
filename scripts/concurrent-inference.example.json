@@ -1,0 +1,63 @@
+{
+  "gatewayUrl": "http://api-pacs:8000/internal/v1/inference/predict",
+  "metricsUrl": "http://api-pacs:8000/debug/vars",
+  "tenantId": "replace-with-benchmark-tenant",
+  "deploymentName": "replace-with-icm-or-sd4h",
+  "loadGeneratorLocation": "separate host on the same network",
+  "notes": "Use fixed de-identified fixtures and document any departure from this configuration.",
+  "serverConfiguration": {
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpuCount": 1,
+    "gpuMemoryMiB": 81920,
+    "systemRamGiB": "replace-with-tested-value",
+    "cpu": "replace-with-tested-value",
+    "modelManagerBudgetMiB": 77824,
+    "modelManagerSafetyMarginMiB": 4096
+  },
+  "concurrencyLevels": [1, 5, 10, 25, 50],
+  "repetitions": 3,
+  "timeoutSeconds": 960,
+  "sampleIntervalSeconds": 1,
+  "settleSeconds": 2,
+  "requireColdStart": true,
+  "localResourceSampling": true,
+  "models": [
+    {
+      "name": "CathEF",
+      "containerRef": "CathEF",
+      "fixtureName": "deidentified-xa-cine",
+      "dicomPaths": ["/fixtures/xa"],
+      "outputMode": "JSON",
+      "groupSeries": false,
+      "lifecycleUrl": "http://CathEF/api/inference"
+    },
+    {
+      "name": "EchoPrime",
+      "containerRef": "EchoPrime",
+      "fixtureName": "deidentified-echo-study",
+      "dicomPaths": ["/fixtures/echo"],
+      "outputMode": "JSON",
+      "groupSeries": false,
+      "lifecycleUrl": "http://EchoPrime/api/inference"
+    },
+    {
+      "name": "TotalSegmentator",
+      "containerRef": "total-segmentator",
+      "fixtureName": "synthetic-ct-series",
+      "dicomPaths": ["/fixtures/ct"],
+      "outputMode": "OHIF_ANNOTATIONS",
+      "groupSeries": true,
+      "lifecycleUrl": "http://total-segmentator/api/inference"
+    }
+  ],
+  "mixed": {
+    "enabled": true,
+    "concurrency": 50,
+    "repetitions": 3,
+    "distribution": {
+      "CathEF": 17,
+      "EchoPrime": 17,
+      "TotalSegmentator": 16
+    }
+  }
+}

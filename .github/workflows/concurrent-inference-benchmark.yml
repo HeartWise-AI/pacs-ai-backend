@@ -1,0 +1,59 @@
+name: Concurrent inference benchmark
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/concurrent-inference-benchmark.yml"
+      - ".gitignore"
+      - "docs/concurrent-inference-benchmark.md"
+      - "model-template/request_payload.py"
+      - "model-template/request_tester.py"
+      - "scripts/benchmark_concurrent_inference.py"
+      - "scripts/concurrent-inference.example.json"
+      - "scripts/requirements_concurrent_inference.txt"
+      - "scripts/tests/test_concurrent_inference_benchmark.py"
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/concurrent-inference-benchmark.yml"
+      - "model-template/request_payload.py"
+      - "model-template/request_tester.py"
+      - "scripts/benchmark_concurrent_inference.py"
+      - "scripts/requirements_concurrent_inference.txt"
+      - "scripts/tests/test_concurrent_inference_benchmark.py"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements_concurrent_inference.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            -r scripts/requirements_concurrent_inference.txt \
+            ruff==0.16.8
+
+      - name: Lint benchmark code
+        run: >-
+          ruff check
+          model-template/request_payload.py
+          scripts/benchmark_concurrent_inference.py
+          scripts/tests/test_concurrent_inference_benchmark.py
+
+      - name: Run benchmark unit and integration tests
+        run: python -m unittest scripts.tests.test_concurrent_inference_benchmark -v
