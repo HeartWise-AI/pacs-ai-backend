@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	"api-pacs/module/inference/domain/entity"
 )
@@ -252,6 +253,7 @@ type GetInferenceAvailableModelResult struct {
 	ModelName                     string
 	ModelFacts                    ModelFacts
 	Version                       string
+	Provenance                    *dockerInferenceTypes.ModelProvenance
 	DicomTargetLevel              string
 	DicomUploadMin                int
 	DicomUploadMax                int

@@ -52,7 +52,9 @@ def exposed_docker_ports(dockerfile: str) -> list[str]:
 
 
 def load_template_main():
-    spec = importlib.util.spec_from_file_location("pacs_ai_model_template_main", TEMPLATE_ROOT / "main.py")
+    spec = importlib.util.spec_from_file_location(
+        "pacs_ai_model_template_main", TEMPLATE_ROOT / "main.py"
+    )
     if spec is None or spec.loader is None:
         raise RuntimeError("Unable to load model-template/main.py")
     module = importlib.util.module_from_spec(spec)
@@ -82,6 +84,18 @@ def calls_named(node: ast.AST, object_name: str, method_name: str) -> bool:
 
 
 class ModelResourceContractTests(unittest.TestCase):
+    def valid_provenance(self, **overrides):
+        provenance = {
+            "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+            "sourceRevision": "a" * 40,
+            "modelRepository": "heartwise/example-model",
+            "modelRevision": "b" * 40,
+            "weightsPath": "release/models/model.pt",
+            "weightsSha256": "c" * 64,
+        }
+        provenance.update(overrides)
+        return provenance
+
     def valid_model_info(self, **resource_overrides):
         resources = {
             "gpuRequired": True,
@@ -111,9 +125,81 @@ class ModelResourceContractTests(unittest.TestCase):
         )
         self.assertFalse(cpu.resources.gpuRequired)
 
+    def test_provenance_is_optional_but_strict_when_present(self):
+        legacy = RESOURCE_CONFIG.ModelInfo.model_validate(self.valid_model_info())
+        self.assertIsNone(legacy.provenance)
+
+        aware = self.valid_model_info()
+        aware["provenance"] = self.valid_provenance(sourceRevision=None)
+        validated = RESOURCE_CONFIG.ModelInfo.model_validate(aware)
+        self.assertEqual("heartwise/example-model", validated.provenance.modelRepository)
+        self.assertIsNone(validated.provenance.sourceRevision)
+
+    def test_incomplete_or_null_provenance_is_rejected(self):
+        null_provenance = self.valid_model_info()
+        null_provenance["provenance"] = None
+        with self.assertRaises(ValueError):
+            RESOURCE_CONFIG.ModelInfo.model_validate(null_provenance)
+
+        for field in (
+            "sourceRepository",
+            "sourceRevision",
+            "modelRepository",
+            "modelRevision",
+            "weightsPath",
+            "weightsSha256",
+        ):
+            with self.subTest(field=field):
+                model_info = self.valid_model_info()
+                model_info["provenance"] = self.valid_provenance()
+                model_info["provenance"].pop(field)
+                with self.assertRaises(ValueError) as context:
+                    RESOURCE_CONFIG.ModelInfo.model_validate(model_info)
+                self.assertIn(field, str(context.exception))
+
+    def test_malformed_provenance_is_rejected(self):
+        invalid_values = {
+            "source repository URL": {"sourceRepository": "https://github.com/repo"},
+            "model repository without owner": {"modelRepository": "model"},
+            "uppercase source revision": {"sourceRevision": "A" * 40},
+            "short model revision": {"modelRevision": "b" * 39},
+            "absolute weights path": {"weightsPath": "/models/model.pt"},
+            "parent weights path": {"weightsPath": "release/../model.pt"},
+            "backslash weights path": {"weightsPath": "release\\model.pt"},
+            "uppercase checksum": {"weightsSha256": "C" * 64},
+            "short checksum": {"weightsSha256": "c" * 63},
+            "unknown field": {"unexpected": "value"},
+        }
+
+        for name, overrides in invalid_values.items():
+            with self.subTest(name=name):
+                model_info = self.valid_model_info()
+                model_info["provenance"] = self.valid_provenance(**overrides)
+                with self.assertRaises(ValueError):
+                    RESOURCE_CONFIG.ModelInfo.model_validate(model_info)
+
+    def test_model_info_payload_stamps_and_validates_source_revision(self):
+        model_info_payload = self.valid_model_info()
+        model_info_payload["provenance"] = self.valid_provenance(sourceRevision=None)
+        model_info = RESOURCE_CONFIG.ModelInfo.model_validate(model_info_payload)
+
+        revision = "d" * 40
+        payload = RESOURCE_CONFIG.model_info_payload(model_info, source_revision=revision)
+        self.assertEqual(revision, payload["provenance"]["sourceRevision"])
+
+        with self.assertRaises(ValueError):
+            RESOURCE_CONFIG.model_info_payload(
+                model_info, source_revision="not-an-immutable-revision"
+            )
+
+        legacy = RESOURCE_CONFIG.ModelInfo.model_validate(self.valid_model_info())
+        self.assertNotIn("provenance", RESOURCE_CONFIG.model_info_payload(legacy, revision))
+
     def test_invalid_contracts_are_rejected(self):
         invalid_cases = {
-            "missing resources": {key: value for key, value in self.valid_model_info().items() if key != "resources"},
+            "missing resources": {
+                key: value for key, value in self.valid_model_info().items() if key != "resources"
+            },
             "string integer": self.valid_model_info(residentMemoryMiB="100"),
             "floating point integer": self.valid_model_info(peakMemoryMiB=200.5),
             "zero GPU memory": self.valid_model_info(residentMemoryMiB=0),
@@ -236,16 +322,24 @@ class ModelResourceContractTests(unittest.TestCase):
     def test_every_model_declares_resources_and_uses_lifecycle_semaphore(self):
         manifests = discover_model_manifests()
         self.assertGreaterEqual(len(manifests), 19)
+        provenance_manifests = []
         canonical_resource_module = RESOURCE_MODULE_PATH.read_text(encoding="utf-8")
-        canonical_lifecycle_module = (
-            TEMPLATE_ROOT / "utils" / "model_lifecycle.py"
-        ).read_text(encoding="utf-8")
+        canonical_lifecycle_module = (TEMPLATE_ROOT / "utils" / "model_lifecycle.py").read_text(
+            encoding="utf-8"
+        )
 
         for manifest_path in manifests:
             with self.subTest(manifest=str(manifest_path.relative_to(REPOSITORY_ROOT))):
                 model_root = manifest_path.parent.parent
+                raw_model_info = json.loads(manifest_path.read_text(encoding="utf-8"))
                 model_info = RESOURCE_CONFIG.load_model_info(manifest_path)
                 self.assertEqual(1, model_info.resources.maxConcurrentInferences)
+                self.assertEqual(
+                    raw_model_info,
+                    RESOURCE_CONFIG.model_info_payload(model_info),
+                )
+                if model_info.provenance is not None:
+                    provenance_manifests.append(str(manifest_path.relative_to(REPOSITORY_ROOT)))
 
                 local_resource_module = model_root / "utils" / "resource_config.py"
                 self.assertTrue(local_resource_module.is_file())
@@ -276,7 +370,10 @@ class ModelResourceContractTests(unittest.TestCase):
 
                 configured_lock = any(
                     isinstance(node, ast.Assign)
-                    and any(isinstance(target, ast.Name) and target.id == "inference_lock" for target in node.targets)
+                    and any(
+                        isinstance(target, ast.Name) and target.id == "inference_lock"
+                        for target in node.targets
+                    )
                     and isinstance(node.value, ast.Call)
                     and isinstance(node.value.func, ast.Name)
                     and node.value.func.id == "create_inference_semaphore"
@@ -320,18 +417,31 @@ class ModelResourceContractTests(unittest.TestCase):
                     )
                 ]
                 self.assertEqual(1, len(critical_sections))
-                self.assertTrue(calls_named(critical_sections[0], "PredictionService", "load_model"))
+                self.assertTrue(
+                    calls_named(critical_sections[0], "PredictionService", "load_model")
+                )
                 self.assertTrue(calls_named(critical_sections[0], "PredictionService", "predict"))
 
                 source = main_path.read_text(encoding="utf-8")
                 self.assertIn("install_model_lifecycle_routes(app, model_lifecycle)", source)
                 self.assertIn("if records_model_activity(request.url.path):", source)
+                self.assertIn("served_model_info = model_info_payload(", source)
+                self.assertIn(
+                    'source_revision=os.getenv("PACS_AI_SOURCE_REVISION") or None',
+                    source,
+                )
+                self.assertIn("data=served_model_info", source)
 
                 openapi_path = model_root / "docs" / "openapi.json"
                 openapi = json.loads(openapi_path.read_text(encoding="utf-8"))
                 self.assertIn("/inference/model/runtime", openapi["paths"])
                 self.assertIn("/inference/model/load", openapi["paths"])
                 self.assertIn("/inference/model/unload", openapi["paths"])
+
+        self.assertIn(
+            "model-examples/DeepCORO-SYNTAX/data/model_info.json",
+            provenance_manifests,
+        )
 
     def test_inference_servers_are_single_worker_and_supervised(self):
         model_roots = [path.parent.parent for path in discover_model_manifests()]

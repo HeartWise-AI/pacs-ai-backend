@@ -42,6 +42,10 @@ The API interface is defined in `docs/openapi.json`, an OpenAPI specification fi
 
 User should populate the `data` directory with model info and facts.
 
+New production images should add complete immutable provenance to `data/model_info.json` using the
+[repository provenance contract](../docs/model-provenance-contract.md). Legacy manifests may omit the
+field during migration, but partial provenance and mutable revisions are rejected.
+
 After starting the Docker container, user should be able to interact with the Inference API docs at `http://<host>/docs`.
 
 The endpoints are also documented for the payloads and responses they accept and return, as well as examples.

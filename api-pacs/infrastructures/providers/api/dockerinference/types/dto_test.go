@@ -166,6 +166,7 @@ func TestGetModelInfoResponseRequiresAndRoundTripsResources(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(body), &response))
 	require.Equal(t, 5744, response.Data.Resources.ResidentMemoryMiB)
 	require.Equal(t, 6488, response.Data.Resources.PeakMemoryMiB)
+	require.Nil(t, response.Data.Provenance)
 
 	roundTripped, err := json.Marshal(response)
 	require.NoError(t, err)
@@ -205,4 +206,111 @@ func TestGetModelInfoResponseRoundTripsOptionalProvenance(t *testing.T) {
 	roundTripped, err := json.Marshal(response)
 	require.NoError(t, err)
 	require.Contains(t, string(roundTripped), `"modelRevision":"1ffb38cfc10fa10c4b60f44746063feb860eeba0"`)
+}
+
+func TestModelProvenanceRejectsIncompleteAndMalformedContracts(t *testing.T) {
+	valid := map[string]interface{}{
+		"sourceRepository": "HeartWise-AI/pacs-ai-backend",
+		"sourceRevision":   nil,
+		"modelRepository":  "heartwise/example-model",
+		"modelRevision":    strings.Repeat("b", 40),
+		"weightsPath":      "release/models/model.pt",
+		"weightsSha256":    strings.Repeat("c", 64),
+	}
+
+	clone := func() map[string]interface{} {
+		copied := make(map[string]interface{}, len(valid))
+		for key, value := range valid {
+			copied[key] = value
+		}
+		return copied
+	}
+
+	tests := []struct {
+		name       string
+		mutate     func(map[string]interface{})
+		errorField string
+	}{
+		{
+			name: "missing source revision",
+			mutate: func(value map[string]interface{}) {
+				delete(value, "sourceRevision")
+			},
+			errorField: "sourceRevision",
+		},
+		{
+			name: "invalid source repository",
+			mutate: func(value map[string]interface{}) {
+				value["sourceRepository"] = "https://github.com/repository"
+			},
+			errorField: "sourceRepository",
+		},
+		{
+			name: "invalid source revision",
+			mutate: func(value map[string]interface{}) {
+				value["sourceRevision"] = strings.Repeat("A", 40)
+			},
+			errorField: "sourceRevision",
+		},
+		{
+			name: "invalid model revision",
+			mutate: func(value map[string]interface{}) {
+				value["modelRevision"] = strings.Repeat("b", 39)
+			},
+			errorField: "modelRevision",
+		},
+		{
+			name: "unsafe absolute path",
+			mutate: func(value map[string]interface{}) {
+				value["weightsPath"] = "/models/model.pt"
+			},
+			errorField: "weightsPath",
+		},
+		{
+			name: "unsafe parent path",
+			mutate: func(value map[string]interface{}) {
+				value["weightsPath"] = "release/../model.pt"
+			},
+			errorField: "weightsPath",
+		},
+		{
+			name: "invalid checksum",
+			mutate: func(value map[string]interface{}) {
+				value["weightsSha256"] = strings.Repeat("C", 64)
+			},
+			errorField: "weightsSha256",
+		},
+		{
+			name: "unknown field",
+			mutate: func(value map[string]interface{}) {
+				value["unexpected"] = "value"
+			},
+			errorField: "unexpected",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := clone()
+			test.mutate(candidate)
+			body, err := json.Marshal(candidate)
+			require.NoError(t, err)
+
+			var provenance ModelProvenance
+			err = json.Unmarshal(body, &provenance)
+			require.ErrorContains(t, err, test.errorField)
+		})
+	}
+}
+
+func TestModelInfoRejectsExplicitNullProvenance(t *testing.T) {
+	body := `{
+		"modelId": "legacy",
+		"resources": ` + validGPUResourcesJSON + `,
+		"provenance": null
+	}`
+
+	var modelInfo ModelInfo
+	err := json.Unmarshal([]byte(body), &modelInfo)
+	require.ErrorContains(t, err, "provenance must be omitted")
 }

@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path"
+	"regexp"
+	"strings"
 )
 
 type Gender string
@@ -46,6 +49,87 @@ type ModelProvenance struct {
 	ModelRevision    string  `json:"modelRevision"`
 	WeightsPath      string  `json:"weightsPath"`
 	WeightsSHA256    string  `json:"weightsSha256"`
+}
+
+var (
+	gitRevisionPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	repositoryPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	sha256Pattern      = regexp.MustCompile(`^[0-9a-f]{64}$`)
+)
+
+func (provenance *ModelProvenance) UnmarshalJSON(data []byte) error {
+	type modelProvenanceAlias ModelProvenance
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+
+	requiredFields := []string{
+		"sourceRepository",
+		"sourceRevision",
+		"modelRepository",
+		"modelRevision",
+		"weightsPath",
+		"weightsSha256",
+	}
+	allowedFields := make(map[string]struct{}, len(requiredFields))
+	for _, field := range requiredFields {
+		allowedFields[field] = struct{}{}
+		rawValue, present := fields[field]
+		if !present {
+			return fmt.Errorf("provenance.%s is required", field)
+		}
+		if field != "sourceRevision" && bytes.Equal(bytes.TrimSpace(rawValue), []byte("null")) {
+			return fmt.Errorf("provenance.%s cannot be null", field)
+		}
+	}
+	for field := range fields {
+		if _, allowed := allowedFields[field]; !allowed {
+			return fmt.Errorf("provenance.%s is not supported", field)
+		}
+	}
+
+	var decoded modelProvenanceAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*provenance = ModelProvenance(decoded)
+	return provenance.Validate()
+}
+
+func (provenance ModelProvenance) Validate() error {
+	if !repositoryPattern.MatchString(provenance.SourceRepository) {
+		return fmt.Errorf("provenance.sourceRepository must use the owner/repository format")
+	}
+	if provenance.SourceRevision != nil && !gitRevisionPattern.MatchString(*provenance.SourceRevision) {
+		return fmt.Errorf("provenance.sourceRevision must be a 40-character lowercase Git SHA")
+	}
+	if !repositoryPattern.MatchString(provenance.ModelRepository) {
+		return fmt.Errorf("provenance.modelRepository must use the owner/repository format")
+	}
+	if !gitRevisionPattern.MatchString(provenance.ModelRevision) {
+		return fmt.Errorf("provenance.modelRevision must be a 40-character lowercase Git SHA")
+	}
+	if !validWeightsPath(provenance.WeightsPath) {
+		return fmt.Errorf("provenance.weightsPath must be a normalized repository-relative POSIX path")
+	}
+	if !sha256Pattern.MatchString(provenance.WeightsSHA256) {
+		return fmt.Errorf("provenance.weightsSha256 must be a 64-character lowercase SHA-256")
+	}
+	return nil
+}
+
+func validWeightsPath(value string) bool {
+	if value == "" || strings.Contains(value, `\`) || path.IsAbs(value) || path.Clean(value) != value {
+		return false
+	}
+	for _, part := range strings.Split(value, "/") {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 func (resources *ModelResources) UnmarshalJSON(data []byte) error {
@@ -134,6 +218,9 @@ func (modelInfo *ModelInfo) UnmarshalJSON(data []byte) error {
 	}
 	if _, present := fields["resources"]; !present {
 		return fmt.Errorf("resources is required")
+	}
+	if rawProvenance, present := fields["provenance"]; present && bytes.Equal(bytes.TrimSpace(rawProvenance), []byte("null")) {
+		return fmt.Errorf("provenance must be omitted or contain a complete object")
 	}
 
 	var decoded modelInfoAlias

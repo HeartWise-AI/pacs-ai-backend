@@ -11,15 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import download_model
-from utils.resource_config import load_model_info
-from utils.model_provenance import model_info_payload
+from utils.resource_config import load_model_info, model_info_payload
 
 
 def test_runtime_configuration_and_manifest_identify_the_same_v6_checkpoint():
     config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
-    class_mapping = json.loads(
-        (ROOT / "models/class_mapping.json").read_text(encoding="utf-8")
-    )
+    class_mapping = json.loads((ROOT / "models/class_mapping.json").read_text(encoding="utf-8"))
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     provenance = manifest["provenance"]
 

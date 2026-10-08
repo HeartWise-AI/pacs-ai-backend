@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from logic import CustomPredictionService
-from utils.resource_config import create_inference_semaphore, load_model_info
+from utils.resource_config import create_inference_semaphore, load_model_info, model_info_payload
 from utils.model_lifecycle import (
     ModelLifecycle,
     install_model_lifecycle_routes,
@@ -33,6 +33,10 @@ with open(os.path.join(root_path, "config.json")) as f:
 config = Config(**config_dict)
 
 model_info = load_model_info(os.path.join(root_path, "data", "model_info.json"))
+served_model_info = model_info_payload(
+    model_info,
+    source_revision=os.getenv("PACS_AI_SOURCE_REVISION") or None,
+)
 inference_lock = create_inference_semaphore(model_info)
 
 app = FastAPI(
@@ -148,13 +152,11 @@ async def predict(request: PredictRequest):
 @app.get("/inference/model-info")
 async def get_model_info():
     try:
-        data_path = os.path.join(root_path, "data")
-
-        with open(os.path.join(data_path, "model_info.json")) as f:
-            model_info = json.load(f)
-
         return HTTPResponse(
-            status=200, success=True, message="Model info retrieved successfully", data=model_info
+            status=200,
+            success=True,
+            message="Model info retrieved successfully",
+            data=served_model_info,
         ).to_response()
 
     except Exception:

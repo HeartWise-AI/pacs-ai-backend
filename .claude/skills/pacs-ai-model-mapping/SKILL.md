@@ -79,6 +79,9 @@ Key fields: `modelId`, `modelName`, `modality` ("Angiogram"), `dicomUploadMin`/`
   > happened with DeepRV-CLIP vs CathEF-CLIP after PR #242.)
 - **Registered `outputMode`** (the mode api-pacs actually calls: JSON vs HTML) is set at model
   registration time, not by `supportedOutputModes` alone. See Deploy below.
+- **Immutable provenance:** new production images should include the complete `provenance` object defined
+  in `docs/model-provenance-contract.md`. Legacy manifests may omit it during migration. Partial values,
+  mutable branches, placeholder revisions, and unverified checkpoint hashes are invalid.
 
 ### 4. `logic.py` — required model-specific code
 Subclass `BasePredictionService`. This is **not** template plumbing — each model’s heads, report text,

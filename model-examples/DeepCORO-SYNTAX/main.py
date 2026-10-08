@@ -23,8 +23,11 @@ from utils.model_lifecycle import (
     install_model_lifecycle_routes,
     records_model_activity,
 )
-from utils.model_provenance import model_info_payload
-from utils.resource_config import create_inference_semaphore, load_model_info
+from utils.resource_config import (
+    create_inference_semaphore,
+    load_model_info,
+    model_info_payload,
+)
 
 root_path = os.getcwd()
 
