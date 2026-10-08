@@ -24,15 +24,15 @@ data. It lives in `models/class_mapping.json`.
 
 | | CardioSYNTAX (n=369) | MHI held-out (n=127) |
 |---|---|---|
-| AUROC (>=23) | 0.97 (95% CI 0.94-0.99) | 0.88 (95% CI 0.79-0.95) |
-| Sensitivity / Specificity | 0.86 / 0.93 | 0.72 / 0.80 |
-| NPV | 0.98 | 0.95 |
-| Spearman rho / ICC(2,1) | 0.77 / 0.83 | 0.80 / 0.76 |
-| MAE (points) | 3.36 | 4.98 |
+| AUROC (>=23) | 0.97 (95% CI 0.95-0.99) | 0.89 (95% CI 0.79-0.97) |
+| Spearman rho | 0.76 (0.71-0.81) | 0.81 (0.71-0.88) |
+| ICC(2,1) | 0.86 (0.82-0.89) | 0.79 (0.71-0.86) |
+| MAE (points) | 3.21 (2.77-3.64) | 4.47 (3.67-5.30) |
+| Bias (points) | -0.35 (-0.87-0.17) | -0.57 (-1.68-0.58) |
 
-High NPV at modest PPV — a rule-out step, not a confirmatory test. Against physicians on the 171
-studies with three complete ratings: AI accuracy 0.74 (kappa 0.71) versus the physician consensus
-0.70 (kappa 0.69). Comparable, not superior.
+This remains a rule-out aid, not a confirmatory test. Across both held-out cohorts, v6 reduced
+high-complexity underestimation relative to v5 but retained a -10.2-point bias in the reference
+score >=33 group. Prospective and fully external validation remain outstanding.
 
 ## What the score is, and is not
 
@@ -53,30 +53,32 @@ public, but weight and configuration downloads require an approved Hugging Face 
 and its access token (the repository uses manual gating):
 
 ```bash
-python download_model.py --token "$HF_API_KEY"
+python download_model.py --token-file /path/to/hf_token.txt
 ```
 
-That repo holds both versions. The service uses `v5_20260822-164504/` — the sibling
-`rxt2fz27_20250711-171619/` is the superseded CardioSYNTAX-only model and must not be loaded.
+The service pins Hugging Face revision
+`1ffb38cfc10fa10c4b60f44746063feb860eeba0` and downloads only
+`v6_20260929-203527/models/best_model_epoch_19.pt`. The expected checkpoint SHA-256 is
+`856f5d6523c25a45c62886bf6cd1d351297821f60c3465a20b962aa46fa08ec0`; the build fails if
+the downloaded bytes do not match it. Older v5 and `rxt2fz27` artifacts remain in the repository
+for provenance but are not downloaded into this image.
 
 ## Training provenance
 
-Normalization is taken from the frozen submission bundle
-`SUBMISSION_DeepCORO_SYNTAX_FINAL_20260825/SUBMISSION/06_provenance/training_config.yaml`,
-for run `20260822-164504_no_wandb` (`DeepCORO_syntax_merged_v5_16segment_clean_encoder`):
+The v6 candidate is run `20260929-203527`, best epoch 19 of 30. It uses the same patient-level
+split, modified 16-segment reference standard, architecture, preprocessing, and normalization as
+v5, with batch size one and two gradient-accumulation steps. Its pinned training configuration is
+[`v6_20260929-203527/config.yaml`](https://huggingface.co/heartwise/deepcoro_clip_cardiosyntax/blob/1ffb38cfc10fa10c4b60f44746063feb860eeba0/v6_20260929-203527/config.yaml).
 
 - `dataset_mean`: `[110.4954833984375, 110.4954833984375, 110.4954833984375]`
 - `dataset_std`: `[37.805782318115234, 37.805782318115234, 37.805782318115234]`
-- Source file SHA-256: `a3b4e6db824714cd81758f782d57fc5c915e4f41dc15953e2a63cf446f1691c6`.
 
-These values replace the copied CathEF statistics. The same source specifies ten videos,
-16 frames, stride two, resize 224, and all six head dimensions and class orders used here.
-`05_data/manuscript_numbers_v5.json` in that bundle identifies `best_model_epoch_12.pt`
-and the validation operating threshold `16.902657`. The submission bundle contains clinical
-study data and is kept in approved storage; only configuration provenance is recorded here.
-The corresponding hosted configuration is
-[`v5_20260822-164504/config.yaml`](https://huggingface.co/heartwise/deepcoro_clip_cardiosyntax/blob/main/v5_20260822-164504/config.yaml);
-its contents require approved access and were not used for this local verification.
+These values replace the copied CathEF statistics. The v6 configuration specifies ten videos,
+16 frames, stride two, resize 224, and all six head dimensions and class orders used here. The
+validation operating threshold remains `16.902657`. Hugging Face's held-out comparison reports
+that v6 uses the same keys and tensor shapes as v5 and loads in this service unchanged. It also
+records only one training seed; v6 remains a release candidate until the deployment acceptance
+work in issue #357 is complete.
 
 The YAML records `num_attention_heads: 24`, but the tracked training and inference
 [constructors](https://github.com/HeartWise-AI/DeepCORO_CLIP/blob/ddefcce38c89f1e3d3c6eae2b21a66e767add4c3/projects/linear_probing_project.py#L439-L446)
@@ -92,7 +94,7 @@ cannot verify the attention head count because it does not change parameter shap
 `logic.py` has been adapted from CathEF-CLIP and the model configuration is verified against the
 checkpoint:
 
-- `MultiInstanceLinearProbing` loads the v5 checkpoint **strictly** — 31 tensors, no missing or
+- `MultiInstanceLinearProbing` loads the v6 checkpoint **strictly** — 31 tensors, no missing or
   unexpected keys — and a forward pass returns all six heads with the expected shapes
   (`syntax` 1, `syntax_left` 1, `syntax_right` 1, `syntax_category` 4, `syntax_left_category` 4,
   `syntax_right_category` 3).
@@ -114,10 +116,10 @@ both would have loaded silently as a differently-shaped model:
 | `attention_hidden` | 128 | **512** |
 | `num_attention_heads` | 8 | **8** — the tracked training constructor uses the class default, ignoring the YAML value of 24; see Training provenance |
 
-### Still to do before deployment
+### Candidate release process
 
-End-to-end serving has **not** been exercised: no DICOM study has been pushed through the running
-container. What is verified is that the model builds, loads strictly and runs a forward pass.
-Before this serves patients, run a study through the container and reconcile the output against
-`05_data/frozen_predictions_v5_epoch12.csv` in the submission bundle, which holds the per-study
-predictions for all 496 held-out studies.
+Build and publish `heartwisehub/pacs-ai-deepcoro-syntax:6.0.0` as a candidate without replacing
+the active v5 deployment. Record the pushed Docker digest, run a representative DICOM smoke test,
+and reconcile its prediction with an independently reproduced v6 result. The first Web/staging
+v5-to-v6 transition is reserved for the managed-upgrade acceptance test; ICM follows only after
+that drain, validation, history-preservation, and rollback workflow succeeds.

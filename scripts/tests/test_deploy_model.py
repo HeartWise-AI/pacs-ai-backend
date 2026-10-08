@@ -10,6 +10,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parents[2]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "deploy-model.sh"
 MODEL_PATH = REPO_ROOT / "model-examples" / "CathEF-CLIP"
+DEEPCORO_SYNTAX_PATH = REPO_ROOT / "model-examples" / "DeepCORO-SYNTAX"
 
 
 FAKE_CURL = r"""
@@ -160,6 +161,77 @@ class DeployModelAuthenticationTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("API_BASE_URL must use HTTPS", result.stderr)
         self.assertEqual([], calls)
+
+    def test_build_stamps_source_revision_and_passes_token_as_secret(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        root = Path(temp_dir.name)
+        fake_bin = root / "bin"
+        fake_bin.mkdir()
+
+        docker_log = root / "docker.json"
+        fake_docker = fake_bin / "docker"
+        fake_docker.write_text(
+            textwrap.dedent(
+                """
+                #!/usr/bin/env python3
+                import json
+                import os
+                import sys
+                from pathlib import Path
+
+                Path(os.environ["FAKE_DOCKER_LOG"]).write_text(
+                    json.dumps(sys.argv[1:]), encoding="utf-8"
+                )
+                """
+            ).lstrip(),
+            encoding="utf-8",
+        )
+        fake_docker.chmod(0o755)
+
+        env_file = root / ".env.deploy"
+        env_file.write_text("DOCKERHUB_USER=heartwisehub\n", encoding="utf-8")
+        token_file = root / "hf_token.txt"
+        token_file.write_text("test-token\n", encoding="utf-8")
+
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "DEPLOY_ENV_FILE": str(env_file),
+                "FAKE_DOCKER_LOG": str(docker_log),
+                "PATH": f"{fake_bin}:{environment['PATH']}",
+            }
+        )
+        result = subprocess.run(
+            [
+                str(SCRIPT_PATH),
+                str(DEEPCORO_SYNTAX_PATH),
+                "--hf-token-file",
+                str(token_file),
+                "--build-only",
+            ],
+            cwd=REPO_ROOT,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        docker_args = json.loads(docker_log.read_text(encoding="utf-8"))
+        source_revision = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+        self.assertEqual("build", docker_args[0])
+        self.assertIn(f"PACS_AI_SOURCE_REVISION={source_revision}", docker_args)
+        self.assertIn(f"id=hf_token,src={token_file}", docker_args)
+        self.assertIn("heartwisehub/pacs-ai-deepcoro-syntax:6.0.0", docker_args)
+        self.assertIn("heartwisehub/pacs-ai-deepcoro-syntax:latest", docker_args)
+        self.assertEqual(str(DEEPCORO_SYNTAX_PATH), docker_args[-1])
 
 
 if __name__ == "__main__":

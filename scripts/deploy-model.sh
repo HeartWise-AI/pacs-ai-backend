@@ -198,7 +198,12 @@ deploy_model() {
 
   # --- phase 1: build
   if ! $REGISTER_ONLY; then
-    local build_args=() hf_token_file
+    local build_args=() hf_token_file source_revision
+    if grep -q '^ARG PACS_AI_SOURCE_REVISION' "$model_dir/Dockerfile"; then
+      source_revision=$(git -C "$SCRIPT_DIR/.." rev-parse HEAD) || die "Could not resolve PACS-AI source revision"
+      build_args+=(--build-arg "PACS_AI_SOURCE_REVISION=$source_revision")
+      log "Stamping PACS-AI source revision $source_revision."
+    fi
     if grep -q 'mount=type=secret,id=hf_token' "$model_dir/Dockerfile"; then
       # precedence: --hf-token-file arg > HF_TOKEN_FILE from config > repo root's hf_token.txt
       hf_token_file="${HF_TOKEN_FILE_ARG:-${HF_TOKEN_FILE:-$SCRIPT_DIR/../hf_token.txt}}"

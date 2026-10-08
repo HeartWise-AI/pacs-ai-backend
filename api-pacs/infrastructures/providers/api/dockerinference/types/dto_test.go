@@ -175,3 +175,34 @@ func TestGetModelInfoResponseRequiresAndRoundTripsResources(t *testing.T) {
 	err = json.Unmarshal([]byte(`{"success":true,"data":{"modelId":"missing"}}`), &missingResources)
 	require.ErrorContains(t, err, "resources is required")
 }
+
+func TestGetModelInfoResponseRoundTripsOptionalProvenance(t *testing.T) {
+	body := `{
+		"success": true,
+		"message": "ok",
+		"data": {
+			"modelId": "DeepCORO_SYNTAX",
+			"modelName": "DeepCORO-SYNTAX",
+			"version": "6.0.0",
+			"resources": ` + validGPUResourcesJSON + `,
+			"provenance": {
+				"sourceRepository": "HeartWise-AI/pacs-ai-backend",
+				"sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				"modelRepository": "heartwise/deepcoro_clip_cardiosyntax",
+				"modelRevision": "1ffb38cfc10fa10c4b60f44746063feb860eeba0",
+				"weightsPath": "v6_20260929-203527/models/best_model_epoch_19.pt",
+				"weightsSha256": "856f5d6523c25a45c62886bf6cd1d351297821f60c3465a20b962aa46fa08ec0"
+			}
+		}
+	}`
+
+	var response GetModelInfoResponse
+	require.NoError(t, json.Unmarshal([]byte(body), &response))
+	require.NotNil(t, response.Data.Provenance)
+	require.Equal(t, "1ffb38cfc10fa10c4b60f44746063feb860eeba0", response.Data.Provenance.ModelRevision)
+	require.Equal(t, "856f5d6523c25a45c62886bf6cd1d351297821f60c3465a20b962aa46fa08ec0", response.Data.Provenance.WeightsSHA256)
+
+	roundTripped, err := json.Marshal(response)
+	require.NoError(t, err)
+	require.Contains(t, string(roundTripped), `"modelRevision":"1ffb38cfc10fa10c4b60f44746063feb860eeba0"`)
+}
