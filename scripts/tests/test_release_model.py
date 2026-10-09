@@ -83,6 +83,22 @@ class ReleaseModelTests(unittest.TestCase):
     def metadata(self):
         return RELEASE.load_release_metadata(self.model_dir, SOURCE_REVISION)
 
+    def test_command_runner_allows_only_git_and_docker_without_a_shell(self):
+        completed = subprocess.CompletedProcess(["git", "status"], 0, "", "")
+        with mock.patch.object(RELEASE.subprocess, "run", return_value=completed) as run:
+            RELEASE.run_command(("git", "status"))
+
+        self.assertFalse(run.call_args.kwargs["shell"])
+
+        for command in ((), ("curl", "https://example.invalid")):
+            with (
+                self.subTest(command=command),
+                self.assertRaisesRegex(RELEASE.ReleaseError, "cannot execute"),
+            ):
+                RELEASE.run_command(command)
+
+        self.assertEqual(1, run.call_count)
+
     def test_valid_manifest_becomes_build_args_labels_and_runtime_provenance(self):
         metadata = self.metadata()
 

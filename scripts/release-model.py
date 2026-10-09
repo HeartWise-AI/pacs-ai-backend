@@ -20,6 +20,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+ALLOWED_EXECUTABLES = frozenset({"docker", "git"})
 GIT_REVISION_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -123,13 +124,19 @@ def run_command(
     cwd: Path = REPOSITORY_ROOT,
     capture_output: bool = True,
 ) -> subprocess.CompletedProcess[str]:
+    if not command or command[0] not in ALLOWED_EXECUTABLES:
+        executable = command[0] if command else "<empty>"
+        raise ReleaseError(f"Release commands cannot execute {executable!r}")
+
     try:
-        result = subprocess.run(
+        # The executable is allowlisted above and arguments never pass through a shell.
+        result = subprocess.run(  # nosec B603
             list(command),
             cwd=cwd,
             text=True,
             capture_output=capture_output,
             check=False,
+            shell=False,
         )
     except OSError as exc:
         raise ReleaseError(f"Could not execute {command[0]}: {exc}") from exc
