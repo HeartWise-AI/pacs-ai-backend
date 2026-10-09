@@ -69,32 +69,27 @@ fixed and changing the padding content must move the logit by exactly **0.0**.
 
 ## Weights (HuggingFace)
 Weights live in a **gated** repo (e.g. `heartwise/CathEF_CLIP`, `heartwise/DeepRV_CLIP`), downloaded at
-build time. Set the correct `repo_id` in `download_model.py`:
+build time. During development, pass the token only as a BuildKit secret:
 ```bash
 docker build --secret id=hf_token,src=./hf_token.txt -t heartwisehub/<model>:<v> .
 ```
 Keep `hf_token.txt` gitignored. Gated repos return 401 anonymously.
 
 ## Publish / register
-Preferred:
+Provenance-aware images are published only after merge through the protected release workflow. For a local build and verification using the official Dockerfile:
 ```bash
-DEFAULT_OUTPUT_MODE=HTML ./scripts/deploy-model.sh model-examples/<ModelName> --hf-token-file hf_token.txt
+python3 scripts/release-model.py model-examples/<ModelName> \
+  --image-repository heartwisehub/pacs-ai-<model> \
+  --hf-token-file /secure/path/hf_token
 ```
-The script authenticates through the backend's server-controlled `/v1/iam/login` endpoint using
+See [Reproducible model image releases](../docs/model-image-release.md). The command validates provenance, stamps the Git commit, verifies OCI labels and `/model-info`, and does not push unless `--publish` is explicitly supplied.
+
+Registration remains separate. `deploy-model.sh --register-only` authenticates through the backend's server-controlled `/v1/iam/login` endpoint using
 `TENANT_ID`, `PACS_ADMIN_EMAIL`, and `PACS_ADMIN_PASSWORD` from `scripts/.env.deploy`. Because the request
 contains the admin password, `API_BASE_URL` must use HTTPS unless it points to `localhost` or `127.0.0.1`.
 See `scripts/.env.deploy.example` for the complete configuration.
 
-Or manually:
-```bash
-docker login
-docker push heartwisehub/<model>:<version>
-```
-Images live under the **`heartwisehub`** Docker Hub org, so pushing requires **membership**. If you get
-`denied: requested access to the resource is denied`, run `docker login` and have a `heartwisehub` org owner
-invite your Docker Hub account (Docker Hub → Organizations → heartwisehub → Members → *Invite member*). After
-pushing a new tag, **repoint the deployment to it and redeploy** — a running container keeps its old image
-and `model_info.json` (the cause of stale Step-2 pages).
+Legacy images that do not yet declare provenance may still use the old build path during migration. `latest` is opt-in and never the deployment source of truth. After publishing a new version, deploy the recorded immutable digest through the controlled deployment workflow; a running container keeps its old image and `model_info.json` until explicitly upgraded.
 
 **`outputMode` note:** `supportedOutputModes` in `model_info.json` lists what the container can serve.
 The mode api-pacs actually calls is the registered model `outputMode`. `DEFAULT_OUTPUT_MODE` in

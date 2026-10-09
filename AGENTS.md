@@ -41,6 +41,10 @@ read it directly). It documents the full model→PACS-AI mapping. The essentials
    it must be complete and immutable: repository IDs, pinned 40-character revisions, a normalized relative
    checkpoint path, and its lowercase SHA-256. Never add placeholders or partial provenance. See
    `docs/model-provenance-contract.md`.
+9. **Official images are released after merge:** use `scripts/release-model.py` or the protected
+   `Publish inference model image` workflow. It requires a clean commit reachable from `master`, builds only
+   the semantic-version tag by default, verifies labels and live model-info, and records the registry digest.
+   `Dockerfile.local` and local tags are development-only. See `docs/model-image-release.md`.
 
 ## Verify a prediction locally
 Reproduce a deployed number with the recipe in the skill: `snapshot_download` the gated checkpoint, rebuild
@@ -53,4 +57,6 @@ DICOM-vs-mp4 decode path; a large gap means wrong video selection or wrong mean/
 ## Conventions
 - Don't commit model weights (they download from HF at build). Keep `hf_token.txt` gitignored.
 - Match an existing CLIP model's file layout exactly; the backend relies on it.
-- Prefer `scripts/deploy-model.sh` for build/push/register. Default branch for this repo is `master`.
+- Use `scripts/release-model.py` for provenance-aware build/publish operations and
+  `scripts/deploy-model.sh --register-only` only for a separately controlled registration. Default branch
+  for this repo is `master`.

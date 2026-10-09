@@ -27,6 +27,12 @@
 #   --build-only     Run phase 1 only
 #   --push-only      Run phases 1 and 2 only (build + push, no registration)
 #   --register-only  Run phase 3 only (assumes image already pushed)
+#   --publish-latest Also tag and push latest for legacy builds. The versioned
+#                    image remains the deployment identity.
+#
+# Provenance-aware images must be built and published with release-model.py.
+# This script may register an already published provenance-aware image with
+# --register-only, but it cannot create an official release artifact.
 #
 # Configuration is read from scripts/.env.deploy (see scripts/.env.deploy.example),
 # overridable via DEPLOY_ENV_FILE. With --all, the models root can be overridden
@@ -58,6 +64,7 @@ ASSUME_YES=false
 BUILD_ONLY=false
 PUSH_ONLY=false
 REGISTER_ONLY=false
+PUBLISH_LATEST=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -68,6 +75,7 @@ while [[ $# -gt 0 ]]; do
     --build-only)    BUILD_ONLY=true; shift ;;
     --push-only)     PUSH_ONLY=true; shift ;;
     --register-only) REGISTER_ONLY=true; shift ;;
+    --publish-latest) PUBLISH_LATEST=true; shift ;;
     -h|--help)       awk 'NR>1 && !/^#/{exit} NR>1{sub(/^# ?/,""); print}' "$0"; exit 0 ;;
     -*)              die "Unknown option: $1" ;;
     *)
@@ -192,6 +200,10 @@ deploy_model() {
   image_repo="$DOCKERHUB_USER/$IMAGE_PREFIX-$(echo "$model_name" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-' '-' | sed 's/-*$//')"
   image="$image_repo:$version"
 
+  if ! $REGISTER_ONLY && [[ "$(jq -r 'has("provenance")' "$model_info")" == "true" ]]; then
+    die "Provenance-aware images must be built and published with scripts/release-model.py; use --register-only here after the immutable image has been published"
+  fi
+
   log "Model:   $model_name"
   log "Version: $version"
   log "Image:   $image"
@@ -216,7 +228,9 @@ deploy_model() {
       log "Passing HuggingFace token secret from $hf_token_file."
     fi
     log "Phase 1/3: building image..."
-    docker build "${build_args[@]}" -t "$image" -t "$image_repo:latest" "$model_dir" || die "docker build failed for $model_dir"
+    local image_tags=(-t "$image")
+    $PUBLISH_LATEST && image_tags+=(-t "$image_repo:latest")
+    docker build "${build_args[@]}" "${image_tags[@]}" "$model_dir" || die "docker build failed for $model_dir"
     log "Build complete."
     $BUILD_ONLY && return 0
   fi
@@ -225,7 +239,10 @@ deploy_model() {
   if ! $REGISTER_ONLY; then
     log "Phase 2/3: pushing to Docker Hub..."
     docker push "$image" || die "docker push failed for $image"
-    docker push "$image_repo:latest" || die "docker push failed for $image_repo:latest"
+    if $PUBLISH_LATEST; then
+      docker push "$image_repo:latest" || die "docker push failed for $image_repo:latest"
+      warn "Published latest as a convenience alias; deployments must continue to use $image."
+    fi
     log "Push complete."
     $PUSH_ONLY && return 0
   fi
