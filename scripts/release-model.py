@@ -28,6 +28,7 @@ SEMVER_PATTERN = re.compile(
     r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
+DOCKER_TAG_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$")
 IMAGE_REPOSITORY_PATTERN = re.compile(
     r"^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)+$"
 )
@@ -214,6 +215,11 @@ def load_release_metadata(model_dir: Path, source_revision: str) -> ReleaseMetad
     version = require_string(manifest.get("version"), "version")
     if not SEMVER_PATTERN.fullmatch(version):
         raise ReleaseError("version must be a semantic version such as 1.0.0")
+    if not DOCKER_TAG_PATTERN.fullmatch(version):
+        raise ReleaseError(
+            "version must also be a valid Docker tag; SemVer build metadata (+...) "
+            "is not supported"
+        )
 
     provenance = manifest.get("provenance")
     if not isinstance(provenance, dict):

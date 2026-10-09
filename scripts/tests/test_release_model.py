@@ -188,6 +188,17 @@ class ReleaseModelTests(unittest.TestCase):
         with self.assertRaisesRegex(RELEASE.ReleaseError, "semantic version"):
             self.metadata()
 
+    def test_semver_build_metadata_is_rejected_before_forming_the_docker_tag(self):
+        self.manifest["version"] = "1.2.3+cuda"
+        self.write_manifest()
+
+        with self.assertRaisesRegex(RELEASE.ReleaseError, "build metadata"):
+            self.metadata()
+
+        self.manifest["version"] = "1.2.3-rc.1"
+        self.write_manifest()
+        self.assertEqual("1.2.3-rc.1", self.metadata().version)
+
     def test_image_repository_is_restricted_and_cannot_include_a_tag(self):
         RELEASE.validate_image_repository("heartwisehub/pacs-ai-example", "heartwisehub")
         for repository in (
