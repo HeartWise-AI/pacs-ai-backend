@@ -1,0 +1,125 @@
+name: Publish inference model image
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_directory:
+        description: Model directory under model-examples/
+        required: true
+        type: string
+      image_repository:
+        description: Docker repository without a tag (heartwisehub/...)
+        required: true
+        type: string
+      publish_latest:
+        description: Also publish latest as a non-authoritative alias
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-release-${{ inputs.image_repository }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/master'
+    runs-on: [self-hosted, linux, x64, pacs-ai-release]
+    environment: model-release
+    timeout-minutes: 180
+    env:
+      MODEL_DIRECTORY: ${{ inputs.model_directory }}
+      IMAGE_REPOSITORY: ${{ inputs.image_repository }}
+      PUBLISH_LATEST: ${{ inputs.publish_latest }}
+      PACS_AI_RELEASE_NAMESPACE: heartwisehub
+      HF_TOKEN_FILE: /etc/pacs-ai-release/secrets/hf_token
+      DOCKERHUB_USERNAME_FILE: /etc/pacs-ai-release/secrets/dockerhub_username
+      DOCKERHUB_TOKEN_FILE: /etc/pacs-ai-release/secrets/dockerhub_token
+    steps:
+      - name: Check out the selected main commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure ephemeral release paths
+        shell: bash
+        run: |
+          {
+            echo "DOCKER_CONFIG=$RUNNER_TEMP/pacs-ai-docker-config"
+            echo "RELEASE_EVIDENCE=$RUNNER_TEMP/model-release-evidence.json"
+          } >> "$GITHUB_ENV"
+
+      - name: Validate runner and local credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          require_private_file() {
+            local file="$1" mode
+            test -r "$file"
+            mode=$(stat -c '%a' "$file")
+            if (( (8#$mode & 8#077) != 0 )); then
+              echo "Credential file must not be accessible by group or other users: $file" >&2
+              exit 1
+            fi
+          }
+          test -S /var/run/docker.sock
+          test -r "$DOCKERHUB_USERNAME_FILE"
+          require_private_file "$DOCKERHUB_TOKEN_FILE"
+          if grep -q 'mount=type=secret,id=hf_token' "$MODEL_DIRECTORY/Dockerfile"; then
+            require_private_file "$HF_TOKEN_FILE"
+          fi
+          mkdir -p "$DOCKER_CONFIG"
+
+      - name: Authenticate to the private model registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker login \
+            --username "$(tr -d '\r\n' < "$DOCKERHUB_USERNAME_FILE")" \
+            --password-stdin \
+            < "$DOCKERHUB_TOKEN_FILE"
+
+      - name: Build, verify, and publish immutable image
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest_argument=()
+          if [[ "$PUBLISH_LATEST" == "true" ]]; then
+            latest_argument+=(--publish-latest)
+          fi
+          python3 scripts/release-model.py \
+            "$MODEL_DIRECTORY" \
+            --image-repository "$IMAGE_REPOSITORY" \
+            --hf-token-file "$HF_TOKEN_FILE" \
+            --publish \
+            --evidence "$RELEASE_EVIDENCE" \
+            "${latest_argument[@]}"
+
+      - name: Add release evidence to the workflow summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## Model release evidence'
+            echo '```json'
+            cat "$RELEASE_EVIDENCE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: model-release-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/model-release-evidence.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Remove temporary registry credentials
+        if: always()
+        shell: bash
+        run: rm -rf "$DOCKER_CONFIG"

@@ -82,6 +82,10 @@ Key fields: `modelId`, `modelName`, `modality` ("Angiogram"), `dicomUploadMin`/`
 - **Immutable provenance:** new production images should include the complete `provenance` object defined
   in `docs/model-provenance-contract.md`. Legacy manifests may omit it during migration. Partial values,
   mutable branches, placeholder revisions, and unverified checkpoint hashes are invalid.
+- **Reproducible release:** official images are built after merge with `scripts/release-model.py` through
+  the protected self-hosted release workflow. The semantic-version tag and resolved registry digest are
+  authoritative; `Dockerfile.local` and `latest` are never release identity. See
+  `docs/model-image-release.md`.
 
 ### 4. `logic.py` — required model-specific code
 Subclass `BasePredictionService`. This is **not** template plumbing — each model’s heads, report text,
@@ -137,9 +141,12 @@ zero-padding content must shift the logit by **exactly 0.0**.
 ## HuggingFace checkpoint wiring
 - Weights live in a **gated** HF repo (e.g. `heartwise/CathEF_CLIP`, `heartwise/DeepRV_CLIP`). Repo holds
   `best_model_epoch_<K>.pt`, `config.json`, `training_config.yaml`.
-- `download_model.py`: `snapshot_download(repo_id="<this-model-repo>", token=<hf_token>)`.
-- Dockerfile: `RUN --mount=type=secret,id=hf_token python download_model.py --token $(cat /run/secrets/hf_token)`.
-  Build: `docker build --secret id=hf_token,src=./hf_token.txt -t heartwisehub/<model>:<v> .`
+- `download_model.py`: use the release-supplied repository, immutable revision, checkpoint path, and
+  expected SHA-256. Fail when the selected file is absent or its bytes differ.
+- Dockerfile: consume the standard `PACS_AI_*` release arguments and read credentials from
+  `RUN --mount=type=secret,id=hf_token`; never put a token in `ARG`, `ENV`, or a command argument.
+- Local candidate build: `python3 scripts/release-model.py model-examples/<ModelName>
+  --image-repository heartwisehub/<repository> --hf-token-file /secure/path/hf_token`.
 - Gated repos 401 for anonymous API/search — they will NOT show in a public HF org listing.
 
 ## Reproduce a deployed prediction locally (verification recipe)
@@ -163,37 +170,26 @@ zero-padding content must shift the logit by **exactly 0.0**.
 - [ ] `dicomUploadMax` == `num_videos`; `dicomUploadMin` is usually `1`; head names match checkpoint.
 - [ ] SeriesTime sort happens in `logic.py`.
 - [ ] `model_path` matches the `.pt` in the HF repo; weights gated behind `hf_token`.
-- [ ] Deployed image rebuilt from current `master` (deployment skew hides config fixes).
-- [ ] Image built with the `hf_token` secret, pushed to `heartwisehub`, deployment repointed to the new tag.
+- [ ] Official image built after merge from the intended `master` commit (deployment skew hides config fixes).
+- [ ] Protected workflow recorded matching runtime provenance, OCI labels, and immutable registry digest.
 - [ ] Registered api-pacs `outputMode` is the mode you want (JSON vs HTML); redeploy keeps the old value.
 
-## Build & publish the image (Docker Hub)
+## Build and publish the image
 ```bash
-# 1. build — pulls the gated HF weights via the hf_token build secret
-docker build --secret id=hf_token,src=./hf_token.txt -t heartwisehub/<model>:<version> .
-
-# 2. authenticate to Docker Hub
-docker login
-
-# 3. push to the heartwisehub organization
-docker push heartwisehub/<model>:<version>
+python3 scripts/release-model.py model-examples/<ModelName> \
+  --image-repository heartwisehub/<repository> \
+  --hf-token-file /secure/path/hf_token
 ```
-Preferred one-shot path (build + push + register):
-```bash
-DEFAULT_OUTPUT_MODE=HTML ./scripts/deploy-model.sh model-examples/<ModelName> --hf-token-file hf_token.txt
-```
+This local command builds, inspects, and starts the candidate without publishing it. Official publication
+is a manually approved, post-merge run of `.github/workflows/publish-model-image.yml` on the
+HeartWise-controlled release runner. The workflow publishes the semantic-version tag, resolves the digest,
+and uploads release evidence. `latest` is optional and never deployment identity.
+
 Notes:
 - `DEFAULT_OUTPUT_MODE` applies only when the model is **new**. Redeploying an existing model keeps its
   current registered `outputMode`; change it via admin UI / `PUT /v1/inference/model/{id}/update` if needed.
-- Model images are published under the **`heartwisehub`** Docker Hub org. Pushing requires **membership in
-  that org**. If you see:
-  ```
-  denied: requested access to the resource is denied
-  ```
-  you are either not logged in (`docker login`) or your Docker Hub account is not a member of `heartwisehub`.
-  **Fix:** `docker login`, then have a `heartwisehub` org owner invite your Docker Hub account
-  (Docker Hub → Organizations → heartwisehub → Members → *Invite member*). Org invitation is a Docker Hub
-  admin action — it cannot be done from this repo or by an AI agent.
-- After pushing a new tag you MUST **repoint the deployment to it and redeploy** the model container — a
+- After publishing a new digest you MUST **repoint the deployment to it and redeploy** the model container — a
   running container keeps its old image (and its baked `model_info.json`), which is exactly what causes the
   stale Step-2 variables page described above.
+- `Dockerfile.local` accepts preloaded weights for disposable development builds only. Verify their
+  fingerprint and use a local tag; do not publish it as an official version.

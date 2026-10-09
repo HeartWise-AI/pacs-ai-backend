@@ -445,8 +445,9 @@ port, or debug one, see **[`model-examples/README.md`](model-examples/README.md)
 layout, the model-specific files to edit (`config.json` / `class_mapping.json` / `model_info.json` /
 `logic.py` / `download_model.py`), the zero-padding attention-mask contract (PR #242), the
 `supportedAdditionalMetadata` → Step-2 variables page, HuggingFace-gated checkpoint wiring,
-`scripts/deploy-model.sh` registration/`outputMode` notes, and how to reproduce a deployed prediction
-locally.
+the [reproducible model release workflow](docs/model-image-release.md),
+`scripts/deploy-model.sh --register-only` registration/`outputMode` notes, and how to reproduce a deployed
+prediction locally.
 
 AI coding agents: the same guidance is available machine-readable at
 [`.claude/skills/pacs-ai-model-mapping/SKILL.md`](.claude/skills/pacs-ai-model-mapping/SKILL.md) (Claude Code)

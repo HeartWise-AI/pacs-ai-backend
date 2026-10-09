@@ -46,6 +46,12 @@ New production images should add complete immutable provenance to `data/model_in
 [repository provenance contract](../docs/model-provenance-contract.md). Legacy manifests may omit the
 field during migration, but partial provenance and mutable revisions are rejected.
 
+Official images are built only after merge through the
+[reproducible model release workflow](../docs/model-image-release.md). The workflow stamps the exact source
+commit, verifies the checkpoint, compares OCI labels with `/inference/model-info`, pushes the versioned
+image, and records its immutable registry digest. A local Dockerfile or `latest` tag is never release
+identity.
+
 After starting the Docker container, user should be able to interact with the Inference API docs at `http://<host>/docs`.
 
 The endpoints are also documented for the payloads and responses they accept and return, as well as examples.

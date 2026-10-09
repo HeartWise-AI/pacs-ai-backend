@@ -31,6 +31,8 @@ The Python inference runtime and Go backend apply the same rules:
 
 The reproducible image build supplies `PACS_AI_SOURCE_REVISION`. The inference runtime validates that value and substitutes it for the source manifest's `null` value in `/inference/model-info`. The source manifest remains reusable and does not change during the build.
 
+Official inference images are built after merge with `scripts/release-model.py` and the protected GitHub Actions workflow described in [Reproducible model image releases](model-image-release.md). The release process verifies that the manifest, build inputs, OCI labels, runtime response, local image ID, and pushed registry digest describe the same artifact.
+
 ## Migration behavior
 
 Provenance is optional while existing images are migrated. A legacy manifest that omits `provenance` remains valid and its API response omits the field. Explicit `null`, partial objects, placeholders, mutable branches, and invented fingerprints are not valid migration states.
