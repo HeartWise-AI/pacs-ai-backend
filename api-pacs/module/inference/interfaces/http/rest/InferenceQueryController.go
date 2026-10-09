@@ -310,6 +310,7 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 			ModelName:                     inferenceAvailableModel.ModelName,
 			ModelFacts:                    types.ModelFacts(inferenceAvailableModel.ModelFacts),
 			Version:                       inferenceAvailableModel.Version,
+			Provenance:                    inferenceAvailableModel.Provenance,
 			DicomTargetLevel:              inferenceAvailableModel.DicomTargetLevel,
 			DicomUploadMin:                inferenceAvailableModel.DicomUploadMin,
 			DicomUploadMax:                inferenceAvailableModel.DicomUploadMax,

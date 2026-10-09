@@ -219,6 +219,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 						ModelName:                     modelInfo.Data.ModelName,
 						ModelFacts:                    types.ModelFacts(modelFacts.Data),
 						Version:                       modelInfo.Data.Version,
+						Provenance:                    modelInfo.Data.Provenance,
 						DicomTargetLevel:              modelInfo.Data.DicomTargetLevel,
 						DicomUploadMin:                modelInfo.Data.DicomUploadMin,
 						DicomUploadMax:                modelInfo.Data.DicomUploadMax,

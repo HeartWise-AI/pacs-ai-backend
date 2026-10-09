@@ -61,6 +61,12 @@ func (d *DockerInferenceAPI) GetModelInfo(ctx context.Context, containerName str
 		log.Printf("Invalid model resource metadata: %v", err)
 		return types.GetModelInfoResponse{}, errors.New(apiError.DockerInferenceError)
 	}
+	if response.Data.Provenance != nil {
+		if err = response.Data.Provenance.Validate(); err != nil {
+			log.Printf("Invalid model provenance metadata: %v", err)
+			return types.GetModelInfoResponse{}, errors.New(apiError.DockerInferenceError)
+		}
+	}
 
 	return response, nil
 }

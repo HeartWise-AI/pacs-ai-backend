@@ -184,22 +184,23 @@ type GetInferenceModelResponse struct {
 }
 
 type GetInferenceAvailableModelResponse struct {
-	ContainerID                   string            `json:"containerId"`
-	ContainerName                 string            `json:"containerName"`
-	ModelID                       string            `json:"modelId"`
-	ModelName                     string            `json:"modelName"`
-	ModelFacts                    ModelFacts        `json:"modelFacts"`
-	Version                       string            `json:"version"`
-	DicomTargetLevel              string            `json:"dicomTargetLevel"`
-	DicomUploadMin                int               `json:"dicomUploadMin"`
-	DicomUploadMax                int               `json:"dicomUploadMax"`
-	SupportedDicomModalities      []string          `json:"supportedDicomModalities"`
-	SupportedDicomTags            []string          `json:"supportedDicomTags"`
-	SupportedAdditionalMetadata   []interface{}     `json:"supportedAdditionalMetadata"`
-	ApproveFeedbackQuestionnaires []interface{}     `json:"approveFeedbackQuestionnaires"`
-	RejectFeedbackQuestionnaires  []interface{}     `json:"rejectFeedbackQuestionnaires"`
-	OnboardingModelQuestionnaires []interface{}     `json:"onboardingModelQuestionnaires"`
-	OutputMode                    entity.OutputMode `json:"outputMode"`
+	ContainerID                   string                                `json:"containerId"`
+	ContainerName                 string                                `json:"containerName"`
+	ModelID                       string                                `json:"modelId"`
+	ModelName                     string                                `json:"modelName"`
+	ModelFacts                    ModelFacts                            `json:"modelFacts"`
+	Version                       string                                `json:"version"`
+	Provenance                    *dockerInferenceTypes.ModelProvenance `json:"provenance,omitempty"`
+	DicomTargetLevel              string                                `json:"dicomTargetLevel"`
+	DicomUploadMin                int                                   `json:"dicomUploadMin"`
+	DicomUploadMax                int                                   `json:"dicomUploadMax"`
+	SupportedDicomModalities      []string                              `json:"supportedDicomModalities"`
+	SupportedDicomTags            []string                              `json:"supportedDicomTags"`
+	SupportedAdditionalMetadata   []interface{}                         `json:"supportedAdditionalMetadata"`
+	ApproveFeedbackQuestionnaires []interface{}                         `json:"approveFeedbackQuestionnaires"`
+	RejectFeedbackQuestionnaires  []interface{}                         `json:"rejectFeedbackQuestionnaires"`
+	OnboardingModelQuestionnaires []interface{}                         `json:"onboardingModelQuestionnaires"`
+	OutputMode                    entity.OutputMode                     `json:"outputMode"`
 }
 
 type GetInferenceIngestionJobResponse struct {

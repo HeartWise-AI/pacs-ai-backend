@@ -37,6 +37,10 @@ read it directly). It documents the full model→PACS-AI mapping. The essentials
 7. **Registered `outputMode`** (JSON/HTML/…) is chosen when the model is added in api-pacs / via
    `scripts/deploy-model.sh` (`DEFAULT_OUTPUT_MODE`). It is separate from `supportedOutputModes` in
    `model_info.json`. Redeploying an existing model keeps its prior `outputMode`.
+8. **Provenance is optional only for legacy images:** when `data/model_info.json` contains `provenance`,
+   it must be complete and immutable: repository IDs, pinned 40-character revisions, a normalized relative
+   checkpoint path, and its lowercase SHA-256. Never add placeholders or partial provenance. See
+   `docs/model-provenance-contract.md`.
 
 ## Verify a prediction locally
 Reproduce a deployed number with the recipe in the skill: `snapshot_download` the gated checkpoint, rebuild

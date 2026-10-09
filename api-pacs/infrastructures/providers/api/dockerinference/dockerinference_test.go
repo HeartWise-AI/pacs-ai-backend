@@ -108,3 +108,37 @@ func TestGetModelInfoRejectsMissingResources(t *testing.T) {
 	)
 	require.Error(t, err)
 }
+
+func TestGetModelInfoRejectsMalformedProvenance(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{
+			"success": true,
+			"data": {
+				"modelId": "invalid",
+				"resources": {
+					"gpuRequired": true,
+					"residentMemoryMiB": 5744,
+					"peakMemoryMiB": 6488,
+					"maxConcurrentInferences": 1,
+					"idleTimeoutSeconds": 600
+				},
+				"provenance": {
+					"sourceRepository": "HeartWise-AI/pacs-ai-backend",
+					"sourceRevision": null,
+					"modelRepository": "heartwise/model",
+					"modelRevision": "not-an-immutable-revision",
+					"weightsPath": "models/model.pt",
+					"weightsSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+				}
+			}
+		}`))
+	}))
+	t.Cleanup(server.Close)
+
+	_, err := (&DockerInferenceAPI{}).GetModelInfo(
+		context.Background(),
+		strings.TrimPrefix(server.URL, "http://"),
+	)
+	require.Error(t, err)
+}

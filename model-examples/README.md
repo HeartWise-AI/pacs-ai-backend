@@ -36,7 +36,9 @@ where `task` is `regression` (clamp using mapping bounds) or `binary_classificat
 must match the checkpoint keys `mil_model.module.heads.<name>.*`.
 
 **`data/model_info.json`** — `modelId/modelName/modality`, upload bounds, `supportedOutputModes`, feedback
-questionnaires, and **`supportedAdditionalMetadata`**.
+questionnaires, **`supportedAdditionalMetadata`**, and immutable model provenance when the artifact has
+been pinned. See the [model provenance contract](../docs/model-provenance-contract.md); omit provenance for
+a legacy model instead of adding partial values or placeholders.
 
 **`logic.py`** — required. Owns head post-process, JSON/HTML reports, SeriesTime sort + truncate,
 padding `video_mask`, and optional metadata filters. Do not ship a copied sibling model's `logic.py`
