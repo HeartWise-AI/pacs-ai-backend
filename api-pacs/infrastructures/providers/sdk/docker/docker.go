@@ -9,11 +9,13 @@ import (
 	"strings"
 	"time"
 
+	engine "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/errdefs"
 	"github.com/docker/go-connections/nat"
 
 	"api-pacs/infrastructures/providers/sdk/docker/types"
@@ -68,13 +70,27 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 		ShmSize: 2 * 1024 * 1024 * 1024, // 2GB in bytes
 	}
 
+	networkConfig := &network.NetworkingConfig{
+		EndpointsConfig: map[string]*network.EndpointSettings{
+			d.Network: {}, // external network
+		},
+	}
+	if config.TemplateContainerID != "" {
+		template, inspectErr := d.Client.ContainerInspect(ctx, config.TemplateContainerID)
+		if inspectErr != nil {
+			log.Println("[docker] error:", inspectErr)
+			return "", inspectErr
+		}
+		hostConfig = applyCandidateTemplate(containerConfig, hostConfig, networkConfig, template)
+	}
+
 	// try to use NVIDIA runtime if available
 	isNvidiaSupported, err := d.checkNvidiaRuntime(ctx)
 	if err != nil {
 		return "", err
 	}
 
-	if isNvidiaSupported {
+	if isNvidiaSupported && config.TemplateContainerID == "" {
 		hostConfig.Runtime = "nvidia"
 		// use all GPUs
 		hostConfig.Resources = container.Resources{
@@ -86,20 +102,15 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 				},
 			},
 		}
-	} else {
+	} else if !isNvidiaSupported {
 		log.Println("[docker] NVIDIA runtime not available")
 	}
 
-	// define network config
-	networkConfig := &network.NetworkingConfig{
-		EndpointsConfig: map[string]*network.EndpointSettings{
-			d.Network: {}, // external network
-		},
-	}
-
 	// override with DNS settings to block internet access
-	hostConfig.DNS = []string{"0.0.0.0"} // invalid DNS to prevent resolution
-	hostConfig.DNSSearch = []string{""}  // empty DNS search
+	if config.TemplateContainerID == "" {
+		hostConfig.DNS = []string{"0.0.0.0"} // invalid DNS to prevent resolution
+		hostConfig.DNSSearch = []string{""}  // empty DNS search
+	}
 
 	// create container
 	resp, err := d.Client.ContainerCreate(ctx, containerConfig, hostConfig, networkConfig, nil, config.Name)
@@ -109,6 +120,35 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 	}
 
 	return resp.ID, nil
+}
+
+func applyCandidateTemplate(
+	containerConfig *container.Config,
+	hostConfig *container.HostConfig,
+	networkConfig *network.NetworkingConfig,
+	template engine.ContainerJSON,
+) *container.HostConfig {
+	if template.Config != nil {
+		containerConfig.ExposedPorts = template.Config.ExposedPorts
+	}
+	if template.HostConfig != nil {
+		copiedHostConfig := *template.HostConfig
+		// A candidate may share runtime resources and mounts, but must never
+		// claim the active deployment's published host ports.
+		copiedHostConfig.PortBindings = nil
+		copiedHostConfig.PublishAllPorts = false
+		copiedHostConfig.Links = nil
+		copiedHostConfig.AutoRemove = false
+		copiedHostConfig.ContainerIDFile = ""
+		hostConfig = &copiedHostConfig
+	}
+	if template.NetworkSettings != nil && len(template.NetworkSettings.Networks) != 0 {
+		networkConfig.EndpointsConfig = make(map[string]*network.EndpointSettings, len(template.NetworkSettings.Networks))
+		for networkName := range template.NetworkSettings.Networks {
+			networkConfig.EndpointsConfig[networkName] = &network.EndpointSettings{}
+		}
+	}
+	return hostConfig
 }
 
 // GetContainerInfo gets the container info
@@ -204,12 +244,36 @@ func (d *DockerSDK) PullImage(ctx context.Context, imageName string) error {
 	return nil
 }
 
+// InspectImage returns the immutable local identity, repository digests, and
+// OCI labels used by the model-upgrade validator.
+func (d *DockerSDK) InspectImage(ctx context.Context, imageName string) (types.InspectImageResult, error) {
+	inspection, _, err := d.Client.ImageInspectWithRaw(ctx, imageName)
+	if err != nil {
+		log.Println("[docker] error:", err)
+		return types.InspectImageResult{}, err
+	}
+	labels := map[string]string{}
+	if inspection.Config != nil && inspection.Config.Labels != nil {
+		for key, value := range inspection.Config.Labels {
+			labels[key] = value
+		}
+	}
+	return types.InspectImageResult{
+		ID:          inspection.ID,
+		RepoDigests: append([]string(nil), inspection.RepoDigests...),
+		Labels:      labels,
+	}, nil
+}
+
 // RemoveContainer removes a container
 func (d *DockerSDK) RemoveContainer(ctx context.Context, containerID string) error {
 	err := d.Client.ContainerRemove(ctx, containerID, container.RemoveOptions{
 		RemoveVolumes: true,
 		Force:         true,
 	})
+	if errdefs.IsNotFound(err) {
+		return nil
+	}
 	if err != nil {
 		log.Println("[docker] error:", err)
 		return err

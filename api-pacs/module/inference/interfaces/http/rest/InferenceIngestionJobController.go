@@ -83,7 +83,7 @@ func (controller *InferenceCommandController) CreateInferenceIngestionJob(w http
 		return
 	}
 
-	err = controller.InferenceCommandServiceInterface.CreateInferenceIngestionJob(context.TODO(), serviceTypes.CreateInferenceIngestionJob{
+	err = controller.InferenceCommandServiceInterface.CreateInferenceIngestionJob(r.Context(), serviceTypes.CreateInferenceIngestionJob{
 		TenantID:               tenantID,
 		DICOMModality:          request.DICOMModality,
 		ContainerID:            request.ContainerID,
@@ -615,7 +615,7 @@ func (controller *InferenceCommandController) ImportInferenceIngestionJobsCSVFil
 		})
 	}
 
-	err = controller.InferenceCommandServiceInterface.ImportInferenceIngestionJobs(context.TODO(), jobs)
+	err = controller.InferenceCommandServiceInterface.ImportInferenceIngestionJobs(r.Context(), jobs)
 	if err != nil {
 		var httpCode int
 		var errorMsg string

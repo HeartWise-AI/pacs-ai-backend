@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"cloud.google.com/go/firestore"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -26,8 +28,123 @@ type InferenceCommandRepository struct {
 	postgresqlTypes.PostgresSQLDBHandlerInterface
 }
 
+type inferenceIngestionTarget struct {
+	ContainerID  string `db:"container_id"`
+	ModelVersion string `db:"model_version"`
+}
+
+func lockInferenceIngestionTarget(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	tenantID, containerID, modelVersion string,
+) (inferenceIngestionTarget, error) {
+	locked := make(map[string]struct{})
+	lock := func(target string) error {
+		key := tenantID + ":" + target
+		if _, exists := locked[key]; exists {
+			return nil
+		}
+		if _, err := tx.ExecContext(ctx,
+			"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", key,
+		); err != nil {
+			return err
+		}
+		locked[key] = struct{}{}
+		return nil
+	}
+	if err := lock(containerID); err != nil {
+		return inferenceIngestionTarget{}, err
+	}
+	query := `SELECT
+		COALESCE((SELECT to_container_id FROM inference_model_container_redirects
+			WHERE tenant_id = $1 AND from_container_id = $2), $2) AS container_id,
+		COALESCE((SELECT model_version FROM inference_model_container_redirects
+			WHERE tenant_id = $1 AND from_container_id = $2), $3) AS model_version`
+	for attempts := 0; attempts < 8; attempts++ {
+		var target inferenceIngestionTarget
+		if err := tx.GetContext(ctx, &target, query, tenantID, containerID, modelVersion); err != nil {
+			return inferenceIngestionTarget{}, err
+		}
+		key := tenantID + ":" + target.ContainerID
+		if _, exists := locked[key]; exists {
+			return target, nil
+		}
+		if err := lock(target.ContainerID); err != nil {
+			return inferenceIngestionTarget{}, err
+		}
+	}
+	return inferenceIngestionTarget{}, errors.New("inference ingestion target did not stabilize")
+}
+
+// ClaimInferenceModelDeletion atomically prevents a model upgrade from
+// starting before destructive deletion side effects begin.
+func (repository *InferenceCommandRepository) ClaimInferenceModelDeletion(
+	ctx context.Context,
+	ID, claimID string,
+) (entity.InferenceModel, error) {
+	var model entity.InferenceModel
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		return model, errors.New(apiError.FirestoreError)
+	}
+	docRef := firestoreClient.Collection(model.GetModelName()).Doc(ID)
+	err = firestoreClient.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		snapshot, getErr := tx.Get(docRef)
+		if getErr != nil {
+			if status.Code(getErr) == codes.NotFound {
+				return errors.New(apiError.MissingRecord)
+			}
+			return getErr
+		}
+		if decodeErr := snapshot.DataTo(&model); decodeErr != nil {
+			return decodeErr
+		}
+		model.ID = snapshot.Ref.ID
+		if model.ActiveUpgradeID != "" {
+			return errors.New(apiError.InferenceUpgradeConflict)
+		}
+		if model.DeletionClaimID != "" && model.DeletionClaimID != claimID {
+			return errors.New(apiError.InferenceUpgradeConflict)
+		}
+		if model.DeletionClaimID == claimID {
+			return nil
+		}
+		return tx.Update(docRef, []firestore.Update{{Path: "deletion_claim_id", Value: claimID}})
+	})
+	if err != nil {
+		switch err.Error() {
+		case apiError.MissingRecord, apiError.InferenceUpgradeConflict:
+			return entity.InferenceModel{}, err
+		default:
+			return entity.InferenceModel{}, errors.New(apiError.FirestoreError)
+		}
+	}
+	model.DeletionClaimID = claimID
+	return model, nil
+}
+
+// AcquireInferenceIngestionTarget resolves a possibly stale container target
+// and keeps its advisory locks until the caller has handed the dispatch off.
+func (repository *InferenceCommandRepository) AcquireInferenceIngestionTarget(
+	ctx context.Context,
+	tenantID, containerID, modelVersion string,
+) (string, string, func(), error) {
+	tx, err := repository.PostgresSQLDBHandlerInterface.BeginTx(ctx)
+	if err != nil {
+		return "", "", nil, errors.New(apiError.DatabaseError)
+	}
+	rollback := func() { _ = tx.Rollback() }
+	target, err := lockInferenceIngestionTarget(ctx, tx, tenantID, containerID, modelVersion)
+	if err != nil {
+		rollback()
+		return "", "", nil, errors.New(apiError.DatabaseError)
+	}
+	var once sync.Once
+	return target.ContainerID, target.ModelVersion, func() { once.Do(rollback) }, nil
+}
+
 // DeleteInferenceModel deletes an inference model
-func (repository *InferenceCommandRepository) DeleteInferenceModel(ctx context.Context, ID string) error {
+func (repository *InferenceCommandRepository) DeleteInferenceModel(ctx context.Context, ID, claimID string) error {
 	// firestore client
 	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
 	if err != nil {
@@ -35,15 +152,30 @@ func (repository *InferenceCommandRepository) DeleteInferenceModel(ctx context.C
 		return errors.New(apiError.FirestoreError)
 	}
 
-	// delete inference model
 	var model entity.InferenceModel
-
 	collectionPath := fmt.Sprintf("%s/%s", model.GetModelName(), ID)
 	docRef := firestoreClient.Doc(collectionPath)
-
-	_, err = docRef.Delete(ctx)
+	err = firestoreClient.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		snapshot, getErr := tx.Get(docRef)
+		if getErr != nil {
+			if status.Code(getErr) == codes.NotFound {
+				return nil
+			}
+			return getErr
+		}
+		if decodeErr := snapshot.DataTo(&model); decodeErr != nil {
+			return decodeErr
+		}
+		if model.ActiveUpgradeID != "" || model.DeletionClaimID != claimID {
+			return errors.New(apiError.InferenceUpgradeConflict)
+		}
+		return tx.Delete(docRef)
+	})
 	if err != nil {
 		log.Println(err)
+		if err.Error() == apiError.InferenceUpgradeConflict {
+			return err
+		}
 		return errors.New(apiError.FirestoreError)
 	}
 
@@ -224,7 +356,7 @@ func (repository *InferenceCommandRepository) InsertInferenceModel(ctx context.C
 }
 
 // InsertInferenceIngestionJob inserts a new inference ingestion job
-func (repository *InferenceCommandRepository) InsertInferenceIngestionJob(data types.CreateInferenceIngestionJob) error {
+func (repository *InferenceCommandRepository) InsertInferenceIngestionJob(ctx context.Context, data types.CreateInferenceIngestionJob) error {
 	job := entity.InferenceIngestionJob{
 		ID:                     data.ID,
 		TenantID:               data.TenantID,
@@ -244,9 +376,27 @@ func (repository *InferenceCommandRepository) InsertInferenceIngestionJob(data t
 		Status:                 data.Status,
 	}
 
-	stmt := fmt.Sprintf("INSERT INTO %s (id, tenant_id, dicom_modality, container_id, model_id, model_name, model_version, modalities, stability_minutes, recent_window_minutes, missing_polls_threshold, study_time_start, study_time_end, schedule_start_timestamp, schedule_end_timestamp, status) "+
-		"VALUES (:id, :tenant_id, :dicom_modality, :container_id, :model_id, :model_name, :model_version, :modalities, :stability_minutes, :recent_window_minutes, :missing_polls_threshold, :study_time_start, :study_time_end, :schedule_start_timestamp, :schedule_end_timestamp, :status)", job.GetModelName())
-	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
+	tx, err := repository.PostgresSQLDBHandlerInterface.BeginTx(ctx)
+	if err != nil {
+		return errors.New(apiError.DatabaseError)
+	}
+	defer func() { _ = tx.Rollback() }()
+	target, err := lockInferenceIngestionTarget(ctx, tx, job.TenantID, job.ContainerID, job.ModelVersion)
+	if err != nil {
+		return errors.New(apiError.DatabaseError)
+	}
+	job.ContainerID = target.ContainerID
+	job.ModelVersion = target.ModelVersion
+	stmt := fmt.Sprintf(`INSERT INTO %s (
+		id, tenant_id, dicom_modality, container_id, model_id, model_name, model_version,
+		modalities, stability_minutes, recent_window_minutes, missing_polls_threshold,
+		study_time_start, study_time_end, schedule_start_timestamp, schedule_end_timestamp, status
+	) VALUES (
+		:id, :tenant_id, :dicom_modality, :container_id, :model_id, :model_name, :model_version,
+		:modalities, :stability_minutes, :recent_window_minutes, :missing_polls_threshold,
+		:study_time_start, :study_time_end, :schedule_start_timestamp, :schedule_end_timestamp, :status
+	)`, job.GetModelName())
+	_, err = tx.NamedExecContext(ctx, stmt, job)
 	if err != nil {
 		log.Println(err)
 
@@ -257,6 +407,9 @@ func (repository *InferenceCommandRepository) InsertInferenceIngestionJob(data t
 			}
 		}
 
+		return errors.New(apiError.DatabaseError)
+	}
+	if err = tx.Commit(); err != nil {
 		return errors.New(apiError.DatabaseError)
 	}
 

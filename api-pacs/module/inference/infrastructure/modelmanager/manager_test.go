@@ -723,3 +723,174 @@ func TestConcurrentReconciliationIsRejectedAndAdmissionStaysClosed(t *testing.T)
 		t.Fatal("manager did not become ready")
 	}
 }
+
+func TestBlockAndDrainRejectsNewAdmissionAndWaitsForActiveInference(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	b.predict = func(ctx context.Context, _ Model, _ types.PredictRequest) (types.PredictResponse, error) {
+		close(started)
+		select {
+		case <-ctx.Done():
+			return types.PredictResponse{}, ctx.Err()
+		case <-release:
+			return types.PredictResponse{Success: true}, nil
+		}
+	}
+	m := manager(t, b, 100)
+	prediction := request(m, 1)
+	<-started
+	drained := make(chan error, 1)
+	go func() { drained <- m.BlockAndDrain(context.Background(), id(1)) }()
+	until(t, func() bool { return m.Snapshot().Models[id(1)].Blocked })
+
+	if _, err := m.Predict(context.Background(), id(1), types.PredictRequest{}); !errors.Is(err, ErrAdmissionBlocked) {
+		t.Fatalf("new inference was not rejected during drain: %v", err)
+	}
+	select {
+	case err := <-drained:
+		t.Fatalf("drain completed before active inference: %v", err)
+	default:
+	}
+	close(release)
+	receive(t, prediction)
+	if err := <-drained; err != nil {
+		t.Fatal(err)
+	}
+	snapshot := m.Snapshot().Models[id(1)]
+	if !snapshot.Blocked || snapshot.Loaded || snapshot.ReservedMiB != 0 || snapshot.State != types.RuntimeUnloaded {
+		t.Fatalf("unexpected drained state: %+v", snapshot)
+	}
+}
+
+func TestTimedOutDrainCanReopenAdmissionWhileActiveLeaseFinishes(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	b.predict = func(ctx context.Context, _ Model, _ types.PredictRequest) (types.PredictResponse, error) {
+		close(started)
+		select {
+		case <-ctx.Done():
+			return types.PredictResponse{}, ctx.Err()
+		case <-release:
+			return types.PredictResponse{Success: true}, nil
+		}
+	}
+	m := manager(t, b, 100)
+	prediction := request(m, 1)
+	<-started
+	drainCtx, cancelDrain := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	err := m.BlockAndDrain(drainCtx, id(1))
+	cancelDrain()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("drain did not time out while inference was active: %v", err)
+	}
+	if err = m.Unblock(id(1)); err != nil {
+		t.Fatalf("active model admission block could not be cancelled: %v", err)
+	}
+	queuedCtx, cancelRequest := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	err = <-requestCtx(m, queuedCtx, 1)
+	cancelRequest()
+	if errors.Is(err, ErrAdmissionBlocked) {
+		t.Fatalf("admission remained blocked after drain cancellation: %v", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("new request did not queue behind the active lease: %v", err)
+	}
+	close(release)
+	receive(t, prediction)
+}
+
+func TestReplaceAndPrepareKeepsCandidateBlockedUntilExplicitActivation(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	b.add(2, 40, 90)
+	m := manager(t, b, 120)
+	receive(t, request(m, 1))
+	if err := m.BlockAndDrain(context.Background(), id(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ReplaceDrained(id(1), id(2)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.PrepareBlocked(context.Background(), id(2)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Predict(context.Background(), id(2), types.PredictRequest{}); !errors.Is(err, ErrAdmissionBlocked) {
+		t.Fatalf("candidate admitted before activation: %v", err)
+	}
+	snapshot := m.Snapshot()
+	previous := snapshot.Models[id(1)]
+	if !previous.Blocked || previous.Loaded || previous.ReservedMiB != 0 {
+		t.Fatalf("old model was not retained as a blocked tombstone: %+v", previous)
+	}
+	candidate := snapshot.Models[id(2)]
+	if !candidate.Blocked || !candidate.Loaded || candidate.ReservedMiB != 40 || candidate.State != types.RuntimeReady {
+		t.Fatalf("candidate was not prepared under accounting: %+v", candidate)
+	}
+	if err := m.Unblock(id(2)); err != nil {
+		t.Fatal(err)
+	}
+	receive(t, request(m, 2))
+	if _, err := m.Predict(context.Background(), id(1), types.PredictRequest{}); !errors.Is(err, ErrAdmissionBlocked) {
+		t.Fatalf("stale old-container admission was not blocked: %v", err)
+	}
+}
+
+func TestPrepareBlockedRetainsReservationWhenFailureCleanupIsUnconfirmed(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	b.add(2, 40, 90)
+	m := manager(t, b, 120)
+	receive(t, request(m, 1))
+	if err := m.BlockAndDrain(context.Background(), id(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ReplaceDrained(id(1), id(2)); err != nil {
+		t.Fatal(err)
+	}
+	b.load = func(context.Context, Model) error { return errors.New("load failed after allocation") }
+	b.unload = func(context.Context, Model) error { return errors.New("cleanup unavailable") }
+	if err := m.PrepareBlocked(context.Background(), id(2)); err == nil {
+		t.Fatal("candidate preparation unexpectedly succeeded")
+	}
+	candidate := m.Snapshot().Models[id(2)]
+	if candidate.State != types.RuntimeError || !candidate.Loaded || candidate.ReservedMiB != 90 || candidate.Active {
+		t.Fatalf("uncertain GPU allocation was not quarantined: %+v", candidate)
+	}
+}
+
+func TestReplaceDrainedRestoresBlockedTombstoneDuringRollback(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	b.add(2, 40, 90)
+	m := manager(t, b, 120)
+	receive(t, request(m, 1))
+	if err := m.BlockAndDrain(context.Background(), id(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ReplaceDrained(id(1), id(2)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.PrepareBlocked(context.Background(), id(2)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.BlockAndDrain(context.Background(), id(2)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ReplaceDrained(id(2), id(1)); err != nil {
+		t.Fatalf("rollback could not restore the previous tombstone: %v", err)
+	}
+	if err := m.PrepareBlocked(context.Background(), id(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Unblock(id(1)); err != nil {
+		t.Fatal(err)
+	}
+	receive(t, request(m, 1))
+	if _, err := m.Predict(context.Background(), id(2), types.PredictRequest{}); !errors.Is(err, ErrAdmissionBlocked) {
+		t.Fatalf("rolled-back candidate tombstone admitted stale work: %v", err)
+	}
+}

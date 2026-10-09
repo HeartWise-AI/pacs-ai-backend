@@ -21,10 +21,11 @@ import (
 
 type processingRunTestHandler struct {
 	postgresqlTypes.PostgresSQLDBHandlerInterface
-	db       *sqlx.DB
-	query    func(string, interface{}, interface{}) error
-	queryRow func(string, interface{}, interface{}) error
-	execute  func(string, interface{}) (sql.Result, error)
+	db              *sqlx.DB
+	query           func(string, interface{}, interface{}) error
+	queryRow        func(string, interface{}, interface{}) error
+	queryRowContext func(context.Context, string, interface{}, interface{}) error
+	execute         func(string, interface{}) (sql.Result, error)
 }
 
 func TestProcessingRunStudyLockKeyIsPostgresSafeAndUnambiguous(t *testing.T) {
@@ -40,11 +41,22 @@ func (handler *processingRunTestHandler) Begin() (*sqlx.Tx, error) {
 	return handler.db.Beginx()
 }
 
+func (handler *processingRunTestHandler) BeginTx(ctx context.Context) (*sqlx.Tx, error) {
+	return handler.db.BeginTxx(ctx, nil)
+}
+
 func (handler *processingRunTestHandler) Query(query string, model interface{}, target interface{}) error {
 	return handler.query(query, model, target)
 }
 
 func (handler *processingRunTestHandler) QueryRow(query string, model interface{}, target interface{}) error {
+	return handler.queryRow(query, model, target)
+}
+
+func (handler *processingRunTestHandler) QueryRowContext(ctx context.Context, query string, model interface{}, target interface{}) error {
+	if handler.queryRowContext != nil {
+		return handler.queryRowContext(ctx, query, model, target)
+	}
 	return handler.queryRow(query, model, target)
 }
 

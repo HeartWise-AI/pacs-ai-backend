@@ -32,6 +32,14 @@ func writeInferenceManagerError(w http.ResponseWriter, err error) bool {
 		Message:   "Inference capacity is temporarily unavailable.",
 		ErrorCode: apiError.InferenceAdmissionTimeout,
 	}
+	var detailed interface {
+		ErrorCode() string
+		PublicMessage() string
+	}
+	if stderrors.As(err, &detailed) {
+		response.ErrorCode = detailed.ErrorCode()
+		response.Message = detailed.PublicMessage()
+	}
 	response.JSON(w)
 	return true
 }

@@ -16,8 +16,13 @@ on:
       - "api-pacs/infrastructures/providers/api/dockerinference/**"
       - "api-pacs/infrastructures/providers/sdk/docker/**"
       - "api-pacs/module/inference/infrastructure/modelmanager/**"
+      - "api-pacs/module/inference/infrastructure/modelupgrade/**"
       - "api-pacs/module/inference/infrastructure/containerready/**"
+      - "api-pacs/module/inference/infrastructure/repository/**"
       - "api-pacs/module/inference/infrastructure/service/**"
+      - "api-pacs/module/inference/domain/**"
+      - "api-pacs/module/inference/application/**"
+      - "api-pacs/module/inference/interfaces/**"
       - "api-pacs/interfaces/**"
       - "api-pacs/go.mod"
       - "api-pacs/go.sum"
@@ -38,8 +43,13 @@ on:
       - "api-pacs/infrastructures/providers/api/dockerinference/**"
       - "api-pacs/infrastructures/providers/sdk/docker/**"
       - "api-pacs/module/inference/infrastructure/modelmanager/**"
+      - "api-pacs/module/inference/infrastructure/modelupgrade/**"
       - "api-pacs/module/inference/infrastructure/containerready/**"
+      - "api-pacs/module/inference/infrastructure/repository/**"
       - "api-pacs/module/inference/infrastructure/service/**"
+      - "api-pacs/module/inference/domain/**"
+      - "api-pacs/module/inference/application/**"
+      - "api-pacs/module/inference/interfaces/**"
       - "api-pacs/interfaces/**"
       - "api-pacs/go.mod"
       - "api-pacs/go.sum"
@@ -85,6 +95,10 @@ jobs:
           ./infrastructures/providers/api/dockerinference/...
           ./infrastructures/providers/sdk/docker/...
           ./module/inference/infrastructure/modelmanager/...
+          ./module/inference/infrastructure/modelupgrade/...
           ./module/inference/infrastructure/containerready/...
+          ./module/inference/infrastructure/repository/...
           ./module/inference/infrastructure/service/...
+          ./module/inference/domain/...
+          ./module/inference/interfaces/...
           ./interfaces/...

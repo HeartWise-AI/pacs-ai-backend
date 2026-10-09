@@ -139,6 +139,8 @@ func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWr
 			},
 			Name:                inferenceModel.Name,
 			DockerImage:         inferenceModel.DockerImage,
+			Deployment:          inferenceModel.Deployment,
+			ActiveUpgradeID:     inferenceModel.ActiveUpgradeID,
 			Envs:                envs,
 			DisallowedDICOMTags: disallowedDICOMTags,
 			OutputMode:          inferenceModel.OutputMode,

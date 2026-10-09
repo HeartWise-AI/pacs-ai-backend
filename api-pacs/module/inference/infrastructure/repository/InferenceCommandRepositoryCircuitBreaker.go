@@ -19,13 +19,13 @@ type InferenceCommandRepositoryCircuitBreaker struct {
 var config = hystrix_config.Config{}
 
 // DeleteInferenceModel is the decorator for the inference command repository to delete inference model
-func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteInferenceModel(ctx context.Context, ID string) error {
+func (repository *InferenceCommandRepositoryCircuitBreaker) DeleteInferenceModel(ctx context.Context, ID, claimID string) error {
 	output := make(chan bool, 1)
 	errChan := make(chan error, 1)
 
 	hystrix.ConfigureCommand("delete_inference_model", config.Settings())
 	errors := hystrix.Go("delete_inference_model", func() error {
-		err := repository.InferenceCommandRepositoryInterface.DeleteInferenceModel(ctx, ID)
+		err := repository.InferenceCommandRepositoryInterface.DeleteInferenceModel(ctx, ID, claimID)
 		if err != nil {
 			errChan <- err
 			return nil
@@ -235,13 +235,13 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceModel
 }
 
 // InsertInferenceIngestionJob is the decorator for the inference command repository to insert inference ingestion job
-func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceIngestionJob(data types.CreateInferenceIngestionJob) error {
+func (repository *InferenceCommandRepositoryCircuitBreaker) InsertInferenceIngestionJob(ctx context.Context, data types.CreateInferenceIngestionJob) error {
 	output := make(chan bool, 1)
 	errChan := make(chan error, 1)
 
 	hystrix.ConfigureCommand("insert_inference_ingestion_job", config.Settings())
 	errors := hystrix.Go("insert_inference_ingestion_job", func() error {
-		err := repository.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(data)
+		err := repository.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(ctx, data)
 		if err != nil {
 			errChan <- err
 			return nil

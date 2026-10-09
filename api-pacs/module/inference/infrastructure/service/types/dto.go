@@ -239,6 +239,8 @@ type GetInferenceModelResult struct {
 	Container           GetContainerInfoResult
 	Name                string
 	DockerImage         string
+	Deployment          *entity.InferenceModelDeployment
+	ActiveUpgradeID     string
 	DisallowedDICOMTags []string
 	Envs                []string
 	OutputMode          entity.OutputMode

@@ -17,13 +17,23 @@ import (
 
 type managedGatewayDockerSDK struct {
 	dockerTypes.DockerSDKInterface
-	info dockerTypes.GetContainerInfoResult
-	err  error
-	ref  string
+	info  dockerTypes.GetContainerInfoResult
+	infos map[string]dockerTypes.GetContainerInfoResult
+	errs  map[string]error
+	err   error
+	ref   string
+	refs  []string
 }
 
 func (sdk *managedGatewayDockerSDK) GetContainerInfo(_ context.Context, ref string) (dockerTypes.GetContainerInfoResult, error) {
 	sdk.ref = ref
+	sdk.refs = append(sdk.refs, ref)
+	if err, exists := sdk.errs[ref]; exists {
+		return dockerTypes.GetContainerInfoResult{}, err
+	}
+	if info, exists := sdk.infos[ref]; exists {
+		return info, nil
+	}
 	return sdk.info, sdk.err
 }
 
@@ -47,13 +57,35 @@ type recordingManagedPredictor struct {
 	response    dockerInferenceTypes.PredictResponse
 	err         error
 	calls       int
+	predict     func()
 }
 
 func (predictor *recordingManagedPredictor) Predict(_ context.Context, containerID string, request dockerInferenceTypes.PredictRequest) (dockerInferenceTypes.PredictResponse, error) {
 	predictor.calls++
 	predictor.containerID = containerID
 	predictor.request = request
+	if predictor.predict != nil {
+		predictor.predict()
+	}
 	return predictor.response, predictor.err
+}
+
+type managedGatewayLease struct {
+	resolvedID      string
+	resolvedVersion string
+	tenantID        string
+	containerID     string
+	modelVersion    string
+	released        bool
+}
+
+func (lease *managedGatewayLease) AcquireInferenceIngestionTarget(
+	_ context.Context, tenantID, containerID, modelVersion string,
+) (string, string, func(), error) {
+	lease.tenantID = tenantID
+	lease.containerID = containerID
+	lease.modelVersion = modelVersion
+	return lease.resolvedID, lease.resolvedVersion, func() { lease.released = true }, nil
 }
 
 func TestPreparedInferenceUsesSharedManagerAfterTenantAuthorization(t *testing.T) {
@@ -122,4 +154,74 @@ func TestPreparedInferenceRejectsUnregisteredTenantBeforePrediction(t *testing.T
 
 	require.EqualError(t, err, apiError.MissingRecord)
 	require.Zero(t, predictor.calls)
+}
+
+func TestPreparedInferenceRedirectsQueuedOldTargetAndHoldsLeaseThroughPrediction(t *testing.T) {
+	oldID := strings.Repeat("d", 64)
+	newID := strings.Repeat("e", 64)
+	sdk := &managedGatewayDockerSDK{infos: map[string]dockerTypes.GetContainerInfoResult{
+		"old-model": {ID: oldID, Name: "/old-model"},
+		newID:       {ID: newID, Name: "/new-model"},
+	}}
+	lease := &managedGatewayLease{resolvedID: newID, resolvedVersion: "2.0.0"}
+	repository := &managedGatewayRepository{model: entity.InferenceModel{
+		TenantID: "tenant-a", ContainerID: newID,
+	}}
+	predictor := &recordingManagedPredictor{response: dockerInferenceTypes.PredictResponse{Success: true}}
+	predictor.predict = func() {
+		require.False(t, lease.released, "target lease was released before inference completed")
+	}
+	service := &InferenceCommandService{
+		DockerSDKInterface:                sdk,
+		InferenceQueryRepositoryInterface: repository,
+		IngestionTargetLeaseRepository:    lease,
+		ModelManager:                      predictor,
+	}
+
+	response, err := service.PredictPreparedInferenceModel(
+		context.Background(), "tenant-a", "old-model", dockerInferenceTypes.PredictRequest{},
+	)
+
+	require.NoError(t, err)
+	require.True(t, response.Success)
+	require.Equal(t, []string{"old-model", newID}, sdk.refs)
+	require.Equal(t, "tenant-a", lease.tenantID)
+	require.Equal(t, oldID, lease.containerID)
+	require.Empty(t, lease.modelVersion)
+	require.Equal(t, newID, repository.container)
+	require.Equal(t, newID, predictor.containerID)
+	require.True(t, lease.released)
+}
+
+func TestPreparedInferenceResolvesStableNameAfterOldContainerCleanup(t *testing.T) {
+	newID := strings.Repeat("f", 64)
+	sdk := &managedGatewayDockerSDK{
+		infos: map[string]dockerTypes.GetContainerInfoResult{
+			newID: {ID: newID, Name: "/pacs-ai-upgrade-current"},
+		},
+		errs: map[string]error{"stable-model": errors.New("old named container was removed")},
+	}
+	lease := &managedGatewayLease{resolvedID: newID, resolvedVersion: "2.0.0"}
+	repository := &managedGatewayRepository{model: entity.InferenceModel{
+		TenantID: "tenant-a", ContainerID: newID,
+	}}
+	predictor := &recordingManagedPredictor{response: dockerInferenceTypes.PredictResponse{Success: true}}
+	service := &InferenceCommandService{
+		DockerSDKInterface:                sdk,
+		InferenceQueryRepositoryInterface: repository,
+		IngestionTargetLeaseRepository:    lease,
+		ModelManager:                      predictor,
+	}
+
+	response, err := service.PredictPreparedInferenceModel(
+		context.Background(), "tenant-a", "stable-model", dockerInferenceTypes.PredictRequest{},
+	)
+
+	require.NoError(t, err)
+	require.True(t, response.Success)
+	require.Equal(t, []string{"stable-model", newID}, sdk.refs)
+	require.Equal(t, "stable-model", lease.containerID)
+	require.Equal(t, newID, repository.container)
+	require.Equal(t, newID, predictor.containerID)
+	require.True(t, lease.released)
 }

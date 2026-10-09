@@ -205,6 +205,9 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Get("/{modelID}/feedback", inferenceQueryController.GetModelFeedbackByModelID)
 							r.Delete("/{ID}/remove", inferenceCommandController.RemoveInferenceModel)
 							r.Put("/{ID}/update", inferenceCommandController.UpdateInferenceModel)
+							r.Post("/{modelID}/upgrade", inferenceCommandController.StartInferenceModelUpgrade)
+							r.Get("/{modelID}/upgrade/{upgradeID}", inferenceCommandController.GetInferenceModelUpgrade)
+							r.Post("/{modelID}/upgrade/{upgradeID}/cancel", inferenceCommandController.CancelInferenceModelUpgrade)
 							r.Put("/feedback/update", inferenceCommandController.UpdateModelFeedback)
 							r.Delete("/{modelID}/feedback/remove", inferenceCommandController.RemoveModelFeedback)
 

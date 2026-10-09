@@ -100,7 +100,19 @@ const (
 	InferenceResultServiceUnavailable string = "INFERENCE_RESULT_SERVICE_UNAVAILABLE"
 	// InferenceAdmissionTimeout asks callers to retry after managed GPU admission times out.
 	InferenceAdmissionTimeout string = "INFERENCE_ADMISSION_TIMEOUT"
-	TorchServeError           string = "TORCHSERVE_ERROR"
+	// InferenceAdmissionBlocked asks callers to retry after a deployment transition completes.
+	InferenceAdmissionBlocked string = "INFERENCE_ADMISSION_BLOCKED"
+	// InferenceUpgradeInvalid identifies an invalid image identity or state transition.
+	InferenceUpgradeInvalid string = "INFERENCE_UPGRADE_INVALID"
+	// InferenceUpgradeConflict identifies an operational conflict that prevents an upgrade.
+	InferenceUpgradeConflict string = "INFERENCE_UPGRADE_CONFLICT"
+	// InferenceUpgradeNotFound identifies an inaccessible or missing upgrade attempt.
+	InferenceUpgradeNotFound string = "INFERENCE_UPGRADE_NOT_FOUND"
+	// InferenceUpgradeFailed identifies a failed transactional upgrade operation.
+	InferenceUpgradeFailed string = "INFERENCE_UPGRADE_FAILED"
+	// InferenceUpgradeDegraded means neither candidate nor rollback could be verified safely.
+	InferenceUpgradeDegraded string = "INFERENCE_UPGRADE_DEGRADED"
+	TorchServeError          string = "TORCHSERVE_ERROR"
 
 	// Cloudflare-related errors
 	CloudflareAPIError string = "CLOUDFLARE_API_ERROR"

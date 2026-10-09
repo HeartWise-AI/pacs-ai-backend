@@ -50,6 +50,7 @@ import (
 	iamService "api-pacs/module/iam/infrastructure/service"
 	iamREST "api-pacs/module/iam/interfaces/http/rest"
 	"api-pacs/module/inference/infrastructure/modelmanager"
+	"api-pacs/module/inference/infrastructure/modelupgrade"
 	inferenceRepository "api-pacs/module/inference/infrastructure/repository"
 	inferenceService "api-pacs/module/inference/infrastructure/service"
 	inferenceREST "api-pacs/module/inference/interfaces/http/rest"
@@ -111,6 +112,7 @@ var (
 	dockerSDK                  *docker.DockerSDK
 	dockerInferenceAPI         *dockerinference.DockerInferenceAPI
 	modelManager               *modelmanager.Manager
+	modelUpgradeService        *modelupgrade.Service
 	docusignAPI                *docusign.DocusignAPI
 	worklistNotificationBroker *inferenceService.RedisWorklistNotificationBroker
 	inferenceQuotaManager      *inferenceService.RedisInferenceQuotaManager
@@ -196,7 +198,8 @@ func (k *kernel) RegisterInferenceRESTCommandController() inferenceREST.Inferenc
 	service := k.inferenceCommandServiceContainer()
 
 	controller := inferenceREST.InferenceCommandController{
-		InferenceCommandServiceInterface: service,
+		InferenceCommandServiceInterface:      service,
+		InferenceModelUpgradeServiceInterface: modelUpgradeService,
 	}
 
 	return controller
@@ -319,6 +322,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 	}
 
 	service := &inferenceService.InferenceCommandService{
+		IngestionTargetLeaseRepository: commandRepository,
 		InferenceCommandRepositoryInterface: &inferenceRepository.InferenceCommandRepositoryCircuitBreaker{
 			InferenceCommandRepositoryInterface: commandRepository,
 		},
@@ -759,6 +763,26 @@ func registerHandlers() {
 			"[SERVER] model manager reconciled models=%d reserved_mib=%d available_mib=%d",
 			len(snapshot.Models), snapshot.ReservedMiB, snapshot.AvailableMiB,
 		)
+		upgradeConfig, upgradeErr := modelupgrade.ConfigFromEnv()
+		if upgradeErr != nil {
+			log.Fatalf("[SERVER] invalid model upgrade configuration: %v", upgradeErr)
+		}
+		modelUpgradeService = &modelupgrade.Service{
+			Repository: &inferenceRepository.InferenceModelUpgradeRepository{
+				FirebaseAdminSDK:              firebaseAdminSDK,
+				PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
+			},
+			Docker:  dockerSDK,
+			API:     dockerInferenceAPI,
+			Manager: modelManager,
+			Config:  upgradeConfig,
+		}
+		recoveryCtx, cancelRecovery := context.WithTimeout(context.Background(), upgradeConfig.OperationTimeout)
+		if recoveryErr := modelUpgradeService.RecoverInferenceModelUpgrades(recoveryCtx); recoveryErr != nil {
+			cancelRecovery()
+			log.Fatalf("[SERVER] model upgrade recovery failed: %v", recoveryErr)
+		}
+		cancelRecovery()
 	}
 
 	// init docusign API

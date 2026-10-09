@@ -12,6 +12,7 @@ import (
 	"time"
 
 	types "api-pacs/infrastructures/providers/api/dockerinference/types"
+	apiError "api-pacs/internal/errors"
 )
 
 var (
@@ -21,6 +22,7 @@ var (
 	ErrUnmanagedResident = errors.New("unaccounted resident model requires startup reconciliation")
 	ErrNotReconciled     = errors.New("model manager startup reconciliation is incomplete")
 	ErrReconciling       = errors.New("model manager reconciliation is already running")
+	ErrAdmissionBlocked  = errors.New("model admission is blocked for a deployment transition")
 	containerIDPattern   = regexp.MustCompile(`^[a-f0-9]{64}$`)
 )
 
@@ -31,6 +33,19 @@ func (*AdmissionTimeout) Error() string             { return ErrQueueTimeout.Err
 func (*AdmissionTimeout) Unwrap() error             { return ErrQueueTimeout }
 func (*AdmissionTimeout) HTTPStatus() int           { return http.StatusServiceUnavailable }
 func (*AdmissionTimeout) RetryAfter() time.Duration { return time.Second }
+
+// AdmissionBlocked is returned while an upgrade owns the model's admission
+// gate. It is retryable but distinct from capacity exhaustion.
+type AdmissionBlocked struct{}
+
+func (*AdmissionBlocked) Error() string             { return ErrAdmissionBlocked.Error() }
+func (*AdmissionBlocked) Unwrap() error             { return ErrAdmissionBlocked }
+func (*AdmissionBlocked) HTTPStatus() int           { return http.StatusServiceUnavailable }
+func (*AdmissionBlocked) RetryAfter() time.Duration { return time.Second }
+func (*AdmissionBlocked) ErrorCode() string         { return apiError.InferenceAdmissionBlocked }
+func (*AdmissionBlocked) PublicMessage() string {
+	return "The model is temporarily unavailable during a deployment transition."
+}
 
 type Model struct {
 	ContainerID, Name string
@@ -56,6 +71,7 @@ type entry struct {
 	leased   bool // includes CPU-only operations with a zero GPU reservation
 	lastUsed time.Time
 	loaded   bool
+	blocked  bool
 }
 type waiter struct{ id string }
 
@@ -399,10 +415,20 @@ func (m *Manager) admit(ctx context.Context, id string) (*waiter, *entry, error)
 	if _, ok := m.models[id]; !ok {
 		m.models[id] = &entry{state: types.RuntimeUnloaded}
 	}
+	if m.models[id].blocked {
+		m.mu.Unlock()
+		return nil, nil, &AdmissionBlocked{}
+	}
 	w := &waiter{id: id}
 	m.queue = append(m.queue, w)
 	m.metrics.SetSnapshot(m.snapshotLocked())
 	for {
+		if m.models[id].blocked {
+			m.removeLocked(w)
+			m.wakeLocked()
+			m.mu.Unlock()
+			return nil, nil, &AdmissionBlocked{}
+		}
 		if err := ctx.Err(); err != nil {
 			m.removeLocked(w)
 			m.wakeLocked()
@@ -433,6 +459,211 @@ func (m *Manager) admit(ctx context.Context, id string) (*waiter, *entry, error)
 		}
 		m.mu.Lock()
 	}
+}
+
+// BlockAndDrain closes admission for one registered container, waits for its
+// active lease and queued requests to leave, then unloads any resident model.
+// Admission remains blocked until Unblock or ReplaceDrained is called.
+func (m *Manager) BlockAndDrain(ctx context.Context, id string) (err error) {
+	if !containerIDPattern.MatchString(id) {
+		return errors.New("a full registered Docker container ID is required")
+	}
+	m.mu.Lock()
+	if !m.ready || m.reconciling {
+		m.mu.Unlock()
+		return ErrNotReconciled
+	}
+	e, ok := m.models[id]
+	if !ok {
+		m.mu.Unlock()
+		return errors.New("registered model is absent from the manager inventory")
+	}
+	e.blocked = true
+	m.wakeLocked()
+	for e.active || m.hasQueuedLocked(id) {
+		changed := m.changed
+		m.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-changed:
+		}
+		m.mu.Lock()
+	}
+	e.active = true
+	model := e.model
+	if model.ContainerID == "" {
+		model.ContainerID = id
+	}
+	needsUnload := e.loaded || e.reserved > 0 || e.leased
+	if needsUnload {
+		e.state = types.RuntimeEvicting
+	}
+	m.wakeLocked()
+	m.mu.Unlock()
+
+	if needsUnload {
+		err = m.backend.Unload(ctx, model)
+	}
+	m.mu.Lock()
+	e.active = false
+	if err != nil {
+		e.state = types.RuntimeError
+	} else {
+		e.reserved = 0
+		e.leased = false
+		e.loaded = false
+		e.state = types.RuntimeUnloaded
+	}
+	m.wakeLocked()
+	m.mu.Unlock()
+	return err
+}
+
+func (m *Manager) hasQueuedLocked(id string) bool {
+	for _, queued := range m.queue {
+		if queued.id == id {
+			return true
+		}
+	}
+	return false
+}
+
+// ReplaceDrained adds or restores a closed candidate slot while retaining the
+// departing ID as a blocked, zero-resource tombstone. Stale authorized requests
+// can therefore never recreate and reload a drained deployment.
+func (m *Manager) ReplaceDrained(oldID, newID string) error {
+	if !containerIDPattern.MatchString(oldID) || !containerIDPattern.MatchString(newID) {
+		return errors.New("full Docker container IDs are required")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	old, ok := m.models[oldID]
+	if !ok || !old.blocked || old.active || old.loaded || old.reserved != 0 || old.leased || m.hasQueuedLocked(oldID) {
+		return errors.New("old model must be blocked and fully drained before replacement")
+	}
+	if destination, exists := m.models[newID]; exists {
+		if !destination.blocked || destination.active || destination.loaded || destination.reserved != 0 || destination.leased || m.hasQueuedLocked(newID) {
+			return errors.New("existing candidate slot must be blocked and fully drained")
+		}
+		destination.model = Model{ContainerID: newID}
+		destination.state = types.RuntimeUnloaded
+	} else {
+		m.models[newID] = &entry{
+			model:   Model{ContainerID: newID},
+			state:   types.RuntimeUnloaded,
+			blocked: true,
+		}
+	}
+	m.wakeLocked()
+	return nil
+}
+
+// PrepareBlocked loads a candidate while admission remains closed and accounts
+// for its peak and resident GPU allocation in the normal manager ledger.
+func (m *Manager) PrepareBlocked(ctx context.Context, id string) (err error) {
+	if !containerIDPattern.MatchString(id) {
+		return errors.New("a full registered Docker container ID is required")
+	}
+	m.mu.Lock()
+	e, ok := m.models[id]
+	if !ok || !e.blocked || e.active {
+		m.mu.Unlock()
+		return errors.New("candidate must be registered, blocked, and idle")
+	}
+	e.active = true
+	m.wakeLocked()
+	m.mu.Unlock()
+
+	var model Model
+	defer func() {
+		cleanupConfirmed := true
+		if err != nil && model.ContainerID != "" {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), m.config.OperationTimeout)
+			cleanupErr := m.backend.Unload(cleanupCtx, model)
+			cancel()
+			if cleanupErr != nil {
+				cleanupConfirmed = false
+				err = errors.Join(err, fmt.Errorf("candidate cleanup could not be confirmed: %w", cleanupErr))
+			}
+		}
+		m.mu.Lock()
+		e.active = false
+		if err != nil {
+			e.state = types.RuntimeError
+			if cleanupConfirmed {
+				e.reserved = 0
+				e.leased = false
+				e.loaded = false
+			} else {
+				e.reserved = max(e.reserved, model.Resources.PeakMemoryMiB)
+				if e.reserved == 0 {
+					e.reserved = m.capacity()
+				}
+				e.leased = true
+				e.loaded = true
+			}
+		} else {
+			e.reserved = e.model.Resources.ResidentMemoryMiB
+			e.leased = false
+			e.loaded = true
+			e.state = types.RuntimeReady
+			e.lastUsed = time.Now()
+		}
+		m.wakeLocked()
+		m.mu.Unlock()
+	}()
+
+	model, err = m.backend.Prepare(ctx, id)
+	if err != nil {
+		return err
+	}
+	if model.ContainerID != id {
+		return errors.New("lifecycle backend returned a different container")
+	}
+	if err = model.Resources.Validate(); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	e.model = model
+	m.mu.Unlock()
+	if err = m.reserve(ctx, e); err != nil {
+		return err
+	}
+	runtime, err := m.backend.Runtime(ctx, model)
+	if err != nil {
+		return err
+	}
+	if err = runtime.Validate(); err != nil {
+		return err
+	}
+	if runtime.ActiveRequests != 0 || (runtime.State != types.RuntimeReady && runtime.State != types.RuntimeUnloaded) {
+		return errors.New("candidate runtime is not idle")
+	}
+	if !runtime.Loaded {
+		if err = m.backend.Load(ctx, model); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Unblock reopens admission for a healthy, accounted model. An active lease is
+// allowed: newly admitted work remains queued until that lease completes. This
+// lets a timed-out drain cancel its admission block without interrupting work.
+func (m *Manager) Unblock(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	e, ok := m.models[id]
+	if !ok {
+		return errors.New("model is absent from the manager inventory")
+	}
+	if e.state == types.RuntimeError {
+		return errors.New("model is not safe to admit")
+	}
+	e.blocked = false
+	m.wakeLocked()
+	return nil
 }
 func (m *Manager) removeLocked(w *waiter) {
 	for i, v := range m.queue {
@@ -590,6 +821,7 @@ type ModelSnapshot struct {
 	LastUsedAt  time.Time
 	QueueDepth  int
 	Loaded      bool
+	Blocked     bool
 }
 type Snapshot struct {
 	Ready                                 bool
@@ -607,7 +839,7 @@ func (m *Manager) Snapshot() Snapshot {
 func (m *Manager) snapshotLocked() Snapshot {
 	s := Snapshot{Ready: m.ready && !m.reconciling, CapacityMiB: m.capacity(), ReservedMiB: m.usedLocked(), Models: make(map[string]ModelSnapshot)}
 	for id, e := range m.models {
-		s.Models[id] = ModelSnapshot{State: e.state, ReservedMiB: e.reserved, Active: e.active, LastUsedAt: e.lastUsed, Loaded: e.loaded}
+		s.Models[id] = ModelSnapshot{State: e.state, ReservedMiB: e.reserved, Active: e.active, LastUsedAt: e.lastUsed, Loaded: e.loaded, Blocked: e.blocked}
 		resident := 0
 		if e.loaded && e.model.Resources.GPURequired {
 			resident = min(e.reserved, e.model.Resources.ResidentMemoryMiB)
