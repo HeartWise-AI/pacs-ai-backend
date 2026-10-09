@@ -35,8 +35,10 @@ type guardedDispatchCommandRepository struct {
 	dispatchStateUpdates []repositoryTypes.UpdateCandidateDispatchState
 	executionUpdates     []repositoryTypes.UpdateInferenceIngestionProcessingJob
 	executionUpdateErr   error
+	executionUpdate      func(repositoryTypes.UpdateInferenceIngestionProcessingJob)
 	executionInserts     []repositoryTypes.AddInferenceIngestionProcessingJob
 	executionInsertErr   error
+	executionInsert      func(repositoryTypes.AddInferenceIngestionProcessingJob)
 }
 
 func (repository *guardedDispatchCommandRepository) UpdateCandidateDispatchState(data repositoryTypes.UpdateCandidateDispatchState) error {
@@ -45,17 +47,24 @@ func (repository *guardedDispatchCommandRepository) UpdateCandidateDispatchState
 }
 
 func (repository *guardedDispatchCommandRepository) UpdateInferenceIngestionProcessingJob(data repositoryTypes.UpdateInferenceIngestionProcessingJob) error {
+	if repository.executionUpdate != nil {
+		repository.executionUpdate(data)
+	}
 	repository.executionUpdates = append(repository.executionUpdates, data)
 	return repository.executionUpdateErr
 }
 
 func (repository *guardedDispatchCommandRepository) InsertInferenceIngestionProcessingJob(data repositoryTypes.AddInferenceIngestionProcessingJob) error {
+	if repository.executionInsert != nil {
+		repository.executionInsert(data)
+	}
 	repository.executionInserts = append(repository.executionInserts, data)
 	return repository.executionInsertErr
 }
 
 type guardedProcessingDispatcher struct {
 	buildCalls            int
+	buildJobs             []entity.InferenceIngestionJob
 	buildErr              error
 	dispatchCalls         int
 	dispatchCall          chan serviceTypes.DispatchStudyRequest
@@ -64,6 +73,31 @@ type guardedProcessingDispatcher struct {
 	dispatchErrors        []error
 	echoManualCorrelation bool
 	dispatchRelease       <-chan struct{}
+}
+
+type guardedIngestionTargetLease struct {
+	tenantID        string
+	containerID     string
+	modelVersion    string
+	resolvedID      string
+	resolvedVersion string
+	acquireCalls    int
+	releaseCalls    int
+	activeLeases    int
+}
+
+func (lease *guardedIngestionTargetLease) AcquireInferenceIngestionTarget(
+	_ context.Context, tenantID, containerID, modelVersion string,
+) (string, string, func(), error) {
+	lease.tenantID = tenantID
+	lease.containerID = containerID
+	lease.modelVersion = modelVersion
+	lease.acquireCalls++
+	lease.activeLeases++
+	return lease.resolvedID, lease.resolvedVersion, func() {
+		lease.releaseCalls++
+		lease.activeLeases--
+	}, nil
 }
 
 type guardedDispatchDockerSDK struct {
@@ -200,6 +234,7 @@ func TestEnsureInferenceContainerReadyReturnsReadinessTimeout(t *testing.T) {
 
 func (dispatcher *guardedProcessingDispatcher) BuildDispatchStudyRequest(_ context.Context, data serviceTypes.BuildStudyServiceDispatchRequestInput) (serviceTypes.DispatchStudyRequest, error) {
 	dispatcher.buildCalls++
+	dispatcher.buildJobs = append(dispatcher.buildJobs, data.IngestionJob)
 	if dispatcher.buildErr != nil {
 		return serviceTypes.DispatchStudyRequest{}, dispatcher.buildErr
 	}
@@ -338,6 +373,98 @@ func TestDispatchCallsStudyServiceForCommittedPendingExecution(t *testing.T) {
 	require.Len(t, commandRepository.executionUpdates, 1)
 	require.Equal(t, entity.InferenceIngestionProcessingJobStatusQueued, commandRepository.executionUpdates[0].Status)
 	require.Equal(t, "study-job-1", *commandRepository.executionUpdates[0].StudyServiceJobID)
+}
+
+func TestDispatchResolvesCapturedTargetAndHoldsLeaseThroughHandoff(t *testing.T) {
+	runRepository := &committedExecutionRepository{execution: entity.InferenceIngestionProcessingJob{
+		ID: "execution-1", Status: entity.InferenceIngestionProcessingJobStatusPending,
+	}}
+	commandRepository := &guardedDispatchCommandRepository{}
+	lease := &guardedIngestionTargetLease{resolvedID: "container-new", resolvedVersion: "2.0"}
+	commandRepository.executionUpdate = func(update repositoryTypes.UpdateInferenceIngestionProcessingJob) {
+		require.Zero(t, lease.activeLeases, "database update requested a second connection while holding the lease")
+	}
+	dispatchCall := make(chan serviceTypes.DispatchStudyRequest, 1)
+	dispatchRelease := make(chan struct{})
+	dispatcher := &guardedProcessingDispatcher{
+		response:     serviceTypes.DispatchStudyResponse{JobID: "study-job-1"},
+		dispatchCall: dispatchCall, dispatchRelease: dispatchRelease,
+	}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		IngestionTargetLeaseRepository:            lease,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+	configureReadyInferenceContainer(service)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- service.dispatchRetrievedCandidateToStudyService(
+			context.Background(),
+			entity.InferenceIngestionJob{
+				ID: "ingestion-1", TenantID: "tenant-a", ContainerID: "container-old",
+				ModelName: "model-one", ModelVersion: "1.0",
+			},
+			entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+			"run-1",
+			"request-1",
+		)
+	}()
+	<-dispatchCall
+	require.Equal(t, 1, lease.activeLeases)
+	require.Equal(t, 2, lease.acquireCalls)
+	require.Equal(t, 1, lease.releaseCalls)
+	require.Len(t, commandRepository.executionUpdates, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusPending, commandRepository.executionUpdates[0].Status)
+	require.Equal(t, "2.0", *commandRepository.executionUpdates[0].ModelVersion)
+	close(dispatchRelease)
+	err := <-errCh
+
+	require.NoError(t, err)
+	require.Equal(t, "tenant-a", lease.tenantID)
+	require.Equal(t, "container-old", lease.containerID)
+	require.Equal(t, "1.0", lease.modelVersion)
+	require.Zero(t, lease.activeLeases)
+	require.Equal(t, 2, lease.releaseCalls)
+	require.Len(t, dispatcher.buildJobs, 1)
+	require.Equal(t, "container-new", dispatcher.buildJobs[0].ContainerID)
+	require.Equal(t, "2.0", dispatcher.buildJobs[0].ModelVersion)
+	require.Len(t, commandRepository.executionUpdates, 2)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusQueued, commandRepository.executionUpdates[1].Status)
+}
+
+func TestDispatchDoesNotHandoffBeforeResolvedVersionIsPersisted(t *testing.T) {
+	runRepository := &committedExecutionRepository{execution: entity.InferenceIngestionProcessingJob{
+		ID: "execution-1", Status: entity.InferenceIngestionProcessingJobStatusPending,
+	}}
+	commandRepository := &guardedDispatchCommandRepository{executionUpdateErr: errors.New("database unavailable")}
+	lease := &guardedIngestionTargetLease{resolvedID: "container-new", resolvedVersion: "2.0"}
+	dispatcher := &guardedProcessingDispatcher{response: serviceTypes.DispatchStudyResponse{JobID: "study-job-1"}}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		IngestionTargetLeaseRepository:            lease,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+	configureReadyInferenceContainer(service)
+
+	err := service.dispatchRetrievedCandidateToStudyService(
+		context.Background(),
+		entity.InferenceIngestionJob{
+			ID: "ingestion-1", TenantID: "tenant-a", ContainerID: "container-old",
+			ModelName: "model-one", ModelVersion: "1.0",
+		},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		"run-1",
+		"request-1",
+	)
+
+	require.ErrorContains(t, err, "cannot persist resolved model target before dispatch")
+	require.Zero(t, dispatcher.dispatchCalls)
+	require.Zero(t, lease.activeLeases)
+	require.Equal(t, 1, lease.acquireCalls)
+	require.Equal(t, 1, lease.releaseCalls)
 }
 
 func TestDispatchFailsCommittedExecutionWhenContainerCannotStart(t *testing.T) {
@@ -833,13 +960,110 @@ func TestDispatchDoesNotRetryPermanentResponse(t *testing.T) {
 func TestLegacyDispatchWithoutProcessingRunIDRemainsSupported(t *testing.T) {
 	runRepository := &committedExecutionRepository{}
 	commandRepository := &guardedDispatchCommandRepository{}
-	dispatcher := &guardedProcessingDispatcher{response: serviceTypes.DispatchStudyResponse{JobID: "legacy-study-job-1"}}
+	lease := &guardedIngestionTargetLease{resolvedID: "container-1", resolvedVersion: "1.0"}
+	insertLeaseCounts := make(chan int, 1)
+	updateLeaseCounts := make(chan int, 1)
+	commandRepository.executionInsert = func(repositoryTypes.AddInferenceIngestionProcessingJob) {
+		insertLeaseCounts <- lease.activeLeases
+	}
+	commandRepository.executionUpdate = func(repositoryTypes.UpdateInferenceIngestionProcessingJob) {
+		updateLeaseCounts <- lease.activeLeases
+	}
+	dispatchCall := make(chan serviceTypes.DispatchStudyRequest, 1)
+	dispatchRelease := make(chan struct{})
+	dispatcher := &guardedProcessingDispatcher{
+		response:     serviceTypes.DispatchStudyResponse{JobID: "legacy-study-job-1"},
+		dispatchCall: dispatchCall, dispatchRelease: dispatchRelease,
+	}
 	service := &InferenceCommandService{
 		InferenceCommandRepositoryInterface:       commandRepository,
 		InferenceProcessingRunRepositoryInterface: runRepository,
+		IngestionTargetLeaseRepository:            lease,
 		ProcessingDispatcherInterface:             dispatcher,
 	}
 	configureReadyInferenceContainer(service)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- service.dispatchRetrievedCandidateToStudyService(
+			context.Background(),
+			entity.InferenceIngestionJob{ID: "ingestion-1", TenantID: "tenant-a", ContainerID: "container-1", ModelName: "legacy-model", ModelVersion: "1.0"},
+			entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+			"",
+			"request-1",
+		)
+	}()
+	<-dispatchCall
+	require.Equal(t, 0, <-insertLeaseCounts)
+	require.Equal(t, 1, lease.activeLeases, "route lease must cover the downstream handoff")
+	require.Len(t, commandRepository.executionInserts, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusPending, commandRepository.executionInserts[0].Status)
+	require.Nil(t, commandRepository.executionInserts[0].StudyServiceJobID)
+	close(dispatchRelease)
+	err := <-errCh
+
+	require.NoError(t, err)
+	require.Zero(t, runRepository.calls)
+	require.Equal(t, 1, dispatcher.dispatchCalls)
+	require.Equal(t, 0, <-updateLeaseCounts)
+	require.Len(t, commandRepository.executionUpdates, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusQueued, commandRepository.executionUpdates[0].Status)
+	require.Equal(t, "legacy-study-job-1", *commandRepository.executionUpdates[0].StudyServiceJobID)
+	require.Zero(t, lease.activeLeases)
+	require.Equal(t, 1, lease.acquireCalls)
+	require.Equal(t, 1, lease.releaseCalls)
+}
+
+func TestLegacyDispatchFailsPreparedExecutionWhenContainerCannotStart(t *testing.T) {
+	commandRepository := &guardedDispatchCommandRepository{}
+	dispatcher := &guardedProcessingDispatcher{}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface: commandRepository,
+		ProcessingDispatcherInterface:       dispatcher,
+		DockerSDKInterface: &guardedDispatchDockerSDK{
+			containerInfos: []dockerTypes.GetContainerInfoResult{
+				{Name: "/legacy-model", Running: false},
+				{Name: "/legacy-model", Running: false},
+			},
+			startError: errors.New("docker unavailable"),
+		},
+		DockerInferenceAPIInterface: &guardedDispatchDockerInferenceAPI{},
+	}
+
+	err := service.dispatchRetrievedCandidateToStudyService(
+		context.Background(),
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "legacy-model", ModelVersion: "1.0"},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		"",
+		"request-1",
+	)
+
+	require.ErrorContains(t, err, "cannot start inference container")
+	require.Zero(t, dispatcher.buildCalls)
+	require.Zero(t, dispatcher.dispatchCalls)
+	require.Len(t, commandRepository.executionInserts, 1)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusPending, commandRepository.executionInserts[0].Status)
+	require.Len(t, commandRepository.executionUpdates, 1)
+	require.Equal(t, commandRepository.executionInserts[0].ID, commandRepository.executionUpdates[0].ID)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, commandRepository.executionUpdates[0].Status)
+}
+
+func TestLegacyDispatchDoesNotRepeatAcceptedExecution(t *testing.T) {
+	studyServiceJobID := "legacy-study-job-1"
+	commandRepository := &guardedDispatchCommandRepository{
+		executionInsertErr: errors.New(apiError.DuplicateRecord),
+	}
+	dispatcher := &guardedProcessingDispatcher{}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface: commandRepository,
+		InferenceQueryRepositoryInterface: &processingRunCallbackQueryRepository{
+			execution: entity.InferenceIngestionProcessingJob{
+				ID: "legacy-execution-1", Status: entity.InferenceIngestionProcessingJobStatusQueued,
+				StudyServiceJobID: &studyServiceJobID,
+			},
+		},
+		ProcessingDispatcherInterface: dispatcher,
+	}
 
 	err := service.dispatchRetrievedCandidateToStudyService(
 		context.Background(),
@@ -850,11 +1074,9 @@ func TestLegacyDispatchWithoutProcessingRunIDRemainsSupported(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.Zero(t, runRepository.calls)
-	require.Equal(t, 1, dispatcher.dispatchCalls)
-	require.Len(t, commandRepository.executionInserts, 1)
-	require.Equal(t, entity.InferenceIngestionProcessingJobStatusQueued, commandRepository.executionInserts[0].Status)
-	require.Equal(t, "legacy-study-job-1", *commandRepository.executionInserts[0].StudyServiceJobID)
+	require.Zero(t, dispatcher.buildCalls)
+	require.Zero(t, dispatcher.dispatchCalls)
+	require.Empty(t, commandRepository.executionUpdates)
 }
 
 func TestRunlessDispatchIsRejectedAfterCompatibilityCutoff(t *testing.T) {

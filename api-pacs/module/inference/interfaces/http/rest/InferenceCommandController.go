@@ -21,6 +21,7 @@ import (
 // InferenceCommandController request controller for inference command
 type InferenceCommandController struct {
 	application.InferenceCommandServiceInterface
+	application.InferenceModelUpgradeServiceInterface
 }
 
 var mediaMaxFileSize int64 = 5 * 1024 * 1024 // 5MB
@@ -283,6 +284,9 @@ func (controller *InferenceCommandController) RemoveInferenceModel(w http.Respon
 		case errors.DatabaseError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Error occurred while saving inference model."
+		case apiError.InferenceUpgradeConflict:
+			httpCode = http.StatusConflict
+			errorMsg = "The inference model cannot be deleted while an upgrade is active."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Please contact technical support."

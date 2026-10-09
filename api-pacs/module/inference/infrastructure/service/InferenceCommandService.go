@@ -36,7 +36,8 @@ import (
 // InferenceCommandService handles the Inference command service logic
 type InferenceCommandService struct {
 	// Shared process-wide predictor. A nil value preserves the legacy direct path.
-	ModelManager ManagedPredictor
+	ModelManager                   ManagedPredictor
+	IngestionTargetLeaseRepository IngestionTargetLeaseRepository
 	repository.InferenceCommandRepositoryInterface
 	repository.InferenceQueryRepositoryInterface
 	repository.InferenceProcessingRunRepositoryInterface
@@ -61,6 +62,14 @@ type InferenceCommandService struct {
 // ManagedPredictor is the admission boundary shared by user and internal inference.
 type ManagedPredictor interface {
 	Predict(context.Context, string, dockerInferenceTypes.PredictRequest) (dockerInferenceTypes.PredictResponse, error)
+}
+
+// IngestionTargetLeaseRepository resolves a captured ingestion target while
+// holding the same PostgreSQL advisory locks used by deployment retargeting.
+type IngestionTargetLeaseRepository interface {
+	AcquireInferenceIngestionTarget(
+		context.Context, string, string, string,
+	) (containerID string, modelVersion string, release func(), err error)
 }
 
 const inferenceIngestionRetrievalTimeout = 3 * time.Minute
@@ -773,7 +782,7 @@ func (service *InferenceCommandService) CreateInferenceIngestionJob(ctx context.
 		return err
 	}
 
-	err = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(repositoryTypes.CreateInferenceIngestionJob{
+	err = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(ctx, repositoryTypes.CreateInferenceIngestionJob{
 		ID:                     generateID(),
 		TenantID:               data.TenantID,
 		DICOMModality:          data.DICOMModality,
@@ -2034,8 +2043,84 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 	if !shouldDispatch {
 		return nil
 	}
+	if strings.TrimSpace(processingRunID) == "" {
+		committedExecutionID, shouldDispatch, err = service.prepareLegacyProcessingDispatch(candidate, job)
+		if err != nil {
+			ObserveStudyServiceDispatchAttempt("permanent_error", 0)
+			if persistErr := service.persistDispatchFailure(candidate.ID, err); persistErr != nil {
+				log.Printf("[Ingestion dispatch] cannot persist legacy execution preparation failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
+					candidate.ID, job.ID, requestID, persistErr,
+				)
+			}
+			return err
+		}
+		if !shouldDispatch {
+			return nil
+		}
+	}
+	originalContainerID := job.ContainerID
+	originalModelVersion := job.ModelVersion
+	persistedModelVersion := strings.TrimSpace(originalModelVersion)
+	releaseTargetLease := func() {}
+	defer func() { releaseTargetLease() }()
+	if service.IngestionTargetLeaseRepository != nil {
+		for {
+			containerID, modelVersion, release, leaseErr := service.IngestionTargetLeaseRepository.AcquireInferenceIngestionTarget(
+				ctx, job.TenantID, originalContainerID, originalModelVersion,
+			)
+			if leaseErr != nil {
+				ObserveStudyServiceDispatchAttempt("permanent_error", 0)
+				if persistErr := service.persistDispatchFailure(candidate.ID, leaseErr); persistErr != nil {
+					log.Printf("[Ingestion dispatch] cannot persist model target resolution failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
+						candidate.ID, job.ID, requestID, persistErr,
+					)
+				}
+				service.recordKnownProcessingExecutionDispatchFailure(
+					ctx, candidate, job, processingRunID, committedExecutionID, leaseErr,
+				)
+				return leaseErr
+			}
+			resolvedVersion := strings.TrimSpace(modelVersion)
+			if strings.TrimSpace(committedExecutionID) != "" && resolvedVersion != persistedModelVersion {
+				release()
+				versionErr := service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionProcessingJob(
+					repositoryTypes.UpdateInferenceIngestionProcessingJob{
+						ID:           committedExecutionID,
+						Status:       entity.InferenceIngestionProcessingJobStatusPending,
+						ModelVersion: nonEmptyStringPointer(resolvedVersion),
+					},
+				)
+				if versionErr != nil {
+					dispatchErr := fmt.Errorf("cannot persist resolved model target before dispatch: %w", versionErr)
+					ObserveStudyServiceDispatchAttempt("permanent_error", 0)
+					if persistErr := service.persistDispatchFailure(candidate.ID, dispatchErr); persistErr != nil {
+						log.Printf("[Ingestion dispatch] cannot persist resolved-version failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
+							candidate.ID, job.ID, requestID, persistErr,
+						)
+					}
+					service.recordKnownProcessingExecutionDispatchFailure(
+						ctx, candidate, job, processingRunID, committedExecutionID, dispatchErr,
+					)
+					return dispatchErr
+				}
+				persistedModelVersion = resolvedVersion
+				continue
+			}
+			released := false
+			releaseTargetLease = func() {
+				if !released {
+					release()
+					released = true
+				}
+			}
+			job.ContainerID = containerID
+			job.ModelVersion = modelVersion
+			break
+		}
+	}
 
 	if err := service.ensureInferenceContainerReady(ctx, job); err != nil {
+		releaseTargetLease()
 		ObserveStudyServiceDispatchAttempt("permanent_error", 0)
 		if persistErr := service.persistDispatchFailure(candidate.ID, err); persistErr != nil {
 			log.Printf("[Ingestion dispatch] cannot persist model container readiness failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
@@ -2057,6 +2142,7 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 		RequestID:             &requestID,
 	})
 	if err != nil {
+		releaseTargetLease()
 		ObserveStudyServiceDispatchAttempt("permanent_error", 0)
 		if persistErr := service.persistDispatchFailure(candidate.ID, err); persistErr != nil {
 			log.Printf("[Ingestion dispatch] cannot persist dispatch failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
@@ -2064,7 +2150,7 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 			)
 		}
 		service.recordKnownProcessingExecutionDispatchFailure(
-			ctx, candidate, job, processingRunID, processingExecutionID, err,
+			ctx, candidate, job, processingRunID, committedExecutionID, err,
 		)
 		return err
 	}
@@ -2082,6 +2168,7 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 		cancel()
 
 		if dispatchErr == nil {
+			releaseTargetLease()
 			if correlationErr := validateManualDispatchResponseCorrelation(dispatchRequest, dispatchResponse); correlationErr != nil {
 				ObserveStudyServiceDispatchAttempt("permanent_error", attemptDuration)
 				if persistErr := service.persistDispatchFailure(candidate.ID, correlationErr); persistErr != nil {
@@ -2093,12 +2180,12 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 				if dispatchResponse.StatusCode == http.StatusAccepted {
 					attentionReasonCode = entity.InferenceIngestionProcessingRunAttentionStateConflict
 				}
-				service.recordFailedProcessingDispatchWithAttention(
-					ctx, candidate, job, dispatchRequest, correlationErr, attentionReasonCode,
+				service.recordPreparedProcessingDispatchFailure(
+					ctx, candidate, job, dispatchRequest, committedExecutionID, correlationErr, attentionReasonCode,
 				)
 				return correlationErr
 			}
-			if recordErr := service.recordQueuedProcessingDispatch(ctx, candidate, job, dispatchRequest, dispatchResponse); recordErr != nil {
+			if recordErr := service.recordQueuedProcessingDispatch(ctx, candidate, job, dispatchRequest, dispatchResponse, committedExecutionID); recordErr != nil {
 				persistErr := fmt.Errorf("study-service accepted job but Go could not persist dispatch state: %w", recordErr)
 				ObserveStudyServiceDispatchAttempt("persistence_error", attemptDuration)
 				if candidateErr := service.persistDispatchFailure(candidate.ID, persistErr); candidateErr != nil {
@@ -2141,13 +2228,17 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 		httpErr := &DispatchStudyHTTPError{}
 		if errors.As(dispatchErr, &httpErr) {
 			if !shouldRetryStudyServiceDispatchHTTPError(*httpErr) || attemptIndex == len(retrySchedule)-1 {
+				releaseTargetLease()
 				ObserveStudyServiceDispatchAttempt("permanent_error", attemptDuration)
 				if persistErr := service.persistDispatchFailure(candidate.ID, dispatchErr); persistErr != nil {
 					log.Printf("[Ingestion dispatch] cannot persist dispatch failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
 						candidate.ID, job.ID, requestID, persistErr,
 					)
 				}
-				service.recordFailedProcessingDispatch(ctx, candidate, job, dispatchRequest, dispatchErr)
+				service.recordPreparedProcessingDispatchFailure(
+					ctx, candidate, job, dispatchRequest, committedExecutionID, dispatchErr,
+					entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+				)
 				return dispatchErr
 			}
 
@@ -2168,12 +2259,16 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 
 		ObserveStudyServiceDispatchAttempt("transient_error", attemptDuration)
 		if attemptIndex == len(retrySchedule)-1 {
+			releaseTargetLease()
 			if persistErr := service.persistDispatchFailure(candidate.ID, dispatchErr); persistErr != nil {
 				log.Printf("[Ingestion dispatch] cannot persist dispatch failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
 					candidate.ID, job.ID, requestID, persistErr,
 				)
 			}
-			service.recordFailedProcessingDispatch(ctx, candidate, job, dispatchRequest, dispatchErr)
+			service.recordPreparedProcessingDispatchFailure(
+				ctx, candidate, job, dispatchRequest, committedExecutionID, dispatchErr,
+				entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+			)
 			return dispatchErr
 		}
 
@@ -2241,7 +2336,7 @@ func (service *InferenceCommandService) recordKnownProcessingExecutionDispatchFa
 ) {
 	processingRunID = strings.TrimSpace(processingRunID)
 	processingExecutionID = strings.TrimSpace(processingExecutionID)
-	if processingRunID == "" || processingExecutionID == "" {
+	if processingExecutionID == "" {
 		return
 	}
 	if err := service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionProcessingJob(
@@ -2257,6 +2352,9 @@ func (service *InferenceCommandService) recordKnownProcessingExecutionDispatchFa
 		)
 		return
 	}
+	if processingRunID == "" {
+		return
+	}
 	if _, err := service.RecalculateStudyProcessingRun(ctx, types.RecalculateStudyProcessingRun{
 		TenantID: candidate.TenantID, ProcessingRunID: processingRunID,
 		AttentionReasonsToAdd: entity.InferenceIngestionProcessingRunAttentionReasons{{
@@ -2267,6 +2365,51 @@ func (service *InferenceCommandService) recordKnownProcessingExecutionDispatchFa
 			candidate.ID, processingRunID, processingExecutionID, err,
 		)
 	}
+}
+
+func (service *InferenceCommandService) prepareLegacyProcessingDispatch(
+	candidate entity.InferenceIngestionCandidate,
+	job entity.InferenceIngestionJob,
+) (string, bool, error) {
+	executionID := generateID()
+	err := service.InferenceCommandRepositoryInterface.InsertInferenceIngestionProcessingJob(
+		repositoryTypes.AddInferenceIngestionProcessingJob{
+			ID:           executionID,
+			CandidateID:  candidate.ID,
+			TenantID:     candidate.TenantID,
+			ModelName:    job.ModelName,
+			ModelVersion: nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
+			Modality:     nonEmptyStringPointer(canonicalStudyServiceModality(job.DICOMModality)),
+			Status:       entity.InferenceIngestionProcessingJobStatusPending,
+		},
+	)
+	if err == nil {
+		return executionID, true, nil
+	}
+	if err.Error() != apiError.DuplicateRecord {
+		return "", false, fmt.Errorf("cannot persist pending legacy processing dispatch: %w", err)
+	}
+
+	existing, queryErr := service.InferenceQueryRepositoryInterface.
+		SelectInferenceIngestionProcessingJobByCandidateModel(candidate.ID, job.ModelName)
+	if queryErr != nil {
+		return "", false, fmt.Errorf("cannot load duplicate pending legacy processing dispatch: %w", queryErr)
+	}
+	if existing.Status != entity.InferenceIngestionProcessingJobStatusFailed && existing.StudyServiceJobID != nil {
+		return existing.ID, false, nil
+	}
+	if updateErr := service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionProcessingJob(
+		repositoryTypes.UpdateInferenceIngestionProcessingJob{
+			ID:           existing.ID,
+			Status:       entity.InferenceIngestionProcessingJobStatusPending,
+			ModelVersion: nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
+			Modality:     nonEmptyStringPointer(canonicalStudyServiceModality(job.DICOMModality)),
+			ErrorMessage: nil,
+		},
+	); updateErr != nil {
+		return "", false, fmt.Errorf("cannot revive pending legacy processing dispatch: %w", updateErr)
+	}
+	return existing.ID, true, nil
 }
 
 func (service *InferenceCommandService) shouldDispatchCommittedProcessingExecution(
@@ -2309,7 +2452,7 @@ func (service *InferenceCommandService) persistDispatchFailure(candidateID strin
 	})
 }
 
-func (service *InferenceCommandService) recordQueuedProcessingDispatch(ctx context.Context, candidate entity.InferenceIngestionCandidate, job entity.InferenceIngestionJob, dispatchRequest types.DispatchStudyRequest, dispatchResponse types.DispatchStudyResponse) error {
+func (service *InferenceCommandService) recordQueuedProcessingDispatch(ctx context.Context, candidate entity.InferenceIngestionCandidate, job entity.InferenceIngestionJob, dispatchRequest types.DispatchStudyRequest, dispatchResponse types.DispatchStudyResponse, preparedExecutionID string) error {
 	studyServiceJobID := strings.TrimSpace(dispatchResponse.JobID)
 	if studyServiceJobID == "" {
 		return errors.New("study-service accepted dispatch without a job ID")
@@ -2334,6 +2477,19 @@ func (service *InferenceCommandService) recordQueuedProcessingDispatch(ctx conte
 			ErrorMessage:      nil,
 		}); err != nil {
 			return fmt.Errorf("cannot persist correlated queued execution: %w", err)
+		}
+		return nil
+	}
+	if preparedExecutionID = strings.TrimSpace(preparedExecutionID); preparedExecutionID != "" {
+		if err := service.InferenceCommandRepositoryInterface.UpdateInferenceIngestionProcessingJob(repositoryTypes.UpdateInferenceIngestionProcessingJob{
+			ID:                preparedExecutionID,
+			Status:            entity.InferenceIngestionProcessingJobStatusQueued,
+			ModelVersion:      nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
+			Modality:          nonEmptyStringPointer(strings.TrimSpace(dispatchRequest.Modality)),
+			StudyServiceJobID: &studyServiceJobID,
+			ErrorMessage:      nil,
+		}); err != nil {
+			return fmt.Errorf("cannot persist prepared queued processing dispatch: %w", err)
 		}
 		return nil
 	}
@@ -2377,6 +2533,26 @@ func (service *InferenceCommandService) recordQueuedProcessingDispatch(ctx conte
 	}
 
 	return fmt.Errorf("cannot persist queued processing dispatch: %w", err)
+}
+
+func (service *InferenceCommandService) recordPreparedProcessingDispatchFailure(
+	ctx context.Context,
+	candidate entity.InferenceIngestionCandidate,
+	job entity.InferenceIngestionJob,
+	dispatchRequest types.DispatchStudyRequest,
+	preparedExecutionID string,
+	dispatchErr error,
+	attentionReasonCode string,
+) {
+	if trimmedPointerValue(dispatchRequest.ProcessingRunID) == "" && strings.TrimSpace(preparedExecutionID) != "" {
+		service.recordKnownProcessingExecutionDispatchFailure(
+			ctx, candidate, job, "", preparedExecutionID, dispatchErr,
+		)
+		return
+	}
+	service.recordFailedProcessingDispatchWithAttention(
+		ctx, candidate, job, dispatchRequest, dispatchErr, attentionReasonCode,
+	)
 }
 
 func (service *InferenceCommandService) markProcessingRunDispatchAttention(ctx context.Context, tenantID, processingRunID string) error {
@@ -2954,7 +3130,7 @@ func (service *InferenceCommandService) ImportInferenceIngestionJobs(ctx context
 			return err
 		}
 
-		err = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(repositoryTypes.CreateInferenceIngestionJob{
+		err = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(ctx, repositoryTypes.CreateInferenceIngestionJob{
 			ID:                     generateID(),
 			TenantID:               job.TenantID,
 			DICOMModality:          job.DICOMModality,
@@ -3106,6 +3282,18 @@ func (service *InferenceCommandService) PredictPreparedInferenceModel(
 	}
 
 	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerRef)
+	targetLeaseHeld := false
+	if err != nil && service.IngestionTargetLeaseRepository != nil {
+		resolvedRef, _, release, leaseErr := service.IngestionTargetLeaseRepository.AcquireInferenceIngestionTarget(
+			ctx, tenantID, containerRef, "",
+		)
+		if leaseErr != nil {
+			return dockerInferenceTypes.PredictResponse{}, leaseErr
+		}
+		defer release()
+		targetLeaseHeld = true
+		containerInfo, err = service.DockerSDKInterface.GetContainerInfo(ctx, resolvedRef)
+	}
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
 	}
@@ -3113,6 +3301,27 @@ func (service *InferenceCommandService) PredictPreparedInferenceModel(
 	containerName := strings.TrimPrefix(strings.TrimSpace(containerInfo.Name), "/")
 	if containerID == "" || containerName == "" {
 		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
+	}
+
+	if !targetLeaseHeld && service.IngestionTargetLeaseRepository != nil {
+		resolvedID, _, release, leaseErr := service.IngestionTargetLeaseRepository.AcquireInferenceIngestionTarget(
+			ctx, tenantID, containerID, "",
+		)
+		if leaseErr != nil {
+			return dockerInferenceTypes.PredictResponse{}, leaseErr
+		}
+		defer release()
+		if resolvedID != containerID {
+			resolved, resolveErr := service.DockerSDKInterface.GetContainerInfo(ctx, resolvedID)
+			if resolveErr != nil {
+				return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
+			}
+			containerID = strings.TrimSpace(resolved.ID)
+			containerName = strings.TrimPrefix(strings.TrimSpace(resolved.Name), "/")
+			if containerID == "" || containerName == "" {
+				return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
+			}
+		}
 	}
 
 	if _, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID); err != nil {
@@ -3153,8 +3362,10 @@ func (service *InferenceCommandService) finishInferenceQuotaReservation(reservat
 
 // RemoveInferenceModel deletes an inference model
 func (service *InferenceCommandService) RemoveInferenceModel(ctx context.Context, ID string) error {
-	// get inference model
-	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByID(ctx, ID)
+	// Claim deletion in the same Firestore serialization boundary used by model
+	// upgrades before touching Docker or the registration.
+	claimID := "model-deletion:" + ID
+	inferenceModel, err := service.InferenceCommandRepositoryInterface.ClaimInferenceModelDeletion(ctx, ID, claimID)
 	if err != nil {
 		return err
 	}
@@ -3162,11 +3373,13 @@ func (service *InferenceCommandService) RemoveInferenceModel(ctx context.Context
 	// force remove container
 	err = service.DockerSDKInterface.RemoveContainer(ctx, inferenceModel.ContainerID)
 	if err != nil {
+		// Retain the deterministic claim so a retry can resume deletion while
+		// upgrades remain excluded from the possibly partial Docker outcome.
 		return errors.New(apiError.DockerError)
 	}
 
 	// delete inference model
-	err = service.InferenceCommandRepositoryInterface.DeleteInferenceModel(ctx, ID)
+	err = service.InferenceCommandRepositoryInterface.DeleteInferenceModel(ctx, ID, claimID)
 	if err != nil {
 		return err
 	}

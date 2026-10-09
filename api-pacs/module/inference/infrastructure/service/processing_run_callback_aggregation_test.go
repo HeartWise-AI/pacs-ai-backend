@@ -714,6 +714,7 @@ func TestCorrelatedQueuedDispatchUpdatesPlannedExecution(t *testing.T) {
 		entity.InferenceIngestionJob{ModelName: "model-one", ModelVersion: "1.0"},
 		serviceTypes.DispatchStudyRequest{ProcessingRunID: &processingRunID, Modality: "US"},
 		serviceTypes.DispatchStudyResponse{JobID: "study-job-1"},
+		"",
 	)
 
 	require.NoError(t, err)

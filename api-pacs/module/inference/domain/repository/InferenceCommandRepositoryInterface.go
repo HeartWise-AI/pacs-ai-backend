@@ -8,8 +8,10 @@ import (
 )
 
 type InferenceCommandRepositoryInterface interface {
+	// ClaimInferenceModelDeletion atomically excludes upgrades before destructive side effects.
+	ClaimInferenceModelDeletion(ctx context.Context, ID, claimID string) (entity.InferenceModel, error)
 	// DeleteInferenceModel deletes an inference model
-	DeleteInferenceModel(ctx context.Context, ID string) error
+	DeleteInferenceModel(ctx context.Context, ID, claimID string) error
 	// DeleteInferenceIngestionJob deletes an inference ingestion job
 	DeleteInferenceIngestionJob(ID string) error
 	// DeleteModelFeedback deletes model feedback
@@ -23,7 +25,7 @@ type InferenceCommandRepositoryInterface interface {
 	// InsertInferenceModel inserts an inference model
 	InsertInferenceModel(ctx context.Context, data types.AddInferenceModel) error
 	// InsertInferenceIngestionJob inserts a new inference ingestion job
-	InsertInferenceIngestionJob(data types.CreateInferenceIngestionJob) error
+	InsertInferenceIngestionJob(ctx context.Context, data types.CreateInferenceIngestionJob) error
 	// DeleteInferenceIngestionJobByContainerID deletes inference ingestion jobs by container ID
 	DeleteInferenceIngestionJobByContainerID(tenantID, containerID string) error
 	// InsertInferenceIngestionProcessingJob inserts a new inference ingestion processing job

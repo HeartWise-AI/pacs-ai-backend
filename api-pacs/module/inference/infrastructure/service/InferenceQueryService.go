@@ -113,6 +113,8 @@ func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, te
 					},
 					Name:                inferenceModel.Name,
 					DockerImage:         inferenceModel.DockerImage,
+					Deployment:          inferenceModel.Deployment,
+					ActiveUpgradeID:     inferenceModel.ActiveUpgradeID,
 					Envs:                inferenceModel.Envs,
 					DisallowedDICOMTags: inferenceModel.DisallowedDICOMTags,
 					OutputMode:          inferenceModel.OutputMode,

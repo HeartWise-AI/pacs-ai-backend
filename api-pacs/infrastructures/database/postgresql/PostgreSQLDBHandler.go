@@ -1,6 +1,7 @@
 package postgresql
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -25,6 +26,15 @@ func (h *PostgreSQLDBHandler) Begin() (*sqlx.Tx, error) {
 		return nil, err
 	}
 
+	return tx, nil
+}
+
+// BeginTx starts a context-bounded transaction.
+func (h *PostgreSQLDBHandler) BeginTx(ctx context.Context) (*sqlx.Tx, error) {
+	tx, err := h.Conn.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
 	return tx, nil
 }
 
@@ -97,4 +107,15 @@ func (h *PostgreSQLDBHandler) QueryRow(qstmt string, model interface{}, bindMode
 	defer nstmt.Close()
 
 	return nstmt.Get(bindModel, model)
+}
+
+// QueryRowContext selects one row while honoring caller cancellation.
+func (h *PostgreSQLDBHandler) QueryRowContext(ctx context.Context, qstmt string, model interface{}, bindModel interface{}) error {
+	nstmt, err := h.Conn.PrepareNamedContext(ctx, qstmt)
+	if err != nil {
+		return err
+	}
+	defer nstmt.Close()
+
+	return nstmt.GetContext(ctx, bindModel, model)
 }

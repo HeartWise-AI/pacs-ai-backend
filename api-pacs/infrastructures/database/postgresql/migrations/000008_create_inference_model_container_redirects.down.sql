@@ -1,0 +1,3 @@
+DROP TRIGGER IF EXISTS trigger_update_inference_model_container_redirects_updated_at
+    ON inference_model_container_redirects;
+DROP TABLE IF EXISTS inference_model_container_redirects;

@@ -113,6 +113,12 @@ type UpdateInferenceModelRequest struct {
 	OutputMode          entity.OutputMode `json:"outputMode" validate:"required"`
 }
 
+type StartInferenceModelUpgradeRequest struct {
+	ImageReference      string `json:"imageReference" validate:"required"`
+	ExpectedDigest      string `json:"expectedDigest,omitempty"`
+	DrainTimeoutSeconds int    `json:"drainTimeoutSeconds,omitempty"`
+}
+
 type UpdateInferenceModelContainerRequest struct {
 	ContainerID string `json:"containerId" validate:"required"`
 }
@@ -171,16 +177,18 @@ type GetContainerInfoResponse struct {
 }
 
 type GetInferenceModelResponse struct {
-	ID                  string                   `json:"id"`
-	TenantID            string                   `json:"tenantId"`
-	Container           GetContainerInfoResponse `json:"container"`
-	Name                string                   `json:"name"`
-	DockerImage         string                   `json:"dockerImage"`
-	Envs                []string                 `json:"envs"`
-	DisallowedDICOMTags []string                 `json:"disallowedDICOMTags"`
-	OutputMode          entity.OutputMode        `json:"outputMode"`
-	CreatedAt           uint64                   `json:"createdAt"`
-	UpdatedAt           uint64                   `json:"updatedAt"`
+	ID                  string                           `json:"id"`
+	TenantID            string                           `json:"tenantId"`
+	Container           GetContainerInfoResponse         `json:"container"`
+	Name                string                           `json:"name"`
+	DockerImage         string                           `json:"dockerImage"`
+	Deployment          *entity.InferenceModelDeployment `json:"deployment,omitempty"`
+	ActiveUpgradeID     string                           `json:"activeUpgradeId,omitempty"`
+	Envs                []string                         `json:"envs"`
+	DisallowedDICOMTags []string                         `json:"disallowedDICOMTags"`
+	OutputMode          entity.OutputMode                `json:"outputMode"`
+	CreatedAt           uint64                           `json:"createdAt"`
+	UpdatedAt           uint64                           `json:"updatedAt"`
 }
 
 type GetInferenceAvailableModelResponse struct {

@@ -304,6 +304,112 @@
         }
       }
     },
+    "/inference/model/{modelID}/upgrade": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Start Transactional Model Upgrade",
+        "description": "Pull, validate, drain, activate, verify, and if necessary roll back a versioned inference image. Owner or administrator role required.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "modelID",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StartInferenceModelUpgradeRequest" }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Upgrade accepted",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InferenceModelUpgradeResponse" }
+              }
+            }
+          },
+          "400": { "description": "Invalid image reference, digest, or drain timeout" },
+          "404": { "description": "Model registration not found in the authenticated tenant" },
+          "409": { "description": "Another upgrade already owns the model registration" },
+          "503": { "description": "The Model Manager is disabled" }
+        }
+      }
+    },
+    "/inference/model/{modelID}/upgrade/{upgradeID}": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Get Model Upgrade Status",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "modelID",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "upgradeID",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current durable upgrade state",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InferenceModelUpgradeResponse" }
+              }
+            }
+          },
+          "404": { "description": "Upgrade not found in the authenticated tenant" },
+          "503": { "description": "The Model Manager is disabled" }
+        }
+      }
+    },
+    "/inference/model/{modelID}/upgrade/{upgradeID}/cancel": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Cancel Model Upgrade",
+        "description": "Requests cancellation; an activated candidate is rolled back before completion.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "modelID",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "upgradeID",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Cancellation requested",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InferenceModelUpgradeResponse" }
+              }
+            }
+          },
+          "404": { "description": "Upgrade not found in the authenticated tenant" },
+          "409": { "description": "Upgrade is not running in this API process" },
+          "503": { "description": "The Model Manager is disabled" }
+        }
+      }
+    },
     "/inference/onboarding-model-questionnaire-answers/add": {
       "post": {
         "tags": ["inference"],
@@ -2920,6 +3026,141 @@
             "type": "string",
             "enum": ["JSON", "OHIF_ANNOTATIONS", "HTML", "WEB_APP", "PDF"]
           }
+        }
+      },
+      "StartInferenceModelUpgradeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["imageReference"],
+        "properties": {
+          "imageReference": {
+            "type": "string",
+            "description": "Explicit Docker-safe SemVer tag or immutable digest in the allowed namespace",
+            "example": "heartwisehub/pacs-ai-deepcoro-syntax:6.0.0"
+          },
+          "expectedDigest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "drainTimeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Defaults to 300 and cannot exceed the server maximum"
+          }
+        }
+      },
+      "InferenceModelProvenance": {
+        "type": "object",
+        "required": [
+          "sourceRepository",
+          "sourceRevision",
+          "modelRepository",
+          "modelRevision",
+          "weightsPath",
+          "weightsSha256"
+        ],
+        "properties": {
+          "sourceRepository": { "type": "string" },
+          "sourceRevision": { "type": "string" },
+          "modelRepository": { "type": "string" },
+          "modelRevision": { "type": "string" },
+          "weightsPath": { "type": "string" },
+          "weightsSha256": { "type": "string" }
+        }
+      },
+      "InferenceModelDeployment": {
+        "type": "object",
+        "required": [
+          "containerId",
+          "imageReference",
+          "imageDigest",
+          "localImageId",
+          "modelVersion",
+          "deployedAt"
+        ],
+        "properties": {
+          "containerId": { "type": "string" },
+          "imageReference": { "type": "string" },
+          "imageDigest": { "type": "string" },
+          "localImageId": { "type": "string" },
+          "modelVersion": { "type": "string" },
+          "provenance": { "$ref": "#/components/schemas/InferenceModelProvenance" },
+          "deployedAt": { "type": "integer", "format": "int64" }
+        }
+      },
+      "InferenceModelUpgrade": {
+        "type": "object",
+        "required": [
+          "id",
+          "tenantId",
+          "modelId",
+          "modelName",
+          "actorUserId",
+          "state",
+          "requestedImageReference",
+          "drainTimeoutSeconds",
+          "previous",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "tenantId": { "type": "string" },
+          "modelId": { "type": "string" },
+          "modelName": { "type": "string" },
+          "actorUserId": { "type": "string" },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "pulling",
+              "validating",
+              "draining",
+              "activating",
+              "verifying",
+              "succeeded",
+              "rolling_back",
+              "rolled_back",
+              "failed",
+              "cancelled",
+              "degraded"
+            ]
+          },
+          "requestedImageReference": { "type": "string" },
+          "expectedDigest": { "type": "string" },
+          "drainTimeoutSeconds": { "type": "integer" },
+          "previous": { "$ref": "#/components/schemas/InferenceModelDeployment" },
+          "previousAliases": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "previousSupportedOutputModes": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "candidate": { "$ref": "#/components/schemas/InferenceModelDeployment" },
+          "candidateSupportedOutputModes": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "failureStage": { "type": "string" },
+          "errorCode": { "type": "string" },
+          "errorMessage": { "type": "string" },
+          "rollbackOutcome": { "type": "string", "enum": ["not_required", "succeeded", "failed"] },
+          "rollbackError": { "type": "string" },
+          "pendingCleanupContainerId": { "type": "string" },
+          "createdAt": { "type": "integer", "format": "int64" },
+          "updatedAt": { "type": "integer", "format": "int64" },
+          "completedAt": { "type": "integer", "format": "int64" }
+        }
+      },
+      "InferenceModelUpgradeResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/InferenceModelUpgrade" }
         }
       },
       "AddContactFormRequest": {

@@ -21,9 +21,10 @@ type Config struct {
 }
 
 type CreateContainer struct {
-	Name  string
-	Image string
-	Envs  []string
+	Name                string
+	Image               string
+	Envs                []string
+	TemplateContainerID string
 }
 
 type GetContainerInfoResult struct {
@@ -39,4 +40,12 @@ type GetContainerStatsResult struct {
 	ContainerID     string
 	CPUPercentUsage float64 // in percent
 	MemoryInBytes   uint64  // in bytes
+}
+
+// InspectImageResult contains only immutable identity and release labels. It
+// deliberately excludes registry credentials and the full image config.
+type InspectImageResult struct {
+	ID          string
+	RepoDigests []string
+	Labels      map[string]string
 }
