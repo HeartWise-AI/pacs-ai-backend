@@ -63,6 +63,13 @@ func TestCandidateContainerDockerIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	candidateInfo, err := sdk.GetContainerInfo(ctx, candidateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidateInfo.ImageID != active.Image {
+		t.Fatalf("candidate SDK image ID = %q, want %q", candidateInfo.ImageID, active.Image)
+	}
 	if candidate.Name != "/"+name || candidate.Image != active.Image {
 		t.Fatalf("unexpected candidate identity: name=%q image=%q", candidate.Name, candidate.Config.Image)
 	}

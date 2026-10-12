@@ -230,6 +230,7 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 
 	return types.GetContainerInfoResult{
 		ID:         containerJSON.ID,
+		ImageID:    containerJSON.Image,
 		Name:       containerJSON.Name,
 		Lifecycle:  types.LifecycleFromStatus(types.Status(containerJSON.State.Status)),
 		StartedAt:  startedAtTime,

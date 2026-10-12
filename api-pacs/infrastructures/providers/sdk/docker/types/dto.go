@@ -69,6 +69,7 @@ type CreateCandidateContainer struct {
 
 type GetContainerInfoResult struct {
 	ID         string
+	ImageID    string
 	Name       string
 	Lifecycle  Lifecycle
 	StartedAt  time.Time
