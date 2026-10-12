@@ -144,48 +144,6 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 	}, nil
 }
 
-// GetContainerStats gets the container stats
-func (d *DockerSDK) GetContainerStats(ctx context.Context, containerID string) (types.GetContainerStatsResult, error) {
-	// TODO: remove this
-	// statsStartTime := time.Now()
-
-	// fetch real-time stats
-	stats, err := d.Client.ContainerStats(ctx, containerID, false)
-	if err != nil {
-		log.Println("[docker] error:", err)
-		return types.GetContainerStatsResult{}, err
-	}
-	defer stats.Body.Close()
-
-	var statsJSON container.Stats
-	if err := json.NewDecoder(stats.Body).Decode(&statsJSON); err != nil {
-		log.Println("[docker] error:", err)
-		return types.GetContainerStatsResult{}, err
-	}
-
-	// calculate cpu usage percentage
-	cpuDelta := float64(statsJSON.CPUStats.CPUUsage.TotalUsage - statsJSON.PreCPUStats.CPUUsage.TotalUsage)
-	systemDelta := float64(statsJSON.CPUStats.SystemUsage - statsJSON.PreCPUStats.SystemUsage)
-	onlineCPUs := float64(statsJSON.CPUStats.OnlineCPUs)
-	if onlineCPUs == 0 {
-		onlineCPUs = float64(len(statsJSON.CPUStats.CPUUsage.PercpuUsage)) // Better fallback
-		if onlineCPUs == 0 {
-			onlineCPUs = 1 // Final fallback to prevent division by zero
-		}
-	}
-	// calculate percentage across all cores
-	cpuUsagePercent := 0.0
-	if cpuDelta > 0.0 && systemDelta > 0.0 {
-		cpuUsagePercent = (cpuDelta / systemDelta) * onlineCPUs * 100.0
-	}
-
-	return types.GetContainerStatsResult{
-		ContainerID:     containerID,
-		CPUPercentUsage: cpuUsagePercent,
-		MemoryInBytes:   statsJSON.MemoryStats.Usage,
-	}, nil
-}
-
 // PullImage pulls an image from registry
 func (d *DockerSDK) PullImage(ctx context.Context, imageName string) error {
 	reader, err := d.Client.ImagePull(ctx, imageName, image.PullOptions{

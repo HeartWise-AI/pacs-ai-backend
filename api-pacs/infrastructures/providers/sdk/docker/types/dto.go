@@ -34,9 +34,3 @@ type GetContainerInfoResult struct {
 	StartedAt  time.Time
 	FinishedAt time.Time
 }
-
-type GetContainerStatsResult struct {
-	ContainerID     string
-	CPUPercentUsage float64 // in percent
-	MemoryInBytes   uint64  // in bytes
-}

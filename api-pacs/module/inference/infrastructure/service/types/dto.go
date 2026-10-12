@@ -223,15 +223,13 @@ type WorklistNotification struct {
 }
 
 type GetContainerInfoResult struct {
-	ID              string
-	Name            string
-	Status          dockerTypes.Status
-	Lifecycle       InferenceModelLifecycle
-	Running         bool
-	StartedAt       time.Time
-	FinishedAt      time.Time
-	CPUPercentUsage float64 // in percent
-	MemoryInBytes   uint64  // in bytes
+	ID         string
+	Name       string
+	Status     dockerTypes.Status
+	Lifecycle  InferenceModelLifecycle
+	Running    bool
+	StartedAt  time.Time
+	FinishedAt time.Time
 }
 
 type InferenceModelLifecycle string

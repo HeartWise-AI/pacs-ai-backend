@@ -30,14 +30,13 @@ func (repository *inferenceModelsQueryRepository) SelectInferenceModels(_ contex
 type inferenceModelsDockerSDK struct {
 	dockerTypes.DockerSDKInterface
 
-	mu         sync.Mutex
-	infos      map[string]dockerTypes.GetContainerInfoResult
-	errors     map[string]error
-	started    chan string
-	release    <-chan struct{}
-	active     int
-	maxActive  int
-	statsCalls int
+	mu        sync.Mutex
+	infos     map[string]dockerTypes.GetContainerInfoResult
+	errors    map[string]error
+	started   chan string
+	release   <-chan struct{}
+	active    int
+	maxActive int
 }
 
 func (sdk *inferenceModelsDockerSDK) GetContainerInfo(ctx context.Context, containerID string) (dockerTypes.GetContainerInfoResult, error) {
@@ -67,23 +66,16 @@ func (sdk *inferenceModelsDockerSDK) GetContainerInfo(ctx context.Context, conta
 	return sdk.infos[containerID], nil
 }
 
-func (sdk *inferenceModelsDockerSDK) GetContainerStats(context.Context, string) (dockerTypes.GetContainerStatsResult, error) {
-	sdk.mu.Lock()
-	sdk.statsCalls++
-	sdk.mu.Unlock()
-	return dockerTypes.GetContainerStatsResult{}, nil
-}
-
 func (sdk *inferenceModelsDockerSDK) finishInspection() {
 	sdk.mu.Lock()
 	sdk.active--
 	sdk.mu.Unlock()
 }
 
-func (sdk *inferenceModelsDockerSDK) snapshot() (maxActive, statsCalls int) {
+func (sdk *inferenceModelsDockerSDK) maximumActive() int {
 	sdk.mu.Lock()
 	defer sdk.mu.Unlock()
-	return sdk.maxActive, sdk.statsCalls
+	return sdk.maxActive
 }
 
 type inferenceModelsDockerInferenceAPI struct {
@@ -152,7 +144,7 @@ func (api *inferenceModelsDockerInferenceAPI) snapshot() (maxActive, infoCalls, 
 	return api.maxActive, api.infoCalls, api.factsCalls
 }
 
-func TestGetInferenceModelsUsesBoundedConcurrentInspectionWithoutStats(t *testing.T) {
+func TestGetInferenceModelsUsesBoundedConcurrentInspection(t *testing.T) {
 	models := make([]entity.InferenceModel, 6)
 	infos := make(map[string]dockerTypes.GetContainerInfoResult, len(models))
 	for index := range models {
@@ -206,9 +198,7 @@ func TestGetInferenceModelsUsesBoundedConcurrentInspectionWithoutStats(t *testin
 		require.Equal(t, models[index].ContainerID, model.Container.ID)
 		require.Equal(t, serviceTypes.InferenceModelLifecycleRunning, model.Container.Lifecycle)
 	}
-	maxActive, statsCalls := sdk.snapshot()
-	require.Equal(t, inferenceModelInspectionConcurrency, maxActive)
-	require.Zero(t, statsCalls)
+	require.Equal(t, inferenceModelInspectionConcurrency, sdk.maximumActive())
 }
 
 func TestGetInferenceModelsKeepsRegistrationWhenContainerInspectionFails(t *testing.T) {

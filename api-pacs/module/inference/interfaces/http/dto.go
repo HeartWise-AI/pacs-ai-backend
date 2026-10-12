@@ -161,15 +161,13 @@ type StudyServiceProcessingCallbackRequest struct {
 }
 
 type GetContainerInfoResponse struct {
-	ID              string                               `json:"id"`
-	Name            string                               `json:"name"`
-	Status          dockerTypes.Status                   `json:"status"`
-	Lifecycle       serviceTypes.InferenceModelLifecycle `json:"lifecycle"`
-	Running         bool                                 `json:"running"`
-	StartedAt       uint64                               `json:"startedAt"`
-	FinishedAt      uint64                               `json:"finishedAt"`
-	CPUPercentUsage float64                              `json:"cpuPercentUsage"`
-	MemoryInBytes   uint64                               `json:"memoryInBytes"`
+	ID         string                               `json:"id"`
+	Name       string                               `json:"name"`
+	Status     dockerTypes.Status                   `json:"status"`
+	Lifecycle  serviceTypes.InferenceModelLifecycle `json:"lifecycle"`
+	Running    bool                                 `json:"running"`
+	StartedAt  uint64                               `json:"startedAt"`
+	FinishedAt uint64                               `json:"finishedAt"`
 }
 
 type GetInferenceModelContainerResponse struct {

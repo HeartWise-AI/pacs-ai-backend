@@ -64,30 +64,21 @@ func inferenceModelLifecycle(status dockerTypes.Status) types.InferenceModelLife
 	}
 }
 
-// GetContainerInfo returns the container info with stats
+// GetContainerInfo returns the container runtime information.
 func (service *InferenceQueryService) GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error) {
-	// get container info
 	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
 	if err != nil {
 		return types.GetContainerInfoResult{}, errors.New(apiError.DockerError)
 	}
 
-	// get container stats
-	containerStats, err := service.DockerSDKInterface.GetContainerStats(ctx, containerID)
-	if err != nil {
-		return types.GetContainerInfoResult{}, errors.New(apiError.DockerError)
-	}
-
 	return types.GetContainerInfoResult{
-		ID:              containerInfo.ID,
-		Name:            strings.TrimPrefix(containerInfo.Name, "/"),
-		Status:          containerInfo.Status,
-		Lifecycle:       inferenceModelLifecycle(containerInfo.Status),
-		Running:         containerInfo.Running,
-		StartedAt:       containerInfo.StartedAt,
-		FinishedAt:      containerInfo.FinishedAt,
-		CPUPercentUsage: containerStats.CPUPercentUsage,
-		MemoryInBytes:   containerStats.MemoryInBytes,
+		ID:         containerInfo.ID,
+		Name:       strings.TrimPrefix(containerInfo.Name, "/"),
+		Status:     containerInfo.Status,
+		Lifecycle:  inferenceModelLifecycle(containerInfo.Status),
+		Running:    containerInfo.Running,
+		StartedAt:  containerInfo.StartedAt,
+		FinishedAt: containerInfo.FinishedAt,
 	}, nil
 }
 

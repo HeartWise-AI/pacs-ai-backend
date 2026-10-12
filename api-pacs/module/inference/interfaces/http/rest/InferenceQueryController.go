@@ -23,7 +23,7 @@ type InferenceQueryController struct {
 	WorklistEventHeartbeatInterval time.Duration
 }
 
-// GetContainerInfo returns the inference model container info with stats
+// GetContainerInfo returns the inference model container runtime information.
 func (controller *InferenceQueryController) GetContainerInfo(w http.ResponseWriter, r *http.Request) {
 	containerID := chi.URLParam(r, "containerID")
 	if len(containerID) == 0 {
