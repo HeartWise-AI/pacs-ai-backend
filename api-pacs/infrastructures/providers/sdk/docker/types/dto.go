@@ -14,6 +14,37 @@ const (
 	StatusDead       Status = "dead"
 )
 
+type Lifecycle string
+
+const (
+	LifecycleStarting Lifecycle = "starting"
+	LifecycleRunning  Lifecycle = "running"
+	LifecyclePaused   Lifecycle = "paused"
+	LifecycleStopping Lifecycle = "stopping"
+	LifecycleStopped  Lifecycle = "stopped"
+	LifecycleDegraded Lifecycle = "degraded"
+	LifecycleUnknown  Lifecycle = "unknown"
+)
+
+func LifecycleFromStatus(status Status) Lifecycle {
+	switch status {
+	case StatusCreated, StatusRestarting:
+		return LifecycleStarting
+	case StatusRunning:
+		return LifecycleRunning
+	case StatusPaused:
+		return LifecyclePaused
+	case StatusRemoving:
+		return LifecycleStopping
+	case StatusExited:
+		return LifecycleStopped
+	case StatusDead:
+		return LifecycleDegraded
+	default:
+		return LifecycleUnknown
+	}
+}
+
 type Config struct {
 	Username string
 	Password string
@@ -29,14 +60,7 @@ type CreateContainer struct {
 type GetContainerInfoResult struct {
 	ID         string
 	Name       string
-	Status     Status
-	Running    bool
+	Lifecycle  Lifecycle
 	StartedAt  time.Time
 	FinishedAt time.Time
-}
-
-type GetContainerStatsResult struct {
-	ContainerID     string
-	CPUPercentUsage float64 // in percent
-	MemoryInBytes   uint64  // in bytes
 }

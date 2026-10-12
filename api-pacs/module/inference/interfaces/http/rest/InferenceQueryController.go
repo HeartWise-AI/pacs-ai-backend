@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"context"
 	"net/http"
 	"time"
 
@@ -24,7 +23,7 @@ type InferenceQueryController struct {
 	WorklistEventHeartbeatInterval time.Duration
 }
 
-// GetContainerInfo returns the inference model container info with stats
+// GetContainerInfo returns the inference model container runtime information.
 func (controller *InferenceQueryController) GetContainerInfo(w http.ResponseWriter, r *http.Request) {
 	containerID := chi.URLParam(r, "containerID")
 	if len(containerID) == 0 {
@@ -39,7 +38,7 @@ func (controller *InferenceQueryController) GetContainerInfo(w http.ResponseWrit
 		return
 	}
 
-	containerInfo, err := controller.InferenceQueryServiceInterface.GetContainerInfo(context.TODO(), containerID)
+	containerInfo, err := controller.InferenceQueryServiceInterface.GetContainerInfo(r.Context(), containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -71,10 +70,9 @@ func (controller *InferenceQueryController) GetContainerInfo(w http.ResponseWrit
 		Data: &types.GetContainerInfoResponse{
 			ID:         containerInfo.ID,
 			Name:       containerInfo.Name,
-			Status:     containerInfo.Status,
-			Running:    containerInfo.Running,
-			StartedAt:  uint64(containerInfo.StartedAt.Unix()),
-			FinishedAt: uint64(containerInfo.FinishedAt.Unix()),
+			Lifecycle:  containerInfo.Lifecycle,
+			StartedAt:  scheduleTimestampUnix(containerInfo.StartedAt),
+			FinishedAt: scheduleTimestampUnix(containerInfo.FinishedAt),
 		},
 	}
 
@@ -85,7 +83,7 @@ func (controller *InferenceQueryController) GetContainerInfo(w http.ResponseWrit
 func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
-	inferenceModels, err := controller.InferenceQueryServiceInterface.GetInferenceModels(context.TODO(), tenantID)
+	inferenceModels, err := controller.InferenceQueryServiceInterface.GetInferenceModels(r.Context(), tenantID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -127,15 +125,12 @@ func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWr
 		inferenceModelsResponse = append(inferenceModelsResponse, types.GetInferenceModelResponse{
 			ID:       inferenceModel.ID,
 			TenantID: inferenceModel.TenantID,
-			Container: types.GetContainerInfoResponse{
-				ID:              inferenceModel.Container.ID,
-				Name:            inferenceModel.Container.Name,
-				Status:          inferenceModel.Container.Status,
-				Running:         inferenceModel.Container.Running,
-				StartedAt:       uint64(inferenceModel.Container.StartedAt.Unix()),
-				FinishedAt:      uint64(inferenceModel.Container.FinishedAt.Unix()),
-				CPUPercentUsage: inferenceModel.Container.CPUPercentUsage,
-				MemoryInBytes:   inferenceModel.Container.MemoryInBytes,
+			Container: types.GetInferenceModelContainerResponse{
+				ID:         inferenceModel.Container.ID,
+				Name:       inferenceModel.Container.Name,
+				Lifecycle:  inferenceModel.Container.Lifecycle,
+				StartedAt:  scheduleTimestampUnix(inferenceModel.Container.StartedAt),
+				FinishedAt: scheduleTimestampUnix(inferenceModel.Container.FinishedAt),
 			},
 			Name:                inferenceModel.Name,
 			DockerImage:         inferenceModel.DockerImage,
@@ -172,7 +167,7 @@ func (controller *InferenceQueryController) GetInferenceModelInfo(w http.Respons
 		return
 	}
 
-	modelInfo, err := controller.InferenceQueryServiceInterface.GetInferenceModelInfo(context.TODO(), containerID)
+	modelInfo, err := controller.InferenceQueryServiceInterface.GetInferenceModelInfo(r.Context(), containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -225,7 +220,7 @@ func (controller *InferenceQueryController) GetInferenceModelFacts(w http.Respon
 		return
 	}
 
-	modelFacts, err := controller.InferenceQueryServiceInterface.GetInferenceModelFacts(context.TODO(), containerID)
+	modelFacts, err := controller.InferenceQueryServiceInterface.GetInferenceModelFacts(r.Context(), containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -267,7 +262,7 @@ func (controller *InferenceQueryController) GetInferenceModelFacts(w http.Respon
 func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
-	inferenceAvailableModels, err := controller.InferenceQueryServiceInterface.GetInferenceAvailableModels(context.TODO(), tenantID)
+	inferenceAvailableModels, err := controller.InferenceQueryServiceInterface.GetInferenceAvailableModels(r.Context(), tenantID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -338,7 +333,7 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
-	res, err := controller.InferenceQueryServiceInterface.GetInferenceIngestionJobs(context.TODO(), tenantID)
+	res, err := controller.InferenceQueryServiceInterface.GetInferenceIngestionJobs(r.Context(), tenantID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -486,7 +481,7 @@ func (controller *InferenceQueryController) getInferenceIngestionCandidates(w ht
 		status = &queryStatus
 	}
 
-	res, err := controller.InferenceQueryServiceInterface.GetInferenceIngestionCandidates(context.TODO(), serviceTypes.GetInferenceIngestionCandidates{
+	res, err := controller.InferenceQueryServiceInterface.GetInferenceIngestionCandidates(r.Context(), serviceTypes.GetInferenceIngestionCandidates{
 		TenantID:          tenantID,
 		IngestionJobID:    ingestionJobID,
 		StudyInstanceUID:  studyInstanceUID,
@@ -633,7 +628,7 @@ func (controller *InferenceQueryController) GetModelFeedbackByModelID(w http.Res
 		return
 	}
 
-	res, err := controller.InferenceQueryServiceInterface.GetModelFeedBackByUser(context.TODO(), serviceTypes.GetModelFeedbackByUser{
+	res, err := controller.InferenceQueryServiceInterface.GetModelFeedBackByUser(r.Context(), serviceTypes.GetModelFeedbackByUser{
 		TenantID: tenantID,
 		UserID:   userID,
 		ModelID:  modelID,
@@ -722,7 +717,7 @@ func (controller *InferenceQueryController) GetOnboardingModelQuestionnaireAnswe
 		return
 	}
 
-	res, err := controller.InferenceQueryServiceInterface.GetOnboardingModelQuestionnaireAnswers(context.TODO(), serviceTypes.GetOnboardingModelQuestionnaireAnswer{
+	res, err := controller.InferenceQueryServiceInterface.GetOnboardingModelQuestionnaireAnswers(r.Context(), serviceTypes.GetOnboardingModelQuestionnaireAnswer{
 		TenantID: tenantID,
 		UserID:   userID,
 		ModelID:  &modelID,

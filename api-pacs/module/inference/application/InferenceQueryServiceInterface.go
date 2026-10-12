@@ -12,7 +12,7 @@ import (
 type InferenceQueryServiceInterface interface {
 	// GetInferenceQuota returns the authenticated user's current quota state.
 	GetInferenceQuota(ctx context.Context, tenantID, userID string) (types.InferenceQuotaStatus, error)
-	// GetContainerInfo returns the container info with stats
+	// GetContainerInfo returns the container runtime information.
 	GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error)
 	// GetInferenceModels returns the inference models
 	GetInferenceModels(ctx context.Context, tenantID string) ([]types.GetInferenceModelResult, error)

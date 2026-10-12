@@ -25,10 +25,10 @@ func Ensure(ctx context.Context, d Docker, a Metadata, id string, timeout, poll 
 	if err != nil {
 		return "", api.ModelInfo{}, fmt.Errorf("cannot inspect inference container %s: %w", id, err)
 	}
-	if !info.Running {
+	if info.Lifecycle != docker.LifecycleRunning {
 		if err = d.StartContainer(ctx, id); err != nil {
 			refreshed, inspectErr := d.GetContainerInfo(ctx, id)
-			if inspectErr != nil || !refreshed.Running {
+			if inspectErr != nil || refreshed.Lifecycle != docker.LifecycleRunning {
 				return "", api.ModelInfo{}, fmt.Errorf("cannot start inference container %s: %w", id, err)
 			}
 			info = refreshed
