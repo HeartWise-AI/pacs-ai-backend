@@ -3341,7 +3341,24 @@ func (service *InferenceCommandService) UpdateInferenceModelContainerID(ctx cont
 func (service *InferenceCommandService) UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error {
 	modelFeedbackID := data.ID
 
-	if modelFeedbackID == nil {
+	if modelFeedbackID != nil {
+		modelFeedback, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackByUserModelID(ctx, repositoryTypes.GetModelFeedbackByUserModelID{
+			TenantID: data.TenantID,
+			UserID:   data.UserID,
+			ModelID:  data.ModelID,
+		})
+		if err != nil {
+			if err.Error() == apiError.MissingRecord {
+				return errors.New(apiError.ForbiddenAccess)
+			}
+
+			return err
+		}
+
+		if modelFeedback.ID != *modelFeedbackID || modelFeedback.InferenceModelID != data.InferenceModelID {
+			return errors.New(apiError.ForbiddenAccess)
+		}
+	} else {
 		modelFeedbackIDStr := generateID()
 		modelFeedbackID = &modelFeedbackIDStr
 	}

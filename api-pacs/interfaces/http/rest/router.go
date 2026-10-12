@@ -48,6 +48,21 @@ type inferenceWorklistHandlers struct {
 	reprocessStudy     http.HandlerFunc
 }
 
+type inferenceFeedbackHandlers struct {
+	get    http.HandlerFunc
+	update http.HandlerFunc
+	remove http.HandlerFunc
+}
+
+// mountInferenceFeedbackRoutes keeps user-owned feedback available to every
+// authenticated user. Ownership is enforced by the feedback services using the
+// tenant and user stored in the authenticated request context.
+func mountInferenceFeedbackRoutes(r chi.Router, handlers inferenceFeedbackHandlers) {
+	r.Get("/{modelID}/feedback", handlers.get)
+	r.Put("/feedback/update", handlers.update)
+	r.Delete("/{modelID}/feedback/remove", handlers.remove)
+}
+
 // mountInferenceWorklistRoutes keeps authentication and policy acceptance
 // structurally attached to every tenant-scoped route while applying the
 // owner/admin guard only to mutations.
@@ -196,17 +211,20 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Get("/onboarding-model-questionnaire-answers", inferenceQueryController.GetOnboardingModelQuestionnaireAnswers)
 
 					r.Route("/model", func(r chi.Router) {
+						mountInferenceFeedbackRoutes(r, inferenceFeedbackHandlers{
+							get:    inferenceQueryController.GetModelFeedbackByModelID,
+							update: inferenceCommandController.UpdateModelFeedback,
+							remove: inferenceCommandController.RemoveModelFeedback,
+						})
+
 						r.Group(func(r chi.Router) {
 							r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
 
 							// inference model routes
 							r.Post("/add", inferenceCommandController.AddInferenceModel)
 							r.Get("/list", inferenceQueryController.GetInferenceModels)
-							r.Get("/{modelID}/feedback", inferenceQueryController.GetModelFeedbackByModelID)
 							r.Delete("/{ID}/remove", inferenceCommandController.RemoveInferenceModel)
 							r.Put("/{ID}/update", inferenceCommandController.UpdateInferenceModel)
-							r.Put("/feedback/update", inferenceCommandController.UpdateModelFeedback)
-							r.Delete("/{modelID}/feedback/remove", inferenceCommandController.RemoveModelFeedback)
 
 							// container routes
 							r.Route("/container", func(r chi.Router) {

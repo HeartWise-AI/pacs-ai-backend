@@ -85,10 +85,10 @@ func (middleware *IAMMiddleware) RBACOwnerGuard(next http.Handler) http.Handler 
 
 		if userRole != entity.OwnerRole {
 			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusUnauthorized,
+				Status:    http.StatusForbidden,
 				Success:   false,
-				Message:   "Unauthorized access.",
-				ErrorCode: apiError.UnauthorizedAccess,
+				Message:   "Forbidden access.",
+				ErrorCode: apiError.ForbiddenAccess,
 			}
 
 			response.JSON(w)
@@ -105,10 +105,10 @@ func (middleware *IAMMiddleware) RBACOwnerOrAdminGuard(next http.Handler) http.H
 
 		if userRole != entity.OwnerRole && userRole != entity.AdminRole {
 			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusUnauthorized,
+				Status:    http.StatusForbidden,
 				Success:   false,
-				Message:   "Unauthorized access.",
-				ErrorCode: apiError.UnauthorizedAccess,
+				Message:   "Forbidden access.",
+				ErrorCode: apiError.ForbiddenAccess,
 			}
 
 			response.JSON(w)

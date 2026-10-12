@@ -124,7 +124,7 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 
 		router.ServeHTTP(recorder, request)
 
-		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+		require.Equal(t, http.StatusForbidden, recorder.Code)
 	})
 
 	for name, role := range map[string]string{
