@@ -229,7 +229,7 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 		}
 	}
 
-	err = controller.InferenceCommandServiceInterface.UpdateModelFeedback(context.TODO(), serviceTypes.UpdateModelFeedback{
+	err = controller.InferenceCommandServiceInterface.UpdateModelFeedback(r.Context(), serviceTypes.UpdateModelFeedback{
 		ID:                   request.ID,
 		TenantID:             tenantID,
 		UserID:               userID,
@@ -243,6 +243,9 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.ForbiddenAccess:
+			httpCode = http.StatusForbidden
+			errorMsg = "Access to this model feedback is forbidden."
 		case errors.DatabaseError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Error occurred while updating model feedback."
