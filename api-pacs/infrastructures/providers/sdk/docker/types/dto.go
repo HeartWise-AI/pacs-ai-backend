@@ -57,10 +57,29 @@ type CreateContainer struct {
 	Envs  []string
 }
 
+// CreateCandidateContainer describes a container that is staged beside the
+// active deployment. Runtime settings are copied from ActiveContainerID while
+// the image, name, and registration-owned environment are replaced.
+type CreateCandidateContainer struct {
+	Name              string
+	Image             string
+	Envs              []string
+	ActiveContainerID string
+}
+
 type GetContainerInfoResult struct {
 	ID         string
 	Name       string
 	Lifecycle  Lifecycle
 	StartedAt  time.Time
 	FinishedAt time.Time
+}
+
+// InspectImageResult exposes only the immutable image identity and release
+// labels needed to validate a candidate. Registry credentials and the full
+// image configuration are deliberately excluded.
+type InspectImageResult struct {
+	ID          string
+	RepoDigests []string
+	Labels      map[string]string
 }
