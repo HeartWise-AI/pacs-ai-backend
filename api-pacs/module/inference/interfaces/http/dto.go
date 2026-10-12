@@ -6,6 +6,7 @@ import (
 	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	"api-pacs/module/inference/domain/entity"
+	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 )
 
 // InferenceQuotaResponse exposes stable allowance and concurrency metadata.
@@ -160,27 +161,38 @@ type StudyServiceProcessingCallbackRequest struct {
 }
 
 type GetContainerInfoResponse struct {
-	ID              string             `json:"id"`
-	Name            string             `json:"name"`
-	Status          dockerTypes.Status `json:"status"`
-	Running         bool               `json:"running"`
-	StartedAt       uint64             `json:"startedAt"`
-	FinishedAt      uint64             `json:"finishedAt"`
-	CPUPercentUsage float64            `json:"cpuPercentUsage"`
-	MemoryInBytes   uint64             `json:"memoryInBytes"`
+	ID              string                               `json:"id"`
+	Name            string                               `json:"name"`
+	Status          dockerTypes.Status                   `json:"status"`
+	Lifecycle       serviceTypes.InferenceModelLifecycle `json:"lifecycle"`
+	Running         bool                                 `json:"running"`
+	StartedAt       uint64                               `json:"startedAt"`
+	FinishedAt      uint64                               `json:"finishedAt"`
+	CPUPercentUsage float64                              `json:"cpuPercentUsage"`
+	MemoryInBytes   uint64                               `json:"memoryInBytes"`
+}
+
+type GetInferenceModelContainerResponse struct {
+	ID         string                               `json:"id"`
+	Name       string                               `json:"name"`
+	Status     dockerTypes.Status                   `json:"status"`
+	Lifecycle  serviceTypes.InferenceModelLifecycle `json:"lifecycle"`
+	Running    bool                                 `json:"running"`
+	StartedAt  uint64                               `json:"startedAt"`
+	FinishedAt uint64                               `json:"finishedAt"`
 }
 
 type GetInferenceModelResponse struct {
-	ID                  string                   `json:"id"`
-	TenantID            string                   `json:"tenantId"`
-	Container           GetContainerInfoResponse `json:"container"`
-	Name                string                   `json:"name"`
-	DockerImage         string                   `json:"dockerImage"`
-	Envs                []string                 `json:"envs"`
-	DisallowedDICOMTags []string                 `json:"disallowedDICOMTags"`
-	OutputMode          entity.OutputMode        `json:"outputMode"`
-	CreatedAt           uint64                   `json:"createdAt"`
-	UpdatedAt           uint64                   `json:"updatedAt"`
+	ID                  string                             `json:"id"`
+	TenantID            string                             `json:"tenantId"`
+	Container           GetInferenceModelContainerResponse `json:"container"`
+	Name                string                             `json:"name"`
+	DockerImage         string                             `json:"dockerImage"`
+	Envs                []string                           `json:"envs"`
+	DisallowedDICOMTags []string                           `json:"disallowedDICOMTags"`
+	OutputMode          entity.OutputMode                  `json:"outputMode"`
+	CreatedAt           uint64                             `json:"createdAt"`
+	UpdatedAt           uint64                             `json:"updatedAt"`
 }
 
 type GetInferenceAvailableModelResponse struct {

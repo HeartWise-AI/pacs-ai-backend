@@ -7,7 +7,6 @@ import (
 	"errors"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -41,9 +40,29 @@ func (service *InferenceQueryService) GetInferenceQuota(ctx context.Context, ten
 }
 
 const (
-	defaultWorklistPageLimit = 25
-	maximumWorklistPageLimit = 100
+	defaultWorklistPageLimit            = 25
+	maximumWorklistPageLimit            = 100
+	inferenceModelInspectionConcurrency = 4
 )
+
+func inferenceModelLifecycle(status dockerTypes.Status) types.InferenceModelLifecycle {
+	switch status {
+	case dockerTypes.StatusCreated, dockerTypes.StatusRestarting:
+		return types.InferenceModelLifecycleStarting
+	case dockerTypes.StatusRunning:
+		return types.InferenceModelLifecycleRunning
+	case dockerTypes.StatusPaused:
+		return types.InferenceModelLifecyclePaused
+	case dockerTypes.StatusRemoving:
+		return types.InferenceModelLifecycleStopping
+	case dockerTypes.StatusExited:
+		return types.InferenceModelLifecycleStopped
+	case dockerTypes.StatusDead:
+		return types.InferenceModelLifecycleDegraded
+	default:
+		return types.InferenceModelLifecycleUnknown
+	}
+}
 
 // GetContainerInfo returns the container info with stats
 func (service *InferenceQueryService) GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error) {
@@ -61,8 +80,9 @@ func (service *InferenceQueryService) GetContainerInfo(ctx context.Context, cont
 
 	return types.GetContainerInfoResult{
 		ID:              containerInfo.ID,
-		Name:            containerInfo.Name[1:], // remove "/" prefix
+		Name:            strings.TrimPrefix(containerInfo.Name, "/"),
 		Status:          containerInfo.Status,
+		Lifecycle:       inferenceModelLifecycle(containerInfo.Status),
 		Running:         containerInfo.Running,
 		StartedAt:       containerInfo.StartedAt,
 		FinishedAt:      containerInfo.FinishedAt,
@@ -78,51 +98,52 @@ func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, te
 		return nil, errors.New(apiError.FirestoreError)
 	}
 
-	var m = sync.Mutex{}
 	eg, egCtx := errgroup.WithContext(ctx)
+	inferenceModelsResult := make([]types.GetInferenceModelResult, len(inferenceModels))
+	eg.SetLimit(inferenceModelInspectionConcurrency)
 
-	var inferenceModelsResult []types.GetInferenceModelResult
+	for index, inferenceModel := range inferenceModels {
+		index, inferenceModel := index, inferenceModel
+		eg.Go(func() error {
+			result := types.GetInferenceModelResult{
+				ID:       inferenceModel.ID,
+				TenantID: inferenceModel.TenantID,
+				Container: types.GetContainerInfoResult{
+					ID:        inferenceModel.ContainerID,
+					Lifecycle: types.InferenceModelLifecycleUnknown,
+				},
+				Name:                inferenceModel.Name,
+				DockerImage:         inferenceModel.DockerImage,
+				Envs:                inferenceModel.Envs,
+				DisallowedDICOMTags: inferenceModel.DisallowedDICOMTags,
+				OutputMode:          inferenceModel.OutputMode,
+				CreatedAt:           time.Unix(int64(inferenceModel.CreatedAt), 0),
+				UpdatedAt:           time.Unix(int64(inferenceModel.UpdatedAt), 0),
+			}
 
-	// set limit
-	eg.SetLimit(len(inferenceModels))
-
-	for _, inferenceModel := range inferenceModels {
-		func(inferenceModel entity.InferenceModel) {
-			eg.Go(func() error {
-				m.Lock()
-				defer m.Unlock()
-
-				containerInfo, err := service.GetContainerInfo(egCtx, inferenceModel.ContainerID)
-				if err != nil {
-					log.Println(err)
-					return nil // skip error
+			containerInfo, err := service.DockerSDKInterface.GetContainerInfo(egCtx, inferenceModel.ContainerID)
+			if err != nil {
+				if egCtx.Err() != nil {
+					return egCtx.Err()
 				}
 
-				inferenceModelsResult = append(inferenceModelsResult, types.GetInferenceModelResult{
-					ID:       inferenceModel.ID,
-					TenantID: inferenceModel.TenantID,
-					Container: types.GetContainerInfoResult{
-						ID:              containerInfo.ID,
-						Name:            containerInfo.Name,
-						Status:          containerInfo.Status,
-						Running:         containerInfo.Running,
-						StartedAt:       containerInfo.StartedAt,
-						FinishedAt:      containerInfo.FinishedAt,
-						CPUPercentUsage: containerInfo.CPUPercentUsage,
-						MemoryInBytes:   containerInfo.MemoryInBytes,
-					},
-					Name:                inferenceModel.Name,
-					DockerImage:         inferenceModel.DockerImage,
-					Envs:                inferenceModel.Envs,
-					DisallowedDICOMTags: inferenceModel.DisallowedDICOMTags,
-					OutputMode:          inferenceModel.OutputMode,
-					CreatedAt:           time.Unix(int64(inferenceModel.CreatedAt), 0),
-					UpdatedAt:           time.Unix(int64(inferenceModel.UpdatedAt), 0),
-				})
-
+				log.Printf("[Inference models] cannot inspect container model_id=%s container_id=%s err=%v", inferenceModel.ID, inferenceModel.ContainerID, err)
+				inferenceModelsResult[index] = result
 				return nil
-			})
-		}(inferenceModel)
+			}
+
+			result.Container = types.GetContainerInfoResult{
+				ID:         containerInfo.ID,
+				Name:       strings.TrimPrefix(containerInfo.Name, "/"),
+				Status:     containerInfo.Status,
+				Lifecycle:  inferenceModelLifecycle(containerInfo.Status),
+				Running:    containerInfo.Running,
+				StartedAt:  containerInfo.StartedAt,
+				FinishedAt: containerInfo.FinishedAt,
+			}
+			inferenceModelsResult[index] = result
+			return nil
+		})
 	}
 
 	// wait for all goroutines to finish
@@ -141,7 +162,7 @@ func (service *InferenceQueryService) GetInferenceModelInfo(ctx context.Context,
 		return dockerInferenceTypes.GetModelInfoResponse{}, err
 	}
 
-	modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, containerInfo.Name[1:]) // remove "/" prefix
+	modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, strings.TrimPrefix(containerInfo.Name, "/"))
 	if err != nil {
 		return dockerInferenceTypes.GetModelInfoResponse{}, errors.New(apiError.DockerInferenceError)
 	}
@@ -157,7 +178,7 @@ func (service *InferenceQueryService) GetInferenceModelFacts(ctx context.Context
 		return dockerInferenceTypes.GetModelFactsResponse{}, err
 	}
 
-	modelFacts, err := service.DockerInferenceAPIInterface.GetModelFacts(ctx, containerInfo.Name[1:]) // remove "/" prefix
+	modelFacts, err := service.DockerInferenceAPIInterface.GetModelFacts(ctx, strings.TrimPrefix(containerInfo.Name, "/"))
 	if err != nil {
 		return dockerInferenceTypes.GetModelFactsResponse{}, errors.New(apiError.DockerInferenceError)
 	}
@@ -173,74 +194,85 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 		return nil, err
 	}
 
-	// get model info for each inference model
-	var m = sync.Mutex{}
 	eg, egCtx := errgroup.WithContext(ctx)
+	availableByIndex := make([]*types.GetInferenceAvailableModelResult, len(inferenceModels))
+	eg.SetLimit(inferenceModelInspectionConcurrency)
 
-	var inferenceAvailableModels []types.GetInferenceAvailableModelResult
+	for index, inferenceModel := range inferenceModels {
+		index, inferenceModel := index, inferenceModel
+		eg.Go(func() error {
+			containerInfo, err := service.DockerSDKInterface.GetContainerInfo(egCtx, inferenceModel.ContainerID)
+			if err != nil {
+				if egCtx.Err() != nil {
+					return egCtx.Err()
+				}
 
-	// set limit
-	eg.SetLimit(len(inferenceModels))
+				log.Println(err)
+				return nil // skip error
+			}
 
-	for _, inferenceModel := range inferenceModels {
-		func(inferenceModel entity.InferenceModel) {
-			eg.Go(func() error {
-				m.Lock()
-				defer m.Unlock()
+			containerName := strings.TrimPrefix(containerInfo.Name, "/")
 
-				containerInfo, err := service.DockerSDKInterface.GetContainerInfo(egCtx, inferenceModel.ContainerID)
+			// check if container id is set and running
+			if len(inferenceModel.ContainerID) > 0 && containerInfo.Running {
+				// get model info
+				modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(egCtx, containerName)
 				if err != nil {
+					if egCtx.Err() != nil {
+						return egCtx.Err()
+					}
+
 					log.Println(err)
 					return nil // skip error
 				}
 
-				containerName := containerInfo.Name[1:] // remove "/" prefix
-
-				// check if container id is set and running
-				if len(inferenceModel.ContainerID) > 0 && containerInfo.Running {
-					// get model info
-					modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(egCtx, containerName)
-					if err != nil {
-						log.Println(err)
-						return nil // skip error
+				// get model facts
+				modelFacts, err := service.DockerInferenceAPIInterface.GetModelFacts(egCtx, containerName)
+				if err != nil {
+					if egCtx.Err() != nil {
+						return egCtx.Err()
 					}
 
-					// get model facts
-					modelFacts, err := service.DockerInferenceAPIInterface.GetModelFacts(egCtx, containerName)
-					if err != nil {
-						log.Println(err)
-						return nil // skip error
-					}
-
-					inferenceAvailableModels = append(inferenceAvailableModels, types.GetInferenceAvailableModelResult{
-						ContainerID:                   inferenceModel.ContainerID,
-						ContainerName:                 containerName,
-						ModelID:                       modelInfo.Data.ModelID,
-						ModelName:                     modelInfo.Data.ModelName,
-						ModelFacts:                    types.ModelFacts(modelFacts.Data),
-						Version:                       modelInfo.Data.Version,
-						Provenance:                    modelInfo.Data.Provenance,
-						DicomTargetLevel:              modelInfo.Data.DicomTargetLevel,
-						DicomUploadMin:                modelInfo.Data.DicomUploadMin,
-						DicomUploadMax:                modelInfo.Data.DicomUploadMax,
-						SupportedDicomModalities:      modelInfo.Data.SupportedDicomModalities,
-						SupportedDicomTags:            modelInfo.Data.SupportedDicomTags,
-						SupportedAdditionalMetadata:   modelInfo.Data.SupportedAdditionalMetadata,
-						ApproveFeedbackQuestionnaires: modelInfo.Data.ApproveFeedbackQuestionnaires,
-						RejectFeedbackQuestionnaires:  modelInfo.Data.RejectFeedbackQuestionnaires,
-						OnboardingModelQuestionnaires: modelInfo.Data.OnboardingModelQuestionnaires,
-						OutputMode:                    inferenceModel.OutputMode,
-					})
+					log.Println(err)
+					return nil // skip error
 				}
 
-				return nil
-			})
-		}(inferenceModel)
+				result := types.GetInferenceAvailableModelResult{
+					ContainerID:                   inferenceModel.ContainerID,
+					ContainerName:                 containerName,
+					ModelID:                       modelInfo.Data.ModelID,
+					ModelName:                     modelInfo.Data.ModelName,
+					ModelFacts:                    types.ModelFacts(modelFacts.Data),
+					Version:                       modelInfo.Data.Version,
+					Provenance:                    modelInfo.Data.Provenance,
+					DicomTargetLevel:              modelInfo.Data.DicomTargetLevel,
+					DicomUploadMin:                modelInfo.Data.DicomUploadMin,
+					DicomUploadMax:                modelInfo.Data.DicomUploadMax,
+					SupportedDicomModalities:      modelInfo.Data.SupportedDicomModalities,
+					SupportedDicomTags:            modelInfo.Data.SupportedDicomTags,
+					SupportedAdditionalMetadata:   modelInfo.Data.SupportedAdditionalMetadata,
+					ApproveFeedbackQuestionnaires: modelInfo.Data.ApproveFeedbackQuestionnaires,
+					RejectFeedbackQuestionnaires:  modelInfo.Data.RejectFeedbackQuestionnaires,
+					OnboardingModelQuestionnaires: modelInfo.Data.OnboardingModelQuestionnaires,
+					OutputMode:                    inferenceModel.OutputMode,
+				}
+				availableByIndex[index] = &result
+			}
+
+			return nil
+		})
 	}
 
 	// wait for all goroutines to finish
 	if err := eg.Wait(); err != nil {
 		return nil, err
+	}
+
+	inferenceAvailableModels := make([]types.GetInferenceAvailableModelResult, 0, len(inferenceModels))
+	for _, result := range availableByIndex {
+		if result != nil {
+			inferenceAvailableModels = append(inferenceAvailableModels, *result)
+		}
 	}
 
 	return inferenceAvailableModels, nil

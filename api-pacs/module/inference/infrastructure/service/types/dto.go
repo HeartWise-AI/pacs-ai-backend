@@ -226,12 +226,25 @@ type GetContainerInfoResult struct {
 	ID              string
 	Name            string
 	Status          dockerTypes.Status
+	Lifecycle       InferenceModelLifecycle
 	Running         bool
 	StartedAt       time.Time
 	FinishedAt      time.Time
 	CPUPercentUsage float64 // in percent
 	MemoryInBytes   uint64  // in bytes
 }
+
+type InferenceModelLifecycle string
+
+const (
+	InferenceModelLifecycleStarting InferenceModelLifecycle = "starting"
+	InferenceModelLifecycleRunning  InferenceModelLifecycle = "running"
+	InferenceModelLifecyclePaused   InferenceModelLifecycle = "paused"
+	InferenceModelLifecycleStopping InferenceModelLifecycle = "stopping"
+	InferenceModelLifecycleStopped  InferenceModelLifecycle = "stopped"
+	InferenceModelLifecycleDegraded InferenceModelLifecycle = "degraded"
+	InferenceModelLifecycleUnknown  InferenceModelLifecycle = "unknown"
+)
 
 type GetInferenceModelResult struct {
 	ID                  string
