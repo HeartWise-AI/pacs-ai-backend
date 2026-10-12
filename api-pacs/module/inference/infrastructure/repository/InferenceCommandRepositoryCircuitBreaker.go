@@ -585,30 +585,34 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateCandidateDispa
 	}
 }
 
-// UpdateInferenceModelContainerID is the decorator for the inference command repository to update the container ID of an inference model
-func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceModelContainerID(ctx context.Context, ID, containerID string) error {
-	output := make(chan bool, 1)
+// ReplaceInferenceModelRegistration is the circuit-breaker decorator for an
+// atomic inference model registration replacement.
+func (repository *InferenceCommandRepositoryCircuitBreaker) ReplaceInferenceModelRegistration(
+	ctx context.Context,
+	data types.ReplaceInferenceModelRegistration,
+) (entity.InferenceModelDeployment, error) {
+	output := make(chan entity.InferenceModelDeployment, 1)
 	errChan := make(chan error, 1)
 
-	hystrix.ConfigureCommand("update_inference_model_container_id", config.Settings())
-	errors := hystrix.Go("update_inference_model_container_id", func() error {
-		err := repository.InferenceCommandRepositoryInterface.UpdateInferenceModelContainerID(ctx, ID, containerID)
+	hystrix.ConfigureCommand("replace_inference_model_registration", config.Settings())
+	errors := hystrix.Go("replace_inference_model_registration", func() error {
+		previous, err := repository.InferenceCommandRepositoryInterface.ReplaceInferenceModelRegistration(ctx, data)
 		if err != nil {
 			errChan <- err
 			return nil
 		}
 
-		output <- true
+		output <- previous
 		return nil
 	}, nil)
 
 	select {
-	case <-output:
-		return nil
+	case previous := <-output:
+		return previous, nil
 	case err := <-errChan:
-		return err
+		return entity.InferenceModelDeployment{}, err
 	case err := <-errors:
-		return err
+		return entity.InferenceModelDeployment{}, err
 	}
 }
 

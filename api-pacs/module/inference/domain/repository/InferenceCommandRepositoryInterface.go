@@ -40,8 +40,8 @@ type InferenceCommandRepositoryInterface interface {
 	UpdateInferenceIngestionJobStatus(ID string, status entity.InferenceIngestionJobStatus) error
 	// UpdateInferenceIngestionJobLastExecutedAt updates last executed at of infererence ingestion job
 	UpdateInferenceIngestionJobLastExecutedAt(ID string) error
-	// UpdateInferenceModelContainerID updates the container ID of an inference model
-	UpdateInferenceModelContainerID(ctx context.Context, ID, containerID string) error
+	// ReplaceInferenceModelRegistration atomically replaces an expected active deployment.
+	ReplaceInferenceModelRegistration(ctx context.Context, data types.ReplaceInferenceModelRegistration) (entity.InferenceModelDeployment, error)
 	// UpsertIngestionCandidate upserts an ingestion candidate
 	UpsertIngestionCandidate(data types.UpsertIngestionCandidate) error
 	// UpdateCandidateStatus updates the status of an ingestion candidate

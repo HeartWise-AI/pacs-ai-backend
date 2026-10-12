@@ -3326,17 +3326,6 @@ func (service *InferenceCommandService) UpdateInferenceIngestionJob(ctx context.
 	return nil
 }
 
-// TODO: check if needed
-// UpdateInferenceModelContainerID updates the container ID of an inference model
-func (service *InferenceCommandService) UpdateInferenceModelContainerID(ctx context.Context, ID, containerID string) error {
-	err := service.InferenceCommandRepositoryInterface.UpdateInferenceModelContainerID(ctx, ID, containerID)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // UpdateModelFeedback updates model feedback
 func (service *InferenceCommandService) UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error {
 	modelFeedbackID := data.ID

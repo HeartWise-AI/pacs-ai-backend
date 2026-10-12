@@ -102,7 +102,8 @@ const (
 	InferenceAdmissionTimeout string = "INFERENCE_ADMISSION_TIMEOUT"
 	// InferenceAdmissionBlocked asks callers to retry after a deployment transition completes.
 	InferenceAdmissionBlocked string = "INFERENCE_ADMISSION_BLOCKED"
-	TorchServeError           string = "TORCHSERVE_ERROR"
+	// InferenceUpgradeConflict rejects a stale or conflicting registration replacement.
+	InferenceUpgradeConflict string = "INFERENCE_UPGRADE_CONFLICT"
 
 	// Cloudflare-related errors
 	CloudflareAPIError string = "CLOUDFLARE_API_ERROR"

@@ -331,6 +331,16 @@ type UpdateInferenceModel struct {
 	OutputMode          entity.OutputMode
 }
 
+// ReplaceInferenceModelRegistration is a compare-and-swap request. Both
+// expected fields must still match before the deployment can be replaced.
+type ReplaceInferenceModelRegistration struct {
+	ID                     string
+	TenantID               string
+	ExpectedContainerID    string
+	ExpectedImageReference string
+	Deployment             entity.InferenceModelDeployment
+}
+
 type UpdateInferenceIngestionJob struct {
 	ID                     string
 	Modalities             []string
