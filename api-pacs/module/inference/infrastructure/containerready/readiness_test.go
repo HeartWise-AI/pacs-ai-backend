@@ -12,7 +12,7 @@ import (
 type delayedDocker struct{ delay time.Duration }
 
 func (d delayedDocker) GetContainerInfo(context.Context, string) (docker.GetContainerInfoResult, error) {
-	return docker.GetContainerInfoResult{Name: "/test-model", Running: false}, nil
+	return docker.GetContainerInfoResult{Name: "/test-model", Lifecycle: docker.LifecycleStopped}, nil
 }
 func (d delayedDocker) StartContainer(ctx context.Context, _ string) error {
 	timer := time.NewTimer(d.delay)

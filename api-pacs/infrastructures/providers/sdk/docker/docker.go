@@ -137,8 +137,7 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 	return types.GetContainerInfoResult{
 		ID:         containerJSON.ID,
 		Name:       containerJSON.Name,
-		Status:     types.Status(containerJSON.State.Status),
-		Running:    containerJSON.State.Running,
+		Lifecycle:  types.LifecycleFromStatus(types.Status(containerJSON.State.Status)),
 		StartedAt:  startedAtTime,
 		FinishedAt: finishedAtTime,
 	}, nil

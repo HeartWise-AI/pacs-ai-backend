@@ -70,9 +70,7 @@ func (controller *InferenceQueryController) GetContainerInfo(w http.ResponseWrit
 		Data: &types.GetContainerInfoResponse{
 			ID:         containerInfo.ID,
 			Name:       containerInfo.Name,
-			Status:     containerInfo.Status,
 			Lifecycle:  containerInfo.Lifecycle,
-			Running:    containerInfo.Running,
 			StartedAt:  scheduleTimestampUnix(containerInfo.StartedAt),
 			FinishedAt: scheduleTimestampUnix(containerInfo.FinishedAt),
 		},
@@ -130,9 +128,7 @@ func (controller *InferenceQueryController) GetInferenceModels(w http.ResponseWr
 			Container: types.GetInferenceModelContainerResponse{
 				ID:         inferenceModel.Container.ID,
 				Name:       inferenceModel.Container.Name,
-				Status:     inferenceModel.Container.Status,
 				Lifecycle:  inferenceModel.Container.Lifecycle,
-				Running:    inferenceModel.Container.Running,
 				StartedAt:  scheduleTimestampUnix(inferenceModel.Container.StartedAt),
 				FinishedAt: scheduleTimestampUnix(inferenceModel.Container.FinishedAt),
 			},

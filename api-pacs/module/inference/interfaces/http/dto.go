@@ -4,7 +4,6 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
-	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	"api-pacs/module/inference/domain/entity"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 )
@@ -163,9 +162,7 @@ type StudyServiceProcessingCallbackRequest struct {
 type GetContainerInfoResponse struct {
 	ID         string                               `json:"id"`
 	Name       string                               `json:"name"`
-	Status     dockerTypes.Status                   `json:"status"`
 	Lifecycle  serviceTypes.InferenceModelLifecycle `json:"lifecycle"`
-	Running    bool                                 `json:"running"`
 	StartedAt  uint64                               `json:"startedAt"`
 	FinishedAt uint64                               `json:"finishedAt"`
 }
@@ -173,9 +170,7 @@ type GetContainerInfoResponse struct {
 type GetInferenceModelContainerResponse struct {
 	ID         string                               `json:"id"`
 	Name       string                               `json:"name"`
-	Status     dockerTypes.Status                   `json:"status"`
 	Lifecycle  serviceTypes.InferenceModelLifecycle `json:"lifecycle"`
-	Running    bool                                 `json:"running"`
 	StartedAt  uint64                               `json:"startedAt"`
 	FinishedAt uint64                               `json:"finishedAt"`
 }

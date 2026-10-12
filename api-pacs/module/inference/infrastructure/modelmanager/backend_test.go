@@ -34,7 +34,11 @@ func (d *dockerFake) GetContainerInfo(context.Context, string) (docker.GetContai
 	if d.inspectErr != nil {
 		return docker.GetContainerInfoResult{}, d.inspectErr
 	}
-	return docker.GetContainerInfoResult{Name: "/" + d.name, Running: d.running}, nil
+	lifecycle := docker.LifecycleStopped
+	if d.running {
+		lifecycle = docker.LifecycleRunning
+	}
+	return docker.GetContainerInfoResult{Name: "/" + d.name, Lifecycle: lifecycle}, nil
 }
 func (d *dockerFake) StartContainer(context.Context, string) error {
 	d.mu.Lock()

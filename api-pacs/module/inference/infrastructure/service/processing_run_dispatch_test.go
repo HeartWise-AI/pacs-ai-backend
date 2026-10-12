@@ -82,7 +82,7 @@ func (sdk *guardedDispatchDockerSDK) GetContainerInfo(context.Context, string) (
 		return dockerTypes.GetContainerInfoResult{}, sdk.inspectErrors[index]
 	}
 	if len(sdk.containerInfos) == 0 {
-		return dockerTypes.GetContainerInfoResult{Name: "/model-one", Running: true}, nil
+		return dockerTypes.GetContainerInfoResult{Name: "/model-one", Lifecycle: dockerTypes.LifecycleRunning}, nil
 	}
 	if index >= len(sdk.containerInfos) {
 		index = len(sdk.containerInfos) - 1
@@ -120,7 +120,7 @@ func configureReadyInferenceContainer(service *InferenceCommandService) {
 
 func TestEnsureInferenceContainerReadyStartsStoppedContainerAndWaitsForReadiness(t *testing.T) {
 	sdk := &guardedDispatchDockerSDK{containerInfos: []dockerTypes.GetContainerInfoResult{{
-		Name: "/model-one", Running: false,
+		Name: "/model-one", Lifecycle: dockerTypes.LifecycleStopped,
 	}}}
 	readinessAPI := &guardedDispatchDockerInferenceAPI{errors: []error{errors.New("starting"), nil}}
 	service := &InferenceCommandService{
@@ -142,7 +142,7 @@ func TestEnsureInferenceContainerReadyStartsStoppedContainerAndWaitsForReadiness
 
 func TestEnsureInferenceContainerReadyDoesNotRestartReadyContainer(t *testing.T) {
 	sdk := &guardedDispatchDockerSDK{containerInfos: []dockerTypes.GetContainerInfoResult{{
-		Name: "/model-one", Running: true,
+		Name: "/model-one", Lifecycle: dockerTypes.LifecycleRunning,
 	}}}
 	readinessAPI := &guardedDispatchDockerInferenceAPI{}
 	service := &InferenceCommandService{
@@ -162,8 +162,8 @@ func TestEnsureInferenceContainerReadyDoesNotRestartReadyContainer(t *testing.T)
 func TestEnsureInferenceContainerReadyToleratesConcurrentStart(t *testing.T) {
 	sdk := &guardedDispatchDockerSDK{
 		containerInfos: []dockerTypes.GetContainerInfoResult{
-			{Name: "/model-one", Running: false},
-			{Name: "/model-one", Running: true},
+			{Name: "/model-one", Lifecycle: dockerTypes.LifecycleStopped},
+			{Name: "/model-one", Lifecycle: dockerTypes.LifecycleRunning},
 		},
 		startError: errors.New("container already started"),
 	}
@@ -184,7 +184,7 @@ func TestEnsureInferenceContainerReadyToleratesConcurrentStart(t *testing.T) {
 func TestEnsureInferenceContainerReadyReturnsReadinessTimeout(t *testing.T) {
 	service := &InferenceCommandService{
 		DockerSDKInterface: &guardedDispatchDockerSDK{containerInfos: []dockerTypes.GetContainerInfoResult{{
-			Name: "/model-one", Running: true,
+			Name: "/model-one", Lifecycle: dockerTypes.LifecycleRunning,
 		}}},
 		DockerInferenceAPIInterface:             &guardedDispatchDockerInferenceAPI{defaultError: errors.New("not ready")},
 		inferenceContainerReadinessTimeout:      5 * time.Millisecond,
@@ -360,8 +360,8 @@ func TestDispatchFailsCommittedExecutionWhenContainerCannotStart(t *testing.T) {
 	dispatcher := &guardedProcessingDispatcher{}
 	sdk := &guardedDispatchDockerSDK{
 		containerInfos: []dockerTypes.GetContainerInfoResult{
-			{Name: "/model-one", Running: false},
-			{Name: "/model-one", Running: false},
+			{Name: "/model-one", Lifecycle: dockerTypes.LifecycleStopped},
+			{Name: "/model-one", Lifecycle: dockerTypes.LifecycleStopped},
 		},
 		startError: errors.New("docker unavailable"),
 	}

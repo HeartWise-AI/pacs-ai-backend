@@ -3,6 +3,7 @@ package rest
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -43,12 +44,23 @@ func TestGetInferenceModelsSerializesUnavailableContainerTimestampsAsZero(t *tes
 	controller.GetInferenceModels(recorder, request)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
+	body, err := io.ReadAll(recorder.Body)
+	require.NoError(t, err)
 	var response struct {
 		Data []responseTypes.GetInferenceModelResponse `json:"data"`
 	}
-	require.NoError(t, json.NewDecoder(recorder.Body).Decode(&response))
+	require.NoError(t, json.Unmarshal(body, &response))
 	require.Len(t, response.Data, 1)
 	require.Zero(t, response.Data[0].Container.StartedAt)
 	require.Zero(t, response.Data[0].Container.FinishedAt)
 	require.Equal(t, serviceTypes.InferenceModelLifecycleUnknown, response.Data[0].Container.Lifecycle)
+
+	var rawResponse struct {
+		Data []struct {
+			Container map[string]json.RawMessage `json:"container"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &rawResponse))
+	require.NotContains(t, rawResponse.Data[0].Container, "status")
+	require.NotContains(t, rawResponse.Data[0].Container, "running")
 }

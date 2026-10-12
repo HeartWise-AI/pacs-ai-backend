@@ -45,25 +45,6 @@ const (
 	inferenceModelInspectionConcurrency = 4
 )
 
-func inferenceModelLifecycle(status dockerTypes.Status) types.InferenceModelLifecycle {
-	switch status {
-	case dockerTypes.StatusCreated, dockerTypes.StatusRestarting:
-		return types.InferenceModelLifecycleStarting
-	case dockerTypes.StatusRunning:
-		return types.InferenceModelLifecycleRunning
-	case dockerTypes.StatusPaused:
-		return types.InferenceModelLifecyclePaused
-	case dockerTypes.StatusRemoving:
-		return types.InferenceModelLifecycleStopping
-	case dockerTypes.StatusExited:
-		return types.InferenceModelLifecycleStopped
-	case dockerTypes.StatusDead:
-		return types.InferenceModelLifecycleDegraded
-	default:
-		return types.InferenceModelLifecycleUnknown
-	}
-}
-
 // GetContainerInfo returns the container runtime information.
 func (service *InferenceQueryService) GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error) {
 	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
@@ -74,9 +55,7 @@ func (service *InferenceQueryService) GetContainerInfo(ctx context.Context, cont
 	return types.GetContainerInfoResult{
 		ID:         containerInfo.ID,
 		Name:       strings.TrimPrefix(containerInfo.Name, "/"),
-		Status:     containerInfo.Status,
-		Lifecycle:  inferenceModelLifecycle(containerInfo.Status),
-		Running:    containerInfo.Running,
+		Lifecycle:  containerInfo.Lifecycle,
 		StartedAt:  containerInfo.StartedAt,
 		FinishedAt: containerInfo.FinishedAt,
 	}, nil
@@ -126,9 +105,7 @@ func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, te
 			result.Container = types.GetContainerInfoResult{
 				ID:         containerInfo.ID,
 				Name:       strings.TrimPrefix(containerInfo.Name, "/"),
-				Status:     containerInfo.Status,
-				Lifecycle:  inferenceModelLifecycle(containerInfo.Status),
-				Running:    containerInfo.Running,
+				Lifecycle:  containerInfo.Lifecycle,
 				StartedAt:  containerInfo.StartedAt,
 				FinishedAt: containerInfo.FinishedAt,
 			}
@@ -205,7 +182,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 			containerName := strings.TrimPrefix(containerInfo.Name, "/")
 
 			// check if container id is set and running
-			if len(inferenceModel.ContainerID) > 0 && containerInfo.Running {
+			if len(inferenceModel.ContainerID) > 0 && containerInfo.Lifecycle == dockerTypes.LifecycleRunning {
 				// get model info
 				modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(egCtx, containerName)
 				if err != nil {

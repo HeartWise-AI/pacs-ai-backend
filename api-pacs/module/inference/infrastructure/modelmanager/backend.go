@@ -12,6 +12,7 @@ import (
 	dockererrdefs "github.com/docker/docker/errdefs"
 
 	api "api-pacs/infrastructures/providers/api/dockerinference/types"
+	docker "api-pacs/infrastructures/providers/sdk/docker/types"
 	"api-pacs/module/inference/infrastructure/containerready"
 )
 
@@ -41,7 +42,7 @@ func (b *ContainerBackend) Inspect(ctx context.Context, id string) (Model, api.M
 		return Model{ContainerID: id}, api.ModelRuntime{}, err
 	}
 	model := Model{ContainerID: id, Name: strings.TrimPrefix(info.Name, "/")}
-	if !info.Running {
+	if info.Lifecycle != docker.LifecycleRunning {
 		return model, api.ModelRuntime{State: api.RuntimeUnloaded}, nil
 	}
 	metadata, err := b.API.GetModelInfo(ctx, model.Name)

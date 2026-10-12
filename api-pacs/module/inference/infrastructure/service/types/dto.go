@@ -225,23 +225,21 @@ type WorklistNotification struct {
 type GetContainerInfoResult struct {
 	ID         string
 	Name       string
-	Status     dockerTypes.Status
 	Lifecycle  InferenceModelLifecycle
-	Running    bool
 	StartedAt  time.Time
 	FinishedAt time.Time
 }
 
-type InferenceModelLifecycle string
+type InferenceModelLifecycle = dockerTypes.Lifecycle
 
 const (
-	InferenceModelLifecycleStarting InferenceModelLifecycle = "starting"
-	InferenceModelLifecycleRunning  InferenceModelLifecycle = "running"
-	InferenceModelLifecyclePaused   InferenceModelLifecycle = "paused"
-	InferenceModelLifecycleStopping InferenceModelLifecycle = "stopping"
-	InferenceModelLifecycleStopped  InferenceModelLifecycle = "stopped"
-	InferenceModelLifecycleDegraded InferenceModelLifecycle = "degraded"
-	InferenceModelLifecycleUnknown  InferenceModelLifecycle = "unknown"
+	InferenceModelLifecycleStarting = dockerTypes.LifecycleStarting
+	InferenceModelLifecycleRunning  = dockerTypes.LifecycleRunning
+	InferenceModelLifecyclePaused   = dockerTypes.LifecyclePaused
+	InferenceModelLifecycleStopping = dockerTypes.LifecycleStopping
+	InferenceModelLifecycleStopped  = dockerTypes.LifecycleStopped
+	InferenceModelLifecycleDegraded = dockerTypes.LifecycleDegraded
+	InferenceModelLifecycleUnknown  = dockerTypes.LifecycleUnknown
 )
 
 type GetInferenceModelResult struct {

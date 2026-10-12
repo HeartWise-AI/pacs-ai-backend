@@ -153,7 +153,7 @@ func TestGetInferenceModelsUsesBoundedConcurrentInspection(t *testing.T) {
 			ID: containerID, TenantID: "tenant-a", ContainerID: containerID, Name: fmt.Sprintf("model-%d", index),
 		}
 		infos[containerID] = dockerTypes.GetContainerInfoResult{
-			ID: containerID, Name: "/" + models[index].Name, Status: dockerTypes.StatusRunning, Running: true,
+			ID: containerID, Name: "/" + models[index].Name, Lifecycle: dockerTypes.LifecycleRunning,
 		}
 	}
 
@@ -271,7 +271,7 @@ func TestGetInferenceAvailableModelsUsesBoundedConcurrentModelInfoChecks(t *test
 			ID: containerID, TenantID: "tenant-a", ContainerID: containerID, Name: containerName,
 		}
 		infos[containerID] = dockerTypes.GetContainerInfoResult{
-			ID: containerID, Name: "/" + containerName, Status: dockerTypes.StatusRunning, Running: true,
+			ID: containerID, Name: "/" + containerName, Lifecycle: dockerTypes.LifecycleRunning,
 		}
 	}
 
@@ -334,7 +334,7 @@ func TestGetInferenceAvailableModelsPropagatesRequestCancellation(t *testing.T) 
 		InferenceQueryRepositoryInterface: &inferenceModelsQueryRepository{models: []entity.InferenceModel{model}},
 		DockerSDKInterface: &inferenceModelsDockerSDK{
 			infos: map[string]dockerTypes.GetContainerInfoResult{
-				model.ContainerID: {ID: model.ContainerID, Name: "/model-1", Running: true},
+				model.ContainerID: {ID: model.ContainerID, Name: "/model-1", Lifecycle: dockerTypes.LifecycleRunning},
 			},
 			errors: map[string]error{},
 		},
@@ -359,22 +359,5 @@ func TestGetInferenceAvailableModelsPropagatesRequestCancellation(t *testing.T) 
 		require.ErrorIs(t, err, context.Canceled)
 	case <-time.After(time.Second):
 		t.Fatal("cancelled available-model list did not return")
-	}
-}
-
-func TestInferenceModelLifecycleMapsDockerRuntimeStates(t *testing.T) {
-	tests := map[dockerTypes.Status]serviceTypes.InferenceModelLifecycle{
-		dockerTypes.StatusCreated:    serviceTypes.InferenceModelLifecycleStarting,
-		dockerTypes.StatusRestarting: serviceTypes.InferenceModelLifecycleStarting,
-		dockerTypes.StatusRunning:    serviceTypes.InferenceModelLifecycleRunning,
-		dockerTypes.StatusPaused:     serviceTypes.InferenceModelLifecyclePaused,
-		dockerTypes.StatusRemoving:   serviceTypes.InferenceModelLifecycleStopping,
-		dockerTypes.StatusExited:     serviceTypes.InferenceModelLifecycleStopped,
-		dockerTypes.StatusDead:       serviceTypes.InferenceModelLifecycleDegraded,
-		"unexpected":                 serviceTypes.InferenceModelLifecycleUnknown,
-	}
-
-	for status, expected := range tests {
-		require.Equal(t, expected, inferenceModelLifecycle(status), string(status))
 	}
 }
