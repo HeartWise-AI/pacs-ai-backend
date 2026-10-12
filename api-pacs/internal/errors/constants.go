@@ -100,6 +100,8 @@ const (
 	InferenceResultServiceUnavailable string = "INFERENCE_RESULT_SERVICE_UNAVAILABLE"
 	// InferenceAdmissionTimeout asks callers to retry after managed GPU admission times out.
 	InferenceAdmissionTimeout string = "INFERENCE_ADMISSION_TIMEOUT"
+	// InferenceAdmissionBlocked asks callers to retry after a deployment transition completes.
+	InferenceAdmissionBlocked string = "INFERENCE_ADMISSION_BLOCKED"
 	TorchServeError           string = "TORCHSERVE_ERROR"
 
 	// Cloudflare-related errors
