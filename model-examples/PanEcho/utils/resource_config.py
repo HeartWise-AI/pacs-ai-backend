@@ -155,17 +155,27 @@ def load_model_info(path: str | Path) -> ModelInfo:
 
 
 def model_info_payload(
-    model_info: ModelInfo, source_revision: str | None = None
+    model_info: ModelInfo,
+    source_revision: str | None = None,
+    model_version: str | None = None,
 ) -> dict[str, Any]:
-    """Serialize validated metadata and apply an image-stamped source revision."""
+    """Serialize metadata with the source and version stamped into the image."""
 
-    payload = model_info.model_dump(mode="json")
-    if model_info.provenance is None:
+    effective_model_info = model_info
+    if model_version is not None:
+        effective_model_info = ModelInfo.model_validate(
+            model_info.model_copy(update={"version": model_version}).model_dump()
+        )
+
+    payload = effective_model_info.model_dump(mode="json")
+    if effective_model_info.provenance is None:
         payload.pop("provenance", None)
         return payload
 
     if source_revision is not None:
-        provenance = model_info.provenance.model_copy(update={"sourceRevision": source_revision})
+        provenance = effective_model_info.provenance.model_copy(
+            update={"sourceRevision": source_revision}
+        )
         provenance = ModelProvenance.model_validate(provenance.model_dump())
         payload["provenance"] = provenance.model_dump(mode="json")
     return payload
