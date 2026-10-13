@@ -23,6 +23,8 @@ The runner must provide Linux, Docker with BuildKit, Python 3.9 or newer, outbou
 
 The workflow checks free disk space before building, removes only local image references stamped with the workflow's exact Git revision, and deletes its temporary Docker credentials. It deliberately preserves BuildKit cache for subsequent releases. Configure a size or age limit for that cache on the dedicated runner; do not use an unrestricted system-wide prune on a machine that hosts other Docker workloads. Release evidence is uploaded even when the later catalog-registration step fails, allowing registration to be retried without rebuilding the image.
 
+`.github/model-image-repositories.json` is the authoritative model-directory to Docker Hub repository allowlist. Release workflows resolve the repository from this file and never accept a caller-selected destination. A local `--image-repository` argument is only an assertion and must match the mapped value exactly.
+
 ## Manifest contract
 
 An official release requires complete provenance in `data/model_info.json`. `sourceRevision` may remain `null` in Git because the workflow stamps the exact checked-out commit:
@@ -85,8 +87,9 @@ This operation:
 From the GitHub Actions page, select `Publish inference model image` on `master` and provide:
 
 - the model directory under `model-examples/`;
-- the lowercase `heartwisehub/...` repository without a tag;
 - whether to publish the optional `latest` alias.
+
+The workflow obtains the Docker repository from `.github/model-image-repositories.json`. An unmapped model is rejected before authentication or build work begins.
 
 The protected `model-release` environment provides manual approval. The workflow refuses commits not reachable from `origin/master` and refuses to overwrite an existing semantic-version tag. It then runs:
 
@@ -152,9 +155,10 @@ During development, use disposable local tags and local BuildKit secrets. Before
 1. publish or identify the final model artifact in its source repository;
 2. record its immutable revision, checkpoint path, and SHA-256;
 3. add complete provenance and the initial semantic version to the manifest;
-4. make the official Dockerfile consume all required `PACS_AI_*` arguments;
-5. make the downloader pin and verify the supplied artifact;
-6. measure resources and run startup and inference tests;
-7. merge the reviewed code, then manually approve the official release.
+4. add its unique approved Docker Hub repository to `.github/model-image-repositories.json`;
+5. make the official Dockerfile consume all required `PACS_AI_*` arguments;
+6. make the downloader pin and verify the supplied artifact;
+7. measure resources and run startup and inference tests;
+8. merge the reviewed code, then manually approve the official release.
 
 Publication adds the immutable artifact to the version catalog but does not replace a running PACS-AI model. Initial registration remains a separate controlled operation. For an existing registration, an owner or administrator selects any available catalog version in Workspace Settings. PACS-AI validates and activates that exact artifact transactionally; failed activation automatically restores the previous deployment, and selecting an older available version performs a deliberate rollback.

@@ -19,6 +19,19 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+try:
+    from scripts.model_image_repository import (
+        DEFAULT_MAPPING_PATH,
+        ModelImageRepositoryError,
+        resolve_image_repository,
+    )
+except ModuleNotFoundError:  # Direct execution adds scripts/, not its parent, to sys.path.
+    from model_image_repository import (
+        DEFAULT_MAPPING_PATH,
+        ModelImageRepositoryError,
+        resolve_image_repository,
+    )
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 ALLOWED_EXECUTABLES = frozenset({"docker", "git"})
 GIT_REVISION_PATTERN = re.compile(r"^[0-9a-f]{40}$")
@@ -750,7 +763,22 @@ def release(args: argparse.Namespace) -> dict[str, Any]:
     source_repository = resolve_source_repository()
     if metadata.source_repository != source_repository:
         raise ReleaseError("provenance.sourceRepository does not match the Git origin repository")
-    image_repository = args.image_repository
+    try:
+        approved_image_repository = resolve_image_repository(
+            model_dir,
+            mapping_path=Path(
+                getattr(args, "repository_map", DEFAULT_MAPPING_PATH)
+            ).resolve(),
+            repository_root=REPOSITORY_ROOT,
+        )
+    except ModelImageRepositoryError as exc:
+        raise ReleaseError(str(exc)) from exc
+    requested_image_repository = getattr(args, "image_repository", None)
+    if requested_image_repository and requested_image_repository != approved_image_repository:
+        raise ReleaseError(
+            "--image-repository does not match the approved model repository mapping"
+        )
+    image_repository = approved_image_repository
     validate_image_repository(image_repository, args.allowed_namespace)
     image = f"{image_repository}:{metadata.version}"
     dockerfile, uses_hf_secret = validate_dockerfile_contract(model_dir)
@@ -846,8 +874,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--image-repository",
-        default=os.getenv("PACS_AI_IMAGE_REPOSITORY"),
-        help="Lowercase Docker repository without tag (or PACS_AI_IMAGE_REPOSITORY)",
+        default=None,
+        help="Optional assertion of the approved mapped repository",
+    )
+    parser.add_argument(
+        "--repository-map",
+        default=str(DEFAULT_MAPPING_PATH),
+        help="Approved model-to-Docker-repository mapping",
     )
     parser.add_argument(
         "--allowed-namespace",
@@ -886,8 +919,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Timeout for temporary container model-info verification",
     )
     args = parser.parse_args(argv)
-    if not args.image_repository:
-        parser.error("--image-repository or PACS_AI_IMAGE_REPOSITORY is required")
     if args.publish_latest and not args.publish:
         parser.error("--publish-latest requires --publish")
     if args.reuse_existing and not args.publish:

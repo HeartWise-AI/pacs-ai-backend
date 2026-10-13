@@ -39,6 +39,18 @@ class ReleaseModelTests(unittest.TestCase):
         self.root = Path(self.temp_dir.name)
         self.model_dir = self.root / "model-examples" / "Example"
         (self.model_dir / "data").mkdir(parents=True)
+        self.repository_map = self.root / "model-image-repositories.json"
+        self.repository_map.write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "repositories": {
+                        "model-examples/Example": "heartwisehub/pacs-ai-example"
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
         self.manifest = {
             "modelId": "Example",
             "modelName": "Example Model",
@@ -440,6 +452,7 @@ class ReleaseModelTests(unittest.TestCase):
         token_file.write_text("secret", encoding="utf-8")
         args = argparse.Namespace(
             model_dir=str(self.model_dir),
+            repository_map=str(self.repository_map),
             image_repository="heartwisehub/pacs-ai-example",
             allowed_namespace="heartwisehub",
             hf_token_file=str(token_file),
@@ -461,6 +474,30 @@ class ReleaseModelTests(unittest.TestCase):
             RELEASE.release(args)
         build.assert_not_called()
 
+    def test_release_rejects_repository_that_disagrees_with_mapping(self):
+        args = argparse.Namespace(
+            model_dir=str(self.model_dir),
+            repository_map=str(self.repository_map),
+            image_repository="heartwisehub/wrong-repository",
+            allowed_namespace="heartwisehub",
+            hf_token_file=None,
+            publish=False,
+            publish_latest=False,
+            evidence=str(self.root / "evidence.json"),
+            runtime_timeout_seconds=1,
+        )
+
+        with (
+            mock.patch.object(RELEASE, "REPOSITORY_ROOT", self.root),
+            mock.patch.object(RELEASE, "require_clean_worktree"),
+            mock.patch.object(RELEASE, "resolve_source_revision", return_value=SOURCE_REVISION),
+            mock.patch.object(
+                RELEASE, "resolve_source_repository", return_value="HeartWise-AI/pacs-ai-backend"
+            ),
+            self.assertRaisesRegex(RELEASE.ReleaseError, "approved model repository mapping"),
+        ):
+            RELEASE.release(args)
+
     def test_publish_can_verify_and_reuse_an_identical_existing_version(self):
         self.write_dockerfile()
         token_file = self.root / "hf_token.txt"
@@ -468,6 +505,7 @@ class ReleaseModelTests(unittest.TestCase):
         evidence_path = self.root / "evidence.json"
         args = argparse.Namespace(
             model_dir=str(self.model_dir),
+            repository_map=str(self.repository_map),
             channel="candidate",
             source_branch="feature/model",
             pull_request=42,
@@ -525,6 +563,7 @@ class ReleaseModelTests(unittest.TestCase):
         evidence_path = self.root / "evidence.json"
         args = argparse.Namespace(
             model_dir=str(self.model_dir),
+            repository_map=str(self.repository_map),
             image_repository="heartwisehub/pacs-ai-example",
             allowed_namespace="heartwisehub",
             hf_token_file=str(token_file),
@@ -601,9 +640,12 @@ class ReleaseModelTests(unittest.TestCase):
         self.assertIn("vars.PACS_AI_CATALOG_API_URL", workflow)
         self.assertIn("--password-stdin", workflow)
         self.assertIn("scripts/release-model.py", workflow)
+        self.assertIn("scripts/model_image_repository.py", workflow)
         self.assertIn("scripts/register-model-release.py", workflow)
         self.assertIn("--channel release", workflow)
+        self.assertIn("--repository-map .github/model-image-repositories.json", workflow)
         self.assertIn("--publish", workflow)
+        self.assertNotIn("image_repository:", workflow)
         self.assertNotIn("secrets.HF_TOKEN", workflow)
         self.assertNotIn("secrets.DOCKER", workflow)
 

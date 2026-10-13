@@ -7,10 +7,6 @@ on:
         description: Model directory under model-examples/
         required: true
         type: string
-      image_repository:
-        description: Docker repository without a tag (heartwisehub/...)
-        required: true
-        type: string
       publish_latest:
         description: Also publish latest as a non-authoritative alias
         required: false
@@ -21,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: model-release-${{ inputs.image_repository }}
+  group: model-release-${{ inputs.model_directory }}
   cancel-in-progress: false
 
 jobs:
@@ -32,7 +28,6 @@ jobs:
     timeout-minutes: 180
     env:
       MODEL_DIRECTORY: ${{ inputs.model_directory }}
-      IMAGE_REPOSITORY: ${{ inputs.image_repository }}
       PUBLISH_LATEST: ${{ inputs.publish_latest }}
       PACS_AI_RELEASE_NAMESPACE: heartwisehub
       PACS_AI_RELEASE_MIN_FREE_GIB: ${{ vars.PACS_AI_RELEASE_MIN_FREE_GIB || '25' }}
@@ -55,6 +50,13 @@ jobs:
             echo "DOCKER_CONFIG=$RUNNER_TEMP/pacs-ai-docker-config"
             echo "RELEASE_EVIDENCE=$RUNNER_TEMP/model-release-evidence.json"
           } >> "$GITHUB_ENV"
+
+      - name: Resolve approved image repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_repository=$(python3 scripts/model_image_repository.py "$MODEL_DIRECTORY")
+          echo "IMAGE_REPOSITORY=$image_repository" >> "$GITHUB_ENV"
 
       - name: Validate runner and local credentials
         shell: bash
@@ -110,7 +112,7 @@ jobs:
           python3 scripts/release-model.py \
             "$MODEL_DIRECTORY" \
             --channel release \
-            --image-repository "$IMAGE_REPOSITORY" \
+            --repository-map .github/model-image-repositories.json \
             --hf-token-file "$HF_TOKEN_FILE" \
             --publish \
             --evidence "$RELEASE_EVIDENCE" \
