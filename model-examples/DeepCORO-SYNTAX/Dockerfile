@@ -45,6 +45,7 @@ COPY nginx.conf /etc/nginx/nginx.conf
 COPY supervisord.conf /etc/supervisord.conf
 
 ENV PACS_AI_SOURCE_REVISION="${PACS_AI_SOURCE_REVISION}"
+ENV PACS_AI_MODEL_VERSION="${PACS_AI_MODEL_VERSION}"
 
 LABEL org.opencontainers.image.title="DeepCORO-SYNTAX" \
       org.opencontainers.image.version="${PACS_AI_MODEL_VERSION}" \

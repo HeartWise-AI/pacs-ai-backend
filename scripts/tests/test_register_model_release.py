@@ -64,6 +64,31 @@ class RegisterModelReleaseTests(unittest.TestCase):
         self.assertEqual("DeepCORO-SYNTAX", payload["modelId"])
         self.assertEqual(self.evidence["image"]["registryDigest"], payload["imageDigest"])
         self.assertEqual("b" * 40, payload["provenance"]["modelRevision"])
+        self.assertEqual("RELEASE", payload["channel"])
+        self.assertEqual("6.0.0", payload["baseVersion"])
+
+    def test_candidate_evidence_preserves_release_context(self):
+        self.evidence["model"]["version"] = "6.0.1-rc.366.aaaaaaaa"
+        self.evidence["image"]["reference"] = (
+            "heartwisehub/pacs-ai-deepcoro-syntax:6.0.1-rc.366.aaaaaaaa"
+        )
+        self.evidence["release"] = {
+            "channel": "CANDIDATE",
+            "baseVersion": "6.0.1",
+            "sourceBranch": "feature/model-release",
+            "pullRequest": 366,
+            "workflowRun": "123456",
+            "reusedExisting": False,
+        }
+        self.evidence_path.write_text(json.dumps(self.evidence), encoding="utf-8")
+
+        payload = CATALOG.load_catalog_payload(self.evidence_path)
+
+        self.assertEqual("CANDIDATE", payload["channel"])
+        self.assertEqual("6.0.1", payload["baseVersion"])
+        self.assertEqual("feature/model-release", payload["sourceBranch"])
+        self.assertEqual(366, payload["pullRequest"])
+        self.assertEqual("123456", payload["workflowRun"])
 
     def test_only_https_catalog_origins_are_accepted(self):
         self.assertEqual(

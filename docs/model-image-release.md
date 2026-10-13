@@ -96,6 +96,28 @@ preflight -> build -> inspect -> runtime check -> push version -> resolve digest
 
 The versioned image and immutable digest are authoritative. `latest`, when explicitly requested, is only a convenience alias and is never recorded as deployment identity. After publication, the workflow sends the verified release evidence to the catalog API. This creates an immutable, idempotent Firestore catalog entry; it does not deploy the image.
 
+## Candidate publication contract
+
+The release engine also supports protected pre-merge candidate builds. The source manifest keeps the intended stable version, while candidate mode derives an immutable prerelease version from the pull request and the first 12 characters of the source revision. For example, manifest version `6.0.1`, pull request `366`, and source revision `df1984511ec9...` produce `6.0.1-rc.366.df1984511ec9`. The full revision remains in provenance. The derived version is stamped into the Docker tag, OCI labels, container environment, runtime model-info response, and release evidence without modifying the source manifest.
+
+Candidate publication requires explicit branch, pull-request, and workflow-run identity:
+
+```bash
+python3 scripts/release-model.py \
+  model-examples/DeepCORO-SYNTAX \
+  --channel candidate \
+  --source-branch issue-365-transactional-model-upgrades \
+  --pull-request 366 \
+  --workflow-run 123456 \
+  --image-repository heartwisehub/pacs-ai-deepcoro-syntax \
+  --hf-token-file /secure/path/hf_token \
+  --publish \
+  --reuse-existing \
+  --evidence model-release-evidence.json
+```
+
+Candidate mode permits an unmerged clean commit but never publishes `latest`. `--reuse-existing` pulls and fully revalidates an existing immutable tag instead of rebuilding or pushing it; any label, runtime metadata, or packaged-weight mismatch fails the run. The candidate GitHub workflow must use restricted candidate credentials and an approved environment. Official publication remains restricted to stable versions whose commits are reachable from `origin/master`.
+
 ## Release evidence
 
 The workflow uploads `model-release-evidence.json` and includes it in the job summary. It records:
@@ -107,6 +129,7 @@ The workflow uploads `model-release-evidence.json` and includes it in the job su
 - versioned image reference and local image ID;
 - resolved registry digest and immutable image reference;
 - GitHub actor and workflow run identity.
+- release channel, intended stable version, source branch, pull request, and whether an existing image was reused.
 
 It never records a token, password, secret path, or secret value. If catalog registration must be retried independently, download the evidence artifact and run `scripts/register-model-release.py` with the protected catalog URL and credential file. The operation is idempotent for the same artifact and rejects conflicting metadata.
 

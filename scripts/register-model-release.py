@@ -41,11 +41,36 @@ def load_catalog_payload(evidence_path: Path) -> dict[str, Any]:
     if not all(isinstance(section, dict) for section in (model, source, weights, image)):
         raise CatalogRegistrationError("Release evidence is missing required sections")
 
+    release = evidence.get("release")
+    if release is None:
+        release = {"channel": "RELEASE", "baseVersion": model.get("version")}
+    if not isinstance(release, dict):
+        raise CatalogRegistrationError("Release evidence contains an invalid release section")
+    channel = require_string(release.get("channel"), "release.channel").upper()
+    if channel not in {"RELEASE", "CANDIDATE"}:
+        raise CatalogRegistrationError("release.channel must be RELEASE or CANDIDATE")
+    base_version = require_string(release.get("baseVersion"), "release.baseVersion")
+    source_branch = release.get("sourceBranch")
+    pull_request = release.get("pullRequest")
+    workflow_run = release.get("workflowRun")
+    if channel == "CANDIDATE":
+        if not isinstance(source_branch, str) or not source_branch.strip():
+            raise CatalogRegistrationError("Candidate evidence requires release.sourceBranch")
+        if not isinstance(pull_request, int) or pull_request <= 0:
+            raise CatalogRegistrationError("Candidate evidence requires release.pullRequest")
+        if not isinstance(workflow_run, str) or not workflow_run.isdigit():
+            raise CatalogRegistrationError("Candidate evidence requires release.workflowRun")
+
     return {
         "modelId": require_string(model.get("id"), "model.id"),
         "version": require_string(model.get("version"), "model.version"),
         "imageReference": require_string(image.get("reference"), "image.reference"),
         "imageDigest": require_string(image.get("registryDigest"), "image.registryDigest"),
+        "channel": channel,
+        "baseVersion": base_version,
+        "sourceBranch": source_branch.strip() if isinstance(source_branch, str) else None,
+        "pullRequest": pull_request,
+        "workflowRun": workflow_run,
         "provenance": {
             "sourceRepository": require_string(source.get("repository"), "source.repository"),
             "sourceRevision": require_string(source.get("revision"), "source.revision"),

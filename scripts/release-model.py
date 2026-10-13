@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and publish a provenance-aware PACS-AI inference image."""
+"""Build and publish a provenance-aware PACS-AI release or candidate image."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -34,6 +34,12 @@ IMAGE_REPOSITORY_PATTERN = re.compile(
     r"^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)+$"
 )
 DIGEST_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
+SOURCE_BRANCH_PATTERN = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,253}[A-Za-z0-9._-])?$"
+)
+
+RELEASE_CHANNEL = "release"
+CANDIDATE_CHANNEL = "candidate"
 
 PROVENANCE_FIELDS = {
     "sourceRepository",
@@ -75,6 +81,11 @@ class ReleaseMetadata:
     model_revision: str
     weights_path: str
     weights_sha256: str
+    channel: str = RELEASE_CHANNEL
+    base_version: str | None = None
+    source_branch: str | None = None
+    pull_request: int | None = None
+    workflow_run: str | None = None
 
     @property
     def provenance(self) -> dict[str, str]:
@@ -89,7 +100,7 @@ class ReleaseMetadata:
 
     @property
     def labels(self) -> dict[str, str]:
-        return {
+        labels = {
             "org.opencontainers.image.title": self.model_name,
             "org.opencontainers.image.version": self.version,
             "org.opencontainers.image.revision": self.source_revision,
@@ -98,7 +109,14 @@ class ReleaseMetadata:
             "ai.heartwise.model.revision": self.model_revision,
             "ai.heartwise.model.weights.path": self.weights_path,
             "ai.heartwise.model.weights.sha256": self.weights_sha256,
+            "ai.heartwise.release.channel": self.channel,
+            "ai.heartwise.release.base-version": self.base_version or self.version,
         }
+        if self.source_branch is not None:
+            labels["ai.heartwise.source.branch"] = self.source_branch
+        if self.pull_request is not None:
+            labels["ai.heartwise.source.pull-request"] = str(self.pull_request)
+        return labels
 
     @property
     def build_args(self) -> dict[str, str]:
@@ -290,6 +308,64 @@ def load_release_metadata(model_dir: Path, source_revision: str) -> ReleaseMetad
     )
 
 
+def prepare_release_metadata(
+    metadata: ReleaseMetadata,
+    *,
+    channel: str,
+    source_branch: str | None,
+    pull_request: int | None,
+    workflow_run: str | None,
+) -> ReleaseMetadata:
+    """Apply channel-specific identity without modifying the source manifest."""
+
+    if channel == RELEASE_CHANNEL:
+        if "-" in metadata.version:
+            raise ReleaseError("Official releases require a stable semantic version")
+        if source_branch is not None or pull_request is not None:
+            raise ReleaseError("Release channel does not accept branch or pull-request metadata")
+        return replace(
+            metadata,
+            channel=RELEASE_CHANNEL,
+            base_version=metadata.version,
+            workflow_run=workflow_run,
+        )
+
+    if channel != CANDIDATE_CHANNEL:
+        raise ReleaseError(f"Unsupported release channel: {channel}")
+    if "-" in metadata.version:
+        raise ReleaseError(
+            "Candidate source manifests must contain the intended stable version"
+        )
+    if (
+        source_branch is None
+        or not SOURCE_BRANCH_PATTERN.fullmatch(source_branch)
+        or ".." in source_branch
+        or "//" in source_branch
+    ):
+        raise ReleaseError("Candidate releases require a valid source branch")
+    if pull_request is None or pull_request <= 0:
+        raise ReleaseError("Candidate releases require a positive pull-request number")
+    if workflow_run is None or not workflow_run.isdigit() or int(workflow_run) <= 0:
+        raise ReleaseError("Candidate releases require a positive GitHub workflow run ID")
+
+    candidate_version = (
+        f"{metadata.version}-rc.{pull_request}.{metadata.source_revision[:12]}"
+    )
+    if not SEMVER_PATTERN.fullmatch(candidate_version) or not DOCKER_TAG_PATTERN.fullmatch(
+        candidate_version
+    ):
+        raise ReleaseError("Derived candidate version is not a Docker-safe semantic version")
+    return replace(
+        metadata,
+        version=candidate_version,
+        channel=CANDIDATE_CHANNEL,
+        base_version=metadata.version,
+        source_branch=source_branch,
+        pull_request=pull_request,
+        workflow_run=workflow_run,
+    )
+
+
 def validate_image_repository(image_repository: str, allowed_namespace: str) -> None:
     if not IMAGE_REPOSITORY_PATTERN.fullmatch(image_repository):
         raise ReleaseError(
@@ -322,6 +398,13 @@ def validate_dockerfile_contract(model_dir: Path) -> tuple[Path, bool]:
     ):
         raise ReleaseError(
             "Official Dockerfile must expose PACS_AI_SOURCE_REVISION to the inference runtime"
+        )
+    if not re.search(
+        r"(?m)^\s*ENV\s+PACS_AI_MODEL_VERSION=[\"']?\$\{PACS_AI_MODEL_VERSION\}",
+        contents,
+    ):
+        raise ReleaseError(
+            "Official Dockerfile must expose PACS_AI_MODEL_VERSION to the inference runtime"
         )
     missing_downloader_arguments = [
         option
@@ -563,6 +646,24 @@ def publish_image(
     return digest, aliases
 
 
+def pull_existing_image(
+    image: str,
+    image_repository: str,
+) -> tuple[str, dict[str, str], str]:
+    """Pull an immutable existing tag so it can undergo the normal verification path."""
+
+    log(f"Pulling existing immutable image {image} for verification")
+    pull_result = run_command(("docker", "pull", image))
+    image_id, labels, repo_digests = inspect_image(image)
+    digest = resolve_pushed_digest(
+        image_repository,
+        f"{pull_result.stdout}\n{pull_result.stderr}",
+        repo_digests,
+    )
+    run_command(("docker", "manifest", "inspect", f"{image_repository}@{digest}"))
+    return image_id, labels, digest
+
+
 def build_evidence(
     *,
     metadata: ReleaseMetadata,
@@ -570,11 +671,20 @@ def build_evidence(
     image_id: str,
     digest: str | None,
     aliases: Sequence[str],
+    reused_existing: bool = False,
 ) -> dict[str, Any]:
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "createdAt": datetime.now(timezone.utc).isoformat(),
         "status": "published" if digest else "built",
+        "release": {
+            "channel": metadata.channel.upper(),
+            "baseVersion": metadata.base_version or metadata.version,
+            "sourceBranch": metadata.source_branch,
+            "pullRequest": metadata.pull_request,
+            "workflowRun": metadata.workflow_run,
+            "reusedExisting": reused_existing,
+        },
         "model": {
             "id": metadata.model_id,
             "name": metadata.model_name,
@@ -625,10 +735,18 @@ def release(args: argparse.Namespace) -> dict[str, Any]:
 
     require_clean_worktree()
     source_revision = resolve_source_revision()
-    if args.publish:
+    channel = getattr(args, "channel", RELEASE_CHANNEL)
+    if args.publish and channel == RELEASE_CHANNEL:
         require_merged_source(source_revision)
 
     metadata = load_release_metadata(model_dir, source_revision)
+    metadata = prepare_release_metadata(
+        metadata,
+        channel=channel,
+        source_branch=getattr(args, "source_branch", None),
+        pull_request=getattr(args, "pull_request", None),
+        workflow_run=getattr(args, "workflow_run", None),
+    )
     source_repository = resolve_source_repository()
     if metadata.source_repository != source_repository:
         raise ReleaseError("provenance.sourceRepository does not match the Git origin repository")
@@ -648,7 +766,26 @@ def release(args: argparse.Namespace) -> dict[str, Any]:
             raise ReleaseError(f"Hugging Face token file not found: {hf_token_file}")
 
     if args.publish and remote_version_exists(image):
-        raise ReleaseError(f"Refusing to overwrite existing immutable versioned image {image}")
+        if not getattr(args, "reuse_existing", False):
+            raise ReleaseError(
+                f"Refusing to overwrite existing immutable versioned image {image}"
+            )
+
+        image_id, labels, digest = pull_existing_image(image, image_repository)
+        verify_image_labels(labels, metadata)
+        log(f"Existing image labels verified ({image_id})")
+        verify_packaged_weights(image, metadata)
+        verify_runtime_image(image, metadata, args.runtime_timeout_seconds)
+        evidence = build_evidence(
+            metadata=metadata,
+            image=image,
+            image_id=image_id,
+            digest=digest,
+            aliases=[],
+            reused_existing=True,
+        )
+        write_evidence(Path(args.evidence).resolve(), evidence)
+        return evidence
 
     log(f"Validated {metadata.model_name} {metadata.version} at {source_revision}")
     build_image(model_dir, dockerfile, image, metadata, hf_token_file)
@@ -687,6 +824,27 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("model_dir", help="Model directory under model-examples/")
     parser.add_argument(
+        "--channel",
+        choices=(RELEASE_CHANNEL, CANDIDATE_CHANNEL),
+        default=RELEASE_CHANNEL,
+        help="Artifact channel (default: release)",
+    )
+    parser.add_argument(
+        "--source-branch",
+        default=os.getenv("GITHUB_HEAD_REF") or None,
+        help="Candidate source branch (or GITHUB_HEAD_REF)",
+    )
+    parser.add_argument(
+        "--pull-request",
+        type=int,
+        help="Candidate pull-request number",
+    )
+    parser.add_argument(
+        "--workflow-run",
+        default=os.getenv("GITHUB_RUN_ID") or None,
+        help="GitHub workflow run ID (or GITHUB_RUN_ID)",
+    )
+    parser.add_argument(
         "--image-repository",
         default=os.getenv("PACS_AI_IMAGE_REPOSITORY"),
         help="Lowercase Docker repository without tag (or PACS_AI_IMAGE_REPOSITORY)",
@@ -712,6 +870,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Also push latest as a non-authoritative convenience alias",
     )
     parser.add_argument(
+        "--reuse-existing",
+        action="store_true",
+        help="Verify and reuse an identical existing immutable image instead of rebuilding it",
+    )
+    parser.add_argument(
         "--evidence",
         default="release-evidence.json",
         help="Path for machine-readable release evidence",
@@ -727,6 +890,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--image-repository or PACS_AI_IMAGE_REPOSITORY is required")
     if args.publish_latest and not args.publish:
         parser.error("--publish-latest requires --publish")
+    if args.reuse_existing and not args.publish:
+        parser.error("--reuse-existing requires --publish")
+    if args.reuse_existing and args.publish_latest:
+        parser.error("--reuse-existing cannot update the latest alias")
+    if args.channel == CANDIDATE_CHANNEL and args.publish_latest:
+        parser.error("candidate releases cannot publish the latest alias")
     if args.runtime_timeout_seconds <= 0:
         parser.error("--runtime-timeout-seconds must be greater than zero")
     return args

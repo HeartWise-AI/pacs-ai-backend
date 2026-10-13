@@ -67,6 +67,7 @@ class ReleaseModelTests(unittest.TestCase):
         (self.model_dir / "Dockerfile").write_text(
             f"FROM python:3.12-slim\n{arguments}{credential}\n"
             'ENV PACS_AI_SOURCE_REVISION="${PACS_AI_SOURCE_REVISION}"\n'
+            'ENV PACS_AI_MODEL_VERSION="${PACS_AI_MODEL_VERSION}"\n'
             "COPY download_model.py .\n"
             "RUN --mount=type=secret,id=hf_token python download_model.py "
             '--repository "${PACS_AI_MODEL_REPOSITORY}" '
@@ -214,6 +215,50 @@ class ReleaseModelTests(unittest.TestCase):
         self.manifest["version"] = "1.2.3-rc.1"
         self.write_manifest()
         self.assertEqual("1.2.3-rc.1", self.metadata().version)
+
+    def test_candidate_identity_is_derived_from_manifest_pr_and_source_commit(self):
+        metadata = RELEASE.prepare_release_metadata(
+            self.metadata(),
+            channel="candidate",
+            source_branch="issue-365-transactional-model-upgrades",
+            pull_request=366,
+            workflow_run="123456",
+        )
+
+        self.assertEqual("1.2.3-rc.366.aaaaaaaaaaaa", metadata.version)
+        self.assertEqual("1.2.3", metadata.base_version)
+        self.assertEqual("candidate", metadata.channel)
+        self.assertEqual(
+            "issue-365-transactional-model-upgrades",
+            metadata.labels["ai.heartwise.source.branch"],
+        )
+        self.assertEqual("366", metadata.labels["ai.heartwise.source.pull-request"])
+
+    def test_candidate_identity_requires_stable_manifest_and_complete_context(self):
+        cases = (
+            {"source_branch": None, "pull_request": 366, "workflow_run": "123"},
+            {"source_branch": "feature/test", "pull_request": 0, "workflow_run": "123"},
+            {"source_branch": "../unsafe", "pull_request": 366, "workflow_run": "123"},
+            {"source_branch": "feature/test", "pull_request": 366, "workflow_run": None},
+        )
+        for context in cases:
+            with self.subTest(context=context), self.assertRaises(RELEASE.ReleaseError):
+                RELEASE.prepare_release_metadata(
+                    self.metadata(),
+                    channel="candidate",
+                    **context,
+                )
+
+        self.manifest["version"] = "1.2.3-rc.1"
+        self.write_manifest()
+        with self.assertRaisesRegex(RELEASE.ReleaseError, "intended stable version"):
+            RELEASE.prepare_release_metadata(
+                self.metadata(),
+                channel="candidate",
+                source_branch="feature/test",
+                pull_request=366,
+                workflow_run="123",
+            )
 
     def test_image_repository_is_restricted_and_cannot_include_a_tag(self):
         RELEASE.validate_image_repository("heartwisehub/pacs-ai-example", "heartwisehub")
@@ -416,6 +461,63 @@ class ReleaseModelTests(unittest.TestCase):
             RELEASE.release(args)
         build.assert_not_called()
 
+    def test_publish_can_verify_and_reuse_an_identical_existing_version(self):
+        self.write_dockerfile()
+        token_file = self.root / "hf_token.txt"
+        token_file.write_text("secret", encoding="utf-8")
+        evidence_path = self.root / "evidence.json"
+        args = argparse.Namespace(
+            model_dir=str(self.model_dir),
+            channel="candidate",
+            source_branch="feature/model",
+            pull_request=42,
+            workflow_run="123456",
+            reuse_existing=True,
+            image_repository="heartwisehub/pacs-ai-example",
+            allowed_namespace="heartwisehub",
+            hf_token_file=str(token_file),
+            publish=True,
+            publish_latest=False,
+            evidence=str(evidence_path),
+            runtime_timeout_seconds=1,
+        )
+        candidate = RELEASE.prepare_release_metadata(
+            self.metadata(),
+            channel="candidate",
+            source_branch="feature/model",
+            pull_request=42,
+            workflow_run="123456",
+        )
+        digest = "sha256:" + "d" * 64
+        image_id = "sha256:" + "e" * 64
+
+        with (
+            mock.patch.object(RELEASE, "REPOSITORY_ROOT", self.root),
+            mock.patch.object(RELEASE, "require_clean_worktree"),
+            mock.patch.object(RELEASE, "resolve_source_revision", return_value=SOURCE_REVISION),
+            mock.patch.object(
+                RELEASE, "resolve_source_repository", return_value="HeartWise-AI/pacs-ai-backend"
+            ),
+            mock.patch.object(RELEASE, "require_merged_source") as require_merged,
+            mock.patch.object(RELEASE, "remote_version_exists", return_value=True),
+            mock.patch.object(
+                RELEASE,
+                "pull_existing_image",
+                return_value=(image_id, candidate.labels, digest),
+            ),
+            mock.patch.object(RELEASE, "build_image") as build,
+            mock.patch.object(RELEASE, "verify_packaged_weights"),
+            mock.patch.object(RELEASE, "verify_runtime_image"),
+        ):
+            evidence = RELEASE.release(args)
+
+        require_merged.assert_not_called()
+        build.assert_not_called()
+        self.assertTrue(evidence["release"]["reusedExisting"])
+        self.assertEqual("CANDIDATE", evidence["release"]["channel"])
+        self.assertEqual("1.2.3-rc.42.aaaaaaaaaaaa", evidence["model"]["version"])
+        self.assertEqual(digest, evidence["image"]["registryDigest"])
+
     def test_release_verifies_runtime_before_publishing_and_writes_digest_evidence(self):
         self.write_dockerfile()
         token_file = self.root / "hf_token.txt"
@@ -500,6 +602,7 @@ class ReleaseModelTests(unittest.TestCase):
         self.assertIn("--password-stdin", workflow)
         self.assertIn("scripts/release-model.py", workflow)
         self.assertIn("scripts/register-model-release.py", workflow)
+        self.assertIn("--channel release", workflow)
         self.assertIn("--publish", workflow)
         self.assertNotIn("secrets.HF_TOKEN", workflow)
         self.assertNotIn("secrets.DOCKER", workflow)
