@@ -4,6 +4,7 @@ import (
 	"context"
 
 	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
+	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/infrastructure/service/types"
 )
 
@@ -11,6 +12,10 @@ import (
 type InferenceCommandServiceInterface interface {
 	// AddInferenceModel adds an inference model
 	AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error
+	// PublishInferenceModelVersion adds an immutable artifact to the global catalog.
+	PublishInferenceModelVersion(ctx context.Context, version entity.InferenceModelVersion) (entity.InferenceModelVersion, error)
+	// DeployInferenceModelVersion activates an explicitly selected catalog version.
+	DeployInferenceModelVersion(ctx context.Context, data types.DeployInferenceModelVersion) (types.DeployInferenceModelVersionResult, error)
 	// AddOnboardingModelQuestionnaireAnswers adds onboarding model questionnaire answers
 	AddOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
 	// CreateInferenceIngestionJob creates an inference ingestion job

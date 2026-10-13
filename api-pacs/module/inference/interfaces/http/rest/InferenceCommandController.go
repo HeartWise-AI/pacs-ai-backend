@@ -3,6 +3,7 @@ package rest
 import (
 	"context"
 	"encoding/json"
+	stdErrors "errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -14,9 +15,102 @@ import (
 	"api-pacs/internal/errors"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/application"
+	"api-pacs/module/inference/domain/entity"
+	"api-pacs/module/inference/infrastructure/modelupgrade"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 	types "api-pacs/module/inference/interfaces/http"
 )
+
+// PublishInferenceModelVersion registers one immutable release artifact. This
+// route is protected by the Firebase superuser key in the router.
+func (controller *InferenceCommandController) PublishInferenceModelVersion(w http.ResponseWriter, r *http.Request) {
+	var request types.PublishInferenceModelVersionRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || types.Validate.Struct(request) != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status: http.StatusBadRequest, Success: false, Message: "Invalid model version payload.",
+			ErrorCode: apiError.InvalidPayload,
+		}
+		response.JSON(w)
+		return
+	}
+	published, err := controller.InferenceCommandServiceInterface.PublishInferenceModelVersion(r.Context(), entity.InferenceModelVersion{
+		ModelID: request.ModelID, Version: request.Version, ImageReference: request.ImageReference,
+		ImageDigest: request.ImageDigest, Channel: request.Channel, BaseVersion: request.BaseVersion,
+		SourceBranch: request.SourceBranch, PullRequest: request.PullRequest, WorkflowRun: request.WorkflowRun,
+		Provenance: request.Provenance, Status: entity.InferenceModelVersionAvailable,
+	})
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		message := "Could not publish inference model version."
+		if err.Error() == apiError.InvalidPayload {
+			statusCode = http.StatusBadRequest
+		} else if err.Error() == apiError.InferenceUpgradeConflict {
+			statusCode = http.StatusConflict
+		}
+		response := viewmodels.HTTPResponseVM{Status: statusCode, Success: false, Message: message, ErrorCode: err.Error()}
+		response.JSON(w)
+		return
+	}
+	response := viewmodels.HTTPResponseVM{
+		Status: http.StatusCreated, Success: true, Message: "Successfully published inference model version.",
+		Data: inferenceModelVersionResponse(published, false),
+	}
+	response.JSON(w)
+}
+
+// DeployInferenceModelVersion activates the selected catalog version. An older
+// version follows the same path and therefore acts as a manual rollback.
+func (controller *InferenceCommandController) DeployInferenceModelVersion(w http.ResponseWriter, r *http.Request) {
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	modelID := chi.URLParam(r, "ID")
+	versionID := chi.URLParam(r, "versionID")
+	if tenantID == "" || modelID == "" || versionID == "" {
+		response := viewmodels.HTTPResponseVM{
+			Status: http.StatusBadRequest, Success: false, Message: "Invalid model deployment request.",
+			ErrorCode: apiError.InvalidPayload,
+		}
+		response.JSON(w)
+		return
+	}
+	result, err := controller.InferenceCommandServiceInterface.DeployInferenceModelVersion(r.Context(), serviceTypes.DeployInferenceModelVersion{
+		TenantID: tenantID, ModelID: modelID, VersionID: versionID,
+	})
+	if err != nil {
+		statusCode, message, errorCode := modelUpgradeHTTPError(err)
+		response := viewmodels.HTTPResponseVM{Status: statusCode, Success: false, Message: message, ErrorCode: errorCode}
+		response.JSON(w)
+		return
+	}
+	response := viewmodels.HTTPResponseVM{
+		Status: http.StatusOK, Success: true, Message: "Successfully deployed inference model version.",
+		Data: types.DeployInferenceModelVersionResponse{
+			Previous: result.Previous, Active: result.Active, ContainerName: result.ContainerName,
+		},
+	}
+	response.JSON(w)
+}
+
+func modelUpgradeHTTPError(err error) (int, string, string) {
+	errorCode := err.Error()
+	var upgradeErr *modelupgrade.UpgradeError
+	if stdErrors.As(err, &upgradeErr) {
+		errorCode = upgradeErr.Err.Error()
+	}
+	switch errorCode {
+	case apiError.InvalidPayload:
+		return http.StatusBadRequest, "Invalid model deployment request.", errorCode
+	case apiError.MissingRecord:
+		return http.StatusNotFound, "Inference model or version was not found.", errorCode
+	case apiError.InferenceUpgradeConflict:
+		return http.StatusConflict, "Another deployment changed or is updating this model.", errorCode
+	case apiError.InferenceUpgradeUnavailable:
+		return http.StatusServiceUnavailable, "Managed model deployment is unavailable.", errorCode
+	case apiError.InferenceCandidateDeploymentDisabled:
+		return http.StatusForbidden, "Candidate model deployment is disabled in this environment.", errorCode
+	default:
+		return http.StatusInternalServerError, "Inference model deployment failed and was rolled back.", errorCode
+	}
+}
 
 // InferenceCommandController request controller for inference command
 type InferenceCommandController struct {

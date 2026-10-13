@@ -45,11 +45,6 @@ up-elasticsearch:
 	cd elasticsearch
 	docker compose -f docker-compose-dev.yml up --build
 
-.PHONY: up-torchserve
-up-torchserve:
-	cd torchserve
-	docker compose -f docker-compose-dev.yml up --build
-
 DEMO_XA_ENV_FILE ?= scripts/.env.demo-xa
 PYTHON ?= .venv/bin/python
 

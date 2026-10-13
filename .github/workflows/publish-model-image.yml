@@ -7,10 +7,6 @@ on:
         description: Model directory under model-examples/
         required: true
         type: string
-      image_repository:
-        description: Docker repository without a tag (heartwisehub/...)
-        required: true
-        type: string
       publish_latest:
         description: Also publish latest as a non-authoritative alias
         required: false
@@ -21,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: model-release-${{ inputs.image_repository }}
+  group: model-release-${{ inputs.model_directory }}
   cancel-in-progress: false
 
 jobs:
@@ -32,12 +28,14 @@ jobs:
     timeout-minutes: 180
     env:
       MODEL_DIRECTORY: ${{ inputs.model_directory }}
-      IMAGE_REPOSITORY: ${{ inputs.image_repository }}
       PUBLISH_LATEST: ${{ inputs.publish_latest }}
       PACS_AI_RELEASE_NAMESPACE: heartwisehub
+      PACS_AI_RELEASE_MIN_FREE_GIB: ${{ vars.PACS_AI_RELEASE_MIN_FREE_GIB || '25' }}
       HF_TOKEN_FILE: /etc/pacs-ai-release/secrets/hf_token
       DOCKERHUB_USERNAME_FILE: /etc/pacs-ai-release/secrets/dockerhub_username
       DOCKERHUB_TOKEN_FILE: /etc/pacs-ai-release/secrets/dockerhub_token
+      PACS_AI_CATALOG_API_URL: ${{ vars.PACS_AI_CATALOG_API_URL }}
+      PACS_AI_CATALOG_SUDO_KEY_FILE: /etc/pacs-ai-release/secrets/firebase_superuser_key
     steps:
       - name: Check out the selected main commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -53,6 +51,13 @@ jobs:
             echo "RELEASE_EVIDENCE=$RUNNER_TEMP/model-release-evidence.json"
           } >> "$GITHUB_ENV"
 
+      - name: Resolve approved image repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_repository=$(python3 scripts/model_image_repository.py "$MODEL_DIRECTORY")
+          echo "IMAGE_REPOSITORY=$image_repository" >> "$GITHUB_ENV"
+
       - name: Validate runner and local credentials
         shell: bash
         run: |
@@ -67,8 +72,21 @@ jobs:
             fi
           }
           test -S /var/run/docker.sock
+          if [[ ! "$PACS_AI_RELEASE_MIN_FREE_GIB" =~ ^[1-9][0-9]*$ ]]; then
+            echo "PACS_AI_RELEASE_MIN_FREE_GIB must be a positive integer" >&2
+            exit 1
+          fi
+          available_kib=$(df -Pk "$RUNNER_TEMP" | awk 'NR == 2 { print $4 }')
+          required_kib=$((PACS_AI_RELEASE_MIN_FREE_GIB * 1024 * 1024))
+          if (( available_kib < required_kib )); then
+            available_gib=$((available_kib / 1024 / 1024))
+            echo "Insufficient runner disk space: ${available_gib} GiB available, ${PACS_AI_RELEASE_MIN_FREE_GIB} GiB required" >&2
+            exit 1
+          fi
           test -r "$DOCKERHUB_USERNAME_FILE"
           require_private_file "$DOCKERHUB_TOKEN_FILE"
+          require_private_file "$PACS_AI_CATALOG_SUDO_KEY_FILE"
+          test -n "$PACS_AI_CATALOG_API_URL"
           if grep -q 'mount=type=secret,id=hf_token' "$MODEL_DIRECTORY/Dockerfile"; then
             require_private_file "$HF_TOKEN_FILE"
           fi
@@ -93,16 +111,31 @@ jobs:
           fi
           python3 scripts/release-model.py \
             "$MODEL_DIRECTORY" \
-            --image-repository "$IMAGE_REPOSITORY" \
+            --channel release \
+            --repository-map .github/model-image-repositories.json \
             --hf-token-file "$HF_TOKEN_FILE" \
             --publish \
             --evidence "$RELEASE_EVIDENCE" \
             "${latest_argument[@]}"
 
-      - name: Add release evidence to the workflow summary
-        if: success()
+      - name: Register the published version in the model catalog
         shell: bash
         run: |
+          set -euo pipefail
+          python3 scripts/register-model-release.py \
+            "$RELEASE_EVIDENCE" \
+            --api-url "$PACS_AI_CATALOG_API_URL" \
+            --sudo-key-file "$PACS_AI_CATALOG_SUDO_KEY_FILE"
+
+      - name: Add release evidence to the workflow summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ ! -f "$RELEASE_EVIDENCE" ]]; then
+            echo '## Model release evidence' >> "$GITHUB_STEP_SUMMARY"
+            echo 'No release evidence was produced.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           {
             echo '## Model release evidence'
             echo '```json'
@@ -111,15 +144,36 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload release evidence
-        if: success()
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: model-release-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/model-release-evidence.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
 
-      - name: Remove temporary registry credentials
+      - name: Remove job-specific Docker resources and credentials
         if: always()
         shell: bash
-        run: rm -rf "$DOCKER_CONFIG"
+        run: |
+          model_version=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["version"])' "$MODEL_DIRECTORY/data/model_info.json" 2>/dev/null || true)
+          references=()
+          if [[ -n "$model_version" ]]; then
+            references+=("${IMAGE_REPOSITORY}:${model_version}")
+          fi
+          if [[ "$PUBLISH_LATEST" == "true" ]]; then
+            references+=("${IMAGE_REPOSITORY}:latest")
+          fi
+
+          for reference in "${references[@]}"; do
+            image_revision=$(docker image inspect \
+              --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+              "$reference" 2>/dev/null || true)
+            if [[ "$image_revision" == "$GITHUB_SHA" ]]; then
+              docker image rm --force "$reference" || true
+            fi
+          done
+
+          if [[ -n "${DOCKER_CONFIG:-}" ]]; then
+            rm -rf "$DOCKER_CONFIG"
+          fi

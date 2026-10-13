@@ -100,3 +100,24 @@ func TestManagedInferenceGatewayMapsAdmissionTimeoutToRetryable503(t *testing.T)
 	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
 	require.Equal(t, "1", recorder.Header().Get("Retry-After"))
 }
+
+func TestManagedInferenceGatewayMapsDeploymentBlockToRetryable503(t *testing.T) {
+	t.Setenv("STUDY_SERVICE_CALLBACK_TOKEN", "gateway-secret")
+	service := &managedInferenceControllerService{err: &modelmanager.AdmissionBlocked{}}
+	controller := InferenceCommandController{InferenceCommandServiceInterface: service}
+	recorder := httptest.NewRecorder()
+
+	controller.PredictPreparedInferenceModel(recorder, managedInferenceRequest(`{
+		"tenantId":"tenant-a","containerRef":"echo-prime","request":{"outputMode":"JSON"}
+	}`, "gateway-secret"))
+
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	require.Equal(t, "1", recorder.Header().Get("Retry-After"))
+	var response struct {
+		ErrorCode string `json:"errorCode"`
+		Message   string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, "INFERENCE_ADMISSION_BLOCKED", response.ErrorCode)
+	require.Equal(t, "The model is temporarily unavailable during a deployment transition.", response.Message)
+}

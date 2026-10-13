@@ -4,16 +4,20 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"strings"
 	"time"
 
+	engine "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/errdefs"
 	"github.com/docker/go-connections/nat"
 
 	"api-pacs/infrastructures/providers/sdk/docker/types"
@@ -111,6 +115,96 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 	return resp.ID, nil
 }
 
+// CreateCandidateContainer stages a uniquely named container beside the active
+// deployment. It preserves runtime requirements while removing settings that
+// could claim the active container's identity or host ports.
+func (d *DockerSDK) CreateCandidateContainer(ctx context.Context, config types.CreateCandidateContainer) (string, error) {
+	config.Name = strings.TrimSpace(config.Name)
+	config.Image = strings.TrimSpace(config.Image)
+	config.ActiveContainerID = strings.TrimSpace(config.ActiveContainerID)
+	if config.Name == "" || config.Image == "" || config.ActiveContainerID == "" {
+		return "", fmt.Errorf("candidate name, image, and active container ID are required")
+	}
+
+	active, err := d.Client.ContainerInspect(ctx, config.ActiveContainerID)
+	if err != nil {
+		log.Println("[docker] error:", err)
+		return "", err
+	}
+	if active.ContainerJSONBase == nil || active.Config == nil || active.HostConfig == nil {
+		return "", fmt.Errorf("active container inspection is incomplete")
+	}
+	if strings.TrimPrefix(active.Name, "/") == config.Name {
+		return "", fmt.Errorf("candidate container name must differ from the active container name")
+	}
+
+	containerConfig, hostConfig, networkConfig := d.candidateContainerConfigs(config, active)
+	response, err := d.Client.ContainerCreate(ctx, containerConfig, hostConfig, networkConfig, nil, config.Name)
+	if err != nil {
+		log.Println("[docker] error:", err)
+		return "", err
+	}
+
+	return response.ID, nil
+}
+
+func (d *DockerSDK) candidateContainerConfigs(
+	config types.CreateCandidateContainer,
+	active engine.ContainerJSON,
+) (*container.Config, *container.HostConfig, *network.NetworkingConfig) {
+	containerConfig := &container.Config{
+		Image: config.Image,
+		Env:   append([]string(nil), config.Envs...),
+	}
+	if active.Config != nil {
+		containerConfig.ExposedPorts = clonePortSet(active.Config.ExposedPorts)
+	}
+
+	hostConfig := &container.HostConfig{}
+	if active.ContainerJSONBase != nil && active.HostConfig != nil {
+		copied := *active.HostConfig
+		copied.Binds = append([]string(nil), active.HostConfig.Binds...)
+		copied.Mounts = append([]mount.Mount(nil), active.HostConfig.Mounts...)
+		copied.DeviceRequests = append([]container.DeviceRequest(nil), active.HostConfig.DeviceRequests...)
+		copied.DNS = append([]string(nil), active.HostConfig.DNS...)
+		copied.DNSSearch = append([]string(nil), active.HostConfig.DNSSearch...)
+		copied.DNSOptions = append([]string(nil), active.HostConfig.DNSOptions...)
+
+		// A candidate shares runtime requirements, but not the active
+		// deployment's externally visible identity or lifecycle policy.
+		copied.PortBindings = nil
+		copied.PublishAllPorts = false
+		copied.Links = nil
+		copied.AutoRemove = false
+		copied.ContainerIDFile = ""
+		copied.RestartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
+		hostConfig = &copied
+	}
+
+	networkConfig := &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{}}
+	if active.NetworkSettings != nil {
+		for networkName := range active.NetworkSettings.Networks {
+			networkConfig.EndpointsConfig[networkName] = &network.EndpointSettings{}
+		}
+	}
+	if len(networkConfig.EndpointsConfig) == 0 && strings.TrimSpace(d.Network) != "" {
+		networkConfig.EndpointsConfig[d.Network] = &network.EndpointSettings{}
+	}
+
+	return containerConfig, hostConfig, networkConfig
+}
+
+func clonePortSet(source nat.PortSet) nat.PortSet {
+	if source == nil {
+		return nil
+	}
+	cloned := make(nat.PortSet, len(source))
+	for port := range source {
+		cloned[port] = struct{}{}
+	}
+	return cloned
+}
+
 // GetContainerInfo gets the container info
 func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error) {
 
@@ -136,6 +230,7 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 
 	return types.GetContainerInfoResult{
 		ID:         containerJSON.ID,
+		ImageID:    containerJSON.Image,
 		Name:       containerJSON.Name,
 		Lifecycle:  types.LifecycleFromStatus(types.Status(containerJSON.State.Status)),
 		StartedAt:  startedAtTime,
@@ -155,10 +250,59 @@ func (d *DockerSDK) PullImage(ctx context.Context, imageName string) error {
 	defer reader.Close()
 	// cli.ImagePull is asynchronous.
 	// The reader needs to be read completely for the pull operation to complete.
-	// If stdout is not required, consider using io.Discard instead of os.Stdout.
-	io.Copy(io.Discard, reader)
+	if err = consumeImagePull(reader); err != nil {
+		log.Println("[docker] error:", err)
+		return err
+	}
 
 	return nil
+}
+
+func consumeImagePull(reader io.Reader) error {
+	decoder := json.NewDecoder(reader)
+	for {
+		var message struct {
+			Error       string `json:"error"`
+			ErrorDetail struct {
+				Message string `json:"message"`
+			} `json:"errorDetail"`
+		}
+		if err := decoder.Decode(&message); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return fmt.Errorf("read image pull response: %w", err)
+		}
+		if message.ErrorDetail.Message != "" {
+			return fmt.Errorf("image pull failed: %s", message.ErrorDetail.Message)
+		}
+		if message.Error != "" {
+			return fmt.Errorf("image pull failed: %s", message.Error)
+		}
+	}
+}
+
+// InspectImage returns the local immutable identity, repository digests, and
+// OCI labels used to validate a candidate image.
+func (d *DockerSDK) InspectImage(ctx context.Context, imageName string) (types.InspectImageResult, error) {
+	inspection, _, err := d.Client.ImageInspectWithRaw(ctx, imageName)
+	if err != nil {
+		log.Println("[docker] error:", err)
+		return types.InspectImageResult{}, err
+	}
+
+	labels := map[string]string{}
+	if inspection.Config != nil {
+		for key, value := range inspection.Config.Labels {
+			labels[key] = value
+		}
+	}
+
+	return types.InspectImageResult{
+		ID:          inspection.ID,
+		RepoDigests: append([]string(nil), inspection.RepoDigests...),
+		Labels:      labels,
+	}, nil
 }
 
 // RemoveContainer removes a container
@@ -167,6 +311,9 @@ func (d *DockerSDK) RemoveContainer(ctx context.Context, containerID string) err
 		RemoveVolumes: true,
 		Force:         true,
 	})
+	if errdefs.IsNotFound(err) {
+		return nil
+	}
 	if err != nil {
 		log.Println("[docker] error:", err)
 		return err

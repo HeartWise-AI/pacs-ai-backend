@@ -100,7 +100,14 @@ const (
 	InferenceResultServiceUnavailable string = "INFERENCE_RESULT_SERVICE_UNAVAILABLE"
 	// InferenceAdmissionTimeout asks callers to retry after managed GPU admission times out.
 	InferenceAdmissionTimeout string = "INFERENCE_ADMISSION_TIMEOUT"
-	TorchServeError           string = "TORCHSERVE_ERROR"
+	// InferenceAdmissionBlocked asks callers to retry after a deployment transition completes.
+	InferenceAdmissionBlocked string = "INFERENCE_ADMISSION_BLOCKED"
+	// InferenceUpgradeConflict rejects a stale or conflicting registration replacement.
+	InferenceUpgradeConflict string = "INFERENCE_UPGRADE_CONFLICT"
+	// InferenceUpgradeUnavailable indicates that managed deployment is disabled or not configured.
+	InferenceUpgradeUnavailable string = "INFERENCE_UPGRADE_UNAVAILABLE"
+	// InferenceCandidateDeploymentDisabled prevents development artifacts from running in protected environments.
+	InferenceCandidateDeploymentDisabled string = "INFERENCE_CANDIDATE_DEPLOYMENT_DISABLED"
 
 	// Cloudflare-related errors
 	CloudflareAPIError string = "CLOUDFLARE_API_ERROR"

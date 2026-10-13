@@ -23,6 +23,51 @@ type InferenceQueryController struct {
 	WorklistEventHeartbeatInterval time.Duration
 }
 
+// GetInferenceModelVersions lists every catalog version for one registered model.
+func (controller *InferenceQueryController) GetInferenceModelVersions(w http.ResponseWriter, r *http.Request) {
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	modelID := chi.URLParam(r, "ID")
+	versions, err := controller.InferenceQueryServiceInterface.GetInferenceModelVersions(r.Context(), serviceTypes.GetInferenceModelVersions{
+		TenantID: tenantID, ModelID: modelID,
+	})
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		message := "Could not retrieve inference model versions."
+		if err.Error() == apiError.InvalidPayload {
+			statusCode = http.StatusBadRequest
+		} else if err.Error() == apiError.MissingRecord {
+			statusCode = http.StatusNotFound
+		} else if err.Error() == apiError.InferenceUpgradeUnavailable {
+			statusCode = http.StatusServiceUnavailable
+		}
+		response := viewmodels.HTTPResponseVM{Status: statusCode, Success: false, Message: message, ErrorCode: err.Error()}
+		response.JSON(w)
+		return
+	}
+	response := make([]types.InferenceModelVersionResponse, 0, len(versions))
+	for _, version := range versions {
+		response = append(response, inferenceModelVersionResponse(version.Version, version.Active))
+	}
+	httpResponse := viewmodels.HTTPResponseVM{
+		Status: http.StatusOK, Success: true, Message: "Successfully retrieved inference model versions.", Data: response,
+	}
+	httpResponse.JSON(w)
+}
+
+func inferenceModelVersionResponse(version entity.InferenceModelVersion, active bool) types.InferenceModelVersionResponse {
+	publishedAt := uint64(0)
+	if version.PublishedAt > 0 {
+		publishedAt = uint64(version.PublishedAt)
+	}
+	return types.InferenceModelVersionResponse{
+		ID: version.ID, ModelID: version.ModelID, Version: version.Version,
+		ImageReference: version.ImageReference, ImageDigest: version.ImageDigest,
+		Channel: version.Channel, BaseVersion: version.BaseVersion, SourceBranch: version.SourceBranch,
+		PullRequest: version.PullRequest, WorkflowRun: version.WorkflowRun,
+		Provenance: version.Provenance, Status: version.Status, PublishedAt: publishedAt, Active: active,
+	}
+}
+
 // GetContainerInfo returns the inference model container runtime information.
 func (controller *InferenceQueryController) GetContainerInfo(w http.ResponseWriter, r *http.Request) {
 	containerID := chi.URLParam(r, "containerID")

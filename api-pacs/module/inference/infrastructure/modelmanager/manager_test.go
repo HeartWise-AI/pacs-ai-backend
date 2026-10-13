@@ -723,3 +723,253 @@ func TestConcurrentReconciliationIsRejectedAndAdmissionStaysClosed(t *testing.T)
 		t.Fatal("manager did not become ready")
 	}
 }
+
+func TestBlockAndDrainRejectsAdmissionAndWaitsForActiveInference(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	b.predict = func(ctx context.Context, _ Model, _ types.PredictRequest) (types.PredictResponse, error) {
+		started <- struct{}{}
+		select {
+		case <-ctx.Done():
+			return types.PredictResponse{}, ctx.Err()
+		case <-release:
+			return types.PredictResponse{Success: true}, nil
+		}
+	}
+	m := manager(t, b, 100)
+	prediction := request(m, 1)
+	<-started
+	drained := make(chan error, 1)
+	go func() { drained <- m.BlockAndDrain(context.Background(), id(1)) }()
+	until(t, func() bool {
+		snapshot := m.Snapshot().Models[id(1)]
+		return snapshot.Blocked && snapshot.Draining
+	})
+
+	_, err := m.Predict(context.Background(), id(1), types.PredictRequest{})
+	var blocked *AdmissionBlocked
+	if !errors.Is(err, ErrAdmissionBlocked) || !errors.As(err, &blocked) {
+		t.Fatalf("new inference was not rejected during drain: %v", err)
+	}
+	select {
+	case err = <-drained:
+		t.Fatalf("drain completed before active inference: %v", err)
+	default:
+	}
+	close(release)
+	receive(t, prediction)
+	if err = <-drained; err != nil {
+		t.Fatal(err)
+	}
+	snapshot := m.Snapshot().Models[id(1)]
+	if !snapshot.Blocked || snapshot.Draining || snapshot.Loaded || snapshot.ReservedMiB != 0 || snapshot.State != types.RuntimeUnloaded {
+		t.Fatalf("unexpected drained state: %+v", snapshot)
+	}
+}
+
+func TestBlockAndDrainRemovesAlreadyQueuedRequests(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	b.predict = func(ctx context.Context, _ Model, _ types.PredictRequest) (types.PredictResponse, error) {
+		close(started)
+		select {
+		case <-ctx.Done():
+			return types.PredictResponse{}, ctx.Err()
+		case <-release:
+			return types.PredictResponse{Success: true}, nil
+		}
+	}
+	m := manager(t, b, 100)
+	active := request(m, 1)
+	<-started
+	queued := request(m, 1)
+	until(t, func() bool { return m.Snapshot().Models[id(1)].QueueDepth == 1 })
+	drained := make(chan error, 1)
+	go func() { drained <- m.BlockAndDrain(context.Background(), id(1)) }()
+
+	if err := <-queued; !errors.Is(err, ErrAdmissionBlocked) {
+		t.Fatalf("queued request was not released with a retryable block: %v", err)
+	}
+	close(release)
+	receive(t, active)
+	if err := <-drained; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTimedOutDrainCanBeUnblockedAfterOwnershipIsReleased(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	b.predict = func(ctx context.Context, _ Model, _ types.PredictRequest) (types.PredictResponse, error) {
+		started <- struct{}{}
+		select {
+		case <-ctx.Done():
+			return types.PredictResponse{}, ctx.Err()
+		case <-release:
+			return types.PredictResponse{Success: true}, nil
+		}
+	}
+	m := manager(t, b, 100)
+	prediction := request(m, 1)
+	<-started
+	drainCtx, cancelDrain := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	err := m.BlockAndDrain(drainCtx, id(1))
+	cancelDrain()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("drain did not time out while inference was active: %v", err)
+	}
+	if err = m.Unblock(id(1)); err != nil {
+		t.Fatalf("timed-out drain did not release gate ownership: %v", err)
+	}
+	close(release)
+	receive(t, prediction)
+	receive(t, request(m, 1))
+}
+
+func TestUnblockAndConcurrentDrainAreRejectedDuringDrain(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	b.predict = func(context.Context, Model, types.PredictRequest) (types.PredictResponse, error) {
+		close(started)
+		<-release
+		return types.PredictResponse{Success: true}, nil
+	}
+	m := manager(t, b, 100)
+	prediction := request(m, 1)
+	<-started
+	drained := make(chan error, 1)
+	go func() { drained <- m.BlockAndDrain(context.Background(), id(1)) }()
+	until(t, func() bool { return m.Snapshot().Models[id(1)].Draining })
+
+	if err := m.Unblock(id(1)); err == nil {
+		t.Fatal("admission reopened while drain still owned the model")
+	}
+	if err := m.BlockAndDrain(context.Background(), id(1)); err == nil {
+		t.Fatal("a concurrent drain acquired the same model")
+	}
+	close(release)
+	receive(t, prediction)
+	if err := <-drained; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReplaceAndPrepareKeepsCandidateBlockedUntilActivation(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	b.add(2, 40, 90)
+	m := manager(t, b, 120)
+	receive(t, request(m, 1))
+	if err := m.BlockAndDrain(context.Background(), id(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ReplaceDrained(id(1), id(2)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.PrepareBlocked(context.Background(), id(2)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Predict(context.Background(), id(2), types.PredictRequest{}); !errors.Is(err, ErrAdmissionBlocked) {
+		t.Fatalf("candidate admitted before activation: %v", err)
+	}
+	snapshot := m.Snapshot()
+	previous := snapshot.Models[id(1)]
+	if !previous.Blocked || previous.Loaded || previous.ReservedMiB != 0 {
+		t.Fatalf("old model was not retained as a blocked tombstone: %+v", previous)
+	}
+	candidate := snapshot.Models[id(2)]
+	if !candidate.Blocked || !candidate.Loaded || candidate.ReservedMiB != 40 || candidate.State != types.RuntimeReady {
+		t.Fatalf("candidate was not prepared under accounting: %+v", candidate)
+	}
+	if err := m.Unblock(id(2)); err != nil {
+		t.Fatal(err)
+	}
+	receive(t, request(m, 2))
+	if _, err := m.Predict(context.Background(), id(1), types.PredictRequest{}); !errors.Is(err, ErrAdmissionBlocked) {
+		t.Fatalf("stale old-container admission was not blocked: %v", err)
+	}
+}
+
+func TestPrepareBlockedRetainsReservationWhenCleanupIsUnconfirmed(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	b.add(2, 40, 90)
+	m := manager(t, b, 120)
+	receive(t, request(m, 1))
+	if err := m.BlockAndDrain(context.Background(), id(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ReplaceDrained(id(1), id(2)); err != nil {
+		t.Fatal(err)
+	}
+	b.load = func(context.Context, Model) error { return errors.New("load failed after allocation") }
+	b.unload = func(context.Context, Model) error { return errors.New("cleanup unavailable") }
+	if err := m.PrepareBlocked(context.Background(), id(2)); err == nil {
+		t.Fatal("candidate preparation unexpectedly succeeded")
+	}
+	candidate := m.Snapshot().Models[id(2)]
+	if candidate.State != types.RuntimeError || !candidate.Loaded || candidate.ReservedMiB != 90 || candidate.Active {
+		t.Fatalf("uncertain GPU allocation was not quarantined: %+v", candidate)
+	}
+}
+
+func TestBlockAndDrainFailureKeepsTheModelQuarantined(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	m := manager(t, b, 100)
+	receive(t, request(m, 1))
+	b.unload = func(context.Context, Model) error { return errors.New("unload could not be confirmed") }
+
+	if err := m.BlockAndDrain(context.Background(), id(1)); err == nil {
+		t.Fatal("drain unexpectedly succeeded")
+	}
+	snapshot := m.Snapshot().Models[id(1)]
+	if !snapshot.Blocked || snapshot.Draining || snapshot.Active || !snapshot.Loaded || snapshot.ReservedMiB != 30 || snapshot.State != types.RuntimeError {
+		t.Fatalf("failed drain did not retain its reservation: %+v", snapshot)
+	}
+	if err := m.Unblock(id(1)); err == nil {
+		t.Fatal("unsafe model admission was reopened")
+	}
+}
+
+func TestCandidateCannotBeUnblockedWhilePreparationIsRunning(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	b.add(2, 40, 90)
+	m := manager(t, b, 120)
+	receive(t, request(m, 1))
+	if err := m.BlockAndDrain(context.Background(), id(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ReplaceDrained(id(1), id(2)); err != nil {
+		t.Fatal(err)
+	}
+	loadStarted := make(chan struct{})
+	releaseLoad := make(chan struct{})
+	b.load = func(context.Context, Model) error {
+		close(loadStarted)
+		<-releaseLoad
+		return nil
+	}
+	prepared := make(chan error, 1)
+	go func() { prepared <- m.PrepareBlocked(context.Background(), id(2)) }()
+	<-loadStarted
+	if err := m.Unblock(id(2)); err == nil {
+		t.Fatal("candidate admission opened before preparation completed")
+	}
+	close(releaseLoad)
+	if err := <-prepared; err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Unblock(id(2)); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "repositories": {
+    "model-examples/BrainGPT_v1": "heartwisehub/brain_gpt",
+    "model-examples/CATH-EF": "heartwisehub/cath-ef",
+    "model-examples/CathEF-CLIP": "heartwisehub/cathef-clip",
+    "model-examples/DeepCORO-CTO": "heartwisehub/deepcoro-cto",
+    "model-examples/DeepCORO-MACE": "heartwisehub/pacs-ai-deepcoro-mace",
+    "model-examples/DeepCORO-SYNTAX": "heartwisehub/pacs-ai-deepcoro-syntax",
+    "model-examples/DeepCoro_CLIP/cardio_syntax": "heartwisehub/pacs-ai-deepcoro-clip_cardiosyntax",
+    "model-examples/DeepCoro_CLIP/generic": "heartwisehub/pacs-ai-deepcoro-clip-generic",
+    "model-examples/DeepCoro_CLIP/procedure_view_classifier": "heartwisehub/pacs-ai-procedure_view-classifier",
+    "model-examples/DeepRV": "heartwisehub/pacs-ai-deeprv",
+    "model-examples/DeepRV-CLIP": "heartwisehub/deeprv-clip",
+    "model-examples/ECHO-PRIME/generic": "heartwisehub/echo-prime-generic",
+    "model-examples/ECHO-PRIME/view_classifier": "heartwisehub/echo-prime_view-classifier",
+    "model-examples/Hemorrhage": "heartwisehub/hemorrhage",
+    "model-examples/PanEcho": "heartwisehub/pacs-ai-pan-echo",
+    "model-examples/TotalSegmentator": "heartwisehub/pacs-ai-segmentation",
+    "model-examples/med_gemma_1.5": "heartwisehub/medgemma_1.5"
+  }
+}

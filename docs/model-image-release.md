@@ -1,6 +1,6 @@
 # Reproducible model image releases
 
-PACS-AI builds an inference image once, identifies it by registry digest, and promotes that same artifact between environments. Pull requests validate release metadata but never publish images. Official publication happens only after merge through the protected `Publish inference model image` workflow.
+PACS-AI builds an inference image once, identifies it by registry digest, and promotes that same artifact between environments. Protected candidate workflows may publish prerelease images for controlled pre-merge validation. Official stable publication happens only after merge through the protected `Publish inference model image` workflow.
 
 ## Trust boundary
 
@@ -10,6 +10,7 @@ The release job runs on a HeartWise-controlled GitHub Actions runner labeled `pa
 /etc/pacs-ai-release/secrets/hf_token
 /etc/pacs-ai-release/secrets/dockerhub_username
 /etc/pacs-ai-release/secrets/dockerhub_token
+/etc/pacs-ai-release/secrets/firebase_superuser_key
 ```
 
 Use a dedicated, read-only Hugging Face token with access only to the required gated repositories. The Docker Hub token should be limited to the `heartwisehub` publication scope. Give the files to the runner service account with mode `0600`; they must never be placed in the repository or workspace.
@@ -18,7 +19,11 @@ The workflow creates a temporary Docker configuration, authenticates with `--pas
 
 Because model weights are embedded in the image, gated or restricted weights must be published only to a registry repository with equivalent access controls.
 
-The runner must provide Linux, Docker with BuildKit, Python 3.9 or newer, outbound access to Hugging Face and Docker Hub, and the labels `self-hosted`, `linux`, `x64`, and `pacs-ai-release`. Configure the GitHub `model-release` environment with required reviewers so a queued publication cannot access the runner until an authorized person approves it. Protect `master` and restrict who can dispatch release workflows.
+The runner must provide Linux, Docker with BuildKit, Python 3.9 or newer, outbound access to Hugging Face, Docker Hub, and the PACS-AI catalog API, and the labels `self-hosted`, `linux`, `x64`, and `pacs-ai-release`. Configure the GitHub `model-release` environment with required reviewers, an HTTPS `PACS_AI_CATALOG_API_URL` environment variable, and an optional positive-integer `PACS_AI_RELEASE_MIN_FREE_GIB` variable (default: `25`) so a queued publication cannot access the runner until an authorized person approves it. Protect `master` and restrict who can dispatch release workflows.
+
+The workflow checks free disk space before building, removes only local image references stamped with the workflow's exact Git revision, and deletes its temporary Docker credentials. It deliberately preserves BuildKit cache for subsequent releases. Configure a size or age limit for that cache on the dedicated runner; do not use an unrestricted system-wide prune on a machine that hosts other Docker workloads. Release evidence is uploaded even when the later catalog-registration step fails, allowing registration to be retried without rebuilding the image.
+
+`.github/model-image-repositories.json` is the authoritative model-directory to Docker Hub repository allowlist. Release workflows resolve the repository from this file and never accept a caller-selected destination. A local `--image-repository` argument is only an assertion and must match the mapped value exactly.
 
 ## Manifest contract
 
@@ -51,7 +56,7 @@ A model release PR establishes the release inputs and tests without receiving pu
 - runtime resource and model-info contracts;
 - model-specific startup and inference behavior.
 
-Do not publish from a pull-request commit. The official `sourceRevision` is the reviewed commit reachable from `master` that is actually checked out for the release.
+Do not publish an official release from a pull-request commit. A protected candidate workflow may publish a clearly identified prerelease using restricted credentials. The official `sourceRevision` is the reviewed commit reachable from `master` that is actually checked out for the stable release.
 
 ## Local candidate build
 
@@ -82,8 +87,9 @@ This operation:
 From the GitHub Actions page, select `Publish inference model image` on `master` and provide:
 
 - the model directory under `model-examples/`;
-- the lowercase `heartwisehub/...` repository without a tag;
 - whether to publish the optional `latest` alias.
+
+The workflow obtains the Docker repository from `.github/model-image-repositories.json`. An unmapped model is rejected before authentication or build work begins.
 
 The protected `model-release` environment provides manual approval. The workflow refuses commits not reachable from `origin/master` and refuses to overwrite an existing semantic-version tag. It then runs:
 
@@ -91,7 +97,33 @@ The protected `model-release` environment provides manual approval. The workflow
 preflight -> build -> inspect -> runtime check -> push version -> resolve digest -> evidence
 ```
 
-The versioned image and immutable digest are authoritative. `latest`, when explicitly requested, is only a convenience alias and is never recorded as deployment identity.
+The versioned image and immutable digest are authoritative. `latest`, when explicitly requested, is only a convenience alias and is never recorded as deployment identity. After publication, the workflow sends the verified release evidence to the catalog API. This creates an immutable, idempotent Firestore catalog entry; it does not deploy the image.
+
+## Candidate publication contract
+
+The release engine also supports protected pre-merge candidate builds. The source manifest keeps the intended stable version, while candidate mode derives an immutable prerelease version from the pull request and the first 12 characters of the source revision. For example, manifest version `6.0.1`, pull request `366`, and source revision `df1984511ec9...` produce `6.0.1-rc.366.df1984511ec9`. The full revision remains in provenance. The derived version is stamped into the Docker tag, OCI labels, container environment, runtime model-info response, and release evidence without modifying the source manifest.
+
+Candidate publication requires explicit branch, pull-request, and workflow-run identity:
+
+```bash
+python3 scripts/release-model.py \
+  model-examples/DeepCORO-SYNTAX \
+  --channel candidate \
+  --source-branch issue-365-transactional-model-upgrades \
+  --pull-request 366 \
+  --workflow-run 123456 \
+  --image-repository heartwisehub/pacs-ai-deepcoro-syntax \
+  --hf-token-file /secure/path/hf_token \
+  --publish \
+  --reuse-existing \
+  --evidence model-release-evidence.json
+```
+
+Candidate mode permits an unmerged clean commit but never publishes `latest`. `--reuse-existing` pulls and fully revalidates an existing immutable tag instead of rebuilding or pushing it; any label, runtime metadata, or packaged-weight mismatch fails the run. The candidate GitHub workflow must use restricted candidate credentials and an approved environment. Official publication remains restricted to stable versions whose commits are reachable from `origin/master`.
+
+The catalog stores `channel`, `baseVersion`, `sourceBranch`, `pullRequest`, and `workflowRun` with each immutable artifact. Existing records without these fields are treated as `RELEASE` records whose base version equals their published version. Candidate records require a prerelease version derived from `baseVersion` plus complete branch, pull-request, and workflow-run context.
+
+Candidate deployment is denied by default. Set `INFERENCE_ALLOW_CANDIDATE_DEPLOYMENTS=true` only in controlled development or staging environments that are intended to run pre-merge artifacts. Production environments should leave it false. The backend enforces this rule before pulling an image; frontend filtering is only a presentation convenience and is not the security boundary.
 
 ## Release evidence
 
@@ -104,8 +136,9 @@ The workflow uploads `model-release-evidence.json` and includes it in the job su
 - versioned image reference and local image ID;
 - resolved registry digest and immutable image reference;
 - GitHub actor and workflow run identity.
+- release channel, intended stable version, source branch, pull request, and whether an existing image was reused.
 
-It never records a token, password, secret path, or secret value. Phase 4 will persist the selected image reference and digest with the model registration when an administrator activates the candidate.
+It never records a token, password, secret path, or secret value. If catalog registration must be retried independently, download the evidence artifact and run `scripts/register-model-release.py` with the protected catalog URL and credential file. The operation is idempotent for the same artifact and rejects conflicting metadata.
 
 ## Version policy
 
@@ -122,9 +155,10 @@ During development, use disposable local tags and local BuildKit secrets. Before
 1. publish or identify the final model artifact in its source repository;
 2. record its immutable revision, checkpoint path, and SHA-256;
 3. add complete provenance and the initial semantic version to the manifest;
-4. make the official Dockerfile consume all required `PACS_AI_*` arguments;
-5. make the downloader pin and verify the supplied artifact;
-6. measure resources and run startup and inference tests;
-7. merge the reviewed code, then manually approve the official release.
+4. add its unique approved Docker Hub repository to `.github/model-image-repositories.json`;
+5. make the official Dockerfile consume all required `PACS_AI_*` arguments;
+6. make the downloader pin and verify the supplied artifact;
+7. measure resources and run startup and inference tests;
+8. merge the reviewed code, then manually approve the official release.
 
-Publication does not register or replace a PACS-AI model. Initial registration remains a separate controlled operation; transactional upgrades and rollback are implemented in the later managed-upgrade phase.
+Publication adds the immutable artifact to the version catalog but does not replace a running PACS-AI model. Initial registration remains a separate controlled operation. For an existing registration, an owner or administrator selects any available catalog version in Workspace Settings. PACS-AI validates and activates that exact artifact transactionally; failed activation automatically restores the previous deployment, and selecting an older available version performs a deliberate rollback.

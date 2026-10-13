@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -491,39 +492,213 @@ func (repository *InferenceCommandRepository) UpdateInferenceModel(ctx context.C
 	return nil
 }
 
-// UpdateInferenceModelContainerID updates the container ID of an inference model
-func (repository *InferenceCommandRepository) UpdateInferenceModelContainerID(ctx context.Context, ID, containerID string) error {
-	// firestore client
+// ReplaceInferenceModelRegistration atomically compares and replaces the live
+// registration. The returned deployment is the rollback baseline observed by
+// the same transaction that commits the candidate.
+func (repository *InferenceCommandRepository) ReplaceInferenceModelRegistration(
+	ctx context.Context,
+	data types.ReplaceInferenceModelRegistration,
+) (entity.InferenceModelDeployment, error) {
+	normalizeDeployment(&data.Deployment)
+	data.ID, data.TenantID = strings.TrimSpace(data.ID), strings.TrimSpace(data.TenantID)
+	data.ExpectedContainerID = strings.TrimSpace(data.ExpectedContainerID)
+	data.ExpectedImageReference = strings.TrimSpace(data.ExpectedImageReference)
+	if err := validateRegistrationReplacement(data); err != nil {
+		return entity.InferenceModelDeployment{}, err
+	}
+	return repository.swapInferenceModelRegistration(
+		ctx, data.ID, data.TenantID, data.ExpectedContainerID, data.ExpectedImageReference, data.Deployment, true,
+	)
+}
+
+// RestoreInferenceModelRegistration is the rollback compare-and-swap. Legacy
+// baselines deliberately delete the immutable deployment snapshot because no
+// trustworthy digest or provenance existed before the upgrade.
+func (repository *InferenceCommandRepository) RestoreInferenceModelRegistration(
+	ctx context.Context,
+	data types.RestoreInferenceModelRegistration,
+) error {
+	normalizeDeployment(&data.Previous)
+	data.ID, data.TenantID = strings.TrimSpace(data.ID), strings.TrimSpace(data.TenantID)
+	data.ExpectedContainerID = strings.TrimSpace(data.ExpectedContainerID)
+	data.ExpectedImageReference = strings.TrimSpace(data.ExpectedImageReference)
+	persistDeployment, err := validateRegistrationRestore(data)
+	if err != nil {
+		return err
+	}
+	_, err = repository.swapInferenceModelRegistration(
+		ctx, data.ID, data.TenantID, data.ExpectedContainerID, data.ExpectedImageReference, data.Previous, persistDeployment,
+	)
+	return err
+}
+
+func (repository *InferenceCommandRepository) swapInferenceModelRegistration(
+	ctx context.Context,
+	modelID, tenantID, expectedContainerID, expectedImageReference string,
+	replacement entity.InferenceModelDeployment,
+	persistDeployment bool,
+) (entity.InferenceModelDeployment, error) {
+
 	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
 	if err != nil {
 		log.Println(err)
-		return errors.New(apiError.FirestoreError)
+		return entity.InferenceModelDeployment{}, errors.New(apiError.FirestoreError)
 	}
 
-	// update inference model
 	var model entity.InferenceModel
+	modelRef := firestoreClient.Collection(model.GetModelName()).Doc(modelID)
+	var previous entity.InferenceModelDeployment
+	err = firestoreClient.RunTransaction(ctx, func(ctx context.Context, transaction *firestore.Transaction) error {
+		snapshot, getErr := transaction.Get(modelRef)
+		if getErr != nil {
+			if status.Code(getErr) == codes.NotFound {
+				return errors.New(apiError.MissingRecord)
+			}
+			return getErr
+		}
+		if decodeErr := snapshot.DataTo(&model); decodeErr != nil {
+			return decodeErr
+		}
+		model.ID = snapshot.Ref.ID
+		if validationErr := validateCurrentRegistration(
+			model, tenantID, expectedContainerID, expectedImageReference,
+		); validationErr != nil {
+			return validationErr
+		}
 
-	collectionPath := fmt.Sprintf("%s/%s", model.GetModelName(), ID)
-	docRef := firestoreClient.Doc(collectionPath)
+		for _, containerID := range []string{expectedContainerID, replacement.ContainerID} {
+			if exclusivityErr := ensureExclusiveContainerRegistration(
+				transaction, firestoreClient, model.GetModelName(), modelRef.ID, containerID,
+			); exclusivityErr != nil {
+				return exclusivityErr
+			}
+		}
 
-	updateInferenceModel := []firestore.Update{
-		{
-			Path:  "container_id",
-			Value: containerID,
-		},
-		{
-			Path:  "updated_at",
-			Value: int(time.Now().Unix()),
-		},
-	}
-
-	_, err = docRef.Update(ctx, updateInferenceModel)
+		previous = registeredDeployment(model)
+		deploymentValue := interface{}(firestore.Delete)
+		if persistDeployment {
+			deploymentValue = replacement
+		}
+		return transaction.Update(modelRef, []firestore.Update{
+			{Path: "container_id", Value: replacement.ContainerID},
+			{Path: "docker_image", Value: replacement.ImageReference},
+			{Path: "deployment", Value: deploymentValue},
+			{Path: "updated_at", Value: int(time.Now().Unix())},
+		})
+	})
 	if err != nil {
-		log.Println(err)
-		return errors.New(apiError.FirestoreError)
+		switch err.Error() {
+		case apiError.MissingRecord, apiError.InferenceUpgradeConflict, apiError.InvalidPayload:
+			return entity.InferenceModelDeployment{}, err
+		default:
+			log.Println(err)
+			return entity.InferenceModelDeployment{}, fmt.Errorf("%s: %w", apiError.FirestoreError, err)
+		}
 	}
+	return previous, nil
+}
 
+func normalizeDeployment(deployment *entity.InferenceModelDeployment) {
+	deployment.ContainerID = strings.TrimSpace(deployment.ContainerID)
+	deployment.CatalogVersionID = strings.TrimSpace(deployment.CatalogVersionID)
+	deployment.ArtifactModelID = strings.TrimSpace(deployment.ArtifactModelID)
+	deployment.ImageReference = strings.TrimSpace(deployment.ImageReference)
+	deployment.ImageDigest = strings.TrimSpace(deployment.ImageDigest)
+	deployment.LocalImageID = strings.TrimSpace(deployment.LocalImageID)
+	deployment.ModelVersion = strings.TrimSpace(deployment.ModelVersion)
+}
+
+func ensureExclusiveContainerRegistration(
+	transaction *firestore.Transaction,
+	client *firestore.Client,
+	collectionName, modelID, containerID string,
+) error {
+	registrations, err := transaction.Documents(
+		client.Collection(collectionName).Where("container_id", "==", containerID),
+	).GetAll()
+	if err != nil {
+		return err
+	}
+	for _, registration := range registrations {
+		if registration.Ref.ID != modelID {
+			return errors.New(apiError.InferenceUpgradeConflict)
+		}
+	}
 	return nil
+}
+
+func validateRegistrationReplacement(data types.ReplaceInferenceModelRegistration) error {
+	deployment := data.Deployment
+	if data.ID == "" || data.TenantID == "" || data.ExpectedContainerID == "" || data.ExpectedImageReference == "" ||
+		deployment.ContainerID == "" || deployment.CatalogVersionID == "" || deployment.ArtifactModelID == "" ||
+		deployment.ImageReference == "" || deployment.ImageDigest == "" ||
+		deployment.LocalImageID == "" || deployment.ModelVersion == "" || deployment.DeployedAt <= 0 ||
+		deployment.Provenance == nil {
+		return errors.New(apiError.InvalidPayload)
+	}
+	if deployment.ContainerID == data.ExpectedContainerID {
+		return errors.New(apiError.InvalidPayload)
+	}
+	provenance := deployment.Provenance
+	if strings.TrimSpace(provenance.SourceRepository) == "" || strings.TrimSpace(provenance.ModelRepository) == "" ||
+		strings.TrimSpace(provenance.ModelRevision) == "" || strings.TrimSpace(provenance.WeightsPath) == "" ||
+		strings.TrimSpace(provenance.WeightsSHA256) == "" || provenance.SourceRevision == nil ||
+		strings.TrimSpace(*provenance.SourceRevision) == "" {
+		return errors.New(apiError.InvalidPayload)
+	}
+	return nil
+}
+
+func validateRegistrationRestore(data types.RestoreInferenceModelRegistration) (bool, error) {
+	previous := data.Previous
+	if data.ID == "" || data.TenantID == "" || data.ExpectedContainerID == "" || data.ExpectedImageReference == "" ||
+		previous.ContainerID == "" || previous.ImageReference == "" || previous.ContainerID == data.ExpectedContainerID {
+		return false, errors.New(apiError.InvalidPayload)
+	}
+	complete := deploymentSnapshotComplete(previous)
+	legacy := previous.ImageDigest == "" && previous.LocalImageID == "" && previous.ModelVersion == "" &&
+		previous.Provenance == nil && previous.DeployedAt == 0
+	if !complete && !legacy {
+		return false, errors.New(apiError.InvalidPayload)
+	}
+	return complete, nil
+}
+
+func deploymentSnapshotComplete(deployment entity.InferenceModelDeployment) bool {
+	if deployment.ImageDigest == "" || deployment.LocalImageID == "" || deployment.ModelVersion == "" ||
+		deployment.Provenance == nil || deployment.DeployedAt <= 0 {
+		return false
+	}
+	provenance := deployment.Provenance
+	return strings.TrimSpace(provenance.SourceRepository) != "" &&
+		provenance.SourceRevision != nil && strings.TrimSpace(*provenance.SourceRevision) != "" &&
+		strings.TrimSpace(provenance.ModelRepository) != "" && strings.TrimSpace(provenance.ModelRevision) != "" &&
+		strings.TrimSpace(provenance.WeightsPath) != "" && strings.TrimSpace(provenance.WeightsSHA256) != ""
+}
+
+func validateCurrentRegistration(
+	model entity.InferenceModel,
+	tenantID, expectedContainerID, expectedImageReference string,
+) error {
+	if model.TenantID != tenantID {
+		return errors.New(apiError.MissingRecord)
+	}
+	if model.ContainerID != expectedContainerID || model.DockerImage != expectedImageReference {
+		return errors.New(apiError.InferenceUpgradeConflict)
+	}
+	return nil
+}
+
+func registeredDeployment(model entity.InferenceModel) entity.InferenceModelDeployment {
+	if model.Deployment != nil &&
+		model.Deployment.ContainerID == model.ContainerID &&
+		model.Deployment.ImageReference == model.DockerImage {
+		return *model.Deployment
+	}
+	return entity.InferenceModelDeployment{
+		ContainerID:    model.ContainerID,
+		ImageReference: model.DockerImage,
+	}
 }
 
 // UpdateInferenceIngestionJob updates an inference ingestion job

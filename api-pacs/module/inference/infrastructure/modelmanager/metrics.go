@@ -113,6 +113,8 @@ func metricOutcome(err error) string {
 		return "cancelled"
 	case errors.Is(err, ErrCapacity):
 		return "capacity"
+	case errors.Is(err, ErrAdmissionBlocked):
+		return "blocked"
 	case errors.Is(err, ErrNotReconciled):
 		return "not_reconciled"
 	default:

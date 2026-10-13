@@ -50,8 +50,14 @@ def test_weight_verification_accepts_only_the_expected_bytes(tmp_path):
 def test_source_revision_is_validated_and_injected_into_model_info():
     revision = "a" * 40
     model_info = load_model_info(ROOT / "data/model_info.json")
-    payload = model_info_payload(model_info, source_revision=revision)
+    candidate_version = "6.0.0-rc.366.aaaaaaaaaaaa"
+    payload = model_info_payload(
+        model_info,
+        source_revision=revision,
+        model_version=candidate_version,
+    )
     assert payload["provenance"]["sourceRevision"] == revision
+    assert payload["version"] == candidate_version
 
     with pytest.raises(ValueError, match="sourceRevision"):
         model_info_payload(model_info, source_revision="not-a-git-sha")

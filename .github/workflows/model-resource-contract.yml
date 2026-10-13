@@ -65,6 +65,7 @@ jobs:
           scripts.tests.test_model_lifecycle
           scripts.tests.test_benchmark_model_resources
           scripts.tests.test_deploy_model
+          scripts.tests.test_model_image_repository
           scripts.tests.test_release_model
           -v
       - run: bash -n scripts/deploy-model.sh
