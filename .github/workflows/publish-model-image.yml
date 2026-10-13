@@ -35,6 +35,7 @@ jobs:
       IMAGE_REPOSITORY: ${{ inputs.image_repository }}
       PUBLISH_LATEST: ${{ inputs.publish_latest }}
       PACS_AI_RELEASE_NAMESPACE: heartwisehub
+      PACS_AI_RELEASE_MIN_FREE_GIB: ${{ vars.PACS_AI_RELEASE_MIN_FREE_GIB || '25' }}
       HF_TOKEN_FILE: /etc/pacs-ai-release/secrets/hf_token
       DOCKERHUB_USERNAME_FILE: /etc/pacs-ai-release/secrets/dockerhub_username
       DOCKERHUB_TOKEN_FILE: /etc/pacs-ai-release/secrets/dockerhub_token
@@ -69,6 +70,17 @@ jobs:
             fi
           }
           test -S /var/run/docker.sock
+          if [[ ! "$PACS_AI_RELEASE_MIN_FREE_GIB" =~ ^[1-9][0-9]*$ ]]; then
+            echo "PACS_AI_RELEASE_MIN_FREE_GIB must be a positive integer" >&2
+            exit 1
+          fi
+          available_kib=$(df -Pk "$RUNNER_TEMP" | awk 'NR == 2 { print $4 }')
+          required_kib=$((PACS_AI_RELEASE_MIN_FREE_GIB * 1024 * 1024))
+          if (( available_kib < required_kib )); then
+            available_gib=$((available_kib / 1024 / 1024))
+            echo "Insufficient runner disk space: ${available_gib} GiB available, ${PACS_AI_RELEASE_MIN_FREE_GIB} GiB required" >&2
+            exit 1
+          fi
           test -r "$DOCKERHUB_USERNAME_FILE"
           require_private_file "$DOCKERHUB_TOKEN_FILE"
           require_private_file "$PACS_AI_CATALOG_SUDO_KEY_FILE"
@@ -113,9 +125,14 @@ jobs:
             --sudo-key-file "$PACS_AI_CATALOG_SUDO_KEY_FILE"
 
       - name: Add release evidence to the workflow summary
-        if: success()
+        if: always()
         shell: bash
         run: |
+          if [[ ! -f "$RELEASE_EVIDENCE" ]]; then
+            echo '## Model release evidence' >> "$GITHUB_STEP_SUMMARY"
+            echo 'No release evidence was produced.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           {
             echo '## Model release evidence'
             echo '```json'
@@ -124,15 +141,36 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload release evidence
-        if: success()
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: model-release-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/model-release-evidence.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
 
-      - name: Remove temporary registry credentials
+      - name: Remove job-specific Docker resources and credentials
         if: always()
         shell: bash
-        run: rm -rf "$DOCKER_CONFIG"
+        run: |
+          model_version=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["version"])' "$MODEL_DIRECTORY/data/model_info.json" 2>/dev/null || true)
+          references=()
+          if [[ -n "$model_version" ]]; then
+            references+=("${IMAGE_REPOSITORY}:${model_version}")
+          fi
+          if [[ "$PUBLISH_LATEST" == "true" ]]; then
+            references+=("${IMAGE_REPOSITORY}:latest")
+          fi
+
+          for reference in "${references[@]}"; do
+            image_revision=$(docker image inspect \
+              --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+              "$reference" 2>/dev/null || true)
+            if [[ "$image_revision" == "$GITHUB_SHA" ]]; then
+              docker image rm --force "$reference" || true
+            fi
+          done
+
+          if [[ -n "${DOCKER_CONFIG:-}" ]]; then
+            rm -rf "$DOCKER_CONFIG"
+          fi

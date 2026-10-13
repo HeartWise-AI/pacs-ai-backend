@@ -19,7 +19,9 @@ The workflow creates a temporary Docker configuration, authenticates with `--pas
 
 Because model weights are embedded in the image, gated or restricted weights must be published only to a registry repository with equivalent access controls.
 
-The runner must provide Linux, Docker with BuildKit, Python 3.9 or newer, outbound access to Hugging Face, Docker Hub, and the PACS-AI catalog API, and the labels `self-hosted`, `linux`, `x64`, and `pacs-ai-release`. Configure the GitHub `model-release` environment with required reviewers and an HTTPS `PACS_AI_CATALOG_API_URL` environment variable so a queued publication cannot access the runner until an authorized person approves it. Protect `master` and restrict who can dispatch release workflows.
+The runner must provide Linux, Docker with BuildKit, Python 3.9 or newer, outbound access to Hugging Face, Docker Hub, and the PACS-AI catalog API, and the labels `self-hosted`, `linux`, `x64`, and `pacs-ai-release`. Configure the GitHub `model-release` environment with required reviewers, an HTTPS `PACS_AI_CATALOG_API_URL` environment variable, and an optional positive-integer `PACS_AI_RELEASE_MIN_FREE_GIB` variable (default: `25`) so a queued publication cannot access the runner until an authorized person approves it. Protect `master` and restrict who can dispatch release workflows.
+
+The workflow checks free disk space before building, removes only local image references stamped with the workflow's exact Git revision, and deletes its temporary Docker credentials. It deliberately preserves BuildKit cache for subsequent releases. Configure a size or age limit for that cache on the dedicated runner; do not use an unrestricted system-wide prune on a machine that hosts other Docker workloads. Release evidence is uploaded even when the later catalog-registration step fails, allowing registration to be retried without rebuilding the image.
 
 ## Manifest contract
 
