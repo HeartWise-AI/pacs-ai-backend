@@ -35,7 +35,9 @@ func (controller *InferenceCommandController) PublishInferenceModelVersion(w htt
 	}
 	published, err := controller.InferenceCommandServiceInterface.PublishInferenceModelVersion(r.Context(), entity.InferenceModelVersion{
 		ModelID: request.ModelID, Version: request.Version, ImageReference: request.ImageReference,
-		ImageDigest: request.ImageDigest, Provenance: request.Provenance, Status: entity.InferenceModelVersionAvailable,
+		ImageDigest: request.ImageDigest, Channel: request.Channel, BaseVersion: request.BaseVersion,
+		SourceBranch: request.SourceBranch, PullRequest: request.PullRequest, WorkflowRun: request.WorkflowRun,
+		Provenance: request.Provenance, Status: entity.InferenceModelVersionAvailable,
 	})
 	if err != nil {
 		statusCode := http.StatusInternalServerError
@@ -103,6 +105,8 @@ func modelUpgradeHTTPError(err error) (int, string, string) {
 		return http.StatusConflict, "Another deployment changed or is updating this model.", errorCode
 	case apiError.InferenceUpgradeUnavailable:
 		return http.StatusServiceUnavailable, "Managed model deployment is unavailable.", errorCode
+	case apiError.InferenceCandidateDeploymentDisabled:
+		return http.StatusForbidden, "Candidate model deployment is disabled in this environment.", errorCode
 	default:
 		return http.StatusInternalServerError, "Inference model deployment failed and was rolled back.", errorCode
 	}

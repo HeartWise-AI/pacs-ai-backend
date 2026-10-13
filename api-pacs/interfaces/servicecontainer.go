@@ -793,8 +793,9 @@ func registerHandlers() {
 			modelVersionRepository,
 			modelCommandRepository,
 			modelupgrade.CoordinatorConfig{
-				DrainTimeout:    modelUpgradeDuration("MODEL_UPGRADE_DRAIN_TIMEOUT_SECONDS", 5*time.Minute),
-				RollbackTimeout: modelUpgradeDuration("MODEL_UPGRADE_ROLLBACK_TIMEOUT_SECONDS", 5*time.Minute),
+				DrainTimeout:              modelUpgradeDuration("MODEL_UPGRADE_DRAIN_TIMEOUT_SECONDS", 5*time.Minute),
+				RollbackTimeout:           modelUpgradeDuration("MODEL_UPGRADE_ROLLBACK_TIMEOUT_SECONDS", 5*time.Minute),
+				AllowCandidateDeployments: modelUpgradeBool("INFERENCE_ALLOW_CANDIDATE_DEPLOYMENTS", false),
 			},
 		)
 		if validationErr != nil {
@@ -828,6 +829,18 @@ func modelUpgradeDuration(name string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return time.Duration(seconds) * time.Second
+}
+
+func modelUpgradeBool(name string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
 
 // ServiceContainer export instantiated service container once

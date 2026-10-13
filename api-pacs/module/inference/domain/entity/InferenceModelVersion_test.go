@@ -54,6 +54,67 @@ func TestInferenceModelVersionValidate(t *testing.T) {
 	}
 }
 
+func TestInferenceModelVersionNormalizesLegacyReleaseMetadata(t *testing.T) {
+	version := validInferenceModelVersion()
+	version.Channel = ""
+	version.BaseVersion = ""
+
+	version.Normalize()
+
+	if version.Channel != InferenceModelVersionRelease || version.BaseVersion != version.Version {
+		t.Fatalf("legacy release metadata = channel %q baseVersion %q", version.Channel, version.BaseVersion)
+	}
+	if err := version.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInferenceModelVersionCandidateValidation(t *testing.T) {
+	valid := validInferenceModelVersion()
+	valid.Version = "6.0.1-rc.366.abcdef123456"
+	valid.ImageReference = "heartwisehub/pacs-ai-deepcoro-syntax:" + valid.Version
+	valid.Channel = InferenceModelVersionCandidate
+	valid.BaseVersion = "6.0.1"
+	valid.SourceBranch = "issue-365-transactional-model-upgrades"
+	valid.PullRequest = 366
+	valid.WorkflowRun = "123456789"
+	if err := valid.Validate(); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name   string
+		change func(*InferenceModelVersion)
+	}{
+		{name: "stable candidate version", change: func(value *InferenceModelVersion) {
+			value.Version = value.BaseVersion
+			value.ImageReference = "heartwisehub/pacs-ai-deepcoro-syntax:" + value.Version
+		}},
+		{name: "wrong base version", change: func(value *InferenceModelVersion) { value.BaseVersion = "6.0.2" }},
+		{name: "missing branch", change: func(value *InferenceModelVersion) { value.SourceBranch = "" }},
+		{name: "missing pull request", change: func(value *InferenceModelVersion) { value.PullRequest = 0 }},
+		{name: "invalid workflow run", change: func(value *InferenceModelVersion) { value.WorkflowRun = "run-123" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			value := valid
+			test.change(&value)
+			if err := value.Validate(); err == nil {
+				t.Fatal("invalid candidate metadata was accepted")
+			}
+		})
+	}
+}
+
+func TestInferenceModelVersionReleaseRejectsCandidateContext(t *testing.T) {
+	version := validInferenceModelVersion()
+	version.Normalize()
+	version.SourceBranch = "feature/model"
+	if err := version.Validate(); err == nil {
+		t.Fatal("release containing candidate metadata was accepted")
+	}
+}
+
 func TestInferenceModelVersionIDIsStableAndVersionSpecific(t *testing.T) {
 	first := InferenceModelVersionID(" model-a ", " 1.0.0 ")
 	if first != InferenceModelVersionID("model-a", "1.0.0") {

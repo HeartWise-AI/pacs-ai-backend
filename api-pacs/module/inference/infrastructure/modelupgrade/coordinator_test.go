@@ -9,6 +9,7 @@ import (
 
 	api "api-pacs/infrastructures/providers/api/dockerinference/types"
 	docker "api-pacs/infrastructures/providers/sdk/docker/types"
+	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 )
@@ -90,6 +91,8 @@ func (fake *coordinatorAPI) GetModelRuntime(context.Context, string) (api.ModelR
 type coordinatorValidator struct {
 	events      *[]string
 	validateErr error
+	modelInfo   api.ModelInfo
+	resolved    ResolvedCandidateImage
 }
 
 func (fake *coordinatorValidator) ValidateImageReference(reference, _ string) (string, error) {
@@ -99,6 +102,9 @@ func (fake *coordinatorValidator) ValidateImageReference(reference, _ string) (s
 
 func (fake *coordinatorValidator) ResolveImage(context.Context, string, string) (ResolvedCandidateImage, error) {
 	*fake.events = append(*fake.events, "validator.resolve")
+	if fake.resolved.Reference != "" {
+		return fake.resolved, nil
+	}
 	return validResolvedImage(), nil
 }
 
@@ -110,13 +116,17 @@ func (fake *coordinatorValidator) ValidateContainer(
 	if fake.validateErr != nil {
 		return ValidatedCandidate{}, fake.validateErr
 	}
+	modelInfo := fake.modelInfo
+	if modelInfo.ModelID == "" {
+		modelInfo = validCandidateModelInfo()
+	}
 	return ValidatedCandidate{
 		ContainerID:    request.ContainerID,
 		ContainerName:  "candidate-model",
 		ImageReference: request.Image.Reference,
 		ImageDigest:    request.Image.Digest,
 		LocalImageID:   request.Image.LocalImageID,
-		ModelInfo:      validCandidateModelInfo(),
+		ModelInfo:      modelInfo,
 		Runtime:        api.ModelRuntime{State: api.RuntimeUnloaded},
 	}, nil
 }
@@ -341,6 +351,52 @@ func TestUpgradeCoordinatorRejectsUnavailableOrMismatchedCatalogVersionBeforePul
 			assertUpgradeStage(t, err, UpgradeStageResolveVersion)
 			assertEventAbsent(t, *fixture.events, "docker.pull")
 		})
+	}
+}
+
+func TestUpgradeCoordinatorRejectsCandidateWhenEnvironmentDisallowsIt(t *testing.T) {
+	fixture := newCoordinatorFixture(t)
+	version := &fixture.versions.version
+	version.Channel = entity.InferenceModelVersionCandidate
+	version.BaseVersion = "2.0.0"
+	version.Version = "2.0.0-rc.366.abcdef123456"
+	version.ImageReference = "heartwisehub/model:" + version.Version
+	version.SourceBranch = "issue-365-transactional-model-upgrades"
+	version.PullRequest = 366
+	version.WorkflowRun = "123456789"
+
+	_, err := fixture.upgrade(t)
+	upgradeErr := assertUpgradeStage(t, err, UpgradeStageResolveVersion)
+	if upgradeErr.Err.Error() != apiError.InferenceCandidateDeploymentDisabled {
+		t.Fatalf("candidate deployment returned %v", upgradeErr)
+	}
+	assertEventAbsent(t, *fixture.events, "docker.pull")
+}
+
+func TestUpgradeCoordinatorAllowsCandidateInConfiguredEnvironment(t *testing.T) {
+	fixture := newCoordinatorFixture(t)
+	candidateInfo := validCandidateModelInfo()
+	candidateInfo.Version = "2.0.0-rc.366.abcdef123456"
+	fixture.validator.modelInfo = candidateInfo
+	fixture.validator.resolved = validResolvedImage()
+	fixture.validator.resolved.Reference = "heartwisehub/model:" + candidateInfo.Version
+	fixture.validator.resolved.Tag = candidateInfo.Version
+	fixture.coordinator.config.AllowCandidateDeployments = true
+	version := &fixture.versions.version
+	version.Channel = entity.InferenceModelVersionCandidate
+	version.BaseVersion = "2.0.0"
+	version.Version = candidateInfo.Version
+	version.ImageReference = "heartwisehub/model:" + version.Version
+	version.SourceBranch = "issue-365-transactional-model-upgrades"
+	version.PullRequest = 366
+	version.WorkflowRun = "123456789"
+
+	result, err := fixture.upgrade(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Active.CatalogVersionID != version.ID {
+		t.Fatalf("candidate deployment result = %+v", result)
 	}
 }
 

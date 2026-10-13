@@ -62,6 +62,8 @@ func inferenceModelVersionResponse(version entity.InferenceModelVersion, active 
 	return types.InferenceModelVersionResponse{
 		ID: version.ID, ModelID: version.ModelID, Version: version.Version,
 		ImageReference: version.ImageReference, ImageDigest: version.ImageDigest,
+		Channel: version.Channel, BaseVersion: version.BaseVersion, SourceBranch: version.SourceBranch,
+		PullRequest: version.PullRequest, WorkflowRun: version.WorkflowRun,
 		Provenance: version.Provenance, Status: version.Status, PublishedAt: publishedAt, Active: active,
 	}
 }

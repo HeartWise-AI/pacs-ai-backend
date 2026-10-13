@@ -106,6 +106,8 @@ const (
 	InferenceUpgradeConflict string = "INFERENCE_UPGRADE_CONFLICT"
 	// InferenceUpgradeUnavailable indicates that managed deployment is disabled or not configured.
 	InferenceUpgradeUnavailable string = "INFERENCE_UPGRADE_UNAVAILABLE"
+	// InferenceCandidateDeploymentDisabled prevents development artifacts from running in protected environments.
+	InferenceCandidateDeploymentDisabled string = "INFERENCE_CANDIDATE_DEPLOYMENT_DISABLED"
 
 	// Cloudflare-related errors
 	CloudflareAPIError string = "CLOUDFLARE_API_ERROR"

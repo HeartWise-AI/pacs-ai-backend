@@ -1,6 +1,6 @@
 # Reproducible model image releases
 
-PACS-AI builds an inference image once, identifies it by registry digest, and promotes that same artifact between environments. Pull requests validate release metadata but never publish images. Official publication happens only after merge through the protected `Publish inference model image` workflow.
+PACS-AI builds an inference image once, identifies it by registry digest, and promotes that same artifact between environments. Protected candidate workflows may publish prerelease images for controlled pre-merge validation. Official stable publication happens only after merge through the protected `Publish inference model image` workflow.
 
 ## Trust boundary
 
@@ -54,7 +54,7 @@ A model release PR establishes the release inputs and tests without receiving pu
 - runtime resource and model-info contracts;
 - model-specific startup and inference behavior.
 
-Do not publish from a pull-request commit. The official `sourceRevision` is the reviewed commit reachable from `master` that is actually checked out for the release.
+Do not publish an official release from a pull-request commit. A protected candidate workflow may publish a clearly identified prerelease using restricted credentials. The official `sourceRevision` is the reviewed commit reachable from `master` that is actually checked out for the stable release.
 
 ## Local candidate build
 
@@ -117,6 +117,10 @@ python3 scripts/release-model.py \
 ```
 
 Candidate mode permits an unmerged clean commit but never publishes `latest`. `--reuse-existing` pulls and fully revalidates an existing immutable tag instead of rebuilding or pushing it; any label, runtime metadata, or packaged-weight mismatch fails the run. The candidate GitHub workflow must use restricted candidate credentials and an approved environment. Official publication remains restricted to stable versions whose commits are reachable from `origin/master`.
+
+The catalog stores `channel`, `baseVersion`, `sourceBranch`, `pullRequest`, and `workflowRun` with each immutable artifact. Existing records without these fields are treated as `RELEASE` records whose base version equals their published version. Candidate records require a prerelease version derived from `baseVersion` plus complete branch, pull-request, and workflow-run context.
+
+Candidate deployment is denied by default. Set `INFERENCE_ALLOW_CANDIDATE_DEPLOYMENTS=true` only in controlled development or staging environments that are intended to run pre-merge artifacts. Production environments should leave it false. The backend enforces this rule before pulling an image; frontend filtering is only a presentation convenience and is not the security boundary.
 
 ## Release evidence
 

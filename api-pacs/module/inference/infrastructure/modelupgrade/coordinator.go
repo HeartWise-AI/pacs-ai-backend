@@ -60,8 +60,9 @@ type UpgradeResult struct {
 }
 
 type CoordinatorConfig struct {
-	DrainTimeout    time.Duration
-	RollbackTimeout time.Duration
+	DrainTimeout              time.Duration
+	RollbackTimeout           time.Duration
+	AllowCandidateDeployments bool
 }
 
 type UpgradeDocker interface {
@@ -192,6 +193,11 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 		version.Status != entity.InferenceModelVersionAvailable || version.ModelID != activeModelInfo.Data.ModelID {
 		return UpgradeResult{}, upgradeFailure(
 			UpgradeStageResolveVersion, errors.New(apiError.InvalidPayload), nil,
+		)
+	}
+	if version.Channel == entity.InferenceModelVersionCandidate && !coordinator.config.AllowCandidateDeployments {
+		return UpgradeResult{}, upgradeFailure(
+			UpgradeStageResolveVersion, errors.New(apiError.InferenceCandidateDeploymentDisabled), nil,
 		)
 	}
 

@@ -13,10 +13,14 @@ import (
 )
 
 type InferenceModelVersionStatus string
+type InferenceModelVersionChannel string
 
 const (
 	InferenceModelVersionAvailable InferenceModelVersionStatus = "AVAILABLE"
 	InferenceModelVersionRevoked   InferenceModelVersionStatus = "REVOKED"
+
+	InferenceModelVersionRelease   InferenceModelVersionChannel = "RELEASE"
+	InferenceModelVersionCandidate InferenceModelVersionChannel = "CANDIDATE"
 )
 
 var (
@@ -27,19 +31,25 @@ var (
 	modelGitRevisionPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	modelRepositoryPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	modelSHA256Pattern      = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	workflowRunPattern      = regexp.MustCompile(`^[0-9]+$`)
 )
 
 // InferenceModelVersion is one immutable, approved model artifact. Availability
 // may be revoked later without changing the identity or provenance fields.
 type InferenceModelVersion struct {
-	ID             string                      `firestore:"id,omitempty" json:"id"`
-	ModelID        string                      `firestore:"model_id" json:"modelId"`
-	Version        string                      `firestore:"version" json:"version"`
-	ImageReference string                      `firestore:"image_reference" json:"imageReference"`
-	ImageDigest    string                      `firestore:"image_digest" json:"imageDigest"`
-	Provenance     *InferenceModelProvenance   `firestore:"provenance" json:"provenance"`
-	Status         InferenceModelVersionStatus `firestore:"status" json:"status"`
-	PublishedAt    int64                       `firestore:"published_at" json:"publishedAt"`
+	ID             string                       `firestore:"id,omitempty" json:"id"`
+	ModelID        string                       `firestore:"model_id" json:"modelId"`
+	Version        string                       `firestore:"version" json:"version"`
+	ImageReference string                       `firestore:"image_reference" json:"imageReference"`
+	ImageDigest    string                       `firestore:"image_digest" json:"imageDigest"`
+	Channel        InferenceModelVersionChannel `firestore:"channel" json:"channel"`
+	BaseVersion    string                       `firestore:"base_version" json:"baseVersion"`
+	SourceBranch   string                       `firestore:"source_branch,omitempty" json:"sourceBranch,omitempty"`
+	PullRequest    int64                        `firestore:"pull_request,omitempty" json:"pullRequest,omitempty"`
+	WorkflowRun    string                       `firestore:"workflow_run,omitempty" json:"workflowRun,omitempty"`
+	Provenance     *InferenceModelProvenance    `firestore:"provenance" json:"provenance"`
+	Status         InferenceModelVersionStatus  `firestore:"status" json:"status"`
+	PublishedAt    int64                        `firestore:"published_at" json:"publishedAt"`
 }
 
 func (version *InferenceModelVersion) GetModelName() string { return "inference_model_versions" }
@@ -50,6 +60,16 @@ func (version *InferenceModelVersion) Normalize() {
 	version.Version = strings.TrimSpace(version.Version)
 	version.ImageReference = strings.TrimSpace(version.ImageReference)
 	version.ImageDigest = strings.TrimSpace(version.ImageDigest)
+	version.Channel = InferenceModelVersionChannel(strings.ToUpper(strings.TrimSpace(string(version.Channel))))
+	if version.Channel == "" {
+		version.Channel = InferenceModelVersionRelease
+	}
+	version.BaseVersion = strings.TrimSpace(version.BaseVersion)
+	if version.BaseVersion == "" && version.Channel == InferenceModelVersionRelease {
+		version.BaseVersion = version.Version
+	}
+	version.SourceBranch = strings.TrimSpace(version.SourceBranch)
+	version.WorkflowRun = strings.TrimSpace(version.WorkflowRun)
 	version.Status = InferenceModelVersionStatus(strings.ToUpper(strings.TrimSpace(string(version.Status))))
 	if version.Status == "" {
 		version.Status = InferenceModelVersionAvailable
@@ -92,8 +112,44 @@ func (version InferenceModelVersion) Validate() error {
 	if version.Status != InferenceModelVersionAvailable && version.Status != InferenceModelVersionRevoked {
 		return fmt.Errorf("status must be AVAILABLE or REVOKED")
 	}
+	if err := validateInferenceModelVersionChannel(version); err != nil {
+		return err
+	}
 	if err := validateInferenceModelVersionProvenance(version.Provenance); err != nil {
 		return err
+	}
+	return nil
+}
+
+func validateInferenceModelVersionChannel(version InferenceModelVersion) error {
+	channel := version.Channel
+	if channel == "" {
+		channel = InferenceModelVersionRelease
+	}
+	baseVersion := version.BaseVersion
+	if baseVersion == "" && channel == InferenceModelVersionRelease {
+		baseVersion = version.Version
+	}
+	if !modelVersionPattern.MatchString(baseVersion) || strings.Contains(baseVersion, "-") {
+		return fmt.Errorf("baseVersion must be a stable Docker-safe semantic version")
+	}
+	switch channel {
+	case InferenceModelVersionRelease:
+		if version.Version != baseVersion {
+			return fmt.Errorf("release version must match baseVersion")
+		}
+		if version.SourceBranch != "" || version.PullRequest != 0 || version.WorkflowRun != "" {
+			return fmt.Errorf("release channel cannot contain candidate context")
+		}
+	case InferenceModelVersionCandidate:
+		if !strings.HasPrefix(version.Version, baseVersion+"-") {
+			return fmt.Errorf("candidate version must be a prerelease of baseVersion")
+		}
+		if version.SourceBranch == "" || version.PullRequest <= 0 || !workflowRunPattern.MatchString(version.WorkflowRun) {
+			return fmt.Errorf("candidate channel requires sourceBranch, pullRequest, and numeric workflowRun")
+		}
+	default:
+		return fmt.Errorf("channel must be RELEASE or CANDIDATE")
 	}
 	return nil
 }
