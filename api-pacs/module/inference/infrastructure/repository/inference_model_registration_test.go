@@ -77,6 +77,42 @@ func TestValidateRegistrationReplacementRequiresCompleteDistinctDeployment(t *te
 	}
 }
 
+func TestValidateRegistrationRestoreSupportsCompleteAndLegacyBaselines(t *testing.T) {
+	replacement := validRegistrationReplacement()
+	complete := repositoryTypes.RestoreInferenceModelRegistration{
+		ID:                     replacement.ID,
+		TenantID:               replacement.TenantID,
+		ExpectedContainerID:    replacement.Deployment.ContainerID,
+		ExpectedImageReference: replacement.Deployment.ImageReference,
+		Previous:               replacement.Deployment,
+	}
+	complete.Previous.ContainerID = replacement.ExpectedContainerID
+	complete.Previous.ImageReference = replacement.ExpectedImageReference
+	if persist, err := validateRegistrationRestore(complete); err != nil || !persist {
+		t.Fatalf("complete rollback baseline: persist=%v err=%v", persist, err)
+	}
+
+	legacy := complete
+	legacy.Previous = entity.InferenceModelDeployment{
+		ContainerID: replacement.ExpectedContainerID, ImageReference: replacement.ExpectedImageReference,
+	}
+	if persist, err := validateRegistrationRestore(legacy); err != nil || persist {
+		t.Fatalf("legacy rollback baseline: persist=%v err=%v", persist, err)
+	}
+
+	partial := legacy
+	partial.Previous.ImageDigest = "sha256:unknown"
+	if _, err := validateRegistrationRestore(partial); err == nil || err.Error() != apiError.InvalidPayload {
+		t.Fatalf("partial rollback baseline returned %v", err)
+	}
+
+	sameContainer := legacy
+	sameContainer.Previous.ContainerID = sameContainer.ExpectedContainerID
+	if _, err := validateRegistrationRestore(sameContainer); err == nil || err.Error() != apiError.InvalidPayload {
+		t.Fatalf("same-container rollback returned %v", err)
+	}
+}
+
 func TestRegisteredDeploymentUsesOnlySnapshotMatchingLiveRegistration(t *testing.T) {
 	persisted := &entity.InferenceModelDeployment{
 		ContainerID: "active", ImageReference: "heartwise/model:2.0.0", ImageDigest: "sha256:digest",
@@ -101,32 +137,41 @@ func TestValidateCurrentRegistrationRejectsStaleReplacement(t *testing.T) {
 	model := entity.InferenceModel{
 		TenantID: data.TenantID, ContainerID: data.ExpectedContainerID, DockerImage: data.ExpectedImageReference,
 	}
-	if err := validateCurrentRegistration(model, data); err != nil {
+	if err := validateCurrentRegistration(model, data.TenantID, data.ExpectedContainerID, data.ExpectedImageReference); err != nil {
 		t.Fatal(err)
 	}
 
 	staleContainer := model
 	staleContainer.ContainerID = "already-replaced"
-	if err := validateCurrentRegistration(staleContainer, data); err == nil || err.Error() != apiError.InferenceUpgradeConflict {
+	if err := validateCurrentRegistration(staleContainer, data.TenantID, data.ExpectedContainerID, data.ExpectedImageReference); err == nil || err.Error() != apiError.InferenceUpgradeConflict {
 		t.Fatalf("stale container returned %v", err)
 	}
 	staleImage := model
 	staleImage.DockerImage = "heartwise/model:other"
-	if err := validateCurrentRegistration(staleImage, data); err == nil || err.Error() != apiError.InferenceUpgradeConflict {
+	if err := validateCurrentRegistration(staleImage, data.TenantID, data.ExpectedContainerID, data.ExpectedImageReference); err == nil || err.Error() != apiError.InferenceUpgradeConflict {
 		t.Fatalf("stale image returned %v", err)
 	}
 	otherTenant := model
 	otherTenant.TenantID = "tenant-2"
-	if err := validateCurrentRegistration(otherTenant, data); err == nil || err.Error() != apiError.MissingRecord {
+	if err := validateCurrentRegistration(otherTenant, data.TenantID, data.ExpectedContainerID, data.ExpectedImageReference); err == nil || err.Error() != apiError.MissingRecord {
 		t.Fatalf("cross-tenant registration returned %v", err)
 	}
 }
 
 type registrationCommandRepository struct {
 	domainRepository.InferenceCommandRepositoryInterface
-	received repositoryTypes.ReplaceInferenceModelRegistration
-	result   entity.InferenceModelDeployment
-	err      error
+	received        repositoryTypes.ReplaceInferenceModelRegistration
+	receivedRestore repositoryTypes.RestoreInferenceModelRegistration
+	result          entity.InferenceModelDeployment
+	err             error
+}
+
+func (repository *registrationCommandRepository) RestoreInferenceModelRegistration(
+	_ context.Context,
+	data repositoryTypes.RestoreInferenceModelRegistration,
+) error {
+	repository.receivedRestore = data
+	return repository.err
 }
 
 func (repository *registrationCommandRepository) ReplaceInferenceModelRegistration(
@@ -135,6 +180,33 @@ func (repository *registrationCommandRepository) ReplaceInferenceModelRegistrati
 ) (entity.InferenceModelDeployment, error) {
 	repository.received = data
 	return repository.result, repository.err
+}
+
+func TestRegistrationCircuitBreakerDelegatesRollback(t *testing.T) {
+	replacement := validRegistrationReplacement()
+	data := repositoryTypes.RestoreInferenceModelRegistration{
+		ID:                     replacement.ID,
+		TenantID:               replacement.TenantID,
+		ExpectedContainerID:    replacement.Deployment.ContainerID,
+		ExpectedImageReference: replacement.Deployment.ImageReference,
+		Previous: entity.InferenceModelDeployment{
+			ContainerID: replacement.ExpectedContainerID, ImageReference: replacement.ExpectedImageReference,
+		},
+	}
+	inner := &registrationCommandRepository{}
+	decorator := InferenceCommandRepositoryCircuitBreaker{InferenceCommandRepositoryInterface: inner}
+
+	if err := decorator.RestoreInferenceModelRegistration(context.Background(), data); err != nil {
+		t.Fatal(err)
+	}
+	if inner.receivedRestore.ID != data.ID || inner.receivedRestore.Previous.ContainerID != data.Previous.ContainerID {
+		t.Fatalf("rollback request was not preserved: %+v", inner.receivedRestore)
+	}
+
+	inner.err = errors.New(apiError.InferenceUpgradeConflict)
+	if err := decorator.RestoreInferenceModelRegistration(context.Background(), data); err == nil || err.Error() != apiError.InferenceUpgradeConflict {
+		t.Fatalf("rollback error was not preserved: %v", err)
+	}
 }
 
 func TestRegistrationCircuitBreakerReturnsRollbackBaseline(t *testing.T) {

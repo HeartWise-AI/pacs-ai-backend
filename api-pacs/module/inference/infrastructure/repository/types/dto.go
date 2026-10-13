@@ -341,6 +341,16 @@ type ReplaceInferenceModelRegistration struct {
 	Deployment             entity.InferenceModelDeployment
 }
 
+// RestoreInferenceModelRegistration atomically restores the rollback baseline
+// if the candidate is still the registered deployment.
+type RestoreInferenceModelRegistration struct {
+	ID                     string
+	TenantID               string
+	ExpectedContainerID    string
+	ExpectedImageReference string
+	Previous               entity.InferenceModelDeployment
+}
+
 type UpdateInferenceIngestionJob struct {
 	ID                     string
 	Modalities             []string

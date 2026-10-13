@@ -616,6 +616,35 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) ReplaceInferenceMode
 	}
 }
 
+// RestoreInferenceModelRegistration is the circuit-breaker decorator for an
+// atomic registration rollback.
+func (repository *InferenceCommandRepositoryCircuitBreaker) RestoreInferenceModelRegistration(
+	ctx context.Context,
+	data types.RestoreInferenceModelRegistration,
+) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("restore_inference_model_registration", config.Settings())
+	errors := hystrix.Go("restore_inference_model_registration", func() error {
+		if err := repository.InferenceCommandRepositoryInterface.RestoreInferenceModelRegistration(ctx, data); err != nil {
+			errChan <- err
+			return nil
+		}
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // MarkCandidateRetrievalQueued is the decorator for the inference command repository to mark ingestion candidate retrieval queued
 func (repository *InferenceCommandRepositoryCircuitBreaker) MarkCandidateRetrievalQueued(ID string) error {
 	output := make(chan bool, 1)
