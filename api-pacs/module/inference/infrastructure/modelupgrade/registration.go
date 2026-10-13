@@ -10,9 +10,15 @@ import (
 
 // DeploymentFromCandidate creates the durable registration identity from the
 // exact candidate that passed image and runtime validation.
-func DeploymentFromCandidate(candidate ValidatedCandidate, deployedAt time.Time) (entity.InferenceModelDeployment, error) {
+func DeploymentFromCandidate(
+	candidate ValidatedCandidate,
+	catalogVersionID string,
+	deployedAt time.Time,
+) (entity.InferenceModelDeployment, error) {
 	provenance := candidate.ModelInfo.Provenance
 	if strings.TrimSpace(candidate.ContainerID) == "" ||
+		strings.TrimSpace(catalogVersionID) == "" ||
+		strings.TrimSpace(candidate.ModelInfo.ModelID) == "" ||
 		strings.TrimSpace(candidate.ImageReference) == "" ||
 		strings.TrimSpace(candidate.ImageDigest) == "" ||
 		strings.TrimSpace(candidate.LocalImageID) == "" ||
@@ -32,11 +38,13 @@ func DeploymentFromCandidate(candidate ValidatedCandidate, deployedAt time.Time)
 		sourceRevision = &value
 	}
 	return entity.InferenceModelDeployment{
-		ContainerID:    strings.TrimSpace(candidate.ContainerID),
-		ImageReference: strings.TrimSpace(candidate.ImageReference),
-		ImageDigest:    strings.TrimSpace(candidate.ImageDigest),
-		LocalImageID:   strings.TrimSpace(candidate.LocalImageID),
-		ModelVersion:   strings.TrimSpace(candidate.ModelInfo.Version),
+		ContainerID:      strings.TrimSpace(candidate.ContainerID),
+		CatalogVersionID: strings.TrimSpace(catalogVersionID),
+		ArtifactModelID:  strings.TrimSpace(candidate.ModelInfo.ModelID),
+		ImageReference:   strings.TrimSpace(candidate.ImageReference),
+		ImageDigest:      strings.TrimSpace(candidate.ImageDigest),
+		LocalImageID:     strings.TrimSpace(candidate.LocalImageID),
+		ModelVersion:     strings.TrimSpace(candidate.ModelInfo.Version),
 		Provenance: &entity.InferenceModelProvenance{
 			SourceRepository: provenance.SourceRepository,
 			SourceRevision:   sourceRevision,

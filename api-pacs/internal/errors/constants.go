@@ -104,6 +104,8 @@ const (
 	InferenceAdmissionBlocked string = "INFERENCE_ADMISSION_BLOCKED"
 	// InferenceUpgradeConflict rejects a stale or conflicting registration replacement.
 	InferenceUpgradeConflict string = "INFERENCE_UPGRADE_CONFLICT"
+	// InferenceUpgradeUnavailable indicates that managed deployment is disabled or not configured.
+	InferenceUpgradeUnavailable string = "INFERENCE_UPGRADE_UNAVAILABLE"
 
 	// Cloudflare-related errors
 	CloudflareAPIError string = "CLOUDFLARE_API_ERROR"

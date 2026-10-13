@@ -28,13 +28,15 @@ type InferenceModel struct {
 // InferenceModelDeployment identifies the exact artifact backing a model
 // registration. Legacy records may not have this snapshot until upgraded.
 type InferenceModelDeployment struct {
-	ContainerID    string                    `firestore:"container_id" json:"containerId"`
-	ImageReference string                    `firestore:"image_reference" json:"imageReference"`
-	ImageDigest    string                    `firestore:"image_digest" json:"imageDigest"`
-	LocalImageID   string                    `firestore:"local_image_id" json:"localImageId"`
-	ModelVersion   string                    `firestore:"model_version" json:"modelVersion"`
-	Provenance     *InferenceModelProvenance `firestore:"provenance,omitempty" json:"provenance,omitempty"`
-	DeployedAt     int64                     `firestore:"deployed_at" json:"deployedAt"`
+	ContainerID      string                    `firestore:"container_id" json:"containerId"`
+	CatalogVersionID string                    `firestore:"catalog_version_id,omitempty" json:"catalogVersionId,omitempty"`
+	ArtifactModelID  string                    `firestore:"artifact_model_id,omitempty" json:"artifactModelId,omitempty"`
+	ImageReference   string                    `firestore:"image_reference" json:"imageReference"`
+	ImageDigest      string                    `firestore:"image_digest" json:"imageDigest"`
+	LocalImageID     string                    `firestore:"local_image_id" json:"localImageId"`
+	ModelVersion     string                    `firestore:"model_version" json:"modelVersion"`
+	Provenance       *InferenceModelProvenance `firestore:"provenance,omitempty" json:"provenance,omitempty"`
+	DeployedAt       int64                     `firestore:"deployed_at" json:"deployedAt"`
 }
 
 // InferenceModelProvenance is the immutable weights and source identity copied

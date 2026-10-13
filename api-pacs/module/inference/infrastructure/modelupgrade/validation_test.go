@@ -208,11 +208,6 @@ func TestValidateCandidateIdentityRejectsContractMismatch(t *testing.T) {
 		{name: "invalid resources", change: func(_ *ResolvedCandidateImage, info *api.ModelInfo) { info.Resources.MaxConcurrentInferences = 2 }},
 		{name: "registered output mode", change: func(_ *ResolvedCandidateImage, info *api.ModelInfo) { info.SupportedOutputModes = []string{"JSON"} }},
 		{name: "image tag", change: func(image *ResolvedCandidateImage, _ *api.ModelInfo) { image.Tag = "3.0.0" }},
-		{name: "non-increasing version", change: func(image *ResolvedCandidateImage, info *api.ModelInfo) {
-			info.Version = "1.0.0"
-			image.Tag = "1.0.0"
-			image.labels["org.opencontainers.image.version"] = "1.0.0"
-		}},
 		{name: "source label", change: func(image *ResolvedCandidateImage, _ *api.ModelInfo) {
 			image.labels["org.opencontainers.image.source"] = "https://github.com/other/repository"
 		}},
@@ -230,6 +225,19 @@ func TestValidateCandidateIdentityRejectsContractMismatch(t *testing.T) {
 				t.Fatal("mismatched candidate contract was accepted")
 			}
 		})
+	}
+}
+
+func TestValidateCandidateIdentityAllowsExplicitRollbackVersion(t *testing.T) {
+	image := validResolvedImage()
+	image.Reference = "heartwisehub/model:1.0.0"
+	image.Tag = "1.0.0"
+	image.labels["org.opencontainers.image.version"] = "1.0.0"
+	candidate := validCandidateModelInfo()
+	candidate.Version = "1.0.0"
+	active := api.ModelInfo{ModelID: "model-1", Version: "2.0.0"}
+	if err := validateCandidateIdentity(image, active, candidate, entity.OutputModeHTML); err != nil {
+		t.Fatalf("catalog-selected rollback version was rejected: %v", err)
 	}
 }
 
@@ -284,27 +292,6 @@ func TestValidateContainerBoundsHTTPReadiness(t *testing.T) {
 	})
 	if !errors.Is(err, ErrCandidateReadiness) {
 		t.Fatalf("expected readiness error, got %v", err)
-	}
-}
-
-func TestNewerSemanticVersionFollowsPrereleasePrecedence(t *testing.T) {
-	tests := []struct {
-		active    string
-		candidate string
-		newer     bool
-	}{
-		{active: "1.9.9", candidate: "2.0.0", newer: true},
-		{active: "2.0.0-rc.2", candidate: "2.0.0-rc.10", newer: true},
-		{active: "2.0.0-rc.99999999999999999998", candidate: "2.0.0-rc.99999999999999999999", newer: true},
-		{active: "2.0.0-rc.10", candidate: "2.0.0", newer: true},
-		{active: "2.0.0", candidate: "2.0.0-rc.10", newer: false},
-		{active: "2.0.0", candidate: "2.0.0", newer: false},
-		{active: "not-semver", candidate: "2.0.0", newer: false},
-	}
-	for _, test := range tests {
-		if result := newerSemanticVersion(test.active, test.candidate); result != test.newer {
-			t.Fatalf("newerSemanticVersion(%q, %q)=%v want %v", test.active, test.candidate, result, test.newer)
-		}
 	}
 }
 

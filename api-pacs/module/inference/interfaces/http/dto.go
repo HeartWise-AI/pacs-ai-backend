@@ -64,6 +64,32 @@ type AddInferenceModelRequest struct {
 	OutputMode  entity.OutputMode `json:"outputMode" validate:"required"`
 }
 
+type PublishInferenceModelVersionRequest struct {
+	ModelID        string                           `json:"modelId" validate:"required"`
+	Version        string                           `json:"version" validate:"required"`
+	ImageReference string                           `json:"imageReference" validate:"required"`
+	ImageDigest    string                           `json:"imageDigest" validate:"required"`
+	Provenance     *entity.InferenceModelProvenance `json:"provenance" validate:"required"`
+}
+
+type InferenceModelVersionResponse struct {
+	ID             string                             `json:"id"`
+	ModelID        string                             `json:"modelId"`
+	Version        string                             `json:"version"`
+	ImageReference string                             `json:"imageReference"`
+	ImageDigest    string                             `json:"imageDigest"`
+	Provenance     *entity.InferenceModelProvenance   `json:"provenance"`
+	Status         entity.InferenceModelVersionStatus `json:"status"`
+	PublishedAt    uint64                             `json:"publishedAt"`
+	Active         bool                               `json:"active"`
+}
+
+type DeployInferenceModelVersionResponse struct {
+	Previous      entity.InferenceModelDeployment `json:"previous"`
+	Active        entity.InferenceModelDeployment `json:"active"`
+	ContainerName string                          `json:"containerName"`
+}
+
 type AddOnboardingModelQuestionnaireAnswerRequest struct {
 	ModelID                             string                               `json:"modelId" validate:"required"`
 	OnboardingModelQuestionnaireAnswers []OnboardingModelQuestionnaireAnswer `json:"onboardingModelQuestionnaireAnswers" validate:"required"`

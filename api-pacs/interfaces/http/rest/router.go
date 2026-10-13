@@ -203,6 +203,10 @@ func (router *router) InitRouter() *chi.Mux {
 			// inference module
 			r.Route("/inference", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
+					r.Use(iamMiddleware.FirebaseSuperUserGuard)
+					r.Post("/model/versions/publish", inferenceCommandController.PublishInferenceModelVersion)
+				})
+				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 					r.Use(iamMiddleware.PolicyAcceptanceGuard)
 					r.Get("/quota", inferenceQueryController.GetInferenceQuota)
@@ -223,6 +227,8 @@ func (router *router) InitRouter() *chi.Mux {
 							// inference model routes
 							r.Post("/add", inferenceCommandController.AddInferenceModel)
 							r.Get("/list", inferenceQueryController.GetInferenceModels)
+							r.Get("/{ID}/versions", inferenceQueryController.GetInferenceModelVersions)
+							r.Post("/{ID}/versions/{versionID}/deploy", inferenceCommandController.DeployInferenceModelVersion)
 							r.Delete("/{ID}/remove", inferenceCommandController.RemoveInferenceModel)
 							r.Put("/{ID}/update", inferenceCommandController.UpdateInferenceModel)
 

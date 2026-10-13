@@ -20,11 +20,13 @@ func validRegistrationReplacement() repositoryTypes.ReplaceInferenceModelRegistr
 		ExpectedContainerID:    "old-container",
 		ExpectedImageReference: "heartwise/model:1.0.0",
 		Deployment: entity.InferenceModelDeployment{
-			ContainerID:    "new-container",
-			ImageReference: "heartwise/model:2.0.0",
-			ImageDigest:    "sha256:digest",
-			LocalImageID:   "sha256:local",
-			ModelVersion:   "2.0.0",
+			ContainerID:      "new-container",
+			CatalogVersionID: "catalog-version",
+			ArtifactModelID:  "model-1",
+			ImageReference:   "heartwise/model:2.0.0",
+			ImageDigest:      "sha256:digest",
+			LocalImageID:     "sha256:local",
+			ModelVersion:     "2.0.0",
 			Provenance: &entity.InferenceModelProvenance{
 				SourceRepository: "HeartWise-AI/pacs-ai-backend",
 				SourceRevision:   &sourceRevision,
@@ -53,6 +55,8 @@ func TestValidateRegistrationReplacementRequiresCompleteDistinctDeployment(t *te
 		{name: "expected container", change: func(data *repositoryTypes.ReplaceInferenceModelRegistration) { data.ExpectedContainerID = "" }},
 		{name: "expected image", change: func(data *repositoryTypes.ReplaceInferenceModelRegistration) { data.ExpectedImageReference = "" }},
 		{name: "candidate container", change: func(data *repositoryTypes.ReplaceInferenceModelRegistration) { data.Deployment.ContainerID = "" }},
+		{name: "catalog version", change: func(data *repositoryTypes.ReplaceInferenceModelRegistration) { data.Deployment.CatalogVersionID = "" }},
+		{name: "artifact model", change: func(data *repositoryTypes.ReplaceInferenceModelRegistration) { data.Deployment.ArtifactModelID = "" }},
 		{name: "same container", change: func(data *repositoryTypes.ReplaceInferenceModelRegistration) {
 			data.Deployment.ContainerID = data.ExpectedContainerID
 		}},

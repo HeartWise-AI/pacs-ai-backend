@@ -346,10 +346,6 @@ func validateCandidateIdentity(
 	if image.Tag != "" && candidate.Version != image.Tag {
 		return fmt.Errorf("candidate version does not match requested image tag")
 	}
-	if !newerSemanticVersion(active.Version, candidate.Version) {
-		return fmt.Errorf("candidate version must be newer than active version %s", active.Version)
-	}
-
 	expectedLabels := map[string]string{
 		"org.opencontainers.image.version":  candidate.Version,
 		"org.opencontainers.image.revision": *candidate.Provenance.SourceRevision,
@@ -390,77 +386,6 @@ func parseSemanticVersion(value string) (semanticVersion, bool) {
 		}
 	}
 	return version, true
-}
-
-func newerSemanticVersion(active, candidate string) bool {
-	left, leftOK := parseSemanticVersion(active)
-	right, rightOK := parseSemanticVersion(candidate)
-	if !leftOK || !rightOK {
-		return false
-	}
-	if comparison := compareNumericIdentifier(left.major, right.major); comparison != 0 {
-		return comparison < 0
-	}
-	if comparison := compareNumericIdentifier(left.minor, right.minor); comparison != 0 {
-		return comparison < 0
-	}
-	if comparison := compareNumericIdentifier(left.patch, right.patch); comparison != 0 {
-		return comparison < 0
-	}
-	return comparePrerelease(left.prerelease, right.prerelease) < 0
-}
-
-func comparePrerelease(left, right []string) int {
-	if len(left) == 0 && len(right) == 0 {
-		return 0
-	}
-	if len(left) == 0 {
-		return 1
-	}
-	if len(right) == 0 {
-		return -1
-	}
-	for index := 0; index < len(left) && index < len(right); index++ {
-		if left[index] == right[index] {
-			continue
-		}
-		leftNumeric, rightNumeric := isNumeric(left[index]), isNumeric(right[index])
-		switch {
-		case leftNumeric && rightNumeric:
-			return compareNumericIdentifier(left[index], right[index])
-		case leftNumeric:
-			return -1
-		case rightNumeric:
-			return 1
-		case left[index] < right[index]:
-			return -1
-		default:
-			return 1
-		}
-	}
-	if len(left) < len(right) {
-		return -1
-	}
-	if len(left) > len(right) {
-		return 1
-	}
-	return 0
-}
-
-func compareNumericIdentifier(left, right string) int {
-	if len(left) < len(right) {
-		return -1
-	}
-	if len(left) > len(right) {
-		return 1
-	}
-	if left < right {
-		return -1
-	}
-	if left > right {
-		return 1
-	}
-	return 0
 }
 
 func isNumeric(value string) bool {

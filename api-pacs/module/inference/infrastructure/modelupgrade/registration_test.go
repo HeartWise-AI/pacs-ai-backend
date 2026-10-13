@@ -16,11 +16,13 @@ func TestDeploymentFromCandidatePreservesValidatedIdentity(t *testing.T) {
 	}
 	deployedAt := time.Unix(42, 987)
 
-	deployment, err := DeploymentFromCandidate(candidate, deployedAt)
+	deployment, err := DeploymentFromCandidate(candidate, "catalog-version-2", deployedAt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if deployment.ContainerID != candidate.ContainerID ||
+		deployment.CatalogVersionID != "catalog-version-2" ||
+		deployment.ArtifactModelID != candidate.ModelInfo.ModelID ||
 		deployment.ImageReference != candidate.ImageReference ||
 		deployment.ImageDigest != candidate.ImageDigest ||
 		deployment.LocalImageID != candidate.LocalImageID ||
@@ -47,14 +49,17 @@ func TestDeploymentFromCandidateRejectsIncompleteIdentity(t *testing.T) {
 		ModelInfo:      validCandidateModelInfo(),
 	}
 	candidate.ModelInfo.Provenance = nil
-	if _, err := DeploymentFromCandidate(candidate, time.Now()); !errors.Is(err, ErrCandidateContract) {
+	if _, err := DeploymentFromCandidate(candidate, "catalog-version-2", time.Now()); !errors.Is(err, ErrCandidateContract) {
 		t.Fatalf("incomplete candidate returned %v", err)
 	}
-	if _, err := DeploymentFromCandidate(ValidatedCandidate{}, time.Now()); !errors.Is(err, ErrCandidateContract) {
+	if _, err := DeploymentFromCandidate(ValidatedCandidate{}, "catalog-version-2", time.Now()); !errors.Is(err, ErrCandidateContract) {
 		t.Fatalf("empty candidate returned %v", err)
 	}
 	candidate.ModelInfo = validCandidateModelInfo()
-	if _, err := DeploymentFromCandidate(candidate, time.Time{}); !errors.Is(err, ErrCandidateContract) {
+	if _, err := DeploymentFromCandidate(candidate, "catalog-version-2", time.Time{}); !errors.Is(err, ErrCandidateContract) {
 		t.Fatalf("zero deployment time returned %v", err)
+	}
+	if _, err := DeploymentFromCandidate(candidate, "", time.Now()); !errors.Is(err, ErrCandidateContract) {
+		t.Fatalf("missing catalog version returned %v", err)
 	}
 }

@@ -21,13 +21,14 @@ import (
 type UpgradeStage string
 
 const (
-	UpgradeStageResolveActive UpgradeStage = "resolve_active"
-	UpgradeStagePull          UpgradeStage = "pull"
-	UpgradeStageCreate        UpgradeStage = "create_candidate"
-	UpgradeStageValidate      UpgradeStage = "validate_candidate"
-	UpgradeStageDrain         UpgradeStage = "drain_active"
-	UpgradeStagePrepare       UpgradeStage = "prepare_candidate"
-	UpgradeStageActivate      UpgradeStage = "activate_candidate"
+	UpgradeStageResolveActive  UpgradeStage = "resolve_active"
+	UpgradeStageResolveVersion UpgradeStage = "resolve_version"
+	UpgradeStagePull           UpgradeStage = "pull"
+	UpgradeStageCreate         UpgradeStage = "create_candidate"
+	UpgradeStageValidate       UpgradeStage = "validate_candidate"
+	UpgradeStageDrain          UpgradeStage = "drain_active"
+	UpgradeStagePrepare        UpgradeStage = "prepare_candidate"
+	UpgradeStageActivate       UpgradeStage = "activate_candidate"
 )
 
 // UpgradeError identifies the failed stage and reports rollback separately.
@@ -47,10 +48,9 @@ func (err *UpgradeError) Error() string {
 func (err *UpgradeError) Unwrap() error { return err.Err }
 
 type UpgradeRequest struct {
-	TenantID       string
-	ModelID        string
-	ImageReference string
-	ExpectedDigest string
+	TenantID  string
+	ModelID   string
+	VersionID string
 }
 
 type UpgradeResult struct {
@@ -89,6 +89,10 @@ type UpgradeModelReader interface {
 	SelectInferenceModelByID(context.Context, string) (entity.InferenceModel, error)
 }
 
+type UpgradeVersionReader interface {
+	SelectInferenceModelVersion(context.Context, string) (entity.InferenceModelVersion, error)
+}
+
 type UpgradeRegistrationRepository interface {
 	ReplaceInferenceModelRegistration(
 		context.Context,
@@ -103,6 +107,7 @@ type UpgradeCoordinator struct {
 	validator     UpgradeValidator
 	manager       UpgradeManager
 	models        UpgradeModelReader
+	versions      UpgradeVersionReader
 	registrations UpgradeRegistrationRepository
 	config        CoordinatorConfig
 	now           func() time.Time
@@ -116,10 +121,11 @@ func NewUpgradeCoordinator(
 	validator UpgradeValidator,
 	manager UpgradeManager,
 	models UpgradeModelReader,
+	versions UpgradeVersionReader,
 	registrations UpgradeRegistrationRepository,
 	config CoordinatorConfig,
 ) (*UpgradeCoordinator, error) {
-	if dockerClient == nil || apiClient == nil || validator == nil || manager == nil || models == nil || registrations == nil {
+	if dockerClient == nil || apiClient == nil || validator == nil || manager == nil || models == nil || versions == nil || registrations == nil {
 		return nil, errors.New("model upgrade coordinator dependencies are required")
 	}
 	if config.DrainTimeout <= 0 {
@@ -130,7 +136,7 @@ func NewUpgradeCoordinator(
 	}
 	return &UpgradeCoordinator{
 		docker: dockerClient, api: apiClient, validator: validator, manager: manager,
-		models: models, registrations: registrations, config: config, now: time.Now,
+		models: models, versions: versions, registrations: registrations, config: config, now: time.Now,
 		inFlight: make(map[string]struct{}),
 	}, nil
 }
@@ -141,9 +147,8 @@ func NewUpgradeCoordinator(
 func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request UpgradeRequest) (UpgradeResult, error) {
 	request.TenantID = strings.TrimSpace(request.TenantID)
 	request.ModelID = strings.TrimSpace(request.ModelID)
-	request.ImageReference = strings.TrimSpace(request.ImageReference)
-	request.ExpectedDigest = strings.TrimSpace(request.ExpectedDigest)
-	if request.TenantID == "" || request.ModelID == "" || request.ImageReference == "" {
+	request.VersionID = strings.TrimSpace(request.VersionID)
+	if request.TenantID == "" || request.ModelID == "" || request.VersionID == "" {
 		return UpgradeResult{}, upgradeFailure(UpgradeStageResolveActive, errors.New(apiError.InvalidPayload), nil)
 	}
 	upgradeKey := request.TenantID + "\x00" + request.ModelID
@@ -178,15 +183,26 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 	if err != nil {
 		return UpgradeResult{}, upgradeFailure(UpgradeStageResolveActive, err, nil)
 	}
+	version, err := coordinator.versions.SelectInferenceModelVersion(ctx, request.VersionID)
+	if err != nil {
+		return UpgradeResult{}, upgradeFailure(UpgradeStageResolveVersion, err, nil)
+	}
+	version.Normalize()
+	if err = version.Validate(); err != nil || version.ID != request.VersionID ||
+		version.Status != entity.InferenceModelVersionAvailable || version.ModelID != activeModelInfo.Data.ModelID {
+		return UpgradeResult{}, upgradeFailure(
+			UpgradeStageResolveVersion, errors.New(apiError.InvalidPayload), nil,
+		)
+	}
 
-	normalizedImage, err := coordinator.validator.ValidateImageReference(request.ImageReference, request.ExpectedDigest)
+	normalizedImage, err := coordinator.validator.ValidateImageReference(version.ImageReference, version.ImageDigest)
 	if err != nil {
 		return UpgradeResult{}, upgradeFailure(UpgradeStagePull, err, nil)
 	}
 	if err = coordinator.docker.PullImage(ctx, normalizedImage); err != nil {
 		return UpgradeResult{}, upgradeFailure(UpgradeStagePull, err, nil)
 	}
-	resolvedImage, err := coordinator.validator.ResolveImage(ctx, normalizedImage, request.ExpectedDigest)
+	resolvedImage, err := coordinator.validator.ResolveImage(ctx, normalizedImage, version.ImageDigest)
 	if err != nil {
 		return UpgradeResult{}, upgradeFailure(UpgradeStagePull, err, nil)
 	}
@@ -216,7 +232,10 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 	if err != nil {
 		return UpgradeResult{}, upgradeFailure(UpgradeStageValidate, err, coordinator.removeCandidate(ctx, candidateID))
 	}
-	deployment, err := DeploymentFromCandidate(validated, coordinator.now())
+	if err = validateCatalogCandidate(version, validated); err != nil {
+		return UpgradeResult{}, upgradeFailure(UpgradeStageValidate, err, coordinator.removeCandidate(ctx, candidateID))
+	}
+	deployment, err := DeploymentFromCandidate(validated, version.ID, coordinator.now())
 	if err != nil {
 		return UpgradeResult{}, upgradeFailure(UpgradeStageValidate, err, coordinator.removeCandidate(ctx, candidateID))
 	}
@@ -264,6 +283,28 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 	}
 
 	return UpgradeResult{Previous: previous, Active: deployment, ContainerName: validated.ContainerName}, nil
+}
+
+func validateCatalogCandidate(version entity.InferenceModelVersion, candidate ValidatedCandidate) error {
+	if candidate.ModelInfo.ModelID != version.ModelID || candidate.ModelInfo.Version != version.Version ||
+		candidate.ImageReference != version.ImageReference || candidate.ImageDigest != version.ImageDigest {
+		return fmt.Errorf("%w: candidate does not match the selected catalog version", ErrCandidateContract)
+	}
+	if candidate.ModelInfo.Provenance == nil || version.Provenance == nil {
+		return fmt.Errorf("%w: catalog provenance is incomplete", ErrCandidateContract)
+	}
+	candidateProvenance := candidate.ModelInfo.Provenance
+	catalogProvenance := version.Provenance
+	if candidateProvenance.SourceRevision == nil || catalogProvenance.SourceRevision == nil ||
+		candidateProvenance.SourceRepository != catalogProvenance.SourceRepository ||
+		*candidateProvenance.SourceRevision != *catalogProvenance.SourceRevision ||
+		candidateProvenance.ModelRepository != catalogProvenance.ModelRepository ||
+		candidateProvenance.ModelRevision != catalogProvenance.ModelRevision ||
+		candidateProvenance.WeightsPath != catalogProvenance.WeightsPath ||
+		candidateProvenance.WeightsSHA256 != catalogProvenance.WeightsSHA256 {
+		return fmt.Errorf("%w: candidate provenance does not match the selected catalog version", ErrCandidateContract)
+	}
+	return nil
 }
 
 func (coordinator *UpgradeCoordinator) beginUpgrade(key string) bool {

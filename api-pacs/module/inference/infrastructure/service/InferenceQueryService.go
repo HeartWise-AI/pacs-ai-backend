@@ -24,6 +24,7 @@ import (
 // InferenceQueryService handles the Inference query service logic
 type InferenceQueryService struct {
 	repository.InferenceQueryRepositoryInterface
+	repository.InferenceModelVersionRepositoryInterface
 	repository.InferenceProcessingRunRepositoryInterface
 	dockerTypes.DockerSDKInterface
 	dockerInferenceTypes.DockerInferenceAPIInterface
@@ -120,6 +121,61 @@ func (service *InferenceQueryService) GetInferenceModels(ctx context.Context, te
 	}
 
 	return inferenceModelsResult, nil
+}
+
+// GetInferenceModelVersions resolves the artifact family from the tenant-owned
+// registration, then returns its global immutable catalog entries.
+func (service *InferenceQueryService) GetInferenceModelVersions(
+	ctx context.Context,
+	data types.GetInferenceModelVersions,
+) ([]types.GetInferenceModelVersionResult, error) {
+	if service.InferenceModelVersionRepositoryInterface == nil {
+		return nil, errors.New(apiError.InferenceUpgradeUnavailable)
+	}
+	data.TenantID, data.ModelID = strings.TrimSpace(data.TenantID), strings.TrimSpace(data.ModelID)
+	if data.TenantID == "" || data.ModelID == "" {
+		return nil, errors.New(apiError.InvalidPayload)
+	}
+	registered, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByID(ctx, data.ModelID)
+	if err != nil {
+		return nil, err
+	}
+	if registered.TenantID != data.TenantID {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	artifactModelID := ""
+	activeCatalogVersionID := ""
+	if registered.Deployment != nil {
+		artifactModelID = strings.TrimSpace(registered.Deployment.ArtifactModelID)
+		activeCatalogVersionID = strings.TrimSpace(registered.Deployment.CatalogVersionID)
+	}
+	if artifactModelID == "" {
+		container, inspectErr := service.DockerSDKInterface.GetContainerInfo(ctx, registered.ContainerID)
+		if inspectErr != nil {
+			return nil, errors.New(apiError.DockerError)
+		}
+		modelInfo, infoErr := service.DockerInferenceAPIInterface.GetModelInfo(
+			ctx, strings.TrimPrefix(strings.TrimSpace(container.Name), "/"),
+		)
+		if infoErr != nil || strings.TrimSpace(modelInfo.Data.ModelID) == "" {
+			return nil, errors.New(apiError.DockerInferenceError)
+		}
+		artifactModelID = strings.TrimSpace(modelInfo.Data.ModelID)
+	}
+
+	versions, err := service.InferenceModelVersionRepositoryInterface.ListInferenceModelVersions(ctx, artifactModelID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]types.GetInferenceModelVersionResult, 0, len(versions))
+	for _, version := range versions {
+		result = append(result, types.GetInferenceModelVersionResult{
+			Version: version,
+			Active:  version.ID == activeCatalogVersionID || (activeCatalogVersionID == "" && version.ImageReference == registered.DockerImage),
+		})
+	}
+	return result, nil
 }
 
 // GetInferenceModelInfo gets the inference model info

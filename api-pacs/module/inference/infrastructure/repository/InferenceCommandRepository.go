@@ -600,6 +600,8 @@ func (repository *InferenceCommandRepository) swapInferenceModelRegistration(
 
 func normalizeDeployment(deployment *entity.InferenceModelDeployment) {
 	deployment.ContainerID = strings.TrimSpace(deployment.ContainerID)
+	deployment.CatalogVersionID = strings.TrimSpace(deployment.CatalogVersionID)
+	deployment.ArtifactModelID = strings.TrimSpace(deployment.ArtifactModelID)
 	deployment.ImageReference = strings.TrimSpace(deployment.ImageReference)
 	deployment.ImageDigest = strings.TrimSpace(deployment.ImageDigest)
 	deployment.LocalImageID = strings.TrimSpace(deployment.LocalImageID)
@@ -628,7 +630,8 @@ func ensureExclusiveContainerRegistration(
 func validateRegistrationReplacement(data types.ReplaceInferenceModelRegistration) error {
 	deployment := data.Deployment
 	if data.ID == "" || data.TenantID == "" || data.ExpectedContainerID == "" || data.ExpectedImageReference == "" ||
-		deployment.ContainerID == "" || deployment.ImageReference == "" || deployment.ImageDigest == "" ||
+		deployment.ContainerID == "" || deployment.CatalogVersionID == "" || deployment.ArtifactModelID == "" ||
+		deployment.ImageReference == "" || deployment.ImageDigest == "" ||
 		deployment.LocalImageID == "" || deployment.ModelVersion == "" || deployment.DeployedAt <= 0 ||
 		deployment.Provenance == nil {
 		return errors.New(apiError.InvalidPayload)

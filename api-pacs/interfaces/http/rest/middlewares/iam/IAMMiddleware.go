@@ -2,6 +2,7 @@ package iam
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"os"
 	"strings"
@@ -61,8 +62,9 @@ func writePolicyUnavailable(w http.ResponseWriter, errorCode string) {
 // FirebaseSuperUserGuard firebase superuser guard middleware
 func (middleware *IAMMiddleware) FirebaseSuperUserGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// check if superuser key is provided and correct
-		if r.Header.Get("X-FB-SUDO-KEY") != os.Getenv("FIREBASE_SUPERUSER_KEY") {
+		expected := strings.TrimSpace(os.Getenv("FIREBASE_SUPERUSER_KEY"))
+		provided := r.Header.Get("X-FB-SUDO-KEY")
+		if expected == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
 			response := viewmodels.HTTPResponseVM{
 				Status:    http.StatusUnauthorized,
 				Success:   false,

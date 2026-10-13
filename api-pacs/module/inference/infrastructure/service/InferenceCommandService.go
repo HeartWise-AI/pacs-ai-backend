@@ -25,6 +25,7 @@ import (
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
 	"api-pacs/module/inference/infrastructure/containerready"
+	"api-pacs/module/inference/infrastructure/modelupgrade"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
 	orthancApplication "api-pacs/module/orthanc/application"
@@ -36,9 +37,11 @@ import (
 // InferenceCommandService handles the Inference command service logic
 type InferenceCommandService struct {
 	// Shared process-wide predictor. A nil value preserves the legacy direct path.
-	ModelManager ManagedPredictor
+	ModelManager            ManagedPredictor
+	ModelUpgradeCoordinator ModelUpgradeExecutor
 	repository.InferenceCommandRepositoryInterface
 	repository.InferenceQueryRepositoryInterface
+	repository.InferenceModelVersionRepositoryInterface
 	repository.InferenceProcessingRunRepositoryInterface
 	tenantApplication.TenantQueryServiceInterface
 	userApplication.UserQueryServiceInterface
@@ -61,6 +64,10 @@ type InferenceCommandService struct {
 // ManagedPredictor is the admission boundary shared by user and internal inference.
 type ManagedPredictor interface {
 	Predict(context.Context, string, dockerInferenceTypes.PredictRequest) (dockerInferenceTypes.PredictResponse, error)
+}
+
+type ModelUpgradeExecutor interface {
+	Upgrade(context.Context, modelupgrade.UpgradeRequest) (modelupgrade.UpgradeResult, error)
 }
 
 const inferenceIngestionRetrievalTimeout = 3 * time.Minute
@@ -742,6 +749,43 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 	}
 
 	return nil
+}
+
+// PublishInferenceModelVersion adds a digest-pinned artifact to the global
+// catalog. The repository makes retries idempotent and rejects mutations.
+func (service *InferenceCommandService) PublishInferenceModelVersion(
+	ctx context.Context,
+	version entity.InferenceModelVersion,
+) (entity.InferenceModelVersion, error) {
+	if service.InferenceModelVersionRepositoryInterface == nil {
+		return entity.InferenceModelVersion{}, errors.New(apiError.InferenceUpgradeUnavailable)
+	}
+	version.Normalize()
+	if err := version.Validate(); err != nil || version.Status == entity.InferenceModelVersionRevoked {
+		return entity.InferenceModelVersion{}, errors.New(apiError.InvalidPayload)
+	}
+	return service.InferenceModelVersionRepositoryInterface.PublishInferenceModelVersion(ctx, version)
+}
+
+// DeployInferenceModelVersion runs the transactional coordinator for one
+// administrator-selected catalog artifact. Selecting an older version is the
+// manual rollback operation.
+func (service *InferenceCommandService) DeployInferenceModelVersion(
+	ctx context.Context,
+	data types.DeployInferenceModelVersion,
+) (types.DeployInferenceModelVersionResult, error) {
+	if service.ModelUpgradeCoordinator == nil {
+		return types.DeployInferenceModelVersionResult{}, errors.New(apiError.InferenceUpgradeUnavailable)
+	}
+	result, err := service.ModelUpgradeCoordinator.Upgrade(ctx, modelupgrade.UpgradeRequest{
+		TenantID: data.TenantID, ModelID: data.ModelID, VersionID: data.VersionID,
+	})
+	if err != nil {
+		return types.DeployInferenceModelVersionResult{}, err
+	}
+	return types.DeployInferenceModelVersionResult{
+		Previous: result.Previous, Active: result.Active, ContainerName: result.ContainerName,
+	}, nil
 }
 
 // AddOnboardingModelQuestionnaireAnswers adds an onboarding model questionnaire answers

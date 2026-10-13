@@ -152,6 +152,20 @@ type coordinatorModels struct {
 	model  entity.InferenceModel
 }
 
+type coordinatorVersions struct {
+	events  *[]string
+	version entity.InferenceModelVersion
+	err     error
+}
+
+func (fake *coordinatorVersions) SelectInferenceModelVersion(
+	context.Context,
+	string,
+) (entity.InferenceModelVersion, error) {
+	*fake.events = append(*fake.events, "versions.select")
+	return fake.version, fake.err
+}
+
 func (fake *coordinatorModels) SelectInferenceModelByID(context.Context, string) (entity.InferenceModel, error) {
 	*fake.events = append(*fake.events, "models.select")
 	return fake.model, nil
@@ -190,6 +204,7 @@ type coordinatorFixture struct {
 	api           *coordinatorAPI
 	validator     *coordinatorValidator
 	manager       *coordinatorManager
+	versions      *coordinatorVersions
 	registrations *coordinatorRegistrations
 	events        *[]string
 }
@@ -219,6 +234,7 @@ func newCoordinatorFixture(t *testing.T) coordinatorFixture {
 		Envs:        []string{"TOKEN=secret"},
 		OutputMode:  entity.OutputModeHTML,
 	}}
+	versionsFake := &coordinatorVersions{events: &events, version: validCoordinatorVersion()}
 	registrationsFake := &coordinatorRegistrations{
 		events: &events,
 		previous: entity.InferenceModelDeployment{
@@ -231,6 +247,7 @@ func newCoordinatorFixture(t *testing.T) coordinatorFixture {
 		validatorFake,
 		managerFake,
 		modelsFake,
+		versionsFake,
 		registrationsFake,
 		CoordinatorConfig{DrainTimeout: time.Second, RollbackTimeout: time.Second},
 	)
@@ -240,15 +257,36 @@ func newCoordinatorFixture(t *testing.T) coordinatorFixture {
 	coordinator.now = func() time.Time { return time.Unix(1_700_000_000, 0) }
 	return coordinatorFixture{
 		coordinator: coordinator, docker: dockerFake, api: apiFake, validator: validatorFake,
-		manager: managerFake, registrations: registrationsFake, events: &events,
+		manager: managerFake, versions: versionsFake, registrations: registrationsFake, events: &events,
 	}
 }
 
 func (fixture coordinatorFixture) upgrade(t *testing.T) (UpgradeResult, error) {
 	t.Helper()
 	return fixture.coordinator.Upgrade(context.Background(), UpgradeRequest{
-		TenantID: "tenant-1", ModelID: "registration-1", ImageReference: "heartwisehub/model:2.0.0",
+		TenantID: "tenant-1", ModelID: "registration-1", VersionID: "catalog-version-2",
 	})
+}
+
+func validCoordinatorVersion() entity.InferenceModelVersion {
+	modelInfo := validCandidateModelInfo()
+	provenance := modelInfo.Provenance
+	return entity.InferenceModelVersion{
+		ID:             "catalog-version-2",
+		ModelID:        modelInfo.ModelID,
+		Version:        modelInfo.Version,
+		ImageReference: "heartwisehub/model:2.0.0",
+		ImageDigest:    testDigest,
+		Status:         entity.InferenceModelVersionAvailable,
+		Provenance: &entity.InferenceModelProvenance{
+			SourceRepository: provenance.SourceRepository,
+			SourceRevision:   provenance.SourceRevision,
+			ModelRepository:  provenance.ModelRepository,
+			ModelRevision:    provenance.ModelRevision,
+			WeightsPath:      provenance.WeightsPath,
+			WeightsSHA256:    provenance.WeightsSHA256,
+		},
+	}
 }
 
 func TestUpgradeCoordinatorActivatesValidatedCandidate(t *testing.T) {
@@ -259,7 +297,7 @@ func TestUpgradeCoordinatorActivatesValidatedCandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantEvents := []string{
-		"models.select", "docker.active", "api.active-model-info", "validator.reference",
+		"models.select", "docker.active", "api.active-model-info", "versions.select", "validator.reference",
 		"docker.pull", "validator.resolve", "docker.create", "validator.container",
 		"manager.drain:" + testActiveContainerID,
 		"manager.replace:" + testActiveContainerID + ":" + testCandidateID,
@@ -281,6 +319,28 @@ func TestUpgradeCoordinatorActivatesValidatedCandidate(t *testing.T) {
 	}
 	if result.Active.ContainerID != testCandidateID || result.Previous.ContainerID != testActiveContainerID {
 		t.Fatalf("unexpected upgrade result: %+v", result)
+	}
+}
+
+func TestUpgradeCoordinatorRejectsUnavailableOrMismatchedCatalogVersionBeforePull(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		change func(*entity.InferenceModelVersion)
+	}{
+		{name: "revoked", change: func(version *entity.InferenceModelVersion) {
+			version.Status = entity.InferenceModelVersionRevoked
+		}},
+		{name: "wrong model", change: func(version *entity.InferenceModelVersion) {
+			version.ModelID = "other-model"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newCoordinatorFixture(t)
+			test.change(&fixture.versions.version)
+			_, err := fixture.upgrade(t)
+			assertUpgradeStage(t, err, UpgradeStageResolveVersion)
+			assertEventAbsent(t, *fixture.events, "docker.pull")
+		})
 	}
 }
 

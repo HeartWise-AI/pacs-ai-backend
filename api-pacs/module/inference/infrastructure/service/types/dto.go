@@ -17,6 +17,28 @@ type AddInferenceModel struct {
 	OutputMode  entity.OutputMode
 }
 
+type DeployInferenceModelVersion struct {
+	TenantID  string
+	ModelID   string
+	VersionID string
+}
+
+type DeployInferenceModelVersionResult struct {
+	Previous      entity.InferenceModelDeployment
+	Active        entity.InferenceModelDeployment
+	ContainerName string
+}
+
+type GetInferenceModelVersions struct {
+	TenantID string
+	ModelID  string
+}
+
+type GetInferenceModelVersionResult struct {
+	Version entity.InferenceModelVersion
+	Active  bool
+}
+
 type AddOnboardingModelQuestionnaireAnswer struct {
 	ID                                  string
 	TenantID                            string

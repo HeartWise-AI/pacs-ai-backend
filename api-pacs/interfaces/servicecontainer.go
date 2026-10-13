@@ -50,6 +50,7 @@ import (
 	iamService "api-pacs/module/iam/infrastructure/service"
 	iamREST "api-pacs/module/iam/interfaces/http/rest"
 	"api-pacs/module/inference/infrastructure/modelmanager"
+	"api-pacs/module/inference/infrastructure/modelupgrade"
 	inferenceRepository "api-pacs/module/inference/infrastructure/repository"
 	inferenceService "api-pacs/module/inference/infrastructure/service"
 	inferenceREST "api-pacs/module/inference/interfaces/http/rest"
@@ -111,6 +112,7 @@ var (
 	dockerSDK                  *docker.DockerSDK
 	dockerInferenceAPI         *dockerinference.DockerInferenceAPI
 	modelManager               *modelmanager.Manager
+	modelUpgradeCoordinator    *modelupgrade.UpgradeCoordinator
 	docusignAPI                *docusign.DocusignAPI
 	worklistNotificationBroker *inferenceService.RedisWorklistNotificationBroker
 	inferenceQuotaManager      *inferenceService.RedisInferenceQuotaManager
@@ -319,11 +321,15 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 	}
 
 	service := &inferenceService.InferenceCommandService{
+		ModelUpgradeCoordinator: modelUpgradeCoordinator,
 		InferenceCommandRepositoryInterface: &inferenceRepository.InferenceCommandRepositoryCircuitBreaker{
 			InferenceCommandRepositoryInterface: commandRepository,
 		},
 		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
 			InferenceQueryRepositoryInterface: queryRepository,
+		},
+		InferenceModelVersionRepositoryInterface: &inferenceRepository.InferenceModelVersionRepository{
+			FirebaseAdminSDK: firebaseAdminSDK,
 		},
 		InferenceProcessingRunRepositoryInterface: &inferenceRepository.InferenceProcessingRunRepositoryCircuitBreaker{
 			InferenceProcessingRunRepositoryInterface: processingRunRepository,
@@ -494,6 +500,9 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		},
 		InferenceProcessingRunRepositoryInterface: &inferenceRepository.InferenceProcessingRunRepositoryCircuitBreaker{
 			InferenceProcessingRunRepositoryInterface: processingRunRepository,
+		},
+		InferenceModelVersionRepositoryInterface: &inferenceRepository.InferenceModelVersionRepository{
+			FirebaseAdminSDK: firebaseAdminSDK,
 		},
 		DockerSDKInterface:             dockerSDK,
 		DockerInferenceAPIInterface:    dockerInferenceAPI,
@@ -759,6 +768,38 @@ func registerHandlers() {
 			"[SERVER] model manager reconciled models=%d reserved_mib=%d available_mib=%d",
 			len(snapshot.Models), snapshot.ReservedMiB, snapshot.AvailableMiB,
 		)
+
+		candidateValidator, validationErr := modelupgrade.NewCandidateValidator(
+			dockerSDK,
+			dockerInferenceAPI,
+			modelupgrade.CandidateValidationConfig{
+				AllowedImageNamespace: modelUpgradeImageNamespace(),
+				ReadinessTimeout:      modelUpgradeDuration("MODEL_UPGRADE_READINESS_TIMEOUT_SECONDS", 5*time.Minute),
+				PollInterval:          modelUpgradeDuration("MODEL_UPGRADE_POLL_INTERVAL_SECONDS", 2*time.Second),
+			},
+		)
+		if validationErr != nil {
+			log.Fatalf("[SERVER] invalid model upgrade validation configuration: %v", validationErr)
+		}
+		modelQueryRepository := &inferenceRepository.InferenceQueryRepository{FirebaseAdminSDK: firebaseAdminSDK}
+		modelCommandRepository := &inferenceRepository.InferenceCommandRepository{FirebaseAdminSDK: firebaseAdminSDK}
+		modelVersionRepository := &inferenceRepository.InferenceModelVersionRepository{FirebaseAdminSDK: firebaseAdminSDK}
+		modelUpgradeCoordinator, validationErr = modelupgrade.NewUpgradeCoordinator(
+			dockerSDK,
+			dockerInferenceAPI,
+			candidateValidator,
+			modelManager,
+			modelQueryRepository,
+			modelVersionRepository,
+			modelCommandRepository,
+			modelupgrade.CoordinatorConfig{
+				DrainTimeout:    modelUpgradeDuration("MODEL_UPGRADE_DRAIN_TIMEOUT_SECONDS", 5*time.Minute),
+				RollbackTimeout: modelUpgradeDuration("MODEL_UPGRADE_ROLLBACK_TIMEOUT_SECONDS", 5*time.Minute),
+			},
+		)
+		if validationErr != nil {
+			log.Fatalf("[SERVER] cannot initialize model upgrade coordinator: %v", validationErr)
+		}
 	}
 
 	// init docusign API
@@ -770,6 +811,23 @@ func registerHandlers() {
 		PrivateKey:     os.Getenv("DOCUSIGN_PRIVATE_KEY"),
 		AccountID:      os.Getenv("DOCUSIGN_ACCOUNT_ID"),
 	})
+}
+
+func modelUpgradeImageNamespace() string {
+	value := strings.TrimSpace(os.Getenv("MODEL_UPGRADE_ALLOWED_IMAGE_NAMESPACE"))
+	if value == "" {
+		return "heartwisehub"
+	}
+	return value
+}
+
+func modelUpgradeDuration(name string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(os.Getenv(name))
+	seconds, err := strconv.Atoi(value)
+	if err != nil || seconds <= 0 {
+		return fallback
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 // ServiceContainer export instantiated service container once

@@ -10,6 +10,7 @@ The release job runs on a HeartWise-controlled GitHub Actions runner labeled `pa
 /etc/pacs-ai-release/secrets/hf_token
 /etc/pacs-ai-release/secrets/dockerhub_username
 /etc/pacs-ai-release/secrets/dockerhub_token
+/etc/pacs-ai-release/secrets/firebase_superuser_key
 ```
 
 Use a dedicated, read-only Hugging Face token with access only to the required gated repositories. The Docker Hub token should be limited to the `heartwisehub` publication scope. Give the files to the runner service account with mode `0600`; they must never be placed in the repository or workspace.
@@ -18,7 +19,7 @@ The workflow creates a temporary Docker configuration, authenticates with `--pas
 
 Because model weights are embedded in the image, gated or restricted weights must be published only to a registry repository with equivalent access controls.
 
-The runner must provide Linux, Docker with BuildKit, Python 3.9 or newer, outbound access to Hugging Face and Docker Hub, and the labels `self-hosted`, `linux`, `x64`, and `pacs-ai-release`. Configure the GitHub `model-release` environment with required reviewers so a queued publication cannot access the runner until an authorized person approves it. Protect `master` and restrict who can dispatch release workflows.
+The runner must provide Linux, Docker with BuildKit, Python 3.9 or newer, outbound access to Hugging Face, Docker Hub, and the PACS-AI catalog API, and the labels `self-hosted`, `linux`, `x64`, and `pacs-ai-release`. Configure the GitHub `model-release` environment with required reviewers and an HTTPS `PACS_AI_CATALOG_API_URL` environment variable so a queued publication cannot access the runner until an authorized person approves it. Protect `master` and restrict who can dispatch release workflows.
 
 ## Manifest contract
 
@@ -91,7 +92,7 @@ The protected `model-release` environment provides manual approval. The workflow
 preflight -> build -> inspect -> runtime check -> push version -> resolve digest -> evidence
 ```
 
-The versioned image and immutable digest are authoritative. `latest`, when explicitly requested, is only a convenience alias and is never recorded as deployment identity.
+The versioned image and immutable digest are authoritative. `latest`, when explicitly requested, is only a convenience alias and is never recorded as deployment identity. After publication, the workflow sends the verified release evidence to the catalog API. This creates an immutable, idempotent Firestore catalog entry; it does not deploy the image.
 
 ## Release evidence
 
@@ -105,7 +106,7 @@ The workflow uploads `model-release-evidence.json` and includes it in the job su
 - resolved registry digest and immutable image reference;
 - GitHub actor and workflow run identity.
 
-It never records a token, password, secret path, or secret value. Phase 4 will persist the selected image reference and digest with the model registration when an administrator activates the candidate.
+It never records a token, password, secret path, or secret value. If catalog registration must be retried independently, download the evidence artifact and run `scripts/register-model-release.py` with the protected catalog URL and credential file. The operation is idempotent for the same artifact and rejects conflicting metadata.
 
 ## Version policy
 
@@ -127,4 +128,4 @@ During development, use disposable local tags and local BuildKit secrets. Before
 6. measure resources and run startup and inference tests;
 7. merge the reviewed code, then manually approve the official release.
 
-Publication does not register or replace a PACS-AI model. Initial registration remains a separate controlled operation; transactional upgrades and rollback are implemented in the later managed-upgrade phase.
+Publication adds the immutable artifact to the version catalog but does not replace a running PACS-AI model. Initial registration remains a separate controlled operation. For an existing registration, an owner or administrator selects any available catalog version in Workspace Settings. PACS-AI validates and activates that exact artifact transactionally; failed activation automatically restores the previous deployment, and selecting an older available version performs a deliberate rollback.
