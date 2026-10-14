@@ -30,12 +30,17 @@ jobs:
               pull_number: context.issue.number,
             });
             const approvedHead = context.payload.pull_request.head.sha;
-            return String(
+            const eligible =
               pullRequest.state === 'open' &&
               !pullRequest.draft &&
               pullRequest.base.ref === 'master' &&
-              pullRequest.head.sha === approvedHead
-            );
+              pullRequest.head.sha === approvedHead;
+            if (!eligible) {
+              core.setFailed(
+                'The approved commit is no longer the current eligible PR head.'
+              );
+            }
+            return String(eligible);
 
       - name: Check out the approved pull request commit
         if: steps.pull-request.outputs.result == 'true'
