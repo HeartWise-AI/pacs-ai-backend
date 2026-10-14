@@ -1,0 +1,40 @@
+name: PACS AI backend self-hosted unit tests
+
+on:
+  workflow_call:
+    inputs:
+      checkout_sha:
+        description: Exact pull request head commit to test
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Unit tests
+    environment: pacs-backend-self-hosted
+    runs-on:
+      group: pacs-backend-approved
+      labels: [self-hosted, Linux, X64, sd4health, pacs-ai-backend, cpu]
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the approved commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.checkout_sha }}
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: api-pacs/go.mod
+          cache-dependency-path: api-pacs/go.sum
+
+      - name: Run Go unit tests with the race detector
+        working-directory: api-pacs
+        env:
+          GOFLAGS: -mod=readonly
+        run: go test -race -p 1 ./...
