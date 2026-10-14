@@ -632,7 +632,11 @@ class ReleaseModelTests(unittest.TestCase):
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 
         self.assertIn("workflow_dispatch:", workflow)
-        self.assertIn("runs-on: [self-hosted, linux, x64, pacs-ai-release]", workflow)
+        self.assertIn("group: pacs-model-release-approved", workflow)
+        self.assertIn(
+            "labels: [self-hosted, linux, x64, sd4health, pacs-ai-release]",
+            workflow,
+        )
         self.assertIn("environment: model-release", workflow)
         self.assertIn("github.ref == 'refs/heads/master'", workflow)
         self.assertIn("/etc/pacs-ai-release/secrets/hf_token", workflow)
