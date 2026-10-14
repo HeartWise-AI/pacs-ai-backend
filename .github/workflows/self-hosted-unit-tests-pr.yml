@@ -1,0 +1,28 @@
+name: PACS AI backend self-hosted unit tests (PR)
+
+on:
+  pull_request:
+    branches: [master]
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+      - edited
+      - closed
+      - converted_to_draft
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pacs-backend-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.action != 'converted_to_draft' &&
+      !github.event.pull_request.draft
+    uses: HeartWise-AI/pacs-ai-backend/.github/workflows/self-hosted-unit-tests.yml@master
