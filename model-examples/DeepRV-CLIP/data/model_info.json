@@ -5,6 +5,14 @@
   "stage": "ai_inference",
   "modality": "Angiogram",
   "version": "1.0.0",
+  "provenance": {
+    "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+    "sourceRevision": null,
+    "modelRepository": "heartwise/DeepRV_CLIP",
+    "modelRevision": "2d9a4847982bac5bdd140bcc552cf9fbec465552",
+    "weightsPath": "best_model_epoch_4.pt",
+    "weightsSha256": "9e0c9dc43b0554b16483de2968c43be5e6954b3142cb9d28e397e524cd4d373d"
+  },
   "resources": {
     "gpuRequired": true,
     "residentMemoryMiB": 3502,

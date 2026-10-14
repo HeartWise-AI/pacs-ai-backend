@@ -3,29 +3,45 @@
 DeepCORO-CLIP based binary classifier for right ventricular systolic function from coronary angiograms.
 
 Model weights are hosted on HuggingFace at [heartwise/DeepRV_CLIP](https://huggingface.co/heartwise/DeepRV_CLIP)
-and fetched at Docker build time via `--mount=type=secret,id=hf_token`.
+and fetched at Docker build time from the immutable revision recorded in
+`data/model_info.json`. The build verifies `best_model_epoch_4.pt` against its
+declared SHA-256 before creating the image.
 
-## Build & push
+## Official release
 
-Put your HuggingFace read token in `hf_token.txt` (gitignored via `*.txt`):
+Official images are built from reviewed `master` commits by the protected
+`Publish inference model image` GitHub Actions workflow. Select
+`model-examples/DeepRV-CLIP` and leave `publish_latest` disabled. The workflow
+publishes the immutable semantic-version tag, records its digest, and registers
+the verified artifact in the PACS-AI model catalog.
+
+Do not build or push the official tag manually and do not overwrite the legacy
+`heartwisehub/deeprv-clip:1.0` image.
+
+## Local build
+
+For local development, place the verified checkpoint in `models/` and build the
+explicitly local image:
 
 ```
-echo "<your_hf_token>" > hf_token.txt
-docker build --secret id=hf_token,src=./hf_token.txt -t heartwisehub/deeprv-clip:1.0 .
-docker push heartwisehub/deeprv-clip:1.0
+cp /path/to/best_model_epoch_4.pt models/
+docker build --platform linux/amd64 -f Dockerfile.local -t deeprv-clip:local .
 ```
+
+The local Dockerfile verifies the checkpoint fingerprint and marks the image
+with `ai.heartwise.release.channel=local`; it is not an official release path.
 
 ## Run
 
 ```
 # CPU
-docker run -p 8000:8000 heartwisehub/deeprv-clip:1.0
+docker run -p 8000:8000 deeprv-clip:local
 
 # GPU
-docker run -p 8000:8000 --gpus all heartwisehub/deeprv-clip:1.0
+docker run -p 8000:8000 --gpus all deeprv-clip:local
 
 # Interactive shell on pacs-net
-docker run -it --network pacs-net --gpus all --entrypoint /bin/bash heartwisehub/deeprv-clip:1.0
+docker run -it --network pacs-net --gpus all --entrypoint /bin/bash deeprv-clip:local
 ```
 
 ## Inputs
