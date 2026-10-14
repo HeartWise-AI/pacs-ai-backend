@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   unit-tests:
@@ -17,7 +18,27 @@ jobs:
     timeout-minutes: 45
 
     steps:
+      - name: Revalidate the approved pull request head
+        id: pull-request
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          result-encoding: string
+          script: |
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            const approvedHead = context.payload.pull_request.head.sha;
+            return String(
+              pullRequest.state === 'open' &&
+              !pullRequest.draft &&
+              pullRequest.base.ref === 'master' &&
+              pullRequest.head.sha === approvedHead
+            );
+
       - name: Check out the approved pull request commit
+        if: steps.pull-request.outputs.result == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -25,12 +46,14 @@ jobs:
           clean: true
 
       - name: Set up Go
+        if: steps.pull-request.outputs.result == 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: api-pacs/go.mod
           cache-dependency-path: api-pacs/go.sum
 
       - name: Start isolated Redis
+        if: steps.pull-request.outputs.result == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -56,6 +79,7 @@ jobs:
           exit 1
 
       - name: Run Go unit tests with the race detector
+        if: steps.pull-request.outputs.result == 'true'
         working-directory: api-pacs
         env:
           GOFLAGS: -mod=readonly
@@ -64,6 +88,6 @@ jobs:
         run: go test -race -count=1 -p 1 ./...
 
       - name: Stop isolated Redis
-        if: always()
+        if: always() && steps.pull-request.outputs.result == 'true'
         shell: bash
         run: redis-cli -h 127.0.0.1 -p 6379 shutdown nosave || true
