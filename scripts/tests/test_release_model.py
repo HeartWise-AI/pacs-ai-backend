@@ -649,6 +649,7 @@ class ReleaseModelTests(unittest.TestCase):
         self.assertIn("--channel release", workflow)
         self.assertIn("--repository-map .github/model-image-repositories.json", workflow)
         self.assertIn("--publish", workflow)
+        self.assertIn("--reuse-existing", workflow)
         self.assertNotIn("image_repository:", workflow)
         self.assertNotIn("secrets.HF_TOKEN", workflow)
         self.assertNotIn("secrets.DOCKER", workflow)
