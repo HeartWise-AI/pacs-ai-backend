@@ -128,8 +128,17 @@ func newControlledOperationManager(
 	repository *operationTestRepository,
 	executor DeploymentExecutor,
 ) (*OperationManager, *func()) {
+	return newControlledOperationManagerWithPublisher(t, repository, executor, nil)
+}
+
+func newControlledOperationManagerWithPublisher(
+	t *testing.T,
+	repository *operationTestRepository,
+	executor DeploymentExecutor,
+	publisher DeploymentOperationPublisher,
+) (*OperationManager, *func()) {
 	t.Helper()
-	manager, err := NewOperationManager(repository, executor, OperationManagerConfig{
+	manager, err := NewOperationManager(repository, executor, publisher, OperationManagerConfig{
 		OperationTimeout: time.Minute, PersistenceTimeout: time.Second,
 	})
 	if err != nil {
@@ -140,6 +149,31 @@ func newControlledOperationManager(
 	var queued func()
 	manager.launch = func(run func()) { queued = run }
 	return manager, &queued
+}
+
+type recordingDeploymentOperationPublisher struct {
+	mu         sync.Mutex
+	operations []entity.InferenceModelDeploymentOperation
+}
+
+func (publisher *recordingDeploymentOperationPublisher) PublishModelDeploymentOperation(
+	_ context.Context,
+	operation entity.InferenceModelDeploymentOperation,
+) error {
+	publisher.mu.Lock()
+	defer publisher.mu.Unlock()
+	publisher.operations = append(publisher.operations, operation)
+	return nil
+}
+
+func (publisher *recordingDeploymentOperationPublisher) sequences() []int64 {
+	publisher.mu.Lock()
+	defer publisher.mu.Unlock()
+	sequences := make([]int64, 0, len(publisher.operations))
+	for _, operation := range publisher.operations {
+		sequences = append(sequences, operation.Sequence)
+	}
+	return sequences
 }
 
 func TestOperationManagerDetachesFromRequestAndPersistsEveryStage(t *testing.T) {
@@ -164,7 +198,8 @@ func TestOperationManagerDetachesFromRequestAndPersistsEveryStage(t *testing.T) 
 			ContainerName: "model-candidate",
 		}, nil
 	})
-	manager, queued := newControlledOperationManager(t, repository, executor)
+	publisher := &recordingDeploymentOperationPublisher{}
+	manager, queued := newControlledOperationManagerWithPublisher(t, repository, executor, publisher)
 	callerCtx, cancelCaller := context.WithCancel(context.Background())
 	operation, err := manager.Start(callerCtx, operationTestRequest())
 	if err != nil {
@@ -180,6 +215,16 @@ func TestOperationManagerDetachesFromRequestAndPersistsEveryStage(t *testing.T) 
 	if completed.Status != entity.InferenceModelDeploymentOperationCompleted || completed.Stage != UpgradeStageActivate ||
 		completed.Sequence != 10 || completed.Active == nil || completed.Active.ContainerID != "new-container" {
 		t.Fatalf("completed operation = %+v", completed)
+	}
+	expectedSequences := []int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	actualSequences := publisher.sequences()
+	if len(actualSequences) != len(expectedSequences) {
+		t.Fatalf("published sequences = %v", actualSequences)
+	}
+	for index := range expectedSequences {
+		if actualSequences[index] != expectedSequences[index] {
+			t.Fatalf("published sequences = %v", actualSequences)
+		}
 	}
 }
 

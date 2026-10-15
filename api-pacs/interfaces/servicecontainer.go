@@ -116,6 +116,7 @@ var (
 	modelDeploymentOperations  *modelupgrade.OperationManager
 	docusignAPI                *docusign.DocusignAPI
 	worklistNotificationBroker *inferenceService.RedisWorklistNotificationBroker
+	modelDeploymentEventBroker *inferenceService.RedisModelDeploymentOperationBroker
 	inferenceQuotaManager      *inferenceService.RedisInferenceQuotaManager
 )
 
@@ -199,7 +200,9 @@ func (k *kernel) RegisterInferenceRESTCommandController() inferenceREST.Inferenc
 	service := k.inferenceCommandServiceContainer()
 
 	controller := inferenceREST.InferenceCommandController{
-		InferenceCommandServiceInterface: service,
+		InferenceCommandServiceInterface:            service,
+		ModelDeploymentOperationSubscriberInterface: modelDeploymentEventBroker,
+		ModelDeploymentEventHeartbeatInterval:       20 * time.Second,
 	}
 
 	return controller
@@ -677,6 +680,14 @@ func registerHandlers() {
 	if err = worklistNotificationBroker.Start(context.Background()); err != nil {
 		log.Fatalf("[SERVER] cannot subscribe to worklist Redis events %v", err)
 	}
+	modelDeploymentEventBroker = inferenceService.NewRedisModelDeploymentOperationBroker(
+		&inferenceService.RedisWorklistNotificationTransport{
+			Client: redisIAMDBHandler.Client, Channel: inferenceService.DefaultRedisModelDeploymentOperationChannel,
+		},
+	)
+	if err = modelDeploymentEventBroker.Start(context.Background()); err != nil {
+		log.Fatalf("[SERVER] cannot subscribe to model deployment Redis events %v", err)
+	}
 
 	// create new elasticsearch connection
 	elasticsearchDBHandler, err = elasticsearch.NewTypedClient(elasticsearchTypes.Config{
@@ -808,6 +819,7 @@ func registerHandlers() {
 		modelDeploymentOperations, validationErr = modelupgrade.NewOperationManager(
 			deploymentOperationRepository,
 			modelUpgradeCoordinator,
+			modelDeploymentEventBroker,
 			modelupgrade.OperationManagerConfig{
 				OperationTimeout:   modelUpgradeDuration("MODEL_DEPLOYMENT_OPERATION_TIMEOUT_SECONDS", 30*time.Minute),
 				PersistenceTimeout: modelUpgradeDuration("MODEL_DEPLOYMENT_PERSISTENCE_TIMEOUT_SECONDS", 15*time.Second),
