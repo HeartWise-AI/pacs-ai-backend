@@ -64,16 +64,13 @@ def load_catalog_payload(evidence_path: Path) -> dict[str, Any]:
         if not isinstance(workflow_run, str) or not workflow_run.isdigit():
             raise CatalogRegistrationError("Candidate evidence requires release.workflowRun")
 
-    return {
+    payload = {
         "modelId": require_string(model.get("id"), "model.id"),
         "version": require_string(model.get("version"), "model.version"),
         "imageReference": require_string(image.get("reference"), "image.reference"),
         "imageDigest": require_string(image.get("registryDigest"), "image.registryDigest"),
         "channel": channel,
         "baseVersion": base_version,
-        "sourceBranch": source_branch.strip() if isinstance(source_branch, str) else None,
-        "pullRequest": pull_request,
-        "workflowRun": workflow_run,
         "provenance": {
             "sourceRepository": require_string(source.get("repository"), "source.repository"),
             "sourceRevision": require_string(source.get("revision"), "source.revision"),
@@ -83,6 +80,15 @@ def load_catalog_payload(evidence_path: Path) -> dict[str, Any]:
             "weightsSha256": require_string(weights.get("sha256"), "weights.sha256"),
         },
     }
+    if channel == "CANDIDATE":
+        payload.update(
+            {
+                "sourceBranch": source_branch.strip(),
+                "pullRequest": pull_request,
+                "workflowRun": workflow_run,
+            }
+        )
+    return payload
 
 
 def catalog_endpoint(api_url: str) -> str:

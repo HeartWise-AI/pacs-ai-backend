@@ -59,6 +59,16 @@ class RegisterModelReleaseTests(unittest.TestCase):
         self.evidence_path.write_text(json.dumps(self.evidence), encoding="utf-8")
 
     def test_release_evidence_becomes_catalog_payload(self):
+        self.evidence["release"] = {
+            "channel": "RELEASE",
+            "baseVersion": "6.0.0",
+            "sourceBranch": None,
+            "pullRequest": None,
+            "workflowRun": "38763511171",
+            "reusedExisting": False,
+        }
+        self.evidence_path.write_text(json.dumps(self.evidence), encoding="utf-8")
+
         payload = CATALOG.load_catalog_payload(self.evidence_path)
 
         self.assertEqual("DeepCORO-SYNTAX", payload["modelId"])
@@ -66,6 +76,9 @@ class RegisterModelReleaseTests(unittest.TestCase):
         self.assertEqual("b" * 40, payload["provenance"]["modelRevision"])
         self.assertEqual("RELEASE", payload["channel"])
         self.assertEqual("6.0.0", payload["baseVersion"])
+        self.assertNotIn("sourceBranch", payload)
+        self.assertNotIn("pullRequest", payload)
+        self.assertNotIn("workflowRun", payload)
 
     def test_candidate_evidence_preserves_release_context(self):
         self.evidence["model"]["version"] = "6.0.1-rc.366.aaaaaaaa"
