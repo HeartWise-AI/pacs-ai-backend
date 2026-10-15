@@ -23,7 +23,9 @@ concurrency:
 jobs:
   release:
     if: github.ref == 'refs/heads/master'
-    runs-on: [self-hosted, linux, x64, pacs-ai-release]
+    runs-on:
+      group: pacs-model-release-approved
+      labels: [self-hosted, linux, x64, sd4health, pacs-ai-release]
     environment: model-release
     timeout-minutes: 180
     env:
