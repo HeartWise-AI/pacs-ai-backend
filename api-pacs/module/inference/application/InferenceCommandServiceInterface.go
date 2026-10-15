@@ -16,6 +16,8 @@ type InferenceCommandServiceInterface interface {
 	PublishInferenceModelVersion(ctx context.Context, version entity.InferenceModelVersion) (entity.InferenceModelVersion, error)
 	// DeployInferenceModelVersion activates an explicitly selected catalog version.
 	DeployInferenceModelVersion(ctx context.Context, data types.DeployInferenceModelVersion) (types.DeployInferenceModelVersionResult, error)
+	// GetInferenceModelDeploymentOperation returns one tenant-scoped durable deployment operation.
+	GetInferenceModelDeploymentOperation(ctx context.Context, data types.GetInferenceModelDeploymentOperation) (entity.InferenceModelDeploymentOperation, error)
 	// AddOnboardingModelQuestionnaireAnswers adds onboarding model questionnaire answers
 	AddOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error
 	// CreateInferenceIngestionJob creates an inference ingestion job

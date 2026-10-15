@@ -95,9 +95,13 @@ type InferenceModelVersionResponse struct {
 }
 
 type DeployInferenceModelVersionResponse struct {
-	Previous      entity.InferenceModelDeployment `json:"previous"`
-	Active        entity.InferenceModelDeployment `json:"active"`
-	ContainerName string                          `json:"containerName"`
+	DeploymentID string                                         `json:"deploymentId"`
+	Status       entity.InferenceModelDeploymentOperationStatus `json:"status"`
+	Stage        entity.InferenceModelDeploymentOperationStage  `json:"stage"`
+}
+
+type GetInferenceModelDeploymentOperationResponse struct {
+	Deployment entity.InferenceModelDeploymentOperation `json:"deployment"`
 }
 
 type AddOnboardingModelQuestionnaireAnswerRequest struct {

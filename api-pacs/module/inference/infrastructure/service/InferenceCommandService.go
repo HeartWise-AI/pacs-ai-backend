@@ -37,8 +37,8 @@ import (
 // InferenceCommandService handles the Inference command service logic
 type InferenceCommandService struct {
 	// Shared process-wide predictor. A nil value preserves the legacy direct path.
-	ModelManager            ManagedPredictor
-	ModelUpgradeCoordinator ModelUpgradeExecutor
+	ModelManager              ManagedPredictor
+	ModelDeploymentOperations ModelDeploymentOperationManager
 	repository.InferenceCommandRepositoryInterface
 	repository.InferenceQueryRepositoryInterface
 	repository.InferenceModelVersionRepositoryInterface
@@ -66,8 +66,9 @@ type ManagedPredictor interface {
 	Predict(context.Context, string, dockerInferenceTypes.PredictRequest) (dockerInferenceTypes.PredictResponse, error)
 }
 
-type ModelUpgradeExecutor interface {
-	Upgrade(context.Context, modelupgrade.UpgradeRequest) (modelupgrade.UpgradeResult, error)
+type ModelDeploymentOperationManager interface {
+	Start(context.Context, modelupgrade.StartDeploymentOperation) (entity.InferenceModelDeploymentOperation, error)
+	Get(context.Context, string, string, string) (entity.InferenceModelDeploymentOperation, error)
 }
 
 const inferenceIngestionRetrievalTimeout = 3 * time.Minute
@@ -767,25 +768,67 @@ func (service *InferenceCommandService) PublishInferenceModelVersion(
 	return service.InferenceModelVersionRepositoryInterface.PublishInferenceModelVersion(ctx, version)
 }
 
-// DeployInferenceModelVersion runs the transactional coordinator for one
-// administrator-selected catalog artifact. Selecting an older version is the
-// manual rollback operation.
+// DeployInferenceModelVersion creates a durable asynchronous operation for one
+// administrator-selected catalog artifact. Selecting an older version follows
+// the same path and is therefore the manual rollback operation.
 func (service *InferenceCommandService) DeployInferenceModelVersion(
 	ctx context.Context,
 	data types.DeployInferenceModelVersion,
 ) (types.DeployInferenceModelVersionResult, error) {
-	if service.ModelUpgradeCoordinator == nil {
+	if service.ModelDeploymentOperations == nil || service.InferenceModelVersionRepositoryInterface == nil ||
+		service.InferenceQueryRepositoryInterface == nil {
 		return types.DeployInferenceModelVersionResult{}, errors.New(apiError.InferenceUpgradeUnavailable)
 	}
-	result, err := service.ModelUpgradeCoordinator.Upgrade(ctx, modelupgrade.UpgradeRequest{
-		TenantID: data.TenantID, ModelID: data.ModelID, VersionID: data.VersionID,
+	data.TenantID = strings.TrimSpace(data.TenantID)
+	data.ModelID = strings.TrimSpace(data.ModelID)
+	data.VersionID = strings.TrimSpace(data.VersionID)
+	data.ActorUserID = strings.TrimSpace(data.ActorUserID)
+	if data.TenantID == "" || data.ModelID == "" || data.VersionID == "" || data.ActorUserID == "" {
+		return types.DeployInferenceModelVersionResult{}, errors.New(apiError.InvalidPayload)
+	}
+	registered, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByID(ctx, data.ModelID)
+	if err != nil {
+		return types.DeployInferenceModelVersionResult{}, err
+	}
+	if registered.TenantID != data.TenantID {
+		return types.DeployInferenceModelVersionResult{}, errors.New(apiError.MissingRecord)
+	}
+	version, err := service.InferenceModelVersionRepositoryInterface.SelectInferenceModelVersion(ctx, data.VersionID)
+	if err != nil {
+		return types.DeployInferenceModelVersionResult{}, err
+	}
+	version.Normalize()
+	if err = version.Validate(); err != nil || version.ID != data.VersionID || version.Status != entity.InferenceModelVersionAvailable {
+		return types.DeployInferenceModelVersionResult{}, errors.New(apiError.InvalidPayload)
+	}
+	source := entity.InferenceModelDeployment{}
+	if registered.Deployment != nil {
+		source = *registered.Deployment
+	}
+	if strings.TrimSpace(source.ContainerID) == "" {
+		source.ContainerID = strings.TrimSpace(registered.ContainerID)
+	}
+	if strings.TrimSpace(source.ImageReference) == "" {
+		source.ImageReference = strings.TrimSpace(registered.DockerImage)
+	}
+	operation, err := service.ModelDeploymentOperations.Start(ctx, modelupgrade.StartDeploymentOperation{
+		TenantID: data.TenantID, ModelID: data.ModelID, ActorUserID: data.ActorUserID,
+		Source: source, Target: version,
 	})
 	if err != nil {
 		return types.DeployInferenceModelVersionResult{}, err
 	}
-	return types.DeployInferenceModelVersionResult{
-		Previous: result.Previous, Active: result.Active, ContainerName: result.ContainerName,
-	}, nil
+	return types.DeployInferenceModelVersionResult{Operation: operation}, nil
+}
+
+func (service *InferenceCommandService) GetInferenceModelDeploymentOperation(
+	ctx context.Context,
+	data types.GetInferenceModelDeploymentOperation,
+) (entity.InferenceModelDeploymentOperation, error) {
+	if service.ModelDeploymentOperations == nil {
+		return entity.InferenceModelDeploymentOperation{}, errors.New(apiError.InferenceUpgradeUnavailable)
+	}
+	return service.ModelDeploymentOperations.Get(ctx, data.TenantID, data.ModelID, data.DeploymentID)
 }
 
 // AddOnboardingModelQuestionnaireAnswers adds an onboarding model questionnaire answers
