@@ -5,7 +5,7 @@
       "Description": "DeepCORO-CLIP based binary classifier for right ventricular systolic function (normal vs abnormal) from coronary angiograms.",
       "Developed_by": "HeartWise.AI / MHI",
       "Development_period": "2024-2026",
-      "Version": "1.0.0"
+      "Version": "1.0.1"
     },
     "Mechanism": {
       "Outcome": "Binary RV systolic function (0 = normal, 1 = abnormal)",

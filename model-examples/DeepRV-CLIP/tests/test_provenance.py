@@ -19,7 +19,7 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     provenance = manifest["provenance"]
 
-    assert manifest["version"] == "1.0.0"
+    assert manifest["version"] == "1.0.1"
     assert config["ModelStateDict"]["model_path"] == provenance["weightsPath"]
     assert provenance == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
@@ -78,7 +78,7 @@ def test_download_is_pinned_to_one_verified_checkpoint(monkeypatch, tmp_path):
 
 def test_release_identity_is_injected_into_runtime_model_info():
     source_revision = "a" * 40
-    candidate_version = "1.0.0-rc.375.aaaaaaaaaaaa"
+    candidate_version = "1.0.1-rc.378.aaaaaaaaaaaa"
     model_info = load_model_info(ROOT / "data/model_info.json")
     payload = model_info_payload(
         model_info,
