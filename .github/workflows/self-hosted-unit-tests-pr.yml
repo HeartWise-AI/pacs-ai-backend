@@ -1,0 +1,75 @@
+name: PACS AI backend self-hosted unit tests (PR)
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+      - edited
+      - closed
+      - converted_to_draft
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: >-
+    pacs-backend-pr-${{ github.event.pull_request.number }}-${{
+      github.event.action == 'edited' && github.event.changes.base == null &&
+      github.run_id || github.event.pull_request.head.sha
+    }}
+  cancel-in-progress: true
+
+jobs:
+  cancel-ineligible:
+    if: >-
+      github.event.action == 'closed' ||
+      github.event.action == 'converted_to_draft' ||
+      (
+        github.event.action == 'edited' &&
+        github.event.changes.base != null &&
+        github.event.pull_request.base.ref != 'master'
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel any obsolete self-hosted run
+        run: echo "The pull request is no longer eligible for self-hosted tests."
+
+  current-head:
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.action != 'converted_to_draft' &&
+      !(
+        github.event.action == 'edited' &&
+        github.event.changes.base == null
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      eligible: ${{ steps.pull-request.outputs.result }}
+    steps:
+      - name: Verify the event still describes the current eligible PR head
+        id: pull-request
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          result-encoding: string
+          script: |
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            const eventHead = context.payload.pull_request.head.sha;
+            return String(
+              pullRequest.state === 'open' &&
+              !pullRequest.draft &&
+              pullRequest.base.ref === 'master' &&
+              pullRequest.head.sha === eventHead
+            );
+
+  unit-tests:
+    needs: current-head
+    if: needs.current-head.outputs.eligible == 'true'
+    uses: HeartWise-AI/pacs-ai-backend/.github/workflows/self-hosted-unit-tests.yml@master
