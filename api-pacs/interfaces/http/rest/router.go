@@ -230,6 +230,7 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Get("/{ID}/versions", inferenceQueryController.GetInferenceModelVersions)
 							r.Post("/{ID}/versions/{versionID}/deploy", inferenceCommandController.DeployInferenceModelVersion)
 							r.Get("/{ID}/deployments/{deploymentID}", inferenceCommandController.GetInferenceModelDeploymentOperation)
+							r.Get("/{ID}/deployments/{deploymentID}/events", inferenceCommandController.StreamInferenceModelDeploymentEvents)
 							r.Delete("/{ID}/remove", inferenceCommandController.RemoveInferenceModel)
 							r.Put("/{ID}/update", inferenceCommandController.UpdateInferenceModel)
 

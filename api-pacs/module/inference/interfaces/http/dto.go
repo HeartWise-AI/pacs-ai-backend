@@ -104,6 +104,21 @@ type GetInferenceModelDeploymentOperationResponse struct {
 	Deployment entity.InferenceModelDeploymentOperation `json:"deployment"`
 }
 
+// InferenceModelDeploymentEventResponse is the safe, resumable progress
+// contract exposed by the model deployment SSE endpoint.
+type InferenceModelDeploymentEventResponse struct {
+	DeploymentID        string                                         `json:"deploymentId"`
+	Status              entity.InferenceModelDeploymentOperationStatus `json:"status"`
+	Stage               entity.InferenceModelDeploymentOperationStage  `json:"stage"`
+	Sequence            int64                                          `json:"sequence"`
+	Timestamp           int64                                          `json:"timestamp"`
+	ElapsedMilliseconds int64                                          `json:"elapsedMilliseconds"`
+	Terminal            bool                                           `json:"terminal"`
+	ErrorCode           string                                         `json:"errorCode,omitempty"`
+	ErrorMessage        string                                         `json:"errorMessage,omitempty"`
+	RollbackError       string                                         `json:"rollbackError,omitempty"`
+}
+
 type AddOnboardingModelQuestionnaireAnswerRequest struct {
 	ModelID                             string                               `json:"modelId" validate:"required"`
 	OnboardingModelQuestionnaireAnswers []OnboardingModelQuestionnaireAnswer `json:"onboardingModelQuestionnaireAnswers" validate:"required"`
