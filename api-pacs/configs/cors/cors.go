@@ -14,6 +14,7 @@ func (c *Config) AllowedHeaders() []string {
 		"Accept",
 		"Authorization",
 		"Content-Type",
+		"Last-Event-ID",
 		"X-CSRF-Token",
 		"X-FB-SUDO-KEY",
 	}

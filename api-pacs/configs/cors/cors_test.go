@@ -11,3 +11,9 @@ func TestExposedHeadersIncludesRetryAfter(t *testing.T) {
 
 	require.Contains(t, headers, "Retry-After")
 }
+
+func TestAllowedHeadersIncludesSSEReconnectCursor(t *testing.T) {
+	headers := (&Config{}).AllowedHeaders()
+
+	require.Contains(t, headers, "Last-Event-ID")
+}
