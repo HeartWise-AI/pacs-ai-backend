@@ -128,7 +128,25 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.catalog_recovery_run_id }}
           name: model-release-evidence-${{ inputs.catalog_recovery_run_id }}-${{ inputs.catalog_recovery_run_attempt }}
-          path: ${{ runner.temp }}
+          path: ${{ runner.temp }}/catalog-recovery
+
+      - name: Validate existing release evidence
+        if: inputs.catalog_recovery_run_id != ''
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          recovery_evidence="$RUNNER_TEMP/catalog-recovery/model-release-evidence.json"
+          test -f "$recovery_evidence"
+          python3 scripts/validate_catalog_recovery.py \
+            "$recovery_evidence" \
+            "$MODEL_DIRECTORY" \
+            --repository "$GITHUB_REPOSITORY" \
+            --run-id "$CATALOG_RECOVERY_RUN_ID" \
+            --run-attempt "$CATALOG_RECOVERY_RUN_ATTEMPT" \
+            --repository-map .github/model-image-repositories.json
+          install -m 600 "$recovery_evidence" "$RELEASE_EVIDENCE"
 
       - name: Authenticate to the private model registry
         if: inputs.catalog_recovery_run_id == ''

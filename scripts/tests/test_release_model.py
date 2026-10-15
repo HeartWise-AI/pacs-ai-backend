@@ -649,6 +649,7 @@ class ReleaseModelTests(unittest.TestCase):
         self.assertIn("scripts/release-model.py", workflow)
         self.assertIn("scripts/model_image_repository.py", workflow)
         self.assertIn("scripts/register-model-release.py", workflow)
+        self.assertIn("scripts/validate_catalog_recovery.py", workflow)
         self.assertIn("actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093", workflow)
         self.assertIn("--channel release", workflow)
         self.assertIn("--repository-map .github/model-image-repositories.json", workflow)
