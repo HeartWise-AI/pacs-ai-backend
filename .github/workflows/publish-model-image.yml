@@ -117,6 +117,7 @@ jobs:
             --repository-map .github/model-image-repositories.json \
             --hf-token-file "$HF_TOKEN_FILE" \
             --publish \
+            --reuse-existing \
             --evidence "$RELEASE_EVIDENCE" \
             "${latest_argument[@]}"
 
