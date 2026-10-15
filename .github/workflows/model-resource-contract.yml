@@ -9,8 +9,10 @@ on:
       - "scripts/tests/test_model_lifecycle.py"
       - "scripts/tests/test_deploy_model.py"
       - "scripts/tests/test_release_model.py"
+      - "scripts/tests/test_register_model_release.py"
       - "scripts/deploy-model.sh"
       - "scripts/release-model.py"
+      - "scripts/register-model-release.py"
       - ".github/workflows/publish-model-image.yml"
       - ".github/actionlint.yaml"
       - "api-pacs/infrastructures/providers/api/dockerinference/**"
@@ -31,8 +33,10 @@ on:
       - "scripts/tests/test_model_lifecycle.py"
       - "scripts/tests/test_deploy_model.py"
       - "scripts/tests/test_release_model.py"
+      - "scripts/tests/test_register_model_release.py"
       - "scripts/deploy-model.sh"
       - "scripts/release-model.py"
+      - "scripts/register-model-release.py"
       - ".github/workflows/publish-model-image.yml"
       - ".github/actionlint.yaml"
       - "api-pacs/infrastructures/providers/api/dockerinference/**"
@@ -67,6 +71,7 @@ jobs:
           scripts.tests.test_deploy_model
           scripts.tests.test_model_image_repository
           scripts.tests.test_release_model
+          scripts.tests.test_register_model_release
           -v
       - run: bash -n scripts/deploy-model.sh
 

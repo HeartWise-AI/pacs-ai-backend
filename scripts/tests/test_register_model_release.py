@@ -113,6 +113,7 @@ class RegisterModelReleaseTests(unittest.TestCase):
 
         request = open_request.call_args.args[0]
         self.assertEqual("POST", request.method)
+        self.assertEqual(CATALOG.CATALOG_USER_AGENT, request.get_header("User-agent"))
         self.assertEqual("secret", request.get_header("X-fb-sudo-key"))
         self.assertEqual(payload, json.loads(request.data))
         self.assertEqual("version-id", result["data"]["id"])

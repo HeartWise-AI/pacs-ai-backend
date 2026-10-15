@@ -14,6 +14,9 @@ from pathlib import Path
 from typing import Any
 
 
+CATALOG_USER_AGENT = "PACS-AI-model-release/1.0"
+
+
 class CatalogRegistrationError(RuntimeError):
     """The release evidence or catalog response was invalid."""
 
@@ -126,6 +129,7 @@ def register_catalog_version(
         method="POST",
         headers={
             "Content-Type": "application/json",
+            "User-Agent": CATALOG_USER_AGENT,
             "X-FB-SUDO-KEY": sudo_key,
         },
     )
