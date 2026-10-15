@@ -632,6 +632,9 @@ class ReleaseModelTests(unittest.TestCase):
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 
         self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("catalog_recovery_run_id:", workflow)
+        self.assertIn("catalog_recovery_run_attempt:", workflow)
+        self.assertIn("actions: read", workflow)
         self.assertIn("group: pacs-model-release-approved", workflow)
         self.assertIn(
             "labels: [self-hosted, linux, x64, sd4health, pacs-ai-release]",
@@ -646,6 +649,7 @@ class ReleaseModelTests(unittest.TestCase):
         self.assertIn("scripts/release-model.py", workflow)
         self.assertIn("scripts/model_image_repository.py", workflow)
         self.assertIn("scripts/register-model-release.py", workflow)
+        self.assertIn("actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093", workflow)
         self.assertIn("--channel release", workflow)
         self.assertIn("--repository-map .github/model-image-repositories.json", workflow)
         self.assertIn("--publish", workflow)
