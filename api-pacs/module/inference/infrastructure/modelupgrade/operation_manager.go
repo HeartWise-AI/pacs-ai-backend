@@ -20,6 +20,10 @@ type DeploymentExecutor interface {
 	Upgrade(context.Context, UpgradeRequest) (UpgradeResult, error)
 }
 
+type DeploymentOperationPublisher interface {
+	PublishModelDeploymentOperation(context.Context, entity.InferenceModelDeploymentOperation) error
+}
+
 type StartDeploymentOperation struct {
 	TenantID    string
 	ModelID     string
@@ -36,6 +40,7 @@ type OperationManagerConfig struct {
 type OperationManager struct {
 	repository repository.InferenceModelDeploymentOperationRepositoryInterface
 	executor   DeploymentExecutor
+	publisher  DeploymentOperationPublisher
 	config     OperationManagerConfig
 	now        func() time.Time
 	newID      func() string
@@ -45,6 +50,7 @@ type OperationManager struct {
 func NewOperationManager(
 	repository repository.InferenceModelDeploymentOperationRepositoryInterface,
 	executor DeploymentExecutor,
+	publisher DeploymentOperationPublisher,
 	config OperationManagerConfig,
 ) (*OperationManager, error) {
 	if repository == nil || executor == nil {
@@ -59,6 +65,7 @@ func NewOperationManager(
 	return &OperationManager{
 		repository: repository,
 		executor:   executor,
+		publisher:  publisher,
 		config:     config,
 		now:        time.Now,
 		newID:      func() string { return ksuid.New().String() },
@@ -89,6 +96,7 @@ func (manager *OperationManager) Start(
 	if err := manager.repository.CreateInferenceModelDeploymentOperation(ctx, operation); err != nil {
 		return entity.InferenceModelDeploymentOperation{}, err
 	}
+	manager.publish(operation)
 	log.Printf(
 		"[model-deployment] event=accepted deployment_id=%s tenant_id=%s model_id=%s version_id=%s actor_user_id=%s",
 		operation.ID, operation.TenantID, operation.ModelID, operation.CatalogVersionID, operation.ActorUserID,
@@ -137,6 +145,7 @@ func (manager *OperationManager) ReconcileInterrupted(ctx context.Context) error
 			reconciliationErrors = append(reconciliationErrors, fmt.Errorf("deployment %s: %w", operation.ID, updateErr))
 			continue
 		}
+		manager.publish(operation)
 		log.Printf(
 			"[model-deployment] event=interrupted deployment_id=%s tenant_id=%s model_id=%s",
 			operation.ID, operation.TenantID, operation.ModelID,
@@ -236,7 +245,25 @@ func (manager *OperationManager) finishFailure(operation *entity.InferenceModelD
 func (manager *OperationManager) persist(operation entity.InferenceModelDeploymentOperation) error {
 	ctx, cancel := context.WithTimeout(context.Background(), manager.config.PersistenceTimeout)
 	defer cancel()
-	return manager.repository.UpdateInferenceModelDeploymentOperation(ctx, operation)
+	if err := manager.repository.UpdateInferenceModelDeploymentOperation(ctx, operation); err != nil {
+		return err
+	}
+	manager.publish(operation)
+	return nil
+}
+
+func (manager *OperationManager) publish(operation entity.InferenceModelDeploymentOperation) {
+	if manager.publisher == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), manager.config.PersistenceTimeout)
+	defer cancel()
+	if err := manager.publisher.PublishModelDeploymentOperation(ctx, operation); err != nil {
+		log.Printf(
+			"[model-deployment] event=progress_publish_failed deployment_id=%s sequence=%d err=%v",
+			operation.ID, operation.Sequence, err,
+		)
+	}
 }
 
 func deploymentPublicErrorCode(err error) string {
