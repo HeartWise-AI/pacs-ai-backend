@@ -4,7 +4,15 @@
   "domainName": "Cardiology",
   "stage": "ai_inference",
   "modality": "Echocardiogram",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "provenance": {
+    "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+    "sourceRevision": null,
+    "modelRepository": "CarDS-Yale/PanEcho",
+    "modelRevision": "32561e471cd8f181550a659d9aa01146c9f9e322",
+    "weightsPath": "panecho.pt",
+    "weightsSha256": "896a279d2e5d669dd762adb2077e948ec38087006d2b4001657b87a132e2da35"
+  },
   "resources": {
     "gpuRequired": true,
     "residentMemoryMiB": 1442,
