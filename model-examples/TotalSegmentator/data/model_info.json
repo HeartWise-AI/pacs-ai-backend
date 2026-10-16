@@ -1,7 +1,15 @@
 {
   "modelId": "TotalSegmentator",
   "modelName": "TotalSegmentator",
-  "version": "2.9.0",
+  "version": "2.9.1",
+  "provenance": {
+    "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+    "sourceRevision": null,
+    "modelRepository": "wasserth/TotalSegmentator",
+    "modelRevision": "d0eb302278588eade4dcc33093d141fe57a3ca90",
+    "weightsPath": "Dataset297_TotalSegmentator_total_3mm_1559subj.zip",
+    "weightsSha256": "0baa2c8de2975600eb31801dd5c1825cd2b356f794498659cf3348714c073394"
+  },
   "resources": {
     "gpuRequired": true,
     "residentMemoryMiB": 1254,
