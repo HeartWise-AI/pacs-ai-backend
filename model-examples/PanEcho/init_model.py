@@ -3,8 +3,8 @@ from models.pan_echo import PanEcho
 
 def init_model():
     return PanEcho(
-        model_path='./content/panecho.pt',
-        task_path='./content/tasks.pkl',
+        model_path='./models/panecho.pt',
+        task_path='./models/tasks.pkl',
         pretrained=True,
         image_encoder_only=False,
         backbone_only=False,

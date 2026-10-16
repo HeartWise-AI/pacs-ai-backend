@@ -1,34 +1,22 @@
-Important: Models are stored on huggingface, please refer to [pacs-ai-examples](https://huggingface.co/heartwise/pacs-ai-examples).
+# PanEcho inference image
 
-To build the docker image and push it to the docker hub, run the following command:
+The production image downloads the official PanEcho v1.0 checkpoint and task metadata from
+`CarDS-Yale/PanEcho` during the build. The source revision and SHA-256 fingerprints are fixed by
+`data/model_info.json` and verified by `download_model.py`; ignored files under `content/` are not
+part of the build context.
 
-```
-docker build -t heartwisehub/pacs-ai-pan-echo:1.0 .
-docker push heartwisehub/pacs-ai-pan-echo:1.0
-```
-
-`PanEcho` can now optionally run the `ECHO-PRIME` view classifier internally before inference. The classifier will be active when `best_model_pretrained_echoprime_updated.pth` exists under [weights](/home/jdelfrate/pacs-ai-backend/model-examples/PanEcho/weights), either because it was downloaded at build time or placed there manually.
-
-To build with the optional ECHO-PRIME view-classifier weights included, enable the build arg and pass the Hugging Face token as a BuildKit secret:
+Build and verify a local candidate with the repository release tooling:
 
 ```bash
-DOCKER_BUILDKIT=1 docker build \
-  --build-arg DOWNLOAD_VIEW_CLASSIFIER_WEIGHTS=true \
-  --secret id=hf_token,src=/path/to/hf_token.txt \
-  -t heartwisehub/pacs-ai-pan-echo:1.0 .
+python3 scripts/release-model.py model-examples/PanEcho \
+  --image-repository heartwisehub/pacs-ai-pan-echo \
+  --hf-token-file /secure/path/hf_token
 ```
 
-To run the docker image locally for testing, run the following command:
-```
-docker run -p 8000:8000 heartwisehub/pacs-ai-pan-echo:1.0
-```
+Official images are published only after merge through the protected `Publish inference model
+image` workflow. The immutable semantic-version tag and registry digest identify the deployed
+artifact; `latest` is optional and non-authoritative.
 
-If you want to add GPU support, run the following command:
-```
-docker run -p 8000:8000 --gpus all heartwisehub/pacs-ai-pan-echo:1.0
-```
-
-To run the docker image locally for debugging with the pacs network, run the following command and then you can attach to the container and debug it:
-```
-docker run -it --network pacs-net --gpus all --entrypoint /bin/bash heartwisehub/pacs-ai-pan-echo:1.0
-```
+The image does not package the optional EchoPrime view-classifier checkpoint. When that checkpoint
+is absent, the existing runtime falls back to request metadata or unfiltered PanEcho inference, which
+matches the behavior of the measured 1.0.0 deployment.

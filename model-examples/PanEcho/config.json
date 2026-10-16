@@ -2,8 +2,8 @@
   "modelDirectory": "models",
   "models": {
     "pan_echo": {
-      "model_path": "/app/content/panecho.pt",
-      "task_path": "/app/content/tasks.pkl",
+      "model_path": "/app/models/panecho.pt",
+      "task_path": "/app/models/tasks.pkl",
       "pretrained": true,
       "image_encoder_only": false,
       "backbone_only": false,
