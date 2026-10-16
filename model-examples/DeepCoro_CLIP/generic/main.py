@@ -8,12 +8,6 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from logic import CustomPredictionService
-from utils.resource_config import create_inference_semaphore, load_model_info, model_info_payload
-from utils.model_lifecycle import (
-    ModelLifecycle,
-    install_model_lifecycle_routes,
-    records_model_activity,
-)
 from utils.http_utils import (
     Config,
     HTMLPredictionResponse,
@@ -24,6 +18,12 @@ from utils.http_utils import (
     PredictRequest,
     WebAppPredictionResponse,
 )
+from utils.model_lifecycle import (
+    ModelLifecycle,
+    install_model_lifecycle_routes,
+    records_model_activity,
+)
+from utils.resource_config import create_inference_semaphore, load_model_info, model_info_payload
 
 root_path = os.getcwd()
 
@@ -36,6 +36,7 @@ model_info = load_model_info(os.path.join(root_path, "data", "model_info.json"))
 served_model_info = model_info_payload(
     model_info,
     source_revision=os.getenv("PACS_AI_SOURCE_REVISION") or None,
+    model_version=os.getenv("PACS_AI_MODEL_VERSION") or None,
 )
 inference_lock = create_inference_semaphore(model_info)
 
