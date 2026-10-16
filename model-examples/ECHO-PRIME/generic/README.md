@@ -1,23 +1,18 @@
-Important: Models are stored on huggingface, please refer to [pacs-ai-examples](https://huggingface.co/heartwise/pacs-ai-examples).
+# EchoPrime inference image
 
-To build the docker image and push it to the docker hub, run the following command:
+The production image downloads the official EchoPrime v1.0.0 model archive from
+`echonet/EchoPrime` and the PACS-AI auxiliary artifacts from a pinned
+`heartwise/pacs-ai-examples` revision. `download_model.py` verifies the archive, both neural-network
+checkpoints, and every auxiliary file before the image is assembled.
 
-```
-docker build -t heartwisehub/echo-prime-generic:1.2 .
-docker push heartwisehub/echo-prime-generic:1.2
-```
+Build and verify a local candidate with the repository release tooling:
 
-To run the docker image locally for testing, run the following command:
-```
-docker run -p 8000:8000 heartwisehub/echo-prime-generic:1.2
-```
-
-If you want to add GPU support, run the following command:
-```
-docker run -p 8000:8000 --gpus all heartwisehub/echo-prime-generic:1.2
+```bash
+python3 scripts/release-model.py model-examples/ECHO-PRIME/generic \
+  --image-repository heartwisehub/echo-prime-generic \
+  --hf-token-file /secure/path/hf_token
 ```
 
-To run the docker image locally for debugging with the pacs network, run the following command and then you can attach to the container and debug it:
-```
-docker run -it --network pacs-net --gpus all --entrypoint /bin/bash heartwisehub/echo-prime-generic:1.2
-```
+Official images are published only after merge through the protected `Publish inference model
+image` workflow. The immutable semantic-version tag and registry digest identify the deployed
+artifact; `latest` is optional and non-authoritative.

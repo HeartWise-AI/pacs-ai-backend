@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+models/model_data/
+models/weights/
+models/auxiliary_files/
+hf_token*

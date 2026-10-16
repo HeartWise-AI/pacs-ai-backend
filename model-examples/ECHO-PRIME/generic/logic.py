@@ -93,7 +93,13 @@ class CustomPredictionService(BasePredictionService):
     def load_view_classifier(self, model_path, device):
         """Load and initialize the view classifier model."""
         vc_checkpoint = torch.load(model_path, map_location=device, weights_only=True)
-        vc_state_dict = {key[6:]: value for key, value in vc_checkpoint["state_dict"].items()}
+        if "state_dict" in vc_checkpoint:
+            vc_state_dict = {
+                key.removeprefix("model."): value
+                for key, value in vc_checkpoint["state_dict"].items()
+            }
+        else:
+            vc_state_dict = vc_checkpoint
 
         view_classifier = torchvision.models.convnext_base()
         view_classifier.classifier[-1] = torch.nn.Linear(
