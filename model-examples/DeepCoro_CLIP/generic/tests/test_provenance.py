@@ -25,18 +25,22 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
             "backbone": "mvit",
             "num_frames": 16,
             "pretrained": False,
+            "output_dim": 512,
             "freeze_ratio": 1.0,
             "dropout": 0.2,
             "num_heads": 4,
             "aggregator_depth": 1,
             "aggregate_videos_tokens": False,
             "per_video_pool": False,
+            "use_rope": False,
         },
         "MultiInstanceLinearProbing": {
             "embedding_dim": 512,
             "pooling_mode": "attention+cls_token",
             "attention_hidden": 256,
             "use_cls_token": True,
+            "separate_video_attention": True,
+            "normalization_strategy": "post_norm",
         },
         "VideoMILWrapper": {
             "num_videos": 10,
@@ -46,6 +50,8 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
         "ModelStateDict": {
             "model_path": "zcb8cu0l_20260213-033432/best_model_epoch_11.pt",
         },
+        "dataset_mean": [122.09012603759766] * 3,
+        "dataset_std": [28.790834426879883] * 3,
     }
     assert config["ModelStateDict"]["model_path"] == provenance["weightsPath"]
     assert provenance == {
@@ -56,6 +62,13 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
         "weightsPath": "zcb8cu0l_20260213-033432/best_model_epoch_11.pt",
         "weightsSha256": "4eac7676bc24930466d84f04f813fcbc1b9e70b056232cad603f18c84d008267",
     }
+
+
+def test_manifest_upload_limit_matches_model_video_capacity():
+    config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
+    manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
+
+    assert manifest["dicomUploadMax"] == config["VideoMILWrapper"]["num_videos"] == 10
 
 
 def test_weight_verification_accepts_only_the_expected_bytes(tmp_path):
