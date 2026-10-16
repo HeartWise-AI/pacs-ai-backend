@@ -108,6 +108,10 @@ const (
 	InferenceUpgradeUnavailable string = "INFERENCE_UPGRADE_UNAVAILABLE"
 	// InferenceCandidateDeploymentDisabled prevents development artifacts from running in protected environments.
 	InferenceCandidateDeploymentDisabled string = "INFERENCE_CANDIDATE_DEPLOYMENT_DISABLED"
+	// InferenceDeploymentFailed is the safe public code for an asynchronous deployment failure.
+	InferenceDeploymentFailed string = "INFERENCE_DEPLOYMENT_FAILED"
+	// InferenceDeploymentInterrupted marks an operation abandoned by an API process restart.
+	InferenceDeploymentInterrupted string = "INFERENCE_DEPLOYMENT_INTERRUPTED"
 
 	// Cloudflare-related errors
 	CloudflareAPIError string = "CLOUDFLARE_API_ERROR"

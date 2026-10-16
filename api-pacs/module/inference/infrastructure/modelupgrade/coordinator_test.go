@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -329,6 +330,49 @@ func TestUpgradeCoordinatorActivatesValidatedCandidate(t *testing.T) {
 	}
 	if result.Active.ContainerID != testCandidateID || result.Previous.ContainerID != testActiveContainerID {
 		t.Fatalf("unexpected upgrade result: %+v", result)
+	}
+}
+
+func TestUpgradeCoordinatorReportsEveryStageInOrder(t *testing.T) {
+	fixture := newCoordinatorFixture(t)
+	stages := make([]UpgradeStage, 0, 8)
+	_, err := fixture.coordinator.Upgrade(context.Background(), UpgradeRequest{
+		TenantID: "tenant-1", ModelID: "registration-1", VersionID: "catalog-version-2",
+		OnStage: func(_ context.Context, stage UpgradeStage) error {
+			stages = append(stages, stage)
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []UpgradeStage{
+		UpgradeStageResolveActive, UpgradeStageResolveVersion, UpgradeStagePull, UpgradeStageCreate,
+		UpgradeStageValidate, UpgradeStageDrain, UpgradeStagePrepare, UpgradeStageActivate,
+	}
+	if !reflect.DeepEqual(stages, want) {
+		t.Fatalf("stages = %v want %v", stages, want)
+	}
+}
+
+func TestUpgradeCoordinatorCleansCandidateWhenStagePersistenceFails(t *testing.T) {
+	fixture := newCoordinatorFixture(t)
+	persistErr := errors.New("persist stage")
+	_, err := fixture.coordinator.Upgrade(context.Background(), UpgradeRequest{
+		TenantID: "tenant-1", ModelID: "registration-1", VersionID: "catalog-version-2",
+		OnStage: func(_ context.Context, stage UpgradeStage) error {
+			if stage == UpgradeStageValidate {
+				return persistErr
+			}
+			return nil
+		},
+	})
+	upgradeErr := assertUpgradeStage(t, err, UpgradeStageValidate)
+	if !errors.Is(upgradeErr.Err, persistErr) || !reflect.DeepEqual(fixture.docker.removed, []string{testCandidateID}) {
+		t.Fatalf("upgrade error=%v removed=%v", upgradeErr, fixture.docker.removed)
+	}
+	if slices.Contains(*fixture.events, "manager.drain:"+testActiveContainerID) {
+		t.Fatal("active model was drained after progress persistence failed")
 	}
 }
 

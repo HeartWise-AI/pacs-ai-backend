@@ -43,18 +43,27 @@ func (catalog *modelVersionCatalog) ListInferenceModelVersions(
 	return catalog.versions, catalog.err
 }
 
-type modelVersionUpgradeExecutor struct {
-	request modelupgrade.UpgradeRequest
-	result  modelupgrade.UpgradeResult
-	err     error
+type modelVersionDeploymentOperations struct {
+	request   modelupgrade.StartDeploymentOperation
+	operation entity.InferenceModelDeploymentOperation
+	err       error
 }
 
-func (executor *modelVersionUpgradeExecutor) Upgrade(
+func (manager *modelVersionDeploymentOperations) Start(
 	_ context.Context,
-	request modelupgrade.UpgradeRequest,
-) (modelupgrade.UpgradeResult, error) {
-	executor.request = request
-	return executor.result, executor.err
+	request modelupgrade.StartDeploymentOperation,
+) (entity.InferenceModelDeploymentOperation, error) {
+	manager.request = request
+	return manager.operation, manager.err
+}
+
+func (manager *modelVersionDeploymentOperations) Get(
+	context.Context,
+	string,
+	string,
+	string,
+) (entity.InferenceModelDeploymentOperation, error) {
+	return manager.operation, manager.err
 }
 
 type modelVersionQueryRepository struct {
@@ -136,25 +145,45 @@ func TestPublishInferenceModelVersionValidatesAndDelegates(t *testing.T) {
 	}
 }
 
-func TestDeployInferenceModelVersionPassesOnlyCatalogIdentity(t *testing.T) {
-	executor := &modelVersionUpgradeExecutor{result: modelupgrade.UpgradeResult{
-		Active: entity.InferenceModelDeployment{CatalogVersionID: "catalog-version"},
-	}}
-	service := InferenceCommandService{ModelUpgradeCoordinator: executor}
+func TestDeployInferenceModelVersionCreatesDurableOperationFromRegisteredAndCatalogIdentity(t *testing.T) {
+	version := validServiceModelVersion()
+	manager := &modelVersionDeploymentOperations{operation: entity.InferenceModelDeploymentOperation{ID: "operation-1"}}
+	service := InferenceCommandService{
+		ModelDeploymentOperations: manager,
+		InferenceQueryRepositoryInterface: &modelVersionQueryRepository{model: entity.InferenceModel{
+			TenantID: "tenant-1", ContainerID: "old-container", DockerImage: "heartwisehub/model:1.0.0",
+		}},
+		InferenceModelVersionRepositoryInterface: &modelVersionCatalog{selected: version},
+	}
 
 	result, err := service.DeployInferenceModelVersion(context.Background(), types.DeployInferenceModelVersion{
-		TenantID: "tenant-1", ModelID: "registration-1", VersionID: "catalog-version",
+		TenantID: "tenant-1", ModelID: "registration-1", VersionID: "catalog-version", ActorUserID: "user-1",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if executor.request != (modelupgrade.UpgradeRequest{
-		TenantID: "tenant-1", ModelID: "registration-1", VersionID: "catalog-version",
-	}) {
-		t.Fatalf("upgrade request = %+v", executor.request)
+	if manager.request.TenantID != "tenant-1" || manager.request.ModelID != "registration-1" ||
+		manager.request.ActorUserID != "user-1" || manager.request.Target.ID != "catalog-version" ||
+		manager.request.Source.ContainerID != "old-container" || manager.request.Source.ImageReference != "heartwisehub/model:1.0.0" {
+		t.Fatalf("deployment request = %+v", manager.request)
 	}
-	if result.Active.CatalogVersionID != "catalog-version" {
+	if result.Operation.ID != "operation-1" {
 		t.Fatalf("deployment result = %+v", result)
+	}
+}
+
+func TestDeployInferenceModelVersionRejectsCrossTenantBeforeScheduling(t *testing.T) {
+	manager := &modelVersionDeploymentOperations{}
+	service := InferenceCommandService{
+		ModelDeploymentOperations:                manager,
+		InferenceQueryRepositoryInterface:        &modelVersionQueryRepository{model: entity.InferenceModel{TenantID: "tenant-2"}},
+		InferenceModelVersionRepositoryInterface: &modelVersionCatalog{selected: validServiceModelVersion()},
+	}
+	_, err := service.DeployInferenceModelVersion(context.Background(), types.DeployInferenceModelVersion{
+		TenantID: "tenant-1", ModelID: "registration-1", VersionID: "catalog-version", ActorUserID: "user-1",
+	})
+	if err == nil || err.Error() != apiError.MissingRecord || manager.request.TenantID != "" {
+		t.Fatalf("cross-tenant deployment returned %v request=%+v", err, manager.request)
 	}
 }
 

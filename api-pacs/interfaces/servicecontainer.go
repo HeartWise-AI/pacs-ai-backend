@@ -113,6 +113,7 @@ var (
 	dockerInferenceAPI         *dockerinference.DockerInferenceAPI
 	modelManager               *modelmanager.Manager
 	modelUpgradeCoordinator    *modelupgrade.UpgradeCoordinator
+	modelDeploymentOperations  *modelupgrade.OperationManager
 	docusignAPI                *docusign.DocusignAPI
 	worklistNotificationBroker *inferenceService.RedisWorklistNotificationBroker
 	inferenceQuotaManager      *inferenceService.RedisInferenceQuotaManager
@@ -321,7 +322,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 	}
 
 	service := &inferenceService.InferenceCommandService{
-		ModelUpgradeCoordinator: modelUpgradeCoordinator,
+		ModelDeploymentOperations: modelDeploymentOperations,
 		InferenceCommandRepositoryInterface: &inferenceRepository.InferenceCommandRepositoryCircuitBreaker{
 			InferenceCommandRepositoryInterface: commandRepository,
 		},
@@ -800,6 +801,29 @@ func registerHandlers() {
 		)
 		if validationErr != nil {
 			log.Fatalf("[SERVER] cannot initialize model upgrade coordinator: %v", validationErr)
+		}
+		deploymentOperationRepository := &inferenceRepository.InferenceModelDeploymentOperationRepository{
+			FirebaseAdminSDK: firebaseAdminSDK,
+		}
+		modelDeploymentOperations, validationErr = modelupgrade.NewOperationManager(
+			deploymentOperationRepository,
+			modelUpgradeCoordinator,
+			modelupgrade.OperationManagerConfig{
+				OperationTimeout:   modelUpgradeDuration("MODEL_DEPLOYMENT_OPERATION_TIMEOUT_SECONDS", 30*time.Minute),
+				PersistenceTimeout: modelUpgradeDuration("MODEL_DEPLOYMENT_PERSISTENCE_TIMEOUT_SECONDS", 15*time.Second),
+			},
+		)
+		if validationErr != nil {
+			log.Fatalf("[SERVER] cannot initialize model deployment operations: %v", validationErr)
+		}
+		reconcileDeploymentsCtx, cancelDeploymentReconciliation := context.WithTimeout(
+			context.Background(),
+			modelUpgradeDuration("MODEL_DEPLOYMENT_RECONCILIATION_TIMEOUT_SECONDS", 30*time.Second),
+		)
+		validationErr = modelDeploymentOperations.ReconcileInterrupted(reconcileDeploymentsCtx)
+		cancelDeploymentReconciliation()
+		if validationErr != nil {
+			log.Fatalf("[SERVER] model deployment operation reconciliation failed: %v", validationErr)
 		}
 	}
 

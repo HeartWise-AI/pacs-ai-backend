@@ -18,24 +18,25 @@ import (
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 )
 
-type UpgradeStage string
+type UpgradeStage = entity.InferenceModelDeploymentOperationStage
 
 const (
-	UpgradeStageResolveActive  UpgradeStage = "resolve_active"
-	UpgradeStageResolveVersion UpgradeStage = "resolve_version"
-	UpgradeStagePull           UpgradeStage = "pull"
-	UpgradeStageCreate         UpgradeStage = "create_candidate"
-	UpgradeStageValidate       UpgradeStage = "validate_candidate"
-	UpgradeStageDrain          UpgradeStage = "drain_active"
-	UpgradeStagePrepare        UpgradeStage = "prepare_candidate"
-	UpgradeStageActivate       UpgradeStage = "activate_candidate"
+	UpgradeStageResolveActive  = entity.InferenceModelDeploymentStageResolveActive
+	UpgradeStageResolveVersion = entity.InferenceModelDeploymentStageResolveVersion
+	UpgradeStagePull           = entity.InferenceModelDeploymentStagePull
+	UpgradeStageCreate         = entity.InferenceModelDeploymentStageCreate
+	UpgradeStageValidate       = entity.InferenceModelDeploymentStageValidate
+	UpgradeStageDrain          = entity.InferenceModelDeploymentStageDrain
+	UpgradeStagePrepare        = entity.InferenceModelDeploymentStagePrepare
+	UpgradeStageActivate       = entity.InferenceModelDeploymentStageActivate
 )
 
 // UpgradeError identifies the failed stage and reports rollback separately.
 type UpgradeError struct {
-	Stage       UpgradeStage
-	Err         error
-	RollbackErr error
+	Stage             UpgradeStage
+	Err               error
+	RollbackAttempted bool
+	RollbackErr       error
 }
 
 func (err *UpgradeError) Error() string {
@@ -51,6 +52,7 @@ type UpgradeRequest struct {
 	TenantID  string
 	ModelID   string
 	VersionID string
+	OnStage   func(context.Context, UpgradeStage) error
 }
 
 type UpgradeResult struct {
@@ -159,6 +161,9 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 		)
 	}
 	defer coordinator.endUpgrade(upgradeKey)
+	if err := reportUpgradeStage(ctx, request, UpgradeStageResolveActive); err != nil {
+		return UpgradeResult{}, upgradeFailure(UpgradeStageResolveActive, err, nil)
+	}
 
 	registered, err := coordinator.models.SelectInferenceModelByID(ctx, request.ModelID)
 	if err != nil {
@@ -184,6 +189,9 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 	if err != nil {
 		return UpgradeResult{}, upgradeFailure(UpgradeStageResolveActive, err, nil)
 	}
+	if err = reportUpgradeStage(ctx, request, UpgradeStageResolveVersion); err != nil {
+		return UpgradeResult{}, upgradeFailure(UpgradeStageResolveVersion, err, nil)
+	}
 	version, err := coordinator.versions.SelectInferenceModelVersion(ctx, request.VersionID)
 	if err != nil {
 		return UpgradeResult{}, upgradeFailure(UpgradeStageResolveVersion, err, nil)
@@ -201,6 +209,9 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 		)
 	}
 
+	if err = reportUpgradeStage(ctx, request, UpgradeStagePull); err != nil {
+		return UpgradeResult{}, upgradeFailure(UpgradeStagePull, err, nil)
+	}
 	normalizedImage, err := coordinator.validator.ValidateImageReference(version.ImageReference, version.ImageDigest)
 	if err != nil {
 		return UpgradeResult{}, upgradeFailure(UpgradeStagePull, err, nil)
@@ -211,6 +222,9 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 	resolvedImage, err := coordinator.validator.ResolveImage(ctx, normalizedImage, version.ImageDigest)
 	if err != nil {
 		return UpgradeResult{}, upgradeFailure(UpgradeStagePull, err, nil)
+	}
+	if err = reportUpgradeStage(ctx, request, UpgradeStageCreate); err != nil {
+		return UpgradeResult{}, upgradeFailure(UpgradeStageCreate, err, nil)
 	}
 	candidateName, err := newCandidateContainerName(activeName)
 	if err != nil {
@@ -231,6 +245,9 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 		)
 	}
 
+	if err = reportUpgradeStage(ctx, request, UpgradeStageValidate); err != nil {
+		return UpgradeResult{}, upgradeFailure(UpgradeStageValidate, err, coordinator.removeCandidate(ctx, candidateID))
+	}
 	validated, err := coordinator.validator.ValidateContainer(ctx, ValidateCandidateContainer{
 		ContainerID: candidateID, Image: resolvedImage, ActiveModelInfo: activeModelInfo.Data,
 		RegisteredOutputMode: registered.OutputMode,
@@ -246,32 +263,47 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 		return UpgradeResult{}, upgradeFailure(UpgradeStageValidate, err, coordinator.removeCandidate(ctx, candidateID))
 	}
 
+	if err = reportUpgradeStage(ctx, request, UpgradeStageDrain); err != nil {
+		return UpgradeResult{}, upgradeFailure(UpgradeStageDrain, err, coordinator.removeCandidate(ctx, candidateID))
+	}
 	drainCtx, cancelDrain := context.WithTimeout(ctx, coordinator.config.DrainTimeout)
 	err = coordinator.manager.BlockAndDrain(drainCtx, registered.ContainerID)
 	cancelDrain()
 	if err != nil {
 		rollbackErr := errors.Join(coordinator.manager.Unblock(registered.ContainerID), coordinator.removeCandidate(ctx, candidateID))
-		return UpgradeResult{}, upgradeFailure(UpgradeStageDrain, err, rollbackErr)
+		return UpgradeResult{}, upgradeRollbackFailure(UpgradeStageDrain, err, rollbackErr)
+	}
+	if err = reportUpgradeStage(ctx, request, UpgradeStagePrepare); err != nil {
+		rollbackErr := coordinator.rollbackBeforeActivation(ctx, registered.ContainerID, candidateID, false)
+		return UpgradeResult{}, upgradeRollbackFailure(
+			UpgradeStagePrepare, err, coordinator.cleanupAfterRollback(ctx, candidateID, rollbackErr),
+		)
 	}
 	if err = coordinator.manager.ReplaceDrained(registered.ContainerID, candidateID); err != nil {
 		rollbackErr := coordinator.rollbackBeforeActivation(ctx, registered.ContainerID, candidateID, false)
-		return UpgradeResult{}, upgradeFailure(
+		return UpgradeResult{}, upgradeRollbackFailure(
 			UpgradeStagePrepare, err, coordinator.cleanupAfterRollback(ctx, candidateID, rollbackErr),
 		)
 	}
 	if err = coordinator.manager.PrepareBlocked(ctx, candidateID); err != nil {
 		rollbackErr := coordinator.rollbackBeforeActivation(ctx, registered.ContainerID, candidateID, true)
-		return UpgradeResult{}, upgradeFailure(
+		return UpgradeResult{}, upgradeRollbackFailure(
 			UpgradeStagePrepare, err, coordinator.cleanupAfterRollback(ctx, candidateID, rollbackErr),
 		)
 	}
 	if err = coordinator.verifyPreparedCandidate(ctx, validated); err != nil {
 		rollbackErr := coordinator.rollbackBeforeActivation(ctx, registered.ContainerID, candidateID, true)
-		return UpgradeResult{}, upgradeFailure(
+		return UpgradeResult{}, upgradeRollbackFailure(
 			UpgradeStagePrepare, err, coordinator.cleanupAfterRollback(ctx, candidateID, rollbackErr),
 		)
 	}
 
+	if err = reportUpgradeStage(ctx, request, UpgradeStageActivate); err != nil {
+		rollbackErr := coordinator.rollbackBeforeActivation(ctx, registered.ContainerID, candidateID, true)
+		return UpgradeResult{}, upgradeRollbackFailure(
+			UpgradeStageActivate, err, coordinator.cleanupAfterRollback(ctx, candidateID, rollbackErr),
+		)
+	}
 	previous, err := coordinator.registrations.ReplaceInferenceModelRegistration(ctx, repositoryTypes.ReplaceInferenceModelRegistration{
 		ID: request.ModelID, TenantID: request.TenantID,
 		ExpectedContainerID: registered.ContainerID, ExpectedImageReference: registered.DockerImage,
@@ -279,16 +311,23 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 	})
 	if err != nil {
 		rollbackErr := coordinator.rollbackBeforeActivation(ctx, registered.ContainerID, candidateID, true)
-		return UpgradeResult{}, upgradeFailure(
+		return UpgradeResult{}, upgradeRollbackFailure(
 			UpgradeStageActivate, err, coordinator.cleanupAfterRollback(ctx, candidateID, rollbackErr),
 		)
 	}
 	if err = coordinator.manager.Unblock(candidateID); err != nil {
 		rollbackErr := coordinator.rollbackActivated(ctx, request, registered, deployment, previous, candidateID)
-		return UpgradeResult{}, upgradeFailure(UpgradeStageActivate, err, rollbackErr)
+		return UpgradeResult{}, upgradeRollbackFailure(UpgradeStageActivate, err, rollbackErr)
 	}
 
 	return UpgradeResult{Previous: previous, Active: deployment, ContainerName: validated.ContainerName}, nil
+}
+
+func reportUpgradeStage(ctx context.Context, request UpgradeRequest, stage UpgradeStage) error {
+	if request.OnStage == nil {
+		return nil
+	}
+	return request.OnStage(ctx, stage)
 }
 
 func validateCatalogCandidate(version entity.InferenceModelVersion, candidate ValidatedCandidate) error {
@@ -438,6 +477,12 @@ func upgradeFailure(stage UpgradeStage, err, rollbackErr error) error {
 		err = errors.New("unknown model upgrade failure")
 	}
 	return &UpgradeError{Stage: stage, Err: err, RollbackErr: rollbackErr}
+}
+
+func upgradeRollbackFailure(stage UpgradeStage, err, rollbackErr error) error {
+	upgradeErr := upgradeFailure(stage, err, rollbackErr).(*UpgradeError)
+	upgradeErr.RollbackAttempted = true
+	return upgradeErr
 }
 
 var _ UpgradeManager = (*modelmanager.Manager)(nil)

@@ -18,15 +18,20 @@ type AddInferenceModel struct {
 }
 
 type DeployInferenceModelVersion struct {
-	TenantID  string
-	ModelID   string
-	VersionID string
+	TenantID    string
+	ModelID     string
+	VersionID   string
+	ActorUserID string
 }
 
 type DeployInferenceModelVersionResult struct {
-	Previous      entity.InferenceModelDeployment
-	Active        entity.InferenceModelDeployment
-	ContainerName string
+	Operation entity.InferenceModelDeploymentOperation
+}
+
+type GetInferenceModelDeploymentOperation struct {
+	TenantID     string
+	ModelID      string
+	DeploymentID string
 }
 
 type GetInferenceModelVersions struct {

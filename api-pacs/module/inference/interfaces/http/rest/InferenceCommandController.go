@@ -62,9 +62,10 @@ func (controller *InferenceCommandController) PublishInferenceModelVersion(w htt
 // version follows the same path and therefore acts as a manual rollback.
 func (controller *InferenceCommandController) DeployInferenceModelVersion(w http.ResponseWriter, r *http.Request) {
 	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	actorUserID, _ := r.Context().Value(iamTypes.UserIDCtx).(string)
 	modelID := chi.URLParam(r, "ID")
 	versionID := chi.URLParam(r, "versionID")
-	if tenantID == "" || modelID == "" || versionID == "" {
+	if tenantID == "" || actorUserID == "" || modelID == "" || versionID == "" {
 		response := viewmodels.HTTPResponseVM{
 			Status: http.StatusBadRequest, Success: false, Message: "Invalid model deployment request.",
 			ErrorCode: apiError.InvalidPayload,
@@ -73,7 +74,7 @@ func (controller *InferenceCommandController) DeployInferenceModelVersion(w http
 		return
 	}
 	result, err := controller.InferenceCommandServiceInterface.DeployInferenceModelVersion(r.Context(), serviceTypes.DeployInferenceModelVersion{
-		TenantID: tenantID, ModelID: modelID, VersionID: versionID,
+		TenantID: tenantID, ModelID: modelID, VersionID: versionID, ActorUserID: actorUserID,
 	})
 	if err != nil {
 		statusCode, message, errorCode := modelUpgradeHTTPError(err)
@@ -82,10 +83,42 @@ func (controller *InferenceCommandController) DeployInferenceModelVersion(w http
 		return
 	}
 	response := viewmodels.HTTPResponseVM{
-		Status: http.StatusOK, Success: true, Message: "Successfully deployed inference model version.",
+		Status: http.StatusAccepted, Success: true, Message: "Inference model deployment accepted.",
 		Data: types.DeployInferenceModelVersionResponse{
-			Previous: result.Previous, Active: result.Active, ContainerName: result.ContainerName,
+			DeploymentID: result.Operation.ID, Status: result.Operation.Status, Stage: result.Operation.Stage,
 		},
+	}
+	response.JSON(w)
+}
+
+// GetInferenceModelDeploymentOperation returns persisted progress for one deployment.
+func (controller *InferenceCommandController) GetInferenceModelDeploymentOperation(w http.ResponseWriter, r *http.Request) {
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	modelID := chi.URLParam(r, "ID")
+	deploymentID := chi.URLParam(r, "deploymentID")
+	operation, err := controller.InferenceCommandServiceInterface.GetInferenceModelDeploymentOperation(
+		r.Context(), serviceTypes.GetInferenceModelDeploymentOperation{
+			TenantID: tenantID, ModelID: modelID, DeploymentID: deploymentID,
+		},
+	)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		message := "Could not retrieve inference model deployment."
+		switch err.Error() {
+		case apiError.InvalidPayload:
+			statusCode = http.StatusBadRequest
+		case apiError.MissingRecord:
+			statusCode = http.StatusNotFound
+		case apiError.InferenceUpgradeUnavailable:
+			statusCode = http.StatusServiceUnavailable
+		}
+		response := viewmodels.HTTPResponseVM{Status: statusCode, Success: false, Message: message, ErrorCode: err.Error()}
+		response.JSON(w)
+		return
+	}
+	response := viewmodels.HTTPResponseVM{
+		Status: http.StatusOK, Success: true, Message: "Successfully retrieved inference model deployment.",
+		Data: types.GetInferenceModelDeploymentOperationResponse{Deployment: operation},
 	}
 	response.JSON(w)
 }
