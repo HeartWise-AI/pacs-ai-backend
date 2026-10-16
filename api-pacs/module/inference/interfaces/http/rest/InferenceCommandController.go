@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	stdErrors "errors"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -148,6 +149,8 @@ func modelUpgradeHTTPError(err error) (int, string, string) {
 // InferenceCommandController request controller for inference command
 type InferenceCommandController struct {
 	application.InferenceCommandServiceInterface
+	application.ModelDeploymentOperationSubscriberInterface
+	ModelDeploymentEventHeartbeatInterval time.Duration
 }
 
 var mediaMaxFileSize int64 = 5 * 1024 * 1024 // 5MB
