@@ -9,6 +9,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parents[2]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "deploy-model.sh"
 MODEL_PATH = REPO_ROOT / "model-examples" / "CathEF-CLIP"
+LEGACY_MODEL_PATH = REPO_ROOT / "model-examples" / "DeepRV"
 DEEPCORO_SYNTAX_PATH = REPO_ROOT / "model-examples" / "DeepCORO-SYNTAX"
 
 
@@ -163,7 +164,7 @@ class DeployModelAuthenticationTests(unittest.TestCase):
         self.assertIn("API_BASE_URL must use HTTPS", result.stderr)
         self.assertEqual([], calls)
 
-    def run_build_script(self, *, model_path=MODEL_PATH, publish_latest=False):
+    def run_build_script(self, *, model_path=LEGACY_MODEL_PATH, publish_latest=False):
         temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
         root = Path(temp_dir.name)
@@ -233,15 +234,15 @@ class DeployModelAuthenticationTests(unittest.TestCase):
         self.assertIsNotNone(docker_args)
         self.assertEqual("build", docker_args[0])
         self.assertIn(f"id=hf_token,src={token_file}", docker_args)
-        self.assertIn("heartwisehub/pacs-ai-cathef-clip:1.0.0", docker_args)
-        self.assertNotIn("heartwisehub/pacs-ai-cathef-clip:latest", docker_args)
-        self.assertEqual(str(MODEL_PATH), docker_args[-1])
+        self.assertIn("heartwisehub/pacs-ai-deeprv:1.0.0", docker_args)
+        self.assertNotIn("heartwisehub/pacs-ai-deeprv:latest", docker_args)
+        self.assertEqual(str(LEGACY_MODEL_PATH), docker_args[-1])
 
     def test_legacy_latest_alias_is_explicit(self):
         result, docker_args, _ = self.run_build_script(publish_latest=True)
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn("heartwisehub/pacs-ai-cathef-clip:latest", docker_args)
+        self.assertIn("heartwisehub/pacs-ai-deeprv:latest", docker_args)
 
     def test_provenance_aware_build_is_routed_to_release_command(self):
         result, docker_args, _ = self.run_build_script(model_path=DEEPCORO_SYNTAX_PATH)
