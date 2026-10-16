@@ -9,6 +9,11 @@ and fetched at Docker build time from the immutable revision recorded in
 `data/model_info.json`. The build verifies the selected checkpoint against its
 declared SHA-256 before creating the image.
 
+The checked-in `models/config.json` mirrors `config.json` from that pinned
+Hugging Face revision (Git blob `66931ca58515454cd430ed9b1bb58f8d5c8de5f1`).
+Optional constructor fields omitted there intentionally retain the defaults used
+by the existing 1.0.0 deployment.
+
 ## Official release
 
 Official images are built from reviewed `master` commits by the protected

@@ -20,6 +20,33 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
     provenance = manifest["provenance"]
 
     assert manifest["version"] == "1.0.1"
+    assert config == {
+        "VideoEncoder": {
+            "backbone": "mvit",
+            "num_frames": 16,
+            "pretrained": False,
+            "freeze_ratio": 1.0,
+            "dropout": 0.2,
+            "num_heads": 4,
+            "aggregator_depth": 1,
+            "aggregate_videos_tokens": False,
+            "per_video_pool": False,
+        },
+        "MultiInstanceLinearProbing": {
+            "embedding_dim": 512,
+            "pooling_mode": "attention+cls_token",
+            "attention_hidden": 256,
+            "use_cls_token": True,
+        },
+        "VideoMILWrapper": {
+            "num_videos": 10,
+            "stride": 1,
+            "resize": 224,
+        },
+        "ModelStateDict": {
+            "model_path": "zcb8cu0l_20260213-033432/best_model_epoch_11.pt",
+        },
+    }
     assert config["ModelStateDict"]["model_path"] == provenance["weightsPath"]
     assert provenance == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
