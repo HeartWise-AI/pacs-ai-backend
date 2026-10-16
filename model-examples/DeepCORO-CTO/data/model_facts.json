@@ -5,7 +5,7 @@
       "Description": "DeepCORO-CLIP based imaging J-CTO scorer for chronic total occlusions on coronary angiography. From up to 10 videos per study it predicts, for each of the three major coronary arteries (LAD, RCA, LCx), the four morphological J-CTO components (blunt/flush stump, calcification at the occlusion, bending > 45°, occlusion length ≥ 20 mm) and an aggregate imaging J-CTO score clamped to [0, 4]. The artery with the highest predicted score is reported as the CTO artery. This is not the classic Morino J-CTO score (0–5): the fifth point for a previously failed crossing attempt is not available from imaging and is not predicted.",
       "Developed_by": "HeartWise.AI / MHI",
       "Development_period": "2024-2026",
-      "Version": "2.0.0"
+      "Version": "2.0.1"
     },
     "Mechanism": {
       "Outcome": "Per-artery (LAD, RCA, LCx) J-CTO morphological component binary classifications plus imaging J-CTO score (0-4) regression; the highest-scoring artery is reported",

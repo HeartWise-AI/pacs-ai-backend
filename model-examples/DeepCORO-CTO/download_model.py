@@ -1,38 +1,80 @@
 import argparse
-import os
-
-from huggingface_hub import snapshot_download
-
-REPO_ID = "heartwise/DeepCORO_CTO"
-# Weights are pinned to a release tag so image builds are reproducible:
-#   v1.0 — overall 5-head model, epoch 24 (W&B pdnzpnpy), up to 8 videos
-#   v2.0 — per-artery 15-head model, epoch 18 (W&B dg1o32md), up to 10 videos
-DEFAULT_REVISION = os.environ.get("DEEPCORO_CTO_HF_REVISION", "v2.0")
-OUTPUT_DIR = "models"
-# alt_models/ holds alternative overall checkpoints for research comparisons;
-# they are not used by the service and would add ~330 MB to the image.
-IGNORE_PATTERNS = ["alt_models/*", "alt_models/**"]
+import hashlib
+from pathlib import Path
 
 
-def download_model(token: str, revision: str = DEFAULT_REVISION) -> None:
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as checkpoint:
+        for chunk in iter(lambda: checkpoint.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_weights(output_dir: Path, weights_path: str, expected_sha256: str) -> Path:
+    weights = output_dir / weights_path
+    if not weights.is_file():
+        raise FileNotFoundError(f"Expected checkpoint was not downloaded: {weights}")
+
+    actual_sha256 = sha256_file(weights)
+    if actual_sha256 != expected_sha256:
+        raise ValueError(
+            f"Checkpoint SHA-256 mismatch for {weights}: "
+            f"expected {expected_sha256}, received {actual_sha256}"
+        )
+    return weights
+
+
+def download_model(
+    token: str,
+    repository: str,
+    revision: str,
+    weights_path: str,
+    expected_sha256: str,
+    output_dir: Path = Path("models"),
+) -> Path:
+    from huggingface_hub import snapshot_download
+
     if not token:
-        raise ValueError("A HuggingFace token is required (--token)")
+        raise ValueError("A Hugging Face access token is required")
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    local_dir = snapshot_download(
-        repo_id=REPO_ID,
+    output_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_download(
+        repo_id=repository,
         revision=revision,
         token=token,
-        local_dir=OUTPUT_DIR,
-        ignore_patterns=IGNORE_PATTERNS,
+        local_dir=str(output_dir),
+        allow_patterns=[weights_path],
     )
-    print(f"Downloaded {REPO_ID}@{revision} to {local_dir}")
+    weights = verify_weights(output_dir, weights_path, expected_sha256)
+    print(f"Verified {repository}@{revision}:{weights_path} ({expected_sha256})")
+    return weights
+
+
+def read_token(token_file: str | None) -> str:
+    if token_file:
+        return Path(token_file).read_text(encoding="utf-8").strip()
+    raise ValueError("Pass --token-file")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--token", type=str, required=True)
-    parser.add_argument("--revision", type=str, default=DEFAULT_REVISION)
+    parser.add_argument("--repository", required=True)
+    parser.add_argument("--revision", required=True)
+    parser.add_argument("--weights-path", required=True)
+    parser.add_argument("--weights-sha256", required=True)
+    parser.add_argument("--output-dir", type=Path, default=Path("models"))
+    parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument("--token-file")
     args = parser.parse_args()
-
-    download_model(args.token, args.revision)
+    if args.verify_only:
+        verify_weights(args.output_dir, args.weights_path, args.weights_sha256)
+    else:
+        download_model(
+            read_token(args.token_file),
+            args.repository,
+            args.revision,
+            args.weights_path,
+            args.weights_sha256,
+            args.output_dir,
+        )
