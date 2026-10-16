@@ -79,3 +79,11 @@ def test_official_dockerfile_consumes_release_metadata():
 
     assert "mount=type=secret,id=hf_token" in dockerfile
     assert "--token-file /run/secrets/hf_token" in dockerfile
+
+
+def test_cuda_torch_and_torchvision_pins_match_the_validated_runtime():
+    requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
+
+    assert "--extra-index-url https://download.pytorch.org/whl/cu121" in requirements
+    assert "torch==2.4.0+cu121" in requirements
+    assert "torchvision==0.19.0+cu121" in requirements
