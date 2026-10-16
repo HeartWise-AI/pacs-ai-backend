@@ -192,6 +192,138 @@
                       }
                     }
                   ]
+                },
+                "example": {
+                  "data": {
+                    "modelId": "TotalSegmentator",
+                    "modelName": "TotalSegmentator",
+                    "version": "2.9.1",
+                    "provenance": {
+                      "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+                      "sourceRevision": null,
+                      "modelRepository": "wasserth/TotalSegmentator",
+                      "modelRevision": "d0eb302278588eade4dcc33093d141fe57a3ca90",
+                      "weightsPath": "Dataset297_TotalSegmentator_total_3mm_1559subj.zip",
+                      "weightsSha256": "0baa2c8de2975600eb31801dd5c1825cd2b356f794498659cf3348714c073394"
+                    },
+                    "resources": {
+                      "gpuRequired": true,
+                      "residentMemoryMiB": 1254,
+                      "peakMemoryMiB": 4246,
+                      "maxConcurrentInferences": 1,
+                      "idleTimeoutSeconds": 600
+                    },
+                    "dicomTargetLevel": "SERIES",
+                    "dicomUploadMin": 1,
+                    "dicomUploadMax": 1,
+                    "supportedDicomModalities": [
+                      "CT",
+                      "MRI"
+                    ],
+                    "supportedDicomTags": [
+                      "*"
+                    ],
+                    "supportedAdditionalMetadata": [],
+                    "supportedOutputModes": [
+                      "OHIF_ANNOTATIONS"
+                    ],
+                    "approveFeedbackQuestionnaires": [
+                      {
+                        "id": "confidence",
+                        "type": "RADIO",
+                        "questionEn": "How confident are you in the model's prediction?",
+                        "questionFr": "À quel point êtes-vous confiant dans la prédiction du modèle ?",
+                        "answerOptionsEn": [
+                          {
+                            "id": "very",
+                            "answer": "Very confident"
+                          },
+                          {
+                            "id": "somewhat",
+                            "answer": "Somewhat confident"
+                          },
+                          {
+                            "id": "neutral",
+                            "answer": "Neutral"
+                          }
+                        ],
+                        "answerOptionsFr": [
+                          {
+                            "id": "very",
+                            "answer": "Très confiant"
+                          },
+                          {
+                            "id": "somewhat",
+                            "answer": "Assez confiant"
+                          },
+                          {
+                            "id": "neutral",
+                            "answer": "Neutre"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "comments",
+                        "type": "TEXT",
+                        "questionEn": "Any additional comments?",
+                        "questionFr": "Des commentaires supplémentaires ?",
+                        "answerOptionsEn": null,
+                        "answerOptionsFr": null
+                      }
+                    ],
+                    "rejectFeedbackQuestionnaires": [
+                      {
+                        "id": "reason",
+                        "type": "CHECKBOX",
+                        "questionEn": "Why do you disagree with the prediction?",
+                        "questionFr": "Pourquoi n'êtes-vous pas d'accord avec la prédiction ?",
+                        "answerOptionsEn": [
+                          {
+                            "id": "incorrect",
+                            "answer": "Incorrect diagnosis"
+                          },
+                          {
+                            "id": "quality",
+                            "answer": "Poor image quality"
+                          },
+                          {
+                            "id": "clinical",
+                            "answer": "Doesn't match clinical findings"
+                          },
+                          {
+                            "id": "other",
+                            "answer": "Other"
+                          }
+                        ],
+                        "answerOptionsFr": [
+                          {
+                            "id": "incorrect",
+                            "answer": "Diagnostic incorrect"
+                          },
+                          {
+                            "id": "quality",
+                            "answer": "Mauvaise qualité d'image"
+                          },
+                          {
+                            "id": "clinical",
+                            "answer": "Ne correspond pas aux résultats cliniques"
+                          },
+                          {
+                            "id": "other",
+                            "answer": "Autre"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "details",
+                        "type": "TEXT",
+                        "questionEn": "Please describe what was incorrect:",
+                        "questionFr": "Veuillez décrire ce qui était incorrect :",
+                        "answerOptionsEn": null,
+                        "answerOptionsFr": null
+                      }
+                    ]
+                  }
                 }
               }
             }
@@ -251,98 +383,37 @@
                   "message": "Model facts retrieved successfully",
                   "data": {
                     "en": {
-                      "Changelogs": {
-                        "1.0.0": "2023-03-01: Initial release"
+                      "Summary": {
+                        "Name": "TotalSegmentator",
+                        "Description": "Segment organs on full-body CT scans.",
+                        "Developed_by": "",
+                        "Development_period": "",
+                        "Version": "2.9.1"
                       },
                       "Mechanism": {
-                        "Input_data_source": "Left coronary angiogram videos",
-                        "Input_data_type": "Video data",
-                        "Model_type": "X3D architecture",
-                        "Outcome": "Prediction of LVEF from left coronary angiograms",
-                        "Output": "Continuous LVEF percentage value",
-                        "Target_population": "Adult patients aged ≥18 years who received a coronary angiogram and transthoracic echocardiogram (TTE)",
-                        "Time_of_prediction": "N/A",
-                        "Training_data_location_and_time-period": "University of California, San Francisco (UCSF), Dec 12, 2012, to Dec 31, 2019"
+                        "Outcome": "Image segmentation of organs",
+                        "Output": "Image segmentation of organs",
+                        "Target_population": "",
+                        "Input_data_source": "computed tomography (CT)",
+                        "Input_data_type": "labelmap (Nifti)",
+                        "Model_type": "",
+                        "Supported_DICOM_modalities": "CT, MRI"
                       },
-                      "Other_information": {
-                        "Clinical_impact_evaluation": "N/A",
-                        "Clinical_trial": "LVEF Prediction During ACS Using AI Algorithm Applied on Coronary Angiogram Videos (CathEF) - NCT05317286",
-                        "Clinical_trial_URL": "https://www.clinicaltrials.gov/ct2/show/NCT05317286",
-                        "Contact_info": "robert.avram.md@gmail.com",
-                        "Github": "N/A",
-                        "Outcome_definition": "LVEF",
-                        "Related_model": "CathAI",
-                        "Scientific_publication": "N/A"
-                      },
-                      "Other_results": {
-                        "GradCAM": "GradCAM consistently highlighted epicardial LCA vessel segments and septal perforators predominantly during systole as the strongest predictors of low-LVEF."
-                      },
-                      "Summary": {
-                        "Approval_date": "2023-04-17",
-                        "Description": "CathEF is a video-based deep neural network (DNN) designed to predict left ventricular ejection fraction (LVEF) from left coronary angiograms.",
-                        "Developed_by": "Dr. Avram, Dr. Tison and Dr. Olgin",
-                        "Development_period": "2020-01-01 to 2023-04-17",
-                        "Last_update": "2023-04-17",
-                        "License_date": "2023-03-01",
-                        "Licensed_to": "Montreal Heart Institute",
-                        "Name": "CathEF",
-                        "Version": "1.0"
+                      "Model_Components": {
+                        "Segmentation_Model": {
+                          "Purpose": "Segment organs",
+                          "Output": "Labelmap (Nifti)"
+                        }
                       },
                       "Uses_and_directions": {
-                        "Appropriate_decision_and_support": "N/A",
-                        "Before_using_this_model": "Make sure you have at least three views available to input into the model (RAO Caudal, AP Cranial and LAO Cranial are the best)",
-                        "Benefits": "Estimation of LVEF from standard LCA angiogram videos without additional",
-                        "General_use": "CathEF is an automated estimation of LVEF from standard coronary angiogram videos. It can be used to provide real-time, dynamic assessment of cardiac function during coronary angiography without additional equipment or procedures. It is especially useful for patients with acute coronary syndrome or those at increased risk of contrast-induced nephropathy.",
-                        "Safety_and_efficacy_evaluation": "N/A",
-                        "Target_population_and_use_case": "Adult patients aged ≥18 years who received a coronary angiogram of the left coronmary angiography."
+                        "General_use": "",
+                        "Target_population_and_use_case": "",
+                        "Before_using_this_model": ""
                       },
-                      "Validation_and_performance": [
-                        {
-                          "UCSF_test_dataset": {
-                            "AUC_ROC_LVEF_40": 0.911,
-                            "AUC_ROC_LVEF_50": 0.879,
-                            "ICC_continuous_LVEF": 0.77,
-                            "MAE_continuous_LVEF": 8.5,
-                            "Pearson_correlation_continuous_LVEF": 0.71,
-                            "Sensitivity_LVEF_40": 83.9,
-                            "Specificity_LVEF_40": 81.3
-                          },
-                          "UOHI_external_validation": {
-                            "AUC_ROC_LVEF_40": 0.906,
-                            "AUC_ROC_LVEF_50": "N/A",
-                            "ICC_continuous_LVEF": 0.62,
-                            "MAE_continuous_LVEF": 7,
-                            "Pearson_correlation_continuous_LVEF": 0.72,
-                            "Sensitivity_LVEF_40": 77.9,
-                            "Specificity_LVEF_40": 88.6
-                          }
-                        },
-                        {
-                          "UCSF_study_cohort": {
-                            "Female_percentage": 35,
-                            "LVEF_over_40_percentage": 82.2,
-                            "LVEF_under_40_percentage": 17.7,
-                            "Mean_age": "64.3±13.3",
-                            "Number_of_angiograms": 3960,
-                            "Number_of_patients": 3404
-                          },
-                          "UOHI_external_validation_cohort": {
-                            "Female_percentage": 33,
-                            "LVEF_over_40_percentage": 76.3,
-                            "LVEF_under_40_percentage": 16.8,
-                            "Mean_age": "68.6±13.3",
-                            "Number_of_angiograms": 776,
-                            "Number_of_patients": 744
-                          }
-                        }
-                      ],
                       "Warnings_and_limitations": {
-                        "Clinical_rationale": "CathEF has not been validated for use with right coronary angiograms.",
-                        "Discontinue_use_if": "N/A",
-                        "Generalizability": "The model's generalizability to other healthcare institutions and populations requires further validation.",
-                        "Inappropriate_decision_support": "CathEF performance may be affected by administration of contrast during angiography, which can temporarily depress LVEF.",
-                        "Inappropriate_settings": "The model has not been tested on patients with atrial fibrillation, congenital heart disease, or prior cardiac surgery.",
-                        "Risks": "CathEF's performance may be less accurate at extreme LVEF values."
+                        "Image_Quality": "",
+                        "Multiple_Devices": "",
+                        "Confidence_Scores": ""
                       }
                     }
                   }
