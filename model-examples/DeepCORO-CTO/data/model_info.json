@@ -4,7 +4,15 @@
   "domainName": "Cardiology",
   "stage": "ai_inference",
   "modality": "Angiogram",
-  "version": "2.0.0",
+  "version": "2.0.1",
+  "provenance": {
+    "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+    "sourceRevision": null,
+    "modelRepository": "heartwise/DeepCORO_CTO",
+    "modelRevision": "8511afe6f33574052123d2244a19959da85d6334",
+    "weightsPath": "best_model_epoch_18.pt",
+    "weightsSha256": "1fb7e0bd0d5e66562052a811a2091be07b806517270b52ff5715ac39869d38cb"
+  },
   "resources": {
     "gpuRequired": true,
     "residentMemoryMiB": 5744,
