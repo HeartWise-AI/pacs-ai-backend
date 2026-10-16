@@ -71,6 +71,14 @@ def test_manifest_upload_limit_matches_model_video_capacity():
     assert manifest["dicomUploadMax"] == config["VideoMILWrapper"]["num_videos"] == 10
 
 
+def test_cuda_dependencies_match_the_validated_runtime_pair():
+    requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
+
+    assert "--extra-index-url https://download.pytorch.org/whl/cu121" in requirements
+    assert "torch==2.4.0+cu121" in requirements
+    assert "torchvision==0.19.0+cu121" in requirements
+
+
 def test_weight_verification_accepts_only_the_expected_bytes(tmp_path):
     relative_path = Path("zcb8cu0l_20260213-033432/best_model_epoch_11.pt")
     weights = tmp_path / relative_path
