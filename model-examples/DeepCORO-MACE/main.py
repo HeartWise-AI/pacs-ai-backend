@@ -36,6 +36,7 @@ model_info = load_model_info(os.path.join(root_path, "data", "model_info.json"))
 served_model_info = model_info_payload(
     model_info,
     source_revision=os.getenv("PACS_AI_SOURCE_REVISION") or None,
+    model_version=os.getenv("PACS_AI_MODEL_VERSION") or None,
 )
 inference_lock = create_inference_semaphore(model_info)
 

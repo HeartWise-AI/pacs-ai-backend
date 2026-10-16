@@ -4,7 +4,7 @@
       "Name": "DeepCORO-MACE",
       "Description": "DeepCORO-CLIP based research model that produces nine one-year cardiovascular outcome scores from up to three coronary angiography videos.",
       "Developed_by": "HeartWise.AI / Montreal Heart Institute",
-      "Version": "1.0.0"
+      "Version": "1.0.1"
     },
     "Mechanism": {
       "Outcome": "One-year composite MACE and component outcome scores",
@@ -39,7 +39,7 @@
     "Résumé": {
       "Nom": "DeepCORO-MACE",
       "Description": "Modèle de recherche fondé sur DeepCORO-CLIP qui produit neuf scores d'événements cardiovasculaires à un an à partir d'au plus trois vidéos de coronarographie.",
-      "Version": "1.0.0"
+      "Version": "1.0.1"
     },
     "Avertissements": {
       "Recherche_uniquement": "Aucune autorisation réglementaire. Le modèle et les seuils d'affichage de 0,5 ne sont pas validés pour la prise de décision clinique.",
