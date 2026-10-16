@@ -5,7 +5,7 @@
       "Description": "Segment brain hemorrhage in  CT scans.",
       "Developed_by": "",
       "Development_period": "",
-      "Version": "2.5.0"
+      "Version": "1.0.1"
     },
     "Mechanism": {
       "Outcome": "Image segmentation of brain hemorrhage",

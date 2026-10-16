@@ -1,7 +1,15 @@
 {
   "modelId": "Hemorrhage",
   "modelName": "Hemorrhage",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "provenance": {
+    "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+    "sourceRevision": null,
+    "modelRepository": "heartwise/hemorrhage",
+    "modelRevision": "84d02ffe230ca3e648c6e4ca00a6affb984d4ed9",
+    "weightsPath": "Dataset005_WinMultiICHv5.zip",
+    "weightsSha256": "11b3036f5286aae4314e122b20c0c00abd58b5f4f80fb883e1af604700a0cdf5"
+  },
   "resources": {
     "gpuRequired": true,
     "residentMemoryMiB": 1440,

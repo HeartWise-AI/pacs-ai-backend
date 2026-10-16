@@ -1,0 +1,12 @@
+# Keep credentials and development artifacts out of build contexts.
+.env
+.env.*
+hf_token.txt
+**/hf_token.txt
+**/__pycache__
+**/*.pyc
+.pytest_cache
+
+# Production downloads the immutable model bundle from Hugging Face.
+models/Dataset005_WinMultiICHv5/
+models/Dataset005_WinMultiICHv5.zip
