@@ -27,7 +27,7 @@ nvidia-nvtx-cu12==12.4.127
 opencv-python-headless==4.11.0.86
 packaging==24.2
 pandas==2.2.3
-pillow==12.3.0
+pillow==13.0.0
 plotly==5.24.1
 pydantic==2.9.2
 pydantic_core==2.23.4

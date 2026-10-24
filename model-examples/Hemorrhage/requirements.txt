@@ -59,7 +59,7 @@ nvidia-nccl-cu12
 nvidia-nvjitlink-cu12
 nvidia-nvtx-cu12
 pandas==2.2.3
-pillow==11.0.0
+pillow==13.0.0
 py-cpuinfo==9.0.0
 
 pyparsing==3.2.1
