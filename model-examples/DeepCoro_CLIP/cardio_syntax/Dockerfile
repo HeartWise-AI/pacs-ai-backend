@@ -30,8 +30,7 @@ RUN --mount=type=secret,id=hf_token \
       --repository "${PACS_AI_MODEL_REPOSITORY}" \
       --revision "${PACS_AI_MODEL_REVISION}" \
       --weights-path "${PACS_AI_WEIGHTS_PATH}" \
-      --weights-sha256 "${PACS_AI_WEIGHTS_SHA256}" \
-      --extra-file config.json
+      --weights-sha256 "${PACS_AI_WEIGHTS_SHA256}"
 
 # Copy application files
 COPY main.py .

@@ -1,0 +1,41 @@
+{
+  "VideoEncoder": {
+    "backbone": "mvit",
+    "num_frames": 16,
+    "pretrained": false,
+    "freeze_ratio": 0.9179658719319556,
+    "dropout": 0.15,
+    "num_heads": 16,
+    "aggregator_depth": 1,
+    "aggregate_videos_tokens": false,
+    "per_video_pool": false
+  },
+  "MultiInstanceLinearProbing": {
+    "embedding_dim": 512,
+    "pooling_mode": "attention+cls_token",
+    "attention_hidden": 512,
+    "dropout": 0.2,
+    "use_cls_token": true,
+    "num_attention_heads": 8,
+    "separate_video_attention": true,
+    "normalization_strategy": "post_norm"
+  },
+  "VideoMILWrapper": {
+    "num_videos": 10,
+    "frame_stride": 2
+  },
+  "ModelStateDict": {
+    "model_path": "v6_20260929-203527/models/best_model_epoch_19.pt"
+  },
+  "dataset_mean": [
+    110.4954833984375,
+    110.4954833984375,
+    110.4954833984375
+  ],
+  "dataset_std": [
+    37.805782318115234,
+    37.805782318115234,
+    37.805782318115234
+  ],
+  "_note": "Training (DeepCORO_CLIP projects/linear_probing_project.py) built the MIL head with library defaults: 8 attention heads, separate video attention, post-norm; the config.yaml value num_attention_heads: 24 was never passed to the model."
+}

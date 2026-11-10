@@ -1,4 +1,4 @@
-"""CardioSyntax 1.0.1: pinned artifact identity, build metadata, run selection and normalisation."""
+"""CardioSyntax 1.1.0 (v6 checkpoint): pinned artifact identity, build metadata, run selection and normalisation."""
 
 import hashlib
 import json
@@ -16,15 +16,20 @@ from utils.resource_config import load_model_info, model_info_payload  # noqa: E
 
 def test_manifest_pins_the_checkpoint_the_service_runs():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
-    assert manifest["version"] == "1.0.1"
-    assert manifest["dicomUploadMax"] == 10  # = VideoMILWrapper.num_videos of the pinned config.json
+    assert manifest["version"] == "1.1.0"
+    config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
+    assert manifest["dicomUploadMax"] == config["VideoMILWrapper"]["num_videos"] == 10
+    assert config["ModelStateDict"]["model_path"] == manifest["provenance"]["weightsPath"]
+    # v6 training normalisation and MIL settings (training used library defaults: 8 heads, post-norm)
+    assert config["dataset_mean"][0] == pytest.approx(110.4955, abs=1e-3)
+    assert config["MultiInstanceLinearProbing"]["num_attention_heads"] == 8
     assert manifest["provenance"] == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,
         "modelRepository": "heartwise/deepcoro_clip_cardiosyntax",
         "modelRevision": "1ffb38cfc10fa10c4b60f44746063feb860eeba0",
-        "weightsPath": "rxt2fz27_20250711-171619/models/best_model_epoch_17.pt",
-        "weightsSha256": "7c30f757fadf1c36200f763c733463e8574791cf8ff7116d58390ae76e222a2b",
+        "weightsPath": "v6_20260929-203527/models/best_model_epoch_19.pt",
+        "weightsSha256": "856f5d6523c25a45c62886bf6cd1d351297821f60c3465a20b962aa46fa08ec0",
     }
 
 
@@ -49,7 +54,6 @@ def test_dockerfile_downloads_pinned_weights_and_the_runtime_config():
     for arg in ("PACS_AI_MODEL_REPOSITORY", "PACS_AI_MODEL_REVISION", "PACS_AI_WEIGHTS_PATH", "PACS_AI_WEIGHTS_SHA256",
                 "PACS_AI_SOURCE_REVISION", "PACS_AI_MODEL_VERSION", "PACS_AI_SOURCE_REPOSITORY"):
         assert f"ARG {arg}" in dockerfile and f"${{{arg}}}" in dockerfile
-    assert "--extra-file config.json" in dockerfile
     assert "--token $(cat" not in dockerfile  # token is read from the secret file, never put on a command line
 
 
