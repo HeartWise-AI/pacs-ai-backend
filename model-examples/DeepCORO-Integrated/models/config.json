@@ -1,0 +1,5 @@
+{
+  "ModelStateDict": {"model_path": "model.safetensors", "structure_path": "model_config.json"},
+  "Forward": {"full_res": 224, "crop_res": 320, "max_views": 12, "crops_per_group": 4, "frame_sampling": "peak_s2"},
+  "Notes": "EchoJEPA ViT-L (vendored in models/deepcoro_model/echojepa_src, MIT) with SYNTAX segment masks and tracked crops; at most 2 encoder passes per study. No dataset mean/std here: grayscale frames are scaled to [0,1] and ImageNet-normalised inside the model (integrated_model.normalize_clip)."
+}

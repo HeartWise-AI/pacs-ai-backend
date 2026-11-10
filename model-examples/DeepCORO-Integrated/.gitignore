@@ -1,0 +1,5 @@
+__pycache__
+.env
+hf_token.txt
+models/*.pt
+models/*.safetensors

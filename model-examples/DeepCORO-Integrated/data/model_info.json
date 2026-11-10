@@ -1,0 +1,141 @@
+{
+  "modelId": "DeepCORO_Integrated",
+  "modelName": "DeepCORO-Integrated",
+  "domainName": "Cardiology",
+  "stage": "ai_inference",
+  "modality": "Angiogram",
+  "version": "1.0.0",
+  "provenance": {
+    "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+    "sourceRevision": null,
+    "modelRepository": "heartwise/DeepCORO_Integrated",
+    "modelRevision": "927beafadf21205292733897c2ffdfc54606c7fb",
+    "weightsPath": "model.safetensors",
+    "weightsSha256": "cc9d84a3fe6849579a74061edd744f169121814db40c0b8bfa676fb49c1a7325"
+  },
+  "resources": {
+    "gpuRequired": true,
+    "residentMemoryMiB": 1700,
+    "peakMemoryMiB": 9500,
+    "maxConcurrentInferences": 1,
+    "idleTimeoutSeconds": 600
+  },
+  "dicomTargetLevel": "SERIES",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 12,
+  "supportedDicomModalities": [
+    "XA"
+  ],
+  "supportedDicomTags": [
+    "*"
+  ],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": [
+    "HTML",
+    "JSON"
+  ],
+  "approveFeedbackQuestionnaires": [
+    {
+      "id": "confidence",
+      "type": "RADIO",
+      "questionEn": "How confident are you in the model's J-CTO assessment?",
+      "questionFr": "À quel point êtes-vous confiant dans l'évaluation J-CTO du modèle ?",
+      "answerOptionsEn": [
+        {
+          "id": "very",
+          "answer": "Very confident"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Somewhat confident"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutral"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "very",
+          "answer": "Très confiant"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Assez confiant"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutre"
+        }
+      ]
+    },
+    {
+      "id": "comments",
+      "type": "TEXT",
+      "questionEn": "Any additional comments?",
+      "questionFr": "Des commentaires supplémentaires ?",
+      "answerOptionsEn": null,
+      "answerOptionsFr": null
+    }
+  ],
+  "rejectFeedbackQuestionnaires": [
+    {
+      "id": "reason",
+      "type": "CHECKBOX",
+      "questionEn": "Why do you disagree with the prediction?",
+      "questionFr": "Pourquoi n'êtes-vous pas d'accord ?",
+      "answerOptionsEn": [
+        {
+          "id": "score",
+          "answer": "J-CTO score incorrect"
+        },
+        {
+          "id": "component",
+          "answer": "One or more J-CTO components incorrect"
+        },
+        {
+          "id": "quality",
+          "answer": "Poor image quality"
+        },
+        {
+          "id": "clinical",
+          "answer": "Doesn't match clinical findings"
+        },
+        {
+          "id": "other",
+          "answer": "Other"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "score",
+          "answer": "Score J-CTO incorrect"
+        },
+        {
+          "id": "component",
+          "answer": "Une ou plusieurs composantes J-CTO incorrectes"
+        },
+        {
+          "id": "quality",
+          "answer": "Mauvaise qualité d'image"
+        },
+        {
+          "id": "clinical",
+          "answer": "Ne correspond pas aux résultats cliniques"
+        },
+        {
+          "id": "other",
+          "answer": "Autre"
+        }
+      ]
+    },
+    {
+      "id": "details",
+      "type": "TEXT",
+      "questionEn": "Please describe what was incorrect:",
+      "questionFr": "Veuillez décrire ce qui était incorrect :",
+      "answerOptionsEn": null,
+      "answerOptionsFr": null
+    }
+  ]
+}
