@@ -20,6 +20,14 @@ from typing import Optional, Tuple
 
 
 SERIES_TIME_TAG = (0x0008, 0x0031)
+NO_DIAGNOSTIC_RUN_EN = (
+    "No diagnostic left or right coronary contrast run was identified among the uploaded series "
+    "(PCI, stented, post-PCI, non-contrast and non-coronary runs are excluded)."
+)
+NO_DIAGNOSTIC_RUN_FR = (
+    "Aucune séquence diagnostique de coronaire gauche ou droite avec contraste n'a été identifiée "
+    "(les séquences d'ICP, avec stent, post-ICP, sans contraste ou non coronariennes sont exclues)."
+)
 
 
 class VideoMILWrapper(torch.nn.Module):
@@ -185,6 +193,11 @@ class CustomPredictionService(BasePredictionService):
         # Move the model to the GPU if available
         CustomPredictionService.models["video_mil_wrapper"].to(
             "cuda" if torch.cuda.is_available() else "cpu"
+        )
+        from models.run_filter import RunFilter
+
+        CustomPredictionService.models["run_filter"] = RunFilter(
+            os.path.join("models", "run_filter"), "cuda" if torch.cuda.is_available() else "cpu"
         )
         CustomPredictionService.is_initialized = True
         print(f"Cuda available: {torch.cuda.is_available()}")
@@ -531,6 +544,26 @@ class CustomPredictionService(BasePredictionService):
         
         return "\n\n".join(recommendations)
         
+    def _select_diagnostic_runs(self, dicoms: list[pydicom.Dataset], metadata: dict | None) -> list[pydicom.Dataset]:
+        """Keep only diagnostic left/right coronary contrast runs (the training inputs).
+
+        Step-2 tags (additionalMetadata) are used when the request carries them; otherwise every run is classified
+        by the pinned VasoVision run filter. Runs that match nothing are dropped: there is no fallback to all runs.
+        """
+        if metadata:
+            kept = self._filter_dicoms_with_metadata(dicoms, metadata)
+            print(f"Step-2 metadata filter: kept {len(kept)} of {len(dicoms)} runs")
+            return kept
+        from models.run_filter import keep_mask, series_time
+
+        predictions = CustomPredictionService.models["run_filter"].classify(dicoms)
+        keep = keep_mask(predictions, [series_time(d) for d in dicoms])
+        for dicom, p, k in zip(dicoms, predictions, keep):
+            print(f"run {getattr(dicom, 'SeriesInstanceUID', '?')}: {p} -> {'keep' if k else 'drop'}")
+        kept = [d for d, k in zip(dicoms, keep) if k]
+        print(f"VasoVision run filter: kept {len(kept)} of {len(dicoms)} runs")
+        return kept
+
     def _filter_dicoms_with_metadata(self, dicoms: list[pydicom.Dataset], metadata: dict) -> list[pydicom.Dataset]:
         """
         Filter DICOMs to keep only Left/Right Coronary with diagnostic status.
@@ -556,19 +589,15 @@ class CustomPredictionService(BasePredictionService):
                 dicom_base64 = request.seriesInstanceImages[series_number][instance_number]
                 dicoms.append(pydicom.dcmread(BytesIO(base64.b64decode(dicom_base64))))
 
-        if request.additionalMetadata:
-            filtered_dicoms = self._filter_dicoms_with_metadata(
-                dicoms, 
-                request.additionalMetadata
-            )
-            print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Left/Right Coronary + diagnostic)")
-            if filtered_dicoms:
-                dicoms = filtered_dicoms
-                print(f"Using {len(dicoms)} filtered DICOMs")
-            else:
-                print(f"No matches, using all {len(dicoms)} DICOMs")
-        else:
-            print("No additional metadata, using all DICOMs")
+        dicoms = self._select_diagnostic_runs(dicoms, request.additionalMetadata)
+        if not dicoms:
+            message = NO_DIAGNOSTIC_RUN_EN
+            return {
+                "htmlBase64": base64.b64encode(f"<h1>{message}</h1>".encode("utf-8")).decode("utf-8"),
+                "diagnosis": message,
+                "probability": {},
+                "recommendations": {"en": message, "fr": NO_DIAGNOSTIC_RUN_FR},
+            }
             
         probability = self._run_inference(dicoms)
 
@@ -656,19 +685,13 @@ class CustomPredictionService(BasePredictionService):
                 }
             }
                 
-        if request.additionalMetadata:
-            filtered_dicoms = self._filter_dicoms_with_metadata(
-                dicoms,
-                request.additionalMetadata
-            )
-            print(f"Filtering: {len(dicoms)} total DICOMs, {len(filtered_dicoms)} matched (Left/Right Coronary + diagnostic)")
-            if filtered_dicoms:
-                dicoms = filtered_dicoms
-                print(f"Using {len(dicoms)} filtered DICOMs")
-            else:
-                print(f"No matches, using all {len(dicoms)} DICOMs")
-        else:
-            print("No additional metadata, using all DICOMs")
+        dicoms = self._select_diagnostic_runs(dicoms, request.additionalMetadata)
+        if not dicoms:
+            return {
+                "diagnosis": NO_DIAGNOSTIC_RUN_EN,
+                "predictions": {},
+                "modelRecommendations": {"en": NO_DIAGNOSTIC_RUN_EN, "fr": NO_DIAGNOSTIC_RUN_FR, "presentable": False},
+            }
                 
         try:
             probability: dict[str, float] = self._run_inference(dicoms)

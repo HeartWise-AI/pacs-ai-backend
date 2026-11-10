@@ -19,6 +19,8 @@ from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
 from models.multi_instance_linear_probing import MultiInstanceLinearProbing
 
+SERIES_TIME_TAG = (0x0008, 0x0031)
+
 
 # ---------------------------------------------------------------------------
 # SYNTAX score thresholds (Global)
@@ -530,7 +532,30 @@ class CustomPredictionService(BasePredictionService):
             print(f"Error processing DICOM {dicom_name}: {e}")
             return None
 
+    # Training normalisation of this checkpoint (rxt2fz27); models/config.json may override it with
+    # "dataset_mean"/"dataset_std".
+    DEFAULT_DATASET_MEAN = [105.2699966430664, 105.2699966430664, 105.2699966430664]
+    DEFAULT_DATASET_STD = [39.241127014160156, 39.241127014160156, 39.241127014160156]
+
+    def _get_dataset_normalization_stats(self) -> tuple[list[float], list[float]]:
+        cfg = CustomPredictionService.model_config
+        mean = cfg.get("dataset_mean") or cfg.get("VideoEncoder", {}).get("dataset_mean") or self.DEFAULT_DATASET_MEAN
+        std = cfg.get("dataset_std") or cfg.get("VideoEncoder", {}).get("dataset_std") or self.DEFAULT_DATASET_STD
+        return list(mean), list(std)
+
+    @staticmethod
+    def _extract_series_time(dicom: pydicom.Dataset) -> float:
+        """SeriesTime as a sortable number; runs without it go last. The backend orders by UID suffix, not time."""
+        try:
+            if SERIES_TIME_TAG in dicom and dicom[SERIES_TIME_TAG].value is not None:
+                return float(str(dicom[SERIES_TIME_TAG].value))
+        except Exception:
+            pass
+        return float("inf")
+
     def _run_inference(self, dicoms: list[pydicom.Dataset]) -> dict[str, float]:
+        # Take the first num_videos runs in acquisition (SeriesTime) order, not in request order.
+        dicoms = sorted(dicoms, key=self._extract_series_time)
         try:
             videos = []
             max_videos = CustomPredictionService.model_config["VideoMILWrapper"]["num_videos"]
@@ -573,8 +598,7 @@ class CustomPredictionService(BasePredictionService):
 
                 video = v2.Resize((224, 224), antialias=True)(video)
 
-                mean = [105.2699966430664, 105.2699966430664, 105.2699966430664]
-                std = [39.241127014160156, 39.241127014160156, 39.241127014160156]
+                mean, std = self._get_dataset_normalization_stats()
                 video = v2.Normalize(mean=mean, std=std)(video.float())
 
                 video = video.permute(0, 2, 3, 1).contiguous()

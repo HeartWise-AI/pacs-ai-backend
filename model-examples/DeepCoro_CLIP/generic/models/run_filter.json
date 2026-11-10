@@ -1,0 +1,9 @@
+{
+  "repository": "heartwise/VasoVision",
+  "revision": "af6db088eae690c6eb64eabf4baf65ad7f7744b0",
+  "weightsPath": "vaso_vision.pt",
+  "weightsSha256": "8c16997b8848a3a670168403e96f2d286b472aa8addad8e3012df48d4f14c65b",
+  "files": ["config.json", "class_mapping.json", "vaso_vision.pt"],
+  "directory": "models/run_filter",
+  "keep": "main_structure in {Left Coronary, Right Coronary}, contrast_agent yes, stent_presence absent, status diagnostic"
+}
