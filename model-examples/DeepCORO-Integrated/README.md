@@ -74,7 +74,7 @@ python3 scripts/release-model.py model-examples/DeepCORO-Integrated \
   --image-repository heartwisehub/deepcoro-integrated --hf-token-file /secure/path/hf_token
 ```
 
-- GPU required: about 1.7 GB resident and 9.5 GB peak, for a 10-video study in bf16.
+- GPU required: about 1.7 GB resident and up to 9.9 GB peak (largest MHI test studies, bf16); declared 11 GB.
 - **Blackwell (sm_120) GPUs:** cu121 wheels do not run on them. Build with a cu128 torch (≥ 2.7) there.
 
 ## Tests

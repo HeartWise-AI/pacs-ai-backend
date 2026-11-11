@@ -114,7 +114,12 @@ class CustomPredictionService(BasePredictionService):
         """Exactly the training conversion: 8-bit grayscale pixel array -> MJPG AVI at the DICOM frame rate."""
         try:
             video = dicom.pixel_array
-            if video.ndim != 3 or dicom.PhotometricInterpretation not in ("MONOCHROME1", "MONOCHROME2"):
+            photometric = dicom.PhotometricInterpretation
+            if photometric == "RGB" and video.ndim == 4:  # training wrote RGB as BGR and read it back as gray
+                video = np.stack([cv.cvtColor(f, cv.COLOR_RGB2GRAY) for f in video])
+            elif photometric not in ("MONOCHROME1", "MONOCHROME2", "PALETTE COLOR"):
+                return None  # PALETTE COLOR: training stored the raw palette indices as gray levels
+            if video.ndim != 3:
                 return None
             if video.dtype != np.uint8:
                 video = cv.normalize(video, None, 0, 255, cv.NORM_MINMAX).astype(np.uint8)
