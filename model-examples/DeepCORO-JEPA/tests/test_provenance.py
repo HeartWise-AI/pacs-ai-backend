@@ -1,4 +1,4 @@
-"""DeepCORO-JEPA 1.0.0 artifact identity and build verification."""
+"""DeepCORO-JEPA 1.1.0 artifact identity and build verification."""
 
 import hashlib
 import json
@@ -19,15 +19,15 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     provenance = manifest["provenance"]
 
-    assert manifest["version"] == "1.0.0"
+    assert manifest["version"] == "1.1.0"
     assert config["ModelStateDict"]["model_path"] == provenance["weightsPath"]
     assert provenance == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,
         "modelRepository": "heartwise/DeepCORO_JEPA",
-        "modelRevision": "49c8ddfcd45739e5994b8ac5055a52e7295c6f5f",
+        "modelRevision": "8144d015bfdd2a6fa4f18e859f1cb8da0cb8689e",
         "weightsPath": "model.safetensors",
-        "weightsSha256": "cc9d84a3fe6849579a74061edd744f169121814db40c0b8bfa676fb49c1a7325",
+        "weightsSha256": "370e14c587af4ad9597c99788c4aa91d98df17d7a98515d79ae2b216089fe729",
     }
 
 
@@ -60,4 +60,5 @@ def test_official_dockerfile_consumes_release_metadata_and_fetches_the_structure
     assert "--extra-file model_config.json" in dockerfile
     assert "--extra-file thresholds.json" in dockerfile
     config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
-    assert config["Thresholds"] == {"path": "thresholds.json", "pressure_operating_point": "balanced"}
+    assert config["Thresholds"] == {"path": "thresholds.json", "pressure_operating_point": "balanced",
+                                    "lesion_operating_point": "specificity_99"}
