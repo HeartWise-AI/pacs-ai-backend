@@ -107,13 +107,9 @@ jobs:
             echo "PACS_AI_RELEASE_MIN_FREE_GIB must be a positive integer" >&2
             exit 1
           fi
-          available_kib=$(df -Pk "$RUNNER_TEMP" | awk 'NR == 2 { print $4 }')
-          required_kib=$((PACS_AI_RELEASE_MIN_FREE_GIB * 1024 * 1024))
-          if (( available_kib < required_kib )); then
-            available_gib=$((available_kib / 1024 / 1024))
-            echo "Insufficient runner disk space: ${available_gib} GiB available, ${PACS_AI_RELEASE_MIN_FREE_GIB} GiB required" >&2
-            exit 1
-          fi
+          python3 scripts/ensure-release-disk-space.py \
+            --path "$RUNNER_TEMP" \
+            --minimum-free-gib "$PACS_AI_RELEASE_MIN_FREE_GIB"
           test -r "$DOCKERHUB_USERNAME_FILE"
           require_private_file "$DOCKERHUB_TOKEN_FILE"
           if grep -q 'mount=type=secret,id=hf_token' "$MODEL_DIRECTORY/Dockerfile"; then

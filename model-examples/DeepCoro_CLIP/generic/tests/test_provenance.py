@@ -19,7 +19,7 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     provenance = manifest["provenance"]
 
-    assert manifest["version"] == "1.0.1"
+    assert manifest["version"] == "1.0.2"
     assert config == {
         "VideoEncoder": {
             "backbone": "mvit",

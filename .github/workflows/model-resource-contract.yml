@@ -12,6 +12,8 @@ on:
       - "scripts/tests/test_register_model_release.py"
       - "scripts/tests/test_validate_catalog_recovery.py"
       - "scripts/tests/test_dicom_pixels.py"
+      - "scripts/tests/test_ensure_release_disk_space.py"
+      - "scripts/ensure-release-disk-space.py"
       - "scripts/deploy-model.sh"
       - "scripts/release-model.py"
       - "scripts/register-model-release.py"
@@ -39,6 +41,8 @@ on:
       - "scripts/tests/test_register_model_release.py"
       - "scripts/tests/test_validate_catalog_recovery.py"
       - "scripts/tests/test_dicom_pixels.py"
+      - "scripts/tests/test_ensure_release_disk_space.py"
+      - "scripts/ensure-release-disk-space.py"
       - "scripts/deploy-model.sh"
       - "scripts/release-model.py"
       - "scripts/register-model-release.py"
@@ -80,6 +84,7 @@ jobs:
           scripts.tests.test_register_model_release
           scripts.tests.test_validate_catalog_recovery
           scripts.tests.test_dicom_pixels
+          scripts.tests.test_ensure_release_disk_space
           -v
       - run: bash -n scripts/deploy-model.sh
 

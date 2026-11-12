@@ -18,7 +18,7 @@ from utils.resource_config import load_model_info, model_info_payload
 def test_manifest_identifies_the_validated_task_297_archive():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
 
-    assert manifest["version"] == "2.9.1"
+    assert manifest["version"] == "2.9.2"
     assert manifest["provenance"] == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,
