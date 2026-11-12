@@ -5,7 +5,7 @@
     "model-examples/CATH-EF": "heartwisehub/cath-ef",
     "model-examples/CathEF-CLIP": "heartwisehub/cathef-clip",
     "model-examples/DeepCORO-CTO": "heartwisehub/deepcoro-cto",
-    "model-examples/DeepCORO-Integrated": "heartwisehub/deepcoro-integrated",
+    "model-examples/DeepCORO-JEPA": "heartwisehub/deepcoro-jepa",
     "model-examples/DeepCORO-MACE": "heartwisehub/pacs-ai-deepcoro-mace",
     "model-examples/DeepCORO-SYNTAX": "heartwisehub/pacs-ai-deepcoro-syntax",
     "model-examples/DeepCoro_CLIP/cardio_syntax": "heartwisehub/pacs-ai-deepcoro-clip_cardiosyntax",

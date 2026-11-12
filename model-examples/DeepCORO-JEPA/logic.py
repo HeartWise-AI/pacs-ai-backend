@@ -1,4 +1,4 @@
-"""DeepCORO-Integrated: one EchoJEPA video encoder that segments the coronary tree itself and reads 18-segment
+"""DeepCORO-JEPA: one EchoJEPA video encoder that segments the coronary tree itself and reads 18-segment
 stenosis (+ LAD FFR/iFR, + lesion types when the checkpoint has those heads) from a diagnostic angiography study.
 
 Not a CLIP/MIL model: there is no zero-video padding. The model takes the real videos as a set and runs the encoder
@@ -60,10 +60,10 @@ class CustomPredictionService(BasePredictionService):
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model = multilayer_model_from_payload(payload, device=device, train_blocks=0)
         model.eval()
-        CustomPredictionService.models["deepcoro_integrated"] = model
+        CustomPredictionService.models["deepcoro_jepa"] = model
         CustomPredictionService.structure = structure
         CustomPredictionService.is_initialized = True
-        print(f"DeepCORO-Integrated {structure.get('model_version')} loaded on {device}; heads {structure.get('heads')}")
+        print(f"DeepCORO-JEPA {structure.get('model_version')} loaded on {device}; heads {structure.get('heads')}")
 
     def stop_model(self):
         CustomPredictionService.models.clear()
@@ -138,7 +138,7 @@ class CustomPredictionService(BasePredictionService):
     def _run_inference(self, dicoms: list[pydicom.Dataset]) -> Optional[dict]:
         from integrated_data import load_video_clip
         from integrated_study import measured_forward
-        model = CustomPredictionService.models["deepcoro_integrated"]
+        model = CustomPredictionService.models["deepcoro_jepa"]
         cfg = CustomPredictionService.model_config["Forward"]
         args = SimpleNamespace(device=next(model.parameters()).device.type, full_res=cfg["full_res"], crop_res=cfg["crop_res"],
                                max_views=cfg["max_views"], crops_per_group=cfg["crops_per_group"],
@@ -222,7 +222,7 @@ class CustomPredictionService(BasePredictionService):
             phys = (f"<h3>LAD physiology</h3><p>Predicted FFR {p['ffr']:.2f} (P ≤ 0.80: {p['ffr_abnormal_prob']:.2f}); "
                     f"predicted iFR {p['ifr']:.2f} (P ≤ 0.89: {p['ifr_abnormal_prob']:.2f})</p>")
         return ("<html><body style='font-family:sans-serif'>"
-                f"<h2>DeepCORO-Integrated {CustomPredictionService.structure.get('model_version', '')}</h2>"
+                f"<h2>DeepCORO-JEPA {CustomPredictionService.structure.get('model_version', '')}</h2>"
                 f"<p>{self.diagnosis_text(preds)}</p>"
                 f"<table border='1' cellspacing='0' cellpadding='4'><tr><th>Segment</th><th>Stenosis</th><th>P(significant)</th>{lesion_cols}</tr>{rows}</table>"
                 f"{phys}<p style='color:#555'>{preds['n_videos']} videos, {preds['encoder_passes']} encoder passes. "

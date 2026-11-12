@@ -1,4 +1,4 @@
-"""DeepCORO-Integrated 1.0.0 artifact identity and build verification."""
+"""DeepCORO-JEPA 1.0.0 artifact identity and build verification."""
 
 import hashlib
 import json
@@ -24,8 +24,8 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
     assert provenance == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,
-        "modelRepository": "heartwise/DeepCORO_Integrated",
-        "modelRevision": "927beafadf21205292733897c2ffdfc54606c7fb",
+        "modelRepository": "heartwise/DeepCORO_JEPA",
+        "modelRevision": "49c8ddfcd45739e5994b8ac5055a52e7295c6f5f",
         "weightsPath": "model.safetensors",
         "weightsSha256": "cc9d84a3fe6849579a74061edd744f169121814db40c0b8bfa676fb49c1a7325",
     }

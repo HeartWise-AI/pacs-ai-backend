@@ -1,8 +1,8 @@
-# DeepCORO-Integrated
+# DeepCORO-JEPA
 
 **Research use only.**
 
-DeepCORO-Integrated is one EchoJEPA ViT-L video encoder that segments the coronary tree itself. It reads a diagnostic
+DeepCORO-JEPA (earlier working name: DeepCORO-Integrated) is one EchoJEPA ViT-L video encoder that segments the coronary tree itself. It reads a diagnostic
 angiography study end to end:
 
 - % diameter stenosis and P(significant lesion) for **18 coronary segments**;
@@ -16,7 +16,7 @@ The encoder runs **at most twice per study**:
 
 `measured_forward` counts the encoder calls and fails if there are more than two.
 
-Version 1.0.0 serves model **v12**, `heartwise/DeepCORO_Integrated@927beaf` (tag `v12`).
+Version 1.0.0 serves model **v12**, `heartwise/DeepCORO_JEPA@49c8ddf` (tag `v12.1`: the v12 weights, unchanged, plus the decision thresholds).
 
 ## How it differs from the CLIP models
 
@@ -70,8 +70,8 @@ Held-out MHI test: 3,194 studies / 2,941 patients, with patient-bootstrap 95% CI
 ## Build and run
 
 ```bash
-python3 scripts/release-model.py model-examples/DeepCORO-Integrated \
-  --image-repository heartwisehub/deepcoro-integrated --hf-token-file /secure/path/hf_token
+python3 scripts/release-model.py model-examples/DeepCORO-JEPA \
+  --image-repository heartwisehub/deepcoro-jepa --hf-token-file /secure/path/hf_token
 ```
 
 - GPU required: about 1.7 GB resident and up to 9.9 GB peak (largest MHI test studies, bf16); declared 11 GB.
@@ -80,7 +80,7 @@ python3 scripts/release-model.py model-examples/DeepCORO-Integrated \
 ## Tests
 
 ```bash
-cd model-examples/DeepCORO-Integrated && python -m pytest -q tests
+cd model-examples/DeepCORO-JEPA && python -m pytest -q tests
 ```
 
 The tests cover:

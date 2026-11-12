@@ -1,7 +1,7 @@
 {
   "en": {
     "Summary": {
-      "Name": "DeepCORO-Integrated",
+      "Name": "DeepCORO-JEPA",
       "Description": "One EchoJEPA video encoder (ViT-L) that segments the coronary tree into 26 SYNTAX classes itself and, from up to 12 diagnostic coronary angiography runs per study, predicts the % diameter stenosis and the probability of a significant lesion in each of 18 coronary segments, plus LAD-territory FFR and iFR (value and probability of an abnormal result). The encoder runs at most twice per study: full views at 224 px, then up to 4 tracked 320 px crops per segment. Version 1.0.0 serves model v12.",
       "Developed_by": "HeartWise.AI / MHI",
       "Development_period": "2025-2026",

@@ -1,7 +1,7 @@
 {
   "openapi": "3.0.2",
   "info": {
-    "title": "DeepCORO-Integrated inference API",
+    "title": "DeepCORO-JEPA inference API",
     "description": "PACS.AI inference API for DeepCORO-CTO, a research-preview per-artery J-CTO scorer for chronic total occlusions on coronary angiography (XA).",
     "termsOfService": "https://github.com/HeartWise-AI",
     "contact": {
@@ -220,8 +220,8 @@
                   "success": true,
                   "message": "Model info retrieved successfully",
                   "data": {
-                    "modelId": "DeepCORO_Integrated",
-                    "modelName": "DeepCORO-Integrated",
+                    "modelId": "DeepCORO_JEPA",
+                    "modelName": "DeepCORO-JEPA",
                     "domainName": "Cardiology",
                     "stage": "ai_inference",
                     "modality": "Angiogram",
@@ -229,8 +229,8 @@
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
-                      "modelRepository": "heartwise/DeepCORO_Integrated",
-                      "modelRevision": "927beafadf21205292733897c2ffdfc54606c7fb",
+                      "modelRepository": "heartwise/DeepCORO_JEPA",
+                      "modelRevision": "49c8ddfcd45739e5994b8ac5055a52e7295c6f5f",
                       "weightsPath": "model.safetensors",
                       "weightsSha256": "cc9d84a3fe6849579a74061edd744f169121814db40c0b8bfa676fb49c1a7325"
                     },
@@ -420,7 +420,7 @@
                   "data": {
                     "en": {
                       "Summary": {
-                        "Name": "DeepCORO-Integrated",
+                        "Name": "DeepCORO-JEPA",
                         "Description": "One EchoJEPA video encoder (ViT-L) that segments the coronary tree into 26 SYNTAX classes itself and, from up to 12 diagnostic coronary angiography runs per study, predicts the % diameter stenosis and the probability of a significant lesion in each of 18 coronary segments, plus LAD-territory FFR and iFR (value and probability of an abnormal result). The encoder runs at most twice per study: full views at 224 px, then up to 4 tracked 320 px crops per segment. Version 1.0.0 serves model v12.",
                         "Developed_by": "HeartWise.AI / MHI",
                         "Development_period": "2025-2026",
