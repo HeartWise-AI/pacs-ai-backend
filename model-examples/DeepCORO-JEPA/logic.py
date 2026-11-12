@@ -3,7 +3,8 @@ stenosis (+ LAD FFR/iFR, + lesion types when the checkpoint has those heads) fro
 
 Not a CLIP/MIL model: there is no zero-video padding. The model takes the real videos as a set and runs the encoder
 at most twice per study (full views at 224 px, then tracked 320 px crops per segment); `measured_forward` enforces
-the two-pass budget. Research use only.
+the two-pass budget. Yes/no calls use the thresholds.json shipped with the pinned model revision (chosen on the
+validation set): a finding is positive when its probability is strictly greater than its threshold. Research use only.
 """
 import base64
 import json
@@ -35,11 +36,13 @@ SEGMENT_NAMES = {
     "mid_lcx": "Mid LCx", "dist_lcx": "Distal LCx", "om1": "First obtuse marginal", "om2": "Second obtuse marginal",
     "bx": "Ramus (bisector)", "lvp": "Posterior left ventricular",
 }
+PRESSURE_OPERATING_POINTS = ("balanced", "high_sensitivity", "high_specificity")
 
 
 class CustomPredictionService(BasePredictionService):
     model_config: dict = {}
     structure: dict = {}
+    thresholds: dict = {}
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -57,6 +60,9 @@ class CustomPredictionService(BasePredictionService):
                    "decoder_width": structure["decoder_width"],
                    "block_indices_zero_based": structure["block_indices_zero_based"],
                    "physiology": structure.get("physiology"), "state_dict": load_file(str(weights))}
+        CustomPredictionService.thresholds = self.load_thresholds(
+            weights.parent, CustomPredictionService.model_config["Thresholds"], structure["groups"],
+            bool(structure.get("physiology")), CustomPredictionService.get_model_info()["provenance"]["weightsSha256"])
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model = multilayer_model_from_payload(payload, device=device, train_blocks=0)
         model.eval()
@@ -64,6 +70,31 @@ class CustomPredictionService(BasePredictionService):
         CustomPredictionService.structure = structure
         CustomPredictionService.is_initialized = True
         print(f"DeepCORO-JEPA {structure.get('model_version')} loaded on {device}; heads {structure.get('heads')}")
+
+    @staticmethod
+    def load_thresholds(models_dir, settings: dict, groups, physiology: bool, weights_sha256: str) -> dict:
+        """Decision thresholds of the pinned model revision, one per output. `settings` is the "Thresholds" block of
+        models/config.json. Fails on an unknown key or operating point, when the file belongs to other weights or when
+        an output has no threshold: no silent default."""
+        if set(settings) != {"path", "pressure_operating_point"}:
+            raise ValueError(f'"Thresholds" takes exactly "path" and "pressure_operating_point", got {sorted(settings)}')
+        pressure_operating_point = settings["pressure_operating_point"]
+        if pressure_operating_point not in PRESSURE_OPERATING_POINTS:
+            raise ValueError(f"Unknown pressure_operating_point {pressure_operating_point!r}; choose one of {PRESSURE_OPERATING_POINTS}")
+        path = Path(models_dir) / settings["path"]
+        spec = json.loads(path.read_text(encoding="utf-8"))
+        if spec["weights_sha256"] != weights_sha256:
+            raise ValueError(f"{path} was derived for weights {spec['weights_sha256']}, not {weights_sha256}")
+        wanted = {f"{g}_prob_significant": "balanced" for g in groups}
+        if physiology:
+            wanted.update({"ffr_abnormal_prob": pressure_operating_point, "ifr_abnormal_prob": pressure_operating_point})
+        missing = [name for name, point in wanted.items() if point not in spec["thresholds"].get(name, {})]
+        if missing:
+            raise ValueError(f"{path} has no threshold for {missing}")
+        out = {name: float(spec["thresholds"][name][point]) for name, point in wanted.items()}
+        if any(not 0.0 < t < 1.0 for t in out.values()):
+            raise ValueError(f"{path} has a threshold outside (0, 1)")
+        return {"pressure_operating_point": pressure_operating_point, "values": out}
 
     def stop_model(self):
         CustomPredictionService.models.clear()
@@ -163,22 +194,31 @@ class CustomPredictionService(BasePredictionService):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             return None
-        return self.postprocess(model.groups, res, len(clips))
+        return self.postprocess(model.groups, res, len(clips), CustomPredictionService.thresholds)
 
     @staticmethod
-    def postprocess(groups, res: dict, n_videos: int) -> dict:
+    def postprocess(groups, res: dict, n_videos: int, thresholds: dict) -> dict:
+        """`thresholds` comes from load_thresholds. A call is positive when the probability is strictly greater than
+        its threshold, taken on the unrounded probability."""
+        cut = thresholds["values"]
         out = {"n_videos": n_videos, "encoder_passes": int(res["encoder_passes"]), "segments": {}}
         sev = res["severity"].float().cpu().tolist()
         prob = res["binary_probability"].float().cpu().tolist()
         for i, g in enumerate(groups):
             out["segments"][g] = {"stenosis_pct": round(min(max(sev[i], 0.0), 100.0), 1),
                                   "prob_significant": round(prob[i], 4),
+                                  "prob_threshold": cut[f"{g}_prob_significant"],
+                                  "significant": bool(prob[i] > cut[f"{g}_prob_significant"]),
                                   "significant_threshold_pct": 50 if g == "left_main" else 70}
         if "physiology" in res:
             ph = {k: float(v.float().cpu().reshape(-1)[0]) for k, v in res["physiology"].items()}
+            prob_abnormal = {k: float(1 / (1 + np.exp(-ph[f"{k}_logit"]))) for k in ("ffr", "ifr")}
             out["lad_physiology"] = {"ffr": round(ph["ffr"], 3), "ifr": round(ph["ifr"], 3),
-                                     "ffr_abnormal_prob": round(1 / (1 + np.exp(-ph["ffr_logit"])), 4),
-                                     "ifr_abnormal_prob": round(1 / (1 + np.exp(-ph["ifr_logit"])), 4)}
+                                     "operating_point": thresholds["pressure_operating_point"]}
+            for k in ("ffr", "ifr"):
+                out["lad_physiology"].update({f"{k}_abnormal_prob": round(prob_abnormal[k], 4),
+                                              f"{k}_abnormal_threshold": cut[f"{k}_abnormal_prob"],
+                                              f"{k}_abnormal": bool(prob_abnormal[k] > cut[f"{k}_abnormal_prob"])})
         for name in ("calcif", "thrombus", "cto"):
             if f"lesion_{name}_probability" in res:
                 for g, x in zip(groups, res[f"lesion_{name}_probability"].float().cpu().tolist()):
@@ -189,29 +229,37 @@ class CustomPredictionService(BasePredictionService):
 
     @staticmethod
     def significant_segments(preds: dict) -> list[str]:
-        return [g for g, v in preds["segments"].items() if v["stenosis_pct"] >= v["significant_threshold_pct"]]
+        return [g for g, v in preds["segments"].items() if v["significant"]]
 
     def diagnosis_text(self, preds: dict) -> str:
         sig = self.significant_segments(preds)
-        text = ("Predicted significant stenosis: " + ", ".join(f"{SEGMENT_NAMES[g]} {preds['segments'][g]['stenosis_pct']:.0f}%" for g in sig)
-                if sig else "No segment predicted at or above the significant-stenosis threshold.")
+        text = ("Flagged for possible significant stenosis (probability above its validation threshold): "
+                + ", ".join(f"{SEGMENT_NAMES[g]} (P {preds['segments'][g]['prob_significant']:.3f}, estimated "
+                            f"{preds['segments'][g]['stenosis_pct']:.0f}%)" for g in sig) + "."
+                if sig else "No segment flagged for significant stenosis.")
         if "lad_physiology" in preds:
             p = preds["lad_physiology"]
-            text += f" LAD physiology: P(FFR ≤ 0.80) {p['ffr_abnormal_prob']:.2f}, P(iFR ≤ 0.89) {p['ifr_abnormal_prob']:.2f}."
+            call = lambda k: "abnormal" if p[f"{k}_abnormal"] else "normal"
+            text += (f" LAD physiology: FFR predicted {call('ffr')} (P(FFR ≤ 0.80) {p['ffr_abnormal_prob']:.2f}, threshold "
+                     f"{p['ffr_abnormal_threshold']:.2f}); iFR predicted {call('ifr')} (P(iFR ≤ 0.89) "
+                     f"{p['ifr_abnormal_prob']:.2f}, threshold {p['ifr_abnormal_threshold']:.2f}).")
         return text
 
     @staticmethod
     def recommendations(preds: dict) -> dict:
-        en = ("Research model, not for clinical decisions. Confirm every reading on the angiogram; LAD physiology "
+        en = ("Research model, not for clinical decisions. Flags use thresholds chosen on the internal validation set, "
+              "not a validated clinical operating point. Confirm every reading on the angiogram; LAD physiology "
               "outputs (test AUROC about 0.72) do not replace invasive FFR/iFR.")
-        fr = ("Modèle de recherche, ne pas utiliser pour la décision clinique. Confirmer chaque lecture sur "
+        fr = ("Modèle de recherche, ne pas utiliser pour la décision clinique. Les signalements utilisent des seuils "
+              "choisis sur l'ensemble de validation interne, et non un seuil clinique validé. Confirmer chaque lecture sur "
               "l'angiographie; les sorties de physiologie IVA (AUROC test environ 0,72) ne remplacent pas la FFR/iFR invasive.")
         return {"en": en, "fr": fr, "presentable": True}
 
     def render_html(self, preds: dict) -> str:
         rows = "".join(
             f"<tr><td>{SEGMENT_NAMES[g]}</td><td style='text-align:right'>{v['stenosis_pct']:.0f}%</td>"
-            f"<td style='text-align:right'>{v['prob_significant']:.2f}</td>"
+            f"<td style='text-align:right'>{v['prob_significant']:.3f}</td>"
+            f"<td style='text-align:right'>{v['prob_threshold']:.4f}</td><td>{'Yes' if v['significant'] else 'No'}</td>"
             + "".join(f"<td style='text-align:right'>{v[k]:.2f}</td>" for k in ("calcif_prob", "thrombus_prob", "cto_prob") if k in v)
             + "</tr>" for g, v in preds["segments"].items())
         lesion_cols = "".join(f"<th>{h}</th>" for k, h in (("calcif_prob", "P(calcification)"), ("thrombus_prob", "P(thrombus)"), ("cto_prob", "P(CTO)"))
@@ -219,12 +267,16 @@ class CustomPredictionService(BasePredictionService):
         phys = ""
         if "lad_physiology" in preds:
             p = preds["lad_physiology"]
-            phys = (f"<h3>LAD physiology</h3><p>Predicted FFR {p['ffr']:.2f} (P ≤ 0.80: {p['ffr_abnormal_prob']:.2f}); "
-                    f"predicted iFR {p['ifr']:.2f} (P ≤ 0.89: {p['ifr_abnormal_prob']:.2f})</p>")
+            call = lambda k: "abnormal" if p[f"{k}_abnormal"] else "normal"
+            phys = (f"<h3>LAD physiology</h3><p>FFR predicted <b>{call('ffr')}</b>: P(FFR ≤ 0.80) {p['ffr_abnormal_prob']:.2f}, "
+                    f"threshold {p['ffr_abnormal_threshold']:.2f}, estimated value {p['ffr']:.2f}.<br>"
+                    f"iFR predicted <b>{call('ifr')}</b>: P(iFR ≤ 0.89) {p['ifr_abnormal_prob']:.2f}, "
+                    f"threshold {p['ifr_abnormal_threshold']:.2f}, estimated value {p['ifr']:.2f}.<br>"
+                    f"Operating point: {p['operating_point']}.</p>")
         return ("<html><body style='font-family:sans-serif'>"
                 f"<h2>DeepCORO-JEPA {CustomPredictionService.structure.get('model_version', '')}</h2>"
                 f"<p>{self.diagnosis_text(preds)}</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4'><tr><th>Segment</th><th>Stenosis</th><th>P(significant)</th>{lesion_cols}</tr>{rows}</table>"
+                f"<table border='1' cellspacing='0' cellpadding='4'><tr><th>Segment</th><th>Stenosis</th><th>P(significant)</th><th>Threshold</th><th>Flagged</th>{lesion_cols}</tr>{rows}</table>"
                 f"{phys}<p style='color:#555'>{preds['n_videos']} videos, {preds['encoder_passes']} encoder passes. "
                 f"{self.recommendations(preds)['en']}</p></body></html>")
 

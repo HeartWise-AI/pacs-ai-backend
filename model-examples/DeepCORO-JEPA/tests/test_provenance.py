@@ -49,7 +49,7 @@ def test_release_revision_and_version_are_injected_into_model_info():
     assert payload["version"] == "1.0.0-rc.1.aaaaaaaaaaaa"
 
 
-def test_official_dockerfile_consumes_release_metadata_and_fetches_the_structure_file():
+def test_official_dockerfile_consumes_release_metadata_and_fetches_the_structure_and_threshold_files():
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     for build_argument in ("PACS_AI_SOURCE_REPOSITORY", "PACS_AI_SOURCE_REVISION", "PACS_AI_MODEL_VERSION",
                            "PACS_AI_MODEL_REPOSITORY", "PACS_AI_MODEL_REVISION", "PACS_AI_WEIGHTS_PATH",
@@ -58,3 +58,6 @@ def test_official_dockerfile_consumes_release_metadata_and_fetches_the_structure
         assert f"${{{build_argument}}}" in dockerfile
     assert "mount=type=secret,id=hf_token" in dockerfile
     assert "--extra-file model_config.json" in dockerfile
+    assert "--extra-file thresholds.json" in dockerfile
+    config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
+    assert config["Thresholds"] == {"path": "thresholds.json", "pressure_operating_point": "balanced"}

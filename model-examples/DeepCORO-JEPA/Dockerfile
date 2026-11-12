@@ -31,6 +31,7 @@ RUN --mount=type=secret,id=hf_token \
       --revision "${PACS_AI_MODEL_REVISION}" \
       --weights-path "${PACS_AI_WEIGHTS_PATH}" \
       --extra-file model_config.json \
+      --extra-file thresholds.json \
       --weights-sha256 "${PACS_AI_WEIGHTS_SHA256}"
 
 # Copy application files
