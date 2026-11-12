@@ -1,0 +1,780 @@
+{
+  "openapi": "3.0.2",
+  "info": {
+    "title": "DeepCORO-SCAD Inference API",
+    "description": "Research-only study-level spontaneous coronary artery dissection (SCAD) probability from up to four coronary angiography videos. Not for clinical use.",
+    "termsOfService": "https://github.com/HeartWise-AI",
+    "contact": {
+      "name": "HeartWise AI",
+      "email": "hello@heartwise.ai"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "Container reverse proxy"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Direct local API"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Inference",
+      "description": "Inference service"
+    }
+  ],
+  "paths": {
+    "/inference/predict": {
+      "post": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Predict",
+        "description": "Creates a prediction request",
+        "requestBody": {
+          "description": "Prediction request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/PredictResponse"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-info": {
+      "get": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Get Model Info",
+        "description": "Get model info",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GetModelInfoResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Model info retrieved successfully",
+                  "data": {
+                    "modelId": "DeepCORO_SCAD",
+                    "modelName": "DeepCORO-SCAD",
+                    "domainName": "Cardiology",
+                    "stage": "ai_inference",
+                    "modality": "Angiogram",
+                    "version": "1.0.0",
+                    "provenance": {
+                      "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+                      "sourceRevision": null,
+                      "modelRepository": "heartwise/deepcoro_clip_scad",
+                      "modelRevision": "9c03ca0928cd781b82669b8e4cd48f1b7b11ed3d",
+                      "weightsPath": "20261025-134722/models/best_model_epoch_7.pt",
+                      "weightsSha256": "77ebd8701feddc677abee17e6ebd872016262404277492308ff0319b702c4bfe"
+                    },
+                    "resources": {
+                      "gpuRequired": true,
+                      "residentMemoryMiB": 2600,
+                      "peakMemoryMiB": 3350,
+                      "maxConcurrentInferences": 1,
+                      "idleTimeoutSeconds": 600
+                    },
+                    "dicomTargetLevel": "STUDY",
+                    "dicomUploadMin": 1,
+                    "dicomUploadMax": 4,
+                    "supportedDicomModalities": [
+                      "XA"
+                    ],
+                    "supportedDicomTags": [
+                      "*"
+                    ],
+                    "supportedAdditionalMetadata": [],
+                    "supportedOutputModes": [
+                      "HTML",
+                      "JSON"
+                    ],
+                    "approveFeedbackQuestionnaires": [
+                      {
+                        "id": "confidence",
+                        "type": "RADIO",
+                        "questionEn": "How confident are you that the SCAD result is consistent with the angiogram?",
+                        "questionFr": "À quel point êtes-vous confiant que le résultat de DCS concorde avec la coronarographie ?",
+                        "answerOptionsEn": [
+                          {
+                            "id": "very",
+                            "answer": "Very confident"
+                          },
+                          {
+                            "id": "somewhat",
+                            "answer": "Somewhat confident"
+                          },
+                          {
+                            "id": "neutral",
+                            "answer": "Neutral"
+                          }
+                        ],
+                        "answerOptionsFr": [
+                          {
+                            "id": "very",
+                            "answer": "Très confiant"
+                          },
+                          {
+                            "id": "somewhat",
+                            "answer": "Assez confiant"
+                          },
+                          {
+                            "id": "neutral",
+                            "answer": "Neutre"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "comments",
+                        "type": "TEXT",
+                        "questionEn": "Any additional comments?",
+                        "questionFr": "Des commentaires supplémentaires ?",
+                        "answerOptionsEn": null,
+                        "answerOptionsFr": null
+                      }
+                    ],
+                    "rejectFeedbackQuestionnaires": [
+                      {
+                        "id": "reason",
+                        "type": "CHECKBOX",
+                        "questionEn": "Why do you disagree with the output?",
+                        "questionFr": "Pourquoi êtes-vous en désaccord avec le résultat ?",
+                        "answerOptionsEn": [
+                          {
+                            "id": "false_positive",
+                            "answer": "SCAD flagged but not present"
+                          },
+                          {
+                            "id": "false_negative",
+                            "answer": "SCAD present but not flagged"
+                          },
+                          {
+                            "id": "quality",
+                            "answer": "Poor image quality"
+                          },
+                          {
+                            "id": "other",
+                            "answer": "Other"
+                          }
+                        ],
+                        "answerOptionsFr": [
+                          {
+                            "id": "false_positive",
+                            "answer": "DCS signalée mais absente"
+                          },
+                          {
+                            "id": "false_negative",
+                            "answer": "DCS présente mais non signalée"
+                          },
+                          {
+                            "id": "quality",
+                            "answer": "Mauvaise qualité d'image"
+                          },
+                          {
+                            "id": "other",
+                            "answer": "Autre"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-facts": {
+      "get": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Get Model Facts",
+        "description": "Get model facts",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GetModelFactsResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Model facts retrieved successfully",
+                  "data": {
+                    "en": {
+                      "Summary": {
+                        "Name": "DeepCORO-SCAD",
+                        "Description": "DeepCORO-CLIP based research model that estimates the study-level probability of spontaneous coronary artery dissection (SCAD) from up to four coronary angiography videos.",
+                        "Developed_by": "HeartWise.AI / Montreal Heart Institute",
+                        "Version": "1.0.0"
+                      },
+                      "Mechanism": {
+                        "Outcome": "Spontaneous coronary artery dissection (SCAD) on the diagnostic coronary angiogram",
+                        "Output": "SCAD probability (sigmoid of the scad head) and a SCAD-suspected flag at the validation-derived threshold of 0.0524. Auxiliary training heads (atherosclerotic CAD, other finding, stenosis) are not reported.",
+                        "Target_population": "Adults undergoing diagnostic coronary angiography represented by the model development cohort (Montreal Heart Institute plus SCAD cases from the UBC Vancouver SCAD registry and UBC partner sites)",
+                        "Input_data_source": "Coronary angiography study, up to four videos (ideally two left and two right coronary views), ordered by DICOM SeriesTime",
+                        "Input_data_type": "dicom",
+                        "Model_type": "Deep Learning (MViT video encoder, 16 frames at 224 px, plus multiple-instance linear probing with mean pooling over four videos)",
+                        "Supported_DICOM_modalities": "XA"
+                      },
+                      "Performance": {
+                        "Held_out_test_all_sites": "n=270 studies (56 SCAD): AUROC 0.95 (95% CI 0.91-0.97), sensitivity 0.91, specificity 0.84, NPV 0.97",
+                        "Held_out_test_Montreal_Heart_Institute": "n=229 studies: AUROC 0.87 (95% CI 0.78-0.94), sensitivity 0.69, specificity 0.85, NPV 0.97",
+                        "Threshold": "0.0524, fixed on the validation set to favour sensitivity"
+                      },
+                      "Uses_and_directions": {
+                        "General_use": "Research and demonstration of angiography-based SCAD detection.",
+                        "Directions": "Submit one diagnostic XA study with up to four videos, preferably two left and two right coronary views. Interpret the output as a model score, not a calibrated clinical probability.",
+                        "Not_intended_use": "Diagnosis, ruling out SCAD, lesion localisation, or changing treatment or revascularization decisions."
+                      },
+                      "Warnings_and_limitations": {
+                        "Research_only": "No regulatory clearance. The model and its threshold are not validated for clinical decision-making.",
+                        "Site_confounding": "External sites contributed SCAD-positive studies only, so the all-sites estimate can be inflated by site differences. The single-site Montreal Heart Institute estimate is lower (AUROC 0.87, sensitivity 0.69).",
+                        "Localisation": "The model gives one study-level output and does not localise the dissected segment.",
+                        "Calibration": "The displayed probability is a sigmoid output and is not a calibrated absolute risk. A result below the threshold does not exclude SCAD.",
+                        "Input_selection": "The service uses at most the first four processable videos after ordering by DICOM SeriesTime; additional videos are ignored and missing slots are masked out of the mean pooling."
+                      },
+                      "Artifact_provenance": {
+                        "Repository": "heartwise/deepcoro_clip_scad",
+                        "Pinned_revision": "9c03ca0928cd781b82669b8e4cd48f1b7b11ed3d",
+                        "Checkpoint": "20261025-134722/models/best_model_epoch_7.pt",
+                        "Checkpoint_heads": "Four heads (scad, cad, other, stenosis) under the linear_probing state-dict key; only scad is reported"
+                      }
+                    },
+                    "fr": {
+                      "Résumé": {
+                        "Nom": "DeepCORO-SCAD",
+                        "Description": "Modèle de recherche fondé sur DeepCORO-CLIP qui estime, à l'échelle de l'examen, la probabilité de dissection coronarienne spontanée (DCS) à partir d'au plus quatre vidéos de coronarographie.",
+                        "Version": "1.0.0"
+                      },
+                      "Performance": {
+                        "Test_tous_sites": "n=270 examens (56 DCS) : ASC 0,95 (IC 95 % 0,91-0,97), sensibilité 0,91, spécificité 0,84, VPN 0,97",
+                        "Test_Institut_de_Cardiologie_de_Montréal": "n=229 examens : ASC 0,87 (IC 95 % 0,78-0,94), sensibilité 0,69, spécificité 0,85, VPN 0,97"
+                      },
+                      "Avertissements": {
+                        "Recherche_uniquement": "Aucune autorisation réglementaire. Le modèle et son seuil ne sont pas validés pour la prise de décision clinique.",
+                        "Confusion_par_site": "Les sites externes n'ont fourni que des examens avec DCS ; l'estimation tous sites peut donc être surestimée par les différences entre sites.",
+                        "Localisation": "Le modèle produit un seul résultat par examen et ne localise pas le segment disséqué.",
+                        "Interprétation": "La probabilité affichée n'est pas un risque absolu étalonné. Un résultat sous le seuil n'exclut pas une DCS."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model/runtime": {
+      "get": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Get model runtime",
+        "description": "Return the current model residency and activity state without loading the model.",
+        "responses": {
+          "200": {
+            "description": "Current runtime state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model/load": {
+      "post": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Load model",
+        "description": "Load model weights into memory. Repeated calls are idempotent.",
+        "responses": {
+          "200": {
+            "description": "Model is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Model failed to load",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model/unload": {
+      "post": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Unload model",
+        "description": "Wait for active inference to finish, release model resources, and restart the supervised API process when needed.",
+        "responses": {
+          "200": {
+            "description": "Model is unloaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PredictRequest": {
+        "required": [
+          "outputMode"
+        ],
+        "type": "object",
+        "properties": {
+          "seriesInstanceMetadata": {
+            "type": "object"
+          },
+          "additionalMetadata": {
+            "type": "object",
+            "nullable": true
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": [
+              "HTML",
+              "JSON"
+            ],
+            "description": "Output mode"
+          },
+          "seriesInstanceImages": {
+            "type": "object",
+            "nullable": true,
+            "description": "Series and instance indices mapped to base64-encoded DICOM files.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "APIResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Operation successful"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "APIErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "Bad Request"
+          },
+          "errorCode": {
+            "type": "string",
+            "example": "BAD_REQUEST"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "GetModelInfoResponse": {
+        "type": "object",
+        "properties": {
+          "modelName": {
+            "type": "string",
+            "description": "Model display name",
+            "example": "DeepCORO-SCAD"
+          },
+          "version": {
+            "type": "string",
+            "description": "Model version",
+            "example": "1.0.0"
+          },
+          "dicomTargetLevel": {
+            "type": "string",
+            "enum": [
+              "PATIENT",
+              "STUDY",
+              "SERIES",
+              "INSTANCE"
+            ],
+            "description": "DICOM target level",
+            "example": "STUDY"
+          },
+          "dicomUploadMin": {
+            "type": "integer",
+            "description": "Minimum number of DICOM instances to upload for inference",
+            "example": 1
+          },
+          "dicomUploadMax": {
+            "type": "integer",
+            "description": "Maximum number of DICOM instances to upload for inference",
+            "example": 10
+          },
+          "supportedDicomModalities": {
+            "type": "array",
+            "description": "Supported DICOM modalities",
+            "items": {
+              "type": "string",
+              "example": "XA"
+            },
+            "example": [
+              "XA"
+            ]
+          },
+          "supportedDicomTags": {
+            "type": "array",
+            "description": "Supported DICOM tags",
+            "items": {
+              "type": "string",
+              "example": "00200011"
+            },
+            "example": [
+              "*"
+            ]
+          },
+          "supportedAdditionalMetadata": {
+            "type": "array",
+            "description": "Supported additional metadata",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "example": "smoking"
+                },
+                "name": {
+                  "type": "string",
+                  "example": "Smoking"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "boolean",
+                    "number",
+                    "string"
+                  ],
+                  "example": "boolean"
+                },
+                "required": {
+                  "type": "boolean",
+                  "example": true
+                }
+              }
+            },
+            "example": []
+          },
+          "supportedOutputModes": {
+            "type": "array",
+            "description": "Supported output modes",
+            "items": {
+              "type": "string",
+              "enum": [
+                "HTML",
+                "JSON"
+              ],
+              "example": "JSON"
+            },
+            "example": [
+              "HTML",
+              "JSON"
+            ]
+          }
+        }
+      },
+      "GetModelFactsResponse": {
+        "type": "object",
+        "properties": {
+          "en": {
+            "type": "object",
+            "description": "Model facts in English. See example for more details."
+          }
+        }
+      },
+      "PredictResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "htmlBase64"
+            ],
+            "properties": {
+              "htmlBase64": {
+                "type": "string",
+                "description": "Base64-encoded DeepCORO-SCAD HTML research report."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "predictions",
+              "modelRecommendations"
+            ],
+            "properties": {
+              "predictions": {
+                "type": "object",
+                "description": "SCAD probability, validation-derived threshold, and SCAD-suspected flag."
+              },
+              "diagnosis": {
+                "type": "string",
+                "nullable": true
+              },
+              "modelRecommendations": {
+                "type": "object",
+                "nullable": true,
+                "properties": {
+                  "en": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "fr": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "presentable": {
+                    "type": "boolean",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ModelRuntime": {
+        "type": "object",
+        "required": [
+          "state",
+          "loaded",
+          "activeRequests",
+          "lastUsedAt"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "UNLOADED",
+              "LOADING",
+              "READY",
+              "BUSY",
+              "EVICTING",
+              "ERROR"
+            ]
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "activeRequests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lastUsedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
