@@ -1,7 +1,7 @@
 # Go Model Manager (Phases 3-5)
 
 This implements the scheduler and inference gateways in initiative #339. A
-single manager is constructed in the api-pacs dependency container and shared
+single host manager is constructed in the api-pacs dependency container and shared
 by user and internal inference paths. It is disabled by default, and the
 study-service gateway is independently opt-in. **Merging this code does not
 enable managed inference on a deployed host.**
@@ -13,6 +13,8 @@ enable managed inference on a deployed host.**
 | `MODEL_MANAGER_ENABLED` | `false` | Route api-pacs inference through the shared manager when enabled. |
 | `GPU_MEMORY_BUDGET_MIB` | required when enabled | Upper bound for managed GPU use, before subtracting the safety margin. |
 | `GPU_MEMORY_SAFETY_MARGIN_MIB` | `1024` | Headroom excluded from scheduling. |
+| `GPU_MEMORY_BUDGETS_MIB` | unset | Optional UUID-to-budget JSON object enabling separate GPU ledgers; replaces the scalar budget. |
+| `MODEL_IDLE_SWEEP_SECONDS` | `0` | Optional proactive idle offload interval; 0 disables the sweeper. |
 | `MODEL_QUEUE_TIMEOUT_SECONDS` | `600` | Maximum time waiting for admission, including startup/readiness and eviction. |
 
 For example, a budget of 81920 MiB with a 4096 MiB margin gives 77824 MiB
@@ -103,9 +105,9 @@ production service. Predictions are rejected until this inventory succeeds.
   reservation set that exceeds schedulable capacity, fails startup closed.
 - Duplicate registrations sharing one canonical container ID are counted once.
 
-Reconciliation never cold-loads a model or starts a stopped container. Only one
-manager process may own this GPU; replicas and multi-GPU placement remain
-outside V1.
+Reconciliation never cold-loads a model or starts a stopped container. Only one manager process may own the host GPU budgets. Replicas remain outside
+the supported scope. Explicit multi-GPU placement and per-device budgets are
+now available; see [per-GPU placement and idle offloading](multi-gpu-model-placement.md).
 
 ## Operational metrics
 

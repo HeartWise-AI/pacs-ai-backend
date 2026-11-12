@@ -1,12 +1,14 @@
 package modelmanager
 
 import (
+	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"time"
 )
 
-// Config describes one manager and one GPU. BudgetMiB includes SafetyMarginMiB.
+// Config describes one host manager with one or more GPU budgets. BudgetMiB includes SafetyMarginMiB.
 type Config struct {
 	Enabled               bool
 	RequireReconciliation bool
@@ -14,6 +16,10 @@ type Config struct {
 	SafetyMarginMiB       int
 	QueueTimeout          time.Duration
 	OperationTimeout      time.Duration
+	// GPUBudgetsMiB replaces the legacy single-device budget when set. Keys
+	// are physical GPU UUIDs, never CUDA or nvidia-smi ordinals.
+	GPUBudgetsMiB     map[string]int
+	IdleSweepInterval time.Duration
 }
 
 func ConfigFromEnv(getenv func(string) string) (Config, error) {
@@ -29,6 +35,18 @@ func ConfigFromEnv(getenv func(string) string) (Config, error) {
 		return c, nil
 	}
 	c.RequireReconciliation = true
+	if v := getenv("GPU_MEMORY_BUDGETS_MIB"); v != "" {
+		if err := json.Unmarshal([]byte(v), &c.GPUBudgetsMiB); err != nil || len(c.GPUBudgetsMiB) == 0 {
+			return c, fmt.Errorf("GPU_MEMORY_BUDGETS_MIB must be a nonempty JSON object of GPU UUIDs to MiB budgets")
+		}
+	}
+	if v := getenv("MODEL_IDLE_SWEEP_SECONDS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return c, fmt.Errorf("MODEL_IDLE_SWEEP_SECONDS must be a non-negative integer")
+		}
+		c.IdleSweepInterval = time.Duration(n) * time.Second
+	}
 	for _, field := range []struct {
 		name   string
 		target *int
@@ -55,7 +73,16 @@ func ConfigFromEnv(getenv func(string) string) (Config, error) {
 }
 
 func (c Config) Validate() error {
-	if c.BudgetMiB <= 0 || c.SafetyMarginMiB < 0 || c.SafetyMarginMiB >= c.BudgetMiB {
+	if c.IdleSweepInterval < 0 {
+		return fmt.Errorf("idle sweep interval must be non-negative")
+	}
+	if len(c.GPUBudgetsMiB) > 0 {
+		for uuid, budget := range c.GPUBudgetsMiB {
+			if !gpuUUIDPattern.MatchString(uuid) || c.SafetyMarginMiB < 0 || budget <= c.SafetyMarginMiB {
+				return fmt.Errorf("each GPU UUID budget must exceed its non-negative safety margin")
+			}
+		}
+	} else if c.BudgetMiB <= 0 || c.SafetyMarginMiB < 0 || c.SafetyMarginMiB >= c.BudgetMiB {
 		return fmt.Errorf("GPU budget must exceed its non-negative safety margin")
 	}
 	if c.QueueTimeout <= 0 || c.OperationTimeout <= 0 {
@@ -63,3 +90,5 @@ func (c Config) Validate() error {
 	}
 	return nil
 }
+
+var gpuUUIDPattern = regexp.MustCompile(`^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)

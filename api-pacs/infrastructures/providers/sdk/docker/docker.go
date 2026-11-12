@@ -25,9 +25,11 @@ import (
 
 // DockerSDK docker sdk
 type DockerSDK struct {
-	Client  *client.Client
-	AuthStr string
-	Network string
+	Client         *client.Client
+	AuthStr        string
+	Network        string
+	GPUDefaultUUID string
+	GPUAssignments map[string]string
 }
 
 // NewClient creates a new docker client instance
@@ -37,6 +39,10 @@ func NewClient(config types.Config) (*DockerSDK, error) {
 		return nil, err
 	}
 
+	assignments, err := parseGPUAssignments(config.GPUDefaultUUID, config.GPUAssignmentsJSON)
+	if err != nil {
+		return nil, err
+	}
 	// docker registry credentials
 	authConfig := registry.AuthConfig{
 		Username: config.Username,
@@ -50,14 +56,17 @@ func NewClient(config types.Config) (*DockerSDK, error) {
 	authStr := base64.URLEncoding.EncodeToString(encodedJSON)
 
 	return &DockerSDK{
-		Client:  client,
-		AuthStr: authStr,
-		Network: config.Network,
+		Client:         client,
+		AuthStr:        authStr,
+		Network:        config.Network,
+		GPUDefaultUUID: config.GPUDefaultUUID,
+		GPUAssignments: assignments,
 	}, nil
 }
 
 // CreateContainer creates a new container
 func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateContainer) (string, error) {
+	gpuUUID := d.gpuForContainer(config.Name)
 	// define container config
 	containerConfig := &container.Config{
 		Image: config.Image,
@@ -78,18 +87,13 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 		return "", err
 	}
 
+	if gpuUUID != "" && !isNvidiaSupported {
+		return "", fmt.Errorf("configured GPU placement requires NVIDIA runtime")
+	}
 	if isNvidiaSupported {
 		hostConfig.Runtime = "nvidia"
-		// use all GPUs
-		hostConfig.Resources = container.Resources{
-			DeviceRequests: []container.DeviceRequest{
-				{
-					Driver:       "nvidia",
-					Count:        -1, // Use all available GPUs
-					Capabilities: [][]string{{"gpu"}},
-				},
-			},
-		}
+		hostConfig.DeviceRequests = gpuDeviceRequests(gpuUUID)
+
 	} else {
 		log.Println("[docker] NVIDIA runtime not available")
 	}
@@ -181,6 +185,17 @@ func (d *DockerSDK) candidateContainerConfigs(
 		hostConfig = &copied
 	}
 
+	// Apply the active model's placement policy to upgrades, not the candidate's
+	// temporary name. With no configured policy, preserve its existing devices.
+	activeName := ""
+	if active.ContainerJSONBase != nil {
+		activeName = strings.TrimPrefix(active.Name, "/")
+	}
+	if uuid := d.gpuForContainer(activeName); uuid != "" {
+		hostConfig.Runtime = "nvidia"
+		hostConfig.DeviceRequests = gpuDeviceRequests(uuid)
+	}
+
 	networkConfig := &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{}}
 	if active.NetworkSettings != nil {
 		for networkName := range active.NetworkSettings.Networks {
@@ -229,6 +244,7 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 	}
 
 	return types.GetContainerInfoResult{
+		GPUUUID:    singleGPUUUID(containerJSON.HostConfig),
 		ID:         containerJSON.ID,
 		ImageID:    containerJSON.Image,
 		Name:       containerJSON.Name,
