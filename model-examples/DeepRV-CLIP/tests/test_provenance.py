@@ -130,3 +130,10 @@ def test_production_context_excludes_credentials_and_preloaded_weights():
     assert "hf_token.txt" in dockerignore
     assert "**/hf_token.txt" in dockerignore
     assert "**/*.pt" in dockerignore
+
+
+def test_torch_pair_matches_cuda_121_runtime():
+    requirements = (ROOT / "requirements.txt").read_text().splitlines()
+    assert "--extra-index-url https://download.pytorch.org/whl/cu121" in requirements
+    assert "torch==2.4.0+cu121" in requirements
+    assert "torchvision==0.19.0+cu121" in requirements
