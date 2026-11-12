@@ -1,4 +1,4 @@
-"""DeepCORO-JEPA 1.1.0 artifact identity and build verification."""
+"""DeepCORO-JEPA 1.1.1 artifact identity and build verification."""
 
 import hashlib
 import json
@@ -19,7 +19,7 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     provenance = manifest["provenance"]
 
-    assert manifest["version"] == "1.1.0"
+    assert manifest["version"] == "1.1.1"
     assert config["ModelStateDict"]["model_path"] == provenance["weightsPath"]
     assert provenance == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",

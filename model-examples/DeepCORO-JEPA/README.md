@@ -22,7 +22,8 @@ The encoder runs **at most twice per study**:
 
 | Container version | Model | Hugging Face revision | Training run (Weights & Biases, `mhi_ai/deepcoro-segmentation`) |
 |---|---|---|---|
-| **1.1.0** (this one) | **v13** | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
+| **1.1.1** (this one) | **v13** | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
+| 1.1.0 | v13 | same revision | same run |
 | 1.0.0 | v12 | `heartwise/DeepCORO_JEPA@49c8ddf` (branch `main`) | `7983f98e` |
 
 The served weights are the ones exported from the checkpoint of that training run; `data/model_facts.json`
@@ -32,6 +33,15 @@ The served weights are the ones exported from the checkpoint of that training ru
 test set (macro AUROC 0.885 against 0.884). The pressure AUROC is lower (0.69 against 0.72; the difference is within
 its confidence interval, see "Verified performance"), and the lesion outputs are not better than the reference
 models. Version 1.0.0 stays buildable from commit `82492f2` of `master`.
+
+**What 1.1.1 changes against 1.1.0** (commit `5b3a825`): same weights and thresholds. Probabilities are returned
+with 6 decimals instead of 4, and every yes/no call is taken on the returned probability. In 1.1.0 the call was
+taken on the unrounded probability, so a response could show a probability equal to its threshold next to a
+positive call. On the saved test predictions (3,321 studies) that is the case for 17 of the 59,778 stenosis calls,
+all in the left ventricular branch (threshold 0.0006), and for 2 calcification calls. It did not occur in the 40
+studies of the verification below. The diagnosis sentence and the HTML report still print 2 or 3 decimals, but now
+print more whenever fewer would show a probability on the other side of its threshold than the call, and they print
+every threshold with 4 decimals (1.1.0 printed the pressure thresholds with 2, for example "P 0.26, threshold 0.26").
 
 ## How it differs from the CLIP models
 
@@ -67,6 +77,7 @@ There is no `VideoMILWrapper` and no zero-video padding.
     - `prob_significant`: probability that the report calls the segment significant.
     - `prob_threshold`: the decision threshold of that segment.
     - `significant`: `true` when `prob_significant` is strictly above `prob_threshold`.
+      Every probability in the response has 6 decimals, and every yes/no value is taken on that returned number.
     - `significant_threshold_pct`: the label definition behind `prob_significant` (70; left main 50). It is not
       used to make the call.
     - `calcif_prob`, `thrombus_prob`, `cto_prob`: probability of calcification (moderate or severe, or a calcified
@@ -95,7 +106,10 @@ There is no `VideoMILWrapper` and no zero-video padding.
 ## Decision thresholds
 
 The thresholds are read from `thresholds.json` of the pinned Hugging Face revision. They were chosen on the
-**validation** split only (4,647 studies). A call is positive when the probability is strictly above its threshold.
+**validation** split only (4,647 studies). A call is positive when the returned probability (6 decimals) is
+strictly above its threshold. On the saved validation and test predictions (7,968 studies) this gives the same
+call as the unrounded probability for every stenosis and pressure output and for the lesion outputs at the default
+point; 3 of about 860,000 lesion calls differ at the two other lesion points.
 
 - **Stenosis and pressure:** the rule of the deployed DeepCORO-CLIP checkpoint, i.e. the threshold with the highest
   geometric mean of sensitivity and specificity (`balanced`).
@@ -220,10 +234,12 @@ Done on the development server as `.claude/skills/pacs-ai-model-mapping` prescri
 - **This container's code on DICOM.** `download_model.py` fetched the weights, `model_config.json` and
   `thresholds.json` at the pinned revision and checked the SHA-256; `logic.py` loaded them and answered the same 40
   studies through `CustomPredictionService.predict`, with the DICOM files of each study sent in shuffled order.
-  Against `inference.py` on the same DICOM files: probabilities equal to the rounding (largest difference 0.00005;
-  0.0005 on the pressure probability), all 2,960 yes/no calls equal, 2 encoder passes in every study. `stenosis_pct`
-  differs only because the container clips it to 0 to 100 (88 of 720 raw values were below 0, the lowest -4.6).
-  A second run gave the same output.
+  Against `inference.py` on the same DICOM files (rerun with the code of 1.1.1): probabilities equal to the rounding
+  (largest difference 0.000005, `inference.py` writes 5 decimals; 0.0005 on the estimated FFR and iFR values, which
+  the container returns with 3 decimals), all 2,960 yes/no calls equal, 2 encoder passes in every study.
+  `stenosis_pct` differs only because the container clips it to 0 to 100 (88 of 720 raw values were below 0, the
+  lowest -4.6). The 2,960 calls are also the same as those of 1.1.0, and a second run gave the same output.
+  `inference.py` takes its calls on the unrounded probability, the container on the returned 6-decimal one.
 - **Fresh download.** A fresh `snapshot_download` of revision `v13.1` and its `inference.py` on 12 studies gives the
   same predictions as above (difference 0).
 - **Example.** The files in `docs/examples/` are the response of this code to one of the 40 studies (5 runs).
@@ -269,6 +285,8 @@ The tests cover:
 - DICOM to MJPG conversion;
 - output postprocessing, the yes/no calls and the strict "above the threshold" rule, for stenosis, pressure and the
   three lesion findings;
+- that every call follows the returned 6-decimal probability, and that the diagnosis and the report never print a
+  probability on the wrong side of its threshold;
 - that the model facts name the training run of the served weights;
 - that a wrong or incomplete thresholds file or `Thresholds` block fails loudly;
 - provenance and weight-hash verification;

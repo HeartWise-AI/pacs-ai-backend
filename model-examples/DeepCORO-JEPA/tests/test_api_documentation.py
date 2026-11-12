@@ -41,6 +41,10 @@ def test_predict_examples_are_the_documented_container_response():
     predictions = response["data"]["predictions"]
     assert predictions["lad_physiology"]["operating_point"] == config["pressure_operating_point"]
     assert predictions["lesion_thresholds"]["operating_point"] == config["lesion_operating_point"]
+    # every yes/no value can be recomputed from the returned probability and threshold
+    physiology = predictions["lad_physiology"]
+    for k in ("ffr", "ifr"):
+        assert physiology[f"{k}_abnormal"] == (physiology[f"{k}_abnormal_prob"] > physiology[f"{k}_abnormal_threshold"])
     for segment in predictions["segments"].values():
         assert segment["significant"] == (segment["prob_significant"] > segment["prob_threshold"])
         for name in ("calcif", "thrombus", "cto"):

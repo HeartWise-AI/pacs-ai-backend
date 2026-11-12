@@ -40,6 +40,16 @@ SEGMENT_NAMES = {
 }
 PRESSURE_OPERATING_POINTS = ("balanced", "high_sensitivity", "high_specificity")
 LESION_OPERATING_POINTS = ("balanced", "specificity_95", "specificity_99")
+PROBABILITY_DECIMALS = 6  # probabilities in the response; the yes/no calls are taken on these returned values
+
+
+def shown(p: float, cut: float, decimals: int) -> str:
+    """A returned probability as text for the diagnosis and the report: `decimals` decimals, or more when fewer
+    would print it on the other side of its threshold (printed with 4 decimals) than the call that was made."""
+    for d in range(decimals, PROBABILITY_DECIMALS):
+        if (float(f"{p:.{d}f}") > round(cut, 4)) == (p > cut):
+            return f"{p:.{d}f}"
+    return f"{p:.{PROBABILITY_DECIMALS}f}"
 LESION_NAMES = {"calcif": "calcification", "thrombus": "thrombus", "cto": "chronic total occlusion"}
 
 
@@ -66,8 +76,8 @@ class CustomPredictionService(BasePredictionService):
                    "physiology": structure.get("physiology"), "state_dict": load_file(str(weights))}
         CustomPredictionService.thresholds = self.load_thresholds(
             weights.parent, CustomPredictionService.model_config["Thresholds"], structure["groups"],
-            bool(structure.get("physiology")), bool(structure.get("heads", {}).get("lesion")),
-            CustomPredictionService.get_model_info()["provenance"]["weightsSha256"])
+            physiology=bool(structure.get("physiology")), lesion=bool(structure.get("heads", {}).get("lesion")),
+            weights_sha256=CustomPredictionService.get_model_info()["provenance"]["weightsSha256"])
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model = multilayer_model_from_payload(payload, device=device, train_blocks=0)
         model.eval()
@@ -77,7 +87,7 @@ class CustomPredictionService(BasePredictionService):
         print(f"DeepCORO-JEPA {structure.get('model_version')} loaded on {device}; heads {structure.get('heads')}")
 
     @staticmethod
-    def load_thresholds(models_dir, settings: dict, groups, physiology: bool, lesion: bool, weights_sha256: str) -> dict:
+    def load_thresholds(models_dir, settings: dict, groups, *, physiology: bool, lesion: bool, weights_sha256: str) -> dict:
         """Decision thresholds of the pinned model revision, one per output. `settings` is the "Thresholds" block of
         models/config.json. Fails on an unknown key or operating point, when the file belongs to other weights or when
         an output has no threshold: no silent default. `lesion_operating_point` is checked for every checkpoint and
@@ -210,32 +220,35 @@ class CustomPredictionService(BasePredictionService):
 
     @staticmethod
     def postprocess(groups, res: dict, n_videos: int, thresholds: dict) -> dict:
-        """`thresholds` comes from load_thresholds. A call is positive when the probability is strictly greater than
-        its threshold, taken on the unrounded probability."""
+        """`thresholds` comes from load_thresholds. A call is positive when the returned probability (rounded to
+        PROBABILITY_DECIMALS) is strictly greater than its threshold, so every flag can be recomputed from the
+        response."""
         cut = thresholds["values"]
         out = {"n_videos": n_videos, "encoder_passes": int(res["encoder_passes"]), "segments": {}}
         sev = res["severity"].float().cpu().tolist()
-        prob = res["binary_probability"].float().cpu().tolist()
+        prob = [round(x, PROBABILITY_DECIMALS) for x in res["binary_probability"].float().cpu().tolist()]
         for i, g in enumerate(groups):
             out["segments"][g] = {"stenosis_pct": round(min(max(sev[i], 0.0), 100.0), 1),
-                                  "prob_significant": round(prob[i], 4),
+                                  "prob_significant": prob[i],
                                   "prob_threshold": cut[f"{g}_prob_significant"],
                                   "significant": bool(prob[i] > cut[f"{g}_prob_significant"]),
                                   "significant_threshold_pct": 50 if g == "left_main" else 70}
         if "physiology" in res:
             ph = {k: float(v.float().cpu().reshape(-1)[0]) for k, v in res["physiology"].items()}
-            prob_abnormal = {k: float(1 / (1 + np.exp(-ph[f"{k}_logit"]))) for k in ("ffr", "ifr")}
+            prob_abnormal = {k: round(float(1 / (1 + np.exp(-ph[f"{k}_logit"]))), PROBABILITY_DECIMALS)
+                             for k in ("ffr", "ifr")}
             out["lad_physiology"] = {"ffr": round(ph["ffr"], 3), "ifr": round(ph["ifr"], 3),
                                      "operating_point": thresholds["pressure_operating_point"]}
             for k in ("ffr", "ifr"):
-                out["lad_physiology"].update({f"{k}_abnormal_prob": round(prob_abnormal[k], 4),
+                out["lad_physiology"].update({f"{k}_abnormal_prob": prob_abnormal[k],
                                               f"{k}_abnormal_threshold": cut[f"{k}_abnormal_prob"],
                                               f"{k}_abnormal": bool(prob_abnormal[k] > cut[f"{k}_abnormal_prob"])})
         for name in LESION_NAMES:
             if f"lesion_{name}_probability" in res:
                 out.setdefault("lesion_thresholds", {"operating_point": thresholds["lesion_operating_point"]})[name] = cut[f"{name}_prob"]
                 for g, x in zip(groups, res[f"lesion_{name}_probability"].float().cpu().tolist()):
-                    out["segments"][g].update({f"{name}_prob": round(float(x), 4), name: bool(x > cut[f"{name}_prob"])})
+                    x = round(float(x), PROBABILITY_DECIMALS)
+                    out["segments"][g].update({f"{name}_prob": x, name: bool(x > cut[f"{name}_prob"])})
         return out
 
     # -- reporting -------------------------------------------------------------
@@ -247,19 +260,21 @@ class CustomPredictionService(BasePredictionService):
     def diagnosis_text(self, preds: dict) -> str:
         sig = self.significant_segments(preds)
         text = ("Flagged for possible significant stenosis (probability above its validation threshold): "
-                + ", ".join(f"{SEGMENT_NAMES[g]} (P {preds['segments'][g]['prob_significant']:.3f}, estimated "
+                + ", ".join(f"{SEGMENT_NAMES[g]} (P {shown(preds['segments'][g]['prob_significant'], preds['segments'][g]['prob_threshold'], 3)}, estimated "
                             f"{preds['segments'][g]['stenosis_pct']:.0f}%)" for g in sig) + "."
                 if sig else "No segment flagged for significant stenosis.")
         if "lad_physiology" in preds:
             p = preds["lad_physiology"]
             call = lambda k: "abnormal" if p[f"{k}_abnormal"] else "normal"
-            text += (f" LAD physiology: FFR predicted {call('ffr')} (P(FFR ≤ 0.80) {p['ffr_abnormal_prob']:.2f}, threshold "
-                     f"{p['ffr_abnormal_threshold']:.2f}); iFR predicted {call('ifr')} (P(iFR ≤ 0.89) "
-                     f"{p['ifr_abnormal_prob']:.2f}, threshold {p['ifr_abnormal_threshold']:.2f}).")
+            prob = lambda k: shown(p[f"{k}_abnormal_prob"], p[f"{k}_abnormal_threshold"], 2)
+            text += (f" LAD physiology: FFR predicted {call('ffr')} (P(FFR ≤ 0.80) {prob('ffr')}, threshold "
+                     f"{p['ffr_abnormal_threshold']:.4f}); iFR predicted {call('ifr')} (P(iFR ≤ 0.89) "
+                     f"{prob('ifr')}, threshold {p['ifr_abnormal_threshold']:.4f}).")
         for name, label in LESION_NAMES.items() if "lesion_thresholds" in preds else ():
             hit = [g for g, v in preds["segments"].items() if v[name]]
-            text += (f" Flagged for {label} (P above {preds['lesion_thresholds'][name]:.3f}): "
-                     + ", ".join(f"{SEGMENT_NAMES[g]} (P {preds['segments'][g][f'{name}_prob']:.2f})" for g in hit) + "."
+            cut = preds["lesion_thresholds"][name]
+            text += (f" Flagged for {label} (P above {cut:.4f}): "
+                     + ", ".join(f"{SEGMENT_NAMES[g]} (P {shown(preds['segments'][g][f'{name}_prob'], cut, 2)})" for g in hit) + "."
                      if hit else f" No segment flagged for {label}.")
         return text
 
@@ -277,14 +292,14 @@ class CustomPredictionService(BasePredictionService):
         return {"en": en, "fr": fr, "presentable": True}
 
     def render_html(self, preds: dict) -> str:
+        cuts = preds.get("lesion_thresholds", {})
         rows = "".join(
             f"<tr><td>{SEGMENT_NAMES[g]}</td><td style='text-align:right'>{v['stenosis_pct']:.0f}%</td>"
-            f"<td style='text-align:right'>{v['prob_significant']:.3f}</td>"
+            f"<td style='text-align:right'>{shown(v['prob_significant'], v['prob_threshold'], 3)}</td>"
             f"<td style='text-align:right'>{v['prob_threshold']:.4f}</td><td>{'Yes' if v['significant'] else 'No'}</td>"
-            + "".join(f"<td style='text-align:right'>{'<b>' if v[k] else ''}{v[f'{k}_prob']:.2f}{' flagged</b>' if v[k] else ''}</td>"
+            + "".join(f"<td style='text-align:right'>{'<b>' if v[k] else ''}{shown(v[f'{k}_prob'], cuts[k], 2)}{' flagged</b>' if v[k] else ''}</td>"
                       for k in LESION_NAMES if k in v)
             + "</tr>" for g, v in preds["segments"].items())
-        cuts = preds.get("lesion_thresholds", {})
         lesion_cols = "".join(f"<th>P({'CTO' if k == 'cto' else h})</th>" for k, h in LESION_NAMES.items() if k in cuts)
         lesion_note = (f"<p>Calcification, thrombus and chronic total occlusion (CTO) flags, operating point {cuts['operating_point']}: "
                        + ", ".join(f"{h} above {cuts[k]:.4f}" for k, h in LESION_NAMES.items() if k in cuts) + ".</p>" if cuts else "")
@@ -292,10 +307,11 @@ class CustomPredictionService(BasePredictionService):
         if "lad_physiology" in preds:
             p = preds["lad_physiology"]
             call = lambda k: "abnormal" if p[f"{k}_abnormal"] else "normal"
-            phys = (f"<h3>LAD physiology</h3><p>FFR predicted <b>{call('ffr')}</b>: P(FFR ≤ 0.80) {p['ffr_abnormal_prob']:.2f}, "
-                    f"threshold {p['ffr_abnormal_threshold']:.2f}, estimated value {p['ffr']:.2f}.<br>"
-                    f"iFR predicted <b>{call('ifr')}</b>: P(iFR ≤ 0.89) {p['ifr_abnormal_prob']:.2f}, "
-                    f"threshold {p['ifr_abnormal_threshold']:.2f}, estimated value {p['ifr']:.2f}.<br>"
+            prob = lambda k: shown(p[f"{k}_abnormal_prob"], p[f"{k}_abnormal_threshold"], 2)
+            phys = (f"<h3>LAD physiology</h3><p>FFR predicted <b>{call('ffr')}</b>: P(FFR ≤ 0.80) {prob('ffr')}, "
+                    f"threshold {p['ffr_abnormal_threshold']:.4f}, estimated value {p['ffr']:.2f}.<br>"
+                    f"iFR predicted <b>{call('ifr')}</b>: P(iFR ≤ 0.89) {prob('ifr')}, "
+                    f"threshold {p['ifr_abnormal_threshold']:.4f}, estimated value {p['ifr']:.2f}.<br>"
                     f"Operating point: {p['operating_point']}.</p>")
         return ("<html><body style='font-family:sans-serif'>"
                 f"<h2>DeepCORO-JEPA {CustomPredictionService.structure.get('model_version', '')}</h2>"

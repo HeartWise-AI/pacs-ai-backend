@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "1.1.0"
+    "version": "1.1.1"
   },
   "servers": [
     {
@@ -82,15 +82,15 @@
                           "segments": {
                             "prox_rca": {
                               "stenosis_pct": 29.1,
-                              "prob_significant": 0.1216,
+                              "prob_significant": 0.121582,
                               "prob_threshold": 0.1558,
                               "significant": false,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0281,
+                              "calcif_prob": 0.028146,
                               "calcif": false,
-                              "thrombus_prob": 0.0041,
+                              "thrombus_prob": 0.004118,
                               "thrombus": false,
-                              "cto_prob": 0.0055,
+                              "cto_prob": 0.005463,
                               "cto": false
                             },
                             "mid_rca": {
@@ -99,219 +99,219 @@
                               "prob_threshold": 0.1528,
                               "significant": true,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0901,
+                              "calcif_prob": 0.090138,
                               "calcif": false,
-                              "thrombus_prob": 0.0263,
+                              "thrombus_prob": 0.026292,
                               "thrombus": false,
-                              "cto_prob": 0.2572,
+                              "cto_prob": 0.257173,
                               "cto": true
                             },
                             "dist_rca": {
                               "stenosis_pct": 5.7,
-                              "prob_significant": 0.024,
+                              "prob_significant": 0.024048,
                               "prob_threshold": 0.0354,
                               "significant": false,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0077,
+                              "calcif_prob": 0.007695,
                               "calcif": false,
-                              "thrombus_prob": 0.0022,
+                              "thrombus_prob": 0.002178,
                               "thrombus": false,
-                              "cto_prob": 0.0077,
+                              "cto_prob": 0.007729,
                               "cto": false
                             },
                             "pda": {
                               "stenosis_pct": 4.9,
-                              "prob_significant": 0.0179,
+                              "prob_significant": 0.017944,
                               "prob_threshold": 0.0322,
                               "significant": false,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0017,
+                              "calcif_prob": 0.001651,
                               "calcif": false,
-                              "thrombus_prob": 0.0028,
+                              "thrombus_prob": 0.002841,
                               "thrombus": false,
-                              "cto_prob": 0.0031,
+                              "cto_prob": 0.003113,
                               "cto": false
                             },
                             "posterolateral": {
                               "stenosis_pct": 3.0,
-                              "prob_significant": 0.0128,
+                              "prob_significant": 0.012817,
                               "prob_threshold": 0.0193,
                               "significant": false,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0018,
+                              "calcif_prob": 0.001824,
                               "calcif": false,
-                              "thrombus_prob": 0.0019,
+                              "thrombus_prob": 0.001903,
                               "thrombus": false,
-                              "cto_prob": 0.0056,
+                              "cto_prob": 0.005569,
                               "cto": false
                             },
                             "left_main": {
                               "stenosis_pct": 0.9,
-                              "prob_significant": 0.0013,
+                              "prob_significant": 0.001328,
                               "prob_threshold": 0.0492,
                               "significant": false,
                               "significant_threshold_pct": 50,
-                              "calcif_prob": 0.0017,
+                              "calcif_prob": 0.00167,
                               "calcif": false,
-                              "thrombus_prob": 0.0002,
+                              "thrombus_prob": 0.000162,
                               "thrombus": false,
-                              "cto_prob": 0.0,
+                              "cto_prob": 3.6e-05,
                               "cto": false
                             },
                             "prox_lad": {
                               "stenosis_pct": 27.8,
-                              "prob_significant": 0.0664,
+                              "prob_significant": 0.066406,
                               "prob_threshold": 0.1724,
                               "significant": false,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0546,
+                              "calcif_prob": 0.054579,
                               "calcif": false,
-                              "thrombus_prob": 0.0014,
+                              "thrombus_prob": 0.001387,
                               "thrombus": false,
-                              "cto_prob": 0.0011,
+                              "cto_prob": 0.00113,
                               "cto": false
                             },
                             "mid_lad": {
                               "stenosis_pct": 17.2,
-                              "prob_significant": 0.0369,
+                              "prob_significant": 0.036865,
                               "prob_threshold": 0.1841,
                               "significant": false,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0092,
+                              "calcif_prob": 0.009172,
                               "calcif": false,
-                              "thrombus_prob": 0.0012,
+                              "thrombus_prob": 0.001191,
                               "thrombus": false,
-                              "cto_prob": 0.0009,
+                              "cto_prob": 0.000912,
                               "cto": false
                             },
                             "dist_lad": {
                               "stenosis_pct": 4.8,
-                              "prob_significant": 0.0132,
+                              "prob_significant": 0.013245,
                               "prob_threshold": 0.0319,
                               "significant": false,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0003,
+                              "calcif_prob": 0.000252,
                               "calcif": false,
-                              "thrombus_prob": 0.0014,
+                              "thrombus_prob": 0.001386,
                               "thrombus": false,
-                              "cto_prob": 0.0009,
+                              "cto_prob": 0.000852,
                               "cto": false
                             },
                             "D1": {
                               "stenosis_pct": 29.1,
-                              "prob_significant": 0.1475,
+                              "prob_significant": 0.147461,
                               "prob_threshold": 0.0896,
                               "significant": true,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0143,
+                              "calcif_prob": 0.014329,
                               "calcif": false,
-                              "thrombus_prob": 0.0009,
+                              "thrombus_prob": 0.000895,
                               "thrombus": false,
-                              "cto_prob": 0.0052,
+                              "cto_prob": 0.005234,
                               "cto": false
                             },
                             "D2": {
                               "stenosis_pct": 6.8,
-                              "prob_significant": 0.0461,
+                              "prob_significant": 0.046143,
                               "prob_threshold": 0.0723,
                               "significant": false,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0022,
+                              "calcif_prob": 0.002196,
                               "calcif": false,
-                              "thrombus_prob": 0.0005,
+                              "thrombus_prob": 0.000516,
                               "thrombus": false,
-                              "cto_prob": 0.0028,
+                              "cto_prob": 0.00281,
                               "cto": false
                             },
                             "prox_lcx": {
                               "stenosis_pct": 12.2,
-                              "prob_significant": 0.0032,
+                              "prob_significant": 0.003174,
                               "prob_threshold": 0.1121,
                               "significant": false,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0013,
+                              "calcif_prob": 0.001253,
                               "calcif": false,
-                              "thrombus_prob": 0.0007,
+                              "thrombus_prob": 0.000666,
                               "thrombus": false,
-                              "cto_prob": 0.0003,
+                              "cto_prob": 0.000336,
                               "cto": false
                             },
                             "mid_lcx": {
                               "stenosis_pct": 2.1,
-                              "prob_significant": 0.0063,
+                              "prob_significant": 0.006287,
                               "prob_threshold": 0.0274,
                               "significant": false,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0018,
+                              "calcif_prob": 0.001756,
                               "calcif": false,
-                              "thrombus_prob": 0.0005,
+                              "thrombus_prob": 0.000475,
                               "thrombus": false,
-                              "cto_prob": 0.0022,
+                              "cto_prob": 0.002246,
                               "cto": false
                             },
                             "dist_lcx": {
                               "stenosis_pct": 4.3,
-                              "prob_significant": 0.0145,
+                              "prob_significant": 0.014526,
                               "prob_threshold": 0.0205,
                               "significant": false,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0011,
+                              "calcif_prob": 0.001069,
                               "calcif": false,
-                              "thrombus_prob": 0.0001,
+                              "thrombus_prob": 0.000114,
                               "thrombus": false,
-                              "cto_prob": 0.0052,
+                              "cto_prob": 0.005204,
                               "cto": false
                             },
                             "om1": {
                               "stenosis_pct": 7.6,
-                              "prob_significant": 0.0408,
+                              "prob_significant": 0.040771,
                               "prob_threshold": 0.064,
                               "significant": false,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.002,
+                              "calcif_prob": 0.001972,
                               "calcif": false,
-                              "thrombus_prob": 0.0005,
+                              "thrombus_prob": 0.000515,
                               "thrombus": false,
-                              "cto_prob": 0.0036,
+                              "cto_prob": 0.003607,
                               "cto": false
                             },
                             "om2": {
                               "stenosis_pct": 10.4,
-                              "prob_significant": 0.0439,
+                              "prob_significant": 0.043945,
                               "prob_threshold": 0.0464,
                               "significant": false,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0046,
+                              "calcif_prob": 0.00464,
                               "calcif": false,
-                              "thrombus_prob": 0.0002,
+                              "thrombus_prob": 0.000226,
                               "thrombus": false,
-                              "cto_prob": 0.0029,
+                              "cto_prob": 0.002851,
                               "cto": false
                             },
                             "bx": {
                               "stenosis_pct": 37.5,
-                              "prob_significant": 0.4316,
+                              "prob_significant": 0.431641,
                               "prob_threshold": 0.0464,
                               "significant": true,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0253,
+                              "calcif_prob": 0.025288,
                               "calcif": false,
-                              "thrombus_prob": 0.0011,
+                              "thrombus_prob": 0.001103,
                               "thrombus": false,
-                              "cto_prob": 0.023,
+                              "cto_prob": 0.023016,
                               "cto": false
                             },
                             "lvp": {
                               "stenosis_pct": 0.1,
-                              "prob_significant": 0.0001,
+                              "prob_significant": 0.00014,
                               "prob_threshold": 0.0006,
                               "significant": false,
                               "significant_threshold_pct": 70,
-                              "calcif_prob": 0.0002,
+                              "calcif_prob": 0.00019,
                               "calcif": false,
-                              "thrombus_prob": 0.0,
+                              "thrombus_prob": 1e-06,
                               "thrombus": false,
-                              "cto_prob": 0.0002,
+                              "cto_prob": 0.000154,
                               "cto": false
                             }
                           },
@@ -319,10 +319,10 @@
                             "ffr": 0.797,
                             "ifr": 0.933,
                             "operating_point": "balanced",
-                            "ffr_abnormal_prob": 0.2583,
+                            "ffr_abnormal_prob": 0.258326,
                             "ffr_abnormal_threshold": 0.2644,
                             "ffr_abnormal": false,
-                            "ifr_abnormal_prob": 0.2942,
+                            "ifr_abnormal_prob": 0.294215,
                             "ifr_abnormal_threshold": 0.4337,
                             "ifr_abnormal": false
                           },
@@ -333,7 +333,7 @@
                             "cto": 0.157
                           }
                         },
-                        "diagnosis": "Flagged for possible significant stenosis (probability above its validation threshold): Mid RCA (P 0.812, estimated 72%), First diagonal (P 0.147, estimated 29%), Ramus (bisector) (P 0.432, estimated 38%). LAD physiology: FFR predicted normal (P(FFR ≤ 0.80) 0.26, threshold 0.26); iFR predicted normal (P(iFR ≤ 0.89) 0.29, threshold 0.43). No segment flagged for calcification. No segment flagged for thrombus. Flagged for chronic total occlusion (P above 0.157): Mid RCA (P 0.26).",
+                        "diagnosis": "Flagged for possible significant stenosis (probability above its validation threshold): Mid RCA (P 0.812, estimated 72%), First diagonal (P 0.147, estimated 29%), Ramus (bisector) (P 0.432, estimated 38%). LAD physiology: FFR predicted normal (P(FFR ≤ 0.80) 0.26, threshold 0.2644); iFR predicted normal (P(iFR ≤ 0.89) 0.29, threshold 0.4337). No segment flagged for calcification. No segment flagged for thrombus. Flagged for chronic total occlusion (P above 0.1570): Mid RCA (P 0.26).",
                         "modelRecommendations": {
                           "en": "Research model, not for clinical decisions. Flags use thresholds chosen on the internal validation set, not a validated clinical operating point. Confirm every reading on the angiogram; LAD physiology outputs (test AUROC about 0.69) do not replace invasive FFR/iFR. Calcification, thrombus and chronic total occlusion flags are set for few false alarms and miss many of these findings.",
                           "fr": "Modèle de recherche, ne pas utiliser pour la décision clinique. Les signalements utilisent des seuils choisis sur l'ensemble de validation interne, et non un seuil clinique validé. Confirmer chaque lecture sur l'angiographie; les sorties de physiologie IVA (AUROC test environ 0,69) ne remplacent pas la FFR/iFR invasive. Les signalements de calcification, de thrombus et d'occlusion totale chronique sont réglés pour peu de fausses alertes et manquent une bonne partie de ces lésions.",
@@ -348,7 +348,7 @@
                       "success": true,
                       "message": "Prediction successful",
                       "data": {
-                        "htmlBase64": "PGh0bWw+PGJvZHkgc3R5bGU9J2ZvbnQtZmFtaWx5OnNhbnMtc2VyaWYnPjxoMj5EZWVwQ09STy1KRVBBIHYxMzwvaDI+PHA+RmxhZ2dlZCBmb3IgcG9zc2libGUgc2lnbmlmaWNhbnQgc3Rlbm9zaXMgKHByb2JhYmlsaXR5IGFib3ZlIGl0cyB2YWxpZGF0aW9uIHRocmVzaG9sZCk6IE1pZCBSQ0EgKFAgMC44MTIsIGVzdGltYXRlZCA3MiUpLCBGaXJzdCBkaWFnb25hbCAoUCAwLjE0NywgZXN0aW1hdGVkIDI5JSksIFJhbXVzIChiaXNlY3RvcikgKFAgMC40MzIsIGVzdGltYXRlZCAzOCUpLiBMQUQgcGh5c2lvbG9neTogRkZSIHByZWRpY3RlZCBub3JtYWwgKFAoRkZSIOKJpCAwLjgwKSAwLjI2LCB0aHJlc2hvbGQgMC4yNik7IGlGUiBwcmVkaWN0ZWQgbm9ybWFsIChQKGlGUiDiiaQgMC44OSkgMC4yOSwgdGhyZXNob2xkIDAuNDMpLiBObyBzZWdtZW50IGZsYWdnZWQgZm9yIGNhbGNpZmljYXRpb24uIE5vIHNlZ21lbnQgZmxhZ2dlZCBmb3IgdGhyb21idXMuIEZsYWdnZWQgZm9yIGNocm9uaWMgdG90YWwgb2NjbHVzaW9uIChQIGFib3ZlIDAuMTU3KTogTWlkIFJDQSAoUCAwLjI2KS48L3A+PHRhYmxlIGJvcmRlcj0nMScgY2VsbHNwYWNpbmc9JzAnIGNlbGxwYWRkaW5nPSc0Jz48dHI+PHRoPlNlZ21lbnQ8L3RoPjx0aD5TdGVub3NpczwvdGg+PHRoPlAoc2lnbmlmaWNhbnQpPC90aD48dGg+VGhyZXNob2xkPC90aD48dGg+RmxhZ2dlZDwvdGg+PHRoPlAoY2FsY2lmaWNhdGlvbik8L3RoPjx0aD5QKHRocm9tYnVzKTwvdGg+PHRoPlAoQ1RPKTwvdGg+PC90cj48dHI+PHRkPlByb3hpbWFsIFJDQTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4yOSU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4xMjI8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4xNTU4PC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDE8L3RkPjwvdHI+PHRyPjx0ZD5NaWQgUkNBPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjcyJTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjgxMjwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjE1Mjg8L3RkPjx0ZD5ZZXM8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wOTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAzPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjxiPjAuMjYgZmxhZ2dlZDwvYj48L3RkPjwvdHI+PHRyPjx0ZD5EaXN0YWwgUkNBPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjYlPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDI0PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDM1NDwvdGQ+PHRkPk5vPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDE8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAxPC90ZD48L3RyPjx0cj48dGQ+UERBPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjUlPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDE4PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDMyMjwvdGQ+PHRkPk5vPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48L3RyPjx0cj48dGQ+UG9zdGVyb2xhdGVyYWw8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MyU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTM8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTkzPC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDE8L3RkPjwvdHI+PHRyPjx0ZD5MZWZ0IG1haW48L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MSU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDE8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wNDkyPC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjwvdHI+PHRyPjx0ZD5Qcm94aW1hbCBMQUQ8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MjglPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDY2PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMTcyNDwvdGQ+PHRkPk5vPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48L3RyPjx0cj48dGQ+TWlkIExBRDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4xNyU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMzc8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4xODQxPC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjwvdHI+PHRyPjx0ZD5EaXN0YWwgTEFEPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjUlPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDEzPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDMxOTwvdGQ+PHRkPk5vPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48L3RyPjx0cj48dGQ+Rmlyc3QgZGlhZ29uYWw8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MjklPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMTQ3PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDg5NjwvdGQ+PHRkPlllczwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAxPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTwvdGQ+PC90cj48dHI+PHRkPlNlY29uZCBkaWFnb25hbDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz43JTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjA0NjwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjA3MjM8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PC90cj48dHI+PHRkPlByb3hpbWFsIExDeDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4xMiU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDM8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4xMTIxPC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjwvdHI+PHRyPjx0ZD5NaWQgTEN4PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjIlPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA2PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDI3NDwvdGQ+PHRkPk5vPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48L3RyPjx0cj48dGQ+RGlzdGFsIExDeDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz40JTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAxNTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAyMDU8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTwvdGQ+PC90cj48dHI+PHRkPkZpcnN0IG9idHVzZSBtYXJnaW5hbDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz44JTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjA0MTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjA2NDA8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PC90cj48dHI+PHRkPlNlY29uZCBvYnR1c2UgbWFyZ2luYWw8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MTAlPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDQ0PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDQ2NDwvdGQ+PHRkPk5vPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48L3RyPjx0cj48dGQ+UmFtdXMgKGJpc2VjdG9yKTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4zOCU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC40MzI8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wNDY0PC90ZD48dGQ+WWVzPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDM8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAyPC90ZD48L3RyPjx0cj48dGQ+UG9zdGVyaW9yIGxlZnQgdmVudHJpY3VsYXI8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MCU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDA2PC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjwvdHI+PC90YWJsZT48cD5DYWxjaWZpY2F0aW9uLCB0aHJvbWJ1cyBhbmQgY2hyb25pYyB0b3RhbCBvY2NsdXNpb24gKENUTykgZmxhZ3MsIG9wZXJhdGluZyBwb2ludCBzcGVjaWZpY2l0eV85OTogY2FsY2lmaWNhdGlvbiBhYm92ZSAwLjIyMjUsIHRocm9tYnVzIGFib3ZlIDAuMDg1MSwgY2hyb25pYyB0b3RhbCBvY2NsdXNpb24gYWJvdmUgMC4xNTcwLjwvcD48aDM+TEFEIHBoeXNpb2xvZ3k8L2gzPjxwPkZGUiBwcmVkaWN0ZWQgPGI+bm9ybWFsPC9iPjogUChGRlIg4omkIDAuODApIDAuMjYsIHRocmVzaG9sZCAwLjI2LCBlc3RpbWF0ZWQgdmFsdWUgMC44MC48YnI+aUZSIHByZWRpY3RlZCA8Yj5ub3JtYWw8L2I+OiBQKGlGUiDiiaQgMC44OSkgMC4yOSwgdGhyZXNob2xkIDAuNDMsIGVzdGltYXRlZCB2YWx1ZSAwLjkzLjxicj5PcGVyYXRpbmcgcG9pbnQ6IGJhbGFuY2VkLjwvcD48cCBzdHlsZT0nY29sb3I6IzU1NSc+NSB2aWRlb3MsIDIgZW5jb2RlciBwYXNzZXMuIFJlc2VhcmNoIG1vZGVsLCBub3QgZm9yIGNsaW5pY2FsIGRlY2lzaW9ucy4gRmxhZ3MgdXNlIHRocmVzaG9sZHMgY2hvc2VuIG9uIHRoZSBpbnRlcm5hbCB2YWxpZGF0aW9uIHNldCwgbm90IGEgdmFsaWRhdGVkIGNsaW5pY2FsIG9wZXJhdGluZyBwb2ludC4gQ29uZmlybSBldmVyeSByZWFkaW5nIG9uIHRoZSBhbmdpb2dyYW07IExBRCBwaHlzaW9sb2d5IG91dHB1dHMgKHRlc3QgQVVST0MgYWJvdXQgMC42OSkgZG8gbm90IHJlcGxhY2UgaW52YXNpdmUgRkZSL2lGUi4gQ2FsY2lmaWNhdGlvbiwgdGhyb21idXMgYW5kIGNocm9uaWMgdG90YWwgb2NjbHVzaW9uIGZsYWdzIGFyZSBzZXQgZm9yIGZldyBmYWxzZSBhbGFybXMgYW5kIG1pc3MgbWFueSBvZiB0aGVzZSBmaW5kaW5ncy48L3A+PC9ib2R5PjwvaHRtbD4="
+                        "htmlBase64": "PGh0bWw+PGJvZHkgc3R5bGU9J2ZvbnQtZmFtaWx5OnNhbnMtc2VyaWYnPjxoMj5EZWVwQ09STy1KRVBBIHYxMzwvaDI+PHA+RmxhZ2dlZCBmb3IgcG9zc2libGUgc2lnbmlmaWNhbnQgc3Rlbm9zaXMgKHByb2JhYmlsaXR5IGFib3ZlIGl0cyB2YWxpZGF0aW9uIHRocmVzaG9sZCk6IE1pZCBSQ0EgKFAgMC44MTIsIGVzdGltYXRlZCA3MiUpLCBGaXJzdCBkaWFnb25hbCAoUCAwLjE0NywgZXN0aW1hdGVkIDI5JSksIFJhbXVzIChiaXNlY3RvcikgKFAgMC40MzIsIGVzdGltYXRlZCAzOCUpLiBMQUQgcGh5c2lvbG9neTogRkZSIHByZWRpY3RlZCBub3JtYWwgKFAoRkZSIOKJpCAwLjgwKSAwLjI2LCB0aHJlc2hvbGQgMC4yNjQ0KTsgaUZSIHByZWRpY3RlZCBub3JtYWwgKFAoaUZSIOKJpCAwLjg5KSAwLjI5LCB0aHJlc2hvbGQgMC40MzM3KS4gTm8gc2VnbWVudCBmbGFnZ2VkIGZvciBjYWxjaWZpY2F0aW9uLiBObyBzZWdtZW50IGZsYWdnZWQgZm9yIHRocm9tYnVzLiBGbGFnZ2VkIGZvciBjaHJvbmljIHRvdGFsIG9jY2x1c2lvbiAoUCBhYm92ZSAwLjE1NzApOiBNaWQgUkNBIChQIDAuMjYpLjwvcD48dGFibGUgYm9yZGVyPScxJyBjZWxsc3BhY2luZz0nMCcgY2VsbHBhZGRpbmc9JzQnPjx0cj48dGg+U2VnbWVudDwvdGg+PHRoPlN0ZW5vc2lzPC90aD48dGg+UChzaWduaWZpY2FudCk8L3RoPjx0aD5UaHJlc2hvbGQ8L3RoPjx0aD5GbGFnZ2VkPC90aD48dGg+UChjYWxjaWZpY2F0aW9uKTwvdGg+PHRoPlAodGhyb21idXMpPC90aD48dGg+UChDVE8pPC90aD48L3RyPjx0cj48dGQ+UHJveGltYWwgUkNBPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjI5JTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjEyMjwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjE1NTg8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAzPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTwvdGQ+PC90cj48dHI+PHRkPk1pZCBSQ0E8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+NzIlPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuODEyPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMTUyODwvdGQ+PHRkPlllczwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjA5PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDM8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+PGI+MC4yNiBmbGFnZ2VkPC9iPjwvdGQ+PC90cj48dHI+PHRkPkRpc3RhbCBSQ0E8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+NiU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMjQ8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMzU0PC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDE8L3RkPjwvdHI+PHRyPjx0ZD5QREE8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+NSU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTg8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMzIyPC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjwvdHI+PHRyPjx0ZD5Qb3N0ZXJvbGF0ZXJhbDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4zJTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAxMzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAxOTM8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTwvdGQ+PC90cj48dHI+PHRkPkxlZnQgbWFpbjwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4xJTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwMTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjA0OTI8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PC90cj48dHI+PHRkPlByb3hpbWFsIExBRDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4yOCU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wNjY8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4xNzI0PC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wNTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjwvdHI+PHRyPjx0ZD5NaWQgTEFEPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjE3JTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAzNzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjE4NDE8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAxPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PC90cj48dHI+PHRkPkRpc3RhbCBMQUQ8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+NSU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTM8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMzE5PC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjwvdHI+PHRyPjx0ZD5GaXJzdCBkaWFnb25hbDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4yOSU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4xNDc8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wODk2PC90ZD48dGQ+WWVzPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDE8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAxPC90ZD48L3RyPjx0cj48dGQ+U2Vjb25kIGRpYWdvbmFsPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjclPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDQ2PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDcyMzwvdGQ+PHRkPk5vPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48L3RyPjx0cj48dGQ+UHJveGltYWwgTEN4PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjEyJTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwMzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjExMjE8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PC90cj48dHI+PHRkPk1pZCBMQ3g8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MiU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDY8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMjc0PC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjwvdHI+PHRyPjx0ZD5EaXN0YWwgTEN4PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjQlPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDE1PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDIwNTwvdGQ+PHRkPk5vPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAxPC90ZD48L3RyPjx0cj48dGQ+Rmlyc3Qgb2J0dXNlIG1hcmdpbmFsPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjglPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDQxPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDY0MDwvdGQ+PHRkPk5vPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48L3RyPjx0cj48dGQ+U2Vjb25kIG9idHVzZSBtYXJnaW5hbDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4xMCU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wNDQ8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wNDY0PC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjwvdHI+PHRyPjx0ZD5SYW11cyAoYmlzZWN0b3IpPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjM4JTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjQzMjwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjA0NjQ8L3RkPjx0ZD5ZZXM8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDI8L3RkPjwvdHI+PHRyPjx0ZD5Qb3N0ZXJpb3IgbGVmdCB2ZW50cmljdWxhcjwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wJTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwMDY8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PC90cj48L3RhYmxlPjxwPkNhbGNpZmljYXRpb24sIHRocm9tYnVzIGFuZCBjaHJvbmljIHRvdGFsIG9jY2x1c2lvbiAoQ1RPKSBmbGFncywgb3BlcmF0aW5nIHBvaW50IHNwZWNpZmljaXR5Xzk5OiBjYWxjaWZpY2F0aW9uIGFib3ZlIDAuMjIyNSwgdGhyb21idXMgYWJvdmUgMC4wODUxLCBjaHJvbmljIHRvdGFsIG9jY2x1c2lvbiBhYm92ZSAwLjE1NzAuPC9wPjxoMz5MQUQgcGh5c2lvbG9neTwvaDM+PHA+RkZSIHByZWRpY3RlZCA8Yj5ub3JtYWw8L2I+OiBQKEZGUiDiiaQgMC44MCkgMC4yNiwgdGhyZXNob2xkIDAuMjY0NCwgZXN0aW1hdGVkIHZhbHVlIDAuODAuPGJyPmlGUiBwcmVkaWN0ZWQgPGI+bm9ybWFsPC9iPjogUChpRlIg4omkIDAuODkpIDAuMjksIHRocmVzaG9sZCAwLjQzMzcsIGVzdGltYXRlZCB2YWx1ZSAwLjkzLjxicj5PcGVyYXRpbmcgcG9pbnQ6IGJhbGFuY2VkLjwvcD48cCBzdHlsZT0nY29sb3I6IzU1NSc+NSB2aWRlb3MsIDIgZW5jb2RlciBwYXNzZXMuIFJlc2VhcmNoIG1vZGVsLCBub3QgZm9yIGNsaW5pY2FsIGRlY2lzaW9ucy4gRmxhZ3MgdXNlIHRocmVzaG9sZHMgY2hvc2VuIG9uIHRoZSBpbnRlcm5hbCB2YWxpZGF0aW9uIHNldCwgbm90IGEgdmFsaWRhdGVkIGNsaW5pY2FsIG9wZXJhdGluZyBwb2ludC4gQ29uZmlybSBldmVyeSByZWFkaW5nIG9uIHRoZSBhbmdpb2dyYW07IExBRCBwaHlzaW9sb2d5IG91dHB1dHMgKHRlc3QgQVVST0MgYWJvdXQgMC42OSkgZG8gbm90IHJlcGxhY2UgaW52YXNpdmUgRkZSL2lGUi4gQ2FsY2lmaWNhdGlvbiwgdGhyb21idXMgYW5kIGNocm9uaWMgdG90YWwgb2NjbHVzaW9uIGZsYWdzIGFyZSBzZXQgZm9yIGZldyBmYWxzZSBhbGFybXMgYW5kIG1pc3MgbWFueSBvZiB0aGVzZSBmaW5kaW5ncy48L3A+PC9ib2R5PjwvaHRtbD4="
                       }
                     }
                   }
@@ -415,7 +415,7 @@
                     "domainName": "Cardiology",
                     "stage": "ai_inference",
                     "modality": "Angiogram",
-                    "version": "1.1.0",
+                    "version": "1.1.1",
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
@@ -622,7 +622,7 @@
                         "Description": "One EchoJEPA video encoder (ViT-L) that segments the coronary tree into 26 SYNTAX classes itself and, from up to 12 diagnostic coronary angiography runs per study, predicts for each of 18 coronary segments the % diameter stenosis, the probability of a significant lesion and the probabilities of calcification, thrombus and chronic total occlusion (CTO), plus LAD-territory FFR and iFR (value and probability of an abnormal result). Each probability comes with a yes/no call at a threshold chosen on the validation set. The encoder runs at most twice per study: full views at 224 px, then up to 4 tracked 320 px crops per segment. No segmentation map has to be provided. Version 1.1.0 serves model v13. Earlier working name: DeepCORO-Integrated.",
                         "Developed_by": "HeartWise.AI / MHI",
                         "Development_period": "2025-2026",
-                        "Version": "1.1.0",
+                        "Version": "1.1.1",
                         "Model_version": "v13",
                         "Training_run": "Weights & Biases run 400d0a77 of project mhi_ai/deepcoro-segmentation: https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77"
                       },
@@ -656,6 +656,7 @@
                         "Lesion_flags": "Calcification, thrombus and CTO are rare (1.9%, 0.2% and 0.7% of segments in the test set), so their flags use one threshold per finding set for 99% specificity on the validation set. On the held-out test set (57,492 segment readings): calcification at 0.2225: sensitivity 0.19, specificity 0.990, positive predictive value 0.27; thrombus at 0.0851: sensitivity 0.51, specificity 0.992, positive predictive value 0.10; CTO at 0.1570: sensitivity 0.37, specificity 0.990, positive predictive value 0.21. Most findings are missed and most flags are false: an absent flag does not exclude the finding. Lesion labels come from the angiography report."
                       },
                       "Changelogs": {
+                        "1.1.1": "2026-11-12: Same model (v13). Probabilities are returned with 6 decimals instead of 4 and every yes/no call is taken on the returned probability, so a response never shows a probability at its threshold next to a positive call.",
                         "1.1.0": "2026-11-12: Serves model v13 (Weights & Biases run 400d0a77): adds calcification, thrombus and CTO probabilities and flags per segment and the Thresholds key lesion_operating_point. Stenosis is unchanged on test (macro AUROC 0.885 against 0.884); pressure AUROC is 0.69 against 0.72 for v12.",
                         "1.0.0": "2026-11-12: Serves model v12: 18-segment stenosis and LAD FFR/iFR with validation-derived thresholds."
                       }
@@ -890,7 +891,7 @@
           "version": {
             "type": "string",
             "description": "Model version",
-            "example": "1.1.0"
+            "example": "1.1.1"
           },
           "dicomTargetLevel": {
             "type": "string",
@@ -966,11 +967,11 @@
         "properties": {
           "diagnosis": {
             "type": "string",
-            "description": "Short summary of the flagged segments and the LAD FFR/iFR calls (JSON mode)"
+            "description": "Short summary (JSON mode): the segments flagged for significant stenosis, the LAD FFR/iFR calls, and, for a model with a lesion head (v13 on), the segments flagged for calcification, thrombus and chronic total occlusion"
           },
           "predictions": {
             "type": "object",
-            "description": "segments.<segment> with stenosis_pct, prob_significant, prob_threshold, significant, significant_threshold_pct; lad_physiology with ffr, ifr, ffr_abnormal_prob, ifr_abnormal_prob, their thresholds and yes/no calls, operating_point; n_videos; encoder_passes"
+            "description": "segments.<segment> with stenosis_pct, prob_significant, prob_threshold, significant, significant_threshold_pct and, for a model with a lesion head (v13 on), calcif_prob, calcif, thrombus_prob, thrombus, cto_prob, cto; lesion_thresholds with operating_point and one threshold per finding (calcif, thrombus, cto) for all segments; lad_physiology with ffr, ifr, ffr_abnormal_prob, ifr_abnormal_prob, their thresholds and yes/no calls, operating_point; n_videos; encoder_passes. Probabilities are returned with 6 decimals and every yes/no value is true exactly when the returned probability is strictly above its returned threshold"
           },
           "modelRecommendations": {
             "type": "object",
