@@ -1,6 +1,8 @@
 import numpy as np
 import pydicom
 
+from utils.dicom_pixels import to_display_uint8
+
 
 def to_uint8(array: np.ndarray) -> np.ndarray:
     array = array - np.min(array)
@@ -41,7 +43,7 @@ def handle_colorspace(im_array: np.ndarray, dicom_ds: pydicom.Dataset) -> np.nda
     if cspace in ["PALETTE COLOR"]:
         return to_uint8(pydicom.pixel_data_handlers.util.apply_color_lut(im_array, dicom_ds))
     if cspace in ["MONOCHROME1", "MONOCHROME2"]:
-        recolored = np.expand_dims(im_array, 3)
+        recolored = np.expand_dims(to_display_uint8(im_array, cspace), 3)
         return np.repeat(recolored, 3, 3)
     return im_array
 
