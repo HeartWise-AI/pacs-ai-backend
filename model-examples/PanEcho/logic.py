@@ -13,6 +13,7 @@ from typing import Any, List, Dict, Union, Tuple, Optional
 
 from models.pan_echo import PanEcho
 from models.echo_prime_view_classifier import EchoPrimeViewClassifier
+from utils.dicom_pixels import to_display_uint8
 from models.view_classifier_utils import handle_colorspace, load_pixel_array, mask_and_crop
 from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
@@ -846,7 +847,9 @@ class CustomPredictionService(BasePredictionService):
 
                 for i, dicom in enumerate(batch_dicoms):
                     try:
-                        pixel_array: np.ndarray = load_pixel_array(dicom)
+                        pixel_array: np.ndarray = to_display_uint8(
+                            load_pixel_array(dicom), getattr(dicom, "PhotometricInterpretation", None)
+                        )
                     except Exception as e:
                         print(f"Skipping DICOM {batch_start + i}: {e}")
                         continue

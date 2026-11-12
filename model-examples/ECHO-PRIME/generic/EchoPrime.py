@@ -16,6 +16,7 @@ import pydicom
 import torch
 import torchvision.utils as vutils
 import utils.video_utils as video_utils
+from utils.dicom_pixels import to_display_uint8
 from tqdm import tqdm
 
 
@@ -472,7 +473,9 @@ class EchoPrimeInference:
             Preprocessed pixel array
         """
         dcm = pydicom.dcmread(dicom_path)
-        pixels = video_utils.load_pixel_array(dcm)
+        pixels = to_display_uint8(
+            video_utils.load_pixel_array(dcm), getattr(dcm, "PhotometricInterpretation", None)
+        )
 
         # Exclude images like (600,800) or (600,800,3)
         if pixels.ndim < 3 or pixels.shape[2] == 3:
@@ -683,7 +686,9 @@ class EchoPrimeInference:
                         print(f"Skipping single-frame DICOM for series {series_number} instance {instance_number}")
                         continue
 
-                    pixels = video_utils.load_pixel_array(dcm)
+                    pixels = to_display_uint8(
+                        video_utils.load_pixel_array(dcm), getattr(dcm, "PhotometricInterpretation", None)
+                    )
 
                     # Exclude images like (600,800) or (600,800,3)
                     if pixels.ndim < 3 or pixels.shape[2] == 3:
