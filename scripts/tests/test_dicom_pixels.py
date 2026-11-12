@@ -31,6 +31,9 @@ CONVERTING_MODELS = [
 
 # Files that read ``pixel_array`` without the helper, and why that is correct.
 EXEMPT_PIXEL_READERS = {
+    # JEPA preserves its own training conversion, including min-max for high-bit
+    # input and raw palette indices. Do not substitute percentile windowing.
+    "DeepCORO-JEPA/logic.py",
     # CT volume: per-slice min-max of the float stored values; already high-bit safe.
     "BrainGPT_v1/pipeline_script.py",
     # Reads pixel_array only to return the raw buffer; the caller decodes it again.

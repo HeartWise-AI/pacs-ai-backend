@@ -129,7 +129,7 @@ class ReleaseModelTests(unittest.TestCase):
         dockerfile, uses_secret = RELEASE.validate_dockerfile_contract(DEEPCORO_SYNTAX_PATH)
 
         self.assertEqual("DeepCORO-SYNTAX", metadata.model_name)
-        self.assertEqual("6.0.0", metadata.version)
+        self.assertEqual("6.0.1", metadata.version)
         self.assertEqual(DEEPCORO_SYNTAX_PATH / "Dockerfile", dockerfile)
         self.assertTrue(uses_secret)
 
