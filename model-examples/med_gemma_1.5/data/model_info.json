@@ -4,7 +4,7 @@
   "domainName": "Chest X-Ray",
   "stage": "ai_inference",
   "modality": "Chest X-Ray",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "resources": {
     "gpuRequired": true,
     "residentMemoryMiB": 9712,

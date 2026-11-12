@@ -1,7 +1,7 @@
 {
   "modelId": "CathEF",
   "modelName": "CathEF",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "resources": {
     "gpuRequired": true,
     "residentMemoryMiB": 600,
