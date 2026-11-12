@@ -41,7 +41,7 @@ func (b *ContainerBackend) Inspect(ctx context.Context, id string) (Model, api.M
 		}
 		return Model{ContainerID: id}, api.ModelRuntime{}, err
 	}
-	model := Model{ContainerID: id, Name: strings.TrimPrefix(info.Name, "/")}
+	model := Model{ContainerID: id, Name: strings.TrimPrefix(info.Name, "/"), GPUUUID: info.GPUUUID}
 	if info.Lifecycle != docker.LifecycleRunning {
 		return model, api.ModelRuntime{State: api.RuntimeUnloaded}, nil
 	}
@@ -82,7 +82,11 @@ func (b *ContainerBackend) Prepare(ctx context.Context, id string) (Model, error
 	if err = info.Resources.Validate(); err != nil {
 		return Model{}, err
 	}
-	return Model{ContainerID: id, Name: name, Resources: info.Resources}, nil
+	placement, err := b.Docker.GetContainerInfo(ctx, id)
+	if err != nil {
+		return Model{}, err
+	}
+	return Model{ContainerID: id, Name: name, Resources: info.Resources, GPUUUID: placement.GPUUUID}, nil
 }
 func (b *ContainerBackend) Runtime(ctx context.Context, m Model) (api.ModelRuntime, error) {
 	return b.API.GetModelRuntime(ctx, m.Name)

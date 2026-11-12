@@ -1,4 +1,4 @@
-// Package modelmanager provides the single-host, single-GPU admission service.
+// Package modelmanager provides the single-host, per-GPU admission service.
 // Callers must pass a trusted registered container ID, never a user-supplied URL.
 package modelmanager
 
@@ -48,6 +48,7 @@ func (*AdmissionBlocked) PublicMessage() string {
 
 type Model struct {
 	ContainerID, Name string
+	GPUUUID           string
 	Resources         types.ModelResources
 }
 
@@ -77,16 +78,17 @@ type entry struct {
 type waiter struct{ id string }
 
 type Manager struct {
-	mu          sync.Mutex
-	config      Config
-	backend     Backend
-	models      map[string]*entry
-	queue       []*waiter
-	admitting   *waiter
-	changed     chan struct{}
-	ready       bool
-	reconciling bool
-	metrics     Metrics
+	mu                sync.Mutex
+	config            Config
+	backend           Backend
+	models            map[string]*entry
+	queue             []*waiter
+	admitting         *waiter
+	residentAdmission map[string]*waiter // serializes resident-to-peak promotion per GPU
+	changed           chan struct{}
+	ready             bool
+	reconciling       bool
+	metrics           Metrics
 }
 
 func New(config Config, backend Backend) (*Manager, error) {
@@ -99,7 +101,8 @@ func New(config Config, backend Backend) (*Manager, error) {
 	manager := &Manager{
 		config: config, backend: backend, models: make(map[string]*entry),
 		changed: make(chan struct{}), ready: !config.RequireReconciliation,
-		metrics: defaultMetrics,
+		residentAdmission: make(map[string]*waiter),
+		metrics:           defaultMetrics,
 	}
 	manager.metrics.SetSnapshot(manager.snapshotLocked())
 	return manager, nil
@@ -117,7 +120,47 @@ func (m *Manager) usedLocked() int {
 	}
 	return n
 }
-func (m *Manager) capacity() int { return m.config.BudgetMiB - m.config.SafetyMarginMiB }
+func (m *Manager) capacity() int {
+	if len(m.config.GPUBudgetsMiB) == 0 {
+		return m.config.BudgetMiB - m.config.SafetyMarginMiB
+	}
+	total := 0
+	for uuid := range m.config.GPUBudgetsMiB {
+		total += m.deviceCapacity(uuid)
+	}
+	return total
+}
+func (m *Manager) deviceCapacity(uuid string) int {
+	if len(m.config.GPUBudgetsMiB) == 0 {
+		return m.capacity()
+	}
+	budget, ok := m.config.GPUBudgetsMiB[uuid]
+	if !ok {
+		return 0
+	}
+	return budget - m.config.SafetyMarginMiB
+}
+func (m *Manager) deviceUsedLocked(uuid string) int {
+	if len(m.config.GPUBudgetsMiB) == 0 {
+		return m.usedLocked()
+	}
+	total := 0
+	for _, e := range m.models {
+		if e.model.GPUUUID == uuid {
+			total += e.reserved
+		}
+	}
+	return total
+}
+func (m *Manager) validatePlacement(model Model) error {
+	if !model.Resources.GPURequired || len(m.config.GPUBudgetsMiB) == 0 {
+		return nil
+	}
+	if _, ok := m.config.GPUBudgetsMiB[model.GPUUUID]; !ok {
+		return fmt.Errorf("model %s must expose exactly one configured physical GPU UUID; recreate legacy all-GPU containers before enabling per-GPU admission", model.Name)
+	}
+	return nil
+}
 
 // Reconcile reconstructs the reservation ledger before the manager admits
 // production traffic. Runtime failures with a valid resource contract are
@@ -164,7 +207,7 @@ func (m *Manager) Reconcile(ctx context.Context, containerIDs []string) (err err
 
 	staged := make(map[string]*entry, len(containerIDs))
 	seen := make(map[string]struct{}, len(containerIDs))
-	reserved := 0
+	reserved := map[string]int{}
 	quarantined := false
 	for _, id := range containerIDs {
 		if !containerIDPattern.MatchString(id) {
@@ -220,8 +263,18 @@ func (m *Manager) Reconcile(ctx context.Context, containerIDs []string) (err err
 				quarantined = true
 			}
 		}
-		reserved += e.reserved
-		if reserved > m.capacity() {
+		if e.reserved > 0 {
+			if err := m.validatePlacement(model); err != nil {
+				outcome = "failed"
+				return err
+			}
+		}
+		pool := model.GPUUUID
+		if len(m.config.GPUBudgetsMiB) == 0 {
+			pool = ""
+		}
+		reserved[pool] += e.reserved
+		if reserved[pool] > m.deviceCapacity(pool) {
 			outcome = "failed"
 			return errors.New("reconciled reservations exceed schedulable GPU capacity")
 		}
@@ -302,8 +355,11 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 	if err = model.Resources.Validate(); err != nil {
 		return response, err
 	}
+	if err = m.validatePlacement(model); err != nil {
+		return response, err
+	}
 	m.mu.Lock()
-	if e.reserved > 0 && e.model.Resources != model.Resources {
+	if e.reserved > 0 && (e.model.Resources != model.Resources || e.model.GPUUUID != model.GPUUUID) {
 		m.mu.Unlock()
 		return response, errors.New("resident model resource contract changed")
 	}
@@ -344,13 +400,26 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 		m.wakeLocked()
 	}
 	m.mu.Unlock()
+	// A request waiting for one physical device must not block preparation on
+	// another device. Reservations remain atomic under m.mu.
+	if len(m.config.GPUBudgetsMiB) > 0 {
+		m.mu.Lock()
+		if m.admitting == w {
+			m.admitting = nil
+		}
+		m.wakeLocked()
+		m.mu.Unlock()
+	}
 	if err = m.reserve(queueCtx, e); err != nil {
 		m.metrics.ObserveEvent("admission_failure", metricOutcome(err))
 		return response, queueError(ctx, queueCtx, err)
 	}
 	// Admission is finished; other models may now load concurrently within budget.
 	m.mu.Lock()
-	m.admitting = nil
+	if m.admitting == w {
+		m.admitting = nil
+	}
+	m.releaseResidentAdmissionLocked(w)
 	m.wakeLocked()
 	m.mu.Unlock()
 	cancelQueue()
@@ -438,7 +507,11 @@ func (m *Manager) admit(ctx context.Context, id string) (*waiter, *entry, error)
 		}
 		var first *waiter
 		for _, candidate := range m.queue {
-			if !m.models[candidate.id].active {
+			e := m.models[candidate.id]
+			// A resident waiting to grow to peak must leave other residents on
+			// its device idle and evictable. Cold requests hold no residency.
+			deviceBusy := len(m.config.GPUBudgetsMiB) > 0 && e.reserved > 0 && m.residentAdmission[e.model.GPUUUID] != nil
+			if !e.active && !deviceBusy {
 				first = candidate
 				break
 			}
@@ -447,6 +520,9 @@ func (m *Manager) admit(ctx context.Context, id string) (*waiter, *entry, error)
 			m.removeLocked(w)
 			e := m.models[id]
 			e.active = true
+			if len(m.config.GPUBudgetsMiB) > 0 && e.reserved > 0 {
+				m.residentAdmission[e.model.GPUUUID] = w
+			}
 			m.admitting = w
 			m.metrics.SetSnapshot(m.snapshotLocked())
 			m.mu.Unlock()
@@ -650,9 +726,13 @@ func (m *Manager) PrepareBlocked(ctx context.Context, id string) (err error) {
 				e.leased = false
 				e.loaded = false
 			} else {
+				e.model = model
+				if m.validatePlacement(model) != nil {
+					m.ready = false
+				}
 				e.reserved = max(e.reserved, model.Resources.PeakMemoryMiB)
 				if e.reserved == 0 {
-					e.reserved = m.capacity()
+					e.reserved = m.deviceCapacity(model.GPUUUID)
 				}
 				e.leased = true
 				e.loaded = true
@@ -679,6 +759,9 @@ func (m *Manager) PrepareBlocked(ctx context.Context, id string) (err error) {
 		return errors.New("lifecycle backend returned a different container")
 	}
 	if err = model.Resources.Validate(); err != nil {
+		return err
+	}
+	if err = m.validatePlacement(model); err != nil {
 		return err
 	}
 	m.mu.Lock()
@@ -742,18 +825,31 @@ func (m *Manager) removeLocked(w *waiter) {
 	}
 }
 
+func (m *Manager) releaseResidentAdmissionLocked(w *waiter) {
+	for uuid, owner := range m.residentAdmission {
+		if owner == w {
+			delete(m.residentAdmission, uuid)
+		}
+	}
+}
+
 func (m *Manager) reserve(ctx context.Context, target *entry) error {
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		m.mu.Lock()
+		if !m.ready || m.reconciling {
+			m.mu.Unlock()
+			return ErrNotReconciled
+		}
 		peak := target.model.Resources.PeakMemoryMiB
-		if peak > m.capacity() {
+		capacity := m.deviceCapacity(target.model.GPUUUID)
+		if peak > capacity {
 			m.mu.Unlock()
 			return ErrCapacity
 		}
-		if peak-target.reserved <= m.capacity()-m.usedLocked() {
+		if peak-target.reserved <= capacity-m.deviceUsedLocked(target.model.GPUUUID) {
 			target.reserved = peak
 			target.leased = true
 			target.state = types.RuntimeLoading
@@ -765,7 +861,7 @@ func (m *Manager) reserve(ctx context.Context, target *entry) error {
 		wait := m.config.QueueTimeout
 		now := time.Now()
 		for _, e := range m.models {
-			if e == target || e.active || e.blocked || e.state != types.RuntimeReady || e.reserved == 0 {
+			if e == target || e.active || e.blocked || e.state != types.RuntimeReady || e.reserved == 0 || (len(m.config.GPUBudgetsMiB) > 0 && e.model.GPUUUID != target.model.GPUUUID) {
 				continue
 			}
 			remaining := time.Duration(e.model.Resources.IdleTimeoutSeconds)*time.Second - now.Sub(e.lastUsed)
@@ -864,6 +960,7 @@ func (m *Manager) finish(ctx context.Context, w *waiter, e *entry, success bool)
 		if m.admitting == w {
 			m.admitting = nil
 		}
+		m.releaseResidentAdmissionLocked(w)
 		m.wakeLocked()
 		m.mu.Unlock()
 		if p != nil {
@@ -883,6 +980,7 @@ func (m *Manager) finish(ctx context.Context, w *waiter, e *entry, success bool)
 }
 
 type ModelSnapshot struct {
+	GPUUUID     string
 	State       types.ModelRuntimeState
 	ReservedMiB int
 	Active      bool
@@ -898,6 +996,7 @@ type Snapshot struct {
 	CapacityMiB, ResidentMiB, ActiveMiB   int
 	ReservedMiB, AvailableMiB, QueueDepth int
 	Models                                map[string]ModelSnapshot
+	GPUs                                  map[string]GPUSnapshot
 }
 
 func (m *Manager) Snapshot() Snapshot {
@@ -910,7 +1009,7 @@ func (m *Manager) snapshotLocked() Snapshot {
 	s := Snapshot{Ready: m.ready && !m.reconciling, CapacityMiB: m.capacity(), ReservedMiB: m.usedLocked(), Models: make(map[string]ModelSnapshot)}
 	for id, e := range m.models {
 		s.Models[id] = ModelSnapshot{
-			State: e.state, ReservedMiB: e.reserved, Active: e.active,
+			State: e.state, ReservedMiB: e.reserved, Active: e.active, GPUUUID: e.model.GPUUUID,
 			LastUsedAt: e.lastUsed, Loaded: e.loaded, Blocked: e.blocked,
 			Draining: e.draining, Preparing: e.preparing,
 		}
@@ -927,6 +1026,21 @@ func (m *Manager) snapshotLocked() Snapshot {
 		s.Models[w.id] = v
 		s.QueueDepth++
 	}
+	s.GPUs = make(map[string]GPUSnapshot)
+	for uuid := range m.config.GPUBudgetsMiB {
+		gpu := GPUSnapshot{CapacityMiB: m.deviceCapacity(uuid), ReservedMiB: m.deviceUsedLocked(uuid)}
+		for _, e := range m.models {
+			if e.model.GPUUUID == uuid && e.loaded {
+				gpu.ResidentMiB += min(e.reserved, e.model.Resources.ResidentMemoryMiB)
+			}
+		}
+		gpu.ActiveMiB = gpu.ReservedMiB - gpu.ResidentMiB
+		gpu.AvailableMiB = max(0, gpu.CapacityMiB-gpu.ReservedMiB)
+		s.GPUs[uuid] = gpu
+	}
 	s.AvailableMiB = max(0, s.CapacityMiB-s.ReservedMiB)
 	return s
 }
+
+// GPUSnapshot is a reservation ledger for one physical device, not live NVML usage.
+type GPUSnapshot struct{ CapacityMiB, ReservedMiB, ResidentMiB, ActiveMiB, AvailableMiB int }

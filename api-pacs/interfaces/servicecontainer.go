@@ -746,9 +746,11 @@ func registerHandlers() {
 
 	// init docker sdk
 	dockerSDK, err = docker.NewClient(dockerTypes.Config{
-		Username: os.Getenv("DOCKER_USERNAME"),
-		Password: os.Getenv("DOCKER_PASSWORD"),
-		Network:  os.Getenv("DOCKER_NETWORK"),
+		Username:           os.Getenv("DOCKER_USERNAME"),
+		Password:           os.Getenv("DOCKER_PASSWORD"),
+		Network:            os.Getenv("DOCKER_NETWORK"),
+		GPUDefaultUUID:     os.Getenv("MODEL_GPU_DEFAULT_UUID"),
+		GPUAssignmentsJSON: os.Getenv("MODEL_GPU_ASSIGNMENTS"),
 	})
 	if err != nil {
 		log.Fatalf("[SERVER] cannot initialize docker: %v", err)
@@ -775,6 +777,7 @@ func registerHandlers() {
 		if catalogErr != nil {
 			log.Fatalf("[SERVER] model manager startup reconciliation failed: %v", catalogErr)
 		}
+		go modelManager.RunIdleEviction(context.Background())
 		snapshot := modelManager.Snapshot()
 		log.Printf(
 			"[SERVER] model manager reconciled models=%d reserved_mib=%d available_mib=%d",

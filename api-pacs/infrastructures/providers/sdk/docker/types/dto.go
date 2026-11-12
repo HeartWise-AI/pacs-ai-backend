@@ -46,9 +46,11 @@ func LifecycleFromStatus(status Status) Lifecycle {
 }
 
 type Config struct {
-	Username string
-	Password string
-	Network  string
+	Username           string
+	Password           string
+	Network            string
+	GPUDefaultUUID     string
+	GPUAssignmentsJSON string
 }
 
 type CreateContainer struct {
@@ -68,6 +70,7 @@ type CreateCandidateContainer struct {
 }
 
 type GetContainerInfoResult struct {
+	GPUUUID    string
 	ID         string
 	ImageID    string
 	Name       string

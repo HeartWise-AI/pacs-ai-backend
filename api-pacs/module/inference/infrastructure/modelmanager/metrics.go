@@ -66,6 +66,11 @@ func (expvarMetrics) SetSnapshot(snapshot Snapshot) {
 	setMapInt(modelManagerGPUMemoryMiB, "kind=active", int64(snapshot.ActiveMiB))
 	setMapInt(modelManagerGPUMemoryMiB, "kind=reserved", int64(snapshot.ReservedMiB))
 	setMapInt(modelManagerGPUMemoryMiB, "kind=available", int64(snapshot.AvailableMiB))
+	for uuid, gpu := range snapshot.GPUs {
+		for kind, value := range map[string]int{"capacity": gpu.CapacityMiB, "resident": gpu.ResidentMiB, "active": gpu.ActiveMiB, "reserved": gpu.ReservedMiB, "available": gpu.AvailableMiB} {
+			setMapInt(modelManagerGPUMemoryMiB, "gpu="+uuid+",kind="+kind, int64(value))
+		}
+	}
 	modelManagerQueueDepth.Set(int64(snapshot.QueueDepth))
 }
 
