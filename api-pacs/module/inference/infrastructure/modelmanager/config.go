@@ -10,7 +10,10 @@ import (
 
 // Config describes one host manager with one or more GPU budgets. BudgetMiB includes SafetyMarginMiB.
 type Config struct {
-	Enabled               bool
+	Enabled bool
+	// RetainPeakWhileLoaded protects against allocator caches surviving inference.
+	RetainPeakWhileLoaded bool
+	GPUReservationPercent int
 	RequireReconciliation bool
 	BudgetMiB             int
 	SafetyMarginMiB       int
@@ -35,6 +38,15 @@ func ConfigFromEnv(getenv func(string) string) (Config, error) {
 		return c, nil
 	}
 	c.RequireReconciliation = true
+	c.RetainPeakWhileLoaded = true
+	c.GPUReservationPercent = 100
+	if v := getenv("MODEL_RETAIN_PEAK_WHILE_LOADED"); v != "" {
+		var err error
+		c.RetainPeakWhileLoaded, err = strconv.ParseBool(v)
+		if err != nil {
+			return c, fmt.Errorf("MODEL_RETAIN_PEAK_WHILE_LOADED: %w", err)
+		}
+	}
 	if v := getenv("GPU_MEMORY_BUDGETS_MIB"); v != "" {
 		if err := json.Unmarshal([]byte(v), &c.GPUBudgetsMiB); err != nil || len(c.GPUBudgetsMiB) == 0 {
 			return c, fmt.Errorf("GPU_MEMORY_BUDGETS_MIB must be a nonempty JSON object of GPU UUIDs to MiB budgets")
@@ -52,6 +64,7 @@ func ConfigFromEnv(getenv func(string) string) (Config, error) {
 		target *int
 	}{
 		{"GPU_MEMORY_BUDGET_MIB", &c.BudgetMiB},
+		{"MODEL_GPU_MEMORY_RESERVATION_PERCENT", &c.GPUReservationPercent},
 		{"GPU_MEMORY_SAFETY_MARGIN_MIB", &c.SafetyMarginMiB},
 	} {
 		if v := getenv(field.name); v != "" {
@@ -69,10 +82,16 @@ func ConfigFromEnv(getenv func(string) string) (Config, error) {
 		}
 		c.QueueTimeout = time.Duration(n) * time.Second
 	}
+	if c.GPUReservationPercent < 100 {
+		return c, fmt.Errorf("MODEL_GPU_MEMORY_RESERVATION_PERCENT must be between 100 and 1000")
+	}
 	return c, c.Validate()
 }
 
 func (c Config) Validate() error {
+	if c.GPUReservationPercent != 0 && (c.GPUReservationPercent < 100 || c.GPUReservationPercent > 1000) {
+		return fmt.Errorf("MODEL_GPU_MEMORY_RESERVATION_PERCENT must be between 100 and 1000")
+	}
 	if c.IdleSweepInterval < 0 {
 		return fmt.Errorf("idle sweep interval must be non-negative")
 	}

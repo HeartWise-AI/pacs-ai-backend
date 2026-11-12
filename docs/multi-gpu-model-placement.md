@@ -16,6 +16,8 @@ GPU_MEMORY_BUDGETS_MIB={"GPU-999e1fca-539d-fb99-2531-ad97b91da026":24564,"GPU-0f
 GPU_MEMORY_SAFETY_MARGIN_MIB=2048
 MODEL_GPU_DEFAULT_UUID=GPU-0fe2f69a-78ce-4eb0-730e-2f5a15f4a1b7
 MODEL_GPU_ASSIGNMENTS={"deepcoro-jepa":"GPU-999e1fca-539d-fb99-2531-ad97b91da026","deepcoro-scad":"GPU-999e1fca-539d-fb99-2531-ad97b91da026"}
+MODEL_RETAIN_PEAK_WHILE_LOADED=true
+MODEL_GPU_MEMORY_RESERVATION_PERCENT=150
 MODEL_IDLE_SWEEP_SECONDS=30
 MODEL_QUEUE_TIMEOUT_SECONDS=600
 ```
@@ -41,7 +43,10 @@ this change does not dynamically migrate resident models between GPUs.
 
 `GPU_MEMORY_BUDGETS_MIB` enables separate reservation ledgers and replaces the
 legacy scalar `GPU_MEMORY_BUDGET_MIB`. The safety margin is subtracted from
-**each** GPU. Account for unmanaged applications by lowering that device's
+**each** GPU. Conservative peak scaling is applied before admission and loaded
+GPU models retain that scaled peak until confirmed process exit. The example
+uses 150% because deployed memory declarations underestimated observed CUDA
+allocator residency; remeasure supported workloads before reducing it. Account for unmanaged applications by lowering that device's
 budget. Unused capacity on one GPU cannot satisfy an allocation on another.
 Pressure eviction only selects models assigned to the requesting GPU. A waiting
 request on one device does not hold the global admission gate for the other.
