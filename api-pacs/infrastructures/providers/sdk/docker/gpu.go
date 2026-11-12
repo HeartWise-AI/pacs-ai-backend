@@ -10,6 +10,10 @@ import (
 
 var gpuUUIDPattern = regexp.MustCompile(`^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
+// Upgrade candidates retain temporary Docker names after activation. Keep the
+// registration's original placement key across every generation.
+const gpuPlacementNameLabel = "ai.heartwise.pacs.gpu-placement-name"
+
 func parseGPUAssignments(defaultUUID, raw string) (map[string]string, error) {
 	assignments := map[string]string{}
 	if defaultUUID != "" && !gpuUUIDPattern.MatchString(defaultUUID) {

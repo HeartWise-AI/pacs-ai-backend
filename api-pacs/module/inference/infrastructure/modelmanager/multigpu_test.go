@@ -123,6 +123,54 @@ func TestMultiGPUConfig(t *testing.T) {
 	}
 }
 
+func TestWarmWaitersLeaveSameGPUResidentsEvictable(t *testing.T) {
+	b := newFake()
+	for n, gpu := range []string{gpuA, gpuA, gpuB} {
+		b.add(n+1, 40, 70)
+		assign(b, n+1, gpu)
+		b.loaded[id(n+1)] = true
+	}
+	m := multiManager(t, b)
+	m.config.QueueTimeout = 3 * time.Second
+	if err := m.Reconcile(context.Background(), []string{id(1), id(2), id(3)}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	first := requestCtx(m, ctx, 1)
+	until(t, func() bool {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.models[id(1)].active && m.admitting == nil
+	})
+	second := requestCtx(m, ctx, 2)
+	until(t, func() bool {
+		s := m.Snapshot().Models[id(2)]
+		return s.QueueDepth == 1 || s.Active
+	})
+	if s := m.Snapshot().Models[id(2)]; s.Active {
+		t.Fatal("second warm waiter pinned the resident needed for eviction")
+	}
+	// A queued warm request on A must not delay a warm request on B.
+	receive(t, requestCtx(m, ctx, 3))
+	m.mu.Lock()
+	m.models[id(2)].lastUsed = time.Now().Add(-time.Hour)
+	m.wakeLocked()
+	m.mu.Unlock()
+	receive(t, first)
+	// Let the second request reclaim the first model after it becomes idle.
+	m.mu.Lock()
+	m.models[id(1)].lastUsed = time.Now().Add(-time.Hour)
+	m.wakeLocked()
+	m.mu.Unlock()
+	receive(t, second)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.unloads) != 2 {
+		t.Fatal("warm requests did not make progress through idle eviction", b.unloads)
+	}
+}
+
 func TestLegacyReconciliationRetainsSingleSharedBudget(t *testing.T) {
 	b := newFake()
 	for n, gpu := range []string{gpuA, gpuB} {

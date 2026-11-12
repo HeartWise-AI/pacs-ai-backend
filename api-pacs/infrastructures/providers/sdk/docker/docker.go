@@ -69,8 +69,9 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 	gpuUUID := d.gpuForContainer(config.Name)
 	// define container config
 	containerConfig := &container.Config{
-		Image: config.Image,
-		Env:   config.Envs,
+		Image:  config.Image,
+		Env:    config.Envs,
+		Labels: map[string]string{gpuPlacementNameLabel: config.Name},
 		ExposedPorts: nat.PortSet{
 			"80/tcp": struct{}{}, // expose port 80 (nginx)
 		},
@@ -185,12 +186,16 @@ func (d *DockerSDK) candidateContainerConfigs(
 		hostConfig = &copied
 	}
 
-	// Apply the active model's placement policy to upgrades, not the candidate's
-	// temporary name. With no configured policy, preserve its existing devices.
+	// Apply the registration's stable placement policy across repeated upgrades.
+	// With no configured policy, preserve its existing devices.
 	activeName := ""
 	if active.ContainerJSONBase != nil {
 		activeName = strings.TrimPrefix(active.Name, "/")
 	}
+	if active.Config != nil && active.Config.Labels[gpuPlacementNameLabel] != "" {
+		activeName = active.Config.Labels[gpuPlacementNameLabel]
+	}
+	containerConfig.Labels = map[string]string{gpuPlacementNameLabel: activeName}
 	if uuid := d.gpuForContainer(activeName); uuid != "" {
 		hostConfig.Runtime = "nvidia"
 		hostConfig.DeviceRequests = gpuDeviceRequests(uuid)

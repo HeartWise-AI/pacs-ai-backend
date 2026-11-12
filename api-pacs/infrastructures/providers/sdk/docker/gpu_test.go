@@ -35,12 +35,26 @@ func TestUpgradeUsesActiveModelGPUAssignment(t *testing.T) {
 	active := engine.ContainerJSON{ContainerJSONBase: &engine.ContainerJSONBase{
 		Name: "/deepcoro-jepa", HostConfig: &container.HostConfig{Resources: container.Resources{DeviceRequests: gpuDeviceRequests(other)}},
 	}}
-	_, host, _ := sdk.candidateContainerConfigs(dockertypes.CreateCandidateContainer{Name: "temporary-candidate"}, active)
+	config, host, _ := sdk.candidateContainerConfigs(dockertypes.CreateCandidateContainer{Name: "temporary-candidate"}, active)
 	if singleGPUUUID(host) != testGPUUUID {
 		t.Fatal("candidate lost the active model's placement policy", host.DeviceRequests)
 	}
 	if singleGPUUUID(active.HostConfig) != other {
 		t.Fatal("mutated running container settings")
+	}
+	// Activated candidates keep their temporary names. A later upgrade must
+	// still resolve the registration's explicit assignment, including updates.
+	active = engine.ContainerJSON{ContainerJSONBase: &engine.ContainerJSONBase{
+		Name: "/temporary-candidate", HostConfig: host,
+	}, Config: config}
+	_, nextHost, _ := sdk.candidateContainerConfigs(dockertypes.CreateCandidateContainer{Name: "next-candidate"}, active)
+	if singleGPUUUID(nextHost) != testGPUUUID {
+		t.Fatal("successive upgrade lost original placement key")
+	}
+	sdk.GPUAssignments["deepcoro-jepa"] = other
+	_, movedHost, _ := sdk.candidateContainerConfigs(dockertypes.CreateCandidateContainer{Name: "moved-candidate"}, active)
+	if singleGPUUUID(movedHost) != other {
+		t.Fatal("successive upgrade ignored updated placement policy")
 	}
 	if sdk.gpuForContainer("new-model") != other {
 		t.Fatal("unlisted model did not receive fallback GPU")

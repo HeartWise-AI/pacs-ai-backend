@@ -78,16 +78,17 @@ type entry struct {
 type waiter struct{ id string }
 
 type Manager struct {
-	mu          sync.Mutex
-	config      Config
-	backend     Backend
-	models      map[string]*entry
-	queue       []*waiter
-	admitting   *waiter
-	changed     chan struct{}
-	ready       bool
-	reconciling bool
-	metrics     Metrics
+	mu                sync.Mutex
+	config            Config
+	backend           Backend
+	models            map[string]*entry
+	queue             []*waiter
+	admitting         *waiter
+	residentAdmission map[string]*waiter // serializes resident-to-peak promotion per GPU
+	changed           chan struct{}
+	ready             bool
+	reconciling       bool
+	metrics           Metrics
 }
 
 func New(config Config, backend Backend) (*Manager, error) {
@@ -100,7 +101,8 @@ func New(config Config, backend Backend) (*Manager, error) {
 	manager := &Manager{
 		config: config, backend: backend, models: make(map[string]*entry),
 		changed: make(chan struct{}), ready: !config.RequireReconciliation,
-		metrics: defaultMetrics,
+		residentAdmission: make(map[string]*waiter),
+		metrics:           defaultMetrics,
 	}
 	manager.metrics.SetSnapshot(manager.snapshotLocked())
 	return manager, nil
@@ -417,6 +419,7 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 	if m.admitting == w {
 		m.admitting = nil
 	}
+	m.releaseResidentAdmissionLocked(w)
 	m.wakeLocked()
 	m.mu.Unlock()
 	cancelQueue()
@@ -504,7 +507,11 @@ func (m *Manager) admit(ctx context.Context, id string) (*waiter, *entry, error)
 		}
 		var first *waiter
 		for _, candidate := range m.queue {
-			if !m.models[candidate.id].active {
+			e := m.models[candidate.id]
+			// A resident waiting to grow to peak must leave other residents on
+			// its device idle and evictable. Cold requests hold no residency.
+			deviceBusy := len(m.config.GPUBudgetsMiB) > 0 && e.reserved > 0 && m.residentAdmission[e.model.GPUUUID] != nil
+			if !e.active && !deviceBusy {
 				first = candidate
 				break
 			}
@@ -513,6 +520,9 @@ func (m *Manager) admit(ctx context.Context, id string) (*waiter, *entry, error)
 			m.removeLocked(w)
 			e := m.models[id]
 			e.active = true
+			if len(m.config.GPUBudgetsMiB) > 0 && e.reserved > 0 {
+				m.residentAdmission[e.model.GPUUUID] = w
+			}
 			m.admitting = w
 			m.metrics.SetSnapshot(m.snapshotLocked())
 			m.mu.Unlock()
@@ -815,6 +825,14 @@ func (m *Manager) removeLocked(w *waiter) {
 	}
 }
 
+func (m *Manager) releaseResidentAdmissionLocked(w *waiter) {
+	for uuid, owner := range m.residentAdmission {
+		if owner == w {
+			delete(m.residentAdmission, uuid)
+		}
+	}
+}
+
 func (m *Manager) reserve(ctx context.Context, target *entry) error {
 	for {
 		if err := ctx.Err(); err != nil {
@@ -942,6 +960,7 @@ func (m *Manager) finish(ctx context.Context, w *waiter, e *entry, success bool)
 		if m.admitting == w {
 			m.admitting = nil
 		}
+		m.releaseResidentAdmissionLocked(w)
 		m.wakeLocked()
 		m.mu.Unlock()
 		if p != nil {

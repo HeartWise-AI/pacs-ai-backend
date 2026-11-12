@@ -25,7 +25,11 @@ another server will not select its GPUs. Container names are exact and
 case-sensitive; match the name supplied when registering the model. Unlisted
 models use the explicit default UUID. New registrations and managed upgrades
 receive one Docker GPU DeviceRequest with that UUID, rather than `--gpus all`.
-An upgrade looks up the active model's name, not its temporary candidate name.
+New containers and upgrade candidates store the placement name in the Docker
+label `ai.heartwise.pacs.gpu-placement-name`. Later upgrades reuse that key even
+though activated candidates keep temporary container names. For an existing
+unlabeled container, use its current inspected name as the initial assignment
+key; its next managed upgrade will preserve that key.
 Docker persists the assignment across restarts. With no placement configuration,
 legacy container creation and upgrade behavior is retained.
 
@@ -69,19 +73,29 @@ latency for lower idle GPU residency, without changing ingestion schedules.
    snapshot of model registrations, image digests, environment, and ingestion
    configuration. Do not run the legacy remove/add deploy script as a GPU
    migration: deleting registrations loses processing history.
-2. Configure placement and migrate existing model containers through the managed
-   deployment workflow in a maintenance window, preserving registration and
-   ingestion history. Placement applies to newly created upgrade candidates;
+2. In a maintenance window, pause ingestion and manual inference and let active
+   work finish. Configure placement, enable `MODEL_MANAGER_ENABLED=true` with
+   the legacy scalar `GPU_MEMORY_BUDGET_MIB`, leave `GPU_MEMORY_BUDGETS_MIB`
+   unset, and keep `MODEL_IDLE_SWEEP_SECONDS=0`. The managed upgrade workflow
+   requires the manager, while per-GPU reconciliation rejects resident all-GPU
+   containers. Use a conservative scalar capacity that fits the physical GPU
+   holding legacy allocations; if reconciliation would exceed it, explicitly
+   unload idle residents before startup instead of inflating the budget.
+   Confirm reconciliation, then migrate containers through managed upgrades,
+   preserving registration and ingestion history. Keep callers paused throughout
+   this bootstrap. Placement applies to newly created upgrade candidates;
    setting environment variables alone does not repin an existing container.
    If the managed upgrade requires a newer version, use a properly released
    image rather than changing image provenance or bypassing version checks.
 3. Inspect each container's DeviceRequests and confirm its single physical UUID.
    Test CUDA visibility in the container. Leave CPU-only models as CPU models.
-4. Enable `MODEL_MANAGER_ENABLED` and confirm startup reconciliation succeeds.
+4. Configure `GPU_MEMORY_BUDGETS_MIB`, restart api-pacs in per-GPU mode, and
+   confirm startup reconciliation succeeds.
    Enable `PACS_AI_INFERENCE_GATEWAY_ENABLED=true` on study-service **and all
    Celery worker services**, then recreate those services to apply configuration.
    Every GPU caller must use the managed gateway or have an isolated budget;
-   direct calls can still exceed reservations. See [the manager guide](go-model-manager.md).
+   direct calls can still exceed reservations. Resume callers after checking
+   managed routing. See [the manager guide](go-model-manager.md).
 5. Enable the idle sweep. Run JEPA alongside representative automatic jobs;
    check cold starts, queued admission, peak reservations, idle unload and reload.
    Do not interrupt an active production inference to test eviction.
