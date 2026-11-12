@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import json
+import re
 
 import numpy as np
 import pydicom
@@ -126,7 +127,8 @@ def test_a_call_follows_the_returned_probability():
     preds = CustomPredictionService.postprocess(GROUPS, res, n_videos=1, thresholds=cut)
     for v in preds["segments"].values():
         assert v["prob_significant"] == 0.25 and v["significant"] is False
-        assert (v["calcif_prob"], v["calcif"], v["thrombus_prob"], v["thrombus"], v["cto"]) == (0.25, False, 0.250006, True, False)
+        assert (v["calcif_prob"], v["calcif"], v["thrombus_prob"], v["thrombus"]) == (0.25, False, 0.250006, True)
+        assert (v["cto_prob"], v["cto"]) == (0.25, False)
     physiology = preds["lad_physiology"]
     assert (physiology["ffr_abnormal_prob"], physiology["ffr_abnormal"]) == (0.5, False)
     assert (physiology["ifr_abnormal_prob"], physiology["ifr_abnormal"]) == (0.50025, True)
@@ -136,7 +138,8 @@ def test_a_call_follows_the_returned_probability():
     assert "iFR predicted abnormal (P(iFR ≤ 0.89) 0.5002, threshold 0.5000)" in text
     assert "FFR predicted normal (P(FFR ≤ 0.80) 0.50, threshold 0.5000)" in text
     assert "Flagged for thrombus (P above 0.2500): Proximal RCA (P 0.25001)" in text
-    assert "<b>0.25001 flagged</b>" in html and "<td style='text-align:right'>0.25</td>" in html
+    row = re.search(r"<tr><td>Proximal RCA</td>(.*?)</tr>", html).group(1)  # stenosis, P(significant), threshold, flag, lesions
+    assert re.findall(r"<td[^>]*>(.*?)</td>", row)[1:] == ["0.250", "0.2500", "No", "0.25", "<b>0.25001 flagged</b>", "0.25"]
 
 
 def test_printed_probabilities_keep_their_side_of_the_threshold():
