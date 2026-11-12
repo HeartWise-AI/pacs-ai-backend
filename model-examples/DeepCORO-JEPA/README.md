@@ -66,6 +66,10 @@ There is no `VideoMILWrapper` and no zero-video padding.
   - `n_videos` and `encoder_passes`.
 - **`diagnosis`:** lists the flagged segments and the two pressure calls.
 - **HTML:** the segment table (with threshold and flag) plus LAD physiology.
+- **Failures:**
+  - No readable run: the request succeeds with empty `predictions` and the text "No video could be extracted".
+  - The model call fails (for example the GPU runs out of memory): the request fails with HTTP 500 and
+    `errorCode` `PROCESSING_ERROR`. It is never reported as a missing video.
 
 ## Decision thresholds
 

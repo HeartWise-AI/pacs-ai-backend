@@ -138,3 +138,45 @@ def test_lesion_outputs_are_reported_when_the_checkpoint_has_them():
            "lesion_cto_probability": torch.zeros(18)}
     preds = CustomPredictionService.postprocess(GROUPS, res, n_videos=1, thresholds=THRESHOLDS)
     assert preds["segments"]["mid_lad"]["calcif_prob"] == 0.3 and "lad_physiology" not in preds
+
+
+def _service_with_one_readable_clip(monkeypatch, measured_forward):
+    """A service whose DICOM decoding succeeds, so only the model call decides the outcome."""
+    import types
+    monkeypatch.setitem(sys.modules, "integrated_data", types.SimpleNamespace(load_video_clip=lambda path, sampling: torch.zeros(16, 8, 8)))
+    monkeypatch.setitem(sys.modules, "integrated_study", types.SimpleNamespace(measured_forward=measured_forward))
+    monkeypatch.setattr(CustomPredictionService, "models", {"deepcoro_jepa": torch.nn.Linear(1, 1)}, raising=False)
+    monkeypatch.setattr(CustomPredictionService, "model_config", {"Forward": {
+        "full_res": 224, "crop_res": 320, "max_views": 12, "crops_per_group": 4, "frame_sampling": "peak_s2"}}, raising=False)
+    monkeypatch.setattr(CustomPredictionService, "supported_output_modes", ["json"])
+    monkeypatch.setattr(CustomPredictionService, "is_initialized", True)
+    monkeypatch.setattr(CustomPredictionService, "get_model_info", classmethod(lambda cls: {}))
+    monkeypatch.setattr(CustomPredictionService, "_decode_dicoms", lambda self, request: [object()])
+    monkeypatch.setattr(CustomPredictionService, "select_videos", lambda self, dicoms: dicoms)
+    monkeypatch.setattr(CustomPredictionService, "dicom_to_avi", staticmethod(lambda dicom, output_path: output_path))
+    return CustomPredictionService.__new__(CustomPredictionService)
+
+
+def test_a_failed_forward_pass_is_an_error_not_a_no_video_report(monkeypatch):
+    import asyncio
+    import types
+
+    def out_of_memory(model, clips, args):
+        raise RuntimeError("CUDA out of memory")
+
+    service = _service_with_one_readable_clip(monkeypatch, out_of_memory)
+    with pytest.raises(RuntimeError, match="out of memory"):
+        service._run_inference([object()])
+    success, response = asyncio.run(service.predict(types.SimpleNamespace(outputMode="json")))
+    body = json.loads(response.body)
+    assert success is False and response.status_code == 500
+    assert body["success"] is False and body["errorCode"] == "PROCESSING_ERROR" and "out of memory" in body["message"]
+
+
+def test_no_usable_clip_is_still_reported_as_no_video(monkeypatch):
+    import asyncio
+    import types
+    service = _service_with_one_readable_clip(monkeypatch, measured_forward=None)
+    monkeypatch.setattr(CustomPredictionService, "dicom_to_avi", staticmethod(lambda dicom, output_path: None))
+    success, result = asyncio.run(service.predict(types.SimpleNamespace(outputMode="json")))
+    assert success is True and result["predictions"] == {} and result["modelRecommendations"]["presentable"] is False

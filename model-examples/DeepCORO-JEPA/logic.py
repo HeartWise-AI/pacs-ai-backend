@@ -189,11 +189,10 @@ class CustomPredictionService(BasePredictionService):
         try:
             with torch.inference_mode():
                 res = measured_forward(model, clips, args)
-        except Exception as e:
-            print(f"inference failed: {e}")
+        except Exception:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            return None
+            raise  # predict() answers 500 PROCESSING_ERROR; None is kept for "no usable clip"
         return self.postprocess(model.groups, res, len(clips), CustomPredictionService.thresholds)
 
     @staticmethod
