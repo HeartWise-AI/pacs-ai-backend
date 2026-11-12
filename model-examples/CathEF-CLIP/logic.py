@@ -13,6 +13,7 @@ from models.multi_instance_linear_probing import MultiInstanceLinearProbing
 from models.video_encoder import VideoEncoder
 from torchvision.transforms import v2
 from utils.genericLogic import BasePredictionService
+from utils.dicom_pixels import to_display_uint8
 from utils.http_utils import Config, PredictRequest
 
 
@@ -464,6 +465,7 @@ def _dicom_to_avi(dicom: pydicom.Dataset, output_path: str) -> Optional[str]:
         photometrics = dicom.PhotometricInterpretation
         if photometrics not in ("MONOCHROME1", "MONOCHROME2", "RGB"):
             return None
+        video = to_display_uint8(video, photometrics)
         fourcc = cv.VideoWriter_fourcc("M", "J", "P", "G")
         out = cv.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
         conv = cv.COLOR_GRAY2BGR if photometrics.startswith("MONOCHROME") else cv.COLOR_RGB2BGR

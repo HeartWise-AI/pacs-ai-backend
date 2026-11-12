@@ -12,6 +12,7 @@ import torch
 from models.multi_instance_linear_probing import MultiInstanceLinearProbing
 from models.video_encoder import VideoEncoder
 from torchvision.transforms import v2
+from utils.dicom_pixels import to_display_uint8
 from utils.genericLogic import BasePredictionService
 from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
@@ -989,12 +990,14 @@ def process_dicom_video(
         print(f"Error in reading {dicom}")
         return None
         
+    video = to_display_uint8(video, photometrics)
+
     # Create video writer
     fourcc: int = cv.VideoWriter_fourcc("M", "J", "P", "G")
     out: cv.VideoWriter = cv.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
         
     conversion_fn: int = cv.COLOR_GRAY2BGR if photometrics == 'MONOCHROME1' or photometrics == 'MONOCHROME2' else cv.COLOR_RGB2BGR    
-    for frame in dicom.pixel_array:
+    for frame in video:
         frame: np.ndarray = cv.cvtColor(frame, conversion_fn)
         out.write(frame)
     

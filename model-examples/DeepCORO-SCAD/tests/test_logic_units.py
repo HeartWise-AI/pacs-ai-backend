@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import logic
+from utils.dicom_pixels import to_display_uint8
 from logic import CustomPredictionService, VideoMILWrapper
 from models.multi_instance_linear_probing import MultiInstanceLinearProbing
 
@@ -236,9 +237,9 @@ def test_actual_mil_logits_are_exactly_invariant_to_padded_content(service):
 
 def test_high_bit_depth_dicom_is_windowed_to_uint8_like_training():
     video = np.linspace(0, 4095, 2 * 4 * 4).reshape(2, 4, 4).astype(np.uint16)
-    converted = logic._to_display_uint8(video, "MONOCHROME2")
+    converted = to_display_uint8(video, "MONOCHROME2")
     assert converted.dtype == np.uint8
     assert converted.min() == 0 and converted.max() == 255
     eight_bit = np.arange(32, dtype=np.uint8).reshape(2, 4, 4)
-    assert np.array_equal(logic._to_display_uint8(eight_bit, "MONOCHROME2"), eight_bit)
-    assert np.array_equal(logic._to_display_uint8(eight_bit, "MONOCHROME1"), 255 - eight_bit)
+    assert np.array_equal(to_display_uint8(eight_bit, "MONOCHROME2"), eight_bit)
+    assert np.array_equal(to_display_uint8(eight_bit, "MONOCHROME1"), 255 - eight_bit)
