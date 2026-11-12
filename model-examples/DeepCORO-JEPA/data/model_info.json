@@ -4,14 +4,14 @@
   "domainName": "Cardiology",
   "stage": "ai_inference",
   "modality": "Angiogram",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "provenance": {
     "sourceRepository": "HeartWise-AI/pacs-ai-backend",
     "sourceRevision": null,
     "modelRepository": "heartwise/DeepCORO_JEPA",
-    "modelRevision": "49c8ddfcd45739e5994b8ac5055a52e7295c6f5f",
+    "modelRevision": "8144d015bfdd2a6fa4f18e859f1cb8da0cb8689e",
     "weightsPath": "model.safetensors",
-    "weightsSha256": "cc9d84a3fe6849579a74061edd744f169121814db40c0b8bfa676fb49c1a7325"
+    "weightsSha256": "370e14c587af4ad9597c99788c4aa91d98df17d7a98515d79ae2b216089fe729"
   },
   "resources": {
     "gpuRequired": true,
@@ -38,8 +38,8 @@
     {
       "id": "confidence",
       "type": "RADIO",
-      "questionEn": "How confident are you in the model's stenosis and LAD physiology reading?",
-      "questionFr": "À quel point êtes-vous confiant dans la lecture des sténoses et de la physiologie de l'IVA par le modèle ?",
+      "questionEn": "How confident are you in the model's stenosis, lesion (calcification, thrombus, CTO) and LAD physiology reading?",
+      "questionFr": "À quel point êtes-vous confiant dans la lecture des sténoses, des lésions (calcification, thrombus, occlusion chronique) et de la physiologie de l'IVA par le modèle ?",
       "answerOptionsEn": [
         {
           "id": "very",
@@ -94,6 +94,10 @@
           "answer": "LAD FFR/iFR call incorrect"
         },
         {
+          "id": "lesion",
+          "answer": "Calcification, thrombus or CTO flag incorrect"
+        },
+        {
           "id": "quality",
           "answer": "Poor image quality"
         },
@@ -114,6 +118,10 @@
         {
           "id": "physiology",
           "answer": "Classification FFR/iFR de l'IVA incorrecte"
+        },
+        {
+          "id": "lesion",
+          "answer": "Signalement de calcification, de thrombus ou d'occlusion chronique incorrect"
         },
         {
           "id": "quality",

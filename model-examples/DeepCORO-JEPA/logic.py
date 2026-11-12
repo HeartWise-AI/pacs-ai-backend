@@ -4,7 +4,9 @@ stenosis (+ LAD FFR/iFR, + lesion types when the checkpoint has those heads) fro
 Not a CLIP/MIL model: there is no zero-video padding. The model takes the real videos as a set and runs the encoder
 at most twice per study (full views at 224 px, then tracked 320 px crops per segment); `measured_forward` enforces
 the two-pass budget. Yes/no calls use the thresholds.json shipped with the pinned model revision (chosen on the
-validation set): a finding is positive when its probability is strictly greater than its threshold. Research use only.
+validation set): a finding is positive when its probability is strictly greater than its threshold. Stenosis has one
+threshold per segment; calcification, thrombus and chronic total occlusion have one threshold per finding for all
+segments. Research use only.
 """
 import base64
 import json
@@ -37,6 +39,8 @@ SEGMENT_NAMES = {
     "bx": "Ramus (bisector)", "lvp": "Posterior left ventricular",
 }
 PRESSURE_OPERATING_POINTS = ("balanced", "high_sensitivity", "high_specificity")
+LESION_OPERATING_POINTS = ("balanced", "specificity_95", "specificity_99")
+LESION_NAMES = {"calcif": "calcification", "thrombus": "thrombus", "cto": "chronic total occlusion"}
 
 
 class CustomPredictionService(BasePredictionService):
@@ -62,7 +66,8 @@ class CustomPredictionService(BasePredictionService):
                    "physiology": structure.get("physiology"), "state_dict": load_file(str(weights))}
         CustomPredictionService.thresholds = self.load_thresholds(
             weights.parent, CustomPredictionService.model_config["Thresholds"], structure["groups"],
-            bool(structure.get("physiology")), CustomPredictionService.get_model_info()["provenance"]["weightsSha256"])
+            bool(structure.get("physiology")), bool(structure.get("heads", {}).get("lesion")),
+            CustomPredictionService.get_model_info()["provenance"]["weightsSha256"])
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model = multilayer_model_from_payload(payload, device=device, train_blocks=0)
         model.eval()
@@ -72,15 +77,20 @@ class CustomPredictionService(BasePredictionService):
         print(f"DeepCORO-JEPA {structure.get('model_version')} loaded on {device}; heads {structure.get('heads')}")
 
     @staticmethod
-    def load_thresholds(models_dir, settings: dict, groups, physiology: bool, weights_sha256: str) -> dict:
+    def load_thresholds(models_dir, settings: dict, groups, physiology: bool, lesion: bool, weights_sha256: str) -> dict:
         """Decision thresholds of the pinned model revision, one per output. `settings` is the "Thresholds" block of
         models/config.json. Fails on an unknown key or operating point, when the file belongs to other weights or when
-        an output has no threshold: no silent default."""
-        if set(settings) != {"path", "pressure_operating_point"}:
-            raise ValueError(f'"Thresholds" takes exactly "path" and "pressure_operating_point", got {sorted(settings)}')
+        an output has no threshold: no silent default. `lesion_operating_point` is checked for every checkpoint and
+        used by those with a lesion head."""
+        keys = {"path", "pressure_operating_point", "lesion_operating_point"}
+        if set(settings) != keys:
+            raise ValueError(f'"Thresholds" takes exactly {sorted(keys)}, got {sorted(settings)}')
         pressure_operating_point = settings["pressure_operating_point"]
         if pressure_operating_point not in PRESSURE_OPERATING_POINTS:
             raise ValueError(f"Unknown pressure_operating_point {pressure_operating_point!r}; choose one of {PRESSURE_OPERATING_POINTS}")
+        lesion_operating_point = settings["lesion_operating_point"]
+        if lesion_operating_point not in LESION_OPERATING_POINTS:
+            raise ValueError(f"Unknown lesion_operating_point {lesion_operating_point!r}; choose one of {LESION_OPERATING_POINTS}")
         path = Path(models_dir) / settings["path"]
         spec = json.loads(path.read_text(encoding="utf-8"))
         if spec["weights_sha256"] != weights_sha256:
@@ -88,13 +98,16 @@ class CustomPredictionService(BasePredictionService):
         wanted = {f"{g}_prob_significant": "balanced" for g in groups}
         if physiology:
             wanted.update({"ffr_abnormal_prob": pressure_operating_point, "ifr_abnormal_prob": pressure_operating_point})
+        if lesion:
+            wanted.update({f"{name}_prob": lesion_operating_point for name in LESION_NAMES})
         missing = [name for name, point in wanted.items() if point not in spec["thresholds"].get(name, {})]
         if missing:
             raise ValueError(f"{path} has no threshold for {missing}")
         out = {name: float(spec["thresholds"][name][point]) for name, point in wanted.items()}
         if any(not 0.0 < t < 1.0 for t in out.values()):
             raise ValueError(f"{path} has a threshold outside (0, 1)")
-        return {"pressure_operating_point": pressure_operating_point, "values": out}
+        return {"pressure_operating_point": pressure_operating_point, "lesion_operating_point": lesion_operating_point,
+                "values": out}
 
     def stop_model(self):
         CustomPredictionService.models.clear()
@@ -218,10 +231,11 @@ class CustomPredictionService(BasePredictionService):
                 out["lad_physiology"].update({f"{k}_abnormal_prob": round(prob_abnormal[k], 4),
                                               f"{k}_abnormal_threshold": cut[f"{k}_abnormal_prob"],
                                               f"{k}_abnormal": bool(prob_abnormal[k] > cut[f"{k}_abnormal_prob"])})
-        for name in ("calcif", "thrombus", "cto"):
+        for name in LESION_NAMES:
             if f"lesion_{name}_probability" in res:
+                out.setdefault("lesion_thresholds", {"operating_point": thresholds["lesion_operating_point"]})[name] = cut[f"{name}_prob"]
                 for g, x in zip(groups, res[f"lesion_{name}_probability"].float().cpu().tolist()):
-                    out["segments"][g][f"{name}_prob"] = round(float(x), 4)
+                    out["segments"][g].update({f"{name}_prob": round(float(x), 4), name: bool(x > cut[f"{name}_prob"])})
         return out
 
     # -- reporting -------------------------------------------------------------
@@ -242,16 +256,24 @@ class CustomPredictionService(BasePredictionService):
             text += (f" LAD physiology: FFR predicted {call('ffr')} (P(FFR ≤ 0.80) {p['ffr_abnormal_prob']:.2f}, threshold "
                      f"{p['ffr_abnormal_threshold']:.2f}); iFR predicted {call('ifr')} (P(iFR ≤ 0.89) "
                      f"{p['ifr_abnormal_prob']:.2f}, threshold {p['ifr_abnormal_threshold']:.2f}).")
+        for name, label in LESION_NAMES.items() if "lesion_thresholds" in preds else ():
+            hit = [g for g, v in preds["segments"].items() if v[name]]
+            text += (f" Flagged for {label} (P above {preds['lesion_thresholds'][name]:.3f}): "
+                     + ", ".join(f"{SEGMENT_NAMES[g]} (P {preds['segments'][g][f'{name}_prob']:.2f})" for g in hit) + "."
+                     if hit else f" No segment flagged for {label}.")
         return text
 
     @staticmethod
     def recommendations(preds: dict) -> dict:
         en = ("Research model, not for clinical decisions. Flags use thresholds chosen on the internal validation set, "
               "not a validated clinical operating point. Confirm every reading on the angiogram; LAD physiology "
-              "outputs (test AUROC about 0.72) do not replace invasive FFR/iFR.")
+              "outputs (test AUROC about 0.69) do not replace invasive FFR/iFR. Calcification, thrombus and chronic "
+              "total occlusion flags are set for few false alarms and miss many of these findings.")
         fr = ("Modèle de recherche, ne pas utiliser pour la décision clinique. Les signalements utilisent des seuils "
               "choisis sur l'ensemble de validation interne, et non un seuil clinique validé. Confirmer chaque lecture sur "
-              "l'angiographie; les sorties de physiologie IVA (AUROC test environ 0,72) ne remplacent pas la FFR/iFR invasive.")
+              "l'angiographie; les sorties de physiologie IVA (AUROC test environ 0,69) ne remplacent pas la FFR/iFR invasive. "
+              "Les signalements de calcification, de thrombus et d'occlusion totale chronique sont réglés pour peu de "
+              "fausses alertes et manquent une bonne partie de ces lésions.")
         return {"en": en, "fr": fr, "presentable": True}
 
     def render_html(self, preds: dict) -> str:
@@ -259,10 +281,13 @@ class CustomPredictionService(BasePredictionService):
             f"<tr><td>{SEGMENT_NAMES[g]}</td><td style='text-align:right'>{v['stenosis_pct']:.0f}%</td>"
             f"<td style='text-align:right'>{v['prob_significant']:.3f}</td>"
             f"<td style='text-align:right'>{v['prob_threshold']:.4f}</td><td>{'Yes' if v['significant'] else 'No'}</td>"
-            + "".join(f"<td style='text-align:right'>{v[k]:.2f}</td>" for k in ("calcif_prob", "thrombus_prob", "cto_prob") if k in v)
+            + "".join(f"<td style='text-align:right'>{'<b>' if v[k] else ''}{v[f'{k}_prob']:.2f}{' flagged</b>' if v[k] else ''}</td>"
+                      for k in LESION_NAMES if k in v)
             + "</tr>" for g, v in preds["segments"].items())
-        lesion_cols = "".join(f"<th>{h}</th>" for k, h in (("calcif_prob", "P(calcification)"), ("thrombus_prob", "P(thrombus)"), ("cto_prob", "P(CTO)"))
-                              if k in next(iter(preds["segments"].values())))
+        cuts = preds.get("lesion_thresholds", {})
+        lesion_cols = "".join(f"<th>P({'CTO' if k == 'cto' else h})</th>" for k, h in LESION_NAMES.items() if k in cuts)
+        lesion_note = (f"<p>Calcification, thrombus and chronic total occlusion (CTO) flags, operating point {cuts['operating_point']}: "
+                       + ", ".join(f"{h} above {cuts[k]:.4f}" for k, h in LESION_NAMES.items() if k in cuts) + ".</p>" if cuts else "")
         phys = ""
         if "lad_physiology" in preds:
             p = preds["lad_physiology"]
@@ -276,7 +301,7 @@ class CustomPredictionService(BasePredictionService):
                 f"<h2>DeepCORO-JEPA {CustomPredictionService.structure.get('model_version', '')}</h2>"
                 f"<p>{self.diagnosis_text(preds)}</p>"
                 f"<table border='1' cellspacing='0' cellpadding='4'><tr><th>Segment</th><th>Stenosis</th><th>P(significant)</th><th>Threshold</th><th>Flagged</th>{lesion_cols}</tr>{rows}</table>"
-                f"{phys}<p style='color:#555'>{preds['n_videos']} videos, {preds['encoder_passes']} encoder passes. "
+                f"{lesion_note}{phys}<p style='color:#555'>{preds['n_videos']} video{'' if preds['n_videos'] == 1 else 's'}, {preds['encoder_passes']} encoder passes. "
                 f"{self.recommendations(preds)['en']}</p></body></html>")
 
     async def _handle_json_output(self, request: PredictRequest):
