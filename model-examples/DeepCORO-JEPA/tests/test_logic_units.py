@@ -16,7 +16,7 @@ from pydicom.dataset import Dataset
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from logic import CustomPredictionService  # noqa: E402
+from logic import CustomPredictionService, shown  # noqa: E402
 
 GROUPS = ("prox_rca", "mid_rca", "dist_rca", "pda", "posterolateral", "left_main", "prox_lad", "mid_lad", "dist_lad",
           "D1", "D2", "prox_lcx", "mid_lcx", "dist_lcx", "om1", "om2", "bx", "lvp")
@@ -112,46 +112,81 @@ def test_a_probability_equal_to_the_threshold_is_not_a_positive_call():
     assert text.startswith("No segment flagged") and "No segment flagged for chronic total occlusion." in text
 
 
+def test_a_call_follows_the_returned_probability():
+    """The response rounds probabilities to 6 decimals and a flag is taken on that returned value, so
+    `flag == (probability > threshold)` holds for whoever reads the response."""
+    cut = {"pressure_operating_point": "balanced", "lesion_operating_point": "specificity_99",
+           "values": {**{f"{g}_prob_significant": 0.25 for g in GROUPS}, "ffr_abnormal_prob": 0.5, "ifr_abnormal_prob": 0.5,
+                      "calcif_prob": 0.25, "thrombus_prob": 0.25, "cto_prob": 0.25}}
+    just_above, above = torch.full((18,), 0.2500004), torch.full((18,), 0.250006)  # returned as 0.25 and 0.250006
+    res = {"encoder_passes": 2, "severity": torch.zeros(18), "binary_probability": just_above,
+           "physiology": {"ffr": torch.tensor([0.82]), "ifr": torch.tensor([0.9]),
+                          "ffr_logit": torch.tensor([0.000001]), "ifr_logit": torch.tensor([0.001])},  # P 0.50000025, 0.50025
+           "lesion_calcif_probability": just_above, "lesion_thrombus_probability": above, "lesion_cto_probability": just_above}
+    preds = CustomPredictionService.postprocess(GROUPS, res, n_videos=1, thresholds=cut)
+    for v in preds["segments"].values():
+        assert v["prob_significant"] == 0.25 and v["significant"] is False
+        assert (v["calcif_prob"], v["calcif"], v["thrombus_prob"], v["thrombus"], v["cto"]) == (0.25, False, 0.250006, True, False)
+    physiology = preds["lad_physiology"]
+    assert (physiology["ffr_abnormal_prob"], physiology["ffr_abnormal"]) == (0.5, False)
+    assert (physiology["ifr_abnormal_prob"], physiology["ifr_abnormal"]) == (0.50025, True)
+    # the diagnosis and the report print few decimals, but never a number on the wrong side of the threshold
+    service = CustomPredictionService.__new__(CustomPredictionService)
+    text, html = service.diagnosis_text(preds), service.render_html(preds)
+    assert "iFR predicted abnormal (P(iFR ≤ 0.89) 0.5002, threshold 0.5000)" in text
+    assert "FFR predicted normal (P(FFR ≤ 0.80) 0.50, threshold 0.5000)" in text
+    assert "Flagged for thrombus (P above 0.2500): Proximal RCA (P 0.25001)" in text
+    assert "<b>0.25001 flagged</b>" in html and "<td style='text-align:right'>0.25</td>" in html
+
+
+def test_printed_probabilities_keep_their_side_of_the_threshold():
+    assert shown(0.812345, 0.1558, 3) == "0.812" and shown(0.258326, 0.2644, 2) == "0.26"
+    assert shown(0.00064, 0.0006, 3) == "0.001"  # printed above 0.0006, as called
+    assert shown(0.0004, 0.0006, 3) == "0.000" and shown(0.0006, 0.0006, 3) == "0.0006"  # 0.001 would read as flagged
+    assert shown(0.223, 0.2225, 2) == "0.223"  # "0.22" would read as below the threshold of a positive call
+    assert shown(0.264401, 0.2644, 2) == "0.264401" and shown(0.2644, 0.2644, 2) == "0.26"
+
+
 def test_thresholds_are_read_per_output_and_operating_point(tmp_path):
     models_dir = _thresholds_file(tmp_path)
-    got = CustomPredictionService.load_thresholds(models_dir, SETTINGS, GROUPS, True, True, SHA)
+    got = CustomPredictionService.load_thresholds(models_dir, SETTINGS, GROUPS, physiology=True, lesion=True, weights_sha256=SHA)
     assert got["values"]["ffr_abnormal_prob"] == 0.4396 and got["values"]["ifr_abnormal_prob"] == 0.6141
     assert {name: got["values"][name] for name in LESION_CUTS} == LESION_CUTS  # one threshold per finding
     assert len(got["values"]) == 23 and got["pressure_operating_point"] == "balanced"
     assert got["lesion_operating_point"] == "specificity_99"
     other = CustomPredictionService.load_thresholds(
         models_dir, {**SETTINGS, "pressure_operating_point": "high_sensitivity", "lesion_operating_point": "specificity_95"},
-        GROUPS, True, True, SHA)
+        GROUPS, physiology=True, lesion=True, weights_sha256=SHA)
     assert other["values"]["ifr_abnormal_prob"] == 0.1136 and other["values"]["prox_lad_prob_significant"] == 0.1
     assert other["values"]["thrombus_prob"] == 0.0167
     # a checkpoint without those heads needs no pressure or lesion thresholds
-    assert len(CustomPredictionService.load_thresholds(models_dir, SETTINGS, GROUPS, True, False, SHA)["values"]) == 20
-    assert len(CustomPredictionService.load_thresholds(models_dir, SETTINGS, GROUPS, False, False, SHA)["values"]) == 18
+    assert len(CustomPredictionService.load_thresholds(models_dir, SETTINGS, GROUPS, physiology=True, lesion=False, weights_sha256=SHA)["values"]) == 20
+    assert len(CustomPredictionService.load_thresholds(models_dir, SETTINGS, GROUPS, physiology=False, lesion=False, weights_sha256=SHA)["values"]) == 18
 
 
 def test_thresholds_fail_loudly_instead_of_falling_back(tmp_path):
     models_dir = _thresholds_file(tmp_path)
     with pytest.raises(ValueError, match="Unknown pressure_operating_point"):
-        CustomPredictionService.load_thresholds(models_dir, {**SETTINGS, "pressure_operating_point": "youden"}, GROUPS, True, True, SHA)
+        CustomPredictionService.load_thresholds(models_dir, {**SETTINGS, "pressure_operating_point": "youden"}, GROUPS, physiology=True, lesion=True, weights_sha256=SHA)
     with pytest.raises(ValueError, match="Unknown lesion_operating_point"):  # checked even without a lesion head
-        CustomPredictionService.load_thresholds(models_dir, {**SETTINGS, "lesion_operating_point": "high_sensitivity"}, GROUPS, True, False, SHA)
+        CustomPredictionService.load_thresholds(models_dir, {**SETTINGS, "lesion_operating_point": "high_sensitivity"}, GROUPS, physiology=True, lesion=False, weights_sha256=SHA)
     with pytest.raises(ValueError, match="takes exactly"):
-        CustomPredictionService.load_thresholds(models_dir, {**SETTINGS, "operating_point": "balanced"}, GROUPS, True, True, SHA)
+        CustomPredictionService.load_thresholds(models_dir, {**SETTINGS, "operating_point": "balanced"}, GROUPS, physiology=True, lesion=True, weights_sha256=SHA)
     with pytest.raises(ValueError, match="takes exactly"):  # the 1.0.0 block, without lesion_operating_point
         CustomPredictionService.load_thresholds(
-            models_dir, {"path": "thresholds.json", "pressure_operating_point": "balanced"}, GROUPS, True, True, SHA)
+            models_dir, {"path": "thresholds.json", "pressure_operating_point": "balanced"}, GROUPS, physiology=True, lesion=True, weights_sha256=SHA)
     with pytest.raises(ValueError, match="was derived for weights"):
-        CustomPredictionService.load_thresholds(models_dir, SETTINGS, GROUPS, True, True, "d" * 64)
+        CustomPredictionService.load_thresholds(models_dir, SETTINGS, GROUPS, physiology=True, lesion=True, weights_sha256="d" * 64)
     with pytest.raises(ValueError, match="no threshold for"):
-        CustomPredictionService.load_thresholds(models_dir, SETTINGS, GROUPS + ("new_segment",), True, True, SHA)
+        CustomPredictionService.load_thresholds(models_dir, SETTINGS, GROUPS + ("new_segment",), physiology=True, lesion=True, weights_sha256=SHA)
     with pytest.raises(FileNotFoundError):
-        CustomPredictionService.load_thresholds(tmp_path / "absent", SETTINGS, GROUPS, True, True, SHA)
+        CustomPredictionService.load_thresholds(tmp_path / "absent", SETTINGS, GROUPS, physiology=True, lesion=True, weights_sha256=SHA)
     stenosis_only = {f"{g}_prob_significant": {"balanced": 0.1} for g in GROUPS}
     with pytest.raises(ValueError, match=r"no threshold for \['calcif_prob', 'thrombus_prob', 'cto_prob'\]"):
-        CustomPredictionService.load_thresholds(_thresholds_file(tmp_path, thresholds=stenosis_only), SETTINGS, GROUPS, False, True, SHA)
+        CustomPredictionService.load_thresholds(_thresholds_file(tmp_path, thresholds=stenosis_only), SETTINGS, GROUPS, physiology=False, lesion=True, weights_sha256=SHA)
     broken = _thresholds_file(tmp_path, thresholds={f"{g}_prob_significant": {"balanced": 1.5} for g in GROUPS})
     with pytest.raises(ValueError, match="outside"):
-        CustomPredictionService.load_thresholds(broken, SETTINGS, GROUPS, False, False, SHA)
+        CustomPredictionService.load_thresholds(broken, SETTINGS, GROUPS, physiology=False, lesion=False, weights_sha256=SHA)
 
 
 def test_lesion_outputs_are_reported_and_flagged_when_the_checkpoint_has_them():
@@ -168,7 +203,7 @@ def test_lesion_outputs_are_reported_and_flagged_when_the_checkpoint_has_them():
     assert [g for g, v in preds["segments"].items() if v["cto"]] == ["prox_rca"]
     service = CustomPredictionService.__new__(CustomPredictionService)
     text = service.diagnosis_text(preds)
-    assert "Flagged for chronic total occlusion (P above 0.157): Proximal RCA (P 0.40)." in text
+    assert "Flagged for chronic total occlusion (P above 0.1570): Proximal RCA (P 0.40)." in text
     assert "No segment flagged for thrombus." in text and "Flagged for calcification" in text
     html = service.render_html(preds)
     assert "<th>P(CTO)</th>" in html and "<b>0.40 flagged</b>" in html and "operating point specificity_99" in html
