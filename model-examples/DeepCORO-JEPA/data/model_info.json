@@ -1,0 +1,141 @@
+{
+  "modelId": "DeepCORO_JEPA",
+  "modelName": "DeepCORO-JEPA",
+  "domainName": "Cardiology",
+  "stage": "ai_inference",
+  "modality": "Angiogram",
+  "version": "1.0.0",
+  "provenance": {
+    "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+    "sourceRevision": null,
+    "modelRepository": "heartwise/DeepCORO_JEPA",
+    "modelRevision": "49c8ddfcd45739e5994b8ac5055a52e7295c6f5f",
+    "weightsPath": "model.safetensors",
+    "weightsSha256": "cc9d84a3fe6849579a74061edd744f169121814db40c0b8bfa676fb49c1a7325"
+  },
+  "resources": {
+    "gpuRequired": true,
+    "residentMemoryMiB": 1700,
+    "peakMemoryMiB": 11000,
+    "maxConcurrentInferences": 1,
+    "idleTimeoutSeconds": 600
+  },
+  "dicomTargetLevel": "SERIES",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 12,
+  "supportedDicomModalities": [
+    "XA"
+  ],
+  "supportedDicomTags": [
+    "*"
+  ],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": [
+    "HTML",
+    "JSON"
+  ],
+  "approveFeedbackQuestionnaires": [
+    {
+      "id": "confidence",
+      "type": "RADIO",
+      "questionEn": "How confident are you in the model's stenosis and LAD physiology reading?",
+      "questionFr": "À quel point êtes-vous confiant dans la lecture des sténoses et de la physiologie de l'IVA par le modèle ?",
+      "answerOptionsEn": [
+        {
+          "id": "very",
+          "answer": "Very confident"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Somewhat confident"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutral"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "very",
+          "answer": "Très confiant"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Assez confiant"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutre"
+        }
+      ]
+    },
+    {
+      "id": "comments",
+      "type": "TEXT",
+      "questionEn": "Any additional comments?",
+      "questionFr": "Des commentaires supplémentaires ?",
+      "answerOptionsEn": null,
+      "answerOptionsFr": null
+    }
+  ],
+  "rejectFeedbackQuestionnaires": [
+    {
+      "id": "reason",
+      "type": "CHECKBOX",
+      "questionEn": "Why do you disagree with the prediction?",
+      "questionFr": "Pourquoi n'êtes-vous pas d'accord ?",
+      "answerOptionsEn": [
+        {
+          "id": "stenosis",
+          "answer": "Stenosis reading incorrect in one or more segments"
+        },
+        {
+          "id": "physiology",
+          "answer": "LAD FFR/iFR call incorrect"
+        },
+        {
+          "id": "quality",
+          "answer": "Poor image quality"
+        },
+        {
+          "id": "clinical",
+          "answer": "Doesn't match clinical findings"
+        },
+        {
+          "id": "other",
+          "answer": "Other"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "stenosis",
+          "answer": "Lecture de sténose incorrecte dans un ou plusieurs segments"
+        },
+        {
+          "id": "physiology",
+          "answer": "Classification FFR/iFR de l'IVA incorrecte"
+        },
+        {
+          "id": "quality",
+          "answer": "Mauvaise qualité d'image"
+        },
+        {
+          "id": "clinical",
+          "answer": "Ne correspond pas aux résultats cliniques"
+        },
+        {
+          "id": "other",
+          "answer": "Autre"
+        }
+      ]
+    },
+    {
+      "id": "details",
+      "type": "TEXT",
+      "questionEn": "Please describe what was incorrect:",
+      "questionFr": "Veuillez décrire ce qui était incorrect :",
+      "answerOptionsEn": null,
+      "answerOptionsFr": null
+    }
+  ]
+}

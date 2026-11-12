@@ -1,0 +1,39 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "DeepCORO-JEPA",
+      "Description": "One EchoJEPA video encoder (ViT-L) that segments the coronary tree into 26 SYNTAX classes itself and, from up to 12 diagnostic coronary angiography runs per study, predicts the % diameter stenosis and the probability of a significant lesion in each of 18 coronary segments, plus LAD-territory FFR and iFR (value and probability of an abnormal result). Each probability comes with a yes/no call at a threshold chosen on the validation set. The encoder runs at most twice per study: full views at 224 px, then up to 4 tracked 320 px crops per segment. No segmentation map has to be provided. Version 1.0.0 serves model v12. Earlier working name: DeepCORO-Integrated.",
+      "Developed_by": "HeartWise.AI / MHI",
+      "Development_period": "2025-2026",
+      "Version": "1.0.0"
+    },
+    "Mechanism": {
+      "Outcome": "Per-segment coronary stenosis (18 segments) and LAD FFR/iFR",
+      "Output": "segments.<segment>.stenosis_pct (0-100), .prob_significant (label: >= 70%, left main >= 50%), .prob_threshold, .significant (true when prob_significant > prob_threshold); lad_physiology.ffr, .ifr, .ffr_abnormal_prob (FFR <= 0.80), .ifr_abnormal_prob (iFR <= 0.89), .ffr_abnormal_threshold, .ifr_abnormal_threshold, .ffr_abnormal, .ifr_abnormal, .operating_point; n_videos, encoder_passes",
+      "Target_population": "Adults undergoing diagnostic coronary angiography at MHI",
+      "Input_data_source": "Diagnostic left and right coronary contrast runs (multi-frame XA DICOM)",
+      "Input_data_type": "dicom",
+      "Model_type": "Deep learning: EchoJEPA ViT-L video encoder with its own segmentation decoder, tracked segment crops and per-segment attention pooling; LAD physiology head on the left main / LAD / diagonal features",
+      "Supported_DICOM_modalities": "XA"
+    },
+    "Model_Components": {
+      "Model": {
+        "Purpose": "Read stenosis severity in every coronary segment and estimate LAD physiology from the angiogram alone",
+        "Output": "18 stenosis percentages, probabilities and yes/no calls; LAD FFR/iFR values, abnormal probabilities and yes/no calls"
+      }
+    },
+    "Uses_and_directions": {
+      "General_use": "Research preview of segment-level stenosis reading and image-only LAD physiology estimation.",
+      "Target_population_and_use_case": "Adults with diagnostic coronary angiography. Upload the diagnostic left and right coronary contrast runs (no PCI, stent or ventriculography runs); up to 12 are used, chosen by SeriesTime.",
+      "Before_using_this_model": "Held-out test (3,194 studies / 2,941 patients): stenosis macro AUROC 0.884 (DeepCORO-CLIP 0.850, EchoJEPA 0.851); mean per-segment Pearson r 0.50, 9 of 18 segments above 0.5. LAD FFR/iFR pooled AUROC 0.72 (95% CI 0.66-0.79; 274 measurements), FFR alone 0.69, iFR alone 0.73. Confirm every reading on the images."
+    },
+    "Warnings_and_limitations": {
+      "Input_selection": "The model was trained only on diagnostic left/right coronary contrast runs without stents. This version does not filter uploads; PCI, stent, ventriculography or non-contrast runs will degrade the output.",
+      "Distal_and_branch_segments": "Agreement with the cath report is weaker for distal LAD, distal LCx, diagonals, marginals, ramus and posterior LV branches (r 0.27-0.47).",
+      "Physiology": "LAD FFR/iFR outputs reach AUROC 0.72 on test and do not replace invasive measurement; FFR alone was tested on only 76 measurements (CI 0.55-0.81).",
+      "Video_encoding": "DICOMs are converted exactly as the training videos (MJPG AVI). About 13% of training/test videos had been stored as MP4; for those studies the DICOM path differs slightly from the AVI-based test results.",
+      "Confidence_Scores": "Probabilities are not calibrated. The yes/no calls use thresholds chosen on the internal validation set (highest geometric mean of sensitivity and specificity; positive when probability > threshold), not a validated clinical operating point. On the held-out test set: FFR <= 0.80 at 0.4396: sensitivity 0.59, specificity 0.70 (76 measurements); iFR <= 0.89 at 0.6141: sensitivity 0.61, specificity 0.73 (198 measurements); significant stenosis, mean of 18 segments: sensitivity 0.81, specificity 0.80, positive predictive value 0.25, negative predictive value 0.98.",
+      "Flags": "Thresholds of rarely diseased segments are low (for example 0.02 for distal LCx), so a segment can be flagged with a low probability and a low estimated percentage. At least one segment is flagged in 39% of test studies without any significant lesion in the report. FFR and iFR are separate outputs and their calls can disagree in the same study."
+    }
+  }
+}
