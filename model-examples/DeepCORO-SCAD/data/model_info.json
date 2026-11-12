@@ -1,0 +1,125 @@
+{
+  "modelId": "DeepCORO_SCAD",
+  "modelName": "DeepCORO-SCAD",
+  "domainName": "Cardiology",
+  "stage": "ai_inference",
+  "modality": "Angiogram",
+  "version": "1.0.0",
+  "provenance": {
+    "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+    "sourceRevision": null,
+    "modelRepository": "heartwise/deepcoro_clip_scad",
+    "modelRevision": "9c03ca0928cd781b82669b8e4cd48f1b7b11ed3d",
+    "weightsPath": "20261025-134722/models/best_model_epoch_7.pt",
+    "weightsSha256": "77ebd8701feddc677abee17e6ebd872016262404277492308ff0319b702c4bfe"
+  },
+  "resources": {
+    "gpuRequired": true,
+    "residentMemoryMiB": 2600,
+    "peakMemoryMiB": 3350,
+    "maxConcurrentInferences": 1,
+    "idleTimeoutSeconds": 600
+  },
+  "dicomTargetLevel": "STUDY",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 4,
+  "supportedDicomModalities": [
+    "XA"
+  ],
+  "supportedDicomTags": [
+    "*"
+  ],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": [
+    "HTML",
+    "JSON"
+  ],
+  "approveFeedbackQuestionnaires": [
+    {
+      "id": "confidence",
+      "type": "RADIO",
+      "questionEn": "How confident are you that the SCAD result is consistent with the angiogram?",
+      "questionFr": "À quel point êtes-vous confiant que le résultat de DCS concorde avec la coronarographie ?",
+      "answerOptionsEn": [
+        {
+          "id": "very",
+          "answer": "Very confident"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Somewhat confident"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutral"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "very",
+          "answer": "Très confiant"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Assez confiant"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutre"
+        }
+      ]
+    },
+    {
+      "id": "comments",
+      "type": "TEXT",
+      "questionEn": "Any additional comments?",
+      "questionFr": "Des commentaires supplémentaires ?",
+      "answerOptionsEn": null,
+      "answerOptionsFr": null
+    }
+  ],
+  "rejectFeedbackQuestionnaires": [
+    {
+      "id": "reason",
+      "type": "CHECKBOX",
+      "questionEn": "Why do you disagree with the output?",
+      "questionFr": "Pourquoi êtes-vous en désaccord avec le résultat ?",
+      "answerOptionsEn": [
+        {
+          "id": "false_positive",
+          "answer": "SCAD flagged but not present"
+        },
+        {
+          "id": "false_negative",
+          "answer": "SCAD present but not flagged"
+        },
+        {
+          "id": "quality",
+          "answer": "Poor image quality"
+        },
+        {
+          "id": "other",
+          "answer": "Other"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "false_positive",
+          "answer": "DCS signalée mais absente"
+        },
+        {
+          "id": "false_negative",
+          "answer": "DCS présente mais non signalée"
+        },
+        {
+          "id": "quality",
+          "answer": "Mauvaise qualité d'image"
+        },
+        {
+          "id": "other",
+          "answer": "Autre"
+        }
+      ]
+    }
+  ]
+}

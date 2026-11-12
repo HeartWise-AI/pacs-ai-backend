@@ -1,0 +1,10 @@
+# Keep credentials and development artifacts out of build contexts.
+.env
+.env.*
+hf_token.txt
+**/hf_token.txt
+**/__pycache__
+**/*.pyc
+.pytest_cache
+# Production downloads its configured checkpoint from Hugging Face.
+**/*.pt
