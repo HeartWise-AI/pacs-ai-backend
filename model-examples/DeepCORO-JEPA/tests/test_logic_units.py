@@ -139,7 +139,7 @@ def test_a_call_follows_the_returned_probability():
     assert "FFR predicted normal (P(FFR ≤ 0.80) 0.50, threshold 0.5000)" in text
     assert "Flagged for thrombus (P above 0.2500): Proximal RCA (P 0.25001)" in text
     row = re.search(r"<tr><td>Proximal RCA</td>(.*?)</tr>", html).group(1)  # stenosis, P(significant), threshold, flag, lesions
-    assert re.findall(r"<td[^>]*>(.*?)</td>", row)[1:] == ["0.250", "0.2500", "No", "0.25", "<b>0.25001 flagged</b>", "0.25"]
+    assert re.findall(r"<td[^>]*>(.*?)</td>", row) == ["0%", "0.250", "0.2500", "No", "0.25", "<b>0.25001 flagged</b>", "0.25"]
 
 
 def test_printed_probabilities_keep_their_side_of_the_threshold():
