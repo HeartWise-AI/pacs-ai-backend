@@ -60,3 +60,8 @@ DICOM-vs-mp4 decode path; a large gap means wrong video selection or wrong mean/
 - Use `scripts/release-model.py` for provenance-aware build/publish operations and
   `scripts/deploy-model.sh --register-only` only for a separately controlled registration. Default branch
   for this repo is `master`.
+
+## Verifying an inference model
+Use **`.claude/skills/pacs-ai-model-verification/SKILL.md`** when reviewing a new or updated model,
+checking release readiness, or verifying an immutable published image. The skill routes deterministic
+checks through `scripts/verify-model.py`; verification does not authorize publication or deployment.

@@ -1,0 +1,170 @@
+name: Model verification
+
+on:
+  pull_request:
+    paths:
+      - "model-examples/**"
+      - "model-template/**"
+      - ".github/model-image-repositories.json"
+      - ".github/workflows/model-verification.yml"
+      - ".claude/skills/pacs-ai-model-verification/**"
+      - "AGENTS.md"
+      - "scripts/model_image_repository.py"
+      - "scripts/release-model.py"
+      - "scripts/verify-model.py"
+      - "scripts/tests/test_verify_model.py"
+  push:
+    branches: [master]
+    paths:
+      - "model-examples/**"
+      - "model-template/**"
+      - ".github/model-image-repositories.json"
+      - ".github/workflows/model-verification.yml"
+      - ".claude/skills/pacs-ai-model-verification/**"
+      - "AGENTS.md"
+      - "scripts/model_image_repository.py"
+      - "scripts/release-model.py"
+      - "scripts/verify-model.py"
+      - "scripts/tests/test_verify_model.py"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Verification mode
+        required: true
+        default: source
+        type: choice
+        options:
+          - source
+          - image
+      model_directory:
+        description: Model directory under model-examples/
+        required: true
+        type: string
+      image_reference:
+        description: Immutable repository@sha256 digest reference for image mode
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode == 'source'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run verifier unit tests
+        run: python -m unittest scripts.tests.test_verify_model -v
+
+      - name: Verify changed model source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_MODEL_DIRECTORY: ${{ inputs.model_directory }}
+          PULL_REQUEST_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          arguments=()
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            arguments+=("$MANUAL_MODEL_DIRECTORY")
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            arguments+=(--changed-since "$PULL_REQUEST_BASE")
+          else
+            if [[ "$PUSH_BASE" =~ ^0+$ ]]; then
+              PUSH_BASE=HEAD^
+            fi
+            arguments+=(--changed-since "$PUSH_BASE")
+          fi
+          python3 scripts/verify-model.py source "${arguments[@]}" \
+            --json "$RUNNER_TEMP/model-verification-evidence.json"
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: model-source-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/model-verification-evidence.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  image:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'image' && github.ref == 'refs/heads/master'
+    environment: model-release
+    runs-on:
+      group: pacs-model-release-approved
+      labels: [self-hosted, linux, x64, sd4health, pacs-ai-release]
+    timeout-minutes: 45
+    env:
+      DOCKERHUB_USERNAME_FILE: /etc/pacs-ai-release/secrets/dockerhub_username
+      DOCKERHUB_TOKEN_FILE: /etc/pacs-ai-release/secrets/dockerhub_token
+      MODEL_DIRECTORY: ${{ inputs.model_directory }}
+      IMAGE_REFERENCE: ${{ inputs.image_reference }}
+    steps:
+      - name: Check out master
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure ephemeral Docker credentials
+        shell: bash
+        run: echo "DOCKER_CONFIG=$RUNNER_TEMP/pacs-ai-model-verification-docker" >> "$GITHUB_ENV"
+
+      - name: Validate inputs and registry credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$MODEL_DIRECTORY"
+          test -n "$IMAGE_REFERENCE"
+          test -r "$DOCKERHUB_USERNAME_FILE"
+          test -r "$DOCKERHUB_TOKEN_FILE"
+          mode=$(stat -c '%a' "$DOCKERHUB_TOKEN_FILE")
+          if (( (8#$mode & 8#077) != 0 )); then
+            echo "Docker credential file must not be accessible by group or other users" >&2
+            exit 1
+          fi
+          mkdir -p "$DOCKER_CONFIG"
+
+      - name: Authenticate to the private model registry
+        shell: bash
+        run: |
+          docker login \
+            --username "$(tr -d '\r\n' < "$DOCKERHUB_USERNAME_FILE")" \
+            --password-stdin \
+            < "$DOCKERHUB_TOKEN_FILE"
+
+      - name: Verify immutable image
+        run: |
+          python3 scripts/verify-model.py image "$MODEL_DIRECTORY" \
+            --image "$IMAGE_REFERENCE" \
+            --json "$RUNNER_TEMP/model-verification-evidence.json"
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: model-image-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/model-verification-evidence.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Remove job-specific Docker resources and credentials
+        if: always()
+        shell: bash
+        run: |
+          if [[ "$IMAGE_REFERENCE" =~ ^[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)+@sha256:[0-9a-f]{64}$ ]]; then
+            docker image rm "$IMAGE_REFERENCE" >/dev/null 2>&1 || true
+          fi
+          rm -rf "$DOCKER_CONFIG"
