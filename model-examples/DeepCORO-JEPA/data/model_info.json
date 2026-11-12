@@ -38,8 +38,8 @@
     {
       "id": "confidence",
       "type": "RADIO",
-      "questionEn": "How confident are you in the model's J-CTO assessment?",
-      "questionFr": "À quel point êtes-vous confiant dans l'évaluation J-CTO du modèle ?",
+      "questionEn": "How confident are you in the model's stenosis and LAD physiology reading?",
+      "questionFr": "À quel point êtes-vous confiant dans la lecture des sténoses et de la physiologie de l'IVA par le modèle ?",
       "answerOptionsEn": [
         {
           "id": "very",
@@ -86,12 +86,12 @@
       "questionFr": "Pourquoi n'êtes-vous pas d'accord ?",
       "answerOptionsEn": [
         {
-          "id": "score",
-          "answer": "J-CTO score incorrect"
+          "id": "stenosis",
+          "answer": "Stenosis reading incorrect in one or more segments"
         },
         {
-          "id": "component",
-          "answer": "One or more J-CTO components incorrect"
+          "id": "physiology",
+          "answer": "LAD FFR/iFR call incorrect"
         },
         {
           "id": "quality",
@@ -108,12 +108,12 @@
       ],
       "answerOptionsFr": [
         {
-          "id": "score",
-          "answer": "Score J-CTO incorrect"
+          "id": "stenosis",
+          "answer": "Lecture de sténose incorrecte dans un ou plusieurs segments"
         },
         {
-          "id": "component",
-          "answer": "Une ou plusieurs composantes J-CTO incorrectes"
+          "id": "physiology",
+          "answer": "Classification FFR/iFR de l'IVA incorrecte"
         },
         {
           "id": "quality",
