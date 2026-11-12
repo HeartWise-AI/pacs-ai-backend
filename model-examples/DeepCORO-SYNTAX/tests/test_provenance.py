@@ -20,7 +20,7 @@ def test_runtime_configuration_and_manifest_identify_the_same_v6_checkpoint():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     provenance = manifest["provenance"]
 
-    assert manifest["version"] == "6.0.0"
+    assert manifest["version"] == "6.0.1"
     assert config["ModelStateDict"]["model_path"] == provenance["weightsPath"]
     assert class_mapping["syntax_category"]["threshold_binary_ge23"] == 16.979706
     assert provenance == {

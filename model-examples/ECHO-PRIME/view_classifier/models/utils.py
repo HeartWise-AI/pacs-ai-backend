@@ -1,4 +1,6 @@
 import pydicom
+
+from utils.dicom_pixels import to_display_uint8
 import numpy as np
 
 from skimage import morphology
@@ -45,7 +47,7 @@ def handle_colorspace(im_array: np.ndarray, dicom_ds: pydicom.Dataset) -> np.nda
     elif cspace in ['PALETTE COLOR']:
         recolored = to_uint8(pydicom.pixel_data_handlers.util.apply_color_lut(im_array, dicom_ds))
     elif cspace in ['MONOCHROME1', 'MONOCHROME2']:
-        recolored = np.expand_dims(im_array, 3)
+        recolored = np.expand_dims(to_display_uint8(im_array, cspace), 3)
         recolored = np.repeat(recolored, 3, 3)
     else:
         recolored = im_array

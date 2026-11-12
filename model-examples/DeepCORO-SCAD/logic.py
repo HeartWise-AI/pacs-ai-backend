@@ -12,6 +12,7 @@ import torch
 from models.multi_instance_linear_probing import MultiInstanceLinearProbing
 from models.video_encoder import VideoEncoder
 from torchvision.transforms import v2
+from utils.dicom_pixels import to_display_uint8
 from utils.genericLogic import BasePredictionService
 from utils.http_utils import Config, PredictRequest
 
@@ -507,24 +508,6 @@ class CustomPredictionService(BasePredictionService):
             return None
 
 
-def _to_display_uint8(video: np.ndarray, photometrics: str) -> np.ndarray:
-    """Match the DeepCORO-SCAD training conversion of non-8-bit and MONOCHROME1 DICOMs.
-
-    The SCAD training videos from external sites were written from DICOM with a clip-level
-    0.5-99.5 percentile window to uint8 when the pixel data was not already 8-bit, and
-    MONOCHROME1 clips were inverted. Without this step 10/12-bit XA studies reach the
-    video writer as uint16 and are scored on corrupted frames. 8-bit MONOCHROME2 clips,
-    the common case, pass through unchanged.
-    """
-    if video.dtype != np.uint8:
-        video = video.astype(np.float32)
-        low, high = np.percentile(video, 0.5), np.percentile(video, 99.5)
-        video = (np.clip((video - low) / max(high - low, 1e-6), 0, 1) * 255).astype(np.uint8)
-    if photometrics == "MONOCHROME1":
-        video = 255 - video
-    return video
-
-
 def _dicom_to_avi(dicom: pydicom.Dataset, output_path: str) -> Optional[str]:
     try:
         video = dicom.pixel_array
@@ -541,7 +524,7 @@ def _dicom_to_avi(dicom: pydicom.Dataset, output_path: str) -> Optional[str]:
         photometrics = dicom.PhotometricInterpretation
         if photometrics not in ("MONOCHROME1", "MONOCHROME2", "RGB"):
             return None
-        video = _to_display_uint8(video, photometrics)
+        video = to_display_uint8(video, photometrics)
         fourcc = cv.VideoWriter_fourcc("M", "J", "P", "G")
         out = cv.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
         conv = cv.COLOR_GRAY2BGR if photometrics.startswith("MONOCHROME") else cv.COLOR_RGB2BGR

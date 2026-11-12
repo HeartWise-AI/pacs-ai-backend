@@ -15,6 +15,7 @@ from torchvision.transforms import v2
 
 from models.vaso_vision import VasoVision
 
+from utils.dicom_pixels import dicom_display_pixels
 from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
 
@@ -229,7 +230,7 @@ class CustomPredictionService(BasePredictionService):
         return np.asarray(compressedVideo).transpose(0, 3, 1, 2)
 
     def _process_dicom(self, dicom: pydicom.Dataset) -> np.ndarray:
-        pixel_array: np.ndarray = dicom.pixel_array
+        pixel_array: np.ndarray = dicom_display_pixels(dicom)
         if pixel_array.ndim == 1 or pixel_array.ndim == 2:
             return None
         

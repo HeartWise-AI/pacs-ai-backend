@@ -6,6 +6,7 @@ from PIL import Image
 from typing import List
 
 from model.MedGemma import MedGemma
+from utils.dicom_pixels import dicom_display_pixels
 from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
@@ -34,7 +35,7 @@ class CustomPredictionService(BasePredictionService):
 
     def _extract_frame_from_dicom(self, dicom: pydicom.Dataset) -> Image.Image:
         """Extract middle frame from a DICOM dataset."""
-        pixel_array = dicom.pixel_array
+        pixel_array = dicom_display_pixels(dicom)
         
         if pixel_array.ndim >= 3:
             frame = pixel_array[pixel_array.shape[0] // 2]
