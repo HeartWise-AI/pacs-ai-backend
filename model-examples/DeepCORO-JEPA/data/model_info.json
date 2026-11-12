@@ -1,0 +1,149 @@
+{
+  "modelId": "DeepCORO_JEPA",
+  "modelName": "DeepCORO-JEPA",
+  "domainName": "Cardiology",
+  "stage": "ai_inference",
+  "modality": "Angiogram",
+  "version": "1.1.1",
+  "provenance": {
+    "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+    "sourceRevision": null,
+    "modelRepository": "heartwise/DeepCORO_JEPA",
+    "modelRevision": "8144d015bfdd2a6fa4f18e859f1cb8da0cb8689e",
+    "weightsPath": "model.safetensors",
+    "weightsSha256": "370e14c587af4ad9597c99788c4aa91d98df17d7a98515d79ae2b216089fe729"
+  },
+  "resources": {
+    "gpuRequired": true,
+    "residentMemoryMiB": 1700,
+    "peakMemoryMiB": 11000,
+    "maxConcurrentInferences": 1,
+    "idleTimeoutSeconds": 600
+  },
+  "dicomTargetLevel": "SERIES",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 12,
+  "supportedDicomModalities": [
+    "XA"
+  ],
+  "supportedDicomTags": [
+    "*"
+  ],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": [
+    "HTML",
+    "JSON"
+  ],
+  "approveFeedbackQuestionnaires": [
+    {
+      "id": "confidence",
+      "type": "RADIO",
+      "questionEn": "How confident are you in the model's stenosis, lesion (calcification, thrombus, CTO) and LAD physiology reading?",
+      "questionFr": "À quel point êtes-vous confiant dans la lecture des sténoses, des lésions (calcification, thrombus, occlusion chronique) et de la physiologie de l'IVA par le modèle ?",
+      "answerOptionsEn": [
+        {
+          "id": "very",
+          "answer": "Very confident"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Somewhat confident"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutral"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "very",
+          "answer": "Très confiant"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Assez confiant"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutre"
+        }
+      ]
+    },
+    {
+      "id": "comments",
+      "type": "TEXT",
+      "questionEn": "Any additional comments?",
+      "questionFr": "Des commentaires supplémentaires ?",
+      "answerOptionsEn": null,
+      "answerOptionsFr": null
+    }
+  ],
+  "rejectFeedbackQuestionnaires": [
+    {
+      "id": "reason",
+      "type": "CHECKBOX",
+      "questionEn": "Why do you disagree with the prediction?",
+      "questionFr": "Pourquoi n'êtes-vous pas d'accord ?",
+      "answerOptionsEn": [
+        {
+          "id": "stenosis",
+          "answer": "Stenosis reading incorrect in one or more segments"
+        },
+        {
+          "id": "physiology",
+          "answer": "LAD FFR/iFR call incorrect"
+        },
+        {
+          "id": "lesion",
+          "answer": "Calcification, thrombus or CTO flag incorrect"
+        },
+        {
+          "id": "quality",
+          "answer": "Poor image quality"
+        },
+        {
+          "id": "clinical",
+          "answer": "Doesn't match clinical findings"
+        },
+        {
+          "id": "other",
+          "answer": "Other"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "stenosis",
+          "answer": "Lecture de sténose incorrecte dans un ou plusieurs segments"
+        },
+        {
+          "id": "physiology",
+          "answer": "Classification FFR/iFR de l'IVA incorrecte"
+        },
+        {
+          "id": "lesion",
+          "answer": "Signalement de calcification, de thrombus ou d'occlusion chronique incorrect"
+        },
+        {
+          "id": "quality",
+          "answer": "Mauvaise qualité d'image"
+        },
+        {
+          "id": "clinical",
+          "answer": "Ne correspond pas aux résultats cliniques"
+        },
+        {
+          "id": "other",
+          "answer": "Autre"
+        }
+      ]
+    },
+    {
+      "id": "details",
+      "type": "TEXT",
+      "questionEn": "Please describe what was incorrect:",
+      "questionFr": "Veuillez décrire ce qui était incorrect :",
+      "answerOptionsEn": null,
+      "answerOptionsFr": null
+    }
+  ]
+}

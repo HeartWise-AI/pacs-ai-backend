@@ -1,0 +1,1025 @@
+{
+  "openapi": "3.0.2",
+  "info": {
+    "title": "DeepCORO-JEPA inference API",
+    "description": "PACS.AI inference API for DeepCORO-JEPA, a research-preview model that reads 18-segment coronary stenosis, calcification, thrombus and chronic total occlusion per segment, and LAD FFR/iFR from diagnostic coronary angiography (XA), with a yes/no call per output at a validation-derived threshold.",
+    "termsOfService": "https://github.com/HeartWise-AI",
+    "contact": {
+      "name": "HeartWise AI",
+      "email": "hello@heartwise.ai"
+    },
+    "version": "1.1.1"
+  },
+  "servers": [
+    {
+      "url": "http://deepcoro-jepa/api",
+      "description": "Docker"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Local"
+    },
+    {
+      "url": "http://localhost:8000/api",
+      "description": "Local Docker"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Inference",
+      "description": "Inference service"
+    }
+  ],
+  "paths": {
+    "/inference/predict": {
+      "post": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Predict",
+        "description": "Run DeepCORO-JEPA inference on 1 to 12 diagnostic coronary angiogram DICOM runs of one study. Supported output modes: JSON and HTML.",
+        "requestBody": {
+          "description": "Prediction request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/PredictResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "JSON": {
+                    "summary": "Successful JSON prediction (v13, real response of the container code on one test study, no identifier)",
+                    "value": {
+                      "success": true,
+                      "message": "Prediction successful",
+                      "data": {
+                        "predictions": {
+                          "n_videos": 5,
+                          "encoder_passes": 2,
+                          "segments": {
+                            "prox_rca": {
+                              "stenosis_pct": 29.1,
+                              "prob_significant": 0.121582,
+                              "prob_threshold": 0.1558,
+                              "significant": false,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.028146,
+                              "calcif": false,
+                              "thrombus_prob": 0.004118,
+                              "thrombus": false,
+                              "cto_prob": 0.005463,
+                              "cto": false
+                            },
+                            "mid_rca": {
+                              "stenosis_pct": 72.0,
+                              "prob_significant": 0.8125,
+                              "prob_threshold": 0.1528,
+                              "significant": true,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.090138,
+                              "calcif": false,
+                              "thrombus_prob": 0.026292,
+                              "thrombus": false,
+                              "cto_prob": 0.257173,
+                              "cto": true
+                            },
+                            "dist_rca": {
+                              "stenosis_pct": 5.7,
+                              "prob_significant": 0.024048,
+                              "prob_threshold": 0.0354,
+                              "significant": false,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.007695,
+                              "calcif": false,
+                              "thrombus_prob": 0.002178,
+                              "thrombus": false,
+                              "cto_prob": 0.007729,
+                              "cto": false
+                            },
+                            "pda": {
+                              "stenosis_pct": 4.9,
+                              "prob_significant": 0.017944,
+                              "prob_threshold": 0.0322,
+                              "significant": false,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.001651,
+                              "calcif": false,
+                              "thrombus_prob": 0.002841,
+                              "thrombus": false,
+                              "cto_prob": 0.003113,
+                              "cto": false
+                            },
+                            "posterolateral": {
+                              "stenosis_pct": 3.0,
+                              "prob_significant": 0.012817,
+                              "prob_threshold": 0.0193,
+                              "significant": false,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.001824,
+                              "calcif": false,
+                              "thrombus_prob": 0.001903,
+                              "thrombus": false,
+                              "cto_prob": 0.005569,
+                              "cto": false
+                            },
+                            "left_main": {
+                              "stenosis_pct": 0.9,
+                              "prob_significant": 0.001328,
+                              "prob_threshold": 0.0492,
+                              "significant": false,
+                              "significant_threshold_pct": 50,
+                              "calcif_prob": 0.00167,
+                              "calcif": false,
+                              "thrombus_prob": 0.000162,
+                              "thrombus": false,
+                              "cto_prob": 3.6e-05,
+                              "cto": false
+                            },
+                            "prox_lad": {
+                              "stenosis_pct": 27.8,
+                              "prob_significant": 0.066406,
+                              "prob_threshold": 0.1724,
+                              "significant": false,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.054579,
+                              "calcif": false,
+                              "thrombus_prob": 0.001387,
+                              "thrombus": false,
+                              "cto_prob": 0.00113,
+                              "cto": false
+                            },
+                            "mid_lad": {
+                              "stenosis_pct": 17.2,
+                              "prob_significant": 0.036865,
+                              "prob_threshold": 0.1841,
+                              "significant": false,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.009172,
+                              "calcif": false,
+                              "thrombus_prob": 0.001191,
+                              "thrombus": false,
+                              "cto_prob": 0.000912,
+                              "cto": false
+                            },
+                            "dist_lad": {
+                              "stenosis_pct": 4.8,
+                              "prob_significant": 0.013245,
+                              "prob_threshold": 0.0319,
+                              "significant": false,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.000252,
+                              "calcif": false,
+                              "thrombus_prob": 0.001386,
+                              "thrombus": false,
+                              "cto_prob": 0.000852,
+                              "cto": false
+                            },
+                            "D1": {
+                              "stenosis_pct": 29.1,
+                              "prob_significant": 0.147461,
+                              "prob_threshold": 0.0896,
+                              "significant": true,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.014329,
+                              "calcif": false,
+                              "thrombus_prob": 0.000895,
+                              "thrombus": false,
+                              "cto_prob": 0.005234,
+                              "cto": false
+                            },
+                            "D2": {
+                              "stenosis_pct": 6.8,
+                              "prob_significant": 0.046143,
+                              "prob_threshold": 0.0723,
+                              "significant": false,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.002196,
+                              "calcif": false,
+                              "thrombus_prob": 0.000516,
+                              "thrombus": false,
+                              "cto_prob": 0.00281,
+                              "cto": false
+                            },
+                            "prox_lcx": {
+                              "stenosis_pct": 12.2,
+                              "prob_significant": 0.003174,
+                              "prob_threshold": 0.1121,
+                              "significant": false,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.001253,
+                              "calcif": false,
+                              "thrombus_prob": 0.000666,
+                              "thrombus": false,
+                              "cto_prob": 0.000336,
+                              "cto": false
+                            },
+                            "mid_lcx": {
+                              "stenosis_pct": 2.1,
+                              "prob_significant": 0.006287,
+                              "prob_threshold": 0.0274,
+                              "significant": false,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.001756,
+                              "calcif": false,
+                              "thrombus_prob": 0.000475,
+                              "thrombus": false,
+                              "cto_prob": 0.002246,
+                              "cto": false
+                            },
+                            "dist_lcx": {
+                              "stenosis_pct": 4.3,
+                              "prob_significant": 0.014526,
+                              "prob_threshold": 0.0205,
+                              "significant": false,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.001069,
+                              "calcif": false,
+                              "thrombus_prob": 0.000114,
+                              "thrombus": false,
+                              "cto_prob": 0.005204,
+                              "cto": false
+                            },
+                            "om1": {
+                              "stenosis_pct": 7.6,
+                              "prob_significant": 0.040771,
+                              "prob_threshold": 0.064,
+                              "significant": false,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.001972,
+                              "calcif": false,
+                              "thrombus_prob": 0.000515,
+                              "thrombus": false,
+                              "cto_prob": 0.003607,
+                              "cto": false
+                            },
+                            "om2": {
+                              "stenosis_pct": 10.4,
+                              "prob_significant": 0.043945,
+                              "prob_threshold": 0.0464,
+                              "significant": false,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.00464,
+                              "calcif": false,
+                              "thrombus_prob": 0.000226,
+                              "thrombus": false,
+                              "cto_prob": 0.002851,
+                              "cto": false
+                            },
+                            "bx": {
+                              "stenosis_pct": 37.5,
+                              "prob_significant": 0.431641,
+                              "prob_threshold": 0.0464,
+                              "significant": true,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.025288,
+                              "calcif": false,
+                              "thrombus_prob": 0.001103,
+                              "thrombus": false,
+                              "cto_prob": 0.023016,
+                              "cto": false
+                            },
+                            "lvp": {
+                              "stenosis_pct": 0.1,
+                              "prob_significant": 0.00014,
+                              "prob_threshold": 0.0006,
+                              "significant": false,
+                              "significant_threshold_pct": 70,
+                              "calcif_prob": 0.00019,
+                              "calcif": false,
+                              "thrombus_prob": 1e-06,
+                              "thrombus": false,
+                              "cto_prob": 0.000154,
+                              "cto": false
+                            }
+                          },
+                          "lad_physiology": {
+                            "ffr": 0.797,
+                            "ifr": 0.933,
+                            "operating_point": "balanced",
+                            "ffr_abnormal_prob": 0.258326,
+                            "ffr_abnormal_threshold": 0.2644,
+                            "ffr_abnormal": false,
+                            "ifr_abnormal_prob": 0.294215,
+                            "ifr_abnormal_threshold": 0.4337,
+                            "ifr_abnormal": false
+                          },
+                          "lesion_thresholds": {
+                            "operating_point": "specificity_99",
+                            "calcif": 0.2225,
+                            "thrombus": 0.0851,
+                            "cto": 0.157
+                          }
+                        },
+                        "diagnosis": "Flagged for possible significant stenosis (probability above its validation threshold): Mid RCA (P 0.812, estimated 72%), First diagonal (P 0.147, estimated 29%), Ramus (bisector) (P 0.432, estimated 38%). LAD physiology: FFR predicted normal (P(FFR ≤ 0.80) 0.26, threshold 0.2644); iFR predicted normal (P(iFR ≤ 0.89) 0.29, threshold 0.4337). No segment flagged for calcification. No segment flagged for thrombus. Flagged for chronic total occlusion (P above 0.1570): Mid RCA (P 0.26).",
+                        "modelRecommendations": {
+                          "en": "Research model, not for clinical decisions. Flags use thresholds chosen on the internal validation set, not a validated clinical operating point. Confirm every reading on the angiogram; LAD physiology outputs (test AUROC about 0.69) do not replace invasive FFR/iFR. Calcification, thrombus and chronic total occlusion flags are set for few false alarms and miss many of these findings.",
+                          "fr": "Modèle de recherche, ne pas utiliser pour la décision clinique. Les signalements utilisent des seuils choisis sur l'ensemble de validation interne, et non un seuil clinique validé. Confirmer chaque lecture sur l'angiographie; les sorties de physiologie IVA (AUROC test environ 0,69) ne remplacent pas la FFR/iFR invasive. Les signalements de calcification, de thrombus et d'occlusion totale chronique sont réglés pour peu de fausses alertes et manquent une bonne partie de ces lésions.",
+                          "presentable": true
+                        }
+                      }
+                    }
+                  },
+                  "HTML": {
+                    "summary": "Successful HTML report (v13, same study as the JSON example)",
+                    "value": {
+                      "success": true,
+                      "message": "Prediction successful",
+                      "data": {
+                        "htmlBase64": "PGh0bWw+PGJvZHkgc3R5bGU9J2ZvbnQtZmFtaWx5OnNhbnMtc2VyaWYnPjxoMj5EZWVwQ09STy1KRVBBIHYxMzwvaDI+PHA+RmxhZ2dlZCBmb3IgcG9zc2libGUgc2lnbmlmaWNhbnQgc3Rlbm9zaXMgKHByb2JhYmlsaXR5IGFib3ZlIGl0cyB2YWxpZGF0aW9uIHRocmVzaG9sZCk6IE1pZCBSQ0EgKFAgMC44MTIsIGVzdGltYXRlZCA3MiUpLCBGaXJzdCBkaWFnb25hbCAoUCAwLjE0NywgZXN0aW1hdGVkIDI5JSksIFJhbXVzIChiaXNlY3RvcikgKFAgMC40MzIsIGVzdGltYXRlZCAzOCUpLiBMQUQgcGh5c2lvbG9neTogRkZSIHByZWRpY3RlZCBub3JtYWwgKFAoRkZSIOKJpCAwLjgwKSAwLjI2LCB0aHJlc2hvbGQgMC4yNjQ0KTsgaUZSIHByZWRpY3RlZCBub3JtYWwgKFAoaUZSIOKJpCAwLjg5KSAwLjI5LCB0aHJlc2hvbGQgMC40MzM3KS4gTm8gc2VnbWVudCBmbGFnZ2VkIGZvciBjYWxjaWZpY2F0aW9uLiBObyBzZWdtZW50IGZsYWdnZWQgZm9yIHRocm9tYnVzLiBGbGFnZ2VkIGZvciBjaHJvbmljIHRvdGFsIG9jY2x1c2lvbiAoUCBhYm92ZSAwLjE1NzApOiBNaWQgUkNBIChQIDAuMjYpLjwvcD48dGFibGUgYm9yZGVyPScxJyBjZWxsc3BhY2luZz0nMCcgY2VsbHBhZGRpbmc9JzQnPjx0cj48dGg+U2VnbWVudDwvdGg+PHRoPlN0ZW5vc2lzPC90aD48dGg+UChzaWduaWZpY2FudCk8L3RoPjx0aD5UaHJlc2hvbGQ8L3RoPjx0aD5GbGFnZ2VkPC90aD48dGg+UChjYWxjaWZpY2F0aW9uKTwvdGg+PHRoPlAodGhyb21idXMpPC90aD48dGg+UChDVE8pPC90aD48L3RyPjx0cj48dGQ+UHJveGltYWwgUkNBPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjI5JTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjEyMjwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjE1NTg8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAzPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTwvdGQ+PC90cj48dHI+PHRkPk1pZCBSQ0E8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+NzIlPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuODEyPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMTUyODwvdGQ+PHRkPlllczwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjA5PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDM8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+PGI+MC4yNiBmbGFnZ2VkPC9iPjwvdGQ+PC90cj48dHI+PHRkPkRpc3RhbCBSQ0E8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+NiU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMjQ8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMzU0PC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDE8L3RkPjwvdHI+PHRyPjx0ZD5QREE8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+NSU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTg8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMzIyPC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjwvdHI+PHRyPjx0ZD5Qb3N0ZXJvbGF0ZXJhbDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4zJTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAxMzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAxOTM8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTwvdGQ+PC90cj48dHI+PHRkPkxlZnQgbWFpbjwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4xJTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwMTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjA0OTI8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PC90cj48dHI+PHRkPlByb3hpbWFsIExBRDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4yOCU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wNjY8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4xNzI0PC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wNTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjwvdHI+PHRyPjx0ZD5NaWQgTEFEPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjE3JTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAzNzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjE4NDE8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAxPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PC90cj48dHI+PHRkPkRpc3RhbCBMQUQ8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+NSU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMTM8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMzE5PC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjwvdHI+PHRyPjx0ZD5GaXJzdCBkaWFnb25hbDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4yOSU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4xNDc8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wODk2PC90ZD48dGQ+WWVzPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDE8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAxPC90ZD48L3RyPjx0cj48dGQ+U2Vjb25kIGRpYWdvbmFsPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjclPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDQ2PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDcyMzwvdGQ+PHRkPk5vPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48L3RyPjx0cj48dGQ+UHJveGltYWwgTEN4PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjEyJTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwMzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjExMjE8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PC90cj48dHI+PHRkPk1pZCBMQ3g8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MiU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDY8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMjc0PC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjwvdHI+PHRyPjx0ZD5EaXN0YWwgTEN4PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjQlPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDE1PC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDIwNTwvdGQ+PHRkPk5vPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAxPC90ZD48L3RyPjx0cj48dGQ+Rmlyc3Qgb2J0dXNlIG1hcmdpbmFsPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjglPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDQxPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDY0MDwvdGQ+PHRkPk5vPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48L3RyPjx0cj48dGQ+U2Vjb25kIG9idHVzZSBtYXJnaW5hbDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4xMCU8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wNDQ8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wNDY0PC90ZD48dGQ+Tm88L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjwvdHI+PHRyPjx0ZD5SYW11cyAoYmlzZWN0b3IpPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjM4JTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjQzMjwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjA0NjQ8L3RkPjx0ZD5ZZXM8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDI8L3RkPjwvdHI+PHRyPjx0ZD5Qb3N0ZXJpb3IgbGVmdCB2ZW50cmljdWxhcjwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wJTwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwMDwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwMDY8L3RkPjx0ZD5ObzwvdGQ+PHRkIHN0eWxlPSd0ZXh0LWFsaWduOnJpZ2h0Jz4wLjAwPC90ZD48dGQgc3R5bGU9J3RleHQtYWxpZ246cmlnaHQnPjAuMDA8L3RkPjx0ZCBzdHlsZT0ndGV4dC1hbGlnbjpyaWdodCc+MC4wMDwvdGQ+PC90cj48L3RhYmxlPjxwPkNhbGNpZmljYXRpb24sIHRocm9tYnVzIGFuZCBjaHJvbmljIHRvdGFsIG9jY2x1c2lvbiAoQ1RPKSBmbGFncywgb3BlcmF0aW5nIHBvaW50IHNwZWNpZmljaXR5Xzk5OiBjYWxjaWZpY2F0aW9uIGFib3ZlIDAuMjIyNSwgdGhyb21idXMgYWJvdmUgMC4wODUxLCBjaHJvbmljIHRvdGFsIG9jY2x1c2lvbiBhYm92ZSAwLjE1NzAuPC9wPjxoMz5MQUQgcGh5c2lvbG9neTwvaDM+PHA+RkZSIHByZWRpY3RlZCA8Yj5ub3JtYWw8L2I+OiBQKEZGUiDiiaQgMC44MCkgMC4yNiwgdGhyZXNob2xkIDAuMjY0NCwgZXN0aW1hdGVkIHZhbHVlIDAuODAuPGJyPmlGUiBwcmVkaWN0ZWQgPGI+bm9ybWFsPC9iPjogUChpRlIg4omkIDAuODkpIDAuMjksIHRocmVzaG9sZCAwLjQzMzcsIGVzdGltYXRlZCB2YWx1ZSAwLjkzLjxicj5PcGVyYXRpbmcgcG9pbnQ6IGJhbGFuY2VkLjwvcD48cCBzdHlsZT0nY29sb3I6IzU1NSc+NSB2aWRlb3MsIDIgZW5jb2RlciBwYXNzZXMuIFJlc2VhcmNoIG1vZGVsLCBub3QgZm9yIGNsaW5pY2FsIGRlY2lzaW9ucy4gRmxhZ3MgdXNlIHRocmVzaG9sZHMgY2hvc2VuIG9uIHRoZSBpbnRlcm5hbCB2YWxpZGF0aW9uIHNldCwgbm90IGEgdmFsaWRhdGVkIGNsaW5pY2FsIG9wZXJhdGluZyBwb2ludC4gQ29uZmlybSBldmVyeSByZWFkaW5nIG9uIHRoZSBhbmdpb2dyYW07IExBRCBwaHlzaW9sb2d5IG91dHB1dHMgKHRlc3QgQVVST0MgYWJvdXQgMC42OSkgZG8gbm90IHJlcGxhY2UgaW52YXNpdmUgRkZSL2lGUi4gQ2FsY2lmaWNhdGlvbiwgdGhyb21idXMgYW5kIGNocm9uaWMgdG90YWwgb2NjbHVzaW9uIGZsYWdzIGFyZSBzZXQgZm9yIGZldyBmYWxzZSBhbGFybXMgYW5kIG1pc3MgbWFueSBvZiB0aGVzZSBmaW5kaW5ncy48L3A+PC9ib2R5PjwvaHRtbD4="
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-info": {
+      "get": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Get Model Info",
+        "description": "Get DeepCORO-JEPA model info",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GetModelInfoResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Model info retrieved successfully",
+                  "data": {
+                    "modelId": "DeepCORO_JEPA",
+                    "modelName": "DeepCORO-JEPA",
+                    "domainName": "Cardiology",
+                    "stage": "ai_inference",
+                    "modality": "Angiogram",
+                    "version": "1.1.1",
+                    "provenance": {
+                      "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+                      "sourceRevision": null,
+                      "modelRepository": "heartwise/DeepCORO_JEPA",
+                      "modelRevision": "8144d015bfdd2a6fa4f18e859f1cb8da0cb8689e",
+                      "weightsPath": "model.safetensors",
+                      "weightsSha256": "370e14c587af4ad9597c99788c4aa91d98df17d7a98515d79ae2b216089fe729"
+                    },
+                    "resources": {
+                      "gpuRequired": true,
+                      "residentMemoryMiB": 1700,
+                      "peakMemoryMiB": 11000,
+                      "maxConcurrentInferences": 1,
+                      "idleTimeoutSeconds": 600
+                    },
+                    "dicomTargetLevel": "SERIES",
+                    "dicomUploadMin": 1,
+                    "dicomUploadMax": 12,
+                    "supportedDicomModalities": [
+                      "XA"
+                    ],
+                    "supportedDicomTags": [
+                      "*"
+                    ],
+                    "supportedAdditionalMetadata": [],
+                    "supportedOutputModes": [
+                      "HTML",
+                      "JSON"
+                    ],
+                    "approveFeedbackQuestionnaires": [
+                      {
+                        "id": "confidence",
+                        "type": "RADIO",
+                        "questionEn": "How confident are you in the model's stenosis, lesion (calcification, thrombus, CTO) and LAD physiology reading?",
+                        "questionFr": "À quel point êtes-vous confiant dans la lecture des sténoses, des lésions (calcification, thrombus, occlusion chronique) et de la physiologie de l'IVA par le modèle ?",
+                        "answerOptionsEn": [
+                          {
+                            "id": "very",
+                            "answer": "Very confident"
+                          },
+                          {
+                            "id": "somewhat",
+                            "answer": "Somewhat confident"
+                          },
+                          {
+                            "id": "neutral",
+                            "answer": "Neutral"
+                          }
+                        ],
+                        "answerOptionsFr": [
+                          {
+                            "id": "very",
+                            "answer": "Très confiant"
+                          },
+                          {
+                            "id": "somewhat",
+                            "answer": "Assez confiant"
+                          },
+                          {
+                            "id": "neutral",
+                            "answer": "Neutre"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "comments",
+                        "type": "TEXT",
+                        "questionEn": "Any additional comments?",
+                        "questionFr": "Des commentaires supplémentaires ?",
+                        "answerOptionsEn": null,
+                        "answerOptionsFr": null
+                      }
+                    ],
+                    "rejectFeedbackQuestionnaires": [
+                      {
+                        "id": "reason",
+                        "type": "CHECKBOX",
+                        "questionEn": "Why do you disagree with the prediction?",
+                        "questionFr": "Pourquoi n'êtes-vous pas d'accord ?",
+                        "answerOptionsEn": [
+                          {
+                            "id": "stenosis",
+                            "answer": "Stenosis reading incorrect in one or more segments"
+                          },
+                          {
+                            "id": "physiology",
+                            "answer": "LAD FFR/iFR call incorrect"
+                          },
+                          {
+                            "id": "lesion",
+                            "answer": "Calcification, thrombus or CTO flag incorrect"
+                          },
+                          {
+                            "id": "quality",
+                            "answer": "Poor image quality"
+                          },
+                          {
+                            "id": "clinical",
+                            "answer": "Doesn't match clinical findings"
+                          },
+                          {
+                            "id": "other",
+                            "answer": "Other"
+                          }
+                        ],
+                        "answerOptionsFr": [
+                          {
+                            "id": "stenosis",
+                            "answer": "Lecture de sténose incorrecte dans un ou plusieurs segments"
+                          },
+                          {
+                            "id": "physiology",
+                            "answer": "Classification FFR/iFR de l'IVA incorrecte"
+                          },
+                          {
+                            "id": "lesion",
+                            "answer": "Signalement de calcification, de thrombus ou d'occlusion chronique incorrect"
+                          },
+                          {
+                            "id": "quality",
+                            "answer": "Mauvaise qualité d'image"
+                          },
+                          {
+                            "id": "clinical",
+                            "answer": "Ne correspond pas aux résultats cliniques"
+                          },
+                          {
+                            "id": "other",
+                            "answer": "Autre"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "details",
+                        "type": "TEXT",
+                        "questionEn": "Please describe what was incorrect:",
+                        "questionFr": "Veuillez décrire ce qui était incorrect :",
+                        "answerOptionsEn": null,
+                        "answerOptionsFr": null
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-facts": {
+      "get": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Get Model Facts",
+        "description": "Get DeepCORO-JEPA model facts",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GetModelFactsResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Model facts retrieved successfully",
+                  "data": {
+                    "en": {
+                      "Summary": {
+                        "Name": "DeepCORO-JEPA",
+                        "Description": "One EchoJEPA video encoder (ViT-L) that segments the coronary tree into 26 SYNTAX classes itself and, from up to 12 diagnostic coronary angiography runs per study, predicts for each of 18 coronary segments the % diameter stenosis, the probability of a significant lesion and the probabilities of calcification, thrombus and chronic total occlusion (CTO), plus LAD-territory FFR and iFR (value and probability of an abnormal result). Each probability comes with a yes/no call at a threshold chosen on the validation set. The encoder runs at most twice per study: full views at 224 px, then up to 4 tracked 320 px crops per segment. No segmentation map has to be provided. Version 1.1.0 serves model v13. Earlier working name: DeepCORO-Integrated.",
+                        "Developed_by": "HeartWise.AI / MHI",
+                        "Development_period": "2025-2026",
+                        "Version": "1.1.1",
+                        "Model_version": "v13",
+                        "Training_run": "Weights & Biases run 400d0a77 of project mhi_ai/deepcoro-segmentation: https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77"
+                      },
+                      "Mechanism": {
+                        "Outcome": "Per-segment coronary stenosis, calcification, thrombus and chronic total occlusion (18 segments) and LAD FFR/iFR",
+                        "Output": "segments.<segment>.stenosis_pct (0-100), .prob_significant (label: >= 70%, left main >= 50%), .prob_threshold, .significant (true when prob_significant > prob_threshold), .calcif_prob, .calcif, .thrombus_prob, .thrombus, .cto_prob, .cto (each flag true when its probability > the threshold of that finding); lesion_thresholds.operating_point, .calcif, .thrombus, .cto; lad_physiology.ffr, .ifr, .ffr_abnormal_prob (FFR <= 0.80), .ifr_abnormal_prob (iFR <= 0.89), .ffr_abnormal_threshold, .ifr_abnormal_threshold, .ffr_abnormal, .ifr_abnormal, .operating_point; n_videos, encoder_passes",
+                        "Target_population": "Adults undergoing diagnostic coronary angiography at MHI",
+                        "Input_data_source": "Diagnostic left and right coronary contrast runs (multi-frame XA DICOM)",
+                        "Input_data_type": "dicom",
+                        "Model_type": "Deep learning: EchoJEPA ViT-L video encoder with its own segmentation decoder, tracked segment crops and per-segment attention pooling; stenosis and lesion (calcification, thrombus, CTO) heads on each segment; LAD physiology head on the left main / LAD / diagonal features",
+                        "Supported_DICOM_modalities": "XA"
+                      },
+                      "Model_Components": {
+                        "Model": {
+                          "Purpose": "Read stenosis severity and three lesion findings in every coronary segment and estimate LAD physiology from the angiogram alone",
+                          "Output": "18 stenosis percentages, probabilities and yes/no calls; 18 x 3 lesion probabilities and yes/no flags; LAD FFR/iFR values, abnormal probabilities and yes/no calls"
+                        }
+                      },
+                      "Uses_and_directions": {
+                        "General_use": "Research preview of segment-level stenosis and lesion reading and image-only LAD physiology estimation.",
+                        "Target_population_and_use_case": "Adults with diagnostic coronary angiography. Upload the diagnostic left and right coronary contrast runs (no PCI, stent or ventriculography runs); up to 12 are used, chosen by SeriesTime.",
+                        "Before_using_this_model": "Held-out test (3,194 studies / 2,941 patients): stenosis macro AUROC 0.885 (DeepCORO-CLIP 0.850, EchoJEPA 0.851); mean per-segment Pearson r 0.50, 9 of 18 segments above 0.5. LAD FFR/iFR pooled AUROC 0.69 (95% CI 0.63-0.75; 274 measurements), FFR alone 0.72, iFR alone 0.68. Lesion findings, area under the precision-recall curve averaged over segments: calcification 0.118, thrombus 0.304, CTO 0.133; these are not better than the reference models (best reference 0.125, 0.410 and 0.139). Confirm every reading on the images."
+                      },
+                      "Warnings_and_limitations": {
+                        "Input_selection": "The model was trained only on diagnostic left/right coronary contrast runs without stents. This version does not filter uploads; PCI, stent, ventriculography or non-contrast runs will degrade the output.",
+                        "Distal_and_branch_segments": "Agreement with the cath report is weaker for the posterolateral branch, distal LAD, distal LCx, diagonals, marginals, ramus and posterior LV branch (r 0.20-0.48).",
+                        "Physiology": "LAD FFR/iFR outputs reach AUROC 0.69 on test and do not replace invasive measurement; FFR alone was tested on only 76 measurements. The earlier model v12 (container version 1.0.0) reached 0.72 on the same test set; the difference is within its confidence interval (+0.029, 95% CI -0.014 to 0.075).",
+                        "Video_encoding": "DICOMs are converted exactly as the training videos (MJPG AVI). About 13% of training/test videos had been stored as MP4; for those studies the DICOM path differs slightly from the AVI-based test results.",
+                        "Confidence_Scores": "Probabilities are not calibrated. The yes/no calls use thresholds chosen on the internal validation set, not validated clinical operating points; a call is positive when probability > threshold. Stenosis and pressure use the threshold with the highest geometric mean of sensitivity and specificity. On the held-out test set: FFR <= 0.80 at 0.2644: sensitivity 0.83, specificity 0.49 (76 measurements); iFR <= 0.89 at 0.4337: sensitivity 0.59, specificity 0.70 (198 measurements); significant stenosis, mean of 18 segments: sensitivity 0.80, specificity 0.80, positive predictive value 0.25, negative predictive value 0.98.",
+                        "Flags": "Thresholds of rarely diseased segments are low (for example 0.02 for distal LCx), so a segment can be flagged with a low probability and a low estimated percentage. At least one segment is flagged for stenosis in 42% of test studies without any significant lesion in the report. FFR and iFR are separate outputs and their calls can disagree in the same study.",
+                        "Lesion_flags": "Calcification, thrombus and CTO are rare (1.9%, 0.2% and 0.7% of segments in the test set), so their flags use one threshold per finding set for 99% specificity on the validation set. On the held-out test set (57,492 segment readings): calcification at 0.2225: sensitivity 0.19, specificity 0.990, positive predictive value 0.27; thrombus at 0.0851: sensitivity 0.51, specificity 0.992, positive predictive value 0.10; CTO at 0.1570: sensitivity 0.37, specificity 0.990, positive predictive value 0.21. Most findings are missed and most flags are false: an absent flag does not exclude the finding. Lesion labels come from the angiography report."
+                      },
+                      "Changelogs": {
+                        "1.1.1": "2026-11-12: Same model (v13). Probabilities are returned with 6 decimals instead of 4 and every yes/no call is taken on the returned probability, so a response never shows a probability at its threshold next to a positive call.",
+                        "1.1.0": "2026-11-12: Serves model v13 (Weights & Biases run 400d0a77): adds calcification, thrombus and CTO probabilities and flags per segment and the Thresholds key lesion_operating_point. Stenosis is unchanged on test (macro AUROC 0.885 against 0.884); pressure AUROC is 0.69 against 0.72 for v12.",
+                        "1.0.0": "2026-11-12: Serves model v12: 18-segment stenosis and LAD FFR/iFR with validation-derived thresholds."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model/runtime": {
+      "get": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Get model runtime",
+        "description": "Return the current model residency and activity state without loading the model.",
+        "responses": {
+          "200": {
+            "description": "Current runtime state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model/load": {
+      "post": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Load model",
+        "description": "Load model weights into memory. Repeated calls are idempotent.",
+        "responses": {
+          "200": {
+            "description": "Model is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Model failed to load",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model/unload": {
+      "post": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Unload model",
+        "description": "Wait for active inference to finish, release model resources, and restart the supervised API process when needed.",
+        "responses": {
+          "200": {
+            "description": "Model is unloaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PredictRequest": {
+        "required": [
+          "outputMode"
+        ],
+        "type": "object",
+        "properties": {
+          "seriesInstanceImages": {
+            "type": "object",
+            "description": "Map of series number -> instance number -> base64-encoded XA DICOM. Up to 12 runs are used, chosen by SeriesTime.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "nullable": true
+          },
+          "seriesInstanceMetadata": {
+            "type": "object",
+            "nullable": true
+          },
+          "additionalMetadata": {
+            "type": "object",
+            "nullable": true,
+            "description": "Unused for DeepCORO-JEPA."
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": [
+              "HTML",
+              "JSON"
+            ],
+            "description": "Output mode supported by DeepCORO-JEPA"
+          }
+        }
+      },
+      "APIResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Operation successful"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "APIErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "Bad Request"
+          },
+          "errorCode": {
+            "type": "string",
+            "example": "BAD_REQUEST"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "GetModelInfoResponse": {
+        "type": "object",
+        "properties": {
+          "modelId": {
+            "type": "string",
+            "description": "Model identifier",
+            "example": "DeepCORO_JEPA"
+          },
+          "modelName": {
+            "type": "string",
+            "description": "Model display name",
+            "example": "DeepCORO-JEPA"
+          },
+          "version": {
+            "type": "string",
+            "description": "Model version",
+            "example": "1.1.1"
+          },
+          "dicomTargetLevel": {
+            "type": "string",
+            "enum": [
+              "PATIENT",
+              "STUDY",
+              "SERIES",
+              "INSTANCE"
+            ],
+            "description": "DICOM target level",
+            "example": "SERIES"
+          },
+          "dicomUploadMin": {
+            "type": "integer",
+            "description": "Minimum number of DICOM videos to upload for inference",
+            "example": 1
+          },
+          "dicomUploadMax": {
+            "type": "integer",
+            "description": "Maximum number of DICOM videos used per study",
+            "example": 8
+          },
+          "supportedDicomModalities": {
+            "type": "array",
+            "description": "Supported DICOM modalities",
+            "items": {
+              "type": "string",
+              "example": "XA"
+            }
+          },
+          "supportedDicomTags": {
+            "type": "array",
+            "description": "Supported DICOM tags",
+            "items": {
+              "type": "string",
+              "example": "*"
+            }
+          },
+          "supportedAdditionalMetadata": {
+            "type": "array",
+            "description": "No Step-2 variables; view class is inferred from positioner angles",
+            "items": {
+              "type": "object"
+            },
+            "example": []
+          },
+          "supportedOutputModes": {
+            "type": "array",
+            "description": "Supported output modes",
+            "items": {
+              "type": "string",
+              "enum": [
+                "JSON",
+                "HTML"
+              ],
+              "example": "JSON"
+            }
+          }
+        }
+      },
+      "GetModelFactsResponse": {
+        "type": "object",
+        "properties": {
+          "en": {
+            "type": "object",
+            "description": "Model facts in English. See the example for the outputs, thresholds and limits of DeepCORO-JEPA."
+          }
+        }
+      },
+      "PredictResponse": {
+        "type": "object",
+        "description": "JSON mode returns diagnosis/predictions/modelRecommendations; HTML mode returns htmlBase64.",
+        "properties": {
+          "diagnosis": {
+            "type": "string",
+            "description": "Short summary (JSON mode): the segments flagged for significant stenosis, the LAD FFR/iFR calls, and, for a model with a lesion head (v13 on), the segments flagged for calcification, thrombus and chronic total occlusion"
+          },
+          "predictions": {
+            "type": "object",
+            "description": "segments.<segment> with stenosis_pct, prob_significant, prob_threshold, significant, significant_threshold_pct and, for a model with a lesion head (v13 on), calcif_prob, calcif, thrombus_prob, thrombus, cto_prob, cto; lesion_thresholds with operating_point and one threshold per finding (calcif, thrombus, cto) for all segments; lad_physiology with ffr, ifr, ffr_abnormal_prob, ifr_abnormal_prob, their thresholds and yes/no calls, operating_point; n_videos; encoder_passes. Probabilities are returned with 6 decimals and every yes/no value is true exactly when the returned probability is strictly above its returned threshold"
+          },
+          "modelRecommendations": {
+            "type": "object",
+            "description": "Operator-facing EN/FR recommendations (JSON mode)"
+          },
+          "htmlBase64": {
+            "type": "string",
+            "description": "Base64-encoded HTML report (HTML mode)"
+          }
+        }
+      },
+      "ModelRuntime": {
+        "type": "object",
+        "required": [
+          "state",
+          "loaded",
+          "activeRequests",
+          "lastUsedAt"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "UNLOADED",
+              "LOADING",
+              "READY",
+              "BUSY",
+              "EVICTING",
+              "ERROR"
+            ]
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "activeRequests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lastUsedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
