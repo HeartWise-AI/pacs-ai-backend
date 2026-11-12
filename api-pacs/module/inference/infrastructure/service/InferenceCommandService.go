@@ -793,6 +793,9 @@ func (service *InferenceCommandService) DeployInferenceModelVersion(
 	if registered.TenantID != data.TenantID {
 		return types.DeployInferenceModelVersionResult{}, errors.New(apiError.MissingRecord)
 	}
+	if data.ExpectedContainerID != "" && registered.ContainerID != data.ExpectedContainerID {
+		return types.DeployInferenceModelVersionResult{}, errors.New(apiError.InferenceUpgradeConflict)
+	}
 	version, err := service.InferenceModelVersionRepositoryInterface.SelectInferenceModelVersion(ctx, data.VersionID)
 	if err != nil {
 		return types.DeployInferenceModelVersionResult{}, err
@@ -813,7 +816,7 @@ func (service *InferenceCommandService) DeployInferenceModelVersion(
 	}
 	operation, err := service.ModelDeploymentOperations.Start(ctx, modelupgrade.StartDeploymentOperation{
 		TenantID: data.TenantID, ModelID: data.ModelID, ActorUserID: data.ActorUserID,
-		Source: source, Target: version,
+		Source: source, Target: version, TargetGPUUUID: data.TargetGPUUUID,
 	})
 	if err != nil {
 		return types.DeployInferenceModelVersionResult{}, err
@@ -2122,7 +2125,12 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 		return nil
 	}
 
-	if err := service.ensureInferenceContainerReady(ctx, job); err != nil {
+	resolvedJob, readinessErr := service.resolveCurrentIngestionModel(ctx, job)
+	if readinessErr == nil {
+		readinessErr = service.ensureResolvedInferenceContainerReady(ctx, resolvedJob)
+	}
+	if readinessErr != nil {
+		err := readinessErr
 		ObserveStudyServiceDispatchAttempt("permanent_error", 0)
 		if persistErr := service.persistDispatchFailure(candidate.ID, err); persistErr != nil {
 			log.Printf("[Ingestion dispatch] cannot persist model container readiness failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
@@ -2136,7 +2144,7 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 	}
 
 	dispatchRequest, err := service.BuildStudyServiceDispatchRequest(ctx, types.BuildStudyServiceDispatchRequestInput{
-		IngestionJob:          job,
+		IngestionJob:          resolvedJob,
 		Candidate:             candidate,
 		ProcessingRunID:       nonEmptyStringPointer(strings.TrimSpace(processingRunID)),
 		ProcessingExecutionID: nonEmptyStringPointer(strings.TrimSpace(processingExecutionID)),
@@ -2276,7 +2284,46 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 	return nil
 }
 
+// resolveCurrentIngestionModel follows the tenant's current registration without
+// rewriting the stored ingestion job or any historical processing execution.
+func (service *InferenceCommandService) resolveCurrentIngestionModel(ctx context.Context, job entity.InferenceIngestionJob) (entity.InferenceIngestionJob, error) {
+	modelID := strings.TrimSpace(job.ModelID)
+	if modelID == "" {
+		return job, nil // Legacy jobs without a registration reference retain their explicit target.
+	}
+	if strings.TrimSpace(job.TenantID) == "" || service.InferenceQueryRepositoryInterface == nil {
+		return job, errors.New(apiError.MissingRecord)
+	}
+	model, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByID(ctx, modelID)
+	if err != nil {
+		return job, err
+	}
+	if model.TenantID != job.TenantID || strings.TrimSpace(model.ContainerID) == "" {
+		return job, errors.New(apiError.MissingRecord)
+	}
+	currentContainer := strings.TrimSpace(model.ContainerID)
+	if version := strings.TrimSpace(job.ModelVersion); version != "" {
+		currentVersion := ""
+		if model.Deployment != nil {
+			currentVersion = strings.TrimSpace(model.Deployment.ModelVersion)
+		}
+		if (currentVersion != "" && currentVersion != version) || (currentVersion == "" && currentContainer != strings.TrimSpace(job.ContainerID)) {
+			return job, errors.New("ingestion model version changed or cannot be verified; update the job before dispatch")
+		}
+	}
+	job.ContainerID = currentContainer
+	return job, nil
+}
+
 func (service *InferenceCommandService) ensureInferenceContainerReady(ctx context.Context, job entity.InferenceIngestionJob) error {
+	resolved, err := service.resolveCurrentIngestionModel(ctx, job)
+	if err != nil {
+		return err
+	}
+	return service.ensureResolvedInferenceContainerReady(ctx, resolved)
+}
+
+func (service *InferenceCommandService) ensureResolvedInferenceContainerReady(ctx context.Context, job entity.InferenceIngestionJob) error {
 	containerID := strings.TrimSpace(job.ContainerID)
 	if containerID == "" {
 		return fmt.Errorf("inference model %s has no registered container", strings.TrimSpace(job.ModelName))
@@ -3192,18 +3239,14 @@ func (service *InferenceCommandService) PredictPreparedInferenceModel(
 		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InvalidPayload)
 	}
 
-	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerRef)
+	containerInfo, err := service.resolvePreparedInferenceContainer(ctx, tenantID, containerRef)
 	if err != nil {
-		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
+		return dockerInferenceTypes.PredictResponse{}, err
 	}
 	containerID := strings.TrimSpace(containerInfo.ID)
 	containerName := strings.TrimPrefix(strings.TrimSpace(containerInfo.Name), "/")
 	if containerID == "" || containerName == "" {
 		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
-	}
-
-	if _, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID); err != nil {
-		return dockerInferenceTypes.PredictResponse{}, err
 	}
 
 	return service.predictPreparedInferenceModel(ctx, containerID, containerName, predictRequest)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 
@@ -125,6 +126,9 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 // could claim the active container's identity or host ports.
 func (d *DockerSDK) CreateCandidateContainer(ctx context.Context, config types.CreateCandidateContainer) (string, error) {
 	config.Name = strings.TrimSpace(config.Name)
+	if config.GPUUUID != "" && !gpuUUIDPattern.MatchString(config.GPUUUID) {
+		return "", fmt.Errorf("candidate GPU must be a physical UUID")
+	}
 	config.Image = strings.TrimSpace(config.Image)
 	config.ActiveContainerID = strings.TrimSpace(config.ActiveContainerID)
 	if config.Name == "" || config.Image == "" || config.ActiveContainerID == "" {
@@ -196,7 +200,11 @@ func (d *DockerSDK) candidateContainerConfigs(
 		activeName = active.Config.Labels[gpuPlacementNameLabel]
 	}
 	containerConfig.Labels = map[string]string{gpuPlacementNameLabel: activeName}
-	if uuid := d.gpuForContainer(activeName); uuid != "" {
+	uuid := config.GPUUUID
+	if uuid == "" {
+		uuid = d.gpuForContainer(activeName)
+	}
+	if uuid != "" {
 		hostConfig.Runtime = "nvidia"
 		hostConfig.DeviceRequests = gpuDeviceRequests(uuid)
 	}
@@ -225,11 +233,39 @@ func clonePortSet(source nat.PortSet) nat.PortSet {
 	return cloned
 }
 
+var containerNameReferencePattern = regexp.MustCompile(`^/?[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
+var containerIDReferencePattern = regexp.MustCompile(`^[a-fA-F0-9]{12,64}$`)
+
 // GetContainerInfo gets the container info
 func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error) {
 
 	// inspect the container for basic info
 	containerJSON, err := d.Client.ContainerInspect(ctx, containerID)
+	// URL parsers lowercase hostnames, whereas Docker container names are case
+	// sensitive. Resolve only an unambiguous name after an exact lookup misses;
+	// callers still authorize the inspected canonical container ID.
+	if errdefs.IsNotFound(err) && containerNameReferencePattern.MatchString(containerID) && !containerIDReferencePattern.MatchString(containerID) {
+		originalErr := err
+		listed, listErr := d.Client.ContainerList(ctx, container.ListOptions{All: true})
+		if listErr != nil {
+			return types.GetContainerInfoResult{}, listErr
+		}
+		matches := make(map[string]struct{})
+		for _, candidate := range listed {
+			for _, name := range candidate.Names {
+				if strings.EqualFold(strings.TrimPrefix(name, "/"), strings.TrimPrefix(containerID, "/")) {
+					matches[candidate.ID] = struct{}{}
+				}
+			}
+		}
+		if len(matches) > 1 {
+			return types.GetContainerInfoResult{}, fmt.Errorf("ambiguous case-insensitive Docker container name %q", containerID)
+		}
+		err = originalErr
+		for canonicalID := range matches {
+			containerJSON, err = d.Client.ContainerInspect(ctx, canonicalID)
+		}
+	}
 	if err != nil {
 		log.Println("[docker] error:", err)
 		return types.GetContainerInfoResult{}, err
@@ -248,14 +284,19 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 		return types.GetContainerInfoResult{}, err
 	}
 
+	placementName := ""
+	if containerJSON.Config != nil {
+		placementName = containerJSON.Config.Labels[gpuPlacementNameLabel]
+	}
 	return types.GetContainerInfoResult{
-		GPUUUID:    singleGPUUUID(containerJSON.HostConfig),
-		ID:         containerJSON.ID,
-		ImageID:    containerJSON.Image,
-		Name:       containerJSON.Name,
-		Lifecycle:  types.LifecycleFromStatus(types.Status(containerJSON.State.Status)),
-		StartedAt:  startedAtTime,
-		FinishedAt: finishedAtTime,
+		PlacementName: placementName,
+		GPUUUID:       singleGPUUUID(containerJSON.HostConfig),
+		ID:            containerJSON.ID,
+		ImageID:       containerJSON.Image,
+		Name:          containerJSON.Name,
+		Lifecycle:     types.LifecycleFromStatus(types.Status(containerJSON.State.Status)),
+		StartedAt:     startedAtTime,
+		FinishedAt:    finishedAtTime,
 	}, nil
 }
 

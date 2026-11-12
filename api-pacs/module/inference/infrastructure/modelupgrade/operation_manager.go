@@ -25,11 +25,12 @@ type DeploymentOperationPublisher interface {
 }
 
 type StartDeploymentOperation struct {
-	TenantID    string
-	ModelID     string
-	ActorUserID string
-	Source      entity.InferenceModelDeployment
-	Target      entity.InferenceModelVersion
+	TargetGPUUUID string
+	TenantID      string
+	ModelID       string
+	ActorUserID   string
+	Source        entity.InferenceModelDeployment
+	Target        entity.InferenceModelVersion
 }
 
 type OperationManagerConfig struct {
@@ -83,7 +84,7 @@ func (manager *OperationManager) Start(
 	request.Target.Normalize()
 	now := manager.now().UnixMilli()
 	operation := entity.InferenceModelDeploymentOperation{
-		ID: manager.newID(), TenantID: request.TenantID, ModelID: request.ModelID, ActorUserID: request.ActorUserID,
+		TargetGPUUUID: request.TargetGPUUUID, ID: manager.newID(), TenantID: request.TenantID, ModelID: request.ModelID, ActorUserID: request.ActorUserID,
 		CatalogVersionID: request.Target.ID, RequestedVersion: request.Target.Version,
 		RequestedImage: request.Target.ImageReference, RequestedImageDigest: request.Target.ImageDigest,
 		Source: request.Source, Status: entity.InferenceModelDeploymentOperationPending,
@@ -171,6 +172,7 @@ func (manager *OperationManager) run(operation entity.InferenceModelDeploymentOp
 	defer cancel()
 	result, err := manager.executor.Upgrade(ctx, UpgradeRequest{
 		TenantID: operation.TenantID, ModelID: operation.ModelID, VersionID: operation.CatalogVersionID,
+		TargetGPUUUID: operation.TargetGPUUUID, ExpectedContainerID: operation.Source.ContainerID,
 		OnStage: func(_ context.Context, stage UpgradeStage) error {
 			now := manager.now().UnixMilli()
 			next := operation

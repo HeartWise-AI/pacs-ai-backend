@@ -63,6 +63,7 @@ type CreateContainer struct {
 // active deployment. Runtime settings are copied from ActiveContainerID while
 // the image, name, and registration-owned environment are replaced.
 type CreateCandidateContainer struct {
+	GPUUUID           string
 	Name              string
 	Image             string
 	Envs              []string
@@ -70,13 +71,14 @@ type CreateCandidateContainer struct {
 }
 
 type GetContainerInfoResult struct {
-	GPUUUID    string
-	ID         string
-	ImageID    string
-	Name       string
-	Lifecycle  Lifecycle
-	StartedAt  time.Time
-	FinishedAt time.Time
+	PlacementName string
+	GPUUUID       string
+	ID            string
+	ImageID       string
+	Name          string
+	Lifecycle     Lifecycle
+	StartedAt     time.Time
+	FinishedAt    time.Time
 }
 
 // InspectImageResult exposes only the immutable image identity and release

@@ -232,3 +232,14 @@ func TestRegistrationCircuitBreakerReturnsRollbackBaseline(t *testing.T) {
 		t.Fatalf("replacement error was not preserved: %v", err)
 	}
 }
+
+func TestRollbackDeploymentRetainsPersistedGPUPreference(t *testing.T) {
+	model := entity.InferenceModel{ContainerID: "current", DockerImage: "image", PreferredGPUUUID: "GPU-preferred", Deployment: &entity.InferenceModelDeployment{ContainerID: "current", ImageReference: "image"}}
+	previous := registeredDeployment(model)
+	if previous.GPUUUID != "GPU-preferred" {
+		t.Fatal("rollback baseline lost previous placement preference")
+	}
+	if model.Deployment.GPUUUID != "" {
+		t.Fatal("rollback snapshot mutated current registration")
+	}
+}

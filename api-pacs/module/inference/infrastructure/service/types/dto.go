@@ -18,10 +18,12 @@ type AddInferenceModel struct {
 }
 
 type DeployInferenceModelVersion struct {
-	TenantID    string
-	ModelID     string
-	VersionID   string
-	ActorUserID string
+	TargetGPUUUID       string
+	ExpectedContainerID string
+	TenantID            string
+	ModelID             string
+	VersionID           string
+	ActorUserID         string
 }
 
 type DeployInferenceModelVersionResult struct {

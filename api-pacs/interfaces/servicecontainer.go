@@ -200,6 +200,7 @@ func (k *kernel) RegisterInferenceRESTCommandController() inferenceREST.Inferenc
 	service := k.inferenceCommandServiceContainer()
 
 	controller := inferenceREST.InferenceCommandController{
+		GPUAdministration:                           &inferenceService.GPUAdministrationService{Manager: modelManager, Models: service.InferenceQueryRepositoryInterface, Docker: dockerSDK, API: dockerInferenceAPI, Deployer: service},
 		InferenceCommandServiceInterface:            service,
 		ModelDeploymentOperationSubscriberInterface: modelDeploymentEventBroker,
 		ModelDeploymentEventHeartbeatInterval:       20 * time.Second,

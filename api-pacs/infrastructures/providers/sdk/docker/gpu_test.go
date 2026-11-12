@@ -77,3 +77,13 @@ func TestGPUAssignmentsRequireUUIDAndFallback(t *testing.T) {
 		t.Fatal(assignments, err)
 	}
 }
+
+func TestExplicitCandidateGPUOverridesEnvironmentWithoutMutatingSDK(t *testing.T) {
+	other := "GPU-0fe2f69a-78ce-4eb0-730e-2f5a15f4a1b7"
+	sdk := &DockerSDK{GPUDefaultUUID: other, GPUAssignments: map[string]string{"model": other}}
+	active := engine.ContainerJSON{ContainerJSONBase: &engine.ContainerJSONBase{Name: "/model", HostConfig: &container.HostConfig{}}}
+	_, host, _ := sdk.candidateContainerConfigs(dockertypes.CreateCandidateContainer{Name: "candidate", GPUUUID: testGPUUUID}, active)
+	if singleGPUUUID(host) != testGPUUUID || sdk.GPUAssignments["model"] != other {
+		t.Fatal("explicit placement mutated shared policy or was ignored")
+	}
+}

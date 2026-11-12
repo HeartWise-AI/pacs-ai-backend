@@ -105,6 +105,7 @@ type ResolvedCandidateImage struct {
 // ValidatedCandidate contains the immutable image identity and live runtime
 // contract that passed validation. The candidate remains outside active routing.
 type ValidatedCandidate struct {
+	GPUUUID        string
 	ContainerID    string
 	ContainerName  string
 	ImageReference string
@@ -221,6 +222,7 @@ func (validator *CandidateValidator) ValidateContainer(
 	}
 
 	return ValidatedCandidate{
+		GPUUUID:        containerInfo.GPUUUID,
 		ContainerID:    request.ContainerID,
 		ContainerName:  name,
 		ImageReference: request.Image.Reference,

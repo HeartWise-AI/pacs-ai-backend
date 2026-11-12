@@ -29,6 +29,7 @@ const (
 // InferenceModelDeploymentOperation is the durable state of one administrator-
 // initiated model deployment. It is also the source of truth for live progress.
 type InferenceModelDeploymentOperation struct {
+	TargetGPUUUID        string                                  `firestore:"target_gpu_uuid,omitempty" json:"targetGpuUuid,omitempty"`
 	ID                   string                                  `firestore:"id,omitempty" json:"id"`
 	TenantID             string                                  `firestore:"tenant_id" json:"tenantId"`
 	ModelID              string                                  `firestore:"model_id" json:"modelId"`
@@ -61,6 +62,7 @@ func (operation *InferenceModelDeploymentOperation) Normalize() {
 	operation.TenantID = strings.TrimSpace(operation.TenantID)
 	operation.ModelID = strings.TrimSpace(operation.ModelID)
 	operation.ActorUserID = strings.TrimSpace(operation.ActorUserID)
+	operation.TargetGPUUUID = strings.TrimSpace(operation.TargetGPUUUID)
 	operation.CatalogVersionID = strings.TrimSpace(operation.CatalogVersionID)
 	operation.RequestedVersion = strings.TrimSpace(operation.RequestedVersion)
 	operation.RequestedImage = strings.TrimSpace(operation.RequestedImage)

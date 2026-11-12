@@ -579,7 +579,12 @@ func (repository *InferenceCommandRepository) swapInferenceModelRegistration(
 		if persistDeployment {
 			deploymentValue = replacement
 		}
+		preference := interface{}(firestore.Delete)
+		if replacement.GPUUUID != "" {
+			preference = replacement.GPUUUID
+		}
 		return transaction.Update(modelRef, []firestore.Update{
+			{Path: "preferred_gpu_uuid", Value: preference},
 			{Path: "container_id", Value: replacement.ContainerID},
 			{Path: "docker_image", Value: replacement.ImageReference},
 			{Path: "deployment", Value: deploymentValue},
@@ -693,9 +698,14 @@ func registeredDeployment(model entity.InferenceModel) entity.InferenceModelDepl
 	if model.Deployment != nil &&
 		model.Deployment.ContainerID == model.ContainerID &&
 		model.Deployment.ImageReference == model.DockerImage {
-		return *model.Deployment
+		deployment := *model.Deployment
+		if deployment.GPUUUID == "" {
+			deployment.GPUUUID = model.PreferredGPUUUID
+		}
+		return deployment
 	}
 	return entity.InferenceModelDeployment{
+		GPUUUID:        model.PreferredGPUUUID,
 		ContainerID:    model.ContainerID,
 		ImageReference: model.DockerImage,
 	}
