@@ -15,6 +15,8 @@ enable managed inference on a deployed host.**
 | `GPU_MEMORY_SAFETY_MARGIN_MIB` | `1024` | Headroom excluded from scheduling. |
 | `GPU_MEMORY_BUDGETS_MIB` | unset | Optional UUID-to-budget JSON object enabling separate GPU ledgers; replaces the scalar budget. |
 | `MODEL_IDLE_SWEEP_SECONDS` | `0` | Optional proactive idle offload interval; 0 disables the sweeper. |
+| `MODEL_RETAIN_PEAK_WHILE_LOADED` | `true` when enabled | Hold the GPU peak reservation until confirmed unload; set false only after validating post-inference allocator residency. |
+| `MODEL_GPU_MEMORY_RESERVATION_PERCENT` | `100` | Conservative scaling of GPU peak declarations, rounded up; integer 100–1000. Does not modify immutable image metadata. |
 | `MODEL_QUEUE_TIMEOUT_SECONDS` | `600` | Maximum time waiting for admission, including startup/readiness and eviction. |
 
 For example, a budget of 81920 MiB with a 4096 MiB margin gives 77824 MiB
@@ -34,14 +36,19 @@ an authorized model registration; they do not accept an arbitrary host.
    admission; a busy model does not block another model's queue.
 2. Inspect/start Docker and wait for model metadata, reusing the ingestion
    readiness helper. Read and validate the runtime and resource contract.
-3. Reserve the model's declared peak before loading or prediction. A resident
-   model only needs its resident-to-peak delta. Admission decisions are serialized;
+3. Reserve the model's conservative peak before loading or prediction. With the
+   safe default, a loaded model retains its entire peak reservation. Admission
+   decisions are serialized;
    admitted models can execute concurrently if their combined peaks fit.
 4. When capacity is insufficient, unload eligible idle models in LRU order.
    Never evict a model while its load, inference, cleanup or eviction is active.
    Idle eligibility timers wake waiting requests without another incoming request.
-5. Retain the resident reservation on success, release the active delta, update
-   last use and wake waiters. A CPU-only model still gets one active request.
+5. Retain the conservative GPU peak reservation on success until a confirmed
+   process-exit unload. READY does not prove CUDA allocator caches were returned
+   to the driver. Update last use and wake waiters. A CPU-only model still gets
+   one active request. Explicitly disabling retained peaks restores the older
+   resident-to-peak optimization and requires measured evidence that the declared
+   resident bound holds after every supported inference.
 
 Queue exhaustion returns `AdmissionTimeout`, wrapping `ErrQueueTimeout`. Its
 HTTP mapping is 503 with a one-second Retry-After. Both gateways apply that
@@ -92,8 +99,8 @@ production service. Predictions are rejected until this inventory succeeds.
 
 - Stopped containers remain stopped and are recorded as `UNLOADED` with no GPU
   reservation.
-- A confirmed idle `READY` runtime is reconstructed with its declared resident
-  reservation and last-use timestamp.
+- A confirmed idle `READY` runtime is reconstructed with its conservative peak
+  reservation by default and its last-use timestamp.
 - A running but busy, transitional, or otherwise ambiguous runtime is marked
   `ERROR` and conservatively reserves its declared peak. Its next request must
   confirm an unload before it can be admitted.
@@ -178,3 +185,41 @@ with a dedicated regression test. Host GPU use returned from a 4413 MiB observed
 peak to its 4 MiB baseline. Production container IDs and start times were unchanged.
 This is isolated acceptance evidence; it does not activate production gateways or
 replace the host-wide startup reconciliation still required for rollout.
+
+## GPU overfill incident and deployment audit (2026-11-12)
+
+A deployed host ran the new backend image with admission and background gateway
+flags absent. Manual and automatic callers therefore loaded models directly.
+CUDA out-of-memory errors followed while system RAM remained abundant. Unloading
+idle models gave temporary relief but did not prevent background calls from
+loading them again. Enabling only the API manager is insufficient: enable the
+managed gateway on study-service and every Celery worker as well.
+
+JEPA also demonstrated retained CUDA allocation exceeding its published resident
+and peak declarations after failed inference. Default peak retention prevents
+reusing the resident-to-peak difference while its process still owns allocator
+caches. `MODEL_GPU_MEMORY_RESERVATION_PERCENT=150` provides conservative peak
+headroom for this host until model memory declarations are remeasured and
+released. A 24576 MiB budget with a 4096 MiB safety margin gives 20480 MiB
+schedulable capacity; JEPA's 11000 MiB declaration reserves 16500 MiB under this
+policy. Underestimates larger than the configured headroom can still cause OOM;
+observe actual maximum GPU use across supported inputs and failures. This is a
+reservation policy, not an instantaneous NVML allocator or a memory guarantee.
+
+Run the read-only routing check after deployment:
+
+```sh
+python scripts/check-gpu-admission.py
+```
+
+It fails if the API manager, peak retention or idle sweeper is disabled, or if
+any running study-service/Celery caller lacks managed routing. It prints no
+secrets. A pass checks configuration only: separately confirm startup
+reconciliation, accurate image memory contracts, isolated GPU placement or
+conservative scalar capacity, and confirmed offload/reload in runtime metrics.
+
+Drain automatic workers and active manual requests before changing ownership of
+the GPU ledger. Unload idle resident models and wait for their inference process
+exit before starting the manager with conservative reservations. Recreate every
+caller to apply gateway environment changes. Preserve model registration and
+processing history throughout; deleting registrations is not a memory fix.

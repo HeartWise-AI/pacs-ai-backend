@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"regexp"
 	"sync"
@@ -113,10 +114,46 @@ func (m *Manager) wakeLocked() {
 	close(m.changed)
 	m.changed = make(chan struct{})
 }
+
+// A READY response confirms completion, not that CUDA allocator caches were
+// released. Keep the peak until confirmed process exit unless the operator has
+// explicitly validated lower steady-state residency for every admitted model.
+func (m *Manager) residentReservation(model Model) int {
+	if m.config.RetainPeakWhileLoaded && model.Resources.GPURequired {
+		return m.peakReservation(model)
+	}
+	return model.Resources.ResidentMemoryMiB
+}
+
+// Model declarations are immutable image metadata, not instantaneous memory
+// measurements. Optional conservative scaling compensates for underestimated
+// validated peaks without modifying the model's identity or resource contract.
+func (m *Manager) peakReservation(model Model) int {
+	peak := model.Resources.PeakMemoryMiB
+	percent := m.config.GPUReservationPercent
+	if !model.Resources.GPURequired || percent <= 100 {
+		return peak
+	}
+	// Saturating arithmetic fails oversized declarations closed at admission.
+	if peak > (math.MaxInt-99)/percent {
+		return math.MaxInt
+	}
+	return (peak*percent + 99) / 100
+}
+
+// Saturate memory ledger totals instead of wrapping into negative capacity.
+// Metadata and configuration validation ensure both operands are non-negative.
+func addMemory(a, b int) int {
+	if b > math.MaxInt-a {
+		return math.MaxInt
+	}
+	return a + b
+}
+
 func (m *Manager) usedLocked() int {
 	n := 0
 	for _, e := range m.models {
-		n += e.reserved
+		n = addMemory(n, e.reserved)
 	}
 	return n
 }
@@ -126,7 +163,7 @@ func (m *Manager) capacity() int {
 	}
 	total := 0
 	for uuid := range m.config.GPUBudgetsMiB {
-		total += m.deviceCapacity(uuid)
+		total = addMemory(total, m.deviceCapacity(uuid))
 	}
 	return total
 }
@@ -147,7 +184,7 @@ func (m *Manager) deviceUsedLocked(uuid string) int {
 	total := 0
 	for _, e := range m.models {
 		if e.model.GPUUUID == uuid {
-			total += e.reserved
+			total = addMemory(total, e.reserved)
 		}
 	}
 	return total
@@ -230,7 +267,7 @@ func (m *Manager) Reconcile(ctx context.Context, containerIDs []string) (err err
 				return fmt.Errorf("reconcile %s without a trustworthy resource contract: %w", id, inspectErr)
 			} else {
 				e.state = types.RuntimeError
-				e.reserved = model.Resources.PeakMemoryMiB
+				e.reserved = m.peakReservation(model)
 				e.loaded = true
 				quarantined = true
 			}
@@ -251,7 +288,7 @@ func (m *Manager) Reconcile(ctx context.Context, containerIDs []string) (err err
 			e.loaded = runtime.Loaded
 			if runtime.State == types.RuntimeReady && runtime.Loaded && runtime.ActiveRequests == 0 {
 				e.state = types.RuntimeReady
-				e.reserved = model.Resources.ResidentMemoryMiB
+				e.reserved = m.residentReservation(model)
 				if runtime.LastUsedAt != nil {
 					e.lastUsed = *runtime.LastUsedAt
 				} else {
@@ -259,7 +296,7 @@ func (m *Manager) Reconcile(ctx context.Context, containerIDs []string) (err err
 				}
 			} else {
 				e.state = types.RuntimeError
-				e.reserved = model.Resources.PeakMemoryMiB
+				e.reserved = m.peakReservation(model)
 				quarantined = true
 			}
 		}
@@ -273,11 +310,11 @@ func (m *Manager) Reconcile(ctx context.Context, containerIDs []string) (err err
 		if len(m.config.GPUBudgetsMiB) == 0 {
 			pool = ""
 		}
-		reserved[pool] += e.reserved
-		if reserved[pool] > m.deviceCapacity(pool) {
+		if e.reserved > m.deviceCapacity(pool)-reserved[pool] {
 			outcome = "failed"
 			return errors.New("reconciled reservations exceed schedulable GPU capacity")
 		}
+		reserved[pool] += e.reserved
 		staged[id] = e
 	}
 
@@ -368,7 +405,7 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 	// Discovery is serialized with admission. Until runtime is known, retain a
 	// conservative peak reservation; a failed runtime probe must not free it.
 	if unaccounted {
-		e.reserved = model.Resources.PeakMemoryMiB
+		e.reserved = m.peakReservation(model)
 		e.leased = true
 	}
 	m.mu.Unlock()
@@ -387,7 +424,7 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 	if runtime.Loaded && unaccounted && model.Resources.GPURequired {
 		// First-touch discovery cannot authorize more GPU work. Account for this
 		// resident immediately and clean it up before permitting a retry.
-		e.reserved = model.Resources.PeakMemoryMiB
+		e.reserved = m.peakReservation(model)
 		e.leased = true
 		m.mu.Unlock()
 		return response, ErrUnmanagedResident
@@ -730,7 +767,7 @@ func (m *Manager) PrepareBlocked(ctx context.Context, id string) (err error) {
 				if m.validatePlacement(model) != nil {
 					m.ready = false
 				}
-				e.reserved = max(e.reserved, model.Resources.PeakMemoryMiB)
+				e.reserved = max(e.reserved, m.peakReservation(model))
 				if e.reserved == 0 {
 					e.reserved = m.deviceCapacity(model.GPUUUID)
 				}
@@ -738,7 +775,7 @@ func (m *Manager) PrepareBlocked(ctx context.Context, id string) (err error) {
 				e.loaded = true
 			}
 		} else {
-			e.reserved = e.model.Resources.ResidentMemoryMiB
+			e.reserved = m.residentReservation(e.model)
 			e.leased = false
 			e.loaded = true
 			e.state = types.RuntimeReady
@@ -843,7 +880,7 @@ func (m *Manager) reserve(ctx context.Context, target *entry) error {
 			m.mu.Unlock()
 			return ErrNotReconciled
 		}
-		peak := target.model.Resources.PeakMemoryMiB
+		peak := m.peakReservation(target.model)
 		capacity := m.deviceCapacity(target.model.GPUUUID)
 		if peak > capacity {
 			m.mu.Unlock()
@@ -943,7 +980,7 @@ func (m *Manager) finish(ctx context.Context, w *waiter, e *entry, success bool)
 		p := recover()
 		m.mu.Lock()
 		if success && p == nil {
-			e.reserved = e.model.Resources.ResidentMemoryMiB
+			e.reserved = m.residentReservation(e.model)
 			e.leased = false
 			e.state = types.RuntimeReady
 			e.lastUsed = time.Now()
@@ -1015,10 +1052,10 @@ func (m *Manager) snapshotLocked() Snapshot {
 		}
 		resident := 0
 		if e.loaded && e.model.Resources.GPURequired {
-			resident = min(e.reserved, e.model.Resources.ResidentMemoryMiB)
+			resident = min(e.reserved, m.residentReservation(e.model))
 		}
-		s.ResidentMiB += resident
-		s.ActiveMiB += e.reserved - resident
+		s.ResidentMiB = addMemory(s.ResidentMiB, resident)
+		s.ActiveMiB = addMemory(s.ActiveMiB, e.reserved-resident)
 	}
 	for _, w := range m.queue {
 		v := s.Models[w.id]
@@ -1031,7 +1068,7 @@ func (m *Manager) snapshotLocked() Snapshot {
 		gpu := GPUSnapshot{CapacityMiB: m.deviceCapacity(uuid), ReservedMiB: m.deviceUsedLocked(uuid)}
 		for _, e := range m.models {
 			if e.model.GPUUUID == uuid && e.loaded {
-				gpu.ResidentMiB += min(e.reserved, e.model.Resources.ResidentMemoryMiB)
+				gpu.ResidentMiB = addMemory(gpu.ResidentMiB, min(e.reserved, m.residentReservation(e.model)))
 			}
 		}
 		gpu.ActiveMiB = gpu.ReservedMiB - gpu.ResidentMiB
