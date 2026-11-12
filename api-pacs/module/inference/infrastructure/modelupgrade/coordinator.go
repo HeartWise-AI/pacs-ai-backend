@@ -49,10 +49,12 @@ func (err *UpgradeError) Error() string {
 func (err *UpgradeError) Unwrap() error { return err.Err }
 
 type UpgradeRequest struct {
-	TenantID  string
-	ModelID   string
-	VersionID string
-	OnStage   func(context.Context, UpgradeStage) error
+	TargetGPUUUID       string
+	ExpectedContainerID string
+	TenantID            string
+	ModelID             string
+	VersionID           string
+	OnStage             func(context.Context, UpgradeStage) error
 }
 
 type UpgradeResult struct {
@@ -172,6 +174,9 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 	if registered.TenantID != request.TenantID {
 		return UpgradeResult{}, upgradeFailure(UpgradeStageResolveActive, errors.New(apiError.MissingRecord), nil)
 	}
+	if request.ExpectedContainerID != "" && registered.ContainerID != request.ExpectedContainerID {
+		return UpgradeResult{}, upgradeFailure(UpgradeStageResolveActive, errors.New(apiError.InferenceUpgradeConflict), nil)
+	}
 	registered.ContainerID = strings.TrimSpace(registered.ContainerID)
 	registered.DockerImage = strings.TrimSpace(registered.DockerImage)
 	if registered.ContainerID == "" || registered.DockerImage == "" {
@@ -188,6 +193,21 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 	activeModelInfo, err := coordinator.api.GetModelInfo(ctx, activeName)
 	if err != nil {
 		return UpgradeResult{}, upgradeFailure(UpgradeStageResolveActive, err, nil)
+	}
+	targetGPUUUID := strings.TrimSpace(request.TargetGPUUUID)
+	if targetGPUUUID == "" {
+		targetGPUUUID = strings.TrimSpace(registered.PreferredGPUUUID)
+	}
+	if targetGPUUUID != "" {
+		placement, ok := coordinator.manager.(interface {
+			ValidateGPUPlacement(string, api.ModelResources) error
+		})
+		if !ok {
+			return UpgradeResult{}, upgradeFailure(UpgradeStageResolveActive, errors.New(apiError.InferenceUpgradeUnavailable), nil)
+		}
+		if err := placement.ValidateGPUPlacement(targetGPUUUID, activeModelInfo.Data.Resources); err != nil {
+			return UpgradeResult{}, upgradeFailure(UpgradeStageResolveActive, err, nil)
+		}
 	}
 	if err = reportUpgradeStage(ctx, request, UpgradeStageResolveVersion); err != nil {
 		return UpgradeResult{}, upgradeFailure(UpgradeStageResolveVersion, err, nil)
@@ -231,7 +251,7 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 		return UpgradeResult{}, upgradeFailure(UpgradeStageCreate, err, nil)
 	}
 	candidateID, err := coordinator.docker.CreateCandidateContainer(ctx, docker.CreateCandidateContainer{
-		Name: candidateName, Image: resolvedImage.LocalImageID,
+		GPUUUID: targetGPUUUID, Name: candidateName, Image: resolvedImage.LocalImageID,
 		Envs: append([]string(nil), registered.Envs...), ActiveContainerID: registered.ContainerID,
 	})
 	if err != nil {
@@ -254,6 +274,9 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 	})
 	if err != nil {
 		return UpgradeResult{}, upgradeFailure(UpgradeStageValidate, err, coordinator.removeCandidate(ctx, candidateID))
+	}
+	if targetGPUUUID != "" && validated.GPUUUID != targetGPUUUID {
+		return UpgradeResult{}, upgradeFailure(UpgradeStageValidate, errors.New("candidate GPU placement does not match requested device"), coordinator.removeCandidate(ctx, candidateID))
 	}
 	if err = validateCatalogCandidate(version, validated); err != nil {
 		return UpgradeResult{}, upgradeFailure(UpgradeStageValidate, err, coordinator.removeCandidate(ctx, candidateID))

@@ -168,3 +168,21 @@ func TestOversizedScaledReconciliationAndLedgersFailClosed(t *testing.T) {
 		t.Fatalf("device ledger exposed capacity: %+v", gpu)
 	}
 }
+
+func TestAdministrativePlacementUsesScaledPhysicalBudget(t *testing.T) {
+	b := newFake()
+	m := conservativeManager(t, b)
+	m.config.GPUBudgetsMiB = map[string]int{gpuA: 100}
+	m.config.GPUReservationPercent = 150
+	if err := m.ValidateGPUPlacement(gpuA, resources(10, 60)); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		uuid     string
+		resource api.ModelResources
+	}{{gpuB, resources(10, 60)}, {gpuA, resources(10, 70)}, {gpuA, resources(0, 0)}} {
+		if err := m.ValidateGPUPlacement(tc.uuid, tc.resource); err == nil {
+			t.Fatal("unsupported placement accepted")
+		}
+	}
+}

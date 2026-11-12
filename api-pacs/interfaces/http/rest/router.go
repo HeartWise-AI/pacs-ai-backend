@@ -210,6 +210,7 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 					r.Use(iamMiddleware.PolicyAcceptanceGuard)
 					r.Get("/quota", inferenceQueryController.GetInferenceQuota)
+					r.With(iamMiddleware.RBACOwnerOrAdminGuard).Get("/gpus", inferenceCommandController.GetGPUs)
 
 					r.Post("/onboarding-model-questionnaire-answers/add", inferenceCommandController.AddOnboardingModelQuestionnaireAnswers)
 					r.Get("/onboarding-model-questionnaire-answers", inferenceQueryController.GetOnboardingModelQuestionnaireAnswers)
@@ -229,6 +230,7 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Get("/list", inferenceQueryController.GetInferenceModels)
 							r.Get("/{ID}/versions", inferenceQueryController.GetInferenceModelVersions)
 							r.Post("/{ID}/versions/{versionID}/deploy", inferenceCommandController.DeployInferenceModelVersion)
+							r.Post("/{ID}/gpu-placement", inferenceCommandController.MoveInferenceModelGPU)
 							r.Get("/{ID}/deployments/{deploymentID}", inferenceCommandController.GetInferenceModelDeploymentOperation)
 							r.Get("/{ID}/deployments/{deploymentID}/events", inferenceCommandController.StreamInferenceModelDeploymentEvents)
 							r.Delete("/{ID}/remove", inferenceCommandController.RemoveInferenceModel)

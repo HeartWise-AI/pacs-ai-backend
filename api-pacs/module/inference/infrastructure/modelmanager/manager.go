@@ -1081,3 +1081,20 @@ func (m *Manager) snapshotLocked() Snapshot {
 
 // GPUSnapshot is a reservation ledger for one physical device, not live NVML usage.
 type GPUSnapshot struct{ CapacityMiB, ReservedMiB, ResidentMiB, ActiveMiB, AvailableMiB int }
+
+// ValidateGPUPlacement checks an explicit administrative target before deployment.
+func (m *Manager) ValidateGPUPlacement(uuid string, resources types.ModelResources) error {
+	if err := resources.Validate(); err != nil {
+		return err
+	}
+	if !resources.GPURequired || !gpuUUIDPattern.MatchString(uuid) || len(m.config.GPUBudgetsMiB) == 0 {
+		return errors.New("explicit GPU placement requires a GPU model and per-device budgets")
+	}
+	if _, ok := m.config.GPUBudgetsMiB[uuid]; !ok {
+		return errors.New("GPU is not configured for managed inference")
+	}
+	if m.peakReservation(Model{Resources: resources}) > m.deviceCapacity(uuid) {
+		return ErrCapacity
+	}
+	return nil
+}

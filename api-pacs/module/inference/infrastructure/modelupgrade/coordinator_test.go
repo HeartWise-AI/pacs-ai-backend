@@ -90,6 +90,7 @@ func (fake *coordinatorAPI) GetModelRuntime(context.Context, string) (api.ModelR
 }
 
 type coordinatorValidator struct {
+	gpuUUID     string
 	events      *[]string
 	validateErr error
 	modelInfo   api.ModelInfo
@@ -122,6 +123,7 @@ func (fake *coordinatorValidator) ValidateContainer(
 		modelInfo = validCandidateModelInfo()
 	}
 	return ValidatedCandidate{
+		GPUUUID:        fake.gpuUUID,
 		ContainerID:    request.ContainerID,
 		ContainerName:  "candidate-model",
 		ImageReference: request.Image.Reference,

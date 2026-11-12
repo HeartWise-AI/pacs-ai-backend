@@ -13,13 +13,13 @@ Configure `api-pacs/.env` with physical UUIDs from
 ```dotenv
 MODEL_MANAGER_ENABLED=true
 GPU_MEMORY_BUDGETS_MIB={"GPU-999e1fca-539d-fb99-2531-ad97b91da026":24564,"GPU-0fe2f69a-78ce-4eb0-730e-2f5a15f4a1b7":24576}
-GPU_MEMORY_SAFETY_MARGIN_MIB=2048
+GPU_MEMORY_SAFETY_MARGIN_MIB=4096
 MODEL_GPU_DEFAULT_UUID=GPU-0fe2f69a-78ce-4eb0-730e-2f5a15f4a1b7
-MODEL_GPU_ASSIGNMENTS={"deepcoro-jepa":"GPU-999e1fca-539d-fb99-2531-ad97b91da026","deepcoro-scad":"GPU-999e1fca-539d-fb99-2531-ad97b91da026"}
+MODEL_GPU_ASSIGNMENTS={"deepcoro-jepa":"GPU-999e1fca-539d-fb99-2531-ad97b91da026"}
 MODEL_RETAIN_PEAK_WHILE_LOADED=true
 MODEL_GPU_MEMORY_RESERVATION_PERCENT=150
 MODEL_IDLE_SWEEP_SECONDS=30
-MODEL_QUEUE_TIMEOUT_SECONDS=600
+MODEL_QUEUE_TIMEOUT_SECONDS=1200
 ```
 
 These UUIDs are host-specific examples from the incident. Copying them to
@@ -35,8 +35,9 @@ key; its next managed upgrade will preserve that key.
 Docker persists the assignment across restarts. With no placement configuration,
 legacy container creation and upgrade behavior is retained.
 
-The example reserves the A5000 for JEPA and SCAD while leaving automatic
-angiography models on the 3090. It is a starting allocation, not a benchmarked
+The example reserves the A5000 for JEPA while leaving SCAD and automatic
+angiography models on the 3090. With conservative 150% peaks and a 4096 MiB
+safety margin, JEPA and SCAD cannot coexist within the A5000 budget. It is a starting allocation, not a benchmarked
 throughput recommendation. Validate cold/warm peaks for the intended working set
 and move additional models if necessary. Placement is explicit configuration;
 this change does not dynamically migrate resident models between GPUs.
@@ -90,8 +91,9 @@ latency for lower idle GPU residency, without changing ingestion schedules.
    preserving registration and ingestion history. Keep callers paused throughout
    this bootstrap. Placement applies to newly created upgrade candidates;
    setting environment variables alone does not repin an existing container.
-   If the managed upgrade requires a newer version, use a properly released
-   image rather than changing image provenance or bypassing version checks.
+   The current catalog deployment path accepts the same semantic version and
+   immutable artifact for placement-only recreation; no fabricated version bump
+   is needed. Existing releases must still pass OCI/provenance validation.
 3. Inspect each container's DeviceRequests and confirm its single physical UUID.
    Test CUDA visibility in the container. Leave CPU-only models as CPU models.
 4. Configure `GPU_MEMORY_BUDGETS_MIB`, restart api-pacs in per-GPU mode, and
@@ -115,3 +117,55 @@ Roll back by disabling the study-service gateway first, then the manager and idl
 sweep. UUID-pinned containers may remain pinned. Restore previous images through
 the normal controlled deployment process if needed; restarting Docker alone
 does not change a container's device assignment.
+
+## Same-artifact maintenance CLI
+
+`api-pacs/cmd/gpu-placement` reuses `CandidateValidator`, `UpgradeCoordinator`,
+the admission manager and the normal registration compare-and-swap repository.
+It does not instantiate the HTTP dependency container or a second background
+manager. Build from `api-pacs` with:
+
+```sh
+go build -o gpu-placement ./cmd/gpu-placement
+```
+
+Run inside the deployment network with the API's existing credential-file mount,
+environment and Docker socket. Set explicit UUID placement configuration. Audit
+mode performs reads and writes a protected local plan and original Docker
+snapshots only; the selected model containers must already be running and their
+runtimes UNLOADED so that release identity validation remains read-only:
+
+```sh
+gpu-placement --journal /deploy/placement-audit
+```
+
+The default selection is the eight modern angiography model containers. Use
+`--containers` to specify an exact comma-separated subset. Absent immutable
+catalog records are planned from verified live model metadata and matching OCI
+labels; they are published only during apply, never during audit. An existing
+conflicting or revoked catalog artifact is rejected. No provenance is invented.
+
+After draining and stopping the API and all study workers, use a new protected
+journal directory and record the authorized operator identity:
+
+```sh
+gpu-placement --journal /deploy/placement-apply --apply --actor OPERATOR_ID
+```
+
+Apply requires scalar manager configuration during bootstrap. It recreates the
+same immutable images, retains the old containers for rollback, unloads the new
+model before name stabilization, disconnects and renames the stopped old
+container, and gives the new container its original stable name and network
+alias. It rebuilds the manager inventory after each rename. Registration IDs,
+output modes, stored ingestion jobs and historical runs are retained. For jobs
+with a registration `model_id`, Go dispatch now resolves its current container
+inside the same tenant instead of restarting a stale historical container ID.
+The stored job and prior execution records are never rewritten by resolution.
+
+Snapshots and journals may contain deployment environment secrets and are created
+with directory mode 0700 and file mode 0600. Use separate audit/apply directories;
+existing snapshots are never overwritten. Review all stage and activation files
+before re-enabling callers. Production per-GPU budgets and restarted callers
+remain an explicit subsequent rollout step. Configure gateway container
+references to resolve stable names correctly, including case-sensitive Docker
+names.

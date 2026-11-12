@@ -38,6 +38,7 @@ func DeploymentFromCandidate(
 		sourceRevision = &value
 	}
 	return entity.InferenceModelDeployment{
+		GPUUUID:          candidate.GPUUUID,
 		ContainerID:      strings.TrimSpace(candidate.ContainerID),
 		CatalogVersionID: strings.TrimSpace(catalogVersionID),
 		ArtifactModelID:  strings.TrimSpace(candidate.ModelInfo.ModelID),

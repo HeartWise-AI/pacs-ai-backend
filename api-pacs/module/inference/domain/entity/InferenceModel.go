@@ -12,6 +12,7 @@ const (
 
 // InferenceModel holds the inference model entity fields
 type InferenceModel struct {
+	PreferredGPUUUID    string                    `firestore:"preferred_gpu_uuid,omitempty"`
 	ID                  string                    `firestore:"id,omitempty"`
 	TenantID            string                    `firestore:"tenant_id"`
 	ContainerID         string                    `firestore:"container_id"`
@@ -28,6 +29,7 @@ type InferenceModel struct {
 // InferenceModelDeployment identifies the exact artifact backing a model
 // registration. Legacy records may not have this snapshot until upgraded.
 type InferenceModelDeployment struct {
+	GPUUUID          string                    `firestore:"gpu_uuid,omitempty" json:"gpuUuid,omitempty"`
 	ContainerID      string                    `firestore:"container_id" json:"containerId"`
 	CatalogVersionID string                    `firestore:"catalog_version_id,omitempty" json:"catalogVersionId,omitempty"`
 	ArtifactModelID  string                    `firestore:"artifact_model_id,omitempty" json:"artifactModelId,omitempty"`
