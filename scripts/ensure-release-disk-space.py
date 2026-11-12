@@ -9,6 +9,22 @@ from pathlib import Path
 GIB = 1024 ** 3
 
 
+def diagnose_storage(path: Path) -> None:
+    """Report storage locations and usage without reading credential contents."""
+    commands = [
+        ["df", "-h", str(path), "/"],
+        ["docker", "info", "--format", "DockerRootDir={{.DockerRootDir}} Driver={{.Driver}}"],
+        ["docker", "system", "df"],
+        ["du", "-x", "-h", "--max-depth=1", str(path.parent)],
+    ]
+    for command in commands:
+        print("Storage diagnostic: " + " ".join(command), flush=True)
+        try:
+            subprocess.run(command, check=False, timeout=30)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            print(f"Storage diagnostic unavailable: {exc}", flush=True)
+
+
 def ensure_space(path: Path, minimum_free_gib: int) -> None:
     if minimum_free_gib <= 0:
         raise ValueError("minimum free GiB must be positive")
@@ -39,8 +55,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--path", type=Path, required=True)
     parser.add_argument("--minimum-free-gib", type=int, default=25)
+    parser.add_argument("--diagnose", action="store_true")
     args = parser.parse_args()
     try:
+        if args.diagnose:
+            diagnose_storage(args.path)
         ensure_space(args.path, args.minimum_free_gib)
     except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
         parser.exit(1, f"{exc}\n")

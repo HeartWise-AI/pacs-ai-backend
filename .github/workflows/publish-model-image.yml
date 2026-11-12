@@ -108,6 +108,7 @@ jobs:
             exit 1
           fi
           python3 scripts/ensure-release-disk-space.py \
+            --diagnose \
             --path "$RUNNER_TEMP" \
             --minimum-free-gib "$PACS_AI_RELEASE_MIN_FREE_GIB"
           test -r "$DOCKERHUB_USERNAME_FILE"
