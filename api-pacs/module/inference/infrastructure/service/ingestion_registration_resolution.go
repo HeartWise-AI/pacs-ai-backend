@@ -7,6 +7,7 @@ import (
 
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
+	"api-pacs/module/inference/infrastructure/containerready"
 )
 
 // Historical ingestion model_id values are artifact IDs from model-info, not
@@ -69,15 +70,21 @@ func (service *InferenceCommandService) verifyIngestionRegistration(ctx context.
 		if model.ContainerID != strings.TrimSpace(job.ContainerID) || service.DockerSDKInterface == nil || service.DockerInferenceAPIInterface == nil {
 			return errors.New("ingestion model version changed or cannot be verified; update the job before dispatch")
 		}
-		container, err := service.DockerSDKInterface.GetContainerInfo(ctx, model.ContainerID)
+		timeout := service.inferenceContainerReadinessTimeout
+		if timeout <= 0 {
+			timeout = defaultInferenceContainerReadinessTimeout
+		}
+		poll := service.inferenceContainerReadinessPollInterval
+		if poll <= 0 {
+			poll = defaultInferenceContainerReadinessPollInterval
+		}
+		// Only the current tenant-authorized registration may be started. Legacy
+		// containers must reach metadata readiness before identity/version checks.
+		_, info, err := containerready.Ensure(ctx, service.DockerSDKInterface, service.DockerInferenceAPIInterface, model.ContainerID, timeout, poll)
 		if err != nil {
 			return err
 		}
-		info, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, strings.TrimPrefix(container.Name, "/"))
-		if err != nil {
-			return err
-		}
-		artifactID, version = strings.TrimSpace(info.Data.ModelID), strings.TrimSpace(info.Data.Version)
+		artifactID, version = strings.TrimSpace(info.ModelID), strings.TrimSpace(info.Version)
 	}
 	if logicalID && artifactID != strings.TrimSpace(job.ModelID) {
 		return errors.New(apiError.MissingRecord)
