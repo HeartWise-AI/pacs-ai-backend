@@ -22,7 +22,8 @@ The encoder runs **at most twice per study**:
 
 | Container version | Model | Hugging Face revision | Training run (Weights & Biases, `mhi_ai/deepcoro-segmentation`) |
 |---|---|---|---|
-| **1.1.1** (this one) | **v13** | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
+| **1.2.0** (this one) | **v13** | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
+| 1.1.1 | v13 | same revision | same run |
 | 1.1.0 | v13 | same revision | same run |
 | 1.0.0 | v12 | `heartwise/DeepCORO_JEPA@49c8ddf` (branch `main`) | `7983f98e` |
 
@@ -33,6 +34,25 @@ The served weights are the ones exported from the checkpoint of that training ru
 test set (macro AUROC 0.885 against 0.884). The pressure AUROC is lower (0.69 against 0.72; the difference is within
 its confidence interval, see "Verified performance"), and the lesion outputs are not better than the reference
 models. Version 1.0.0 stays buildable from commit `82492f2` of `master`.
+
+**What 1.2.0 changes against 1.1.1:** same weights, thresholds and JSON values. The HTML report
+(`report_html.py`, no torch) draws the 18 segments on a coronary schema: flagged segments in blue boxes, plaque
+narrowing the lumen to the estimated stenosis, the CTO flag, then LAD physiology and per-vessel detail. The caller may
+send `additionalMetadata.coronaryDominance` = `{call: left|right, method: majority|tie_mean_probability, leftVotes,
+rightVotes, videoCount, meanLeftProbability, source}`: the study majority of the angiogram procedure classifier's
+per-video dominance over the diagnostic videos sent to this model (cardio-agent computes it during diagnostic
+selection). It is checked against its own votes, returned as `predictions.coronary_dominance`, appended to the
+diagnosis and used to draw the schema left or right dominant. Without it the schema is drawn right dominant and says
+so. A segment with a CTO flag is drawn blocked (vessel pale beyond the occlusion) and reported as 100% in the
+report and the diagnosis, whatever its stenosis estimate; `stenosis_pct` in the JSON stays the model estimate. A
+thrombus flag is drawn as a filling defect in the lumen. The posterior LV branch (`lvp`) is left out of the report and
+the diagnosis but stays in the JSON. **Explainability** (`explain.py`): for each flagged stenosis segment (significant or CTO, at most 6, most
+probable first) the report shows the tracked pass-2 crop with the highest bag attention, the within-crop token
+attention the model used for that segment (softmax of the segment query and the mask prior, recomputed from the
+captured `_pool_study` inputs of the same call, no extra encoder pass) at the time slot holding the most attention,
+and the full frame with the crop box and the attention peak. `predictions.explainability` carries the same metadata
+(SOP, frame, box, attention shares, peak position) without images. Attention shows where a segment was read, not a
+measured lesion. `supportedAdditionalMetadata` stays empty because a non-empty list opens the user tagging page.
 
 **What 1.1.1 changes against 1.1.0** (commit `5b3a825`): same weights and thresholds. Probabilities are returned
 with 6 decimals instead of 4, and every yes/no call is taken on the returned probability. In 1.1.0 the call was

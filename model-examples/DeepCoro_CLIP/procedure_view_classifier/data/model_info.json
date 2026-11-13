@@ -4,7 +4,7 @@
   "domainName": "Cardiology",
   "stage": "preprocessing",
   "modality": "Angiogram",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "resources": {
     "gpuRequired": true,
     "residentMemoryMiB": 2216,

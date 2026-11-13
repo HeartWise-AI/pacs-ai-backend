@@ -63,7 +63,7 @@ class PredictRequest(BaseModel):
     outputMode: str
 
 class JsonPredictionResponse(BaseModel):
-    predictions: list[dict[str, str]]
+    predictions: list[dict[str, str | float]]  # labels, and dominance_left_probability since 1.0.3
 
 class OHIFPredictionResponse(BaseModel):
     class Segmentation(BaseModel):

@@ -1,4 +1,4 @@
-# Angiogram procedure classifier 1.0.2
+# Angiogram procedure classifier 1.0.3
 
 The unchanged VasoVision checkpoint and class mapping are verified by SHA-256
 before the API serves its preprocessing contract. Set `PACS_AI_SOURCE_REVISION`
@@ -16,6 +16,11 @@ is supported; missing/malformed time or ambiguous tied PCI timing fails closed.
 Invalid DICOMs, incomplete labels or failed video classification never produce a
 partial successful classification. Trained sampling, normalization, weights and
 binary thresholds are unchanged.
+
+Each video also carries `dominance` (`right_dominant` or `left_dominant`, the
+unchanged >= 0.5 call) and, since 1.0.3, `dominance_left_probability`, the
+sigmoid of that head. A study-level dominance belongs to the consumer: DeepCORO-JEPA
+uses the majority call of the diagnostic coronary videos it is given.
 
 For diagnostic coronary selection, consumers must require `status=diagnostic`,
 `main_structure` equal to `Left Coronary` or `Right Coronary`,
