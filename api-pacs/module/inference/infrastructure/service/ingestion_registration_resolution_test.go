@@ -136,11 +136,44 @@ func TestCreateAndImportCanonicalizeLogicalIDThenFollowRegistrationAfterMove(t *
 
 type legacyIngestionMetadata struct {
 	dockerAPI.DockerInferenceAPIInterface
-	model dockerAPI.ModelInfo
+	model      dockerAPI.ModelInfo
+	beforeCall func()
 }
 
 func (api *legacyIngestionMetadata) GetModelInfo(context.Context, string) (dockerAPI.GetModelInfoResponse, error) {
-	return dockerAPI.GetModelInfoResponse{Data: api.model}, nil
+	if api.beforeCall != nil {
+		api.beforeCall()
+	}
+	return dockerAPI.GetModelInfoResponse{Success: true, Data: api.model}, nil
+}
+
+func TestLegacyRegistrationStartsBeforeMetadataVerification(t *testing.T) {
+	for _, stopped := range []bool{false, true} {
+		t.Run(map[bool]string{false: "running", true: "stopped"}[stopped], func(t *testing.T) {
+			lifecycle := dockerTypes.LifecycleRunning
+			if stopped {
+				lifecycle = dockerTypes.LifecycleStopped
+			}
+			sdk := &guardedDispatchDockerSDK{containerInfos: []dockerTypes.GetContainerInfoResult{{Name: "/registered-model", Lifecycle: lifecycle}}}
+			expectedStarts := 0
+			if stopped {
+				expectedStarts = 1
+			}
+			metadata := &legacyIngestionMetadata{model: dockerAPI.ModelInfo{ModelID: "CathEF_CLIP", Version: "1.0.1"}, beforeCall: func() { require.Equal(t, expectedStarts, sdk.startCalls) }}
+			command := &InferenceCommandService{InferenceQueryRepositoryInterface: &ingestionRegistrationReader{model: entity.InferenceModel{ID: "document", TenantID: "tenant", ContainerID: "original"}}, DockerSDKInterface: sdk, DockerInferenceAPIInterface: metadata}
+			_, err := command.resolveCurrentIngestionModel(context.Background(), entity.InferenceIngestionJob{TenantID: "tenant", ModelID: "CathEF_CLIP", ContainerID: "original", ModelVersion: "1.0.1"})
+			require.NoError(t, err)
+			require.Equal(t, expectedStarts, sdk.startCalls)
+		})
+	}
+}
+
+func TestLegacyRegistrationStartFailureDoesNotReadMetadata(t *testing.T) {
+	sdk := &guardedDispatchDockerSDK{containerInfos: []dockerTypes.GetContainerInfoResult{{Name: "/registered-model", Lifecycle: dockerTypes.LifecycleStopped}}, startError: errors.New("startup failed")}
+	metadata := &legacyIngestionMetadata{beforeCall: func() { t.Fatal("metadata queried before startup succeeded") }}
+	command := &InferenceCommandService{InferenceQueryRepositoryInterface: &ingestionRegistrationReader{model: entity.InferenceModel{ID: "document", TenantID: "tenant", ContainerID: "original"}}, DockerSDKInterface: sdk, DockerInferenceAPIInterface: metadata}
+	_, err := command.resolveCurrentIngestionModel(context.Background(), entity.InferenceIngestionJob{TenantID: "tenant", ModelID: "document", ContainerID: "original", ModelVersion: "1.0.1"})
+	require.ErrorContains(t, err, "startup failed")
 }
 
 func TestLegacyLogicalIDRequiresCurrentTenantContainerAndMatchingMetadata(t *testing.T) {
