@@ -320,3 +320,48 @@ def test_dominance_is_reported_and_redraws_the_schema():
     assert "Left dominant" in html and 'aria-label="Left-dominant' in html and "3 of 4 diagnostic videos" in html
     assert service.diagnosis_text(preds).endswith(
         "Coronary dominance: left (angiogram classifier, majority of 4 diagnostic videos: 3 left, 1 right).")
+
+
+def test_explanations_reproduce_the_within_crop_attention_and_stay_out_of_the_json():
+    import base64 as b64
+    from types import SimpleNamespace
+    from explain import capture_pooling, explain_segments
+    from integrated_model import CropSpec
+
+    side, slots, d = 20, 8, 8
+    gi = GROUPS.index("mid_rca")
+    q = torch.zeros(18, d)
+    q[gi, 0] = 1.0
+    tokens = torch.zeros(1, slots * side * side, d)
+    spike = 3 * side * side + 5 * side + 12  # slot 3, row 5, column 12
+    tokens[0, spike, 0] = 400.0
+    boxes = torch.tensor([[10.0, 20.0, 40.0, 40.0]]).repeat(16, 1)
+    bag = [torch.tensor([1.0]) for _ in GROUPS]
+    bag[gi] = torch.tensor([0.7, 0.2, 0.1])  # one crop, two full views
+    store = {"specs": [CropSpec(0, gi, boxes, 50.0)], "crop_tokens": tokens,
+             "crop_fractions": torch.full((1, slots * side * side), 0.5), "bag_attention": bag}
+    model = SimpleNamespace(groups=GROUPS, q=q, mask_w=torch.ones(18))
+    items = explain_segments(model, store, [torch.rand(16, 64, 80)], ["mid_rca", "D2"], crop_res=320)
+    crop, none = items
+    assert none == {"segment": "D2", "has_crop": False, "max_full_view_attention": 1.0}
+    assert crop["frame"] == 6 and crop["bag_attention"] == 0.7 and crop["max_full_view_attention"] == 0.2
+    assert crop["peak_in_crop_xy"] == [round(12.5 / side, 3), round(5.5 / side, 3)]
+    assert crop["top10pct_token_share"] > 0.99
+    assert b64.b64decode(crop["_images"]["crop"])[:4] == b"\x89PNG"
+
+    class Tiny(torch.nn.Module):
+        def _pool_study(self, *args):
+            return "pred", "features", ["attention"]
+    tiny = Tiny()
+    with capture_pooling(tiny) as seen:
+        assert tiny._pool_study(1, 2, 3, 4, [5]) == ("pred", "features", ["attention"])
+    assert seen["crop_tokens"] == 3 and seen["specs"] == [5] and "_pool_study" not in tiny.__dict__
+
+    res = {"encoder_passes": 2, "severity": torch.full((18,), 80.0), "binary_probability": torch.zeros(18)}
+    preds = CustomPredictionService.postprocess(GROUPS, res, n_videos=1, thresholds=THRESHOLDS)
+    preds["explainability"] = items
+    public = CustomPredictionService.public(preds)
+    assert "_images" not in public["explainability"][0] and "_images" in preds["explainability"][0]
+    html = CustomPredictionService.__new__(CustomPredictionService).render_html(preds)
+    assert "Where the model looked" in html and html.count("data:image/png;base64,") == 2
+    assert "No tracked crop for this segment" in html and "This crop carried 70% of the segment's attention" in html

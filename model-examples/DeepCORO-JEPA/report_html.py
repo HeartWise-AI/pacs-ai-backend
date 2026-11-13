@@ -353,6 +353,13 @@ h3{margin:0 0 6px;font:600 12px/1.2 var(--font);letter-spacing:.1em;text-transfo
 .addendum-grid p{margin:0}
 .addendum dl{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:0 0 8px;font-variant-numeric:tabular-nums}
 .addendum dt{color:var(--muted)} .addendum dd{margin:0;font-weight:600;text-align:right}
+.explain{display:grid;gap:10px}
+.explain h2{margin:0}
+.xgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px}
+.xcard{margin:0;display:grid;gap:8px;align-content:start;border-top:1px solid var(--line);padding-top:10px}
+.xcard h3{margin:0;color:var(--ink);font-size:13px;display:flex;gap:10px;align-items:baseline}
+.ximgs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ximgs img{width:100%;height:auto;border-radius:3px;background:#000}
 .disclaimer{font-size:12.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px;max-width:80ch}
 """
 
@@ -395,6 +402,39 @@ another site.</p></div>
 <p class="muted small">Sources: DeepCORO-JEPA model documentation (container README, model card and the DeepCORO
 model and experiment pages, v6 to v13).</p>
 </section>"""
+
+
+def explain_section(items: list[dict], segs: dict) -> str:
+    """Where the model read each flagged segment: the crop with the highest attention, at pixel level."""
+    if not items:
+        return ""
+    cards = []
+    for it in items:
+        g = it["segment"]
+        v = segs.get(g, {})
+        head = (f'<h3>{escape(SEGMENT_NAMES.get(g, g))} <span class="pct {severity(displayed_pct(v)) if v else ""}">'
+                f'{displayed_pct(v):.0f}%</span></h3>' if v else f"<h3>{escape(g)}</h3>")
+        if not it.get("has_crop"):
+            cards.append(f'<figure class="xcard none">{head}<p class="muted small">No tracked crop for this segment '
+                         f'(its mask was too small in every video); the reading comes from the full views only.</p></figure>')
+            continue
+        img = it["_images"]
+        view = it.get("max_full_view_attention")
+        share = (f"This crop carried {it['bag_attention'] * 100:.0f}% of the segment's attention"
+                 + (f" (best full view {view * 100:.0f}%)." if view is not None else "."))
+        cards.append(
+            f'<figure class="xcard">{head}<div class="ximgs">'
+            f'<img src="data:image/png;base64,{img["crop"]}" alt="Tracked crop of {escape(SEGMENT_NAMES.get(g, g))} '
+            f'with the model attention overlaid" width="320" height="320">'
+            f'<img src="data:image/png;base64,{img["frame"]}" alt="Full frame with the crop box">'
+            f'</div><figcaption class="muted small">Video {it["video"] + 1}, frame {it["frame"] + 1} of 16. {share} '
+            f'The top 10% of crop pixels hold {it["top10pct_token_share"] * 100:.0f}% of the attention; + marks the peak.'
+            f'</figcaption></figure>')
+    return (f'<section class="card explain"><h2>Where the model looked</h2>'
+            f'<p class="muted small">For each flagged segment: the tracked crop that weighed most in its reading, with '
+            f'the attention the model applied inside it (bright = more weight), and the full frame with the crop box. '
+            f'Attention shows where the segment was read, not a measured lesion; its peak fell inside the expert '
+            f'lesion box about half the time on an external set.</p><div class="xgrid">{"".join(cards)}</div></section>')
 
 
 def dominance_text(dom: dict | None) -> tuple[str, str]:
@@ -463,6 +503,7 @@ def render_report(preds: dict, model_version: str, recommendation: str) -> str:
   </section>
   <aside class="side">{physiology_card(phys) if phys else ''}{thr}</aside>
 </div>
+{explain_section(preds.get("explainability") or [], segs)}
 <section class="card"><h2>Segment detail</h2>
   <p class="muted small" style="margin-bottom:10px">Bar: P(significant stenosis) on a square-root scale; the black tick is the segment's validation threshold. Significant means ≥70% (≥50% for left main).</p>
   <div class="details">{detail_rows(segs, cuts)}</div></section>

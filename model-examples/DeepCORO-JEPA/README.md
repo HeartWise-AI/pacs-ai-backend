@@ -46,7 +46,13 @@ diagnosis and used to draw the schema left or right dominant. Without it the sch
 so. A segment with a CTO flag is drawn blocked (vessel pale beyond the occlusion) and reported as 100% in the
 report and the diagnosis, whatever its stenosis estimate; `stenosis_pct` in the JSON stays the model estimate. A
 thrombus flag is drawn as a filling defect in the lumen. The posterior LV branch (`lvp`) is left out of the report and
-the diagnosis but stays in the JSON. `supportedAdditionalMetadata` stays empty because a non-empty list opens the user tagging page.
+the diagnosis but stays in the JSON. **Explainability** (`explain.py`): for each flagged stenosis segment (significant or CTO, at most 6, most
+probable first) the report shows the tracked pass-2 crop with the highest bag attention, the within-crop token
+attention the model used for that segment (softmax of the segment query and the mask prior, recomputed from the
+captured `_pool_study` inputs of the same call, no extra encoder pass) at the time slot holding the most attention,
+and the full frame with the crop box and the attention peak. `predictions.explainability` carries the same metadata
+(SOP, frame, box, attention shares, peak position) without images. Attention shows where a segment was read, not a
+measured lesion. `supportedAdditionalMetadata` stays empty because a non-empty list opens the user tagging page.
 
 **What 1.1.1 changes against 1.1.0** (commit `5b3a825`): same weights and thresholds. Probabilities are returned
 with 6 decimals instead of 4, and every yes/no call is taken on the returned probability. In 1.1.0 the call was

@@ -22,6 +22,7 @@ import cv2 as cv
 import numpy as np
 import pydicom
 import torch
+from explain import capture_pooling, explain_segments
 from report_html import HIDDEN_SEGMENTS, LESION_NAMES, PROBABILITY_DECIMALS, SEGMENT_NAMES, render_report, shown  # noqa: F401
 from utils.genericLogic import BasePredictionService
 from utils.http_utils import Config, PredictRequest
@@ -35,6 +36,7 @@ FPS_TAG = (0x0008, 0x2144)
 PRESSURE_OPERATING_POINTS = ("balanced", "high_sensitivity", "high_specificity")
 LESION_OPERATING_POINTS = ("balanced", "specificity_95", "specificity_99")
 DOMINANCE_METHODS = ("majority", "tie_mean_probability")
+MAX_EXPLAINED_SEGMENTS = 6
 
 
 def _count(value) -> bool:
@@ -185,7 +187,7 @@ class CustomPredictionService(BasePredictionService):
         args = SimpleNamespace(device=next(model.parameters()).device.type, full_res=cfg["full_res"], crop_res=cfg["crop_res"],
                                max_views=cfg["max_views"], crops_per_group=cfg["crops_per_group"],
                                frame_sampling=cfg["frame_sampling"], train_blocks=0)
-        clips = []
+        clips, clip_dicoms = [], []
         with tempfile.TemporaryDirectory() as tmp:
             for i, dicom in enumerate(self.select_videos(dicoms)):
                 path = self.dicom_to_avi(dicom, os.path.join(tmp, f"{i:02d}.avi"))
@@ -193,18 +195,49 @@ class CustomPredictionService(BasePredictionService):
                     continue
                 try:
                     clips.append(load_video_clip(path, sampling=cfg["frame_sampling"]))
+                    clip_dicoms.append(dicom)
                 except Exception as e:
                     print(f"load_video_clip failed: {e}")
         if not clips:
             return None
+        store = {}
         try:
-            with torch.inference_mode():
+            with torch.inference_mode(), capture_pooling(model) as store:
                 res = measured_forward(model, clips, args)
         except Exception:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             raise  # predict() answers 500 PROCESSING_ERROR; None is kept for "no usable clip"
-        return self.postprocess(model.groups, res, len(clips), CustomPredictionService.thresholds)
+        preds = self.postprocess(model.groups, res, len(clips), CustomPredictionService.thresholds)
+        preds["explainability"] = self.explanations(model, store, clips, clip_dicoms, preds, cfg["crop_res"])
+        return preds
+
+    @staticmethod
+    def explanations(model, store: dict, clips: list, clip_dicoms: list, preds: dict, crop_res: int) -> list[dict]:
+        """Within-crop attention for the flagged stenosis segments (significant or CTO), most probable first.
+        Never fails the prediction: an error is logged and the report goes out without the crops."""
+        segs = preds["segments"]
+        targets = sorted((g for g, v in segs.items() if g not in HIDDEN_SEGMENTS and (v["significant"] or v.get("cto"))),
+                         key=lambda g: -segs[g]["prob_significant"])[:MAX_EXPLAINED_SEGMENTS]
+        try:
+            with torch.inference_mode():
+                items = explain_segments(model, store, clips, targets, crop_res)
+        except Exception as e:
+            print(f"explainability failed: {e!r}")
+            return []
+        for item in items:
+            if item.get("has_crop"):
+                dicom = clip_dicoms[item["video"]]
+                item["series_instance_uid"] = str(getattr(dicom, "SeriesInstanceUID", ""))
+                item["sop_instance_uid"] = str(getattr(dicom, "SOPInstanceUID", ""))
+        return items
+
+    @staticmethod
+    def public(preds: Optional[dict]) -> Optional[dict]:
+        """The JSON response: explanation metadata without the rendered images."""
+        if preds is None or "explainability" not in preds:
+            return preds
+        return {**preds, "explainability": [{k: v for k, v in item.items() if k != "_images"} for item in preds["explainability"]]}
 
     @staticmethod
     def postprocess(groups, res: dict, n_videos: int, thresholds: dict) -> dict:
@@ -328,7 +361,8 @@ class CustomPredictionService(BasePredictionService):
             return {"diagnosis": "No video could be extracted from the current DICOM series", "predictions": {},
                     "modelRecommendations": {"en": "No video could be extracted or processed.",
                                              "fr": "Aucune vidéo n'a pu être extraite ou traitée.", "presentable": False}}
-        return {"diagnosis": self.diagnosis_text(preds), "predictions": preds, "modelRecommendations": self.recommendations(preds)}
+        return {"diagnosis": self.diagnosis_text(preds), "predictions": self.public(preds),
+                "modelRecommendations": self.recommendations(preds)}
 
     async def _handle_html_output(self, request: PredictRequest):
         preds = self._predict(request)
