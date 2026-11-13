@@ -131,3 +131,12 @@ def test_artifact_contract_requires_actual_hashes_and_pinned_source(tmp_path):
         verified_preprocessing_contract(tmp_path, contract, "weights.pt", "mapping.json", "a" * 40)
     with pytest.raises(ValueError, match="source revision"):
         verified_preprocessing_contract(tmp_path, contract, "weights.pt", "mapping.json", None)
+
+
+def test_json_response_keeps_labels_as_text_and_the_dominance_probability_as_a_number():
+    from utils.http_utils import JsonPredictionResponse
+    row = {**prediction("1", "12:00:00"), "status": "diagnostic", "dominance": "left_dominant",
+           "dominance_left_probability": 0.814933}
+    out = JsonPredictionResponse(predictions=[row]).model_dump()["predictions"][0]
+    assert out["dominance_left_probability"] == 0.814933 and out["dominance"] == "left_dominant"
+    assert out["series_time"] == "12:00:00" and isinstance(out["main_structure"], str)
