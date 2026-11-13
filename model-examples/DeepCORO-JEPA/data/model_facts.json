@@ -5,7 +5,7 @@
       "Description": "One EchoJEPA video encoder (ViT-L) that segments the coronary tree into 26 SYNTAX classes itself and, from up to 12 diagnostic coronary angiography runs per study, predicts for each of 18 coronary segments the % diameter stenosis, the probability of a significant lesion and the probabilities of calcification, thrombus and chronic total occlusion (CTO), plus LAD-territory FFR and iFR (value and probability of an abnormal result). Each probability comes with a yes/no call at a threshold chosen on the validation set. The encoder runs at most twice per study: full views at 224 px, then up to 4 tracked 320 px crops per segment. No segmentation map has to be provided. Version 1.1.0 serves model v13. Earlier working name: DeepCORO-Integrated.",
       "Developed_by": "HeartWise.AI / MHI",
       "Development_period": "2025-2026",
-      "Version": "1.1.1",
+      "Version": "1.1.2",
       "Model_version": "v13",
       "Training_run": "Weights & Biases run 400d0a77 of project mhi_ai/deepcoro-segmentation: https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77"
     },
@@ -39,6 +39,7 @@
       "Lesion_flags": "Calcification, thrombus and CTO are rare (1.9%, 0.2% and 0.7% of segments in the test set), so their flags use one threshold per finding set for 99% specificity on the validation set. On the held-out test set (57,492 segment readings): calcification at 0.2225: sensitivity 0.19, specificity 0.990, positive predictive value 0.27; thrombus at 0.0851: sensitivity 0.51, specificity 0.992, positive predictive value 0.10; CTO at 0.1570: sensitivity 0.37, specificity 0.990, positive predictive value 0.21. Most findings are missed and most flags are false: an absent flag does not exclude the finding. Lesion labels come from the angiography report."
     },
     "Changelogs": {
+      "1.1.2": "2026-11-12: Same model (v13), same thresholds and same code. The image now installs PyTorch 2.14.1 built for CUDA 13.0 instead of 2.5.1 built for CUDA 12.1, so it also runs on NVIDIA Blackwell GPUs. Returned numbers differ slightly from those of the development environment in which the test metrics were computed (44 of 8,880 yes/no calls on 120 test studies; same AUROC to 2 decimals); see the README.",
       "1.1.1": "2026-11-12: Same model (v13). Probabilities are returned with 6 decimals instead of 4 and every yes/no call is taken on the returned probability, so a response never shows a probability at its threshold next to a positive call.",
       "1.1.0": "2026-11-12: Serves model v13 (Weights & Biases run 400d0a77): adds calcification, thrombus and CTO probabilities and flags per segment and the Thresholds key lesion_operating_point. Stenosis is unchanged on test (macro AUROC 0.885 against 0.884); pressure AUROC is 0.69 against 0.72 for v12.",
       "1.0.0": "2026-11-12: Serves model v12: 18-segment stenosis and LAD FFR/iFR with validation-derived thresholds."
