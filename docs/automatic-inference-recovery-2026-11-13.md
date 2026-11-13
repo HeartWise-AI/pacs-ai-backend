@@ -17,7 +17,11 @@ failure. A separate dispatch regression **is** present in that PR: ingestion job
 store the logical `modelId` returned by Docker model-info, while the new resolver
 used it as a Firestore document ID. The available-model API and frontend job
 creation path confirm this contract mismatch. All six active ingestion jobs
-observed on 2026-11-13 use logical IDs.
+observed on 2026-11-13 use logical IDs. A separate read-only Firestore/current
+model-info check verified all six have exactly one current matching deployment
+snapshot per tenant, with matching container, image, artifact ID and pinned
+version. This establishes a safe current mapping for the corrected resolver;
+it does not mean the fix has been deployed or failed jobs replayed.
 
 The first fatal inventory item masked two further incompatible running models:
 `med-gemma` (`1.5.0`), `pan-echo` (`1.0.0`) and `cardio-syntax` (`1.0.0`) all
