@@ -74,6 +74,30 @@ def test_forward_batch_is_one_and_repeated_series_preserves_sop_identity(monkeyp
     assert all(r["contrast_agent"] == "yes" for r in results), "binary threshold remains >= 0.5"
 
 
+def test_dominance_returns_label_and_left_probability(monkeypatch):
+    service = CustomPredictionService()
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(CustomPredictionService, "config", SimpleNamespace(head_structure=SimpleNamespace(
+        main_structure=2, contrast_agent=1, stent_presence=1, dominance=1)), raising=False)
+    monkeypatch.setattr(CustomPredictionService, "class_mapping", {
+        "main_structure": {0: "Left Coronary", 1: "Right Coronary"}, "contrast_agent": {0: "no", 1: "yes"},
+        "stent_presence": {0: "absent", 1: "present"},
+        "dominance": {0: "right_dominant", 1: "left_dominant"}}, raising=False)
+    logits = iter([-2.0, 0.0])  # P(left) 0.119 -> right; P(left) 0.5 -> left (threshold unchanged at >= 0.5)
+    monkeypatch.setattr(CustomPredictionService, "models", {"vaso_vision": lambda batch: {
+        "main_structure": torch.tensor([[2., 0.]]), "contrast_agent": torch.tensor([[1.]]),
+        "stent_presence": torch.tensor([[-1.]]), "dominance": torch.tensor([[next(logits)]])}})
+    monkeypatch.setattr(service, "_process_dicom", lambda _: torch.zeros(3, 2, 4, 4))
+    dicoms = []
+    for i in range(2):
+        d = Dataset()
+        d.SeriesInstanceUID, d.SOPInstanceUID, d.SeriesTime = "1.2.3", f"1.2.3.{i+1}", f"12000{i}"
+        dicoms.append(d)
+    results = service._run_inference(dicoms, ["1.2.3"] * 2)
+    assert [r["dominance"] for r in results] == ["right_dominant", "left_dominant"]
+    assert [r["dominance_left_probability"] for r in results] == [0.119203, 0.5]
+
+
 def test_invalid_input_cannot_return_a_partial_success():
     with pytest.raises(ValueError, match="valid, uniquely identified"):
         asyncio.run(CustomPredictionService()._handle_json_output(
