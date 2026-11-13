@@ -61,6 +61,13 @@ func TestSignInWithPasswordClassifiesOnlyCredentialRejections(t *testing.T) {
 		{name: "disabled", message: "USER_DISABLED", expectedErr: ErrCredentialsRejected},
 		{name: "bad API key", message: "API_KEY_INVALID", expectedErr: ErrProviderUnavailable},
 		{name: "unknown tenant", message: "INVALID_TENANT_ID", expectedErr: ErrProviderUnavailable},
+		{name: "password sign-in disabled", message: "PASSWORD_LOGIN_DISABLED", expectedErr: ErrProviderUnavailable},
+		{name: "lockout", message: "TOO_MANY_ATTEMPTS_TRY_LATER", expectedErr: ErrTooManyAttempts},
+		{
+			name:        "lockout with details",
+			message:     "TOO_MANY_ATTEMPTS_TRY_LATER : Access to this account has been temporarily disabled due to many failed login attempts.",
+			expectedErr: ErrTooManyAttempts,
+		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			apiKey := strings.Join([]string{"test", "-api", "-key"}, "")
@@ -108,4 +115,57 @@ func TestSignInWithPasswordRequiresConfigurationAndBoundedClient(t *testing.T) {
 
 	_, err = api.SignInWithPassword(t.Context(), types.SignInWithPasswordRequest{})
 	require.ErrorIs(t, err, ErrProviderUnavailable)
+}
+
+func TestSignInWithPasswordReportsOnlyTheProviderCodeAsReason(t *testing.T) {
+	for _, testCase := range []struct {
+		message        string
+		expectedErr    error
+		expectedReason string
+	}{
+		{
+			message:        "TOO_MANY_ATTEMPTS_TRY_LATER : Access to this account has been temporarily disabled. user@example.com",
+			expectedErr:    ErrTooManyAttempts,
+			expectedReason: "TOO_MANY_ATTEMPTS_TRY_LATER",
+		},
+		{message: "INVALID_PASSWORD", expectedErr: ErrCredentialsRejected, expectedReason: "INVALID_PASSWORD"},
+		{message: "TENANT_ID_MISMATCH : details", expectedErr: ErrProviderUnavailable, expectedReason: "TENANT_ID_MISMATCH"},
+		{message: "API_KEY_INVALID", expectedErr: ErrProviderUnavailable, expectedReason: "API_KEY_INVALID"},
+		{message: "", expectedErr: ErrProviderUnavailable, expectedReason: "unrecognized_provider_error"},
+		{message: "<script>bad key=secret", expectedErr: ErrProviderUnavailable, expectedReason: "unrecognized_provider_error"},
+	} {
+		t.Run(testCase.expectedReason, func(t *testing.T) {
+			apiKey := strings.Join([]string{"test", "-api", "-key"}, "")
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": map[string]string{"message": testCase.message}})
+			}))
+			defer server.Close()
+			api := &IdentityToolkitAPI{APIKey: apiKey, BaseURL: server.URL, Client: server.Client()}
+
+			_, err := api.SignInWithPassword(t.Context(), types.SignInWithPasswordRequest{
+				Email: "user@example.com", Password: strings.Join([]string{"private", "-passphrase"}, ""),
+			})
+
+			require.ErrorIs(t, err, testCase.expectedErr)
+			require.Equal(t, testCase.expectedReason, FailureReason(err))
+			require.NotContains(t, FailureReason(err), "example.com")
+			require.NotContains(t, FailureReason(err), apiKey)
+		})
+	}
+}
+
+func TestSignInWithPasswordReasonForNonJSONErrorResponseIsHTTPStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("upstream failure"))
+	}))
+	defer server.Close()
+	api := &IdentityToolkitAPI{APIKey: strings.Join([]string{"test", "-api", "-key"}, ""), BaseURL: server.URL, Client: server.Client()}
+
+	_, err := api.SignInWithPassword(t.Context(), types.SignInWithPasswordRequest{})
+
+	require.ErrorIs(t, err, ErrProviderUnavailable)
+	require.Equal(t, "error_response_http_502", FailureReason(err))
+	require.Equal(t, "unknown", FailureReason(ErrProviderUnavailable))
 }
