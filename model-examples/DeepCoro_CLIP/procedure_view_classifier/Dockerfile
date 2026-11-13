@@ -11,6 +11,9 @@ RUN pip install uv
 
 WORKDIR /app
 
+ARG PACS_AI_SOURCE_REVISION
+ENV PACS_AI_SOURCE_REVISION=${PACS_AI_SOURCE_REVISION}
+
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
 

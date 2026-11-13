@@ -4,7 +4,7 @@
   "domainName": "Cardiology",
   "stage": "preprocessing",
   "modality": "Angiogram",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "resources": {
     "gpuRequired": true,
     "residentMemoryMiB": 2216,
@@ -15,32 +15,56 @@
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 99,
-  "supportedDicomModalities": ["XA"],
-  "supportedDicomTags": ["*"],
+  "supportedDicomModalities": [
+    "XA"
+  ],
+  "supportedDicomTags": [
+    "*"
+  ],
   "supportedAdditionalMetadata": [],
-  "supportedOutputModes": ["JSON"],
+  "supportedOutputModes": [
+    "JSON"
+  ],
   "approveFeedbackQuestionnaires": [
     {
       "id": "confidence",
       "type": "RADIO",
       "questionEn": "How confident are you in the model's prediction?",
-      "questionFr": "À quel point êtes-vous confiant dans la prédiction du modèle ?",
+      "questionFr": "\u00c0 quel point \u00eates-vous confiant dans la pr\u00e9diction du mod\u00e8le ?",
       "answerOptionsEn": [
-        { "id": "very", "answer": "Very confident" },
-        { "id": "somewhat", "answer": "Somewhat confident" },
-        { "id": "neutral", "answer": "Neutral" }
+        {
+          "id": "very",
+          "answer": "Very confident"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Somewhat confident"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutral"
+        }
       ],
       "answerOptionsFr": [
-        { "id": "very", "answer": "Très confiant" },
-        { "id": "somewhat", "answer": "Assez confiant" },
-        { "id": "neutral", "answer": "Neutre" }
+        {
+          "id": "very",
+          "answer": "Tr\u00e8s confiant"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Assez confiant"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutre"
+        }
       ]
     },
     {
       "id": "comments",
       "type": "TEXT",
       "questionEn": "Any additional comments?",
-      "questionFr": "Des commentaires supplémentaires ?",
+      "questionFr": "Des commentaires suppl\u00e9mentaires ?",
       "answerOptionsEn": null,
       "answerOptionsFr": null
     }
@@ -50,27 +74,62 @@
       "id": "reason",
       "type": "CHECKBOX",
       "questionEn": "Why do you disagree with the prediction?",
-      "questionFr": "Pourquoi n'êtes-vous pas d'accord avec la prédiction ?",
+      "questionFr": "Pourquoi n'\u00eates-vous pas d'accord avec la pr\u00e9diction ?",
       "answerOptionsEn": [
-        { "id": "incorrect", "answer": "Incorrect diagnosis" },
-        { "id": "quality", "answer": "Poor image quality" },
-        { "id": "clinical", "answer": "Doesn't match clinical findings" },
-        { "id": "other", "answer": "Other" }
+        {
+          "id": "incorrect",
+          "answer": "Incorrect diagnosis"
+        },
+        {
+          "id": "quality",
+          "answer": "Poor image quality"
+        },
+        {
+          "id": "clinical",
+          "answer": "Doesn't match clinical findings"
+        },
+        {
+          "id": "other",
+          "answer": "Other"
+        }
       ],
       "answerOptionsFr": [
-        { "id": "incorrect", "answer": "Diagnostic incorrect" },
-        { "id": "quality", "answer": "Mauvaise qualité d'image" },
-        { "id": "clinical", "answer": "Ne correspond pas aux résultats cliniques" },
-        { "id": "other", "answer": "Autre" }
+        {
+          "id": "incorrect",
+          "answer": "Diagnostic incorrect"
+        },
+        {
+          "id": "quality",
+          "answer": "Mauvaise qualit\u00e9 d'image"
+        },
+        {
+          "id": "clinical",
+          "answer": "Ne correspond pas aux r\u00e9sultats cliniques"
+        },
+        {
+          "id": "other",
+          "answer": "Autre"
+        }
       ]
     },
     {
       "id": "details",
       "type": "TEXT",
       "questionEn": "Please describe what was incorrect:",
-      "questionFr": "Veuillez décrire ce qui était incorrect :",
+      "questionFr": "Veuillez d\u00e9crire ce qui \u00e9tait incorrect :",
       "answerOptionsEn": null,
       "answerOptionsFr": null
     }
-  ]
+  ],
+  "preprocessingContract": {
+    "schemaVersion": "angiogram-procedure-view-sop-v1",
+    "weightsSha256": "8c16997b8848a3a670168403e96f2d286b472aa8addad8e3012df48d4f14c65b",
+    "classMappingSha256": "840654f724b91ac1a6168e4b7a9da83053f2bbaabbde4fd0a62c06dd80cb4767",
+    "forwardBatchSize": 1,
+    "procedureStatusScope": "full_request",
+    "identityFields": [
+      "series_instance_uid",
+      "sop_instance_uid"
+    ]
+  }
 }

@@ -87,7 +87,7 @@
                         },
                         "modelRecommendations": {
                           "en": "Recommendation for the next model",
-                          "fr": "Recommandation pour le prochain modèle",
+                          "fr": "Recommandation pour le prochain mod\u00e8le",
                           "presentable": true
                         }
                       }
@@ -260,7 +260,7 @@
                         "Model_type": "X3D architecture",
                         "Outcome": "Prediction of LVEF from left coronary angiograms",
                         "Output": "Continuous LVEF percentage value",
-                        "Target_population": "Adult patients aged ≥18 years who received a coronary angiogram and transthoracic echocardiogram (TTE)",
+                        "Target_population": "Adult patients aged \u226518 years who received a coronary angiogram and transthoracic echocardiogram (TTE)",
                         "Time_of_prediction": "N/A",
                         "Training_data_location_and_time-period": "University of California, San Francisco (UCSF), Dec 12, 2012, to Dec 31, 2019"
                       },
@@ -294,7 +294,7 @@
                         "Benefits": "Estimation of LVEF from standard LCA angiogram videos without additional",
                         "General_use": "CathEF is an automated estimation of LVEF from standard coronary angiogram videos. It can be used to provide real-time, dynamic assessment of cardiac function during coronary angiography without additional equipment or procedures. It is especially useful for patients with acute coronary syndrome or those at increased risk of contrast-induced nephropathy.",
                         "Safety_and_efficacy_evaluation": "N/A",
-                        "Target_population_and_use_case": "Adult patients aged ≥18 years who received a coronary angiogram of the left coronmary angiography."
+                        "Target_population_and_use_case": "Adult patients aged \u226518 years who received a coronary angiogram of the left coronmary angiography."
                       },
                       "Validation_and_performance": [
                         {
@@ -322,7 +322,7 @@
                             "Female_percentage": 35,
                             "LVEF_over_40_percentage": 82.2,
                             "LVEF_under_40_percentage": 17.7,
-                            "Mean_age": "64.3±13.3",
+                            "Mean_age": "64.3\u00b113.3",
                             "Number_of_angiograms": 3960,
                             "Number_of_patients": 3404
                           },
@@ -330,7 +330,7 @@
                             "Female_percentage": 33,
                             "LVEF_over_40_percentage": 76.3,
                             "LVEF_under_40_percentage": 16.8,
-                            "Mean_age": "68.6±13.3",
+                            "Mean_age": "68.6\u00b113.3",
                             "Number_of_angiograms": 776,
                             "Number_of_patients": 744
                           }
