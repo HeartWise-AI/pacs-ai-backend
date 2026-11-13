@@ -424,9 +424,9 @@ def explain_section(items: list[dict], segs: dict) -> str:
                  + (f" (best full view {view * 100:.0f}%)." if view is not None else "."))
         cards.append(
             f'<figure class="xcard">{head}<div class="ximgs">'
-            f'<img src="data:image/png;base64,{img["crop"]}" alt="Tracked crop of {escape(SEGMENT_NAMES.get(g, g))} '
+            f'<img src="data:image/jpeg;base64,{img["crop"]}" alt="Tracked crop of {escape(SEGMENT_NAMES.get(g, g))} '
             f'with the model attention overlaid" width="320" height="320">'
-            f'<img src="data:image/png;base64,{img["frame"]}" alt="Full frame with the crop box">'
+            f'<img src="data:image/jpeg;base64,{img["frame"]}" alt="Full frame with the crop box">'
             f'</div><figcaption class="muted small">Video {it["video"] + 1}, frame {it["frame"] + 1} of 16. {share} '
             f'The top 10% of crop pixels hold {it["top10pct_token_share"] * 100:.0f}% of the attention; + marks the peak.'
             f'</figcaption></figure>')

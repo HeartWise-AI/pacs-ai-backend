@@ -347,7 +347,7 @@ def test_explanations_reproduce_the_within_crop_attention_and_stay_out_of_the_js
     assert crop["frame"] == 6 and crop["bag_attention"] == 0.7 and crop["max_full_view_attention"] == 0.2
     assert crop["peak_in_crop_xy"] == [round(12.5 / side, 3), round(5.5 / side, 3)]
     assert crop["top10pct_token_share"] > 0.99
-    assert b64.b64decode(crop["_images"]["crop"])[:4] == b"\x89PNG"
+    assert b64.b64decode(crop["_images"]["crop"])[:2] == b"\xff\xd8"  # JPEG
 
     class Tiny(torch.nn.Module):
         def _pool_study(self, *args):
@@ -363,5 +363,5 @@ def test_explanations_reproduce_the_within_crop_attention_and_stay_out_of_the_js
     public = CustomPredictionService.public(preds)
     assert "_images" not in public["explainability"][0] and "_images" in preds["explainability"][0]
     html = CustomPredictionService.__new__(CustomPredictionService).render_html(preds)
-    assert "Where the model looked" in html and html.count("data:image/png;base64,") == 2
+    assert "Where the model looked" in html and html.count("data:image/jpeg;base64,") == 2
     assert "No tracked crop for this segment" in html and "This crop carried 70% of the segment's attention" in html
