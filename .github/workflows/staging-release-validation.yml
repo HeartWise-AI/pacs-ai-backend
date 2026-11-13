@@ -10,13 +10,15 @@ permissions:
 
 concurrency:
   group: staging-backend-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event.action != 'edited' || github.event.changes.base != null }}
 
 jobs:
   unit-tests:
     # Draft staging PRs are intentionally tested. GitHub-hosted runners isolate
     # unmerged code from the protected self-hosted production network.
-    if: github.event.pull_request.state == 'open'
+    if: >-
+      github.event.pull_request.state == 'open' &&
+      (github.event.action != 'edited' || github.event.changes.base != null)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:

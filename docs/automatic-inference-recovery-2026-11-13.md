@@ -25,6 +25,8 @@ worker work and PACS-416 GPU work do not replace acceptance across this chain.
    Managed inference, drain and candidate preparation remain closed until the
    complete inventory is accounted for. GPU administration exposes
    `managerReady: false` during this state.
+   Initial Firestore inventory and deployment-operation recovery must still
+   succeed; this change does not provide availability during a Firestore outage.
 2. Retry failed startup reconciliation every 30 seconds, with each attempt bounded
    by the configured operation timeout and a fresh Firestore catalog read. Close
    each catalog client. Stop retrying after the first success, so an active ledger

@@ -777,7 +777,12 @@ func registerHandlers() {
 			return modelManager.Reconcile(ctx, containerIDs)
 		}
 		reconcileCtx, cancelReconcile := context.WithTimeout(context.Background(), managerConfig.OperationTimeout)
-		catalogErr := reconcile(reconcileCtx)
+		containerIDs, catalogErr := modelRepository.ListRegisteredModelContainerIDs(reconcileCtx)
+		if catalogErr != nil {
+			cancelReconcile()
+			log.Fatalf("[SERVER] cannot load initial model manager inventory: %v", catalogErr)
+		}
+		catalogErr = modelManager.Reconcile(reconcileCtx, containerIDs)
 		cancelReconcile()
 		if catalogErr != nil {
 			// Keep authentication, Firestore-backed configuration, worklists and
