@@ -186,3 +186,19 @@ func TestAdministrativePlacementUsesScaledPhysicalBudget(t *testing.T) {
 		}
 	}
 }
+
+func TestStoredGPUPreferenceSupportsScalarBudgetWithoutEnablingMoves(t *testing.T) {
+	m := conservativeManager(t, newFake())
+	if err := m.ValidateGPUPreference(gpuA, resources(10, 60)); err != nil {
+		t.Fatalf("stored UUID rejected under scalar budget: %v", err)
+	}
+	if err := m.ValidateGPUPlacement(gpuA, resources(10, 60)); err == nil {
+		t.Fatal("explicit moves require per-device budgets")
+	}
+	if err := m.ValidateGPUPreference(gpuA, resources(10, 101)); err == nil {
+		t.Fatal("stored preference cannot exceed scalar capacity")
+	}
+	if err := m.ValidateGPUPreference("0", resources(10, 60)); err == nil {
+		t.Fatal("ordinal preference accepted")
+	}
+}

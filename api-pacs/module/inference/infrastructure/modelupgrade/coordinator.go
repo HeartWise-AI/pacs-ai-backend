@@ -156,6 +156,13 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 	if request.TenantID == "" || request.ModelID == "" || request.VersionID == "" {
 		return UpgradeResult{}, upgradeFailure(UpgradeStageResolveActive, errors.New(apiError.InvalidPayload), nil)
 	}
+	// Staging a candidate can start its process before drain. Do not let an
+	// unaccounted startup inventory create another potential GPU consumer.
+	if manager, ok := coordinator.manager.(interface {
+		Snapshot() modelmanager.Snapshot
+	}); ok && !manager.Snapshot().Ready {
+		return UpgradeResult{}, upgradeFailure(UpgradeStageResolveActive, modelmanager.ErrNotReconciled, nil)
+	}
 	upgradeKey := request.TenantID + "\x00" + request.ModelID
 	if !coordinator.beginUpgrade(upgradeKey) {
 		return UpgradeResult{}, upgradeFailure(
@@ -199,13 +206,23 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 		targetGPUUUID = strings.TrimSpace(registered.PreferredGPUUUID)
 	}
 	if targetGPUUUID != "" {
-		placement, ok := coordinator.manager.(interface {
+		var validate func(string, api.ModelResources) error
+		if strings.TrimSpace(request.TargetGPUUUID) == "" {
+			if preference, ok := coordinator.manager.(interface {
+				ValidateGPUPreference(string, api.ModelResources) error
+			}); ok {
+				validate = preference.ValidateGPUPreference
+			}
+		}
+		if placement, ok := coordinator.manager.(interface {
 			ValidateGPUPlacement(string, api.ModelResources) error
-		})
-		if !ok {
+		}); ok && validate == nil {
+			validate = placement.ValidateGPUPlacement
+		}
+		if validate == nil {
 			return UpgradeResult{}, upgradeFailure(UpgradeStageResolveActive, errors.New(apiError.InferenceUpgradeUnavailable), nil)
 		}
-		if err := placement.ValidateGPUPlacement(targetGPUUUID, activeModelInfo.Data.Resources); err != nil {
+		if err := validate(targetGPUUUID, activeModelInfo.Data.Resources); err != nil {
 			return UpgradeResult{}, upgradeFailure(UpgradeStageResolveActive, err, nil)
 		}
 	}

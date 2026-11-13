@@ -1084,13 +1084,23 @@ type GPUSnapshot struct{ CapacityMiB, ReservedMiB, ResidentMiB, ActiveMiB, Avail
 
 // ValidateGPUPlacement checks an explicit administrative target before deployment.
 func (m *Manager) ValidateGPUPlacement(uuid string, resources types.ModelResources) error {
+	if len(m.config.GPUBudgetsMiB) == 0 {
+		return errors.New("explicit GPU placement requires per-device budgets")
+	}
+	return m.ValidateGPUPreference(uuid, resources)
+}
+
+// ValidateGPUPreference preserves a registration's existing UUID pin with the
+// legacy shared budget. Explicit administrative moves still require per-device
+// budgets through ValidateGPUPlacement.
+func (m *Manager) ValidateGPUPreference(uuid string, resources types.ModelResources) error {
 	if err := resources.Validate(); err != nil {
 		return err
 	}
-	if !resources.GPURequired || !gpuUUIDPattern.MatchString(uuid) || len(m.config.GPUBudgetsMiB) == 0 {
-		return errors.New("explicit GPU placement requires a GPU model and per-device budgets")
+	if !resources.GPURequired || !gpuUUIDPattern.MatchString(uuid) {
+		return errors.New("GPU preference requires a GPU model and physical GPU UUID")
 	}
-	if _, ok := m.config.GPUBudgetsMiB[uuid]; !ok {
+	if _, ok := m.config.GPUBudgetsMiB[uuid]; len(m.config.GPUBudgetsMiB) > 0 && !ok {
 		return errors.New("GPU is not configured for managed inference")
 	}
 	if m.peakReservation(Model{Resources: resources}) > m.deviceCapacity(uuid) {

@@ -769,21 +769,30 @@ func registerHandlers() {
 			log.Fatalf("[SERVER] cannot initialize model manager: %v", managerErr)
 		}
 		modelRepository := &inferenceRepository.InferenceQueryRepository{FirebaseAdminSDK: firebaseAdminSDK}
+		reconcile := func(ctx context.Context) error {
+			containerIDs, err := modelRepository.ListRegisteredModelContainerIDs(ctx)
+			if err != nil {
+				return err
+			}
+			return modelManager.Reconcile(ctx, containerIDs)
+		}
 		reconcileCtx, cancelReconcile := context.WithTimeout(context.Background(), managerConfig.OperationTimeout)
 		containerIDs, catalogErr := modelRepository.ListRegisteredModelContainerIDs(reconcileCtx)
-		if catalogErr == nil {
-			catalogErr = modelManager.Reconcile(reconcileCtx, containerIDs)
+		if catalogErr != nil {
+			cancelReconcile()
+			log.Fatalf("[SERVER] cannot load initial model manager inventory: %v", catalogErr)
 		}
+		catalogErr = modelManager.Reconcile(reconcileCtx, containerIDs)
 		cancelReconcile()
 		if catalogErr != nil {
-			log.Fatalf("[SERVER] model manager startup reconciliation failed: %v", catalogErr)
+			// Keep authentication, Firestore-backed configuration, worklists and
+			// callbacks available. The unreconciled manager still rejects inference.
+			log.Printf("[SERVER] GPU admission unavailable; control plane continuing: %v", catalogErr)
+			go retryModelManagerReconciliation(context.Background(), reconcile, managerConfig.OperationTimeout, 30*time.Second)
+		} else {
+			log.Printf("[SERVER] model manager reconciled models=%d", len(modelManager.Snapshot().Models))
 		}
 		go modelManager.RunIdleEviction(context.Background())
-		snapshot := modelManager.Snapshot()
-		log.Printf(
-			"[SERVER] model manager reconciled models=%d reserved_mib=%d available_mib=%d",
-			len(snapshot.Models), snapshot.ReservedMiB, snapshot.AvailableMiB,
-		)
 
 		candidateValidator, validationErr := modelupgrade.NewCandidateValidator(
 			dockerSDK,

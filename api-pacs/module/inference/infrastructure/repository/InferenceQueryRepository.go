@@ -89,6 +89,7 @@ func (repository *InferenceQueryRepository) SelectInferenceModels(ctx context.Co
 		log.Println(err)
 		return nil, errors.New(apiError.FirestoreError)
 	}
+	defer firestoreClient.Close()
 
 	// get firestore inference models
 	var inferenceModel entity.InferenceModel
@@ -128,6 +129,7 @@ func (repository *InferenceQueryRepository) ListRegisteredModelContainerIDs(ctx 
 	if err != nil {
 		return nil, err
 	}
+	defer firestoreClient.Close()
 	var model entity.InferenceModel
 	docs, err := firestoreClient.Collection(model.GetModelName()).Documents(ctx).GetAll()
 	if err != nil {

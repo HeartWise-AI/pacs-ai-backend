@@ -25,6 +25,7 @@ import (
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
 	"api-pacs/module/inference/infrastructure/containerready"
+	"api-pacs/module/inference/infrastructure/modelmanager"
 	"api-pacs/module/inference/infrastructure/modelupgrade"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
@@ -862,13 +863,22 @@ func (service *InferenceCommandService) CreateInferenceIngestionJob(ctx context.
 	if err != nil {
 		return err
 	}
+	registration, err := service.selectIngestionRegistration(ctx, entity.InferenceIngestionJob{
+		TenantID: data.TenantID, ModelID: data.ModelID, ContainerID: data.ContainerID, ModelVersion: data.ModelVersion,
+	})
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(registration.ID) == "" {
+		return errors.New(apiError.MissingRecord)
+	}
 
 	err = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(repositoryTypes.CreateInferenceIngestionJob{
 		ID:                     generateID(),
 		TenantID:               data.TenantID,
 		DICOMModality:          data.DICOMModality,
-		ContainerID:            data.ContainerID,
-		ModelID:                data.ModelID,
+		ContainerID:            registration.ContainerID,
+		ModelID:                registration.ID,
 		ModelName:              data.ModelName,
 		ModelVersion:           data.ModelVersion,
 		Modalities:             data.Modalities,
@@ -1224,6 +1234,9 @@ func (service *InferenceCommandService) executeInferenceIngestionJob(ctx context
 
 // ExecuteInferenceIngestionRetrievalWorker retrieves studies that were queued by the ingestion runner.
 func (service *InferenceCommandService) ExecuteInferenceIngestionRetrievalWorker(ctx context.Context) error {
+	if err := service.requireManagedIngestionReady(); err != nil {
+		return err
+	}
 	candidates, err := service.InferenceQueryRepositoryInterface.ListCandidatesQueuedForRetrieval()
 	if err != nil {
 		return err
@@ -1269,6 +1282,18 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRetrievalWorker
 		}
 	}
 
+	return nil
+}
+
+// Leave scheduled work untouched while startup inventory is unaccounted for.
+// The next worker tick can resume it after successful reconciliation, without
+// converting an infrastructure outage into permanent clinical job failures.
+func (service *InferenceCommandService) requireManagedIngestionReady() error {
+	if manager, ok := service.ModelManager.(interface {
+		Snapshot() modelmanager.Snapshot
+	}); ok && !manager.Snapshot().Ready {
+		return modelmanager.ErrNotReconciled
+	}
 	return nil
 }
 
@@ -2294,7 +2319,7 @@ func (service *InferenceCommandService) resolveCurrentIngestionModel(ctx context
 	if strings.TrimSpace(job.TenantID) == "" || service.InferenceQueryRepositoryInterface == nil {
 		return job, errors.New(apiError.MissingRecord)
 	}
-	model, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByID(ctx, modelID)
+	model, err := service.selectIngestionRegistration(ctx, job)
 	if err != nil {
 		return job, err
 	}
@@ -2302,15 +2327,7 @@ func (service *InferenceCommandService) resolveCurrentIngestionModel(ctx context
 		return job, errors.New(apiError.MissingRecord)
 	}
 	currentContainer := strings.TrimSpace(model.ContainerID)
-	if version := strings.TrimSpace(job.ModelVersion); version != "" {
-		currentVersion := ""
-		if model.Deployment != nil {
-			currentVersion = strings.TrimSpace(model.Deployment.ModelVersion)
-		}
-		if (currentVersion != "" && currentVersion != version) || (currentVersion == "" && currentContainer != strings.TrimSpace(job.ContainerID)) {
-			return job, errors.New("ingestion model version changed or cannot be verified; update the job before dispatch")
-		}
-	}
+
 	job.ContainerID = currentContainer
 	return job, nil
 }
@@ -3081,36 +3098,11 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 
 // ImportInferenceIngestionJobs imports inference ingestion jobs
 func (service *InferenceCommandService) ImportInferenceIngestionJobs(ctx context.Context, data []types.CreateInferenceIngestionJob) error {
-	// add inference ingestion jobs
 	for _, job := range data {
-		jobConfig, err := normalizeIngestionJobConfig(job.StabilityMinutes, job.RecentWindowMinutes, job.MissingPollsThreshold, job.StudyTimeStart, job.StudyTimeEnd)
-		if err != nil {
-			return err
-		}
-
-		err = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(repositoryTypes.CreateInferenceIngestionJob{
-			ID:                     generateID(),
-			TenantID:               job.TenantID,
-			DICOMModality:          job.DICOMModality,
-			ContainerID:            job.ContainerID,
-			ModelID:                job.ModelID,
-			ModelName:              job.ModelName,
-			ModelVersion:           job.ModelVersion,
-			Modalities:             job.Modalities,
-			RecentWindowMinutes:    jobConfig.RecentWindowMinutes,
-			StabilityMinutes:       jobConfig.StabilityMinutes,
-			MissingPollsThreshold:  jobConfig.MissingPollsThreshold,
-			StudyTimeStart:         jobConfig.StudyTimeStart,
-			StudyTimeEnd:           jobConfig.StudyTimeEnd,
-			ScheduleStartTimestamp: time.Unix(int64(job.ScheduleStartTimestamp), 0),
-			ScheduleEndTimestamp:   time.Unix(int64(job.ScheduleEndTimestamp), 0),
-			Status:                 entity.InferenceIngestionJobStatusRunning, // default: RUNNING,
-		})
-		if err != nil {
+		if err := service.CreateInferenceIngestionJob(ctx, job); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
