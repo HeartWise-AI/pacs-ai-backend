@@ -12,7 +12,12 @@ The registered-container catalog read completed before reconciliation failed.
 This supports a startup availability failure; it does **not** establish a general
 Firestore outage. The fatal startup policy predates
 [PR #434](https://github.com/HeartWise-AI/pacs-ai-backend/pull/434).
-The reported timing alone does not establish that PR as the cause.
+The reported timing alone does not establish that PR as the cause of startup
+failure. A separate dispatch regression **is** present in that PR: ingestion jobs
+store the logical `modelId` returned by Docker model-info, while the new resolver
+used it as a Firestore document ID. The available-model API and frontend job
+creation path confirm this contract mismatch. All six active ingestion jobs
+observed on 2026-11-13 use logical IDs.
 
 The first fatal inventory item masked two further incompatible running models:
 `med-gemma` (`1.5.0`), `pan-echo` (`1.0.0`) and `cardio-syntax` (`1.0.0`) all
@@ -32,8 +37,13 @@ study. No container was stopped as part of this patch preparation.
 
 The [worklist design](https://app.notion.com/p/34b0855e87b68029ac46ce60e601497d)
 separates Go scheduling/retrieval, Python study-service dispatch and execution,
-callbacks, and tenant-scoped worklist/SSE updates. Historical PACS-258/PACS-97
-worker work and PACS-416 GPU work do not replace acceptance across this chain.
+callbacks, and tenant-scoped worklist/SSE updates. The
+[DeepWiki architecture](https://deepwiki.com/HeartWise-AI/pacs-ai-backend),
+[PACS-258 worker decoupling](https://linear.app/heartwise/issue/PACS-258/decouple-ingestion-c-move-retrieval-into-a-worker),
+[PACS-97 background workers](https://linear.app/heartwise/issue/PACS-97/issue-5-background-worker-service)
+and [PACS-416 GPU distribution](https://linear.app/heartwise/issue/PACS-416/distribute-inference-models-across-both-gpus-to-prevent-deepcoro-jepa)
+provide architecture and historical context. Their completion status is not live
+acceptance evidence across this chain.
 
 ## Implementation
 
@@ -54,7 +64,15 @@ worker work and PACS-416 GPU work do not replace acceptance across this chain.
 4. Preserve a registration's stored GPU UUID during upgrades under the supported
    scalar memory budget. Explicit GPU moves still require per-device budgets;
    resource validation and capacity limits apply in both cases.
-5. Test draft PRs targeting `staging-release-*` on GitHub-hosted runners with a
+5. Resolve historical logical artifact IDs through current tenant registrations.
+   Prefer a canonical registration ID or the original registered container;
+   otherwise require a unique current deployment snapshot matching the logical
+   artifact. Trust snapshots only when their container and image still match the
+   registration. Verify legacy same-container identity/version through read-only
+   metadata, reject ambiguous/foreign/stale targets, and preserve pinned versions
+   and historical job rows. New create/import requests store canonical registration
+   IDs after validation. Inventory errors never fall back to retained containers.
+6. Test draft PRs targeting `staging-release-*` on GitHub-hosted runners with a
    read-only token, no deployment secrets and no access to the protected production
    runners. Existing production workflows remain unchanged.
 
@@ -158,11 +176,23 @@ deduplicated recovery selection after infrastructure health is proven. Do not
 bulk replay, reset terminal states or infer that Celery worker liveness means
 the complete processing chain is healthy.
 
+Read-only aggregates on 2026-11-13 found 154 candidate records whose dispatch
+error contains Firestore, with 152 last attempts after PR #434 merged and two
+before it. These timestamps support prioritizing the subset; they do not prove
+all 154 errors have one cause. There were 851 retrieved candidates marked failed
+overall, so replaying all failures would greatly exceed the identified subset.
+After the fix is deployed, produce an approved deduplicated repair selection
+against current run/execution truth and successful results, then monitor recovery
+of that selection. Neither this patch nor stopping legacy containers replays it.
+
 ## Validation executed on the patch
 
 The seven affected Go packages pass with the race detector: interfaces, model
 manager, model upgrade, inference service/repository/REST and Docker SDK. New
 regressions cover bounded retries stopping on recovery, canceled retries, durable
 retrieval deferral with discovery still enabled, and stored scalar-budget UUID
-preferences remaining distinct from administrative moves. Live end-to-end gates
+preferences remaining distinct from administrative moves. Identity regressions
+cover historical logical IDs, create/import canonicalization, moves, ambiguous
+artifacts, current metadata, stale deployment snapshots, tenant/version checks and
+inventory errors without Docker fallback. Live end-to-end gates
 above remain required before production promotion.
