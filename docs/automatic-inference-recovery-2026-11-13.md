@@ -14,6 +14,22 @@ Firestore outage. The fatal startup policy predates
 [PR #434](https://github.com/HeartWise-AI/pacs-ai-backend/pull/434).
 The reported timing alone does not establish that PR as the cause.
 
+The first fatal inventory item masked two further incompatible running models:
+`med-gemma` (`1.5.0`), `pan-echo` (`1.0.0`) and `cardio-syntax` (`1.0.0`) all
+serve metadata without resources. Eight other running models expose valid
+contracts. The prior rollout status deliberately kept these three and
+`echo-prime` stopped; `echo-prime` remains stopped. Replacing MedGemma alone
+therefore cannot restore full inventory reconciliation.
+
+The least-change operational recovery is a separately approved return of those
+three legacy containers to their previously stopped state, preserving all
+registrations and history. First check active inference/Celery work and pending
+manual requests for each container, record identities and rollback configuration,
+and agree how in-flight work is drained. After the approved state restoration,
+require all 12 registrations to reconcile with eight supported running models and
+four unloaded legacy containers, then prove a synthetic end-to-end automatic
+study. No container was stopped as part of this patch preparation.
+
 The [worklist design](https://app.notion.com/p/34b0855e87b68029ac46ce60e601497d)
 separates Go scheduling/retrieval, Python study-service dispatch and execution,
 callbacks, and tenant-scoped worklist/SSE updates. Historical PACS-258/PACS-97
@@ -42,7 +58,7 @@ worker work and PACS-416 GPU work do not replace acceptance across this chain.
    read-only token, no deployment secrets and no access to the protected production
    runners. Existing production workflows remain unchanged.
 
-## MedGemma recovery prerequisite
+## Optional MedGemma upgrade prerequisite
 
 Current source `model-examples/med_gemma_1.5` declares version `1.5.1`, resource
 requirements and lifecycle routes. The published `1.5.1` tag was absent when
@@ -93,7 +109,8 @@ Never delete a registration/history or invent a resource override to make startu
 succeed. Replacing/stopping the legacy all-GPU consumer requires an approved
 maintenance window; a second GPU-capable copy cannot be assumed safe beside it.
 
-After the approved replacement, require successful full-inventory reconciliation
+Any replacement must address the other incompatible running legacy models too.
+After the approved inventory repair, require successful full-inventory reconciliation
 and `managerReady: true`. An API that serves worklists while admission remains
 closed is partial recovery, not restored automatic inference.
 
