@@ -63,6 +63,26 @@ base digest, source commit and resulting image ID. Validate metadata, lifecycle,
 synthetic inference and the supported input envelope in isolation. This candidate
 does not establish official provenance or authorize publication/deployment.
 
+The isolated development candidate has now been built and tested:
+
+- Source: `401b2bc9f8a83e778fde9740c82fa48a86b75be5`.
+- Published base: `heartwisehub/medgemma_1.5@sha256:787a48e55041d230a5b14c5acbbe05b1d9dd8e1b6f5ff9c01ecd72f2bd4f6c63`.
+- Local candidate: `pacs-ai-medgemma-recovery:1.5.1-401b2bc9-dev`, image ID
+  `sha256:5afc0a353b42deef238bda88fa04421f6450a667acdd816ead5880491458b860`.
+- Four synthetic pixel-preprocessing tests passed. Packaged HTTP model-info
+  reports `1.5.1`/9,712 MiB, and runtime starts `UNLOADED`.
+- In an isolated network-disabled container pinned only to A5000 UUID
+  `GPU-999e1fca-539d-fb99-2531-ad97b91da026`, load reached `READY`. One
+  synthetic nonpatient 256x256 12-bit CR gradient prediction completed in 7.82 s.
+  Unload and the supervised process restart returned `UNLOADED`.
+- Observed physical usage was 61 MiB baseline, 8,524 MiB loaded, 8,772 MiB after
+  prediction and 61 MiB after unload. The temporary container was removed.
+
+This is lifecycle smoke evidence, not representative input-envelope, clinical
+accuracy, mixed-model capacity or official artifact acceptance. Weights were
+inherited unchanged from the legacy base and were not independently verified.
+No production registration, service or clinical job was changed.
+
 Before a controlled cutover, record the full old container ID/image digest,
 tenant registration, image identity, model version, output mode, GPU request,
 history and pending-work counts in restricted operator evidence. Select exactly
@@ -82,6 +102,8 @@ reviewed default-branch commits. Open candidate PRs against those branches and
 keep them open while testing. Record both candidate SHAs, backend/frontend image
 IDs or digests and the MedGemma artifact in the same acceptance record. Existing
 uncommitted deployment worktrees are not release input.
+
+The backend candidate is [PR #435](https://github.com/HeartWise-AI/pacs-ai-backend/pull/435).
 
 The staging workflows run on draft PRs, synchronizations and retargeting. They
 only test candidate commits. They do not publish images, merge, deploy, restart
