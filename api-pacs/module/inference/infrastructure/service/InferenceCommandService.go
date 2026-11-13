@@ -25,6 +25,7 @@ import (
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
 	"api-pacs/module/inference/infrastructure/containerready"
+	"api-pacs/module/inference/infrastructure/modelmanager"
 	"api-pacs/module/inference/infrastructure/modelupgrade"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
@@ -1224,6 +1225,9 @@ func (service *InferenceCommandService) executeInferenceIngestionJob(ctx context
 
 // ExecuteInferenceIngestionRetrievalWorker retrieves studies that were queued by the ingestion runner.
 func (service *InferenceCommandService) ExecuteInferenceIngestionRetrievalWorker(ctx context.Context) error {
+	if err := service.requireManagedIngestionReady(); err != nil {
+		return err
+	}
 	candidates, err := service.InferenceQueryRepositoryInterface.ListCandidatesQueuedForRetrieval()
 	if err != nil {
 		return err
@@ -1269,6 +1273,18 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRetrievalWorker
 		}
 	}
 
+	return nil
+}
+
+// Leave scheduled work untouched while startup inventory is unaccounted for.
+// The next worker tick can resume it after successful reconciliation, without
+// converting an infrastructure outage into permanent clinical job failures.
+func (service *InferenceCommandService) requireManagedIngestionReady() error {
+	if manager, ok := service.ModelManager.(interface {
+		Snapshot() modelmanager.Snapshot
+	}); ok && !manager.Snapshot().Ready {
+		return modelmanager.ErrNotReconciled
+	}
 	return nil
 }
 
