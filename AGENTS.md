@@ -65,3 +65,8 @@ DICOM-vs-mp4 decode path; a large gap means wrong video selection or wrong mean/
 Use **`.claude/skills/pacs-ai-model-verification/SKILL.md`** when reviewing a new or updated model,
 checking release readiness, or verifying an immutable published image. The skill routes deterministic
 checks through `scripts/verify-model.py`; verification does not authorize publication or deployment.
+
+## Release candidates
+
+When preparing a release candidate, rebuilding after a fix, verifying staging evidence,
+or proposing production promotion, read [docs/agents/release.md](docs/agents/release.md).
