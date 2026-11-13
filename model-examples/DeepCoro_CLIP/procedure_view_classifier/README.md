@@ -29,3 +29,21 @@ not an official image publication. Register and run it through the managed
 inference gateway on exactly one configured physical GPU UUID, after lifecycle,
 resource and synthetic-input validation. Do not publish an existing version tag
 or replace registrations/history to deploy a candidate.
+
+`Dockerfile.local` records that recovery build against the immutable base digest
+and verifies its checkpoint, class mapping and normalization configuration before
+copying application code. `compose.local.yml` supplies the stable service name,
+external PACS network, one physical GPU and bounded logs. Set
+`CLASSIFIER_SOURCE_REVISION` to the full checked-out commit,
+`CLASSIFIER_LOCAL_IMAGE` to a visibly local versioned tag, and
+`CLASSIFIER_GPU_UUID` to the selected physical device; then run
+`docker compose -f compose.local.yml build` from this directory. Never publish
+this local artifact as an official semantic-version release.
+
+For a new deployment, start and register the container through the normal managed
+model workflow. An existing registration identifies its container: do not run
+Compose recreation over that registered container without a coordinated model
+registration update. In cardio-agent, `study-service/docker-compose.jepa-diagnostic.yaml`
+enables selection on the HTTP service and default worker using the verified image
+ID and source commit. JEPA's model Dockerfile is already maintained separately in
+`model-examples/DeepCORO-JEPA`; the classifier is a preceding managed model.
