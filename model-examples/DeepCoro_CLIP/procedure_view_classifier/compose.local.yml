@@ -1,0 +1,29 @@
+services:
+  angiogram-procedure-view-classifier:
+    image: ${CLASSIFIER_LOCAL_IMAGE:?Set a versioned local classifier image}
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+      args:
+        PACS_AI_SOURCE_REVISION: ${CLASSIFIER_SOURCE_REVISION:?Set the full source commit}
+    container_name: angiogram-procedure-view-classifier
+    restart: unless-stopped
+    networks:
+      - pacs-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${CLASSIFIER_GPU_UUID:?Set the physical GPU UUID}"]
+              capabilities: [gpu]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+networks:
+  pacs-net:
+    external: true
+    name: ${PACS_NETWORK_NAME:-pacs-net}
