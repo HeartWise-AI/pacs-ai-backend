@@ -22,6 +22,7 @@ import cv2 as cv
 import numpy as np
 import pydicom
 import torch
+from report_html import HIDDEN_SEGMENTS, LESION_NAMES, PROBABILITY_DECIMALS, SEGMENT_NAMES, render_report, shown  # noqa: F401
 from utils.genericLogic import BasePredictionService
 from utils.http_utils import Config, PredictRequest
 
@@ -31,26 +32,13 @@ sys.path.insert(0, str(MODELS_DIR / "deepcoro_model"))
 SERIES_TIME_TAG = (0x0008, 0x0031)
 FPS_TAG = (0x0008, 0x2144)
 
-SEGMENT_NAMES = {
-    "prox_rca": "Proximal RCA", "mid_rca": "Mid RCA", "dist_rca": "Distal RCA", "pda": "PDA",
-    "posterolateral": "Posterolateral", "left_main": "Left main", "prox_lad": "Proximal LAD", "mid_lad": "Mid LAD",
-    "dist_lad": "Distal LAD", "D1": "First diagonal", "D2": "Second diagonal", "prox_lcx": "Proximal LCx",
-    "mid_lcx": "Mid LCx", "dist_lcx": "Distal LCx", "om1": "First obtuse marginal", "om2": "Second obtuse marginal",
-    "bx": "Ramus (bisector)", "lvp": "Posterior left ventricular",
-}
 PRESSURE_OPERATING_POINTS = ("balanced", "high_sensitivity", "high_specificity")
 LESION_OPERATING_POINTS = ("balanced", "specificity_95", "specificity_99")
-PROBABILITY_DECIMALS = 6  # probabilities in the response; the yes/no calls are taken on these returned values
+DOMINANCE_METHODS = ("majority", "tie_mean_probability")
 
 
-def shown(p: float, cut: float, decimals: int) -> str:
-    """A returned probability as text for the diagnosis and the report: `decimals` decimals, or more when fewer
-    would print it on the other side of its threshold (printed with 4 decimals) than the call that was made."""
-    for d in range(decimals, PROBABILITY_DECIMALS):
-        if (float(f"{p:.{d}f}") > round(cut, 4)) == (p > cut):
-            return f"{p:.{d}f}"
-    return f"{p:.{PROBABILITY_DECIMALS}f}"
-LESION_NAMES = {"calcif": "calcification", "thrombus": "thrombus", "cto": "chronic total occlusion"}
+def _count(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 class CustomPredictionService(BasePredictionService):
@@ -258,10 +246,14 @@ class CustomPredictionService(BasePredictionService):
         return [g for g, v in preds["segments"].items() if v["significant"]]
 
     def diagnosis_text(self, preds: dict) -> str:
-        sig = self.significant_segments(preds)
+        # The report leaves out HIDDEN_SEGMENTS (posterior LV branch); a CTO-flagged segment is reported as 100%.
+        segs = {g: v for g, v in preds["segments"].items() if g not in HIDDEN_SEGMENTS}
+        sig = [g for g in self.significant_segments(preds) if g in segs]
+        pct = lambda v: (f"estimated 100%, CTO flag; stenosis estimate {v['stenosis_pct']:.0f}%" if v.get("cto")
+                         else f"estimated {v['stenosis_pct']:.0f}%")
         text = ("Flagged for possible significant stenosis (probability above its validation threshold): "
-                + ", ".join(f"{SEGMENT_NAMES[g]} (P {shown(preds['segments'][g]['prob_significant'], preds['segments'][g]['prob_threshold'], 3)}, estimated "
-                            f"{preds['segments'][g]['stenosis_pct']:.0f}%)" for g in sig) + "."
+                + ", ".join(f"{SEGMENT_NAMES[g]} (P {shown(segs[g]['prob_significant'], segs[g]['prob_threshold'], 3)}, "
+                            f"{pct(segs[g])})" for g in sig) + "."
                 if sig else "No segment flagged for significant stenosis.")
         if "lad_physiology" in preds:
             p = preds["lad_physiology"]
@@ -271,11 +263,17 @@ class CustomPredictionService(BasePredictionService):
                      f"{p['ffr_abnormal_threshold']:.4f}); iFR predicted {call('ifr')} (P(iFR ≤ 0.89) "
                      f"{prob('ifr')}, threshold {p['ifr_abnormal_threshold']:.4f}).")
         for name, label in LESION_NAMES.items() if "lesion_thresholds" in preds else ():
-            hit = [g for g, v in preds["segments"].items() if v[name]]
+            hit = [g for g, v in segs.items() if v[name]]
             cut = preds["lesion_thresholds"][name]
             text += (f" Flagged for {label} (P above {cut:.4f}): "
-                     + ", ".join(f"{SEGMENT_NAMES[g]} (P {shown(preds['segments'][g][f'{name}_prob'], cut, 2)})" for g in hit) + "."
+                     + ", ".join(f"{SEGMENT_NAMES[g]} (P {shown(segs[g][f'{name}_prob'], cut, 2)})" for g in hit) + "."
                      if hit else f" No segment flagged for {label}.")
+        if dom := preds.get("coronary_dominance"):
+            text += (f" Coronary dominance: {dom['call']} (angiogram classifier, "
+                     + (f"majority of {dom['video_count']} diagnostic videos: {dom['left_votes']} left, {dom['right_votes']} right)."
+                        if dom["method"] == "majority" else
+                        f"tied {dom['left_votes']}/{dom['right_votes']}, mean P(left) {dom['mean_left_probability']:.2f}).")
+                     )
         return text
 
     @staticmethod
@@ -292,36 +290,40 @@ class CustomPredictionService(BasePredictionService):
         return {"en": en, "fr": fr, "presentable": True}
 
     def render_html(self, preds: dict) -> str:
-        cuts = preds.get("lesion_thresholds", {})
-        rows = "".join(
-            f"<tr><td>{SEGMENT_NAMES[g]}</td><td style='text-align:right'>{v['stenosis_pct']:.0f}%</td>"
-            f"<td style='text-align:right'>{shown(v['prob_significant'], v['prob_threshold'], 3)}</td>"
-            f"<td style='text-align:right'>{v['prob_threshold']:.4f}</td><td>{'Yes' if v['significant'] else 'No'}</td>"
-            + "".join(f"<td style='text-align:right'>{'<b>' if v[k] else ''}{shown(v[f'{k}_prob'], cuts[k], 2)}{' flagged</b>' if v[k] else ''}</td>"
-                      for k in LESION_NAMES if k in v)
-            + "</tr>" for g, v in preds["segments"].items())
-        lesion_cols = "".join(f"<th>P({'CTO' if k == 'cto' else h})</th>" for k, h in LESION_NAMES.items() if k in cuts)
-        lesion_note = (f"<p>Calcification, thrombus and chronic total occlusion (CTO) flags, operating point {cuts['operating_point']}: "
-                       + ", ".join(f"{h} above {cuts[k]:.4f}" for k, h in LESION_NAMES.items() if k in cuts) + ".</p>" if cuts else "")
-        phys = ""
-        if "lad_physiology" in preds:
-            p = preds["lad_physiology"]
-            call = lambda k: "abnormal" if p[f"{k}_abnormal"] else "normal"
-            prob = lambda k: shown(p[f"{k}_abnormal_prob"], p[f"{k}_abnormal_threshold"], 2)
-            phys = (f"<h3>LAD physiology</h3><p>FFR predicted <b>{call('ffr')}</b>: P(FFR ≤ 0.80) {prob('ffr')}, "
-                    f"threshold {p['ffr_abnormal_threshold']:.4f}, estimated value {p['ffr']:.2f}.<br>"
-                    f"iFR predicted <b>{call('ifr')}</b>: P(iFR ≤ 0.89) {prob('ifr')}, "
-                    f"threshold {p['ifr_abnormal_threshold']:.4f}, estimated value {p['ifr']:.2f}.<br>"
-                    f"Operating point: {p['operating_point']}.</p>")
-        return ("<html><body style='font-family:sans-serif'>"
-                f"<h2>DeepCORO-JEPA {CustomPredictionService.structure.get('model_version', '')}</h2>"
-                f"<p>{self.diagnosis_text(preds)}</p>"
-                f"<table border='1' cellspacing='0' cellpadding='4'><tr><th>Segment</th><th>Stenosis</th><th>P(significant)</th><th>Threshold</th><th>Flagged</th>{lesion_cols}</tr>{rows}</table>"
-                f"{lesion_note}{phys}<p style='color:#555'>{preds['n_videos']} video{'' if preds['n_videos'] == 1 else 's'}, {preds['encoder_passes']} encoder passes. "
-                f"{self.recommendations(preds)['en']}</p></body></html>")
+        return render_report(preds, CustomPredictionService.structure.get("model_version", ""),
+                             self.recommendations(preds)["en"])
+
+    @staticmethod
+    def coronary_dominance(request: PredictRequest) -> Optional[dict]:
+        """Study dominance passed by the caller in additionalMetadata.coronaryDominance: the majority call of the
+        angiogram procedure classifier over the diagnostic videos sent here. Absent -> None; malformed -> error."""
+        dom = (getattr(request, "additionalMetadata", None) or {}).get("coronaryDominance")
+        if dom is None:
+            return None
+        if not isinstance(dom, dict) or dom.get("call") not in ("left", "right") or dom.get("method") not in DOMINANCE_METHODS:
+            raise ValueError("coronaryDominance needs call left/right and a known method")
+        left, right, n = dom.get("leftVotes"), dom.get("rightVotes"), dom.get("videoCount")
+        mean = dom.get("meanLeftProbability")
+        if not (_count(left) and _count(right) and _count(n)) or n == 0 or left + right != n:
+            raise ValueError("coronaryDominance vote counts are inconsistent")
+        if mean is not None and (isinstance(mean, bool) or not isinstance(mean, (int, float)) or not 0 <= mean <= 1):
+            raise ValueError("coronaryDominance meanLeftProbability must be within [0, 1]")
+        majority = "left" if left > right else "right" if right > left else None
+        if (dom["method"] == "majority") != (majority is not None) or (majority and dom["call"] != majority) or (
+                majority is None and (mean is None or dom["call"] != ("left" if mean >= 0.5 else "right"))):
+            raise ValueError("coronaryDominance call does not follow its votes")
+        return {"call": dom["call"], "method": dom["method"], "left_votes": left, "right_votes": right,
+                "video_count": n, "mean_left_probability": mean, "source": str(dom.get("source", ""))[:200]}
+
+    def _predict(self, request: PredictRequest) -> Optional[dict]:
+        dominance = self.coronary_dominance(request)  # validated before the GPU runs
+        preds = self._run_inference(self._decode_dicoms(request))
+        if preds is not None and dominance is not None:
+            preds["coronary_dominance"] = dominance
+        return preds
 
     async def _handle_json_output(self, request: PredictRequest):
-        preds = self._run_inference(self._decode_dicoms(request))
+        preds = self._predict(request)
         if preds is None:
             return {"diagnosis": "No video could be extracted from the current DICOM series", "predictions": {},
                     "modelRecommendations": {"en": "No video could be extracted or processed.",
@@ -329,7 +331,7 @@ class CustomPredictionService(BasePredictionService):
         return {"diagnosis": self.diagnosis_text(preds), "predictions": preds, "modelRecommendations": self.recommendations(preds)}
 
     async def _handle_html_output(self, request: PredictRequest):
-        preds = self._run_inference(self._decode_dicoms(request))
+        preds = self._predict(request)
         if preds is None:
             html = "<h1>No video could be extracted from the current DICOM series</h1>"
         else:

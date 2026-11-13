@@ -37,6 +37,7 @@ RUN --mount=type=secret,id=hf_token \
 # Copy application files
 COPY main.py .
 COPY logic.py .
+COPY report_html.py .
 COPY config.json .
 COPY data/ ./data/
 COPY docs/ ./docs/

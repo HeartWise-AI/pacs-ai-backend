@@ -138,8 +138,10 @@ def test_a_call_follows_the_returned_probability():
     assert "iFR predicted abnormal (P(iFR ≤ 0.89) 0.5002, threshold 0.5000)" in text
     assert "FFR predicted normal (P(FFR ≤ 0.80) 0.50, threshold 0.5000)" in text
     assert "Flagged for thrombus (P above 0.2500): Proximal RCA (P 0.25001)" in text
-    row = re.search(r"<tr><td>Proximal RCA</td>(.*?)</tr>", html).group(1)  # stenosis, P(significant), threshold, flag, lesions
-    assert re.findall(r"<td[^>]*>(.*?)</td>", row) == ["0%", "0.250", "0.2500", "No", "0.25", "<b>0.25001 flagged</b>", "0.25"]
+    row = re.search(r'<li class="seg"><span class="sname">Proximal RCA(.*?)</li>', html).group(1)  # not flagged
+    assert '<span class="chip warn">Thrombus</span>' in row and '<span class="pct sev-none">0%</span>' in row
+    assert 'P 0.250<span class="muted"> / 0.2500</span>' in row
+    assert "Calcification 0.25 · Thrombus 0.25001 · CTO 0.25" in row
 
 
 def test_printed_probabilities_keep_their_side_of_the_threshold():
@@ -209,7 +211,30 @@ def test_lesion_outputs_are_reported_and_flagged_when_the_checkpoint_has_them():
     assert "Flagged for chronic total occlusion (P above 0.1570): Proximal RCA (P 0.40)." in text
     assert "No segment flagged for thrombus." in text and "Flagged for calcification" in text
     html = service.render_html(preds)
-    assert "<th>P(CTO)</th>" in html and "<b>0.40 flagged</b>" in html and "operating point specificity_99" in html
+    row = re.search(r'<li class="seg is-flag"><span class="sname">Proximal RCA(.*?)</li>', html).group(1)
+    assert '<span class="chip warn">CTO</span>' in row and "CTO 0.40" in row
+    # a CTO is reported as an occlusion: 100%, flagged, vessel blocked at the lesion and pale beyond it
+    assert '<span class="pct sev-high">100%<span class="muted small"> est. 0%</span></span>' in row
+    assert html.count('class="cto-mark"') == 1 and html.count('class="occluded"') == 1
+    assert "Operating point specificity_99" in html and "Proximal RCA (100%, occluded)" in html
+    assert "Proximal RCA (P 0.000, estimated 100%, CTO flag; stenosis estimate 0%)" not in text  # not significant
+
+
+def test_thrombus_is_drawn_and_the_posterior_lv_branch_is_hidden():
+    thrombus = torch.zeros(18)
+    thrombus[GROUPS.index("mid_lad")] = 0.5
+    thrombus[GROUPS.index("lvp")] = 0.5
+    res = {"encoder_passes": 1, "severity": torch.zeros(18), "binary_probability": torch.full((18,), 0.25),
+           "lesion_calcif_probability": torch.zeros(18), "lesion_thrombus_probability": thrombus,
+           "lesion_cto_probability": torch.zeros(18)}
+    preds = CustomPredictionService.postprocess(GROUPS, res, n_videos=1, thresholds=THRESHOLDS)
+    assert preds["segments"]["lvp"]["thrombus"] and preds["segments"]["lvp"]["significant"]  # still in the JSON
+    service = CustomPredictionService.__new__(CustomPredictionService)
+    html, text = service.render_html(preds), service.diagnosis_text(preds)
+    assert html.count('class="thrombus"') == 1 and "Flagged for thrombus (P above 0.0851): Mid LAD (P 0.50)." in text
+    assert "Posterior left ventricular" not in html and "PLV" not in html and "Posterior left ventricular" not in text
+    assert "<b>17</b> segments shown" in html
+    assert html.index('id="method"') > html.index('class="disclaimer"'), "method addendum closes the report"
 
 
 def test_model_facts_name_the_training_run_of_the_served_weights():
@@ -259,3 +284,39 @@ def test_no_usable_clip_is_still_reported_as_no_video(monkeypatch):
     monkeypatch.setattr(CustomPredictionService, "dicom_to_avi", staticmethod(lambda dicom, output_path: None))
     success, result = asyncio.run(service.predict(types.SimpleNamespace(outputMode="json")))
     assert success is True and result["predictions"] == {} and result["modelRecommendations"]["presentable"] is False
+
+
+def _dominance_request(**dom):
+    from types import SimpleNamespace
+    return SimpleNamespace(additionalMetadata={"coronaryDominance": dom} if dom else {})
+
+
+VALID_DOMINANCE = {"call": "left", "method": "majority", "leftVotes": 3, "rightVotes": 1, "videoCount": 4,
+                   "meanLeftProbability": 0.7, "source": "angiogram procedure view classifier 1.0.3"}
+
+
+def test_coronary_dominance_comes_from_request_metadata_and_is_validated():
+    assert CustomPredictionService.coronary_dominance(_dominance_request()) is None
+    assert CustomPredictionService.coronary_dominance(_dominance_request(**VALID_DOMINANCE)) == {
+        "call": "left", "method": "majority", "left_votes": 3, "right_votes": 1, "video_count": 4,
+        "mean_left_probability": 0.7, "source": "angiogram procedure view classifier 1.0.3"}
+    tie = {**VALID_DOMINANCE, "method": "tie_mean_probability", "leftVotes": 2, "rightVotes": 2, "meanLeftProbability": 0.6}
+    assert CustomPredictionService.coronary_dominance(_dominance_request(**tie))["call"] == "left"
+    for bad in ({"call": "codominant"}, {"call": "right"}, {"leftVotes": 2}, {"videoCount": 0, "leftVotes": 0, "rightVotes": 0},
+                {"meanLeftProbability": 1.5}, {"method": "tie_mean_probability"}, {"leftVotes": True},
+                {**tie, "call": "right", "method": "tie_mean_probability", "leftVotes": 2, "rightVotes": 2}):
+        with pytest.raises(ValueError, match="coronaryDominance"):
+            CustomPredictionService.coronary_dominance(_dominance_request(**{**VALID_DOMINANCE, **bad}))
+
+
+def test_dominance_is_reported_and_redraws_the_schema():
+    res = {"encoder_passes": 1, "severity": torch.zeros(18), "binary_probability": torch.zeros(18)}
+    preds = CustomPredictionService.postprocess(GROUPS, res, n_videos=4, thresholds=THRESHOLDS)
+    service = CustomPredictionService.__new__(CustomPredictionService)
+    html = service.render_html(preds)
+    assert "Not provided" in html and 'aria-label="Right-dominant' in html and "Coronary dominance" not in service.diagnosis_text(preds)
+    preds["coronary_dominance"] = CustomPredictionService.coronary_dominance(_dominance_request(**VALID_DOMINANCE))
+    html = service.render_html(preds)
+    assert "Left dominant" in html and 'aria-label="Left-dominant' in html and "3 of 4 diagnostic videos" in html
+    assert service.diagnosis_text(preds).endswith(
+        "Coronary dominance: left (angiogram classifier, majority of 4 diagnostic videos: 3 left, 1 right).")
