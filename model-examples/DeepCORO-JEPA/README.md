@@ -22,7 +22,8 @@ The encoder runs **at most twice per study**:
 
 | Container version | Model | Hugging Face revision | Training run (Weights & Biases, `mhi_ai/deepcoro-segmentation`) |
 |---|---|---|---|
-| **1.2.0** (this one) | **v13** | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
+| **1.3.0** (this one) | **v13** | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
+| 1.2.0 | v13 | same revision | same run |
 | 1.1.1 | v13 | same revision | same run |
 | 1.1.0 | v13 | same revision | same run |
 | 1.0.0 | v12 | `heartwise/DeepCORO_JEPA@49c8ddf` (branch `main`) | `7983f98e` |
@@ -34,6 +35,17 @@ The served weights are the ones exported from the checkpoint of that training ru
 test set (macro AUROC 0.885 against 0.884). The pressure AUROC is lower (0.69 against 0.72; the difference is within
 its confidence interval, see "Verified performance"), and the lesion outputs are not better than the reference
 models. Version 1.0.0 stays buildable from commit `82492f2` of `master`.
+
+**What 1.3.0 changes against 1.2.0:** same weights, thresholds, JSON values and report. `POST
+/inference/render-report` with `{"result": <data of a JSON-mode predict>}` answers `{"htmlBase64", "modelVersion",
+"reportModelVersion"}`: the HTML report of that stored result, byte for byte what HTML-mode predict returns for the
+same prediction (both call `CustomPredictionService.report_html` on the JSON predictions). It runs on the CPU, never
+loads the model, does not touch the inference semaphore or the idle timer, and works before the weights are loaded.
+Bodies above 5 MB answer 413; a result the renderer cannot use answers 422 `INVALID_RESULT` with the path of the
+first bad value (`report_input.py` checks types, ranges, segment names and that images are base64 JPEG).
+`predictions.explainability[i].images` = `{crop, frame}` (base64 JPEG, about 20-40 KB each) is now kept in the JSON
+so a stored result renders with its pictures; 1.2.0 results render with a note instead. `GET
+/inference/model-info` advertises `capabilities.renderReport: true`.
 
 **What 1.2.0 changes against 1.1.1:** same weights, thresholds and JSON values. The HTML report
 (`report_html.py`, no torch) draws the 18 segments on a coronary schema: flagged segments in blue boxes, plaque

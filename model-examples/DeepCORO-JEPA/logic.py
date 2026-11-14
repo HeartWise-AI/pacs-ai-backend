@@ -37,6 +37,7 @@ PRESSURE_OPERATING_POINTS = ("balanced", "high_sensitivity", "high_specificity")
 LESION_OPERATING_POINTS = ("balanced", "specificity_95", "specificity_99")
 DOMINANCE_METHODS = ("majority", "tie_mean_probability")
 MAX_EXPLAINED_SEGMENTS = 6
+NO_VIDEO_HTML = "<h1>No video could be extracted from the current DICOM series</h1>"
 
 
 def _count(value) -> bool:
@@ -234,7 +235,8 @@ class CustomPredictionService(BasePredictionService):
 
     @staticmethod
     def public(preds: Optional[dict]) -> Optional[dict]:
-        """The JSON response: explanation metadata without the rendered images."""
+        """The JSON response. Explanation items keep their JPEG `images` (base64 strings) so that
+        /inference/render-report can draw the same report from a stored result; any private `_images` key is dropped."""
         if preds is None or "explainability" not in preds:
             return preds
         return {**preds, "explainability": [{k: v for k, v in item.items() if k != "_images"} for item in preds["explainability"]]}
@@ -322,9 +324,34 @@ class CustomPredictionService(BasePredictionService):
               "fausses alertes et manquent une bonne partie de ces lésions.")
         return {"en": en, "fr": fr, "presentable": True}
 
+    @staticmethod
+    def report_model_version() -> str:
+        """Model version printed in the report header ("v13"): from the loaded checkpoint structure, else from the
+        model_config.json downloaded next to the weights (no load needed), else from the model facts."""
+        version = CustomPredictionService.structure.get("model_version")
+        if version:
+            return str(version)
+        try:
+            config = json.loads((MODELS_DIR / "config.json").read_text(encoding="utf-8"))
+            structure = MODELS_DIR / config["ModelStateDict"].get("structure_path", "model_config.json")
+            version = json.loads(structure.read_text(encoding="utf-8")).get("model_version")
+            if version:
+                return str(version)
+        except (OSError, ValueError, KeyError):
+            pass
+        facts = json.loads((MODELS_DIR.parent / "data" / "model_facts.json").read_text(encoding="utf-8"))
+        return str(facts["en"]["Summary"].get("Model_version", ""))
+
+    @classmethod
+    def report_html(cls, preds: Optional[dict]) -> str:
+        """The HTML report of a JSON-mode `predictions` object. HTML-mode predict and /inference/render-report both
+        call this on the public (JSON) predictions, so a stored JSON result renders to the same document."""
+        if not preds:
+            return NO_VIDEO_HTML
+        return render_report(preds, cls.report_model_version(), cls.recommendations(preds)["en"])
+
     def render_html(self, preds: dict) -> str:
-        return render_report(preds, CustomPredictionService.structure.get("model_version", ""),
-                             self.recommendations(preds)["en"])
+        return self.report_html(self.public(preds))
 
     @staticmethod
     def coronary_dominance(request: PredictRequest) -> Optional[dict]:
@@ -366,8 +393,5 @@ class CustomPredictionService(BasePredictionService):
 
     async def _handle_html_output(self, request: PredictRequest):
         preds = self._predict(request)
-        if preds is None:
-            html = "<h1>No video could be extracted from the current DICOM series</h1>"
-        else:
-            html = self.render_html(preds)
+        html = self.report_html(self.public(preds))
         return {"htmlBase64": base64.b64encode(html.encode("utf-8")).decode("utf-8")}

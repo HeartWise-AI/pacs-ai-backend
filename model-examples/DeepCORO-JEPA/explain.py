@@ -116,6 +116,6 @@ def explain_segments(model, store: dict, clips: list, targets: list[str], crop_r
             "max_full_view_attention": round(float(view_att.max()), 4) if len(view_att) else None,
             "peak_in_crop_xy": [round((px + 0.5) / side, 3), round((py + 0.5) / side, 3)],
             "top10pct_token_share": round(float(top[:max(1, len(top) // 10)].sum() / max(top.sum(), 1e-12)), 3),
-            "_images": {"crop": _jpeg(overlay), "frame": _jpeg(full)},
+            "images": {"crop": _jpeg(overlay), "frame": _jpeg(full)},
         })
     return out

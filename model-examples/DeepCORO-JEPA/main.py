@@ -1,5 +1,6 @@
 # main.py
 import asyncio
+import base64
 import json
 import os
 import signal
@@ -8,6 +9,8 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from logic import CustomPredictionService
+from report_input import ResultError, predictions_of
+from starlette.concurrency import run_in_threadpool
 from utils.resource_config import create_inference_semaphore, load_model_info, model_info_payload
 from utils.model_lifecycle import (
     ModelLifecycle,
@@ -148,6 +151,67 @@ async def predict(request: PredictRequest):
             message="Unsupported output mode",
             error_code="UNSUPPORTED_OUTPUT_MODE",
         ).to_response()
+
+
+RENDER_REPORT_MAX_BYTES = 5 * 1024 * 1024  # a result with six explanation crops is about 250 KB
+
+
+def _reject_constant(name: str):
+    raise ValueError(f"{name} is not valid JSON")
+
+
+RENDER_REPORT_DRAIN_BYTES = 64 * 1024 * 1024
+
+
+async def _bounded_body(request: Request, limit: int) -> bytes | None:
+    """The request body, or None when it is larger than `limit` bytes. An oversized body is read and dropped (up to
+    RENDER_REPORT_DRAIN_BYTES) so that nginx, which streams the body unbuffered, passes the 413 on instead of a 502."""
+    body, seen = bytearray(), 0
+    async for chunk in request.stream():
+        seen += len(chunk)
+        if seen <= limit:
+            body += chunk
+        elif seen > RENDER_REPORT_DRAIN_BYTES:
+            break
+    return bytes(body) if seen <= limit else None
+
+
+def _render_stored_result(payload) -> str:
+    if not isinstance(payload, dict) or set(payload) != {"result"}:
+        raise ResultError('body must be {"result": <the data object of a JSON-mode prediction>}')
+    return CustomPredictionService.report_html(predictions_of(payload["result"]))
+
+
+@app.post("/inference/render-report")
+async def render_report(request: Request):
+    """HTML report of a stored JSON-mode result. CPU only: no model load, no forward pass, no GPU, and it does not
+    count as model activity (the idle timer and the inference semaphore are left alone)."""
+    body = await _bounded_body(request, RENDER_REPORT_MAX_BYTES)
+    if body is None:
+        return HTTPResponse(status=413, success=False, error_code="PAYLOAD_TOO_LARGE",
+                            message=f"Body larger than {RENDER_REPORT_MAX_BYTES} bytes").to_response()
+    try:
+        payload = json.loads(body, parse_constant=_reject_constant)
+    except ValueError as e:
+        return HTTPResponse(status=422, success=False, error_code="INVALID_RESULT",
+                            message=f"Body is not valid JSON: {e}").to_response()
+    try:
+        html = await run_in_threadpool(_render_stored_result, payload)
+    except ResultError as e:
+        return HTTPResponse(status=422, success=False, error_code="INVALID_RESULT",
+                            message=f"Cannot render this result: {e}").to_response()
+    except Exception as e:  # a shape the checks let through but the renderer cannot draw
+        print(f"render-report failed: {e!r}")
+        return HTTPResponse(status=422, success=False, error_code="INVALID_RESULT",
+                            message=f"Cannot render this result: {type(e).__name__}").to_response()
+    return HTTPResponse(
+        status=200,
+        success=True,
+        message="Report rendered",
+        data={"htmlBase64": base64.b64encode(html.encode("utf-8")).decode("ascii"),
+              "modelVersion": served_model_info["version"],
+              "reportModelVersion": CustomPredictionService.report_model_version()},
+    ).to_response()
 
 
 @app.get("/inference/model-info")
