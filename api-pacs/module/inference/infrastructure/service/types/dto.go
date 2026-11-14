@@ -112,6 +112,9 @@ type BuildStudyServiceDispatchRequestInput struct {
 	ProcessingExecutionID *string
 	DispatchIntent        DispatchStudyIntent
 	RequestID             *string
+	// SeriesInstanceUIDs is the caller-selected series of a viewer run; empty
+	// lets study-service use every series of the modality.
+	SeriesInstanceUIDs []string
 }
 
 type DispatchStudyRequest struct {
@@ -128,6 +131,9 @@ type DispatchStudyRequest struct {
 	Modality              string              `json:"modality"`
 	ModelName             string              `json:"model_name"`
 	ModelVersion          string              `json:"model_version"`
+	// SeriesInstanceUIDs restricts the job to these series. It is omitted for
+	// automatic and study-wide manual dispatches.
+	SeriesInstanceUIDs []string `json:"series_instance_uids,omitempty"`
 }
 
 type DispatchStudyResponse struct {

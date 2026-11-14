@@ -2100,6 +2100,7 @@ func (service *InferenceCommandService) scheduleStudyServiceDispatchWithRequestI
 	requestID string,
 	processingExecutionID string,
 	dispatchIntent types.DispatchStudyIntent,
+	seriesInstanceUIDs ...string,
 ) {
 	requestID = strings.TrimSpace(requestID)
 	if requestID == "" {
@@ -2119,6 +2120,7 @@ func (service *InferenceCommandService) scheduleStudyServiceDispatchWithRequestI
 
 		if err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
 			context.Background(), job, candidate, processingRunID, requestID, processingExecutionID, dispatchIntent,
+			seriesInstanceUIDs...,
 		); err != nil {
 			log.Printf("[Ingestion dispatch] final dispatch failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
 				candidate.ID,
@@ -2144,6 +2146,7 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 	requestID string,
 	processingExecutionID string,
 	dispatchIntent types.DispatchStudyIntent,
+	seriesInstanceUIDs ...string,
 ) error {
 	if service.RequireProcessingRunID && strings.TrimSpace(processingRunID) == "" {
 		return errors.New(apiError.InvalidPayload)
@@ -2192,6 +2195,7 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 		ProcessingExecutionID: nonEmptyStringPointer(strings.TrimSpace(processingExecutionID)),
 		DispatchIntent:        dispatchIntent,
 		RequestID:             &requestID,
+		SeriesInstanceUIDs:    seriesInstanceUIDs,
 	})
 	if err != nil {
 		ObserveStudyServiceDispatchAttempt("permanent_error", 0)

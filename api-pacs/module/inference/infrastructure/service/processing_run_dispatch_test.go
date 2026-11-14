@@ -210,6 +210,7 @@ func (dispatcher *guardedProcessingDispatcher) BuildDispatchStudyRequest(_ conte
 		DispatchIntent:        data.DispatchIntent,
 		Modality:              "US",
 		ModelName:             data.IngestionJob.ModelName,
+		SeriesInstanceUIDs:    data.SeriesInstanceUIDs,
 	}, nil
 }
 

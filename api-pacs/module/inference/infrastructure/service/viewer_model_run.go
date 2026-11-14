@@ -10,6 +10,7 @@ import (
 
 	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/internal/inputlimits"
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/infrastructure/containerready"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
@@ -37,10 +38,17 @@ func (service *InferenceCommandService) CreateViewerModelRun(ctx context.Context
 		len(studyInstanceUID) > maximumViewerStudyUIDLength || len(data.SeriesInstanceUIDs) > maximumViewerSeriesInstanceUIDs {
 		return types.CreateViewerModelRunResult{}, errors.New(apiError.InvalidPayload)
 	}
+	// study-service rejects an invalid or repeated series with 422 after the
+	// run exists, so refuse those here while the caller can still be told.
+	seriesInstanceUIDs := make([]string, 0, len(data.SeriesInstanceUIDs))
+	seenSeries := make(map[string]struct{}, len(data.SeriesInstanceUIDs))
 	for _, uid := range data.SeriesInstanceUIDs {
-		if trimmed := strings.TrimSpace(uid); trimmed == "" || len(trimmed) > 64 {
+		trimmed := strings.TrimSpace(uid)
+		if _, duplicate := seenSeries[trimmed]; duplicate || !inputlimits.ValidDICOMUID(trimmed) {
 			return types.CreateViewerModelRunResult{}, errors.New(apiError.InvalidPayload)
 		}
+		seenSeries[trimmed] = struct{}{}
+		seriesInstanceUIDs = append(seriesInstanceUIDs, trimmed)
 	}
 
 	model, err := service.resolveViewerModelRegistration(ctx, tenantID, modelRef)
@@ -125,10 +133,11 @@ func (service *InferenceCommandService) CreateViewerModelRun(ctx context.Context
 	}
 
 	execution := plan.Executions[0]
-	log.Printf("[Viewer run] created processing_run_id=%s execution_id=%s candidate_id=%s model_name=%s series_hint=%d",
-		plan.Run.ID, execution.ID, candidate.ID, job.ModelName, len(data.SeriesInstanceUIDs))
+	log.Printf("[Viewer run] created processing_run_id=%s execution_id=%s candidate_id=%s model_name=%s selected_series=%d",
+		plan.Run.ID, execution.ID, candidate.ID, job.ModelName, len(seriesInstanceUIDs))
 	service.scheduleStudyServiceDispatchWithRequestID(
 		job, candidate, plan.Run.ID, execution.ID, execution.ID, types.DispatchStudyIntentManualReprocess,
+		seriesInstanceUIDs...,
 	)
 
 	return types.CreateViewerModelRunResult{

@@ -72,8 +72,9 @@ type CreateViewerModelRun struct {
 	// ModelRef is the Firestore registration ID; the container ID or the
 	// model-info modelId are accepted as fallbacks.
 	ModelRef string
-	// SeriesInstanceUIDs is accepted for forward compatibility; study-service
-	// selects the series itself and does not receive it yet.
+	// SeriesInstanceUIDs is the series the user picked in the viewer. They are
+	// sent to study-service as series_instance_uids and the run uses exactly
+	// those; empty lets study-service use every series of the modality.
 	SeriesInstanceUIDs []string
 	// Modality is an optional DICOM modality (e.g. "XA") for multi-modality models.
 	Modality string

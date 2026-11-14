@@ -226,8 +226,48 @@ func TestCreateViewerModelRunCreatesJobCandidateAndSingleExecutionForNeverIngest
 		require.Equal(t, serviceTypes.DispatchStudyIntentManualReprocess, dispatched.DispatchIntent)
 		require.Equal(t, plan.Run.ID, *dispatched.ProcessingRunID)
 		require.Equal(t, result.Execution.ID, *dispatched.ProcessingExecutionID)
+		require.Empty(t, dispatched.SeriesInstanceUIDs)
 	case <-time.After(5 * time.Second):
 		t.Fatal("viewer run was not dispatched")
+	}
+}
+
+func TestCreateViewerModelRunDispatchesSelectedSeries(t *testing.T) {
+	fixture := newViewerRunFixture(t)
+	input := viewerRunInput()
+	input.SeriesInstanceUIDs = []string{"1.2.3.20", " 1.2.3.10 "}
+
+	_, err := fixture.service.CreateViewerModelRun(context.Background(), input)
+
+	require.NoError(t, err)
+	select {
+	case dispatched := <-fixture.dispatchCalls:
+		require.Equal(t, []string{"1.2.3.20", "1.2.3.10"}, dispatched.SeriesInstanceUIDs)
+		require.Equal(t, serviceTypes.DispatchStudyIntentManualReprocess, dispatched.DispatchIntent)
+	case <-time.After(5 * time.Second):
+		t.Fatal("viewer run was not dispatched")
+	}
+}
+
+func TestCreateViewerModelRunRejectsInvalidOrRepeatedSeriesBeforeCreatingRun(t *testing.T) {
+	for name, series := range map[string][]string{
+		"not a UID": {"1.2.bad"},
+		"wildcard":  {"1.2.*"},
+		"blank":     {"1.2.3.10", " "},
+		"repeated":  {"1.2.3.10", " 1.2.3.10"},
+		"too many":  make([]string, maximumViewerSeriesInstanceUIDs+1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			fixture := newViewerRunFixture(t)
+			input := viewerRunInput()
+			input.SeriesInstanceUIDs = series
+
+			_, err := fixture.service.CreateViewerModelRun(context.Background(), input)
+
+			require.EqualError(t, err, apiError.InvalidPayload)
+			require.Empty(t, fixture.plans)
+			require.Empty(t, fixture.quota.reserved)
+		})
 	}
 }
 

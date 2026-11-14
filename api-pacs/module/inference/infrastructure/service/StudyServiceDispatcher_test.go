@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -224,6 +225,60 @@ func TestBuildDispatchStudyRequestIncludesProcessingRunID(t *testing.T) {
 	}
 	if request.Modality != "echocardiogram" {
 		t.Fatalf("unexpected canonical modality: %q", request.Modality)
+	}
+}
+
+func TestDispatchStudyBodyCarriesSelectedSeriesOnlyWhenProvided(t *testing.T) {
+	orthancStudyID := "orthanc-study-1"
+	for _, testCase := range []struct {
+		name     string
+		selected []string
+	}{
+		{name: "viewer selection", selected: []string{"1.2.3.20", "1.2.3.10"}},
+		{name: "no selection"},
+		{name: "empty selection", selected: []string{}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			var payload map[string]any
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					t.Errorf("decode request: %v", err)
+				}
+				w.WriteHeader(http.StatusAccepted)
+				_ = json.NewEncoder(w).Encode(map[string]any{"job_id": "study-job-123", "already_present": false})
+			}))
+			defer server.Close()
+			dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceClient: server.Client()}
+
+			request, err := dispatcher.BuildDispatchStudyRequest(context.Background(), serviceTypes.BuildStudyServiceDispatchRequestInput{
+				IngestionJob: entity.InferenceIngestionJob{
+					ID: "ingestion-1", TenantID: "tenant-a", ModelName: "model-one", ModelVersion: "1.0", Modalities: []string{"XA"},
+				},
+				Candidate: entity.InferenceIngestionCandidate{
+					ID: "candidate-1", TenantID: "tenant-a", IngestionJobID: "ingestion-1", StudyInstanceUID: "study-1",
+				},
+				OrthancStudyID:     &orthancStudyID,
+				SeriesInstanceUIDs: testCase.selected,
+			})
+			if err != nil {
+				t.Fatalf("BuildDispatchStudyRequest returned error: %v", err)
+			}
+			if _, err := dispatcher.DispatchStudy(context.Background(), request); err != nil {
+				t.Fatalf("DispatchStudy returned error: %v", err)
+			}
+
+			got, exists := payload["series_instance_uids"]
+			if len(testCase.selected) == 0 {
+				if exists {
+					t.Fatalf("dispatch without a selection included series_instance_uids: %#v", payload)
+				}
+				return
+			}
+			want := []any{"1.2.3.20", "1.2.3.10"}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("unexpected series_instance_uids: got %#v want %#v", got, want)
+			}
+		})
 	}
 }
 

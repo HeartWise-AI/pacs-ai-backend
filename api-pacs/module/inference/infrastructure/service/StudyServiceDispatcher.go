@@ -106,6 +106,7 @@ func (service *StudyServiceDispatcher) BuildDispatchStudyRequest(ctx context.Con
 		Modality:              modality,
 		ModelName:             strings.TrimSpace(data.IngestionJob.ModelName),
 		ModelVersion:          strings.TrimSpace(data.IngestionJob.ModelVersion),
+		SeriesInstanceUIDs:    append([]string(nil), data.SeriesInstanceUIDs...),
 	}, nil
 }
 
