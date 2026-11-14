@@ -89,6 +89,12 @@ Registration remains separate. `deploy-model.sh --register-only` authenticates t
 contains the admin password, `API_BASE_URL` must use HTTPS unless it points to `localhost` or `127.0.0.1`.
 See `scripts/.env.deploy.example` for the complete configuration.
 
+If CardioAgent must execute the released model, continue in `HeartWise-AI/cardio-agent` with
+[`add-study-service-model`](https://github.com/HeartWise-AI/cardio-agent/blob/feat/study-latest-results/.agents/skills/add-study-service-model/SKILL.md).
+That workflow owns CardioAgent's Study Service registry entry, dedicated Celery queue and worker, Compose
+configuration, and execution-path tests. Building, publishing, or registering the inference image here does
+not authorize CardioAgent deployment, study dispatch, polling, or cohort backfill.
+
 Legacy images that do not yet declare provenance may still use the old build path during migration. `latest` is opt-in and never the deployment source of truth. After publishing a new version, deploy the recorded immutable digest through the controlled deployment workflow; a running container keeps its old image and `model_info.json` until explicitly upgraded.
 
 **`outputMode` note:** `supportedOutputModes` in `model_info.json` lists what the container can serve.

@@ -9,6 +9,13 @@ Use `scripts/verify-model.py` as the authoritative verifier. Do not replace exec
 
 Read `../pacs-ai-model-mapping/SKILL.md` when a failure concerns model architecture, preprocessing, DICOM selection, output heads, or prediction parity.
 
+When verification passes and CardioAgent must execute the model, hand the exact
+verified contract and immutable release evidence to
+[`HeartWise-AI/cardio-agent:.agents/skills/add-study-service-model/SKILL.md`](https://github.com/HeartWise-AI/cardio-agent/blob/feat/study-latest-results/.agents/skills/add-study-service-model/SKILL.md).
+That downstream workflow owns the Study Service registry, dedicated Celery queue
+and worker, Compose wiring, and execution-path validation. Verification alone does
+not authorize deployment, study dispatch, polling, or backfill.
+
 ## Choose a mode
 
 - Use `source` for a model PR, a new model directory, or an update to model code or metadata.
