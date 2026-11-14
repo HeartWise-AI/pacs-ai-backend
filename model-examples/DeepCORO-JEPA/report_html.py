@@ -418,16 +418,18 @@ def explain_section(items: list[dict], segs: dict) -> str:
             cards.append(f'<figure class="xcard none">{head}<p class="muted small">No tracked crop for this segment '
                          f'(its mask was too small in every video); the reading comes from the full views only.</p></figure>')
             continue
-        img = it["_images"]
+        img = it.get("images")
         view = it.get("max_full_view_attention")
         share = (f"This crop carried {it['bag_attention'] * 100:.0f}% of the segment's attention"
                  + (f" (best full view {view * 100:.0f}%)." if view is not None else "."))
+        pictures = (f'<div class="ximgs">'
+                    f'<img src="data:image/jpeg;base64,{img["crop"]}" alt="Tracked crop of {escape(SEGMENT_NAMES.get(g, g))} '
+                    f'with the model attention overlaid" width="320" height="320">'
+                    f'<img src="data:image/jpeg;base64,{img["frame"]}" alt="Full frame with the crop box"></div>'
+                    if img else '<p class="muted small">The images were not stored with this result '
+                                '(results before version 1.3.0 kept only the metadata).</p>')
         cards.append(
-            f'<figure class="xcard">{head}<div class="ximgs">'
-            f'<img src="data:image/jpeg;base64,{img["crop"]}" alt="Tracked crop of {escape(SEGMENT_NAMES.get(g, g))} '
-            f'with the model attention overlaid" width="320" height="320">'
-            f'<img src="data:image/jpeg;base64,{img["frame"]}" alt="Full frame with the crop box">'
-            f'</div><figcaption class="muted small">Video {it["video"] + 1}, frame {it["frame"] + 1} of 16. {share} '
+            f'<figure class="xcard">{head}{pictures}<figcaption class="muted small">Video {it["video"] + 1}, frame {it["frame"] + 1} of 16. {share} '
             f'The top 10% of crop pixels hold {it["top10pct_token_share"] * 100:.0f}% of the attention; + marks the peak.'
             f'</figcaption></figure>')
     return (f'<section class="card explain"><h2>Where the model looked</h2>'
@@ -513,7 +515,8 @@ def render_report(preds: dict, model_version: str, recommendation: str) -> str:
 
 
 if __name__ == "__main__":
-    # python3 report_html.py predict_response_json.json out.html [model_version]
+    # python3 report_html.py docs/examples/predict_response_json.json docs/examples/predict_report.html [model_version]
+    # Same report as HTML-mode predict and /inference/render-report for that response (model_version "v13").
     data = json.load(open(sys.argv[1]))["data"]
     out = render_report(data["predictions"], sys.argv[3] if len(sys.argv) > 3 else "v13", data["modelRecommendations"]["en"])
-    open(sys.argv[2], "w").write(out)
+    open(sys.argv[2], "w").write(out + "\n")
