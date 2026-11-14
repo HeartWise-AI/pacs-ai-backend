@@ -65,3 +65,18 @@ DICOM-vs-mp4 decode path; a large gap means wrong video selection or wrong mean/
 Use **`.claude/skills/pacs-ai-model-verification/SKILL.md`** when reviewing a new or updated model,
 checking release readiness, or verifying an immutable published image. The skill routes deterministic
 checks through `scripts/verify-model.py`; verification does not authorize publication or deployment.
+
+## api-pacs SQL and deploy rules (learned 2026-11-14)
+
+- **No `::` casts in named queries.** `PostgresSQLDBHandler.Query/QueryRow/Exec` take `:name` parameters
+  and sqlx turns `::` into `:`, so `col::text` reaches Postgres as `col:text` and fails with
+  `syntax error at or near ":"`. Use `CAST(col AS text)`. `sqlmock` does not parse SQL, so unit tests
+  pass with the bug; compile the fragment with `sqlx.Named` in a test (see
+  `TestViewerRunExclusionSurvivesNamedQueryCompilation`).
+- **A deploy is not verified by reruns of old studies.** After deploying api-pacs, confirm that a study
+  retrieved today gets an `AUTO` row in `ingestion_processing_runs` and that `docker logs api-pacs` has no
+  `cannot create automatic processing plan` or `DATABASE_ERROR`, then check the Studies page and the
+  viewer in a browser.
+- **MHI api-pacs images are overlays.** The image built from `api-pacs/Dockerfile` alone lacks the
+  site config (`/app/build/configs/firebase/...`) and crash-loops. Build the binary, then layer it on the
+  running image (`FROM <live image>` + `COPY api-pacs /usr/local/bin/api-pacs`).
