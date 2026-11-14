@@ -63,6 +63,22 @@ func mountInferenceFeedbackRoutes(r chi.Router, handlers inferenceFeedbackHandle
 	r.Delete("/{modelID}/feedback/remove", handlers.remove)
 }
 
+type userViewerTourHandlers struct {
+	get      http.HandlerFunc
+	complete http.HandlerFunc
+	reset    http.HandlerFunc
+}
+
+// mountUserViewerTourRoutes exposes the viewer onboarding tour state. The
+// routes carry no user id: handlers act on the user stored in the
+// authenticated request context, so callers must mount them behind
+// TokenSessionAuthGuard.
+func mountUserViewerTourRoutes(r chi.Router, handlers userViewerTourHandlers) {
+	r.Get("/viewer-tour", handlers.get)
+	r.Put("/viewer-tour/complete", handlers.complete)
+	r.Post("/viewer-tour/reset", handlers.reset)
+}
+
 // mountInferenceWorklistRoutes keeps authentication and policy acceptance
 // structurally attached to every tenant-scoped route while applying the
 // owner/admin guard only to mutations.
@@ -382,6 +398,11 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Get("/metadata", userQueryController.GetUserMetadata)
 					r.Put("/password/update", userCommandController.UpdateTenantUserPassword)
 					r.Put("/metadata/update", userCommandController.UpdateUserMetadata)
+					mountUserViewerTourRoutes(r, userViewerTourHandlers{
+						get:      userQueryController.GetUserViewerTour,
+						complete: userCommandController.CompleteUserViewerTour,
+						reset:    userCommandController.ResetUserViewerTour,
+					})
 
 					// admin or owner only
 					r.Group(func(r chi.Router) {

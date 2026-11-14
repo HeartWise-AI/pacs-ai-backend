@@ -33,4 +33,6 @@ type UserCommandRepositoryInterface interface {
 	UpdateTenantUserEmailInviteVerifiedAt(ctx context.Context, ID string) error
 	// UpsertUserMetadata upserts user metadata
 	UpsertUserMetadata(ctx context.Context, data repositoryTypes.UpsertUserMetadata) error
+	// UpdateUserViewerTourCompletedAt sets or clears the viewer tour completion time
+	UpdateUserViewerTourCompletedAt(ctx context.Context, data repositoryTypes.UpdateUserViewerTourCompletedAt) error
 }

@@ -81,3 +81,10 @@ type UpsertUserMetadata struct {
 	UserID   string
 	Metadata string
 }
+
+// UpdateUserViewerTourCompletedAt sets (or clears, when CompletedAt is nil) the
+// viewer tour completion time on the user metadata document.
+type UpdateUserViewerTourCompletedAt struct {
+	UserID      string
+	CompletedAt *int64
+}
