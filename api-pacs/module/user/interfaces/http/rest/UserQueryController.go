@@ -356,11 +356,52 @@ func (controller *UserQueryController) GetUserMetadata(w http.ResponseWriter, r 
 		Success: true,
 		Message: "Successfully fetched user metadata.",
 		Data: &types.GetUserMetadataResponse{
-			UserID:    res.UserID,
-			Metadata:  metadata,
-			CreatedAt: uint64(res.CreatedAt),
-			UpdatedAt: uint64(res.UpdatedAt),
+			UserID:                res.UserID,
+			Metadata:              metadata,
+			ViewerTourCompletedAt: res.ViewerTourCompletedAt,
+			CreatedAt:             uint64(res.CreatedAt),
+			UpdatedAt:             uint64(res.UpdatedAt),
 		},
+	}
+
+	response.JSON(w)
+}
+
+// GetUserViewerTour returns the authenticated user's viewer onboarding tour state.
+func (controller *UserQueryController) GetUserViewerTour(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	res, err := controller.UserQueryServiceInterface.GetUserViewerTourState(r.Context(), userID)
+	if err != nil {
+		writeViewerTourError(w, err, "Error occurred while fetching the viewer tour state.")
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully fetched the viewer tour state.",
+		Data: &types.UserViewerTourResponse{
+			UserID:                res.UserID,
+			ViewerTourCompletedAt: res.ViewerTourCompletedAt,
+		},
+	}
+
+	response.JSON(w)
+}
+
+func writeViewerTourError(w http.ResponseWriter, err error, firestoreMsg string) {
+	httpCode := http.StatusInternalServerError
+	errorMsg := "Please contact technical support."
+	if err.Error() == errors.FirestoreError {
+		errorMsg = firestoreMsg
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:    httpCode,
+		Success:   false,
+		Message:   errorMsg,
+		ErrorCode: err.Error(),
 	}
 
 	response.JSON(w)
