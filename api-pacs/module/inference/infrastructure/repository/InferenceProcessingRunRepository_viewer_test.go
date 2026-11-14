@@ -39,7 +39,7 @@ func TestCreateProcessingRunPlanViewerRunIgnoresOtherActiveRunsButChecksModel(t 
 	mock.ExpectExec("pg_advisory_xact_lock").
 		WithArgs("8:tenant-a1.2.3").
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM ingestion_processing_jobs jobs(.|\\n)*runs.tenant_id = \\$1(.|\\n)*jobs.tenant_id = \\$1(.|\\n)*runs.phase <> 'TERMINAL'(.|\\n)*jobs.model_name = ANY\\(\\$3\\)(.|\\n)*'pending', 'queued', 'running'").
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM ingestion_processing_jobs jobs(.|\\n)*runs.tenant_id = \\$1(.|\\n)*jobs.tenant_id = \\$1(.|\\n)*runs.phase <> 'TERMINAL'(.|\\n)*jobs.model_name = ANY\\(\\$3\\)(.|\\n)*'pending', 'queued', 'running'(.|\\n)*AND NOT \\(jobs.status = 'pending' AND jobs.study_service_job_id IS NULL(.|\\n)*EXPECTED_JOB_MISSING").
 		WithArgs("tenant-a", "1.2.3", sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectQuery("SELECT COALESCE\\(MAX\\(run_number\\), 0\\) \\+ 1").

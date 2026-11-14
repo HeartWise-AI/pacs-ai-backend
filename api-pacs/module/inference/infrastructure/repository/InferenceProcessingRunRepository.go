@@ -668,6 +668,12 @@ func (repository *InferenceProcessingRunRepository) CreateProcessingRunPlan(ctx 
 // viewer runs. The text cast avoids depending on the enum value at parse time.
 const viewerRunExclusion = "AND run_trigger::text <> 'VIEWER_REQUEST'"
 
+// staleUndispatchedExecution matches a pending execution that was never sent to
+// study-service and that the processing reconciler has already reported as
+// EXPECTED_JOB_MISSING. Such executions will never run (the reconciler leaves
+// them for operator attention), so they must not block a viewer run.
+const staleUndispatchedExecution = `jobs.status = 'pending' AND jobs.study_service_job_id IS NULL AND COALESCE(runs.attention_reasons, '[]'::jsonb) @> '[{"code": "EXPECTED_JOB_MISSING"}]'::jsonb`
+
 func ensureNoActiveModelExecution(ctx context.Context, tx *sqlx.Tx, data types.CreateInferenceIngestionProcessingRunPlan) error {
 	modelNames := make([]string, 0, len(data.Executions))
 	for _, execution := range data.Executions {
@@ -686,6 +692,7 @@ func ensureNoActiveModelExecution(ctx context.Context, tx *sqlx.Tx, data types.C
 		  AND runs.phase <> 'TERMINAL'
 		  AND jobs.model_name = ANY($3)
 		  AND jobs.status IN ('pending', 'queued', 'running')
+		  AND NOT (`+staleUndispatchedExecution+`)
 	`, data.Run.TenantID, data.Run.StudyInstanceUID, pq.Array(modelNames)); err != nil {
 		return processingRunError(err)
 	}
