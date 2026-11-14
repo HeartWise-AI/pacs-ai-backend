@@ -1032,9 +1032,10 @@ docker compose images > pacs-ai-versions.txt
 | **Public-demo inference quotas** | | | |
 | `INFERENCE_USER_QUOTA_WINDOW_SECONDS` | optional | `86400` | Fixed usage-allowance window in seconds |
 | `INFERENCE_USER_QUOTA_ALLOWANCE` | optional | `50` | User-triggered inference units per tenant/user and window |
-| `INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS` | optional | `2` | Active direct predictions or manual reprocessing runs per tenant/user |
+| `INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS` | optional | `2` | Active synchronous (interactive) direct predictions per tenant/user |
+| `INFERENCE_USER_MAX_QUEUED_EXECUTIONS` | optional | `50` | Safety cap on active queued runs (viewer model runs, manual reprocessing) per tenant/user; independent of the interactive cap |
 | `INFERENCE_USER_RESERVATION_TTL_SECONDS` | optional | `7200` | Recovery TTL for an active reservation that never receives a terminal outcome |
-| `INFERENCE_USER_QUOTA_TENANT_OVERRIDES_JSON` | optional | empty | JSON object keyed by tenant ID; supports `windowSeconds`, `allowance`, `maxConcurrentExecutions`, and `reservationTtlSeconds` |
+| `INFERENCE_USER_QUOTA_TENANT_OVERRIDES_JSON` | optional | empty | JSON object keyed by tenant ID; supports `windowSeconds`, `allowance`, `maxConcurrentExecutions`, `maxQueuedExecutions`, and `reservationTtlSeconds` |
 | **Request and input safety** | | | |
 | `API_MAX_REQUEST_BODY_BYTES` | optional | `16777216` | Hard body limit for regular `/v1` API requests |
 | `INFERENCE_PREDICT_MAX_REQUEST_BODY_BYTES` | optional | `1048576` | Stricter JSON body limit for direct model predictions |
@@ -1116,18 +1117,26 @@ provider-specific requirement. See the official Identity Platform REST and
 Cloudflare Siteverify documentation before enabling that setting.
 
 Inference quotas use the same Redis deployment but separate hashed tenant/user
-keys. One direct model prediction and one manual study reprocessing run each
-consume one unit. Input/plan validation and dispatch failures are refunded;
-work accepted by a model remains charged even when the model later fails.
-Manual-run concurrency is held until the run reaches a terminal state, with
-the reservation TTL acting only as recovery for lost callbacks. Automated
+keys. One direct model prediction, one viewer model run and one manual study
+reprocessing run each consume one unit. Input/plan validation and dispatch
+failures are refunded; work accepted by a model remains charged even when the
+model later fails. Reservations come in two kinds. Synchronous direct
+predictions are *interactive* and count against
+`INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS`. Viewer runs and manual reprocessing
+are *queued*: study-service's per-model queues and each model's
+`maxConcurrentInferences` bound real capacity, so they count only against the
+allowance and the much higher `INFERENCE_USER_MAX_QUEUED_EXECUTIONS` safety
+cap, and never block (or are blocked by) interactive predictions. A queued
+run's slot is held until the run reaches a terminal state, with the
+reservation TTL acting only as recovery for lost callbacks. Automated
 ingestion has no authenticated user and is explicitly exempt from these public
 user limits; it remains bounded by `STUDY_SERVICE_DISPATCH_CONCURRENCY`.
 All authenticated users, including tenant administrators and owners, use the
 same tenant/user quota unless their tenant receives an explicit override.
 Clients can read `GET /v1/inference/quota`. Limit rejections return HTTP 429,
-`Retry-After`, and either `INFERENCE_QUOTA_EXCEEDED` or
-`INFERENCE_CONCURRENCY_EXCEEDED`. Redis unavailability fails closed with HTTP
+`Retry-After`, and one of `INFERENCE_QUOTA_EXCEEDED`,
+`INFERENCE_CONCURRENCY_EXCEEDED` (interactive cap) or
+`INFERENCE_QUEUE_LIMIT_EXCEEDED` (queued-run safety cap). Redis unavailability fails closed with HTTP
 503 and `INFERENCE_QUOTA_UNAVAILABLE`.
 
 Regular JSON and multipart API requests are bounded both at Nginx and inside

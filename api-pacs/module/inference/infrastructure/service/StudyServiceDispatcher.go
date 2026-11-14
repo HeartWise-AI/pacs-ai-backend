@@ -219,6 +219,57 @@ func getStudyServiceJobByID[T any](
 	return job, true, nil
 }
 
+// GetLatestStudyResults fetches the latest completed job per (model, modality)
+// for one study. X-Tenant-ID is always sent: without it study-service returns
+// only tenant-less jobs. The operator token is used, never a user credential.
+func (service *StudyServiceDispatcher) GetLatestStudyResults(
+	ctx context.Context,
+	tenantID, studyInstanceUID, modality string,
+) (serviceTypes.StudyServiceLatestResults, bool, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(service.StudyServiceBaseURL), "/")
+	if baseURL == "" {
+		return serviceTypes.StudyServiceLatestResults{}, false, errStudyServiceBaseURLMissing
+	}
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return serviceTypes.StudyServiceLatestResults{}, false, errors.New("tenant is required for study-service result lookup")
+	}
+
+	endpoint := fmt.Sprintf("%s/jobs/by-study/%s/latest-results", baseURL, url.PathEscape(strings.TrimSpace(studyInstanceUID)))
+	if modality = strings.TrimSpace(modality); modality != "" {
+		endpoint += "?" + url.Values{"modality": []string{modality}}.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return serviceTypes.StudyServiceLatestResults{}, false, err
+	}
+	req.Header.Set("X-Request-ID", generateID())
+	req.Header.Set("X-Tenant-ID", tenantID)
+	service.applyBearerToken(req, service.StudyServiceOperatorToken)
+
+	resp, err := service.StudyServiceClient.Do(req)
+	if err != nil {
+		return serviceTypes.StudyServiceLatestResults{}, false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return serviceTypes.StudyServiceLatestResults{}, false, nil
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return serviceTypes.StudyServiceLatestResults{}, false, &StudyServiceLookupHTTPError{StatusCode: resp.StatusCode}
+	}
+
+	var response serviceTypes.StudyServiceLatestResults
+	if err := json.NewDecoder(io.LimitReader(resp.Body, studyServiceLatestResultsMaxBytes)).Decode(&response); err != nil {
+		return serviceTypes.StudyServiceLatestResults{}, false, err
+	}
+	return response, true, nil
+}
+
+// studyServiceLatestResultsMaxBytes bounds the metadata-only latest-results body.
+const studyServiceLatestResultsMaxBytes = 8 << 20
+
 // GetJobsByProcessingRun fetches all tenant-scoped jobs correlated to one Go
 // run. A 404 is treated as endpoint/data absence so mixed-version deployments
 // can continue with candidate fallback.

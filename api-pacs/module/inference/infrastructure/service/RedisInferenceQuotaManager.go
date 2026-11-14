@@ -22,6 +22,7 @@ const (
 	defaultInferenceQuotaWindow          = 24 * time.Hour
 	defaultInferenceQuotaAllowance int64 = 50
 	defaultInferenceMaxConcurrent  int64 = 2
+	defaultInferenceMaxQueued      int64 = 50
 	defaultInferenceReservationTTL       = 2 * time.Hour
 )
 
@@ -30,7 +31,10 @@ type InferenceQuotaLimits struct {
 	Window                  time.Duration
 	Allowance               int64
 	MaxConcurrentExecutions int64
-	ReservationTTL          time.Duration
+	// MaxQueuedExecutions is a runaway-queueing safety net for queued
+	// (managed) reservations; it is independent of MaxConcurrentExecutions.
+	MaxQueuedExecutions int64
+	ReservationTTL      time.Duration
 }
 
 // InferenceQuotaConfig contains safe defaults and optional tenant overrides.
@@ -45,6 +49,7 @@ type inferenceQuotaEnvironmentOverride struct {
 	WindowSeconds           int64 `json:"windowSeconds"`
 	Allowance               int64 `json:"allowance"`
 	MaxConcurrentExecutions int64 `json:"maxConcurrentExecutions"`
+	MaxQueuedExecutions     int64 `json:"maxQueuedExecutions"`
 	ReservationTTLSeconds   int64 `json:"reservationTtlSeconds"`
 }
 
@@ -55,6 +60,7 @@ func InferenceQuotaConfigFromEnvironment() InferenceQuotaConfig {
 		Window:                  positiveDurationFromEnvironment("INFERENCE_USER_QUOTA_WINDOW_SECONDS", defaultInferenceQuotaWindow),
 		Allowance:               positiveInt64FromEnvironment("INFERENCE_USER_QUOTA_ALLOWANCE", defaultInferenceQuotaAllowance),
 		MaxConcurrentExecutions: positiveInt64FromEnvironment("INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS", defaultInferenceMaxConcurrent),
+		MaxQueuedExecutions:     positiveInt64FromEnvironment("INFERENCE_USER_MAX_QUEUED_EXECUTIONS", defaultInferenceMaxQueued),
 		ReservationTTL:          positiveDurationFromEnvironment("INFERENCE_USER_RESERVATION_TTL_SECONDS", defaultInferenceReservationTTL),
 	}
 
@@ -83,6 +89,9 @@ func InferenceQuotaConfigFromEnvironment() InferenceQuotaConfig {
 		if override.MaxConcurrentExecutions > 0 {
 			limits.MaxConcurrentExecutions = override.MaxConcurrentExecutions
 		}
+		if override.MaxQueuedExecutions > 0 {
+			limits.MaxQueuedExecutions = override.MaxQueuedExecutions
+		}
 		if override.ReservationTTLSeconds > 0 {
 			limits.ReservationTTL = time.Duration(override.ReservationTTLSeconds) * time.Second
 		}
@@ -108,132 +117,133 @@ func positiveInt64FromEnvironment(name string, fallback int64) int64 {
 }
 
 func (config InferenceQuotaConfig) limitsForTenant(tenantID string) InferenceQuotaLimits {
+	limits := config.Default
 	if override, ok := config.TenantOverrides[strings.TrimSpace(tenantID)]; ok {
-		return override
+		limits = override
 	}
-	return config.Default
+	if limits.MaxQueuedExecutions <= 0 {
+		limits.MaxQueuedExecutions = defaultInferenceMaxQueued
+	}
+	return limits
 }
 
-var reserveInferenceQuotaScript = redisdb.NewScript(`
+// Keys (all share one hash tag so they live in the same cluster slot):
+//
+//	KEYS[1] usage counter for the rolling allowance window
+//	KEYS[2] interactive active reservations (zset, score = expiry ms)
+//	KEYS[3] interactive reservation units (hash)
+//	KEYS[4] queued active reservations (zset, score = expiry ms)
+//	KEYS[5] queued reservation units (hash)
+//
+// Every script returns {decision_or_units, used, usage_ttl, active,
+// active_retry, queued, queued_retry}.
+const inferenceQuotaScriptPrelude = `
 local now = tonumber(ARGV[1])
+
+local function purge(zkey, hkey)
+  local expired = redis.call("ZRANGEBYSCORE", zkey, "-inf", now)
+  for _, member in ipairs(expired) do redis.call("HDEL", hkey, member) end
+  redis.call("ZREMRANGEBYSCORE", zkey, "-inf", now)
+end
+
+local function active_units(zkey, hkey)
+  local total = 0
+  local members = redis.call("ZRANGE", zkey, 0, -1)
+  for _, member in ipairs(members) do
+    total = total + (tonumber(redis.call("HGET", hkey, member)) or 0)
+  end
+  return total
+end
+
+local function earliest_retry(zkey)
+  local first = redis.call("ZRANGE", zkey, 0, 0, "WITHSCORES")
+  if #first < 2 then return 0 end
+  return math.max(0, tonumber(first[2]) - now)
+end
+
+local function state(code)
+  return {code, tonumber(redis.call("GET", KEYS[1])) or 0, redis.call("PTTL", KEYS[1]),
+    active_units(KEYS[2], KEYS[3]), earliest_retry(KEYS[2]),
+    active_units(KEYS[4], KEYS[5]), earliest_retry(KEYS[4])}
+end
+
+-- Removes the reservation from whichever kind holds it and returns its units.
+local function take(reservation_id)
+  local pairs_to_check = {{KEYS[2], KEYS[3]}, {KEYS[4], KEYS[5]}}
+  for _, pair in ipairs(pairs_to_check) do
+    local units = tonumber(redis.call("HGET", pair[2], reservation_id)) or 0
+    if units > 0 then
+      redis.call("HDEL", pair[2], reservation_id)
+      redis.call("ZREM", pair[1], reservation_id)
+      return units
+    end
+  end
+  return 0
+end
+
+purge(KEYS[2], KEYS[3])
+purge(KEYS[4], KEYS[5])
+`
+
+var reserveInferenceQuotaScript = redisdb.NewScript(inferenceQuotaScriptPrelude + `
 local window = tonumber(ARGV[2])
 local reservation_ttl = tonumber(ARGV[3])
 local allowance = tonumber(ARGV[4])
 local concurrent_limit = tonumber(ARGV[5])
 local units = tonumber(ARGV[6])
 local reservation_id = ARGV[7]
-
-local expired = redis.call("ZRANGEBYSCORE", KEYS[2], "-inf", now)
-for _, member in ipairs(expired) do
-  redis.call("HDEL", KEYS[3], member)
-end
-redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now)
-
-local function active_units()
-  local total = 0
-  local members = redis.call("ZRANGE", KEYS[2], 0, -1)
-  for _, member in ipairs(members) do
-    total = total + (tonumber(redis.call("HGET", KEYS[3], member)) or 0)
-  end
-  return total
-end
-
-local function earliest_retry()
-  local first = redis.call("ZRANGE", KEYS[2], 0, 0, "WITHSCORES")
-  if #first < 2 then return 0 end
-  return math.max(0, tonumber(first[2]) - now)
-end
+local queued_limit = tonumber(ARGV[8])
+local queued = ARGV[9] == "queued"
 
 local used = tonumber(redis.call("GET", KEYS[1])) or 0
-local usage_ttl = redis.call("PTTL", KEYS[1])
-if usage_ttl < 0 and used > 0 then
+if redis.call("PTTL", KEYS[1]) < 0 and used > 0 then
   redis.call("PEXPIRE", KEYS[1], window)
-  usage_ttl = window
 end
-local active = active_units()
 
-if redis.call("ZSCORE", KEYS[2], reservation_id) then
-  return {0, used, usage_ttl, active, earliest_retry()}
+if redis.call("ZSCORE", KEYS[2], reservation_id) or redis.call("ZSCORE", KEYS[4], reservation_id) then
+  return state(0)
 end
 if used + units > allowance then
-  if usage_ttl < 0 then usage_ttl = window end
-  return {1, used, usage_ttl, active, earliest_retry()}
+  local result = state(1)
+  if result[3] < 0 then result[3] = window end
+  return result
 end
-if active + units > concurrent_limit then
-  return {2, used, usage_ttl, active, earliest_retry()}
+
+local zkey, hkey = KEYS[2], KEYS[3]
+if queued then
+  zkey, hkey = KEYS[4], KEYS[5]
+  if active_units(zkey, hkey) + units > queued_limit then return state(3) end
+else
+  if active_units(zkey, hkey) + units > concurrent_limit then return state(2) end
 end
 
 used = redis.call("INCRBY", KEYS[1], units)
 if used == units then
   redis.call("PEXPIRE", KEYS[1], window)
 end
-usage_ttl = redis.call("PTTL", KEYS[1])
-redis.call("HSET", KEYS[3], reservation_id, units)
-redis.call("ZADD", KEYS[2], now + reservation_ttl, reservation_id)
-redis.call("PEXPIRE", KEYS[2], reservation_ttl + 60000)
-redis.call("PEXPIRE", KEYS[3], reservation_ttl + 60000)
-return {0, used, usage_ttl, active + units, earliest_retry()}
+redis.call("HSET", hkey, reservation_id, units)
+redis.call("ZADD", zkey, now + reservation_ttl, reservation_id)
+redis.call("PEXPIRE", zkey, reservation_ttl + 60000)
+redis.call("PEXPIRE", hkey, reservation_ttl + 60000)
+return state(0)
 `)
 
-var releaseInferenceQuotaScript = redisdb.NewScript(`
-local now = tonumber(ARGV[1])
-local reservation_id = ARGV[2]
-local expired = redis.call("ZRANGEBYSCORE", KEYS[2], "-inf", now)
-for _, member in ipairs(expired) do redis.call("HDEL", KEYS[3], member) end
-redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now)
-
-local units = tonumber(redis.call("HGET", KEYS[3], reservation_id)) or 0
-if units > 0 then
-  redis.call("HDEL", KEYS[3], reservation_id)
-  redis.call("ZREM", KEYS[2], reservation_id)
-end
-
-local active = 0
-local members = redis.call("ZRANGE", KEYS[2], 0, -1)
-for _, member in ipairs(members) do active = active + (tonumber(redis.call("HGET", KEYS[3], member)) or 0) end
-local first = redis.call("ZRANGE", KEYS[2], 0, 0, "WITHSCORES")
-local retry = 0
-if #first >= 2 then retry = math.max(0, tonumber(first[2]) - now) end
-return {units, tonumber(redis.call("GET", KEYS[1])) or 0, redis.call("PTTL", KEYS[1]), active, retry}
+var releaseInferenceQuotaScript = redisdb.NewScript(inferenceQuotaScriptPrelude + `
+return state(take(ARGV[2]))
 `)
 
-var refundInferenceQuotaScript = redisdb.NewScript(`
-local now = tonumber(ARGV[1])
-local reservation_id = ARGV[2]
-local expired = redis.call("ZRANGEBYSCORE", KEYS[2], "-inf", now)
-for _, member in ipairs(expired) do redis.call("HDEL", KEYS[3], member) end
-redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now)
-
-local units = tonumber(redis.call("HGET", KEYS[3], reservation_id)) or 0
+var refundInferenceQuotaScript = redisdb.NewScript(inferenceQuotaScriptPrelude + `
+local units = take(ARGV[2])
 if units > 0 then
-  redis.call("HDEL", KEYS[3], reservation_id)
-  redis.call("ZREM", KEYS[2], reservation_id)
   local used = tonumber(redis.call("GET", KEYS[1])) or 0
   local next_used = math.max(0, used - units)
   if next_used == 0 then redis.call("DEL", KEYS[1]) else redis.call("SET", KEYS[1], next_used, "KEEPTTL") end
 end
-
-local active = 0
-local members = redis.call("ZRANGE", KEYS[2], 0, -1)
-for _, member in ipairs(members) do active = active + (tonumber(redis.call("HGET", KEYS[3], member)) or 0) end
-local first = redis.call("ZRANGE", KEYS[2], 0, 0, "WITHSCORES")
-local retry = 0
-if #first >= 2 then retry = math.max(0, tonumber(first[2]) - now) end
-return {units, tonumber(redis.call("GET", KEYS[1])) or 0, redis.call("PTTL", KEYS[1]), active, retry}
+return state(units)
 `)
 
-var inferenceQuotaStatusScript = redisdb.NewScript(`
-local now = tonumber(ARGV[1])
-local expired = redis.call("ZRANGEBYSCORE", KEYS[2], "-inf", now)
-for _, member in ipairs(expired) do redis.call("HDEL", KEYS[3], member) end
-redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now)
-local active = 0
-local members = redis.call("ZRANGE", KEYS[2], 0, -1)
-for _, member in ipairs(members) do active = active + (tonumber(redis.call("HGET", KEYS[3], member)) or 0) end
-local first = redis.call("ZRANGE", KEYS[2], 0, 0, "WITHSCORES")
-local retry = 0
-if #first >= 2 then retry = math.max(0, tonumber(first[2]) - now) end
-return {0, tonumber(redis.call("GET", KEYS[1])) or 0, redis.call("PTTL", KEYS[1]), active, retry}
+var inferenceQuotaStatusScript = redisdb.NewScript(inferenceQuotaScriptPrelude + `
+return state(0)
 `)
 
 // RedisInferenceQuotaManager uses Redis scripts so concurrent API instances
@@ -260,6 +270,7 @@ func (manager *RedisInferenceQuotaManager) Reserve(ctx context.Context, data typ
 	result, err := reserveInferenceQuotaScript.Run(manager.Client, keys,
 		now.UnixMilli(), limits.Window.Milliseconds(), limits.ReservationTTL.Milliseconds(),
 		limits.Allowance, limits.MaxConcurrentExecutions, data.Units, data.ReservationID,
+		limits.MaxQueuedExecutions, reservationKindArgument(data),
 	).Result()
 	if err != nil {
 		ObserveInferenceQuotaEvent("unavailable")
@@ -277,6 +288,10 @@ func (manager *RedisInferenceQuotaManager) Reserve(ctx context.Context, data typ
 	if decision == 2 {
 		ObserveInferenceQuotaEvent("rejected_concurrency")
 		return status, inferenceQuotaLimitError(apiError.InferenceConcurrencyExceeded, status, status.ConcurrentRetryAfter)
+	}
+	if decision == 3 {
+		ObserveInferenceQuotaEvent("rejected_queue_limit")
+		return status, inferenceQuotaLimitError(apiError.InferenceQueueLimitExceeded, status, status.QueuedRetryAfter)
 	}
 	ObserveInferenceQuotaEvent("accepted")
 	return status, nil
@@ -357,7 +372,19 @@ func validateInferenceQuotaReservation(data types.InferenceQuotaReservation) err
 		strings.TrimSpace(data.ReservationID) == "" || data.Units <= 0 {
 		return errors.New(apiError.InvalidPayload)
 	}
-	return nil
+	switch data.Kind {
+	case "", types.InferenceQuotaReservationInteractive, types.InferenceQuotaReservationQueued:
+		return nil
+	default:
+		return errors.New(apiError.InvalidPayload)
+	}
+}
+
+func reservationKindArgument(data types.InferenceQuotaReservation) string {
+	if data.IsQueued() {
+		return string(types.InferenceQuotaReservationQueued)
+	}
+	return string(types.InferenceQuotaReservationInteractive)
 }
 
 func (manager *RedisInferenceQuotaManager) now() time.Time {
@@ -374,12 +401,15 @@ func (manager *RedisInferenceQuotaManager) keys(tenantID, userID string) ([]stri
 	digest := sha256.Sum256([]byte(strings.TrimSpace(tenantID) + "\x00" + strings.TrimSpace(userID)))
 	scope := hex.EncodeToString(digest[:])
 	prefix := "pacs-ai:inference-quota:{" + scope + "}:"
-	return []string{prefix + "usage", prefix + "active", prefix + "reservation-units"}, nil
+	return []string{
+		prefix + "usage", prefix + "active", prefix + "reservation-units",
+		prefix + "queued-active", prefix + "queued-reservation-units",
+	}, nil
 }
 
 func parseInferenceQuotaResult(result interface{}, limits InferenceQuotaLimits) (types.InferenceQuotaStatus, int64, error) {
 	values, ok := result.([]interface{})
-	if !ok || len(values) != 5 {
+	if !ok || len(values) != 7 {
 		return types.InferenceQuotaStatus{}, 0, fmt.Errorf("unexpected quota result: %T", result)
 	}
 	parsed := make([]int64, len(values))
@@ -397,11 +427,14 @@ func parseInferenceQuotaResult(result interface{}, limits InferenceQuotaLimits) 
 	}
 	resetAfter := time.Duration(maxInt64(parsed[2], 0)) * time.Millisecond
 	concurrentRetryAfter := time.Duration(maxInt64(parsed[4], 0)) * time.Millisecond
+	queuedRetryAfter := time.Duration(maxInt64(parsed[6], 0)) * time.Millisecond
 	return types.InferenceQuotaStatus{
 		Allowance: limits.Allowance, Used: used, Remaining: remaining,
 		Window: limits.Window, ResetAfter: resetAfter,
 		MaxConcurrentExecutions: limits.MaxConcurrentExecutions,
 		ActiveExecutions:        parsed[3], ConcurrentRetryAfter: concurrentRetryAfter,
+		MaxQueuedExecutions: limits.MaxQueuedExecutions,
+		QueuedExecutions:    parsed[5], QueuedRetryAfter: queuedRetryAfter,
 	}, parsed[0], nil
 }
 
@@ -412,6 +445,8 @@ func inferenceQuotaLimitError(code string, status types.InferenceQuotaStatus, re
 		MaxConcurrentExecutions: status.MaxConcurrentExecutions,
 		ActiveExecutions:        status.ActiveExecutions,
 		RetryAfterSeconds:       durationSecondsCeiling(retryAfter),
+		MaxQueuedExecutions:     status.MaxQueuedExecutions,
+		QueuedExecutions:        status.QueuedExecutions,
 	}
 }
 

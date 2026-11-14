@@ -301,8 +301,11 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		}
 		userID := strings.TrimSpace(*data.UserID)
 		requestedByUserID = &userID
+		// Manual reprocess is queued work: study-service's per-model queues
+		// bound capacity, so it is not held to the interactive concurrency cap.
 		quotaReservation = &types.InferenceQuotaReservation{
 			TenantID: tenantID, UserID: userID, ReservationID: runID, Units: 1,
+			Kind: types.InferenceQuotaReservationQueued,
 		}
 		if _, err := service.InferenceQuotaManagerInterface.Reserve(ctx, *quotaReservation); err != nil {
 			return types.CreateStudyProcessingRunResult{}, err
@@ -378,8 +381,12 @@ func (service *InferenceCommandService) finalizeProcessingRunQuota(run entity.In
 	) || hasProcessingRunAttentionReason(
 		run.AttentionReasons, entity.InferenceIngestionProcessingRunAttentionRetrievalFailed,
 	))
+	// Processing runs are only reserved as queued work (manual reprocess and
+	// viewer runs). Release/Refund locate the reservation by ID in either
+	// active set, so Kind here is informational.
 	service.finishInferenceQuotaReservation(&types.InferenceQuotaReservation{
 		TenantID: run.TenantID, UserID: userID, ReservationID: run.ID, Units: 1,
+		Kind: types.InferenceQuotaReservationQueued,
 	}, refund)
 }
 
@@ -447,7 +454,7 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 			strings.TrimSpace(run.StudyInstanceUID) != strings.TrimSpace(candidate.StudyInstanceUID) {
 			return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
 		}
-		manualProcessingRun = run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess
+		manualProcessingRun = run.RunTrigger.IsUserRequested()
 
 		existing, err = service.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(
 			ctx, candidate.TenantID, processingRunID, candidate.ID, modelName,
@@ -650,6 +657,9 @@ func (service *InferenceCommandService) publishCommittedWorklistNotification(
 		StartedAt:         transition.Run.StartedAt,
 		CompletedAt:       transition.Run.CompletedAt,
 		UpdatedAt:         transition.Run.UpdatedAt,
+		ExecutionID:       transition.Execution.ID,
+		ModelName:         transition.Execution.ModelName,
+		Status:            transition.Execution.Status,
 	}
 	if err := service.PublishWorklistNotification(ctx, notification); err != nil {
 		log.Printf(
@@ -1654,7 +1664,7 @@ func validateReconciledStudyServiceJob(
 		return fmt.Errorf("reconciliation job %s processing-run mismatch", strings.TrimSpace(job.JobID))
 	}
 	processingExecutionID := strings.TrimSpace(trimmedPointerValue(job.ProcessingExecutionID))
-	if run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess {
+	if run.RunTrigger.IsUserRequested() {
 		if processingExecutionID != "" && processingExecutionID != strings.TrimSpace(execution.ID) {
 			return fmt.Errorf("reconciliation job %s processing-execution mismatch", strings.TrimSpace(job.JobID))
 		}
@@ -3202,6 +3212,7 @@ func (service *InferenceCommandService) predictInferenceModelWithQuota(
 		}
 		quotaReservation = &types.InferenceQuotaReservation{
 			TenantID: tenantID, UserID: trimmedUserID, ReservationID: generateID(), Units: 1,
+			Kind: types.InferenceQuotaReservationInteractive,
 		}
 		if _, err := service.InferenceQuotaManagerInterface.Reserve(ctx, *quotaReservation); err != nil {
 			return dockerInferenceTypes.PredictResponse{}, err
