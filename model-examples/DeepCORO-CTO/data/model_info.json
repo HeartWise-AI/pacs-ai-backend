@@ -5,6 +5,7 @@
   "stage": "ai_inference",
   "modality": "Angiogram",
   "version": "2.0.1",
+  "build": "render-report-1",
   "provenance": {
     "sourceRepository": "HeartWise-AI/pacs-ai-backend",
     "sourceRevision": null,
@@ -19,6 +20,9 @@
     "peakMemoryMiB": 6488,
     "maxConcurrentInferences": 1,
     "idleTimeoutSeconds": 600
+  },
+  "capabilities": {
+    "renderReport": true
   },
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,

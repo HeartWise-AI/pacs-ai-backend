@@ -35,6 +35,7 @@ RUN --mount=type=secret,id=hf_token \
 # Copy application files
 COPY main.py .
 COPY logic.py .
+COPY report_input.py .
 COPY config.json .
 COPY data/ ./data/
 COPY docs/ ./docs/
@@ -47,6 +48,7 @@ ENV PACS_AI_SOURCE_REVISION="${PACS_AI_SOURCE_REVISION}"
 ENV PACS_AI_MODEL_VERSION="${PACS_AI_MODEL_VERSION}"
 
 LABEL org.opencontainers.image.title="DeepCORO-CTO" \
+      ai.heartwise.pacs.build="render-report-1" \
       org.opencontainers.image.version="${PACS_AI_MODEL_VERSION}" \
       org.opencontainers.image.revision="${PACS_AI_SOURCE_REVISION}" \
       org.opencontainers.image.source="https://github.com/${PACS_AI_SOURCE_REPOSITORY}" \
