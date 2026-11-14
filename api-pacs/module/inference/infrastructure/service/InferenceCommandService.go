@@ -249,6 +249,13 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 			return types.CreateStudyProcessingRunResult{}, errors.New(apiError.DatabaseError)
 		}
 
+		if strings.TrimSpace(job.DICOMModality) == viewerIngestionJobSource {
+			// A model run once from the viewer is not part of the site's
+			// study-wide plan. Including it left automatic runs waiting forever
+			// on a model that no ingestion job dispatches.
+			continue
+		}
+
 		modelName := strings.TrimSpace(job.ModelName)
 		if modelName == "" {
 			return types.CreateStudyProcessingRunResult{}, errors.New(apiError.DatabaseError)
