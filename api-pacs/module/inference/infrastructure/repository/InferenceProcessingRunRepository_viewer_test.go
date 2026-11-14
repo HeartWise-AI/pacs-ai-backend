@@ -86,7 +86,7 @@ func TestCreateProcessingRunPlanAutomaticReuseExcludesViewerRuns(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectExec("pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_runs(.|\\n)*run_trigger::text <> 'VIEWER_REQUEST'").
+	mock.ExpectQuery("SELECT \\* FROM ingestion_processing_runs(.|\\n)*CAST\\(run_trigger AS text\\) <> 'VIEWER_REQUEST'").
 		WillReturnRows(emptyProcessingRunRows())
 	mock.ExpectQuery("SELECT COALESCE").WillReturnRows(sqlmock.NewRows([]string{"run_number"}).AddRow(3))
 	mock.ExpectQuery("INSERT INTO ingestion_processing_runs").WillReturnRows(processingRunRows(time.Now()))
@@ -132,11 +132,23 @@ func TestCreateProcessingRunPlanManualStillConflictsWithAnyActiveRun(t *testing.
 func TestSelectActiveProcessingRunExcludesViewerRuns(t *testing.T) {
 	handler := &processingRunTestHandler{}
 	handler.queryRow = func(query string, _ interface{}, target interface{}) error {
-		require.Contains(t, query, "run_trigger::text <> 'VIEWER_REQUEST'")
+		require.Contains(t, query, "CAST(run_trigger AS text) <> 'VIEWER_REQUEST'")
 		*target.(*entity.InferenceIngestionProcessingRun) = entity.InferenceIngestionProcessingRun{ID: "run-1"}
 		return nil
 	}
 	repository := InferenceProcessingRunRepository{PostgresSQLDBHandlerInterface: handler}
 	_, err := repository.SelectActiveProcessingRun(context.Background(), "tenant-a", "1.2.3")
 	require.NoError(t, err)
+}
+
+// sqlx rewrites "::" to ":" in named queries. A "::text" cast in this filter
+// made every active-run lookup fail and stopped automatic study processing.
+func TestViewerRunExclusionSurvivesNamedQueryCompilation(t *testing.T) {
+	compiled, _, err := sqlx.Named(
+		"SELECT 1 WHERE tenant_id = :tenant_id "+viewerRunExclusion,
+		map[string]interface{}{"tenant_id": "tenant-a"},
+	)
+	require.NoError(t, err)
+	require.Contains(t, compiled, "CAST(run_trigger AS text) <> 'VIEWER_REQUEST'")
+	require.NotContains(t, compiled, ":")
 }

@@ -666,7 +666,8 @@ func (repository *InferenceProcessingRunRepository) CreateProcessingRunPlan(ctx 
 
 // viewerRunExclusion keeps study-wide run lookups independent of single-model
 // viewer runs. The text cast avoids depending on the enum value at parse time.
-const viewerRunExclusion = "AND run_trigger::text <> 'VIEWER_REQUEST'"
+// CAST, not "::": selectStudyRun is a named query, where sqlx turns "::" into ":".
+const viewerRunExclusion = "AND CAST(run_trigger AS text) <> 'VIEWER_REQUEST'"
 
 // staleUndispatchedExecution matches a pending execution that was never sent to
 // study-service and that the processing reconciler has already reported as
