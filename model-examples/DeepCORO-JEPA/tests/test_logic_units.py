@@ -139,7 +139,7 @@ def test_a_call_follows_the_returned_probability():
     assert "FFR predicted normal (P(FFR ≤ 0.80) 0.50, threshold 0.5000)" in text
     assert "Flagged for thrombus (P above 0.2500): Proximal RCA (P 0.25001)" in text
     row = re.search(r'<li class="seg"><span class="sname">Proximal RCA(.*?)</li>', html).group(1)  # not flagged
-    assert '<span class="chip warn">Thrombus</span>' in row and '<span class="pct sev-none">0%</span>' in row
+    assert '<span class="chip warn">Thrombus</span>' in row and 'class="pct sev-none" title="Normal; model estimate 0.0%"><span class="normal">0%</span></span>' in row
     assert 'P 0.250<span class="muted"> / 0.2500</span>' in row
     assert "Calcification 0.25 · Thrombus 0.25001 · CTO 0.25" in row
 
@@ -214,7 +214,7 @@ def test_lesion_outputs_are_reported_and_flagged_when_the_checkpoint_has_them():
     row = re.search(r'<li class="seg is-flag"><span class="sname">Proximal RCA(.*?)</li>', html).group(1)
     assert '<span class="chip warn">CTO</span>' in row and "CTO 0.40" in row
     # a CTO is reported as an occlusion: 100%, flagged, vessel blocked at the lesion and pale beyond it
-    assert '<span class="pct sev-high">100%<span class="muted small"> est. 0%</span></span>' in row
+    assert 'class="pct sev-high" title="Occluded; model estimate 0.0%">100%<span class="muted small"> est. 0%</span></span>' in row
     assert html.count('class="cto-mark"') == 1 and html.count('class="occluded"') == 1
     assert "Operating point specificity_99" in html and "Proximal RCA (100%, occluded)" in html
     assert "Proximal RCA (P 0.000, estimated 100%, CTO flag; stenosis estimate 0%)" not in text  # not significant

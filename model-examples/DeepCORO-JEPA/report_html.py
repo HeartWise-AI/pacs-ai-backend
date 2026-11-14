@@ -11,6 +11,8 @@ import math
 import sys
 from html import escape
 
+from display_calibration import CATEGORY_LABELS, calibration, display_category, display_pct
+
 SEGMENT_NAMES = {
     "prox_rca": "Proximal RCA", "mid_rca": "Mid RCA", "dist_rca": "Distal RCA", "pda": "PDA",
     "posterolateral": "Posterolateral", "left_main": "Left main", "prox_lad": "Proximal LAD", "mid_lad": "Mid LAD",
@@ -114,9 +116,10 @@ def tangent(c, t):
     return (x1 - x0) / n, (y1 - y0) / n
 
 
-def displayed_pct(v: dict) -> float:
-    """A segment flagged for chronic total occlusion is reported as 100% whatever the stenosis estimate."""
-    return 100.0 if v.get("cto") else v["stenosis_pct"]
+def displayed_pct(v: dict) -> int:
+    """The % shown for a segment: the calibrated display value of display_calibration (0 = normal, 100 for a CTO
+    flag); the model estimate `stenosis_pct` stays in the JSON and in the hover text."""
+    return display_pct(v)
 
 
 def is_flagged(v: dict) -> bool:
@@ -125,6 +128,12 @@ def is_flagged(v: dict) -> bool:
 
 def severity(pct: float) -> str:
     return "sev-high" if pct >= 70 else "sev-mid" if pct >= 50 else "sev-low" if pct >= 30 else "sev-none"
+
+
+def pct_text(v: dict) -> str:
+    """Displayed value as text: "normal" for 0, otherwise the %."""
+    pct = displayed_pct(v)
+    return "normal" if pct == 0 else f"{pct}%"
 
 
 def lesion_tags(v: dict) -> list[str]:
@@ -171,7 +180,7 @@ def schema_svg(segs: dict, cuts: dict, left_dominant: bool = False) -> str:
                            f'ry="{max(w * .32, 2.4):.1f}" transform="rotate({angle:.0f} {px:.1f} {py:.1f})"/>')
         mx, my = bez(c, 0.5)
         tags = lesion_tags(v)
-        line1 = f"{SHORT[g]} {pct:.0f}%"
+        line1 = f"{SHORT[g]} {pct}%" if pct else f"{SHORT[g]} normal"
         line2 = (f"P {shown(v['prob_significant'], v['prob_threshold'], 3)} > {v['prob_threshold']:.3f}"
                  if v["significant"] else "")
         line3 = " · ".join(f"CTO · est. {v['stenosis_pct']:.0f}%" if t == "CTO" else t for t in tags)
@@ -182,7 +191,8 @@ def schema_svg(segs: dict, cuts: dict, left_dominant: bool = False) -> str:
         cx, cy = min(max(mx, lx), lx + bw), min(max(my, ly), ly + bh)
         pins.append(f'<line class="leader" x1="{cx:.0f}" y1="{cy:.0f}" x2="{mx:.0f}" y2="{my:.0f}"/>'
                     f'<circle class="pin" cx="{mx:.0f}" cy="{my:.0f}" r="3.4"/>')
-        tip = (f"{SEGMENT_NAMES[g]}: {'occluded (CTO flag), ' if v.get('cto') else ''}estimated stenosis "
+        tip = (f"{SEGMENT_NAMES[g]}: shown {pct_text(v)} ({CATEGORY_LABELS[display_category(v)]}); "
+               f"{'occluded (CTO flag), ' if v.get('cto') else ''}model estimate "
                f"{v['stenosis_pct']:.1f}%, P(significant) "
                f"{shown(v['prob_significant'], v['prob_threshold'], 3)} vs threshold {v['prob_threshold']:.4f}"
                f" ({'flagged' if flagged else 'not flagged'})"
@@ -218,13 +228,15 @@ def detail_rows(segs: dict, cuts: dict) -> str:
                 continue
             pct = displayed_pct(v)
             model = f'<span class="muted small"> est. {v["stenosis_pct"]:.0f}%</span>' if v.get("cto") else ""
+            shown_pct = f"{pct}%" if pct else '<span class="normal">0%</span>'
+            title = escape(f"{CATEGORY_LABELS[display_category(v)]}; model estimate {v['stenosis_pct']:.1f}%")
             tags = "".join(f'<span class="chip warn">{t}</span>' for t in lesion_tags(v))
             sub = " · ".join(f"{'CTO' if k == 'cto' else LESION_NAMES[k].capitalize()} {shown(v[k + '_prob'], cuts[k], 2)}"
                              for k in LESION_NAMES if k + "_prob" in v and k in cuts)
             rows.append(
                 f'<li class="seg{" is-flag" if is_flagged(v) else ""}">'
                 f'<span class="sname">{SEGMENT_NAMES[g]}{tags}</span>'
-                f'<span class="pct {severity(pct)}">{pct:.0f}%{model}</span>'
+                f'<span class="pct {severity(pct)}" title="{title}">{shown_pct}{model}</span>'
                 f'<span class="pcol">{prob_bar(v["prob_significant"], v["prob_threshold"], v["significant"])}'
                 f'<span class="pnum">P {shown(v["prob_significant"], v["prob_threshold"], 3)}'
                 f'<span class="muted"> / {v["prob_threshold"]:.4f}</span></span></span>'
@@ -343,7 +355,7 @@ h3{margin:0 0 6px;font:600 12px/1.2 var(--font);letter-spacing:.1em;text-transfo
 .pcol{grid-area:b;display:grid;gap:3px}
 .pnum{font-size:11.5px;font-variant-numeric:tabular-nums}
 .lesions{grid-area:l;font-size:11.5px;font-variant-numeric:tabular-nums}
-.sev-none{color:var(--muted)} .sev-low{color:var(--sev-low)} .sev-mid{color:var(--sev-mid)} .sev-high{color:var(--sev-high)}
+.sev-none{color:var(--muted)} .pct .normal{color:var(--ok)} .sev-low{color:var(--sev-low)} .sev-mid{color:var(--sev-mid)} .sev-high{color:var(--sev-high)}
 .chip{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:3px}
 .chip.warn{background:var(--warn);color:#fff}
 .addendum{display:grid;gap:14px}
@@ -404,6 +416,18 @@ model and experiment pages, v6 to v13).</p>
 </section>"""
 
 
+def calibration_note() -> str:
+    t = calibration()
+    xs, ys = t["knots"]["estimate_pct"], t["knots"]["display_pct"]
+    knots = ", ".join(f"{x:g}→{y:g}" for x, y in zip(xs, ys))
+    return escape(f"Shown %: the model estimate is pulled toward the mean, so it is rescaled for display "
+                  f"({t['version']}). Estimates below {t['zero_below_pct']:g}% are shown as 0% (normal); above, the "
+                  f"estimate is mapped through {knots} so the shown values follow the angiographic categories "
+                  f"<30, 30-49, 50-69 and ≥70%. A segment flagged for significant stenosis is never shown as normal; "
+                  f"a CTO flag is shown as 100%. The flags come from the probability, not from the shown %. "
+                  f"Fitted on {t['provenance']['dataset_short']}.")
+
+
 def explain_section(items: list[dict], segs: dict) -> str:
     """Where the model read each flagged segment: the crop with the highest attention, at pixel level."""
     if not items:
@@ -413,7 +437,7 @@ def explain_section(items: list[dict], segs: dict) -> str:
         g = it["segment"]
         v = segs.get(g, {})
         head = (f'<h3>{escape(SEGMENT_NAMES.get(g, g))} <span class="pct {severity(displayed_pct(v)) if v else ""}">'
-                f'{displayed_pct(v):.0f}%</span></h3>' if v else f"<h3>{escape(g)}</h3>")
+                f'{pct_text(v)}</span></h3>' if v else f"<h3>{escape(g)}</h3>")
         if not it.get("has_crop"):
             cards.append(f'<figure class="xcard none">{head}<p class="muted small">No tracked crop for this segment '
                          f'(its mask was too small in every video); the reading comes from the full views only.</p></figure>')
@@ -457,7 +481,7 @@ def render_report(preds: dict, model_version: str, recommendation: str) -> str:
     dom_value, dom_detail = dominance_text(dom)
     verdict = [
         ("alert" if flagged else "", "Significant stenosis flagged",
-         ", ".join(f"{SEGMENT_NAMES[g]} ({displayed_pct(segs[g]):.0f}%{', occluded' if segs[g].get('cto') else ''})"
+         ", ".join(f"{SEGMENT_NAMES[g]} ({pct_text(segs[g])}{', occluded' if segs[g].get('cto') else ''})"
                    for g in flagged) or "None", ""),
         ("", "Coronary dominance", dom_value, dom_detail),
     ]
@@ -497,10 +521,10 @@ def render_report(preds: dict, model_version: str, recommendation: str) -> str:
 <div class="verdict">{verdict_html}</div>
 <div class="main">
   <section class="card schema-card">
-    <div class="schema-title"><h2>Schéma coronaire</h2><span class="muted small">{drawn}. Estimated % diameter stenosis per segment; hover a label for the probabilities.</span></div>
+    <div class="schema-title"><h2>Schéma coronaire</h2><span class="muted small">{drawn}. Estimated % diameter stenosis per segment, calibrated for display (see the note under the segment detail); hover a label for the model estimate and the probabilities.</span></div>
     <div class="scroll">{schema_svg(segs, cuts, left_dominant=left)}</div>
     <div class="legend"><span><i class="sw flag"></i>Flagged: P(significant) above its segment threshold, or CTO</span>
-      <span><i class="sw lbl"></i>Not flagged</span><span><i class="sw plq"></i>Plaque, lumen narrowed to the estimate (≥15%)</span>
+      <span><i class="sw lbl"></i>Not flagged</span><span><i class="sw plq"></i>Plaque, lumen narrowed to the shown % (≥15%)</span>
       <span><i class="sw cto"></i>Occluded (CTO flag): reported as 100%</span><span><i class="sw thr"></i>Thrombus flag</span></div>
   </section>
   <aside class="side">{physiology_card(phys) if phys else ''}{thr}</aside>
@@ -508,6 +532,7 @@ def render_report(preds: dict, model_version: str, recommendation: str) -> str:
 {explain_section(preds.get("explainability") or [], segs)}
 <section class="card"><h2>Segment detail</h2>
   <p class="muted small" style="margin-bottom:10px">Bar: P(significant stenosis) on a square-root scale; the black tick is the segment's validation threshold. Significant means ≥70% (≥50% for left main).</p>
+  <p class="muted small" style="margin-bottom:10px">{calibration_note()}</p>
   <div class="details">{detail_rows(segs, cuts)}</div></section>
 <p class="disclaimer">{escape(recommendation)}</p>
 {ADDENDUM}
@@ -516,7 +541,7 @@ def render_report(preds: dict, model_version: str, recommendation: str) -> str:
 
 if __name__ == "__main__":
     # python3 report_html.py docs/examples/predict_response_json.json docs/examples/predict_report.html [model_version]
-    # Same report as HTML-mode predict and /inference/render-report for that response (model_version "v13").
+    # Same report as HTML-mode predict and /inference/render-report for that response (model_version "v13-cal1").
     data = json.load(open(sys.argv[1]))["data"]
-    out = render_report(data["predictions"], sys.argv[3] if len(sys.argv) > 3 else "v13", data["modelRecommendations"]["en"])
+    out = render_report(data["predictions"], sys.argv[3] if len(sys.argv) > 3 else "v13-cal1", data["modelRecommendations"]["en"])
     open(sys.argv[2], "w").write(out + "\n")

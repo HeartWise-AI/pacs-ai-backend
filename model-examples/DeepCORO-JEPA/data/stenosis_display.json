@@ -1,0 +1,25 @@
+{
+  "version": "cal1",
+  "description": "Display-only mapping of segments.<segment>.stenosis_pct to the % shown in the report (display_pct) and its category (display_category). stenosis_pct, prob_significant and every flag are unchanged.",
+  "zero_below_pct": 10,
+  "knots": {"estimate_pct": [10, 23, 35, 49, 100], "display_pct": [20, 30, 50, 70, 100]},
+  "rules": [
+    "stenosis_pct < zero_below_pct: shown 0% (normal)",
+    "otherwise: linear interpolation through the knots, rounded to an integer",
+    "cto flag: shown 100% (occluded)",
+    "significant flag: never shown as normal; an estimate below zero_below_pct is shown at the first display knot (20%, mild)"
+  ],
+  "categories": {"normal": "0%", "mild": "1-29%", "moderate": "30-49%", "intermediate": "50-69%", "severe": "70-100%", "occluded": "CTO flag"},
+  "provenance": {
+    "date": "2026-11-14",
+    "dataset_short": "the MHI held-out test split (3,321 studies, 59,778 segment readings), 5-fold patient cross-validated",
+    "dataset": "MHI held-out test split (Split = inference of the DeepCORO-CLIP report labels): 3,321 studies, 18 segments each, labels 0/20/40/50/70/80/95/100% from the angiography report. Predictions: DeepCORO-JEPA v12 on the full test set from DICOM (NAS DeepCoro_Integrated/verification_2026-11-10/v12_test_dicom_predictions.parquet), because the v13 full-test predictions are kept on the training server only. v13 check: on the 120 test studies run with v13 (verification_2026-11-12_v13/out_avi.csv) the same mapping gives T0 PPV 0.54 / NPV 0.91 and weighted kappa 0.60 (v12 on the same studies 0.58).",
+    "label_categories": "report 0 -> normal, 20 -> mild, 40 -> 30-49, 50 -> 50-69, 70/80/95/100 -> >=70",
+    "method": "T0: upper end of the plateau of Youden's J (within 0.002 of the maximum) for report stenosis > 0%, pooled over the 18 segments. Knots 30/50/70: estimate cuts that maximise the quadratic-weighted kappa of the 5 categories (0, <30, 30-49, 50-69, >=70), 1-point grid; the display value at T0 is the report's mild label (20%). Rules chosen by 5-fold cross-validation grouped by patient (fit on 4 folds, scored on the 5th); the shipped values are the fit on all folds, rounded to integers (CV folds: T0 10-10.5, knots 23-27.5 / 36-40 / 46-49.5).",
+    "test_metrics": {
+      "t0": {"sensitivity": 0.737, "specificity": 0.785, "ppv": 0.505, "npv": 0.910, "prevalence": 0.229},
+      "categories_before": {"exact": 0.250, "weighted_kappa": 0.411},
+      "categories_after_cv": {"exact": 0.648, "weighted_kappa": 0.589, "shown_severe_mean_report_pct": 59.5, "shown_severe_report_ge70": 0.634}
+    }
+  }
+}

@@ -17,7 +17,9 @@
           "thrombus_prob": 0.004118,
           "thrombus": false,
           "cto_prob": 0.005463,
-          "cto": false
+          "cto": false,
+          "display_pct": 40,
+          "display_category": "moderate"
         },
         "mid_rca": {
           "stenosis_pct": 72.0,
@@ -30,7 +32,9 @@
           "thrombus_prob": 0.026292,
           "thrombus": false,
           "cto_prob": 0.257173,
-          "cto": true
+          "cto": true,
+          "display_pct": 100,
+          "display_category": "occluded"
         },
         "dist_rca": {
           "stenosis_pct": 5.7,
@@ -43,7 +47,9 @@
           "thrombus_prob": 0.002178,
           "thrombus": false,
           "cto_prob": 0.007729,
-          "cto": false
+          "cto": false,
+          "display_pct": 0,
+          "display_category": "normal"
         },
         "pda": {
           "stenosis_pct": 4.9,
@@ -56,7 +62,9 @@
           "thrombus_prob": 0.002841,
           "thrombus": false,
           "cto_prob": 0.003113,
-          "cto": false
+          "cto": false,
+          "display_pct": 0,
+          "display_category": "normal"
         },
         "posterolateral": {
           "stenosis_pct": 3.0,
@@ -69,7 +77,9 @@
           "thrombus_prob": 0.001903,
           "thrombus": false,
           "cto_prob": 0.005569,
-          "cto": false
+          "cto": false,
+          "display_pct": 0,
+          "display_category": "normal"
         },
         "left_main": {
           "stenosis_pct": 0.9,
@@ -82,7 +92,9 @@
           "thrombus_prob": 0.000162,
           "thrombus": false,
           "cto_prob": 3.6e-05,
-          "cto": false
+          "cto": false,
+          "display_pct": 0,
+          "display_category": "normal"
         },
         "prox_lad": {
           "stenosis_pct": 27.8,
@@ -95,7 +107,9 @@
           "thrombus_prob": 0.001387,
           "thrombus": false,
           "cto_prob": 0.00113,
-          "cto": false
+          "cto": false,
+          "display_pct": 38,
+          "display_category": "moderate"
         },
         "mid_lad": {
           "stenosis_pct": 17.2,
@@ -108,7 +122,9 @@
           "thrombus_prob": 0.001191,
           "thrombus": false,
           "cto_prob": 0.000912,
-          "cto": false
+          "cto": false,
+          "display_pct": 26,
+          "display_category": "mild"
         },
         "dist_lad": {
           "stenosis_pct": 4.8,
@@ -121,7 +137,9 @@
           "thrombus_prob": 0.001386,
           "thrombus": false,
           "cto_prob": 0.000852,
-          "cto": false
+          "cto": false,
+          "display_pct": 0,
+          "display_category": "normal"
         },
         "D1": {
           "stenosis_pct": 29.1,
@@ -134,7 +152,9 @@
           "thrombus_prob": 0.000895,
           "thrombus": false,
           "cto_prob": 0.005234,
-          "cto": false
+          "cto": false,
+          "display_pct": 40,
+          "display_category": "moderate"
         },
         "D2": {
           "stenosis_pct": 6.8,
@@ -147,7 +167,9 @@
           "thrombus_prob": 0.000516,
           "thrombus": false,
           "cto_prob": 0.00281,
-          "cto": false
+          "cto": false,
+          "display_pct": 0,
+          "display_category": "normal"
         },
         "prox_lcx": {
           "stenosis_pct": 12.2,
@@ -160,7 +182,9 @@
           "thrombus_prob": 0.000666,
           "thrombus": false,
           "cto_prob": 0.000336,
-          "cto": false
+          "cto": false,
+          "display_pct": 22,
+          "display_category": "mild"
         },
         "mid_lcx": {
           "stenosis_pct": 2.1,
@@ -173,7 +197,9 @@
           "thrombus_prob": 0.000475,
           "thrombus": false,
           "cto_prob": 0.002246,
-          "cto": false
+          "cto": false,
+          "display_pct": 0,
+          "display_category": "normal"
         },
         "dist_lcx": {
           "stenosis_pct": 4.3,
@@ -186,7 +212,9 @@
           "thrombus_prob": 0.000114,
           "thrombus": false,
           "cto_prob": 0.005204,
-          "cto": false
+          "cto": false,
+          "display_pct": 0,
+          "display_category": "normal"
         },
         "om1": {
           "stenosis_pct": 7.6,
@@ -199,7 +227,9 @@
           "thrombus_prob": 0.000515,
           "thrombus": false,
           "cto_prob": 0.003607,
-          "cto": false
+          "cto": false,
+          "display_pct": 0,
+          "display_category": "normal"
         },
         "om2": {
           "stenosis_pct": 10.4,
@@ -212,7 +242,9 @@
           "thrombus_prob": 0.000226,
           "thrombus": false,
           "cto_prob": 0.002851,
-          "cto": false
+          "cto": false,
+          "display_pct": 20,
+          "display_category": "mild"
         },
         "bx": {
           "stenosis_pct": 37.5,
@@ -225,7 +257,9 @@
           "thrombus_prob": 0.001103,
           "thrombus": false,
           "cto_prob": 0.023016,
-          "cto": false
+          "cto": false,
+          "display_pct": 54,
+          "display_category": "intermediate"
         },
         "lvp": {
           "stenosis_pct": 0.1,
@@ -238,7 +272,9 @@
           "thrombus_prob": 1e-06,
           "thrombus": false,
           "cto_prob": 0.000154,
-          "cto": false
+          "cto": false,
+          "display_pct": 0,
+          "display_category": "normal"
         }
       },
       "lad_physiology": {
@@ -259,7 +295,7 @@
         "cto": 0.157
       }
     },
-    "diagnosis": "Flagged for possible significant stenosis (probability above its validation threshold): Mid RCA (P 0.812, estimated 100%, CTO flag; stenosis estimate 72%), First diagonal (P 0.147, estimated 29%), Ramus (bisector) (P 0.432, estimated 38%). LAD physiology: FFR predicted normal (P(FFR ≤ 0.80) 0.26, threshold 0.2644); iFR predicted normal (P(iFR ≤ 0.89) 0.29, threshold 0.4337). No segment flagged for calcification. No segment flagged for thrombus. Flagged for chronic total occlusion (P above 0.1570): Mid RCA (P 0.26).",
+    "diagnosis": "Flagged for possible significant stenosis (probability above its validation threshold): Mid RCA (P 0.812, shown 100%, CTO flag; model estimate 72%), First diagonal (P 0.147, shown 40%, model estimate 29%), Ramus (bisector) (P 0.432, shown 54%, model estimate 38%). Other segments with a shown stenosis of 30% or more: Proximal RCA (40%), Proximal LAD (38%). 9 of 17 segments shown as normal (model estimate below 10%). LAD physiology: FFR predicted normal (P(FFR ≤ 0.80) 0.26, threshold 0.2644); iFR predicted normal (P(iFR ≤ 0.89) 0.29, threshold 0.4337). No segment flagged for calcification. No segment flagged for thrombus. Flagged for chronic total occlusion (P above 0.1570): Mid RCA (P 0.26).",
     "modelRecommendations": {
       "en": "Research model, not for clinical decisions. Flags use thresholds chosen on the internal validation set, not a validated clinical operating point. Confirm every reading on the angiogram; LAD physiology outputs (test AUROC about 0.69) do not replace invasive FFR/iFR. Calcification, thrombus and chronic total occlusion flags are set for few false alarms and miss many of these findings.",
       "fr": "Modèle de recherche, ne pas utiliser pour la décision clinique. Les signalements utilisent des seuils choisis sur l'ensemble de validation interne, et non un seuil clinique validé. Confirmer chaque lecture sur l'angiographie; les sorties de physiologie IVA (AUROC test environ 0,69) ne remplacent pas la FFR/iFR invasive. Les signalements de calcification, de thrombus et d'occlusion totale chronique sont réglés pour peu de fausses alertes et manquent une bonne partie de ces lésions.",
