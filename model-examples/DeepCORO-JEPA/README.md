@@ -22,7 +22,8 @@ The encoder runs **at most twice per study**:
 
 | Container version | Model | Hugging Face revision | Training run (Weights & Biases, `mhi_ai/deepcoro-segmentation`) |
 |---|---|---|---|
-| **1.1.1** (this one) | **v13** | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
+| **1.1.2** (this one) | **v13** | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
+| 1.1.1 | v13 | same revision | same run |
 | 1.1.0 | v13 | same revision | same run |
 | 1.0.0 | v12 | `heartwise/DeepCORO_JEPA@49c8ddf` (branch `main`) | `7983f98e` |
 
@@ -33,6 +34,12 @@ The served weights are the ones exported from the checkpoint of that training ru
 test set (macro AUROC 0.885 against 0.884). The pressure AUROC is lower (0.69 against 0.72; the difference is within
 its confidence interval, see "Verified performance"), and the lesion outputs are not better than the reference
 models. Version 1.0.0 stays buildable from commit `82492f2` of `master`.
+
+**What 1.1.2 changes against 1.1.1:** same weights, thresholds and code. `requirements.txt` now installs PyTorch
+2.14.1 built for CUDA 13.0 instead of 2.5.1 built for CUDA 12.1, which does not run on NVIDIA Blackwell GPUs. The
+numbers returned for a study are not identical to those of the environment in which the test metrics were computed;
+see "Effect of the PyTorch build" under "Verification of this version". Image 1.1.1 was published on 2026-11-12 with
+the CUDA 12.1 build; it is not usable on Blackwell GPUs.
 
 **What 1.1.1 changes against 1.1.0** (commit `5b3a825`): same weights and thresholds. Probabilities are returned
 with 6 decimals instead of 4, and every yes/no call is taken on the returned probability. In 1.1.0 the call was
@@ -242,7 +249,28 @@ Done on the development server as `.claude/skills/pacs-ai-model-mapping` prescri
   `inference.py` takes its calls on the unrounded probability, the container on the returned 6-decimal one.
 - **Fresh download.** A fresh `snapshot_download` of revision `v13.1` and its `inference.py` on 12 studies gives the
   same predictions as above (difference 0).
-- **Example.** The files in `docs/examples/` are the response of this code to one of the 40 studies (5 runs).
+- **Effect of the PyTorch build (1.1.2).** The checks above ran in the development environment (an NVIDIA build of
+  PyTorch 2.14, CUDA 13.4), in which the test metrics were also computed. The pinned requirements of 1.1.2 (PyTorch
+  2.14.1, CUDA 13.0) were then installed in a clean environment and run on an RTX PRO 5000 Blackwell GPU. The inputs
+  are the same (the decoded clips are identical bit for bit), but the outputs are not:
+  - 120 test studies with `inference.py` (the training videos): 44 of the 8,880 yes/no calls differ (39 stenosis, 2
+    calcification, 1 thrombus, 1 CTO, 1 pressure), in 31 studies. The stenosis probability differs by more than 0.01
+    in 86 studies; the largest single differences are 0.57 in probability and 43 stenosis points. Against the reports
+    of these 120 studies the two environments perform alike: pooled AUROC 0.908 and 0.908, macro AUROC over the 15
+    segments with at least 3 positive studies 0.854 and 0.852, mean segment r 0.484 and 0.481.
+  - The 40 DICOM studies through `CustomPredictionService.predict`: 10 of the 2,960 calls differ from the check
+    above, largest differences 0.14 in probability and 8.4 stenosis points; 2 encoder passes in every study, peak 8.7
+    GiB allocated.
+  - Cause, as far as it was traced on 10 studies: the model runs in bfloat16, and its result depends on the build.
+    Between the two builds the largest difference was 6.5 stenosis points in bfloat16 and 0.8 in float32; within one
+    build, bfloat16 and float32 differ by up to 13 points. Small numerical differences are amplified by the steps
+    that take a decision (which crops of a segment are kept).
+  - Consequence: the metrics under "Verified performance" were measured in the development environment. The full
+    test set was not rerun with the pinned requirements, so for this image they are supported only by the
+    120-study comparison above. A single segment's number can change between PyTorch builds and should not be read
+    as exact.
+- **Example.** The files in `docs/examples/` are the response of this code, with the pinned requirements of 1.1.2, to
+  one of the 40 studies (5 runs).
 - **Not done.** No Docker image was built or run on the development server, and the service was not called through
   the PACS.AI backend. The check above calls the same Python code that the image runs.
 
@@ -263,21 +291,67 @@ Checklist of `.claude/skills/pacs-ai-model-mapping`:
 
 ## Build and run
 
+Run every command from the root of a clean checkout of `master`.
+
+**1. Candidate image** (builds, verifies the manifest and answers `model-info` from a temporary container; nothing is
+pushed without `--publish`):
+
 ```bash
 python3 scripts/release-model.py model-examples/DeepCORO-JEPA \
   --image-repository heartwisehub/deepcoro-jepa --hf-token-file /secure/path/hf_token
 ```
 
+**2. Start it and wait until it answers.** The web server needs a few seconds after `docker run` returns, so poll
+instead of calling at once:
+
+```bash
+docker run -d --rm --gpus all --name deepcoro-jepa -p 127.0.0.1:8080:80 heartwisehub/deepcoro-jepa:1.1.2
+for i in $(seq 1 60); do
+  curl -sf http://127.0.0.1:8080/api/inference/model-info > /dev/null && break
+  sleep 2
+done
+curl -sf http://127.0.0.1:8080/api/inference/model-info
+```
+
+**3. Time limit of one prediction: 5 minutes.** nginx in the image stops waiting for the model after 300 seconds, and
+the PACS.AI backend's own client also gives up after 5 minutes, so a longer client timeout does not help. The model is
+loaded on the first `/inference/predict` call, which is therefore the slowest one.
+
+**4. Publish** from `master` (the workflow refuses any other ref, and refuses to overwrite a version that exists):
+
+```bash
+gh workflow run publish-model-image.yml --ref master -f model_directory=model-examples/DeepCORO-JEPA
+```
+
+**5. Deploy.**
+- Model already registered in a workspace: an owner or administrator selects the published version in Workspace
+  Settings (see `docs/model-image-release.md`). Do not run `scripts/deploy-model.sh` again for it: the script removes
+  the existing model first, and that deletes its ingestion jobs and processing history.
+- First registration only: `scripts/deploy-model.sh model-examples/DeepCORO-JEPA --register-only`.
+
+Notes:
 - GPU required: about 1.7 GB resident and up to 9.9 GB peak (largest MHI test studies, bf16, measured with v12).
-  With v13 the peak over the 40 verification studies (up to 9 runs each) was 8.6 GiB allocated. Declared 11 GB.
-- The official image is built after merge by the release workflow (`.github/workflows/publish-model-image.yml`);
-  the deployment is then repointed to the new image digest. The Docker build was not run on the development server.
-- **Blackwell (sm_120) GPUs:** cu121 wheels do not run on them. Build with a cu128 torch (≥ 2.7) there.
+  With v13 the peak over the 40 verification studies (up to 9 runs each) was 8.7 GiB allocated. Declared 11 GB.
+- **PyTorch build.** `requirements.txt` pins `torch 2.14.1+cu130` and `torchvision 0.29.1+cu130` (CUDA 13.0). That
+  build contains kernels for NVIDIA GPUs from Turing (sm_75) to Blackwell (sm_120); it has none for older GPUs
+  (Pascal, Volta). It was run on an RTX PRO 5000 Blackwell with driver 615.71. Versions up to 1.1.1 pinned a CUDA 12.1
+  build that does not run on Blackwell GPUs. The index, torch and torchvision lines must name the same build; a test
+  checks it.
+- No Docker image was built or run on the development server; steps 1 to 5 are written from the release scripts and
+  `docs/model-image-release.md`.
 
 ## Tests
 
 ```bash
 cd model-examples/DeepCORO-JEPA && python -m pytest -q tests
+```
+
+If the host Python has no pytest, use a virtual environment (the tests run on CPU):
+
+```bash
+cd model-examples/DeepCORO-JEPA && python3 -m venv /tmp/deepcoro-jepa-venv
+/tmp/deepcoro-jepa-venv/bin/pip install -r requirements.txt pytest
+/tmp/deepcoro-jepa-venv/bin/python -m pytest -q tests
 ```
 
 The tests cover:

@@ -1,7 +1,7 @@
-# Validated: NVIDIA PyTorch 2.14 (GPU, bf16) and torch 2.5.1 (CPU). cu121 wheels do not support Blackwell (sm_120) GPUs; use a cu128 build (torch>=2.7) there.
---extra-index-url https://download.pytorch.org/whl/cu121
-torch==2.5.1+cu121
-torchvision==0.20.1+cu121
+# CUDA 13.0 build: runs on NVIDIA GPUs from Turing (sm_75) to Blackwell (sm_120). The index, torch and torchvision must name the same build.
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.14.1+cu130
+torchvision==0.29.1+cu130
 fastapi==0.115.6
 uvicorn==0.34.0
 pydicom==3.0.2
