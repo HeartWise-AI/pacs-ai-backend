@@ -22,7 +22,8 @@ The encoder runs **at most twice per study**:
 
 | Container version | Model | Hugging Face revision | Training run (Weights & Biases, `mhi_ai/deepcoro-segmentation`) |
 |---|---|---|---|
-| **1.3.0** (this one) | **v13** | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
+| **1.4.0** (this one) | **v13** | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
+| 1.3.0 | v13 | same revision | same run |
 | 1.2.0 | v13 | same revision | same run |
 | 1.1.1 | v13 | same revision | same run |
 | 1.1.0 | v13 | same revision | same run |
@@ -35,6 +36,12 @@ The served weights are the ones exported from the checkpoint of that training ru
 test set (macro AUROC 0.885 against 0.884). The pressure AUROC is lower (0.69 against 0.72; the difference is within
 its confidence interval, see "Verified performance"), and the lesion outputs are not better than the reference
 models. Version 1.0.0 stays buildable from commit `82492f2` of `master`.
+
+**What 1.4.0 changes against 1.3.0:** same weights and thresholds; `stenosis_pct` and every flag are unchanged.
+The report shows a calibrated stenosis instead of the raw estimate (display calibration `cal1`,
+`data/stenosis_display.json`, applied by `display_calibration.py`), and each segment of the JSON gets
+`display_pct` and `display_category`. The report header reads `v13-cal1` (`reportModelVersion`); the HF tag `v13.1`
+is the weights revision and is not changed. See "Displayed stenosis" below.
 
 **What 1.3.0 changes against 1.2.0:** same weights, thresholds, JSON values and report. `POST
 /inference/render-report` with `{"result": <data of a JSON-mode predict>}` answers `{"htmlBase64", "modelVersion",
@@ -105,7 +112,9 @@ There is no `VideoMILWrapper` and no zero-video padding.
   filtered. PCI, stent and ventriculography runs were not in training.
 - **JSON `predictions`:**
   - `segments.<segment>`:
-    - `stenosis_pct`: estimated % diameter stenosis.
+    - `stenosis_pct`: estimated % diameter stenosis (the model estimate, pulled toward the mean).
+    - `display_pct`, `display_category` (1.4.0 on): the % the report shows and its category (`normal`, `mild` < 30,
+      `moderate` 30-49, `intermediate` 50-69, `severe` ≥ 70, `occluded` for a CTO flag). See "Displayed stenosis".
     - `prob_significant`: probability that the report calls the segment significant.
     - `prob_threshold`: the decision threshold of that segment.
     - `significant`: `true` when `prob_significant` is strictly above `prob_threshold`.
@@ -123,7 +132,8 @@ There is no `VideoMILWrapper` and no zero-video padding.
     - `ffr_abnormal_threshold`, `ifr_abnormal_threshold`, and the calls `ffr_abnormal`, `ifr_abnormal`.
     - `operating_point`: which pressure thresholds were used.
   - `n_videos` and `encoder_passes`.
-- **`diagnosis`:** lists the flagged segments, the two pressure calls and the segments flagged for each lesion
+- **`diagnosis`:** lists the flagged segments (shown % and model estimate), the other segments shown at 30% or
+  more, how many segments are shown as normal, the two pressure calls and the segments flagged for each lesion
   finding.
 - **HTML:** the segment table (threshold, flag and the three lesion probabilities) plus LAD physiology.
 - **Example:** a response of this container for one test study, with every threshold in it:
@@ -134,6 +144,46 @@ There is no `VideoMILWrapper` and no zero-video padding.
   - No readable run: the request succeeds with empty `predictions` and the text "No video could be extracted".
   - The model call fails (for example the GPU runs out of memory): the request fails with HTTP 500 and
     `errorCode` `PROCESSING_ERROR`. It is never reported as a missing video.
+
+## Displayed stenosis
+
+The regression head shrinks toward the mean: on the test split, segments the report calls 0% have a median estimate
+of 3.5% (a quarter above 8.8%), and lesions of 70%, 80% and 95-100% have medians of 35%, 44% and 45-47%. Printed
+as is, few segments read 0% and few lesions read 70% or more. From 1.4.0 the report shows `display_pct`:
+
+| Model estimate (`stenosis_pct`) | Shown |
+|---|---|
+| below 10 | 0% (normal) |
+| 10 → 23 → 35 → 49 → 100 | 20 → 30 → 50 → 70 → 100%, linear in between, rounded |
+| CTO flag | 100% (occluded) |
+| significant flag and estimate below 10 | 20% (mild): a flagged segment is never shown as normal |
+
+How it was chosen (all 18 segments pooled, because single segments have few lesions):
+
+- **Data.** MHI held-out test split, 3,321 studies, 59,778 segment readings, labels 0/20/40/50/70/80/95/100% from
+  the angiography report. The full-test predictions of v13 are on the training server only, so the fit uses the v12
+  full-test predictions from DICOM (same architecture and target). On the 120 test studies that were run with v13
+  the same mapping gives the same results (T0 PPV 0.54 / NPV 0.91, weighted kappa 0.60; v12 on those studies 0.52 /
+  0.91 and 0.58). Refit on the v13 test (or better, validation) predictions when they are copied here.
+- **T0 (shown as normal below it).** Youden's J for "report stenosis > 0%" is flat from 8% to 10% (0.522-0.523);
+  the upper end of the plateau is used, so 8-10% estimates read normal. At 10%: sensitivity 0.74 [0.73, 0.75],
+  specificity 0.79 [0.78, 0.79], PPV 0.51 [0.50, 0.51], NPV 0.91 [0.91, 0.91] (prevalence 0.23; patient bootstrap).
+  The best cut differs by segment (4-18%, higher where disease is common), and one cut for all is used.
+- **Knots.** The estimate cuts for 30, 50 and 70% maximise the quadratic-weighted kappa of the five categories
+  (0, < 30, 30-49, 50-69, ≥ 70). Chosen by 5-fold cross-validation grouped by patient (fit on 4 folds, scored on the
+  fifth); the shipped knots are the fit on all folds, rounded. Quantile matching and isotonic regression were
+  compared and did worse or were not consistent with the flags.
+- **Result (cross-validated).** Exact category agreement 25% → 65%, weighted kappa 0.41 → 0.59
+  (patient-bootstrap 95% CIs about ± 0.01). Every vessel improves (kappa LAD 0.39 → 0.57, LCx 0.32 → 0.51, LM 0.59 → 0.72,
+  RCA 0.47 → 0.67).
+- **What it does not fix.** The estimate is still noisy (r about 0.5). Within a shown category the report value is
+  lower on average: shown < 30 → mean report 13%, 30-49 → 27%, 50-69 → 39%, ≥ 70 → 60% (63% of these are ≥ 70% on
+  the report, against 81% for raw estimates ≥ 70, which found only 19% of these lesions). Stretching the scale
+  trades this per-bin calibration for categories that match the report more often.
+- **Flags.** Unchanged. No segment without a flag is shown at 70% or more. 17% of flags (2,622 of 15,006, mostly
+  ramus, posterolateral, distal LCx, distal LAD and posterior LV with very low thresholds) have an estimate below 10%;
+  89% of those are 0% on the report and 5% significant, so they are shown at 20% (mild) instead of normal. Raising
+  the thresholds of these five segments would remove most of them; that is a flag change and is not part of 1.4.0.
 
 ## Decision thresholds
 
@@ -315,6 +365,8 @@ cd model-examples/DeepCORO-JEPA && python -m pytest -q tests
 The tests cover:
 - video selection and order;
 - DICOM to MJPG conversion;
+- the display calibration: knots, T0, the CTO and flag rules, monotonicity, the JSON fields, the report and the
+  diagnosis wording, and that stored 1.3.0 results render the same;
 - output postprocessing, the yes/no calls and the strict "above the threshold" rule, for stenosis, pressure and the
   three lesion findings;
 - that every call follows the returned 6-decimal probability, and that the diagnosis and the report never print a
