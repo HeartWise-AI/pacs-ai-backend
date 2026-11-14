@@ -10,6 +10,18 @@ The backend (`api-pacs`, Go) ingests DICOMs, calls the model's `/predict`, and r
 You author a small, fixed set of files; shared plumbing lives in `utils/genericLogic.py`
 (`BasePredictionService`).
 
+## Hand off released models to CardioAgent
+
+This skill owns the inference container, not CardioAgent orchestration. After the
+source and immutable image pass `pacs-ai-model-verification` and release evidence
+identifies the exact model contract, use
+[`HeartWise-AI/cardio-agent:.agents/skills/add-study-service-model/SKILL.md`](https://github.com/HeartWise-AI/cardio-agent/blob/feat/study-latest-results/.agents/skills/add-study-service-model/SKILL.md)
+to add the Study Service registry entry, dedicated Celery queue and worker,
+Compose configuration, and execution-path tests.
+
+Do not duplicate those worker instructions here. Building or releasing an image
+does not authorize CardioAgent deployment, study dispatch, polling, or backfill.
+
 ## Directory layout (copy an existing CLIP model, e.g. `CathEF-CLIP`, as the template)
 ```
 model-examples/<ModelName>/
