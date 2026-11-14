@@ -3,6 +3,7 @@ FROM python:3.12.1-slim
 ARG PACS_AI_SOURCE_REVISION=""
 
 LABEL org.opencontainers.image.title="DeepCORO-SYNTAX" \
+      ai.heartwise.pacs.build="render-report-1" \
       org.opencontainers.image.version="6.0.0" \
       org.opencontainers.image.revision="${PACS_AI_SOURCE_REVISION}" \
       org.opencontainers.image.source="https://github.com/HeartWise-AI/pacs-ai-backend" \
@@ -36,6 +37,7 @@ RUN --mount=type=secret,id=hf_token \
 # Copy application files
 COPY main.py .
 COPY logic.py .
+COPY report_input.py .
 COPY config.json .
 COPY data/ ./data/
 COPY docs/ ./docs/
