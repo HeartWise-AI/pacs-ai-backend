@@ -1,0 +1,8 @@
+{
+  "images": {
+    "api": {
+      "context": "api-pacs",
+      "dockerfile": "api-pacs/Dockerfile"
+    }
+  }
+}
