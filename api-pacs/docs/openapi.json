@@ -2530,6 +2530,101 @@
         }
       }
     },
+    "/inference/worklist/studies/{studyInstanceUID}/latest-results": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Latest completed model results for a study (viewer)",
+        "description": "Returns the latest completed study-service result per (model, modality) for one study in the authenticated tenant user's tenant, joined with the tenant's model registrations (modelId, containerId, reportAvailable from model-info capabilities.renderReport) and processing runs (runId, executionId, trigger). Read-only: never enqueues processing and never starts model containers. modality uses study-service values such as angiogram. selectedViews is null when the run did not record its view selection. Available to every authenticated tenant user who accepted the current policies.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "studyInstanceUID", "in": "path", "required": true, "schema": { "type": "string", "maxLength": 255 } },
+          { "name": "modality", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Optional study-service modality filter, for example angiogram" }
+        ],
+        "responses": {
+          "200": { "description": "Latest results", "headers": { "Cache-Control": { "description": "Model results and reports are never cached", "schema": { "type": "string", "enum": ["no-store"] } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StudyLatestModelResultsResponse" } } } },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/ProcessingExecutionResultServiceUnavailable" }
+        }
+      }
+    },
+    "/inference/processing/runs/{runId}/executions/{executionId}/report": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Render the HTML report of a completed execution",
+        "description": "Loads the stored result of one completed execution owned by the authenticated tenant user's tenant and asks the model's current registered container to re-render its HTML report (POST /api/inference/render-report, no model forward pass). The user's credentials are never forwarded to the model. The call is bounded by VIEWER_REPORT_RENDER_TIMEOUT_SECONDS (default 60) and VIEWER_REPORT_MAX_BYTES (default 32 MiB).",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "runId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "executionId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Rendered report", "headers": { "Cache-Control": { "description": "Model results and reports are never cached", "schema": { "type": "string", "enum": ["no-store"] } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ModelReportResponse" } } } },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "404": { "description": "MISSING_RECORD (unknown run, execution or job) or REPORT_NOT_AVAILABLE (the model cannot render reports)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "409": { "$ref": "#/components/responses/ProcessingExecutionResultNotAvailable" },
+          "422": { "description": "INFERENCE_EXECUTION_RESULT_INVALID or REPORT_RENDER_REJECTED (the model refused the stored result)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "502": { "description": "REPORT_RENDER_FAILED: timeout, size limit or upstream failure", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "503": { "description": "INFERENCE_RESULT_SERVICE_UNAVAILABLE or INFERENCE_MODEL_UNAVAILABLE", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } }
+        }
+      }
+    },
+    "/inference/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/report": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Render the HTML report of a legacy study-service job",
+        "description": "Same as the execution report for latest results without runId/executionId. The study-service job must belong to the authenticated tenant user's tenant and to the study in the path.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "studyInstanceUID", "in": "path", "required": true, "schema": { "type": "string", "maxLength": 255 } },
+          { "name": "studyServiceJobId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Rendered report", "headers": { "Cache-Control": { "description": "Model results and reports are never cached", "schema": { "type": "string", "enum": ["no-store"] } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ModelReportResponse" } } } },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "404": { "description": "MISSING_RECORD (unknown run, execution or job) or REPORT_NOT_AVAILABLE (the model cannot render reports)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "409": { "$ref": "#/components/responses/ProcessingExecutionResultNotAvailable" },
+          "422": { "description": "INFERENCE_EXECUTION_RESULT_INVALID or REPORT_RENDER_REJECTED (the model refused the stored result)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "502": { "description": "REPORT_RENDER_FAILED: timeout, size limit or upstream failure", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "503": { "description": "INFERENCE_RESULT_SERVICE_UNAVAILABLE or INFERENCE_MODEL_UNAVAILABLE", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } }
+        }
+      }
+    },
+    "/inference/worklist/studies/{studyInstanceUID}/models/{modelId}/run": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Run one model on a study from the viewer",
+        "description": "Creates one VIEWER_REQUEST processing run with a single execution for one model and dispatches it through study-service like a manual reprocess, so it appears in run history and worklist events. Callable by any authenticated tenant user who accepted the current policies (same as interactive predict); reserves one unit of the user's inference quota, refunded if dispatch never starts. Works for studies never ingested by a job: the candidate (and, if the tenant has no ingestion job for the model version, a STOPPED viewer-owned ingestion job) is created. The study must be stored in the local Orthanc. modelId is the Firestore registration ID; the container ID or the model-info modelId are also accepted. seriesInstanceUIDs is accepted but study-service currently selects the series itself.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "studyInstanceUID", "in": "path", "required": true, "schema": { "type": "string", "maxLength": 255 } },
+          { "name": "modelId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ViewerModelRunRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Viewer run created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ViewerModelRunResponse" } } } },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "404": { "description": "MISSING_RECORD: unknown model for this tenant", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "409": { "description": "RUN_ALREADY_ACTIVE: this model already has a pending, queued or running execution for the study; STUDY_NOT_AVAILABLE_LOCALLY: the study is not stored in the local Orthanc", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "429": { "description": "Per-user inference allowance or concurrency limit exceeded", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InferenceQuotaLimitResponse" } } } },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "description": "INFERENCE_MODEL_UNAVAILABLE or INFERENCE_QUOTA_UNAVAILABLE", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } }
+        }
+      }
+    },
     "/inference/worklist/studies/{studyInstanceUID}/reprocess": {
       "post": {
         "tags": ["inference"],
@@ -2671,7 +2766,7 @@
               "trigger": {
                 "type": "string",
                 "nullable": true,
-                "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT"]
+                "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT", "VIEWER_REQUEST"]
               },
               "phase": {
                 "type": "string",
@@ -2707,7 +2802,7 @@
               "studyInstanceUID": { "type": "string" },
               "runId": { "type": "string" },
               "runNumber": { "type": "integer", "minimum": 1 },
-              "trigger": { "type": "string", "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT"] },
+              "trigger": { "type": "string", "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT", "VIEWER_REQUEST"] },
               "phase": { "type": "string", "enum": ["QUEUED", "PROCESSING", "TERMINAL"] },
               "outcome": {
                 "type": "string",
@@ -2722,7 +2817,14 @@
               "version": { "type": "integer", "format": "int64", "minimum": 1 },
               "startedAt": { "type": "string", "format": "date-time", "nullable": true },
               "completedAt": { "type": "string", "format": "date-time", "nullable": true },
-              "updatedAt": { "type": "string", "format": "date-time" }
+              "updatedAt": { "type": "string", "format": "date-time" },
+              "executionId": { "type": "string", "description": "Optional: execution whose change produced this event" },
+              "modelName": { "type": "string", "description": "Optional: model of that execution" },
+              "status": {
+                "type": "string",
+                "description": "Optional: execution status after the change",
+                "enum": ["pending", "queued", "running", "completed", "failed", "skipped", "cancelled"]
+              }
             }
           }
         ]
@@ -2770,7 +2872,7 @@
               "runId": { "type": "string" },
               "studyInstanceUID": { "type": "string" },
               "runNumber": { "type": "integer", "minimum": 1 },
-              "trigger": { "type": "string", "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT"] },
+              "trigger": { "type": "string", "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT", "VIEWER_REQUEST"] },
               "phase": { "type": "string", "enum": ["QUEUED", "PROCESSING", "TERMINAL"] },
               "outcome": {
                 "type": "string",
@@ -2806,6 +2908,106 @@
           }
         ]
       },
+      "SelectedView": {
+        "type": "object",
+        "required": ["sopInstanceUID"],
+        "properties": {
+          "sopInstanceUID": { "type": "string" },
+          "seriesInstanceUID": { "type": "string", "nullable": true },
+          "viewLabel": { "type": "string", "nullable": true },
+          "order": { "type": "integer" },
+          "role": { "type": "string" },
+          "extra": { "type": "object" }
+        }
+      },
+      "SelectedViews": {
+        "type": "array",
+        "nullable": true,
+        "description": "Views the model actually used. null means the run did not record its selection.",
+        "items": { "$ref": "#/components/schemas/SelectedView" }
+      },
+      "StudyLatestModelResult": {
+        "type": "object",
+        "required": ["modelName", "modelVersion", "modality", "modelId", "artifactModelId", "containerId", "runId", "executionId", "studyServiceJobId", "completedAt", "trigger", "selectedViews", "reportAvailable"],
+        "properties": {
+          "modelName": { "type": "string" },
+          "modelVersion": { "type": "string", "nullable": true },
+          "modality": { "type": "string", "description": "study-service modality, for example angiogram" },
+          "modelId": { "type": "string", "nullable": true, "description": "Firestore registration ID of the matching tenant model" },
+          "artifactModelId": { "type": "string", "nullable": true, "description": "model-info modelId (ModelID in /model/proxy/available)" },
+          "containerId": { "type": "string", "nullable": true },
+          "runId": { "type": "string", "nullable": true },
+          "executionId": { "type": "string", "nullable": true, "description": "null means use the legacy job report route" },
+          "studyServiceJobId": { "type": "string" },
+          "completedAt": { "type": "string", "nullable": true },
+          "trigger": { "type": "string", "nullable": true, "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT", "VIEWER_REQUEST"] },
+          "selectedViews": { "$ref": "#/components/schemas/SelectedViews" },
+          "reportAvailable": { "type": "boolean" }
+        }
+      },
+      "StudyLatestModelResultsResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "required": ["studyInstanceUID", "results"],
+            "properties": {
+              "studyInstanceUID": { "type": "string" },
+              "results": { "type": "array", "items": { "$ref": "#/components/schemas/StudyLatestModelResult" } }
+            }
+          }
+        }
+      },
+      "ModelReportResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "required": ["htmlBase64", "contentType"],
+            "properties": {
+              "htmlBase64": { "type": "string", "format": "byte" },
+              "contentType": { "type": "string", "enum": ["text/html"] },
+              "modelVersion": { "type": "string", "description": "Version of the container that rendered the report" }
+            }
+          }
+        }
+      },
+      "ViewerModelRunRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "seriesInstanceUIDs": { "type": "array", "maxItems": 1000, "items": { "type": "string", "maxLength": 64 } },
+          "modality": { "type": "string", "description": "DICOM modality, required only for models supporting several modalities" }
+        }
+      },
+      "ViewerModelRunResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "required": ["runId", "runNumber", "trigger", "phase", "executionId", "modelId", "modelName", "modelVersion"],
+            "properties": {
+              "runId": { "type": "string" },
+              "runNumber": { "type": "integer", "minimum": 1 },
+              "trigger": { "type": "string", "enum": ["VIEWER_REQUEST"] },
+              "phase": { "type": "string", "enum": ["QUEUED"] },
+              "executionId": { "type": "string" },
+              "modelId": { "type": "string" },
+              "modelName": { "type": "string" },
+              "modelVersion": { "type": "string" }
+            }
+          }
+        }
+      },
       "ProcessingRunExecutionResult": {
         "type": "object",
         "required": ["runId", "executionId", "studyInstanceUID", "modelName", "modelVersion", "status", "completedAt", "result"],
@@ -2820,7 +3022,8 @@
           "result": {
             "description": "Opaque model-specific JSON. Consumers must not assume one shared model schema.",
             "nullable": false
-          }
+          },
+          "selectedViews": { "$ref": "#/components/schemas/SelectedViews" }
         },
         "additionalProperties": false
       },

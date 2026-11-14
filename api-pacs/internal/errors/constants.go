@@ -102,6 +102,18 @@ const (
 	InferenceAdmissionTimeout string = "INFERENCE_ADMISSION_TIMEOUT"
 	// InferenceAdmissionBlocked asks callers to retry after a deployment transition completes.
 	InferenceAdmissionBlocked string = "INFERENCE_ADMISSION_BLOCKED"
+	// RunAlreadyActive rejects a viewer run while the same model is already pending/queued/running for the study.
+	RunAlreadyActive string = "RUN_ALREADY_ACTIVE"
+	// ReportNotAvailable is returned when the result's model cannot re-render an HTML report.
+	ReportNotAvailable string = "REPORT_NOT_AVAILABLE"
+	// ReportRenderRejected is returned when the model refuses to render a stored result.
+	ReportRenderRejected string = "REPORT_RENDER_REJECTED"
+	// ReportRenderFailed is returned when report rendering times out, is too large, or fails upstream.
+	ReportRenderFailed string = "REPORT_RENDER_FAILED"
+	// StudyNotAvailableLocally rejects a viewer run for a study that is not stored in the local Orthanc.
+	StudyNotAvailableLocally string = "STUDY_NOT_AVAILABLE_LOCALLY"
+	// InferenceModelUnavailable is returned when a registered model container cannot be made ready.
+	InferenceModelUnavailable string = "INFERENCE_MODEL_UNAVAILABLE"
 	// InferenceUpgradeConflict rejects a stale or conflicting registration replacement.
 	InferenceUpgradeConflict string = "INFERENCE_UPGRADE_CONFLICT"
 	// InferenceUpgradeUnavailable indicates that managed deployment is disabled or not configured.

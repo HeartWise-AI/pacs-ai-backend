@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 
 	postgresqlTypes "api-pacs/infrastructures/database/postgresql/types"
@@ -614,10 +615,25 @@ func (repository *InferenceProcessingRunRepository) CreateProcessingRunPlan(ctx 
 		return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
 	}
 
+	if data.Run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerViewerRequest {
+		// Single-model viewer runs coexist with study-wide runs but never with
+		// another active execution of the same model for the same study.
+		if err = ensureNoActiveModelExecution(ctx, tx, data); err != nil {
+			return types.CreateInferenceIngestionProcessingRunPlanResult{}, err
+		}
+		return insertProcessingRunPlan(ctx, tx, data)
+	}
+
+	// Automatic plans reuse only an active study-wide run; manual reprocessing
+	// conflicts with any active run, including single-model viewer runs.
+	activeRunFilter := ""
+	if data.Run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerAuto {
+		activeRunFilter = viewerRunExclusion
+	}
 	var activeRun entity.InferenceIngestionProcessingRun
 	err = tx.GetContext(ctx, &activeRun, `
 		SELECT * FROM ingestion_processing_runs
-		WHERE tenant_id = $1 AND study_instance_uid = $2 AND phase <> 'TERMINAL'
+		WHERE tenant_id = $1 AND study_instance_uid = $2 AND phase <> 'TERMINAL' `+activeRunFilter+`
 		ORDER BY run_number DESC LIMIT 1
 	`, data.Run.TenantID, data.Run.StudyInstanceUID)
 	if err == nil {
@@ -645,6 +661,42 @@ func (repository *InferenceProcessingRunRepository) CreateProcessingRunPlan(ctx 
 		return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
 	}
 
+	return insertProcessingRunPlan(ctx, tx, data)
+}
+
+// viewerRunExclusion keeps study-wide run lookups independent of single-model
+// viewer runs. The text cast avoids depending on the enum value at parse time.
+const viewerRunExclusion = "AND run_trigger::text <> 'VIEWER_REQUEST'"
+
+func ensureNoActiveModelExecution(ctx context.Context, tx *sqlx.Tx, data types.CreateInferenceIngestionProcessingRunPlan) error {
+	modelNames := make([]string, 0, len(data.Executions))
+	for _, execution := range data.Executions {
+		modelNames = append(modelNames, execution.ModelName)
+	}
+	if len(modelNames) == 0 {
+		return errors.New(apiError.InvalidPayload)
+	}
+	var active int
+	if err := tx.GetContext(ctx, &active, `
+		SELECT COUNT(*) FROM ingestion_processing_jobs jobs
+		JOIN ingestion_processing_runs runs ON runs.id = jobs.processing_run_id
+		WHERE runs.tenant_id = $1
+		  AND jobs.tenant_id = $1
+		  AND runs.study_instance_uid = $2
+		  AND runs.phase <> 'TERMINAL'
+		  AND jobs.model_name = ANY($3)
+		  AND jobs.status IN ('pending', 'queued', 'running')
+	`, data.Run.TenantID, data.Run.StudyInstanceUID, pq.Array(modelNames)); err != nil {
+		return processingRunError(err)
+	}
+	if active > 0 {
+		return errors.New(apiError.DuplicateRecord)
+	}
+	return nil
+}
+
+func insertProcessingRunPlan(ctx context.Context, tx *sqlx.Tx, data types.CreateInferenceIngestionProcessingRunPlan) (types.CreateInferenceIngestionProcessingRunPlanResult, error) {
+	var err error
 	var runNumber int
 	if err = tx.GetContext(ctx, &runNumber, `
 		SELECT COALESCE(MAX(run_number), 0) + 1
@@ -700,7 +752,7 @@ func (repository *InferenceProcessingRunRepository) selectStudyRun(ctx context.C
 
 // SelectActiveProcessingRun returns the tenant-scoped non-terminal run for a study.
 func (repository *InferenceProcessingRunRepository) SelectActiveProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error) {
-	return repository.selectStudyRun(ctx, tenantID, studyInstanceUID, "AND phase <> 'TERMINAL' ORDER BY run_number DESC LIMIT 1")
+	return repository.selectStudyRun(ctx, tenantID, studyInstanceUID, "AND phase <> 'TERMINAL' "+viewerRunExclusion+" ORDER BY run_number DESC LIMIT 1")
 }
 
 // SelectProcessingRun returns one tenant-scoped processing run by ID.

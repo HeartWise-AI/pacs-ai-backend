@@ -30,6 +30,14 @@ type InferenceQueryService struct {
 	dockerInferenceTypes.DockerInferenceAPIInterface
 	application.InferenceQuotaManagerInterface
 	application.ProcessingResultProviderInterface
+	// StudyResultsProvider reads study-service latest results for the viewer.
+	StudyResultsProvider application.StudyResultsProviderInterface
+	// ModelReportRenderer re-renders stored results through model containers.
+	ModelReportRenderer dockerInferenceTypes.ModelReportRendererInterface
+	// ReportRenderTimeout bounds one render call (default 60s).
+	ReportRenderTimeout time.Duration
+	// ReportMaxBytes caps the render response body (default 32 MiB).
+	ReportMaxBytes int64
 }
 
 // GetInferenceQuota returns the current tenant/user allowance and active work.
@@ -572,6 +580,7 @@ func (service *InferenceQueryService) GetProcessingRunExecutionResult(ctx contex
 		Status:           execution.Status,
 		CompletedAt:      *execution.CompletedAt,
 		Result:           append(json.RawMessage(nil), job.ResultJSON...),
+		SelectedViews:    normalizeSelectedViews(job.SelectedViews),
 	}, nil
 }
 

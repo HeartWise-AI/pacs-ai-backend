@@ -447,7 +447,7 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 			strings.TrimSpace(run.StudyInstanceUID) != strings.TrimSpace(candidate.StudyInstanceUID) {
 			return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
 		}
-		manualProcessingRun = run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess
+		manualProcessingRun = run.RunTrigger.IsUserRequested()
 
 		existing, err = service.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(
 			ctx, candidate.TenantID, processingRunID, candidate.ID, modelName,
@@ -650,6 +650,9 @@ func (service *InferenceCommandService) publishCommittedWorklistNotification(
 		StartedAt:         transition.Run.StartedAt,
 		CompletedAt:       transition.Run.CompletedAt,
 		UpdatedAt:         transition.Run.UpdatedAt,
+		ExecutionID:       transition.Execution.ID,
+		ModelName:         transition.Execution.ModelName,
+		Status:            transition.Execution.Status,
 	}
 	if err := service.PublishWorklistNotification(ctx, notification); err != nil {
 		log.Printf(
@@ -1654,7 +1657,7 @@ func validateReconciledStudyServiceJob(
 		return fmt.Errorf("reconciliation job %s processing-run mismatch", strings.TrimSpace(job.JobID))
 	}
 	processingExecutionID := strings.TrimSpace(trimmedPointerValue(job.ProcessingExecutionID))
-	if run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess {
+	if run.RunTrigger.IsUserRequested() {
 		if processingExecutionID != "" && processingExecutionID != strings.TrimSpace(execution.ID) {
 			return fmt.Errorf("reconciliation job %s processing-execution mismatch", strings.TrimSpace(job.JobID))
 		}

@@ -46,6 +46,12 @@ type inferenceWorklistHandlers struct {
 	getRunDetail       http.HandlerFunc
 	getExecutionResult http.HandlerFunc
 	reprocessStudy     http.HandlerFunc
+	// Viewer previous results: reads and single-model runs are available to
+	// every authenticated tenant user who accepted the policy, like predict.
+	getLatestResults   http.HandlerFunc
+	getExecutionReport http.HandlerFunc
+	getStudyJobReport  http.HandlerFunc
+	runStudyModel      http.HandlerFunc
 }
 
 type inferenceFeedbackHandlers struct {
@@ -81,6 +87,10 @@ func mountInferenceWorklistRoutes(
 		r.Get("/worklist/studies/{studyInstanceUID}/runs", handlers.getRunHistory)
 		r.Get("/processing/runs/{runId}", handlers.getRunDetail)
 		r.Get("/processing/runs/{runId}/executions/{executionId}/result", handlers.getExecutionResult)
+		r.Get("/worklist/studies/{studyInstanceUID}/latest-results", handlers.getLatestResults)
+		r.Get("/processing/runs/{runId}/executions/{executionId}/report", handlers.getExecutionReport)
+		r.Get("/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/report", handlers.getStudyJobReport)
+		r.Post("/worklist/studies/{studyInstanceUID}/models/{modelId}/run", handlers.runStudyModel)
 
 		r.Group(func(r chi.Router) {
 			r.Use(ownerOrAdmin)
@@ -287,6 +297,10 @@ func (router *router) InitRouter() *chi.Mux {
 						getRunDetail:       inferenceQueryController.GetProcessingRunDetail,
 						getExecutionResult: inferenceQueryController.GetProcessingRunExecutionResult,
 						reprocessStudy:     inferenceCommandController.ReprocessStudy,
+						getLatestResults:   inferenceQueryController.GetStudyLatestModelResults,
+						getExecutionReport: inferenceQueryController.GetProcessingRunExecutionReport,
+						getStudyJobReport:  inferenceQueryController.GetStudyJobReport,
+						runStudyModel:      inferenceCommandController.RunStudyModel,
 					},
 				)
 			})

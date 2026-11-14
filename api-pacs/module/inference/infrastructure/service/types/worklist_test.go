@@ -103,7 +103,8 @@ func TestProcessingRunExecutionResultContractKeepsModelPayloadOpaque(t *testing.
 		"modelVersion":"1.0.0",
 		"status":"completed",
 		"completedAt":"2026-08-11T14:30:00Z",
-		"result":{"syntax_score":24.5,"classification":"intermediate"}
+		"result":{"syntax_score":24.5,"classification":"intermediate"},
+		"selectedViews":null
 	}`, string(payload))
 	for _, forbidden := range []string{"tenantId", "studyServiceJobId", "patientId", "operatorToken"} {
 		require.NotContains(t, string(payload), forbidden)

@@ -144,6 +144,8 @@ type ProcessingRunExecutionResult struct {
 	Status           entity.InferenceIngestionProcessingJobStatus `json:"status"`
 	CompletedAt      time.Time                                    `json:"completedAt"`
 	Result           json.RawMessage                              `json:"result"`
+	// SelectedViews is null when the run did not record its view selection.
+	SelectedViews json.RawMessage `json:"selectedViews"`
 }
 
 // StudyProcessingRunHistoryPage returns complete runs newest first.

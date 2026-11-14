@@ -529,3 +529,44 @@ func TestStudyServiceDispatcherGetCallbackDeadLettersTreatsNotFoundAsFallback(t 
 		t.Fatalf("expected empty fallback result, got %#v", deadLetters)
 	}
 }
+
+func TestStudyServiceDispatcherGetLatestStudyResultsSendsTenantAndOperatorToken(t *testing.T) {
+	var gotPath, gotQuery, gotTenant, gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotQuery = r.URL.EscapedPath(), r.URL.RawQuery
+		gotTenant, gotAuth = r.Header.Get("X-Tenant-ID"), r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"studyInstanceUID":"1.2.3","results":[{"jobId":"job-1","modelName":"DeepCORO-JEPA","modelVersion":"1.2.0","modality":"angiogram","status":"completed","completedAt":"2026-11-13T10:00:00Z","processingRunId":null,"processingExecutionId":null,"selectedViews":[{"sopInstanceUID":"1","seriesInstanceUID":null}]}]}`))
+	}))
+	defer server.Close()
+	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceOperatorToken: "operator", StudyServiceClient: server.Client()}
+
+	results, found, err := dispatcher.GetLatestStudyResults(context.Background(), "tenant-a", "1.2.3", "angiogram")
+
+	if err != nil || !found {
+		t.Fatalf("unexpected err=%v found=%t", err, found)
+	}
+	if gotPath != "/jobs/by-study/1.2.3/latest-results" || gotQuery != "modality=angiogram" || gotTenant != "tenant-a" || gotAuth != "Bearer operator" {
+		t.Fatalf("unexpected request path=%q query=%q tenant=%q auth=%q", gotPath, gotQuery, gotTenant, gotAuth)
+	}
+	if len(results.Results) != 1 || results.Results[0].Modality != "angiogram" || !strings.Contains(string(results.Results[0].SelectedViews), `"seriesInstanceUID":null`) {
+		t.Fatalf("unexpected results %+v", results)
+	}
+}
+
+func TestStudyServiceDispatcherGetLatestStudyResultsHandlesAbsenceAndFailures(t *testing.T) {
+	status := http.StatusNotFound
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) }))
+	defer server.Close()
+	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceClient: server.Client()}
+
+	if _, found, err := dispatcher.GetLatestStudyResults(context.Background(), "tenant-a", "1.2.3", ""); err != nil || found {
+		t.Fatalf("404 must mean endpoint absent, got found=%t err=%v", found, err)
+	}
+	status = http.StatusBadGateway
+	if _, _, err := dispatcher.GetLatestStudyResults(context.Background(), "tenant-a", "1.2.3", ""); err == nil {
+		t.Fatal("upstream failure accepted")
+	}
+	if _, _, err := dispatcher.GetLatestStudyResults(context.Background(), " ", "1.2.3", ""); err == nil {
+		t.Fatal("missing tenant accepted")
+	}
+}
