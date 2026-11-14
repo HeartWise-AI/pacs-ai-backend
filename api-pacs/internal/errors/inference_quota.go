@@ -11,6 +11,8 @@ type InferenceQuotaLimitError struct {
 	MaxConcurrentExecutions int64
 	ActiveExecutions        int64
 	RetryAfterSeconds       int64
+	MaxQueuedExecutions     int64
+	QueuedExecutions        int64
 }
 
 func (err *InferenceQuotaLimitError) Error() string {

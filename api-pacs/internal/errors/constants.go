@@ -84,6 +84,8 @@ const (
 	InferenceQuotaExceeded string = "INFERENCE_QUOTA_EXCEEDED"
 	// InferenceConcurrencyExceeded is returned when the user's active reservation limit is reached.
 	InferenceConcurrencyExceeded string = "INFERENCE_CONCURRENCY_EXCEEDED"
+	// InferenceQueueLimitExceeded is returned when the user's active queued-run safety cap is reached.
+	InferenceQueueLimitExceeded string = "INFERENCE_QUEUE_LIMIT_EXCEEDED"
 	// InferenceQuotaUnavailable is returned when quota enforcement cannot make a safe decision.
 	InferenceQuotaUnavailable string = "INFERENCE_QUOTA_UNAVAILABLE"
 	// InferenceModelInputOutOfRange is returned when the selected series count is outside the model contract.

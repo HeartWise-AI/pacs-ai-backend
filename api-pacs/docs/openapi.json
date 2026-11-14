@@ -2668,7 +2668,7 @@
     "schemas": {
       "InferenceQuotaData": {
         "type": "object",
-        "required": ["allowance", "used", "remaining", "windowSeconds", "resetAfterSeconds", "maxConcurrentExecutions", "activeExecutions", "concurrencyRetryAfterSeconds"],
+        "required": ["allowance", "used", "remaining", "windowSeconds", "resetAfterSeconds", "maxConcurrentExecutions", "activeExecutions", "concurrencyRetryAfterSeconds", "maxQueuedExecutions", "queuedExecutions", "queuedRetryAfterSeconds"],
         "properties": {
           "allowance": { "type": "integer", "format": "int64", "minimum": 1 },
           "used": { "type": "integer", "format": "int64", "minimum": 0 },
@@ -2678,7 +2678,10 @@
           "resetAt": { "type": "integer", "format": "int64", "nullable": true },
           "maxConcurrentExecutions": { "type": "integer", "format": "int64", "minimum": 1 },
           "activeExecutions": { "type": "integer", "format": "int64", "minimum": 0 },
-          "concurrencyRetryAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 }
+          "concurrencyRetryAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 },
+          "maxQueuedExecutions": { "type": "integer", "format": "int64", "minimum": 1 },
+          "queuedExecutions": { "type": "integer", "format": "int64", "minimum": 0 },
+          "queuedRetryAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 }
         }
       },
       "InferenceQuotaResponse": {
@@ -2698,7 +2701,7 @@
           "message": { "type": "string" },
           "errorCode": {
             "type": "string",
-            "enum": ["INFERENCE_QUOTA_EXCEEDED", "INFERENCE_CONCURRENCY_EXCEEDED"]
+            "enum": ["INFERENCE_QUOTA_EXCEEDED", "INFERENCE_CONCURRENCY_EXCEEDED", "INFERENCE_QUEUE_LIMIT_EXCEEDED"]
           },
           "data": {
             "type": "object",
@@ -2710,7 +2713,9 @@
               "resetAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 },
               "maxConcurrentExecutions": { "type": "integer", "format": "int64", "minimum": 1 },
               "activeExecutions": { "type": "integer", "format": "int64", "minimum": 0 },
-              "retryAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 }
+              "retryAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 },
+              "maxQueuedExecutions": { "type": "integer", "format": "int64", "minimum": 0 },
+              "queuedExecutions": { "type": "integer", "format": "int64", "minimum": 0 }
             }
           }
         }

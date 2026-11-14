@@ -84,8 +84,12 @@ func (service *InferenceCommandService) CreateViewerModelRun(ctx context.Context
 	}
 	runID := generateID()
 	executionID := generateID()
+	// Viewer runs are queued on study-service's per-model Celery queues, so
+	// they count against the allowance and the queued-run safety cap, not the
+	// interactive concurrent-execution cap.
 	quotaReservation := &types.InferenceQuotaReservation{
 		TenantID: tenantID, UserID: userID, ReservationID: runID, Units: 1,
+		Kind: types.InferenceQuotaReservationQueued,
 	}
 	if _, err := service.InferenceQuotaManagerInterface.Reserve(ctx, *quotaReservation); err != nil {
 		return types.CreateViewerModelRunResult{}, err

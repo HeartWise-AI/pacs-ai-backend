@@ -159,6 +159,7 @@ func TestManualReprocessReservesOneUserScopedUnitAndPersistsRequester(t *testing
 	require.Len(t, quotaManager.reserved, 1)
 	require.Equal(t, result.Run.ID, quotaManager.reserved[0].ReservationID)
 	require.Equal(t, int64(1), quotaManager.reserved[0].Units)
+	require.Equal(t, serviceTypes.InferenceQuotaReservationQueued, quotaManager.reserved[0].Kind)
 	select {
 	case request := <-dispatchCalls:
 		require.Equal(t, result.Run.ID, trimmedPointerValue(request.ProcessingRunID))

@@ -218,6 +218,7 @@ func TestCreateViewerModelRunCreatesJobCandidateAndSingleExecutionForNeverIngest
 	require.Len(t, fixture.quota.reserved, 1)
 	require.Equal(t, serviceTypes.InferenceQuotaReservation{
 		TenantID: "tenant-a", UserID: "user-a", ReservationID: plan.Run.ID, Units: 1,
+		Kind: serviceTypes.InferenceQuotaReservationQueued,
 	}, fixture.quota.reserved[0])
 
 	select {
