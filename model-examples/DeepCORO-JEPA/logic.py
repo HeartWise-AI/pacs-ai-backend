@@ -22,6 +22,7 @@ import cv2 as cv
 import numpy as np
 import pydicom
 import torch
+import display_calibration
 from explain import capture_pooling, explain_segments
 from report_html import HIDDEN_SEGMENTS, LESION_NAMES, PROBABILITY_DECIMALS, SEGMENT_NAMES, render_report, shown  # noqa: F401
 from utils.genericLogic import BasePredictionService
@@ -272,6 +273,7 @@ class CustomPredictionService(BasePredictionService):
                 for g, x in zip(groups, res[f"lesion_{name}_probability"].float().cpu().tolist()):
                     x = round(float(x), PROBABILITY_DECIMALS)
                     out["segments"][g].update({f"{name}_prob": x, name: bool(x > cut[f"{name}_prob"])})
+        display_calibration.add_display(out["segments"])  # display only: stenosis_pct and the flags are unchanged
         return out
 
     # -- reporting -------------------------------------------------------------
@@ -284,12 +286,21 @@ class CustomPredictionService(BasePredictionService):
         # The report leaves out HIDDEN_SEGMENTS (posterior LV branch); a CTO-flagged segment is reported as 100%.
         segs = {g: v for g, v in preds["segments"].items() if g not in HIDDEN_SEGMENTS}
         sig = [g for g in self.significant_segments(preds) if g in segs]
-        pct = lambda v: (f"estimated 100%, CTO flag; stenosis estimate {v['stenosis_pct']:.0f}%" if v.get("cto")
-                         else f"estimated {v['stenosis_pct']:.0f}%")
+        cal = display_calibration
+        pct = lambda v: (f"shown 100%, CTO flag; model estimate {v['stenosis_pct']:.0f}%" if v.get("cto")
+                         else f"shown {cal.display_pct(v)}%, model estimate {v['stenosis_pct']:.0f}%")
         text = ("Flagged for possible significant stenosis (probability above its validation threshold): "
                 + ", ".join(f"{SEGMENT_NAMES[g]} (P {shown(segs[g]['prob_significant'], segs[g]['prob_threshold'], 3)}, "
                             f"{pct(segs[g])})" for g in sig) + "."
                 if sig else "No segment flagged for significant stenosis.")
+        others = [g for g in segs if g not in sig]
+        marked = [g for g in others if cal.display_pct(segs[g]) >= 30]
+        if marked:
+            text += (" Other segments with a shown stenosis of 30% or more: "
+                     + ", ".join(f"{SEGMENT_NAMES[g]} ({cal.display_pct(segs[g])}%)" for g in marked) + ".")
+        normal = sum(cal.display_pct(v) == 0 for v in segs.values())
+        text += (f" {normal} of {len(segs)} segments shown as normal (model estimate below "
+                 f"{cal.calibration()['zero_below_pct']:g}%).")
         if "lad_physiology" in preds:
             p = preds["lad_physiology"]
             call = lambda k: "abnormal" if p[f"{k}_abnormal"] else "normal"
@@ -326,8 +337,13 @@ class CustomPredictionService(BasePredictionService):
 
     @staticmethod
     def report_model_version() -> str:
-        """Model version printed in the report header ("v13"): from the loaded checkpoint structure, else from the
-        model_config.json downloaded next to the weights (no load needed), else from the model facts."""
+        """Version printed in the report header: the model version and the display calibration ("v13-cal1")."""
+        return f"{CustomPredictionService.model_version()}-{display_calibration.version()}"
+
+    @staticmethod
+    def model_version() -> str:
+        """Model version ("v13"): from the loaded checkpoint structure, else from the model_config.json downloaded
+        next to the weights (no load needed), else from the model facts."""
         version = CustomPredictionService.structure.get("model_version")
         if version:
             return str(version)

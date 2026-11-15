@@ -38,6 +38,7 @@ RUN --mount=type=secret,id=hf_token \
 COPY main.py .
 COPY logic.py .
 COPY report_html.py .
+COPY display_calibration.py .
 COPY report_input.py .
 COPY explain.py .
 COPY config.json .

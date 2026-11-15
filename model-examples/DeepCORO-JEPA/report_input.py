@@ -11,6 +11,7 @@ import binascii
 import math
 import re
 
+from display_calibration import CATEGORY_LABELS
 from report_html import LESION_NAMES, SEGMENT_NAMES
 
 DOMINANCE_METHODS = ("majority", "tie_mean_probability")
@@ -88,6 +89,10 @@ def _segments(segs, cuts: dict) -> None:
         _prob(v.get("prob_significant"), f"{p}.prob_significant")
         _prob(v.get("prob_threshold"), f"{p}.prob_threshold")
         _bool(v.get("significant"), f"{p}.significant")
+        if "display_pct" in v:  # 1.4.0 and later; the report recomputes it from stenosis_pct
+            _num(v["display_pct"], f"{p}.display_pct", 0.0, 100.0)
+        if "display_category" in v and v["display_category"] not in CATEGORY_LABELS:
+            _fail(f"{p}.display_category", f"must be one of {tuple(CATEGORY_LABELS)}")
         if "significant_threshold_pct" in v:
             _num(v["significant_threshold_pct"], f"{p}.significant_threshold_pct", 0.0, 100.0)
         for k in LESION_NAMES:

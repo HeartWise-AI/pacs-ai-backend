@@ -1,0 +1,78 @@
+{
+  "version": "cal1",
+  "description": "Display-only mapping of segments.<segment>.stenosis_pct to the % shown in the report (display_pct) and its category (display_category). stenosis_pct, prob_significant and every flag are unchanged. One mapping for every displayed segment.",
+  "zero_below_pct": 10,
+  "knots": {
+    "estimate_pct": [
+      10,
+      23,
+      37,
+      51,
+      100
+    ],
+    "display_pct": [
+      20,
+      30,
+      50,
+      70,
+      100
+    ]
+  },
+  "rules": [
+    "stenosis_pct < zero_below_pct: shown 0% (normal)",
+    "otherwise: linear interpolation through the knots, rounded to an integer",
+    "cto flag: shown 100% (occluded)",
+    "significant flag: never shown as normal; an estimate below zero_below_pct is shown at the first display knot (20%, mild)"
+  ],
+  "categories": {
+    "normal": "0%",
+    "mild": "1-29%",
+    "moderate": "30-49%",
+    "intermediate": "50-69%",
+    "severe": "70-100%",
+    "occluded": "CTO flag"
+  },
+  "provenance": {
+    "date": "2026-11-14",
+    "model": "DeepCORO-JEPA v13 (epoch 0, the served weights)",
+    "dataset_short": "the MHI validation split of model v13 (4,647 studies, 78,999 segment readings; posterior LV branch excluded from the fit)",
+    "dataset": "MHI validation split only, no test data: 4,647 studies (4,263 patients or, for 527 studies without a patient id, studies) x 17 segments = 78,999 segment readings of the served v13 weights, with the angiography report stenosis (0/20/40/50/70/80/95/100%). Source: v13/calibration_inputs_2026-11-14/v13e0_val_segment_predictions.parquet on the model NAS (83,646 rows, none missing). The 4,647 posterior left ventricular (LVP) rows were excluded from the fit because report grading of LVP is weak (31 of them have any stenosis); the mapping is still applied to LVP. The model estimate was clipped to 0-100 as the container does.",
+    "label_categories": "report 0 -> normal, 20 -> mild, 40 -> 30-49, 50 -> 50-69, 70/80/95/100 -> >=70",
+    "method": "T0: among cuts 0, 0.5, ..., 40 (shown normal when estimate < cut), the largest cut whose Youden J for report stenosis > 0% is within 0.002 of the maximum, all fitted segments pooled. Knots a < b < c for 30/50/70 on the grid T0+1, T0+2, ..., 79 with c - b <= 40: the triple that maximises the quadratic-weighted Cohen kappa between the 5 report categories and the 5 shown categories (0, <30, 30-49, 50-69, >=70; shown category from estimate < T0, < a, < b, < c). The display value at T0 is the report's mild label (20%). No rounding was needed (fit 10 / 23 / 37 / 51). Stability: 5-fold cross-validation grouped by patient gave T0 10 in every fold and knots 23 / 36-37 / 48-52.",
+    "history": "The first cal1 values (10 / 23 / 35 / 49, never released) were fitted with the same method on v12 predictions of the test split. On the v13 validation rows the two mappings are equivalent (weighted kappa difference +0.000, 95% CI -0.001 to +0.001).",
+    "fit_with_lvp_for_comparison": {
+      "n": 83646,
+      "zero_below_pct": 9.5,
+      "knots_estimate_pct": [
+        23.5,
+        35.5,
+        51.5
+      ],
+      "weighted_kappa": 0.589,
+      "exact": 0.664
+    },
+    "validation_metrics_cross_validated": {
+      "n": 78999,
+      "t0": {
+        "sensitivity": 0.738,
+        "specificity": 0.763,
+        "ppv": 0.508,
+        "npv": 0.898,
+        "prevalence": 0.249
+      },
+      "categories_before": {
+        "exact": 0.22,
+        "weighted_kappa": 0.402,
+        "within_one_category": 0.897
+      },
+      "categories_after": {
+        "exact": 0.657,
+        "weighted_kappa": 0.586,
+        "within_one_category": 0.876,
+        "shown_severe_mean_report_pct": 61.8,
+        "shown_severe_report_ge70": 0.678
+      },
+      "note": "Mapping only: the validation file has no probabilities, so the rule that keeps a flagged segment from being shown as normal is not included in these numbers."
+    }
+  }
+}
