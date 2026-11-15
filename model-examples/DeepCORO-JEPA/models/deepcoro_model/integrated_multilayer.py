@@ -19,6 +19,7 @@ from typing import Sequence
 import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 from integrated_model import (
     ALL_SEGMENTS, IntegratedStudyModel, N_CLASSES, PATCH, TUBELET,
@@ -233,9 +234,13 @@ class MultiLayerStudyModel(IntegratedStudyModel):
         self._pending = None
         if pyramid is None or pyramid.final is not tokens:
             raise RuntimeError("Dense decoding must consume features from the immediately preceding shared encoder call")
-        return self.mask_decoder(tokens, frames,
-                                 (frames.shape[1]//TUBELET, frames.shape[-2]//PATCH, frames.shape[-1]//PATCH),
-                                 intermediate=pyramid.intermediate)
+        grid = (frames.shape[1]//TUBELET, frames.shape[-2]//PATCH, frames.shape[-1]//PATCH)
+        if getattr(self, "decoder_checkpointing", False) and self.training and tokens.requires_grad:
+            # Same values and gradients; the decoder's activations are recomputed in the backward pass instead of
+            # being held while the crop pass runs (the decoder has no dropout or batch statistics).
+            return checkpoint(lambda final, *inter: self.mask_decoder(final, frames, grid, intermediate=inter),
+                              tokens, *pyramid.intermediate, use_reentrant=False)
+        return self.mask_decoder(tokens, frames, grid, intermediate=pyramid.intermediate)
 
     def forward_study(self, clips, **kwargs):
         if self._study_active:
@@ -278,6 +283,10 @@ def multilayer_model_from_payload(payload, device="cpu", train_blocks=0, upgrade
         model.enable_procedure_head()
     if any(k.startswith("lesion_head.") for k in payload["state_dict"]):
         model.enable_lesion_head()
+    if any(k.startswith("lesion_pooler.") for k in payload["state_dict"]):
+        model.enable_lesion_pooler()
+    if any(k.startswith("dominance_head.") for k in payload["state_dict"]):
+        model.enable_dominance_head()
     missing, unexpected = model.load_state_dict(payload["state_dict"], strict=is_v2)
     if unexpected or any(not (k == "mask_decoder.intermediate_gate" or k.startswith("mask_decoder.intermediate_proj.")) for k in missing):
         raise ValueError(f"V1 bundle structure mismatch: missing={missing}, unexpected={unexpected}")

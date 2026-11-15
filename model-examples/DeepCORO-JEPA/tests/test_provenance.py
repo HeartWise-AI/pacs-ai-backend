@@ -1,4 +1,4 @@
-"""DeepCORO-JEPA 1.1.2 artifact identity and build verification."""
+"""DeepCORO-JEPA 1.5.0 (model v15) artifact identity and build verification."""
 
 import hashlib
 import json
@@ -19,15 +19,15 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     provenance = manifest["provenance"]
 
-    assert manifest["version"] == "1.4.1"
+    assert manifest["version"] == "1.5.0"
     assert config["ModelStateDict"]["model_path"] == provenance["weightsPath"]
     assert provenance == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,
         "modelRepository": "heartwise/DeepCORO_JEPA",
-        "modelRevision": "8144d015bfdd2a6fa4f18e859f1cb8da0cb8689e",
+        "modelRevision": "ab6d12f7aa6c547cfdf5b47d3517d95566f6de0c",  # heartwise/DeepCORO_JEPA branch v15, tag v15.1
         "weightsPath": "model.safetensors",
-        "weightsSha256": "370e14c587af4ad9597c99788c4aa91d98df17d7a98515d79ae2b216089fe729",
+        "weightsSha256": "23b8255ba90818738e1d10f35421bb79f669eafe5ee68fdde7a2cdf27531c54c",
     }
 
 

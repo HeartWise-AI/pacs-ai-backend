@@ -176,10 +176,13 @@ async def _bounded_body(request: Request, limit: int) -> bytes | None:
     return bytes(body) if seen <= limit else None
 
 
-def _render_stored_result(payload) -> str:
+def _render_stored_result(payload) -> tuple[str, str]:
+    """(HTML, report header version) of a stored result. Both follow the model version of the stored result, not
+    the served one: a v13 result keeps its v13 display values and is headed "v13-cal1"."""
     if not isinstance(payload, dict) or set(payload) != {"result"}:
         raise ResultError('body must be {"result": <the data object of a JSON-mode prediction>}')
-    return CustomPredictionService.report_html(predictions_of(payload["result"]))
+    preds = predictions_of(payload["result"])
+    return CustomPredictionService.report_html(preds), CustomPredictionService.report_model_version(preds)
 
 
 @app.post("/inference/render-report")
@@ -196,7 +199,7 @@ async def render_report(request: Request):
         return HTTPResponse(status=422, success=False, error_code="INVALID_RESULT",
                             message=f"Body is not valid JSON: {e}").to_response()
     try:
-        html = await run_in_threadpool(_render_stored_result, payload)
+        html, report_version = await run_in_threadpool(_render_stored_result, payload)
     except ResultError as e:
         return HTTPResponse(status=422, success=False, error_code="INVALID_RESULT",
                             message=f"Cannot render this result: {e}").to_response()
@@ -210,7 +213,7 @@ async def render_report(request: Request):
         message="Report rendered",
         data={"htmlBase64": base64.b64encode(html.encode("utf-8")).decode("ascii"),
               "modelVersion": served_model_info["version"],
-              "reportModelVersion": CustomPredictionService.report_model_version()},
+              "reportModelVersion": report_version},
     ).to_response()
 
 
