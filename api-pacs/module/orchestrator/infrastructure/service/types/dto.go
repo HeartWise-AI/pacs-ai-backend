@@ -36,6 +36,38 @@ type CreateMessageResponse struct {
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 	CreatedAt   time.Time              `json:"created_at,omitempty"`
 	CompletedAt time.Time              `json:"completed_at,omitempty"`
+	// Activity is what the assistant used to answer; absent with an older chat backend.
+	Activity *ChatActivity `json:"activity,omitempty"`
+}
+
+// ChatActivityStep is one tool call or delegation of a chat request. The chat
+// backend builds it from safe data only: no tool arguments or identifiers.
+type ChatActivityStep struct {
+	ID         int     `json:"id"`
+	Key        string  `json:"key"`
+	Kind       string  `json:"kind"`
+	Label      string  `json:"label"`
+	Model      *string `json:"model"`
+	Status     string  `json:"status"` // "running", "done" or "failed"
+	StartedAt  string  `json:"started_at"`
+	EndedAt    *string `json:"ended_at"`
+	DurationMs *int64  `json:"duration_ms"`
+}
+
+// ChatActivity is the ordered activity log of one chat request.
+type ChatActivity struct {
+	Status    string             `json:"status"`
+	StartedAt *string            `json:"started_at"`
+	EndedAt   *string            `json:"ended_at"`
+	ElapsedMs int64              `json:"elapsed_ms"`
+	Steps     []ChatActivityStep `json:"steps"`
+}
+
+// ChatProgressResponse is the live activity of the chat request in flight for a thread.
+type ChatProgressResponse struct {
+	ThreadID string `json:"thread_id"`
+	Active   bool   `json:"active"`
+	ChatActivity
 }
 
 // GetThreadResponse represents a response from getting thread information
@@ -74,6 +106,7 @@ type ChatResponse struct {
 	Message  *MessageResponse `json:"message,omitempty"`
 	Status   string           `json:"status" default:"success"`
 	Error    string           `json:"error,omitempty"`
+	Activity *ChatActivity    `json:"activity,omitempty"`
 }
 
 // MessageRequest represents a request to send a message

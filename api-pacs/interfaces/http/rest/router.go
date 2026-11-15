@@ -345,6 +345,7 @@ func (router *router) InitRouter() *chi.Mux {
 
 					// Message and payload management
 					r.Post("/threads/{threadID}/chat", orchestratorController.CreateMessage)
+					r.Get("/threads/{threadID}/chat/progress", orchestratorController.GetChatProgress)
 					r.Post("/threads/{threadID}/dicom", orchestratorController.UploadDicomPayload)
 				})
 			})

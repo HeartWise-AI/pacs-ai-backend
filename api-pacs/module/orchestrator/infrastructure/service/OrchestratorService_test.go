@@ -3,8 +3,11 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
@@ -232,5 +235,197 @@ func TestCreateMessageOmitsEmptyMetadata(t *testing.T) {
 	}
 	if _, present := raw["metadata"]; present {
 		t.Fatalf("metadata should be omitted when empty: %s", raw["metadata"])
+	}
+}
+
+func TestCreateMessagePassesChatActivityThrough(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"conversation_id":"thread-123","status":"success","message":{"role":"assistant","content":"ok"},
+			"activity":{"status":"done","started_at":"2026-11-14T22:27:20.000Z","ended_at":"2026-11-14T22:28:18.000Z","elapsed_ms":58000,
+			"steps":[
+				{"id":1,"key":"delegate_angiogram","kind":"delegation","label":"Consulting the angiography specialist","model":null,"status":"done","started_at":"2026-11-14T22:27:23.000Z","ended_at":"2026-11-14T22:28:10.000Z","duration_ms":47000},
+				{"id":2,"key":"run_model","kind":"tool","label":"Running DeepCORO-SCAD","model":"DeepCORO-SCAD","status":"failed","started_at":"2026-11-14T22:27:29.000Z","ended_at":"2026-11-14T22:27:59.000Z","duration_ms":30000}
+			]}}`))
+	}))
+	defer server.Close()
+
+	service := &OrchestratorService{
+		OrchestratorAPIURL: server.URL,
+		OrchestratorClient: server.Client(),
+		ThreadsByID:        map[string]*entity.Thread{},
+	}
+
+	response, err := service.CreateMessage(orchestratorTestContext(), types.CreateMessageRequest{
+		ThreadID: "thread-123",
+		Content:  "Summarize all findings",
+	})
+	if err != nil {
+		t.Fatalf("CreateMessage returned error: %v", err)
+	}
+	if response.Activity == nil {
+		t.Fatal("activity was not passed through")
+	}
+	if response.Activity.Status != "done" || response.Activity.ElapsedMs != 58000 {
+		t.Fatalf("unexpected activity: %#v", response.Activity)
+	}
+	if len(response.Activity.Steps) != 2 {
+		t.Fatalf("unexpected steps: %#v", response.Activity.Steps)
+	}
+	failed := response.Activity.Steps[1]
+	if failed.Key != "run_model" || failed.Status != "failed" || failed.Model == nil || *failed.Model != "DeepCORO-SCAD" {
+		t.Fatalf("unexpected step: %#v", failed)
+	}
+	if failed.DurationMs == nil || *failed.DurationMs != 30000 {
+		t.Fatalf("unexpected duration: %#v", failed.DurationMs)
+	}
+
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &body); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if _, present := body["activity"]; !present {
+		t.Fatalf("activity missing from the response body: %s", encoded)
+	}
+}
+
+func TestCreateMessageOmitsActivityFromAnOlderChatBackend(t *testing.T) {
+	var received map[string]json.RawMessage
+	server := newCreateMessageTestServer(t, &received)
+	defer server.Close()
+
+	service := &OrchestratorService{
+		OrchestratorAPIURL: server.URL,
+		OrchestratorClient: server.Client(),
+		ThreadsByID:        map[string]*entity.Thread{},
+	}
+
+	response, err := service.CreateMessage(orchestratorTestContext(), types.CreateMessageRequest{
+		ThreadID: "thread-123",
+		Content:  "hello",
+	})
+	if err != nil {
+		t.Fatalf("CreateMessage returned error: %v", err)
+	}
+	if response.Activity != nil {
+		t.Fatalf("unexpected activity: %#v", response.Activity)
+	}
+	encoded, _ := json.Marshal(response)
+	if strings.Contains(string(encoded), `"activity"`) {
+		t.Fatalf("activity should be omitted when the chat backend sends none: %s", encoded)
+	}
+}
+
+func TestGetChatProgressForwardsIdentityAndReturnsSteps(t *testing.T) {
+	var path, rawQuery, authorization string
+	var query url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		path, rawQuery, query, authorization = r.URL.Path, r.URL.RawQuery, r.URL.Query(), r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"conversation_id":"thread-123","active":true,"status":"running","started_at":"2026-11-14T22:27:20.000Z","ended_at":null,"elapsed_ms":9120,
+			"steps":[{"id":1,"key":"model_result","kind":"tool","label":"Reading the stored DeepCORO-JEPA result","model":"DeepCORO-JEPA","status":"running","started_at":"2026-11-14T22:27:29.000Z","ended_at":null,"duration_ms":null}]}`))
+	}))
+	defer server.Close()
+
+	service := &OrchestratorService{
+		OrchestratorAPIURL: server.URL,
+		OrchestratorClient: server.Client(),
+		ThreadsByID:        map[string]*entity.Thread{},
+	}
+
+	progress, err := service.GetChatProgress(orchestratorTestContext(), "thread-123")
+	if err != nil {
+		t.Fatalf("GetChatProgress returned error: %v", err)
+	}
+
+	if path != "/chat/thread-123/progress" {
+		t.Fatalf("unexpected path: %s", path)
+	}
+	if query.Get("user_id") != "user-123" || query.Get("tenant_id") != "tenant-123" {
+		t.Fatalf("user and tenant were not forwarded: %s", rawQuery)
+	}
+	if authorization != "Bearer session-token-123" {
+		t.Fatalf("unexpected Authorization header: %q", authorization)
+	}
+	if strings.Contains(rawQuery, "session-token-123") {
+		t.Fatalf("the session token must not travel in the URL: %s", rawQuery)
+	}
+	if !progress.Active || progress.Status != "running" || progress.ThreadID != "thread-123" || progress.ElapsedMs != 9120 {
+		t.Fatalf("unexpected progress: %#v", progress)
+	}
+	if len(progress.Steps) != 1 || progress.Steps[0].Label != "Reading the stored DeepCORO-JEPA result" {
+		t.Fatalf("unexpected steps: %#v", progress.Steps)
+	}
+	if progress.Steps[0].EndedAt != nil || progress.Steps[0].DurationMs != nil {
+		t.Fatalf("a running step has no end: %#v", progress.Steps[0])
+	}
+
+	encoded, _ := json.Marshal(progress)
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &body); err != nil {
+		t.Fatalf("unmarshal progress: %v", err)
+	}
+	for _, field := range []string{"thread_id", "active", "status", "elapsed_ms", "steps"} {
+		if _, present := body[field]; !present {
+			t.Fatalf("%s missing from %s", field, encoded)
+		}
+	}
+}
+
+func TestGetChatProgressWithNothingInFlightReturnsAnEmptyStepList(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"conversation_id":"thread-123","active":false,"status":"idle","elapsed_ms":0,"steps":[]}`))
+	}))
+	defer server.Close()
+
+	service := &OrchestratorService{OrchestratorAPIURL: server.URL, OrchestratorClient: server.Client()}
+
+	progress, err := service.GetChatProgress(orchestratorTestContext(), "thread-123")
+	if err != nil {
+		t.Fatalf("GetChatProgress returned error: %v", err)
+	}
+	if progress.Active || progress.Status != "idle" || progress.Steps == nil || len(progress.Steps) != 0 {
+		t.Fatalf("unexpected progress: %#v", progress)
+	}
+	encoded, _ := json.Marshal(progress)
+	if !strings.Contains(string(encoded), `"steps":[]`) {
+		t.Fatalf("steps must serialize as an empty list: %s", encoded)
+	}
+}
+
+func TestGetChatProgressReportsAnOlderChatBackendAsUnsupported(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusMethodNotAllowed} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(`{"detail":"Not Found"}`))
+		}))
+		service := &OrchestratorService{OrchestratorAPIURL: server.URL, OrchestratorClient: server.Client()}
+
+		_, err := service.GetChatProgress(orchestratorTestContext(), "thread-123")
+		server.Close()
+
+		if !errors.Is(err, ErrChatProgressUnsupported) {
+			t.Fatalf("status %d: expected ErrChatProgressUnsupported, got %v", status, err)
+		}
+	}
+}
+
+func TestGetChatProgressReportsUpstreamFailures(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	service := &OrchestratorService{OrchestratorAPIURL: server.URL, OrchestratorClient: server.Client()}
+
+	_, err := service.GetChatProgress(orchestratorTestContext(), "thread-123")
+
+	if err == nil || errors.Is(err, ErrChatProgressUnsupported) {
+		t.Fatalf("expected an upstream error, got %v", err)
 	}
 }

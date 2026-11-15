@@ -50,6 +50,10 @@
       "description": "Lead service"
     },
     {
+      "name": "orchestrator",
+      "description": "Chat assistant (orchestrator) service"
+    },
+    {
       "name": "orthanc",
       "description": "Orthanc service"
     },
@@ -2731,10 +2735,106 @@
           "503": { "$ref": "#/components/responses/InferenceQuotaUnavailable" }
         }
       }
+    },
+    "/orchestrator/threads/{threadID}/chat/progress": {
+      "get": {
+        "tags": ["orchestrator"],
+        "summary": "Get the live activity of the chat request in flight",
+        "description": "Returns the steps the chat assistant has taken so far for the chat request currently running on this thread (one step per tool call and per delegation to a specialist), in the order they started. Poll it about once a second while POST /orchestrator/threads/{threadID}/chat is pending. Step labels are built by the chat service from the tool and a validated model name only: they never contain tool arguments, patient or study identifiers, file paths or search queries. The chat service only answers for the user and tenant that started the request; otherwise, or when no request is running, the response is 200 with active false and no steps. A request that just finished stays readable for a few seconds with active false. Same authentication as the sibling thread routes. The response of POST /orchestrator/threads/{threadID}/chat carries the completed steps in an optional activity field with the ChatActivity shape.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "threadID",
+            "in": "path",
+            "required": true,
+            "description": "Thread ID returned by POST /orchestrator/threads.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Steps so far of the chat request in flight",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ChatProgressResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "The thread ID is invalid"
+          },
+          "401": {
+            "description": "Authentication is required"
+          },
+          "404": {
+            "description": "The chat service does not support progress (older version); errorCode chat_progress_unsupported. Clients fall back to a plain waiting indicator."
+          },
+          "502": {
+            "description": "The chat service could not be reached; errorCode chat_progress_unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ChatActivityStep": {
+        "type": "object",
+        "required": ["id", "key", "kind", "label", "status", "started_at"],
+        "properties": {
+          "id": { "type": "integer", "description": "Position of the step in the request, starting at 1." },
+          "key": { "type": "string", "description": "Stable machine key of the step, for translation: delegate_angiogram, delegate_echo, delegate_ecg, delegate_web, delegate, model_result, model_result_or_run, run_model, study_models, all_model_results, coronary_findings, verify_study, web_search, web_read, read_reference, plan, tool." },
+          "kind": { "type": "string", "enum": ["tool", "delegation"] },
+          "label": { "type": "string", "description": "English, clinician-readable label. Never contains tool arguments or identifiers." },
+          "model": { "type": "string", "nullable": true, "description": "Validated model name the step concerns, when any." },
+          "status": { "type": "string", "enum": ["running", "done", "failed"] },
+          "started_at": { "type": "string", "format": "date-time" },
+          "ended_at": { "type": "string", "format": "date-time", "nullable": true },
+          "duration_ms": { "type": "integer", "nullable": true }
+        }
+      },
+      "ChatActivity": {
+        "type": "object",
+        "required": ["status", "elapsed_ms", "steps"],
+        "properties": {
+          "status": { "type": "string", "enum": ["idle", "running", "done", "failed"] },
+          "started_at": { "type": "string", "format": "date-time", "nullable": true },
+          "ended_at": { "type": "string", "format": "date-time", "nullable": true },
+          "elapsed_ms": { "type": "integer" },
+          "steps": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ChatActivityStep" }
+          }
+        }
+      },
+      "ChatProgressResponse": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" },
+          "data": {
+            "allOf": [
+              { "$ref": "#/components/schemas/ChatActivity" },
+              {
+                "type": "object",
+                "required": ["thread_id", "active"],
+                "properties": {
+                  "thread_id": { "type": "string" },
+                  "active": { "type": "boolean", "description": "True only while a chat request is running on the thread." }
+                }
+              }
+            ]
+          }
+        }
+      },
       "InferenceQuotaData": {
         "type": "object",
         "required": ["allowance", "used", "remaining", "windowSeconds", "resetAfterSeconds", "maxConcurrentExecutions", "activeExecutions", "concurrencyRetryAfterSeconds", "maxQueuedExecutions", "queuedExecutions", "queuedRetryAfterSeconds"],
