@@ -263,6 +263,11 @@ class CustomPredictionService(BasePredictionService):
                         result[head_name] = CustomPredictionService.class_mapping[head_name][index]
                     except KeyError as exc:
                         raise ValueError("Classifier output does not match its label mapping") from exc
+                    if head_name == "dominance" and binary:
+                        # Sigmoid of the binary head is P(class 1); the call above stays at >= 0.5.
+                        if CustomPredictionService.class_mapping[head_name].get(1) != "left_dominant":
+                            raise ValueError("Dominance head does not match its label mapping")
+                        result["dominance_left_probability"] = round(float(probabilities[0][0]), 6)
                 if not {"main_structure", "contrast_agent", "stent_presence"}.issubset(result):
                     raise ValueError("Classifier output is incomplete")
                 result.update({

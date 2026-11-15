@@ -74,6 +74,30 @@ def test_forward_batch_is_one_and_repeated_series_preserves_sop_identity(monkeyp
     assert all(r["contrast_agent"] == "yes" for r in results), "binary threshold remains >= 0.5"
 
 
+def test_dominance_returns_label_and_left_probability(monkeypatch):
+    service = CustomPredictionService()
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(CustomPredictionService, "config", SimpleNamespace(head_structure=SimpleNamespace(
+        main_structure=2, contrast_agent=1, stent_presence=1, dominance=1)), raising=False)
+    monkeypatch.setattr(CustomPredictionService, "class_mapping", {
+        "main_structure": {0: "Left Coronary", 1: "Right Coronary"}, "contrast_agent": {0: "no", 1: "yes"},
+        "stent_presence": {0: "absent", 1: "present"},
+        "dominance": {0: "right_dominant", 1: "left_dominant"}}, raising=False)
+    logits = iter([-2.0, 0.0])  # P(left) 0.119 -> right; P(left) 0.5 -> left (threshold unchanged at >= 0.5)
+    monkeypatch.setattr(CustomPredictionService, "models", {"vaso_vision": lambda batch: {
+        "main_structure": torch.tensor([[2., 0.]]), "contrast_agent": torch.tensor([[1.]]),
+        "stent_presence": torch.tensor([[-1.]]), "dominance": torch.tensor([[next(logits)]])}})
+    monkeypatch.setattr(service, "_process_dicom", lambda _: torch.zeros(3, 2, 4, 4))
+    dicoms = []
+    for i in range(2):
+        d = Dataset()
+        d.SeriesInstanceUID, d.SOPInstanceUID, d.SeriesTime = "1.2.3", f"1.2.3.{i+1}", f"12000{i}"
+        dicoms.append(d)
+    results = service._run_inference(dicoms, ["1.2.3"] * 2)
+    assert [r["dominance"] for r in results] == ["right_dominant", "left_dominant"]
+    assert [r["dominance_left_probability"] for r in results] == [0.119203, 0.5]
+
+
 def test_invalid_input_cannot_return_a_partial_success():
     with pytest.raises(ValueError, match="valid, uniquely identified"):
         asyncio.run(CustomPredictionService()._handle_json_output(
@@ -107,3 +131,12 @@ def test_artifact_contract_requires_actual_hashes_and_pinned_source(tmp_path):
         verified_preprocessing_contract(tmp_path, contract, "weights.pt", "mapping.json", "a" * 40)
     with pytest.raises(ValueError, match="source revision"):
         verified_preprocessing_contract(tmp_path, contract, "weights.pt", "mapping.json", None)
+
+
+def test_json_response_keeps_labels_as_text_and_the_dominance_probability_as_a_number():
+    from utils.http_utils import JsonPredictionResponse
+    row = {**prediction("1", "12:00:00"), "status": "diagnostic", "dominance": "left_dominant",
+           "dominance_left_probability": 0.814933}
+    out = JsonPredictionResponse(predictions=[row]).model_dump()["predictions"][0]
+    assert out["dominance_left_probability"] == 0.814933 and out["dominance"] == "left_dominant"
+    assert out["series_time"] == "12:00:00" and isinstance(out["main_structure"], str)
