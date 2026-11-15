@@ -175,9 +175,9 @@ def test_thresholds_fail_loudly_instead_of_falling_back(tmp_path):
         CustomPredictionService.load_thresholds(models_dir, {**SETTINGS, "pressure_operating_point": "youden"}, GROUPS, physiology=True, lesion=True, weights_sha256=SHA)
     with pytest.raises(ValueError, match="Unknown lesion_operating_point"):  # checked even without a lesion head
         CustomPredictionService.load_thresholds(models_dir, {**SETTINGS, "lesion_operating_point": "high_sensitivity"}, GROUPS, physiology=True, lesion=False, weights_sha256=SHA)
-    with pytest.raises(ValueError, match="takes exactly"):
+    with pytest.raises(ValueError, match="\"Thresholds\" takes"):
         CustomPredictionService.load_thresholds(models_dir, {**SETTINGS, "operating_point": "balanced"}, GROUPS, physiology=True, lesion=True, weights_sha256=SHA)
-    with pytest.raises(ValueError, match="takes exactly"):  # the 1.0.0 block, without lesion_operating_point
+    with pytest.raises(ValueError, match="\"Thresholds\" takes"):  # the 1.0.0 block, without lesion_operating_point
         CustomPredictionService.load_thresholds(
             models_dir, {"path": "thresholds.json", "pressure_operating_point": "balanced"}, GROUPS, physiology=True, lesion=True, weights_sha256=SHA)
     with pytest.raises(ValueError, match="was derived for weights"):
@@ -369,3 +369,30 @@ def test_explanations_reproduce_the_within_crop_attention_and_keep_their_images_
     html = CustomPredictionService.__new__(CustomPredictionService).render_html(preds)
     assert "Where the model looked" in html and html.count("data:image/jpeg;base64,") == 2
     assert "No tracked crop for this segment" in html and "This crop carried 70% of the segment's attention" in html
+
+
+def test_a_lesion_threshold_override_replaces_one_finding_and_is_named_in_the_operating_point(tmp_path):
+    models_dir = _thresholds_file(tmp_path)
+    settings = {**SETTINGS, "lesion_threshold_overrides": {"thrombus": 0.4}}
+    got = CustomPredictionService.load_thresholds(models_dir, settings, GROUPS, physiology=True, lesion=True, weights_sha256=SHA)
+    assert got["values"]["thrombus_prob"] == 0.4
+    assert got["values"]["calcif_prob"] == 0.2225 and got["values"]["cto_prob"] == 0.157
+    assert got["lesion_operating_point"] == "specificity_99 (thrombus: fixed 0.40)"
+    assert len(got["lesion_operating_point"]) <= 64  # report_input accepts at most 64 characters
+    # a checkpoint without a lesion head ignores it
+    plain = CustomPredictionService.load_thresholds(models_dir, settings, GROUPS, physiology=True, lesion=False, weights_sha256=SHA)
+    assert "thrombus_prob" not in plain["values"] and plain["lesion_operating_point"] == "specificity_99"
+    two = CustomPredictionService.load_thresholds(models_dir, {**SETTINGS, "lesion_threshold_overrides": {"thrombus": 0.4, "cto": 0.3}},
+                                                  GROUPS, physiology=True, lesion=True, weights_sha256=SHA)
+    assert two["lesion_operating_point"] == "specificity_99 (thrombus: fixed 0.40, cto: fixed 0.30)"
+    # the label must stay within what report_input accepts, and must state the threshold exactly
+    for bad in ({"thrombosis": 0.4}, {"thrombus": 0.0}, {"thrombus": 1.0}, {"thrombus": "0.4"}, {"thrombus": True}, [0.4],
+                {"thrombus": 0.085}, {"calcif": 0.2, "thrombus": 0.4, "cto": 0.3}):
+        with pytest.raises(ValueError):
+            CustomPredictionService.load_thresholds(models_dir, {**SETTINGS, "lesion_threshold_overrides": bad}, GROUPS,
+                                                    physiology=True, lesion=True, weights_sha256=SHA)
+
+
+def test_the_shipped_configuration_flags_thrombus_above_0_40():
+    config = json.loads((Path(__file__).resolve().parents[1] / "models/config.json").read_text(encoding="utf-8"))
+    assert config["Thresholds"]["lesion_threshold_overrides"] == {"thrombus": 0.4}

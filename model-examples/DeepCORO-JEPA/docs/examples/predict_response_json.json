@@ -289,9 +289,9 @@
         "ifr_abnormal": false
       },
       "lesion_thresholds": {
-        "operating_point": "specificity_99",
+        "operating_point": "specificity_99 (thrombus: fixed 0.40)",
         "calcif": 0.2225,
-        "thrombus": 0.0851,
+        "thrombus": 0.4,
         "cto": 0.157
       }
     },
