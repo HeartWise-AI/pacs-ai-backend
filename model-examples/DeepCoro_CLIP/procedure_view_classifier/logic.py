@@ -4,6 +4,7 @@ import json
 import torch
 import base64
 import pydicom
+from concurrent.futures import ThreadPoolExecutor
 import cv2 as cv
 import numpy as np
 import re
@@ -230,52 +231,78 @@ class CustomPredictionService(BasePredictionService):
             return None
 
     def _run_inference(self, dicoms: List[pydicom.Dataset], dicom_names: List[str]) -> list[dict]:
-        """Bound GPU forwards to one video; retain every prediction for chronology.
+        """Classify every video, `forward_batch_size` videos per GPU forward; keep every prediction for chronology.
 
-        Pixel conversion, temporal sampling, normalization, trained heads and the
-        binary threshold are unchanged. No input is silently dropped.
+        Pixel conversion, temporal sampling, normalization, trained heads and the binary threshold are unchanged.
+        Videos are prepared on `preprocess_workers` CPU threads, a window of whole batches at a time,
+        and forwarded in request order, so at most one window of prepared videos is held in memory. No input is
+        silently dropped.
         """
         if len(dicoms) != len(dicom_names):
             raise ValueError("Classifier identity count mismatch")
+        identities = []
+        for dicom, dicom_name in zip(dicoms, dicom_names):
+            series_time = self._extract_series_time(dicom)
+            if series_time is None:
+                raise ValueError("Complete SeriesTime is required for procedure classification")
+            series_uid = str(getattr(dicom, "SeriesInstanceUID", ""))
+            sop_uid = str(getattr(dicom, "SOPInstanceUID", ""))
+            if not series_uid or not sop_uid or series_uid != dicom_name:
+                raise ValueError("Classifier input identity mismatch")
+            identities.append((series_time, series_uid, sop_uid))
+        config = CustomPredictionService.config
+        size = max(1, int(getattr(config, "forward_batch_size", 1)))
+        workers = max(1, int(getattr(config, "preprocess_workers", 1)))
+        device = "cuda" if torch.cuda.is_available() else "cpu"
         results = []
-        with torch.no_grad():
-            for dicom, dicom_name in zip(dicoms, dicom_names):
-                series_time = self._extract_series_time(dicom)
-                if series_time is None:
-                    raise ValueError("Complete SeriesTime is required for procedure classification")
-                series_uid = str(getattr(dicom, "SeriesInstanceUID", ""))
-                sop_uid = str(getattr(dicom, "SOPInstanceUID", ""))
-                if not series_uid or not sop_uid or series_uid != dicom_name:
-                    raise ValueError("Classifier input identity mismatch")
-                video = self._process_dicom(dicom)
-                if video is None:
-                    raise ValueError("Classifier requires multi-frame video inputs")
-                batch = video.unsqueeze(0).to("cuda" if torch.cuda.is_available() else "cpu")
+        with torch.no_grad(), ThreadPoolExecutor(max_workers=workers) as pool:
+            # Prepare a window of videos in parallel, then forward it `size` videos at a time.
+            # The window is a whole number of batches, so a batch is short only at the end of the request.
+            window = size * -(-workers // size)
+            prepared = []
+            for start in range(0, len(dicoms), size):
+                if not prepared:
+                    todo = dicoms[start:start + window]
+                    prepared = list(pool.map(self._process_dicom, todo)) if workers > 1 else [self._process_dicom(d) for d in todo]
+                    if any(video is None for video in prepared):
+                        raise ValueError("Classifier requires multi-frame video inputs")
+                videos, prepared = prepared[:size], prepared[size:]
+                chunk = videos
+                batch = torch.stack(videos).to(device)
                 output = CustomPredictionService.models['vaso_vision'](batch)
-                result = {}
+                rows = len(chunk)
+                if rows != len(identities[start:start + size]):
+                    raise ValueError("Classifier batch does not match its identities")
+                probabilities = {}
                 for head_name, head_output in output.items():
-                    binary = getattr(CustomPredictionService.config.head_structure, head_name) == 1
-                    probabilities = (torch.sigmoid(head_output) if binary else torch.softmax(head_output, dim=1)).to('cpu').detach().numpy()
-                    if not np.isfinite(probabilities).all():
+                    binary = getattr(config.head_structure, head_name) == 1
+                    values = (torch.sigmoid(head_output) if binary else torch.softmax(head_output, dim=1)).to('cpu').detach().numpy()
+                    if values.shape[0] != rows:
+                        raise ValueError("Classifier returned a different number of predictions than videos")
+                    if not np.isfinite(values).all():
                         raise ValueError("Classifier returned non-finite probabilities")
-                    index = (1 if probabilities[0][0] >= 0.5 else 0) if binary else int(np.argmax(probabilities[0]))
-                    try:
-                        result[head_name] = CustomPredictionService.class_mapping[head_name][index]
-                    except KeyError as exc:
-                        raise ValueError("Classifier output does not match its label mapping") from exc
-                    if head_name == "dominance" and binary:
-                        # Sigmoid of the binary head is P(class 1); the call above stays at >= 0.5.
-                        if CustomPredictionService.class_mapping[head_name].get(1) != "left_dominant":
-                            raise ValueError("Dominance head does not match its label mapping")
-                        result["dominance_left_probability"] = round(float(probabilities[0][0]), 6)
-                if not {"main_structure", "contrast_agent", "stent_presence"}.issubset(result):
-                    raise ValueError("Classifier output is incomplete")
-                result.update({
-                    "series_time": series_time.isoformat(),
-                    "dicom_name": series_uid,
-                    "series_instance_uid": series_uid,
-                    "sop_instance_uid": sop_uid,
-                })
-                results.append(result)
-                del batch, output
+                    probabilities[head_name] = (binary, values)
+                for row, (series_time, series_uid, sop_uid) in enumerate(identities[start:start + rows]):
+                    result = {}
+                    for head_name, (binary, values) in probabilities.items():
+                        index = (1 if values[row][0] >= 0.5 else 0) if binary else int(np.argmax(values[row]))
+                        try:
+                            result[head_name] = CustomPredictionService.class_mapping[head_name][index]
+                        except KeyError as exc:
+                            raise ValueError("Classifier output does not match its label mapping") from exc
+                        if head_name == "dominance" and binary:
+                            # Sigmoid of the binary head is P(class 1); the call above stays at >= 0.5.
+                            if CustomPredictionService.class_mapping[head_name].get(1) != "left_dominant":
+                                raise ValueError("Dominance head does not match its label mapping")
+                            result["dominance_left_probability"] = round(float(values[row][0]), 6)
+                    if not {"main_structure", "contrast_agent", "stent_presence"}.issubset(result):
+                        raise ValueError("Classifier output is incomplete")
+                    result.update({
+                        "series_time": series_time.isoformat(),
+                        "dicom_name": series_uid,
+                        "series_instance_uid": series_uid,
+                        "sop_instance_uid": sop_uid,
+                    })
+                    results.append(result)
+                del batch, output, videos
         return results
