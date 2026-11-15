@@ -605,8 +605,11 @@ Notes:
   built image (RTX 3090, driver 570.124, MHI, 2026-11-15): 1.5 GiB after loading; 8.6 GiB during a 7-run study and
   13.1 GiB during a 12-run study (the 12 longest runs of a 37-run study, 98 to 225 frames); 13.6 and 14.8 GiB were
   seen after three different 7-run studies in one process, with v15 and with v13 weights (the allocator keeps
-  memory between studies of different shapes). Declared peak: **16 GB** (`resources.peakMemoryMiB` 16000); the
-  11 GB declared up to 1.4.1 was below what the process holds.
+  memory between studies of different shapes). Declared peak stays **11 GB** (`resources.peakMemoryMiB` 11000):
+  the PACS-AI gateway reserves the declared peak times `MODEL_GPU_MEMORY_RESERVATION_PERCENT` (150% on MHI, so
+  16.5 GB), which covers the process totals above. Declaring the process total itself (16000) made the gateway refuse
+  every prediction on a 24 GB card ("model peak exceeds schedulable GPU budget": 24000 MiB reserved against 20468
+  schedulable), which is what happened on the first deployment of 2.0.0 on 2026-11-15.
 - **PyTorch build.** `requirements.txt` pins `torch 2.11.0+cu128` and `torchvision 0.26.0+cu128` (CUDA 12.8) since
   2.0.0; 1.1.2 to 1.4.1 pinned `2.14.1+cu130` (CUDA 13.0), which was run on an RTX PRO 5000 Blackwell with driver
   615.71 but needs a driver newer than the 570 series. The CUDA 12.8 build contains kernels up to Blackwell (sm_120)
