@@ -19,7 +19,7 @@ For one mapping:
 
 A stored result keeps the `display_pct` and `display_category` it was returned with (1.4.0 on): `with_display` uses
 them and computes the values only for results stored without them (1.2.0, 1.3.0), with the mapping of the model
-version of that result. Results stored before 1.5.0 carry no `model_version`; they come from model v13.
+version of that result. Results stored before 2.0.0 carry no `model_version`; they come from model v13.
 
 Pure Python (no numpy), so the report renders from a stored JSON result.
 """
@@ -81,7 +81,7 @@ def calibration(model_version: str | None = None) -> dict:
 
 
 def result_model_version(preds: dict) -> str:
-    """Model version of a `predictions` object: its `model_version` (1.5.0 on), else v13."""
+    """Model version of a `predictions` object: its `model_version` (2.0.0 on), else v13."""
     return str(preds.get("model_version") or LEGACY_MODEL_VERSION)
 
 

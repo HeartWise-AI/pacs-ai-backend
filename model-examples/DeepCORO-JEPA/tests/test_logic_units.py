@@ -243,7 +243,7 @@ def test_model_facts_name_the_training_run_of_the_served_weights():
     facts = json.loads((ROOT / "data/model_facts.json").read_text(encoding="utf-8"))["en"]
     info = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     assert "https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/2563ce01" in facts["Summary"]["Training_run"]
-    assert facts["Summary"]["Model_version"] == "v15" and info["version"] == "1.5.0"
+    assert facts["Summary"]["Model_version"] == "v15" and info["version"] == "2.0.0"
     assert facts["Summary"]["Version"] == info["version"]
 
 
@@ -537,7 +537,7 @@ def test_dominance_needs_its_threshold_and_a_model_without_the_head_does_not(tmp
 
 def test_the_recommendation_and_the_report_quote_the_pressure_auroc_of_the_result_model():
     new = _v15()
-    old = {k: v for k, v in new.items() if k != "model_version"}  # stored before 1.5.0: model v13
+    old = {k: v for k, v in new.items() if k != "model_version"}  # stored before 2.0.0: model v13
     assert "test AUROC about 0.67" in CustomPredictionService.recommendations(new)["en"]
     assert "AUROC test environ 0,67" in CustomPredictionService.recommendations(new)["fr"]
     assert "test AUROC about 0.69" in CustomPredictionService.recommendations(old)["en"]

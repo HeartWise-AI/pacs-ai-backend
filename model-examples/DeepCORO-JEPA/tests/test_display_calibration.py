@@ -168,7 +168,7 @@ def test_report_and_diagnosis_show_the_displayed_value():
 def test_report_version_names_the_model_and_calibration_of_the_result():
     assert CustomPredictionService.report_model_version() == f"{CustomPredictionService.model_version()}-cal1" == "v15-cal1"
     assert CustomPredictionService.report_model_version({"model_version": "v15", "segments": {}}) == "v15-cal1"
-    assert CustomPredictionService.report_model_version({"segments": {}}) == "v13-cal1"  # stored before 1.5.0
+    assert CustomPredictionService.report_model_version({"segments": {}}) == "v13-cal1"  # stored before 2.0.0
 
 
 def _stored_v13(display_fields: bool) -> dict:

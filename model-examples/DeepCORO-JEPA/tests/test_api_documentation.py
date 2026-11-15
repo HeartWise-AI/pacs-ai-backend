@@ -32,7 +32,7 @@ def test_openapi_describes_registered_model():
         "supportedOutputModes"
     ]
     assert "200" in document["paths"]["/inference/predict"]["post"]["responses"]
-    assert document["info"]["version"] == info["version"] == "1.5.0"
+    assert document["info"]["version"] == info["version"] == "2.0.0"
     rendered = document["paths"]["/inference/render-report"]["post"]["responses"]["200"]["content"]["application/json"]["example"]
     assert rendered["data"]["modelVersion"] == info["version"]
 
@@ -115,7 +115,7 @@ def test_render_report_example_is_a_stored_v13_result_drawn_as_v13():
     document = json.loads((MODEL_ROOT / "docs/openapi.json").read_text(encoding="utf-8"))
     post = document["paths"]["/inference/render-report"]["post"]
     stored = predictions_of(post["requestBody"]["content"]["application/json"]["example"]["result"])
-    assert "model_version" not in stored  # stored before 1.5.0
+    assert "model_version" not in stored  # stored before 2.0.0
     answer = post["responses"]["200"]["content"]["application/json"]["example"]["data"]
     assert answer["reportModelVersion"] == CustomPredictionService.report_model_version(stored) == "v13-cal1"
     html = CustomPredictionService.report_html(stored)

@@ -1,4 +1,4 @@
-"""DeepCORO-JEPA 1.5.0 (model v15) artifact identity and build verification."""
+"""DeepCORO-JEPA 2.0.0 (model v15) artifact identity and build verification."""
 
 import hashlib
 import json
@@ -19,7 +19,7 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     provenance = manifest["provenance"]
 
-    assert manifest["version"] == "1.5.0"
+    assert manifest["version"] == "2.0.0"
     assert config["ModelStateDict"]["model_path"] == provenance["weightsPath"]
     assert provenance == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
@@ -71,4 +71,7 @@ def test_requirements_pin_one_cuda_build_that_runs_on_blackwell():
     builds = {line.split("==")[0]: line.rsplit("+", 1)[1] for line in lines if line.startswith(("torch==", "torchvision=="))}
 
     assert builds == {"torch": index, "torchvision": index}
-    assert int(index.removeprefix("cu")) >= 128  # older builds do not run on Blackwell (sm_120) GPUs
+    # cu128 exactly: older builds do not run on Blackwell (sm_120) GPUs, and newer ones (cu129, cu130) need an NVIDIA
+    # driver above 570. With the cu130 build of 1.1.2-1.4.1 the image fell back to the CPU on the MHI server
+    # (RTX A5000 / RTX 3090, driver 570.124: "The NVIDIA driver on your system is too old (found version 12080)").
+    assert index == "cu128"

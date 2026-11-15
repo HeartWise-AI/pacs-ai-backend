@@ -6,7 +6,7 @@ classifier); without it the tree is drawn right dominant and the report says the
 model's own dominance estimate (v15 on, `model_dominance`) is printed as text and never changes the drawing.
 
 A report is drawn for the model version of the result it is given (`predictions.model_version`; v13 for results
-stored before 1.5.0): the shown % are the stored `display_pct` when the result has them, else the mapping of that
+stored before 2.0.0): the shown % are the stored `display_pct` when the result has them, else the mapping of that
 model version, and the calibration note and the performance figures are those of that model version.
 """
 from __future__ import annotations

@@ -4,7 +4,7 @@ The report is rebuilt from what an earlier predict returned (`data` of the JSON 
 so every value the renderer reads is checked here: type, range, known segment names and JPEG base64 images (they go
 into data: URIs unescaped). A failure raises ResultError with the path of the first bad value.
 
-Results of every version from 1.1.0 are accepted. 1.5.0 (model v15) adds `model_version`, `unsupported_segments`,
+Results of every version from 1.1.0 are accepted. 2.0.0 (model v15) adds `model_version`, `unsupported_segments`,
 `study_lesions`, `model_dominance` and, on an unsupported segment, `unsupported: true` without display fields; all
 are optional here so that older results still render. A result without `model_version` is a v13 result. A result of
 a model version this container has no display mapping for is refused instead of being drawn with another mapping.
@@ -94,7 +94,7 @@ def _segments(segs, cuts: dict) -> None:
         _prob(v.get("prob_significant"), f"{p}.prob_significant")
         _prob(v.get("prob_threshold"), f"{p}.prob_threshold")
         _bool(v.get("significant"), f"{p}.significant")
-        if "unsupported" in v:  # 1.5.0: an output the model has no training target for (v15: lvp)
+        if "unsupported" in v:  # 2.0.0: an output the model has no training target for (v15: lvp)
             _bool(v["unsupported"], f"{p}.unsupported")
         if "display_pct" in v:  # 1.4.0 and later; the report shows the stored value
             shown = _num(v["display_pct"], f"{p}.display_pct", 0.0, 100.0)
@@ -223,7 +223,7 @@ def predictions_of(result) -> dict:
     preds = _dict(result["predictions"], "predictions")
     if not preds:
         return preds
-    if "model_version" in preds:  # 1.5.0 and later; absent means model v13
+    if "model_version" in preds:  # 2.0.0 and later; absent means model v13
         _model_version(preds["model_version"])
     _int(preds.get("n_videos"), "predictions.n_videos", 1)
     _int(preds.get("encoder_passes"), "predictions.encoder_passes")

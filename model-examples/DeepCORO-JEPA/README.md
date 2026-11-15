@@ -25,7 +25,7 @@ The encoder runs **at most twice per study**:
 
 | Container version | Model | Hugging Face revision | Training run (Weights & Biases, `mhi_ai/deepcoro-segmentation`) |
 |---|---|---|---|
-| **1.5.0** (this one) | **v15** | `heartwise/DeepCORO_JEPA@ab6d12f` (branch `v15`, tag `v15.1`) | [`2563ce01`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/2563ce01) |
+| **2.0.0** (this one) | **v15** | `heartwise/DeepCORO_JEPA@ab6d12f` (branch `v15`, tag `v15.1`) | [`2563ce01`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/2563ce01) |
 | 1.4.1 | v13 | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
 | 1.4.0 | v13 | same revision | same run |
 | 1.3.0 | v13 | same revision | same run |
@@ -38,7 +38,7 @@ The encoder runs **at most twice per study**:
 The served weights are the ones exported from the checkpoint of that training run; `data/model_facts.json`
 (`Summary.Training_run`) and `model_config.json` of the Hugging Face revision carry the same link.
 
-**What 1.5.0 changes against 1.4.1:** it serves **model v15** (weights SHA-256 `23b8255b…c54c`, exported from epoch 1
+**What 2.0.0 changes against 1.4.1:** it serves **model v15** (weights SHA-256 `23b8255b…c54c`, exported from epoch 1
 of run `2563ce01`; release dossier on the model NAS, `DeepCoro_Integrated/v15/`) instead of v13. Every key of the
 1.4.1 JSON is still there with the same meaning; the values come from the new weights and thresholds.
 
@@ -87,8 +87,13 @@ of run `2563ce01`; release dossier on the model NAS, `DeepCoro_Integrated/v15/`)
   `v13-cal1`. The 1.4.1 example (a real v13 response and its report, `tests/fixtures/`) renders byte for byte as
   1.4.1 drew it. A result of a model version without a mapping in this container answers 422.
 - **Not produced.** The post-PCI outputs of v15 (stent, final TIMI flow, failed PCI) need post-PCI runs as input.
-- **Requirements** are unchanged: the dossier's `deployment/requirements.txt` is the same file as for v13, and the
-  pinned PyTorch build (2.14.1, CUDA 13.0) is kept.
+- **PyTorch build changed to 2.11.0 for CUDA 12.8** (`torch==2.11.0+cu128`, `torchvision==0.26.0+cu128`). The CUDA 13.0
+  build pinned from 1.1.2 to 1.4.1 does not initialise CUDA on the MHI production server (RTX A5000 and RTX 3090, NVIDIA
+  driver 570.124, which stops at CUDA 12.8): an image built from that pin loaded the model on the CPU there and a
+  prediction did not finish within the proxy timeout (found on 2026-11-15 with the first image built by
+  `release-model.py` on that server; the images that had run there until then were built on an older CUDA 12.1 layer).
+  CUDA 12.8 is the only build line that serves both that driver and Blackwell GPUs. The other requirements are those
+  of the dossier's `deployment/requirements.txt`.
 
 **What v13 changes against v12:** it adds the calcification, thrombus and CTO outputs. Stenosis is unchanged on the
 test set (macro AUROC 0.885 against 0.884). The pressure AUROC is lower (0.69 against 0.72; the difference is within
@@ -195,7 +200,7 @@ There is no `VideoMILWrapper` and no zero-video padding.
 - **No metadata step:** `supportedAdditionalMetadata` is `[]`, so there is no Step-2 page and uploads are not
   filtered. PCI, stent and ventriculography runs were not in training.
 - **JSON `predictions`:**
-  - `model_version` (1.5.0 on): the model that produced the result (`v15`).
+  - `model_version` (2.0.0 on): the model that produced the result (`v15`).
   - `segments.<segment>`:
     - `stenosis_pct`: estimated % diameter stenosis (the model estimate, pulled toward the mean).
     - `display_pct`, `display_category` (1.4.0 on): the % the report shows and its category (`normal`, `mild` < 30,
@@ -209,20 +214,20 @@ There is no `VideoMILWrapper` and no zero-video padding.
     - `calcif_prob`, `thrombus_prob`, `cto_prob`: probability of calcification (moderate or severe, or a calcified
       nodule), thrombus and chronic total occlusion in that segment.
     - `calcif`, `thrombus`, `cto`: `true` when that probability is strictly above the threshold of the finding.
-  - `unsupported_segments` (1.5.0 on): `["lvp"]`. For such a segment the numeric keys above are returned as the
+  - `unsupported_segments` (2.0.0 on): `["lvp"]`. For such a segment the numeric keys above are returned as the
     model writes them but are not meaningful; it has `unsupported: true`, `significant`, `calcif`, `thrombus` and
     `cto` are always `false` (the one exception to "flag = probability above threshold"), and it has no
     `display_pct` or `display_category`. Do not display it.
   - `lesion_thresholds`: `operating_point` and the three thresholds in use (`calcif`, `thrombus`, `cto`); one
     threshold per finding for all segments.
-  - `study_lesions` (1.5.0 on): `study_calcif_prob`, `study_thrombus_prob`, `study_cto_prob`, the probability that
+  - `study_lesions` (2.0.0 on): `study_calcif_prob`, `study_thrombus_prob`, `study_cto_prob`, the probability that
     the finding is present in any segment. No threshold and no yes/no call.
   - `lad_physiology`:
     - `ffr`, `ifr`: predicted values.
     - `ffr_abnormal_prob`: P(FFR ≤ 0.80); `ifr_abnormal_prob`: P(iFR ≤ 0.89).
     - `ffr_abnormal_threshold`, `ifr_abnormal_threshold`, and the calls `ffr_abnormal`, `ifr_abnormal`.
     - `operating_point`: which pressure thresholds were used.
-  - `model_dominance` (1.5.0 on): `dominance_left_prob` (P(left-dominant circulation)), `dominance_left_threshold`,
+  - `model_dominance` (2.0.0 on): `dominance_left_prob` (P(left-dominant circulation)), `dominance_left_threshold`,
     `dominance_left_pred` (`true` when the probability is strictly above the threshold, i.e. left dominant;
     `inference.py` writes the same call as 0/1), `operating_point` (`balanced`) and `label_source`.
   - `coronary_dominance`: only when the caller sent `additionalMetadata.coronaryDominance` (unchanged since 1.2.0).
@@ -238,7 +243,7 @@ There is no `VideoMILWrapper` and no zero-video padding.
   identifier. **It is derived, not a live response of the built image** (see "Verification of this version"): the
   model outputs are those the released v15 `inference.py` wrote for one validation study in the dossier's parity
   check, passed through this container's `postprocess`, thresholds, display calibration, diagnosis and report
-  code. To do: replace it with the response of the built 1.5.0 image for a study.
+  code. To do: replace it with the response of the built 2.0.0 image for a study.
 - **Failures:**
   - No readable run: the request succeeds with empty `predictions` and the text "No video could be extracted".
   - The model call fails (for example the GPU runs out of memory): the request fails with HTTP 500 and
@@ -462,7 +467,7 @@ v13 on all 274 measurements (0.692) and its calcification macro AUPRC as 0.118.
 
 ## Verification of this version
 
-**1.5.0 (model v15).** This version was written on the production server from the release dossier, without a GPU:
+**2.0.0 (model v15).** This version was written on the production server from the release dossier, without a GPU:
 the model was not run by this container's code.
 
 - **Done by the model team (release dossier, `deployment/`).** `inference.py` of the released code on 24 validation
@@ -569,7 +574,7 @@ python3 scripts/release-model.py model-examples/DeepCORO-JEPA \
 instead of calling at once:
 
 ```bash
-docker run -d --rm --gpus all --name deepcoro-jepa -p 127.0.0.1:8080:80 heartwisehub/deepcoro-jepa:1.5.0
+docker run -d --rm --gpus all --name deepcoro-jepa -p 127.0.0.1:8080:80 heartwisehub/deepcoro-jepa:2.0.0
 for i in $(seq 1 60); do
   curl -sf http://127.0.0.1:8080/api/inference/model-info > /dev/null && break
   sleep 2
@@ -598,9 +603,11 @@ Notes:
   With v13 the peak over the 40 verification studies (up to 9 runs each) was 8.7 GiB allocated. Declared 11 GB.
   Not measured with v15, whose study lesion pooler adds an attention over all pass-1 tokens: measure it on the first
   GPU run of the built image and raise `resources.peakMemoryMiB` if needed.
-- **PyTorch build.** `requirements.txt` pins `torch 2.14.1+cu130` and `torchvision 0.29.1+cu130` (CUDA 13.0). That
-  build contains kernels for NVIDIA GPUs from Turing (sm_75) to Blackwell (sm_120); it has none for older GPUs
-  (Pascal, Volta). It was run on an RTX PRO 5000 Blackwell with driver 615.71. Versions up to 1.1.1 pinned a CUDA 12.1
+- **PyTorch build.** `requirements.txt` pins `torch 2.11.0+cu128` and `torchvision 0.26.0+cu128` (CUDA 12.8) since
+  2.0.0; 1.1.2 to 1.4.1 pinned `2.14.1+cu130` (CUDA 13.0), which was run on an RTX PRO 5000 Blackwell with driver
+  615.71 but needs a driver newer than the 570 series. The CUDA 12.8 build contains kernels up to Blackwell (sm_120)
+  and runs on driver 570; it was run on an RTX 3090 with driver 570.124 (MHI). It has not been run on a Blackwell GPU
+  by this project: check `torch.cuda.is_available()` and one prediction there before relying on it. Versions up to 1.1.1 pinned a CUDA 12.1
   build that does not run on Blackwell GPUs. The index, torch and torchvision lines must name the same build; a test
   checks it.
 - No Docker image was built or run on the development server; steps 1 to 5 are written from the release scripts and
