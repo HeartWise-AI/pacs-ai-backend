@@ -21,7 +21,7 @@ def float32(value: float) -> float:
     return float(torch.tensor(value, dtype=torch.float32))
 
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 MAIN = ("predictions", "scad", "probability")  # the stored number the hostile-input tests alter
 MAIN_BAD = {"too_low": -0.0001, "too_high": 1.5, "too_many_decimals": 0.449912, "other": 0.7771}
 THRESHOLD = float(CLASS_MAPPING["scad"]["threshold"])

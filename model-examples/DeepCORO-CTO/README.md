@@ -123,7 +123,6 @@ another model version with other thresholds) is refused with 422 (`INVALID_RESUL
 
 ## Changelog
 
-- After 2.0.2 (not yet released): adds `POST /inference/render-report` and
-  `capabilities.renderReport` in model-info. No change to the model, weights, preprocessing,
-  predictions or live report. If an image of 2.0.2 is already published, releasing this
-  needs its own version.
+- 2.0.3: adds `POST /inference/render-report` and `capabilities.renderReport` in model-info.
+  No change to the model, weights, preprocessing, predictions or live report; the version is
+  bumped because an image of 2.0.2 is already published.

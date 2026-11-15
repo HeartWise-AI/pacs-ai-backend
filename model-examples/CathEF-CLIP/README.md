@@ -72,7 +72,6 @@ is refused with 422 (`INVALID_RESULT`); a body over 64 KB is refused with 413.
 
 ## Changelog
 
-- After 1.0.2 (not yet released): adds `POST /inference/render-report` and
-  `capabilities.renderReport` in model-info. No change to the model, weights, preprocessing,
-  predictions or live report. If an image of 1.0.2 is already published, releasing this
-  needs its own version.
+- 1.0.2: includes `POST /inference/render-report` and `capabilities.renderReport` in model-info
+  (no image of 1.0.2 was published before this was added). The endpoint does not change the
+  model, weights, preprocessing, predictions or live report.
