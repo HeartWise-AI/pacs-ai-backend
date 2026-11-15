@@ -166,6 +166,98 @@
         }
       }
     },
+    "/inference/render-report": {
+      "post": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Render report",
+        "description": "HTML report of a stored JSON-mode result, the same document HTML-mode predict returns for that prediction. CPU only: no model load, no forward pass, no GPU; does not count as model activity. Nothing stored is copied into the page: the numbers are checked and the report is rendered from them, and a result whose values or text are not what this model version writes for those numbers is refused. Body at most 64 KB.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenderReportRequest"
+              },
+              "example": {
+                "result": {
+                  "predictions": {
+                    "abnormalRV": {
+                      "probability": 0.115,
+                      "threshold": 0.5,
+                      "diagnosis": "normal"
+                    }
+                  },
+                  "diagnosis": "DeepRV-CLIP: Normal RV systolic function (P=0.12)",
+                  "modelRecommendations": {
+                    "en": "<strong>Normal RV systolic function predicted (P=0.12).</strong> No additional RV-focused imaging indicated based on this prediction alone.",
+                    "fr": "<strong>Fonction systolique du VD prédite normale (P=0.12).</strong> Aucune imagerie VD supplémentaire indiquée sur la seule base de cette prédiction.",
+                    "presentable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Report rendered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/RenderReportResponse"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body larger than 64 KB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Body larger than 65536 bytes",
+                  "data": {},
+                  "errorCode": "PAYLOAD_TOO_LARGE"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Body is not JSON, or the result is not a JSON-mode result of this model version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Cannot render this result: diagnosis: is not what this model writes for these predictions",
+                  "data": {},
+                  "errorCode": "INVALID_RESULT"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/inference/model-info": {
       "get": {
         "tags": [
@@ -699,6 +791,33 @@
           },
           "error": {
             "type": "string"
+          }
+        }
+      },
+      "RenderReportRequest": {
+        "type": "object",
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "type": "object",
+            "description": "The data object of a JSON-mode predict response ({diagnosis, predictions, modelRecommendations}) as stored by the caller; the whole response envelope is accepted too. The stored no-video answer (predictions {}) renders the no-video page."
+          }
+        }
+      },
+      "RenderReportResponse": {
+        "type": "object",
+        "properties": {
+          "htmlBase64": {
+            "type": "string",
+            "description": "Base64-encoded HTML report, identical to HTML-mode predict for the same prediction"
+          },
+          "modelVersion": {
+            "type": "string",
+            "description": "Container version that rendered the report",
+            "example": "1.0.2"
           }
         }
       }
