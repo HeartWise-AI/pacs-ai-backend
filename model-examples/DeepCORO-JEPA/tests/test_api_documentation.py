@@ -40,7 +40,8 @@ def test_predict_examples_are_the_documented_container_response():
     config = json.loads((MODEL_ROOT / "models/config.json").read_text(encoding="utf-8"))["Thresholds"]
     predictions = response["data"]["predictions"]
     assert predictions["lad_physiology"]["operating_point"] == config["pressure_operating_point"]
-    assert predictions["lesion_thresholds"]["operating_point"] == config["lesion_operating_point"]
+    assert predictions["lesion_thresholds"]["operating_point"] == "specificity_99 (thrombus: fixed 0.40)"
+    assert predictions["lesion_thresholds"]["thrombus"] == config["lesion_threshold_overrides"]["thrombus"] == 0.4
     # every yes/no value can be recomputed from the returned probability and threshold
     physiology = predictions["lad_physiology"]
     for k in ("ffr", "ifr"):

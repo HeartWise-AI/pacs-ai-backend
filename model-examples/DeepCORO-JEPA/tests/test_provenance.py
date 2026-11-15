@@ -19,7 +19,7 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     provenance = manifest["provenance"]
 
-    assert manifest["version"] == "1.4.0"
+    assert manifest["version"] == "1.4.1"
     assert config["ModelStateDict"]["model_path"] == provenance["weightsPath"]
     assert provenance == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
@@ -61,7 +61,8 @@ def test_official_dockerfile_consumes_release_metadata_and_fetches_the_structure
     assert "--extra-file thresholds.json" in dockerfile
     config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
     assert config["Thresholds"] == {"path": "thresholds.json", "pressure_operating_point": "balanced",
-                                    "lesion_operating_point": "specificity_99"}
+                                    "lesion_operating_point": "specificity_99",
+                                    "lesion_threshold_overrides": {"thrombus": 0.4}}
 
 
 def test_requirements_pin_one_cuda_build_that_runs_on_blackwell():

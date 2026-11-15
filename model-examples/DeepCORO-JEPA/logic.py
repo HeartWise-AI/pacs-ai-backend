@@ -83,10 +83,17 @@ class CustomPredictionService(BasePredictionService):
         """Decision thresholds of the pinned model revision, one per output. `settings` is the "Thresholds" block of
         models/config.json. Fails on an unknown key or operating point, when the file belongs to other weights or when
         an output has no threshold: no silent default. `lesion_operating_point` is checked for every checkpoint and
-        used by those with a lesion head."""
+        used by those with a lesion head. The optional `lesion_threshold_overrides` ({"thrombus": 0.4}) replaces the
+        threshold of the named lesion findings by a fixed value; the operating point returned with a prediction then
+        names them ("specificity_99 (thrombus: fixed 0.40)")."""
         keys = {"path", "pressure_operating_point", "lesion_operating_point"}
-        if set(settings) != keys:
-            raise ValueError(f'"Thresholds" takes exactly {sorted(keys)}, got {sorted(settings)}')
+        if not keys <= set(settings) <= keys | {"lesion_threshold_overrides"}:
+            raise ValueError(f'"Thresholds" takes {sorted(keys)} and optionally "lesion_threshold_overrides", got {sorted(settings)}')
+        overrides = settings.get("lesion_threshold_overrides", {})
+        if not isinstance(overrides, dict) or set(overrides) - set(LESION_NAMES):
+            raise ValueError(f'"lesion_threshold_overrides" takes thresholds for {list(LESION_NAMES)}, got {overrides!r}')
+        if any(isinstance(t, bool) or not isinstance(t, (int, float)) or not 0.0 < t < 1.0 for t in overrides.values()):
+            raise ValueError('"lesion_threshold_overrides" needs thresholds strictly between 0 and 1')
         pressure_operating_point = settings["pressure_operating_point"]
         if pressure_operating_point not in PRESSURE_OPERATING_POINTS:
             raise ValueError(f"Unknown pressure_operating_point {pressure_operating_point!r}; choose one of {PRESSURE_OPERATING_POINTS}")
@@ -108,6 +115,10 @@ class CustomPredictionService(BasePredictionService):
         out = {name: float(spec["thresholds"][name][point]) for name, point in wanted.items()}
         if any(not 0.0 < t < 1.0 for t in out.values()):
             raise ValueError(f"{path} has a threshold outside (0, 1)")
+        if lesion and overrides:
+            out.update({f"{name}_prob": float(t) for name, t in overrides.items()})
+            fixed = ", ".join(f"{name}: fixed {overrides[name]:.2f}" for name in LESION_NAMES if name in overrides)
+            lesion_operating_point = f"{lesion_operating_point} ({fixed})"
         return {"pressure_operating_point": pressure_operating_point, "lesion_operating_point": lesion_operating_point,
                 "values": out}
 

@@ -22,7 +22,8 @@ The encoder runs **at most twice per study**:
 
 | Container version | Model | Hugging Face revision | Training run (Weights & Biases, `mhi_ai/deepcoro-segmentation`) |
 |---|---|---|---|
-| **1.4.0** (this one) | **v13** | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
+| **1.4.1** (this one) | **v13** | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
+| 1.4.0 | v13 | same revision | same run |
 | 1.3.0 | v13 | same revision | same run |
 | 1.2.0 | v13 | same revision | same run |
 | 1.1.2 | v13 | same revision | same run |
@@ -37,6 +38,14 @@ The served weights are the ones exported from the checkpoint of that training ru
 test set (macro AUROC 0.885 against 0.884). The pressure AUROC is lower (0.69 against 0.72; the difference is within
 its confidence interval, see "Verified performance"), and the lesion outputs are not better than the reference
 models. Version 1.0.0 stays buildable from commit `82492f2` of `master`.
+
+**What 1.4.1 changes against 1.4.0:** same weights and probabilities. The thrombus flag needs `thrombus_prob` above
+**0.40** instead of 0.0851 (`Thresholds.lesion_threshold_overrides` in `models/config.json`); `lesion_thresholds`
+returns `thrombus: 0.4` and `operating_point: "specificity_99 (thrombus: fixed 0.40)"`. The value was chosen on the
+validation split of the served weights (4,647 studies, 200 segments with thrombus in the report) to raise the positive
+predictive value: at 0.40, 60 segments are flagged and 18 have thrombus in the report (PPV 0.30, sensitivity 0.09);
+at 0.0851, 902 are flagged (PPV 0.08, sensitivity 0.36). A PPV of 0.80 is not reachable: above 0.85 one segment is
+left. The 0.40 threshold has not been evaluated on the test set. Results stored by earlier versions keep their flags.
 
 **What 1.4.0 changes against 1.3.0:** same weights and thresholds; `stenosis_pct` and every flag are unchanged.
 The report shows a calibrated stenosis instead of the raw estimate (display calibration `cal1`,
@@ -239,6 +248,7 @@ operating points, not validated clinical ones.
 | `path` | Thresholds file inside `models/`, fetched at build | `thresholds.json` |
 | `pressure_operating_point` | `balanced`, `high_sensitivity` or `high_specificity`; applies to FFR and iFR. Segments always use `balanced`. | `balanced` |
 | `lesion_operating_point` | `specificity_99`, `specificity_95` or `balanced`; applies to calcification, thrombus and CTO. Required for every checkpoint, used by those with a lesion head. | `specificity_99` |
+| `lesion_threshold_overrides` | Optional. Fixed threshold for one or more lesion findings, replacing the operating point for them: `{"thrombus": 0.4}` (since 1.4.1). Names: `calcif`, `thrombus`, `cto`; values strictly between 0 and 1. | `{"thrombus": 0.4}` |
 
 All three keys are required. An unknown or missing key, an unknown operating point, a missing file, a missing output,
 a threshold outside (0, 1) or a file derived for other weights stops the container at start-up. There is no fallback value.
@@ -270,7 +280,7 @@ calcification (1.9%), 104 thrombus (0.2%) and 382 CTO (0.7%) in the report.
 | Calcification | `specificity_99` (default) | 0.2225 | 0.19 | 0.990 | 0.27 | 0.984 | 0.25 |
 | Calcification | `specificity_95` | 0.0791 | 0.51 | 0.951 | 0.17 | 0.990 | 1.04 |
 | Calcification | `balanced` | 0.0161 | 0.82 | 0.830 | 0.09 | 0.996 | 3.29 |
-| Thrombus | `specificity_99` (default) | 0.0851 | 0.51 | 0.992 | 0.10 | 0.999 | 0.16 |
+| Thrombus | `specificity_99` (until 1.4.0; since 1.4.1 the flag uses the fixed threshold 0.40, not evaluated on this test set) | 0.0851 | 0.51 | 0.992 | 0.10 | 0.999 | 0.16 |
 | Thrombus | `specificity_95` | 0.0167 | 0.70 | 0.957 | 0.03 | 0.999 | 0.79 |
 | Thrombus | `balanced` | 0.0042 | 0.83 | 0.861 | 0.01 | 1.000 | 2.52 |
 | CTO | `specificity_99` (default) | 0.1570 | 0.37 | 0.990 | 0.21 | 0.996 | 0.22 |
