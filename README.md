@@ -249,7 +249,7 @@ Update `pacs-ai-backend/orthanc/.env` with appropriate port and AET settings:
 From the `pacs-ai-backend` directory:
 
 ```bash
-make up-prod # This will start the application in production mode
+make up-prod # Start production mode. Does not rebuild existing images (use `make build-prod`).
 make down-prod # This will stop the application
 ```
 

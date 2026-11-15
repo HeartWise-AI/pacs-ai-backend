@@ -820,6 +820,46 @@ func (service *UserCommandService) UpdateUserMetadata(ctx context.Context, data 
 	return nil
 }
 
+// CompleteUserViewerTour records the first time the user completed or skipped
+// the viewer tour. It is idempotent: an existing completion time is kept.
+func (service *UserCommandService) CompleteUserViewerTour(ctx context.Context, userID string) (types.UserViewerTourState, error) {
+	userMetadata, err := service.UserQueryRepositoryInterface.SelectUserMetadataByID(ctx, userID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return types.UserViewerTourState{}, err
+	}
+	if err == nil && userMetadata.ViewerTourCompletedAt != nil {
+		return types.UserViewerTourState{UserID: userID, ViewerTourCompletedAt: userMetadata.ViewerTourCompletedAt}, nil
+	}
+
+	completedAt := viewerTourNow().Unix()
+	err = service.UserCommandRepositoryInterface.UpdateUserViewerTourCompletedAt(ctx, repositoryTypes.UpdateUserViewerTourCompletedAt{
+		UserID:      userID,
+		CompletedAt: &completedAt,
+	})
+	if err != nil {
+		return types.UserViewerTourState{}, err
+	}
+
+	return types.UserViewerTourState{UserID: userID, ViewerTourCompletedAt: &completedAt}, nil
+}
+
+// ResetUserViewerTour clears the viewer tour completion so the tour shows again
+// the next time the user opens the viewer.
+func (service *UserCommandService) ResetUserViewerTour(ctx context.Context, userID string) (types.UserViewerTourState, error) {
+	err := service.UserCommandRepositoryInterface.UpdateUserViewerTourCompletedAt(ctx, repositoryTypes.UpdateUserViewerTourCompletedAt{
+		UserID:      userID,
+		CompletedAt: nil,
+	})
+	if err != nil {
+		return types.UserViewerTourState{}, err
+	}
+
+	return types.UserViewerTourState{UserID: userID}, nil
+}
+
+// viewerTourNow is the clock used for viewer tour completion; replaced in tests.
+var viewerTourNow = time.Now
+
 // generateID generates unique id
 func generateID() string {
 	return ksuid.New().String()

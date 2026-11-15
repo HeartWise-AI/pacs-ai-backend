@@ -2226,6 +2226,75 @@
         }
       }
     },
+    "/user/viewer-tour": {
+      "get": {
+        "tags": ["user"],
+        "summary": "Get Viewer Tour State",
+        "description": "Get the authenticated user's viewer onboarding tour state: { userId, viewerTourCompletedAt } where viewerTourCompletedAt is unix seconds, or null when the tour should be shown.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/viewer-tour/complete": {
+      "put": {
+        "tags": ["user"],
+        "summary": "Complete Viewer Tour",
+        "description": "Record that the authenticated user completed or skipped the viewer onboarding tour. Idempotent: an existing completion time is kept.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/viewer-tour/reset": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Reset Viewer Tour",
+        "description": "Clear the authenticated user's viewer tour completion so the tour shows on the next viewer open.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/{id}/suspend": {
       "post": {
         "tags": ["user"],

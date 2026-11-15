@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -313,6 +314,44 @@ func TestLoginTenantUserDoesNotCountIdentityProviderFailure(t *testing.T) {
 
 	requireLoginError(t, err, apiError.FirebaseAuthError, false)
 	require.Zero(t, protection.recordCalls)
+}
+
+func TestLoginTenantUserMapsProviderLockoutToRateLimit(t *testing.T) {
+	service, protection, identityAPI, verifier, repository := newLoginTestService()
+	identityAPI.err = fmt.Errorf("wrapped: %w", identitytoolkit.ErrTooManyAttempts)
+	protection.recordDecision.ChallengeRequired = true
+
+	_, err := service.LoginTenantUser(t.Context(), testLoginInput())
+
+	loginError := requireLoginError(t, err, apiError.LoginRateLimited, true)
+	require.Equal(t, int(providerLockoutRetryAfter/time.Second), loginError.RetryAfterSeconds)
+	require.Equal(t, 1, protection.recordCalls)
+	require.Zero(t, protection.resetCalls)
+	require.Zero(t, verifier.calls)
+	require.Zero(t, repository.setCalls)
+}
+
+func TestLoginTenantUserProviderLockoutUsesLongerLocalRetryAfter(t *testing.T) {
+	service, protection, identityAPI, _, _ := newLoginTestService()
+	identityAPI.err = identitytoolkit.ErrTooManyAttempts
+	protection.recordDecision = serviceTypes.LoginProtectionDecision{ChallengeRequired: true, RetryAfter: 9 * time.Minute}
+
+	_, err := service.LoginTenantUser(t.Context(), testLoginInput())
+
+	loginError := requireLoginError(t, err, apiError.LoginRateLimited, true)
+	require.Equal(t, 540, loginError.RetryAfterSeconds)
+	require.Equal(t, 1, protection.recordCalls)
+}
+
+func TestLoginTenantUserProviderLockoutStaysRateLimitedWhenRecordingFails(t *testing.T) {
+	service, protection, identityAPI, _, _ := newLoginTestService()
+	identityAPI.err = identitytoolkit.ErrTooManyAttempts
+	protection.recordErr = errors.New("redis unavailable")
+
+	_, err := service.LoginTenantUser(t.Context(), testLoginInput())
+
+	loginError := requireLoginError(t, err, apiError.LoginRateLimited, true)
+	require.Equal(t, 300, loginError.RetryAfterSeconds)
 }
 
 func TestLoginTenantUserRejectsProviderIdentityMismatchWithoutCreatingSession(t *testing.T) {

@@ -32,4 +32,8 @@ type UserCommandServiceInterface interface {
 	UpdateTenantUserPassword(ctx context.Context, data types.UpdateTenantUserPassword) error
 	// UpdateUserMetadata updates a user metadata
 	UpdateUserMetadata(ctx context.Context, data types.UpdateUserMetadata) error
+	// CompleteUserViewerTour records that the user completed or skipped the viewer tour
+	CompleteUserViewerTour(ctx context.Context, userID string) (types.UserViewerTourState, error)
+	// ResetUserViewerTour clears the viewer tour completion so it shows again
+	ResetUserViewerTour(ctx context.Context, userID string) (types.UserViewerTourState, error)
 }

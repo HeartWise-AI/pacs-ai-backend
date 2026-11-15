@@ -80,3 +80,8 @@ checks through `scripts/verify-model.py`; verification does not authorize public
 - **MHI api-pacs images are overlays.** The image built from `api-pacs/Dockerfile` alone lacks the
   site config (`/app/build/configs/firebase/...`) and crash-loops. Build the binary, then layer it on the
   running image (`FROM <live image>` + `COPY api-pacs /usr/local/bin/api-pacs`).
+
+## Release candidates
+
+When preparing a release candidate, rebuilding after a fix, verifying staging evidence,
+or proposing production promotion, read [docs/agents/release.md](docs/agents/release.md).
