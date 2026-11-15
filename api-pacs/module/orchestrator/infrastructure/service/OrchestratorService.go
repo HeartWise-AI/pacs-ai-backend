@@ -136,11 +136,14 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 		APIBaseURL        string `json:"api_base_url,omitempty"`
 		UserID            string `json:"user_id,omitempty"`
 		TenantID          string `json:"tenant_id,omitempty"`
+		// Viewer context (open study: studyInstanceUID, modality, selectedSeries).
+		Metadata map[string]interface{} `json:"metadata,omitempty"`
 	}{
 		Message:           request.Content,
 		ConversationID:    request.ThreadID,
 		ImageData:         request.ImageData,
 		ImageType:         request.ImageType,
+		Metadata:          request.Metadata,
 		BearerToken:       bearerToken,
 		APIBaseURL:        os.Getenv("API_BASE_URL"),
 		UserID:      	   userID,

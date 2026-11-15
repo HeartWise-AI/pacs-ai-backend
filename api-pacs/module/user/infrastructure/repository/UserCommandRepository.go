@@ -531,6 +531,53 @@ func (repository *UserCommandRepository) UpdateTenantUserPassword(ctx context.Co
 	return nil
 }
 
+// UpdateUserViewerTourCompletedAt sets or clears viewer_tour_completed_at on the
+// user's metadata document, creating the document when it does not exist yet.
+// Only the tour field and updated_at are touched on existing documents.
+func (repository *UserCommandRepository) UpdateUserViewerTourCompletedAt(ctx context.Context, data repositoryTypes.UpdateUserViewerTourCompletedAt) error {
+	var userMetadata entity.UserMetadata
+
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	docRef := firestoreClient.Doc(fmt.Sprintf("%s/%s", userMetadata.GetModelName(), data.UserID))
+	now := int(time.Now().Unix())
+
+	_, err = docRef.Create(ctx, entity.UserMetadata{
+		UserID:                data.UserID,
+		Metadata:              "{}",
+		CreatedAt:             now,
+		UpdatedAt:             now,
+		ViewerTourCompletedAt: data.CompletedAt,
+	})
+	if err == nil {
+		return nil
+	}
+	if status.Code(err) != codes.AlreadyExists {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	var completedAt interface{}
+	if data.CompletedAt != nil {
+		completedAt = *data.CompletedAt
+	}
+
+	_, err = docRef.Update(ctx, []firestore.Update{
+		{Path: "viewer_tour_completed_at", Value: completedAt},
+		{Path: "updated_at", Value: now},
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.FirestoreError)
+	}
+
+	return nil
+}
+
 // UpsertUserMetadata upserts user metadata
 func (repository *UserCommandRepository) UpsertUserMetadata(ctx context.Context, data repositoryTypes.UpsertUserMetadata) error {
 	var userMetadata entity.UserMetadata

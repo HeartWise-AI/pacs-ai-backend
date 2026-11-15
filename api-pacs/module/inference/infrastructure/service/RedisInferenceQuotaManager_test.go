@@ -157,7 +157,8 @@ func TestInferenceQuotaConfigSupportsTenantOverridesAndSafeFallbacks(t *testing.
 	t.Setenv("INFERENCE_USER_QUOTA_ALLOWANCE", "20")
 	t.Setenv("INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS", "3")
 	t.Setenv("INFERENCE_USER_RESERVATION_TTL_SECONDS", "900")
-	t.Setenv("INFERENCE_USER_QUOTA_TENANT_OVERRIDES_JSON", `{"tenant-special":{"allowance":80,"maxConcurrentExecutions":5}}`)
+	t.Setenv("INFERENCE_USER_MAX_QUEUED_EXECUTIONS", "40")
+	t.Setenv("INFERENCE_USER_QUOTA_TENANT_OVERRIDES_JSON", `{"tenant-special":{"allowance":80,"maxConcurrentExecutions":5,"maxQueuedExecutions":120},"tenant-inherit":{"allowance":10}}`)
 
 	config := InferenceQuotaConfigFromEnvironment()
 	require.Equal(t, 10*time.Minute, config.Default.Window)
@@ -165,10 +166,159 @@ func TestInferenceQuotaConfigSupportsTenantOverridesAndSafeFallbacks(t *testing.
 	require.Equal(t, int64(3), config.Default.MaxConcurrentExecutions)
 	require.Equal(t, int64(80), config.limitsForTenant("tenant-special").Allowance)
 	require.Equal(t, int64(5), config.limitsForTenant("tenant-special").MaxConcurrentExecutions)
+	require.Equal(t, int64(40), config.Default.MaxQueuedExecutions)
+	require.Equal(t, int64(120), config.limitsForTenant("tenant-special").MaxQueuedExecutions)
+	require.Equal(t, int64(40), config.limitsForTenant("tenant-inherit").MaxQueuedExecutions)
 
 	t.Setenv("INFERENCE_USER_QUOTA_ALLOWANCE", "invalid")
 	t.Setenv("INFERENCE_USER_QUOTA_TENANT_OVERRIDES_JSON", "not-json")
+	t.Setenv("INFERENCE_USER_MAX_QUEUED_EXECUTIONS", "")
 	config = InferenceQuotaConfigFromEnvironment()
 	require.Equal(t, defaultInferenceQuotaAllowance, config.Default.Allowance)
+	require.Equal(t, defaultInferenceMaxQueued, config.Default.MaxQueuedExecutions)
 	require.Empty(t, config.TenantOverrides)
+}
+
+func queuedReservation(tenantID, userID, id string) serviceTypes.InferenceQuotaReservation {
+	return serviceTypes.InferenceQuotaReservation{
+		TenantID: tenantID, UserID: userID, ReservationID: id, Units: 1,
+		Kind: serviceTypes.InferenceQuotaReservationQueued,
+	}
+}
+
+func TestRedisInferenceQuotaManagerQueuedReservationsBypassInteractiveCap(t *testing.T) {
+	manager := newInferenceQuotaTestManager(t, InferenceQuotaLimits{
+		Window: time.Minute, Allowance: 100, MaxConcurrentExecutions: 2, MaxQueuedExecutions: 50, ReservationTTL: time.Minute,
+	})
+	tenantID, userID := "quota-tenant-queued", "quota-user-queued"
+	cleanInferenceQuotaScope(t, manager, tenantID, userID)
+	ctx := context.Background()
+
+	// Six viewer reruns on one study: all admitted despite the interactive cap of 2.
+	for index := range 6 {
+		status, err := manager.Reserve(ctx, queuedReservation(tenantID, userID, fmt.Sprintf("viewer-run-%d", index)))
+		require.NoError(t, err)
+		require.Equal(t, int64(index+1), status.QueuedExecutions)
+		require.Equal(t, int64(0), status.ActiveExecutions)
+	}
+	// Idempotent re-reserve of a queued run does not double-count.
+	status, err := manager.Reserve(ctx, queuedReservation(tenantID, userID, "viewer-run-0"))
+	require.NoError(t, err)
+	require.Equal(t, int64(6), status.Used)
+	require.Equal(t, int64(6), status.QueuedExecutions)
+
+	// Interactive predicts still have both slots available, and the cap still holds for them.
+	for _, id := range []string{"predict-1", "predict-2"} {
+		_, err = manager.Reserve(ctx, serviceTypes.InferenceQuotaReservation{TenantID: tenantID, UserID: userID, ReservationID: id, Units: 1})
+		require.NoError(t, err)
+	}
+	_, err = manager.Reserve(ctx, serviceTypes.InferenceQuotaReservation{TenantID: tenantID, UserID: userID, ReservationID: "predict-3", Units: 1})
+	var limitError *apiError.InferenceQuotaLimitError
+	require.True(t, stderrors.As(err, &limitError))
+	require.Equal(t, apiError.InferenceConcurrencyExceeded, limitError.ErrorCode)
+
+	// A full interactive cap does not block queued work either.
+	status, err = manager.Reserve(ctx, queuedReservation(tenantID, userID, "viewer-run-6"))
+	require.NoError(t, err)
+	require.Equal(t, int64(7), status.QueuedExecutions)
+	require.Equal(t, int64(2), status.ActiveExecutions)
+
+	// Release and refund find queued reservations by ID even without Kind.
+	status, err = manager.Release(ctx, serviceTypes.InferenceQuotaReservation{TenantID: tenantID, UserID: userID, ReservationID: "viewer-run-0", Units: 1})
+	require.NoError(t, err)
+	require.Equal(t, int64(6), status.QueuedExecutions)
+	require.Equal(t, int64(9), status.Used)
+	status, err = manager.Refund(ctx, queuedReservation(tenantID, userID, "viewer-run-1"))
+	require.NoError(t, err)
+	require.Equal(t, int64(5), status.QueuedExecutions)
+	require.Equal(t, int64(8), status.Used)
+	status, err = manager.Refund(ctx, queuedReservation(tenantID, userID, "viewer-run-1"))
+	require.NoError(t, err)
+	require.Equal(t, int64(8), status.Used)
+	require.Equal(t, int64(2), status.ActiveExecutions)
+
+	status, err = manager.Status(ctx, tenantID, userID)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), status.ActiveExecutions)
+	require.Equal(t, int64(5), status.QueuedExecutions)
+	require.Equal(t, int64(50), status.MaxQueuedExecutions)
+	require.Greater(t, status.QueuedRetryAfter, time.Duration(0))
+}
+
+func TestRedisInferenceQuotaManagerEnforcesQueuedSafetyCapAndAllowance(t *testing.T) {
+	manager := newInferenceQuotaTestManager(t, InferenceQuotaLimits{
+		Window: time.Minute, Allowance: 5, MaxConcurrentExecutions: 1, MaxQueuedExecutions: 3, ReservationTTL: time.Minute,
+	})
+	tenantID, userID := "quota-tenant-queue-cap", "quota-user-queue-cap"
+	cleanInferenceQuotaScope(t, manager, tenantID, userID)
+	ctx := context.Background()
+
+	for index := range 3 {
+		_, err := manager.Reserve(ctx, queuedReservation(tenantID, userID, fmt.Sprintf("queued-%d", index)))
+		require.NoError(t, err)
+	}
+	_, err := manager.Reserve(ctx, queuedReservation(tenantID, userID, "queued-3"))
+	var limitError *apiError.InferenceQuotaLimitError
+	require.True(t, stderrors.As(err, &limitError))
+	require.Equal(t, apiError.InferenceQueueLimitExceeded, limitError.ErrorCode)
+	require.Equal(t, int64(3), limitError.QueuedExecutions)
+	require.Equal(t, int64(3), limitError.MaxQueuedExecutions)
+	require.Greater(t, limitError.RetryAfterSeconds, int64(0))
+
+	// A rejected queued reservation consumed no allowance; interactive still works.
+	status, err := manager.Reserve(ctx, serviceTypes.InferenceQuotaReservation{TenantID: tenantID, UserID: userID, ReservationID: "predict", Units: 1})
+	require.NoError(t, err)
+	require.Equal(t, int64(4), status.Used)
+
+	_, err = manager.Release(ctx, queuedReservation(tenantID, userID, "queued-0"))
+	require.NoError(t, err)
+	status, err = manager.Reserve(ctx, queuedReservation(tenantID, userID, "queued-3"))
+	require.NoError(t, err)
+	require.Equal(t, int64(5), status.Used)
+
+	// The rolling allowance applies to queued work too.
+	_, err = manager.Release(ctx, queuedReservation(tenantID, userID, "queued-1"))
+	require.NoError(t, err)
+	_, err = manager.Reserve(ctx, queuedReservation(tenantID, userID, "queued-4"))
+	require.True(t, stderrors.As(err, &limitError))
+	require.Equal(t, apiError.InferenceQuotaExceeded, limitError.ErrorCode)
+}
+
+func TestRedisInferenceQuotaManagerQueuedReservationsExpireWithoutCallback(t *testing.T) {
+	now := time.Now()
+	manager := newInferenceQuotaTestManager(t, InferenceQuotaLimits{
+		Window: time.Hour, Allowance: 10, MaxConcurrentExecutions: 1, MaxQueuedExecutions: 1, ReservationTTL: time.Minute,
+	})
+	manager.Now = func() time.Time { return now }
+	tenantID, userID := "quota-tenant-queue-ttl", "quota-user-queue-ttl"
+	cleanInferenceQuotaScope(t, manager, tenantID, userID)
+	ctx := context.Background()
+
+	_, err := manager.Reserve(ctx, queuedReservation(tenantID, userID, "lost-callback"))
+	require.NoError(t, err)
+	_, err = manager.Reserve(ctx, queuedReservation(tenantID, userID, "blocked"))
+	require.Error(t, err)
+
+	now = now.Add(2 * time.Minute)
+	status, err := manager.Status(ctx, tenantID, userID)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), status.QueuedExecutions)
+	status, err = manager.Reserve(ctx, queuedReservation(tenantID, userID, "after-expiry"))
+	require.NoError(t, err)
+	require.Equal(t, int64(1), status.QueuedExecutions)
+	require.Equal(t, int64(2), status.Used)
+
+	// A late callback for the expired reservation is a no-op and refunds nothing.
+	status, err = manager.Refund(ctx, queuedReservation(tenantID, userID, "lost-callback"))
+	require.NoError(t, err)
+	require.Equal(t, int64(2), status.Used)
+	require.Equal(t, int64(1), status.QueuedExecutions)
+}
+
+func TestRedisInferenceQuotaManagerRejectsUnknownReservationKind(t *testing.T) {
+	manager := &RedisInferenceQuotaManager{}
+	_, err := manager.Reserve(context.Background(), serviceTypes.InferenceQuotaReservation{
+		TenantID: "t", UserID: "u", ReservationID: "r", Units: 1, Kind: "bulk",
+	})
+	require.EqualError(t, err, apiError.InvalidPayload)
 }

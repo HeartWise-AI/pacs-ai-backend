@@ -32,6 +32,7 @@ RUN python download_model.py \
 
 COPY main.py .
 COPY logic.py .
+COPY report_input.py .
 COPY config.json .
 COPY data/ ./data/
 COPY docs/ ./docs/

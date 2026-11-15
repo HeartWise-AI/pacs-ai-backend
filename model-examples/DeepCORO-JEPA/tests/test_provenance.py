@@ -1,4 +1,4 @@
-"""DeepCORO-JEPA 1.1.1 artifact identity and build verification."""
+"""DeepCORO-JEPA 1.1.2 artifact identity and build verification."""
 
 import hashlib
 import json
@@ -62,3 +62,12 @@ def test_official_dockerfile_consumes_release_metadata_and_fetches_the_structure
     config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
     assert config["Thresholds"] == {"path": "thresholds.json", "pressure_operating_point": "balanced",
                                     "lesion_operating_point": "specificity_99"}
+
+
+def test_requirements_pin_one_cuda_build_that_runs_on_blackwell():
+    lines = (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
+    index = next(line.rsplit("/", 1)[1] for line in lines if line.startswith("--extra-index-url"))
+    builds = {line.split("==")[0]: line.rsplit("+", 1)[1] for line in lines if line.startswith(("torch==", "torchvision=="))}
+
+    assert builds == {"torch": index, "torchvision": index}
+    assert int(index.removeprefix("cu")) >= 128  # older builds do not run on Blackwell (sm_120) GPUs

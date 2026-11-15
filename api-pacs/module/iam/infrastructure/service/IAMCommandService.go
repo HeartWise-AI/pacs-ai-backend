@@ -139,7 +139,11 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, data type
 		if errors.Is(err, identitytoolkit.ErrCredentialsRejected) {
 			return "", service.handleRejectedLogin(ctx, signals)
 		}
-		log.Printf("[security] event=login_identity_provider_unavailable")
+		if errors.Is(err, identitytoolkit.ErrTooManyAttempts) {
+			return "", service.handleProviderLockout(ctx, signals)
+		}
+		log.Printf("[security] event=login_identity_provider_unavailable tenant_id=%s reason=%s",
+			data.TenantID, identitytoolkit.FailureReason(err))
 		return "", newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
 	}
 	if service.TenantIDTokenVerifierInterface == nil {
@@ -216,6 +220,34 @@ func (service *IAMCommandService) handleRejectedLogin(ctx context.Context, signa
 		return newLoginRateLimitError(decision.RetryAfter)
 	}
 	return newLoginError(apiError.UnauthorizedAccess, decision.ChallengeRequired, 0)
+}
+
+// providerLockoutRetryAfter is the Retry-After advertised when Firebase locks
+// password sign-in for an account (TOO_MANY_ATTEMPTS_TRY_LATER). Firebase does
+// not report how long its lockout lasts; five minutes is a conservative backoff
+// that is shorter than the default login failure window (10 minutes), so a user
+// who waits is not kept out longer than our own limiter would, and a client that
+// retries too early simply receives the same response again.
+const providerLockoutRetryAfter = 5 * time.Minute
+
+// handleProviderLockout answers a Firebase account lockout with the same
+// LoginRateLimited response used by the local limiter (429, generic message,
+// challengeRequired=true, Retry-After), so it reveals nothing beyond what the
+// earlier credential rejections and the existing rate limit already do. The
+// attempt is recorded exactly once, as a denied attempt: Firebase did not check
+// the password, but the request still counts toward the IP and tenant limits.
+func (service *IAMCommandService) handleProviderLockout(ctx context.Context, signals types.LoginAbuseSignals) error {
+	log.Printf("[security] event=login_provider_lockout tenant_id=%s", signals.TenantID)
+	retryAfter := providerLockoutRetryAfter
+	if service.LoginAbuseProtectionInterface != nil {
+		decision, err := service.LoginAbuseProtectionInterface.RecordLoginFailure(ctx, signals)
+		if err != nil {
+			log.Printf("[security] event=login_protection_unavailable operation=record reason=provider_lockout")
+		} else if decision.RetryAfter > retryAfter {
+			retryAfter = decision.RetryAfter
+		}
+	}
+	return newLoginRateLimitError(retryAfter)
 }
 
 func (service *IAMCommandService) handleDeniedLogin(ctx context.Context, signals types.LoginAbuseSignals, originalCode string) error {

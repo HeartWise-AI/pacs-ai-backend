@@ -130,3 +130,9 @@ type UpdateUserMetadata struct {
 	UserID   string
 	Metadata map[string]interface{}
 }
+
+// UserViewerTourState is the authenticated user's viewer onboarding tour state.
+type UserViewerTourState struct {
+	UserID                string
+	ViewerTourCompletedAt *int64
+}
