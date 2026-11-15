@@ -213,9 +213,11 @@ def test_lesion_outputs_are_reported_and_flagged_when_the_checkpoint_has_them():
     html = service.render_html(preds)
     row = re.search(r'<li class="seg is-flag"><span class="sname">Proximal RCA(.*?)</li>', html).group(1)
     assert '<span class="chip warn">CTO</span>' in row and "CTO 0.40" in row
-    # a CTO is reported as an occlusion: 100%, flagged, vessel blocked at the lesion and pale beyond it
+    # a CTO is reported as an occlusion: 100%, flagged, vessel blocked at the lesion and grey beyond it (the rest
+    # of the proximal RCA, the 5 segments distal to it and the 3 unlabelled twigs of the right coronary)
     assert 'class="pct sev-high" title="Occluded; model estimate 0.0%">100%<span class="muted small"> est. 0%</span></span>' in row
-    assert html.count('class="cto-mark"') == 1 and html.count('class="occluded"') == 1
+    assert html.count('class="cto-mark"') == 1 and html.count('class="vessel noflow"') == 9
+    assert html.count('class="calc"') == 17  # every shown segment is flagged calcified here
     assert "Operating point specificity_99" in html and "Proximal RCA (100%, occluded)" in html
     assert "Proximal RCA (P 0.000, estimated 100%, CTO flag; stenosis estimate 0%)" not in text  # not significant
 

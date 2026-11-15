@@ -42,6 +42,16 @@ The report shows a calibrated stenosis instead of the raw estimate (display cali
 `data/stenosis_display.json`, applied by `display_calibration.py`), and each segment of the JSON gets
 `display_pct` and `display_category`. The report header reads `v13-cal1` (`reportModelVersion`); the HF tag `v13.1`
 is the weights revision and is not changed. See "Displayed stenosis" below.
+The schema also draws the three lesion flags (drawing only, `report_html.py`; a stored result re-rendered by
+`/inference/render-report` gets the same drawing): a **calcified** segment lies on a grey band wider than the vessel;
+beyond a **CTO** flag the vessel is grey, meaning no antegrade flow is shown: the rest of the occluded segment after
+the block mark, every segment distal to it and the branches arising at or beyond the mark, following the drawn tree
+(`PARENT`, `PARENT_LEFT` for a left-dominant schema); branches arising before the mark stay red. The mark sits at the
+middle of the segment because the model does not localise the lesion inside a segment, so whether a branch of the
+occluded segment itself is grey follows the drawing, not the angiogram. A **thrombus** flag is a clot symbol in the
+lumen (lobulated, outlined, just proximal to the block mark when the segment is also a CTO). The calcified band also
+carries pale calcium plates along the vessel wall. The legend shows the three cartoons at small size. No angiographic
+image is drawn on the schema: the explanation crops stay in "Where the model looked", lower in the report.
 
 **What 1.3.0 changes against 1.2.0:** same weights, thresholds, JSON values and report. `POST
 /inference/render-report` with `{"result": <data of a JSON-mode predict>}` answers `{"htmlBase64", "modelVersion",

@@ -66,9 +66,20 @@ GEOMETRY_LEFT = {**GEOMETRY,
     "lvp": (((320, 552), (285, 560), (255, 570), (225, 584)), 6, (126, 592)),
 }
 # Unlabelled side branches (acute marginal, posterolateral twigs) so the tree reads like the hand-drawn schema.
-DECOR = [(((128, 300), (180, 330), (230, 370), (262, 402)), 6), (((300, 566), (330, 585), (350, 600), (372, 612)), 4),
-         (((440, 566), (468, 585), (488, 600), (505, 612)), 4)]
-DECOR_LEFT = [(((128, 300), (180, 330), (230, 370), (262, 402)), 4), (((410, 590), (430, 612), (440, 628), (446, 640)), 4)]
+# Each with the segment it arises from.
+DECOR = [(((128, 300), (180, 330), (230, 370), (262, 402)), 6, "mid_rca"),
+         (((300, 566), (330, 585), (350, 600), (372, 612)), 4, "posterolateral"),
+         (((440, 566), (468, 585), (488, 600), (505, 612)), 4, "lvp")]
+DECOR_LEFT = [(((128, 300), (180, 330), (230, 370), (262, 402)), 4, "mid_rca"),
+              (((410, 590), (430, 612), (440, 628), (446, 640)), 4, "pda")]
+# Topology of the drawn tree: the segment each segment arises from (the point is read from the geometry).
+PARENT = {"mid_rca": "prox_rca", "dist_rca": "mid_rca", "pda": "dist_rca", "posterolateral": "dist_rca",
+          "lvp": "posterolateral", "prox_lad": "left_main", "prox_lcx": "left_main", "bx": "left_main",
+          "mid_lad": "prox_lad", "dist_lad": "mid_lad", "D1": "prox_lad", "D2": "mid_lad",
+          "mid_lcx": "prox_lcx", "dist_lcx": "mid_lcx", "om1": "prox_lcx", "om2": "mid_lcx"}
+PARENT_LEFT = {**PARENT, "pda": "dist_lcx", "posterolateral": "dist_lcx", "lvp": "dist_lcx"}
+CTO_AT = 0.5  # the block mark sits at the middle of the occluded segment (the lesion is not localised inside it)
+VIEW_W, VIEW_H = 1040, 720
 
 
 PROBABILITY_DECIMALS = 6  # probabilities in the response; the yes/no calls are taken on these returned values
@@ -140,25 +151,115 @@ def lesion_tags(v: dict) -> list[str]:
     return [LESION_TAG[k] for k in LESION_NAMES if v.get(k)]
 
 
+def attach_t(c, point, n=200) -> float:
+    """Position (0 to 1) along cubic `c` of its point nearest to `point`: where a branch starting there arises."""
+    px, py = point
+    return min(range(n + 1), key=lambda i: (bez(c, i / n)[0] - px) ** 2 + (bez(c, i / n)[1] - py) ** 2) / n
+
+
+def occluded_upstream(segs: dict, left_dominant: bool = False):
+    """(source, block): `source(g)` is the CTO-flagged segment upstream of segment `g` (None when flow reaches it),
+    `block(parent, point)` the same for a vessel arising from `parent` at `point`. Walks the drawn tree: every
+    segment distal to an occlusion, and each branch arising at or beyond the block mark of the occluded segment
+    (the mark sits at CTO_AT of its length), is without antegrade flow; branches arising before the mark keep it."""
+    geometry, parent = (GEOMETRY_LEFT, PARENT_LEFT) if left_dominant else (GEOMETRY, PARENT)
+    cto = {g for g in geometry if g not in HIDDEN_SEGMENTS and (segs.get(g) or {}).get("cto")}
+    known = {}
+
+    def block(p, point):
+        if p is None:
+            return None
+        up = source(p)
+        if up is None and p in cto and attach_t(geometry[p][0], point) >= CTO_AT:
+            up = p
+        return up
+
+    def source(g):
+        if g not in known:
+            known[g] = block(parent.get(g), geometry[g][0][0])
+        return known[g]
+
+    return source, block
+
+
+def clot(x: float, y: float, angle: float, r: float, title: str = "", cls: str = "thrombus") -> str:
+    """Thrombus cartoon: a lobulated clot lying along the vessel at (x, y), `r` its half height. The lobes are drawn
+    twice, outlined then filled, so the outline runs around the whole clot and it reads on a red or a grey vessel."""
+    lobes = [(-1.55, 0.12, 0.72), (-0.62, -0.26, 0.96), (0.36, 0.2, 1.0), (1.22, -0.16, 0.8), (1.86, 0.18, 0.52)]
+    circles = lambda cls: "".join(f'<circle class="{cls}" cx="{cx * r:.1f}" cy="{cy * r:.1f}" r="{k * r:.1f}"/>'
+                                  for cx, cy, k in lobes)
+    return (f'<g class="{cls}" transform="translate({x:.1f} {y:.1f}) rotate({angle:.0f})">'
+            + (f"<title>{escape(title)}</title>" if title else "") + circles("thr-edge") + circles("thr-lobe")
+            + f'<circle class="thr-shine" cx="{-0.7 * r:.1f}" cy="{-0.55 * r:.1f}" r="{0.22 * r:.1f}"/>'
+              f'<circle class="thr-shine" cx="{0.5 * r:.1f}" cy="{-0.2 * r:.1f}" r="{0.17 * r:.1f}"/></g>')
+
+
+def calcium_plates(c, w: float) -> str:
+    """Calcification cartoon on the vessel wall: pale plates of uneven length lying on both edges of the segment."""
+    out = []
+    for t, side, length in ((0.08, -1, 7), (0.21, 1, 15), (0.4, 1, 9), (0.53, -1, 17), (0.77, 1, 8), (0.9, -1, 13)):
+        x, y = bez(c, t)
+        tx, ty = tangent(c, t)
+        x, y = x - ty * side * (w / 2 + 1.5), y + tx * side * (w / 2 + 1.5)
+        out.append(f'<rect class="calc-plate" x="{-length / 2}" y="-2.7" width="{length}" height="5.4" rx="2.4" '
+                   f'transform="translate({x:.1f} {y:.1f}) rotate({math.degrees(math.atan2(ty, tx)):.0f})"/>')
+    return "".join(out)
+
+
+def legend_cartoon(kind: str) -> str:
+    """The schema's cartoon of a finding at legend size (same classes, so it follows the palette)."""
+    # "key" first in each class list: the schema's own marks keep their exact class attribute
+    vessel = lambda x0, x1, cls="vessel", cap="round": (f'<path class="key {cls}" d="M{x0},9 L{x1},9" stroke-width="7" '
+                                                        f'style="stroke-linecap:{cap}"/>')
+    if kind == "cto":
+        body = (vessel(4, 17) + vessel(21, 38, "vessel noflow")
+                + '<line class="key cto-mark" x1="19" y1="2" x2="19" y2="16" stroke-width="3.2"/>')
+    elif kind == "calcif":
+        body = ('<path class="calc-edge" d="M1,9 L41,9" stroke-width="17"/><path class="calc-band" d="M2,9 L40,9" stroke-width="15"/>'
+                + vessel(0, 42, cap="butt")
+                + '<rect class="calc-plate" x="5" y="2.6" width="11" height="3.8" rx="1.7"/>'
+                  '<rect class="calc-plate" x="29" y="2.6" width="6" height="3.8" rx="1.7"/>'
+                  '<rect class="calc-plate" x="16" y="11.6" width="12" height="3.8" rx="1.7"/>')
+    else:
+        body = vessel(4, 38) + clot(20.5, 9, 0, 5.2, cls="key thrombus")
+    return f'<svg class="sw-cartoon" viewBox="0 0 42 18" width="42" height="18" aria-hidden="true">{body}</svg>'
+
+
 def schema_svg(segs: dict, cuts: dict, left_dominant: bool = False) -> str:
-    vessels, plaques, pins, labels = [], [], [], []
+    bands, vessels, plates, plaques, clots, pins, labels = [], [], [], [], [], [], []
+    boxes, flagged_thrombus = [], []  # label boxes; segments whose clot is placed once every label is known
     geometry, decor = (GEOMETRY_LEFT, DECOR_LEFT) if left_dominant else (GEOMETRY, DECOR)
-    for c, w in decor:
-        vessels.append(f'<path class="vessel" d="{path_d(c)}" stroke-width="{w}"/>')
+    source, block = occluded_upstream(segs, left_dominant)
+    no_flow = lambda up: f"<title>No antegrade flow shown: distal to the CTO flag of {escape(SEGMENT_NAMES[up])}</title>"
+    for c, w, parent in decor:
+        up = block(parent, c[0])
+        vessels.append(f'<path class="vessel noflow" d="{path_d(c)}" stroke-width="{w}">{no_flow(up)}</path>' if up
+                       else f'<path class="vessel" d="{path_d(c)}" stroke-width="{w}"/>')
     for g, (c, w, (lx, ly)) in geometry.items():
         v = None if g in HIDDEN_SEGMENTS else segs.get(g)
         d = path_d(c)
         L = bez_len(c)
+        up = source(g)
+        grey = " noflow" if up else ""
+        if v is not None and v.get("calcif"):
+            # Calcification: a grey band behind the vessel, wider than it, over the whole segment, with pale
+            # calcium plates along the vessel wall.
+            bands.append(f'<g class="calc"><title>{escape(SEGMENT_NAMES[g])}: calcification flag</title>'
+                         f'<path class="calc-edge" d="{d}" stroke-width="{w + 23}"/>'
+                         f'<path class="calc-band" d="{d}" stroke-width="{w + 19}"/></g>')
+            plates.append(f'<g class="calc-plates">{calcium_plates(c, w)}</g>')
         if v is not None and v.get("cto"):
-            # Occluded: contrast stops at the block; the vessel beyond is a pale outline.
-            near, far = split(c, 0.5)
-            mx, my = bez(c, 0.5)
-            tx, ty = tangent(c, 0.5)
+            # Occluded: contrast stops at the block; no antegrade flow is drawn beyond it (grey vessel).
+            near, far = split(c, CTO_AT)
+            mx, my = bez(c, CTO_AT)
+            tx, ty = tangent(c, CTO_AT)
             nx, ny, h = -ty, tx, w / 2 + 7
-            vessels.append(f'<path class="vessel" d="{path_d(near)}" stroke-width="{w}"/>'
-                           f'<path class="occluded" d="{path_d(far)}" stroke-width="{w}"/>')
+            vessels.append(f'<path class="vessel{grey}" d="{path_d(near)}" stroke-width="{w}">{no_flow(up) if up else ""}</path>'
+                           f'<path class="vessel noflow" d="{path_d(far)}" stroke-width="{w}">{no_flow(up or g)}</path>')
             plaques.append(f'<line class="cto-mark" x1="{mx - nx * h:.1f}" y1="{my - ny * h:.1f}" '
                            f'x2="{mx + nx * h:.1f}" y2="{my + ny * h:.1f}" stroke-width="5"/>')
+        elif up:
+            vessels.append(f'<path class="vessel noflow" d="{d}" stroke-width="{w}">{no_flow(up)}</path>')
         else:
             vessels.append(f'<path class="vessel" d="{d}" stroke-width="{w}"/>')
         if v is None:
@@ -169,15 +270,9 @@ def schema_svg(segs: dict, cuts: dict, left_dominant: bool = False) -> str:
             lumen = max(w * (1 - pct / 100), 1.2)
             dash = f'stroke-dasharray="{L * .18:.1f} {L * 2:.1f}" stroke-dashoffset="{-L * .41:.1f}"'
             plaques.append(f'<path class="plaque" d="{d}" stroke-width="{w + 3}" {dash}/>'
-                           f'<path class="lumen" d="{d}" stroke-width="{lumen:.1f}" {dash}/>')
+                           f'<path class="lumen{grey}" d="{d}" stroke-width="{lumen:.1f}" {dash}/>')
         if v.get("thrombus"):
-            # Filling defect inside the lumen, just upstream of a CTO block or beside the plaque.
-            t = 0.38 if v.get("cto") else 0.62
-            px, py = bez(c, t)
-            tx, ty = tangent(c, t)
-            angle = math.degrees(math.atan2(ty, tx))
-            plaques.append(f'<ellipse class="thrombus" cx="{px:.1f}" cy="{py:.1f}" rx="{max(w * .9, 6):.1f}" '
-                           f'ry="{max(w * .32, 2.4):.1f}" transform="rotate({angle:.0f} {px:.1f} {py:.1f})"/>')
+            flagged_thrombus.append((g, c, w, bool(v.get("cto"))))
         mx, my = bez(c, 0.5)
         tags = lesion_tags(v)
         line1 = f"{SHORT[g]} {pct}%" if pct else f"{SHORT[g]} normal"
@@ -189,6 +284,7 @@ def schema_svg(segs: dict, cuts: dict, left_dominant: bool = False) -> str:
         bh = 12 + 17 * len(lines)
         cls = "lbl flag" if flagged else ("lbl tagged" if tags else "lbl")
         cx, cy = min(max(mx, lx), lx + bw), min(max(my, ly), ly + bh)
+        boxes.append((lx, ly, lx + bw, ly + bh))
         pins.append(f'<line class="leader" x1="{cx:.0f}" y1="{cy:.0f}" x2="{mx:.0f}" y2="{my:.0f}"/>'
                     f'<circle class="pin" cx="{mx:.0f}" cy="{my:.0f}" r="3.4"/>')
         tip = (f"{SEGMENT_NAMES[g]}: shown {pct_text(v)} ({CATEGORY_LABELS[display_category(v)]}); "
@@ -197,17 +293,34 @@ def schema_svg(segs: dict, cuts: dict, left_dominant: bool = False) -> str:
                f"{shown(v['prob_significant'], v['prob_threshold'], 3)} vs threshold {v['prob_threshold']:.4f}"
                f" ({'flagged' if flagged else 'not flagged'})"
                + "".join(f"; P({LESION_NAMES[k]}) {shown(v[k + '_prob'], cuts[k], 2)}" for k in LESION_NAMES
-                         if k + "_prob" in v and k in cuts))
+                         if k + "_prob" in v and k in cuts)
+               + (f"; no antegrade flow shown (distal to the CTO flag of {SEGMENT_NAMES[up]})" if up else ""))
         text = "".join(f'<text x="{lx + 9}" y="{ly + 21 + 17 * i}" class="{"t1" if i == 0 else "t2"}">{escape(s)}</text>'
                        for i, s in enumerate(lines))
         labels.append(f'<g class="{cls}"><title>{escape(tip)}</title>'
                       f'<rect x="{lx}" y="{ly}" width="{bw:.0f}" height="{bh}" rx="3"/>{text}</g>')
-    return ('<svg class="schema" viewBox="0 0 1040 720" role="img" '
+    for g, c, w, cto in flagged_thrombus:
+        # Clot in the lumen: just proximal to a CTO block, otherwise beside the plaque; moved along the segment
+        # when a label box would hide it there.
+        r = max(w * .6, 8)
+        places = (0.3, 0.18, 0.4, 0.08) if cto else (0.68, 0.32, 0.84, 0.16, 0.5, 0.94, 0.06)
+        hidden = lambda t, pad: any(x0 - pad < bez(c, t)[0] < x1 + pad and y0 - pad < bez(c, t)[1] < y1 + pad
+                                    for x0, y0, x1, y1 in boxes)
+        t = next((t for pad in (r, 0) for t in places if not hidden(t, pad)), places[0])  # clear, else half visible
+        px, py = bez(c, t)
+        tx, ty = tangent(c, t)
+        angle = math.degrees(math.atan2(ty, tx))
+        if abs(angle) > 90:  # same clot, not upside down
+            angle -= 180
+        clots.append(clot(px, py, angle, r, f"{SEGMENT_NAMES[g]}: thrombus flag"))
+    return (f'<svg class="schema" viewBox="0 0 {VIEW_W} {VIEW_H}" role="img" '
             f'aria-label="{"Left" if left_dominant else "Right"}-dominant coronary schema with the estimated '
-            'stenosis of each segment">'
+            'stenosis of each segment; calcified segments on a grey band with calcium plates, vessels distal to a '
+            'chronic total occlusion in grey, a clot symbol on segments flagged for thrombus">'
             '<text x="300" y="80" class="ostium" text-anchor="middle">RCA ostium</text>'
             '<text x="420" y="80" class="ostium" text-anchor="middle">LM ostium</text>'
-            f'<g class="vessels">{"".join(vessels)}</g><g>{"".join(plaques)}</g>'
+            f'<g class="calc-bands">{"".join(bands)}</g>'
+            f'<g class="vessels">{"".join(vessels)}</g><g>{"".join(plates)}{"".join(plaques)}{"".join(clots)}</g>'
             f'<g>{"".join(pins)}</g><g>{"".join(labels)}</g></svg>')
 
 
@@ -266,17 +379,23 @@ CSS = """
   --vessel:#7a1712; --vessel-edge:#3b0907; --plaque:#e8a521; --label:#e4e2df; --label-ink:#1d1f24;
   --flag:#1c3fae; --flag-ink:#ffffff; --thrombus:#5a2a8c; --ok:#1f7a4d; --warn:#b4570a; --bad:#b3261e;
   --sev-low:#8a6d1f; --sev-mid:#b4570a; --sev-high:#b3261e; --bar:#cfd3da;
+  --noflow:#747983; --noflow-edge:#3f434b; --calc:#c9ccd2; --calc-edge:#70757f; --calc-plate:#ffffff;
+  --thr-edge:#ffffff; --thr-shine:#b79be0;
   --font:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --font-cond:"Arial Narrow","Roboto Condensed","Helvetica Neue",Arial,sans-serif;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   color-scheme:dark; --paper:#15161a; --card:#1e2026; --ink:#ebecef; --muted:#9aa0aa; --line:#33363e;
   --vessel:#a3281f; --vessel-edge:#d0574c; --label:#2e3139; --label-ink:#ebecef; --flag:#3d63d8; --thrombus:#b48ce8;
-  --ok:#4cc38a; --warn:#f0a14a; --bad:#ff7b72; --sev-low:#d9b44a; --sev-mid:#f0a14a; --sev-high:#ff7b72; --bar:#3a3e47;}}
+  --ok:#4cc38a; --warn:#f0a14a; --bad:#ff7b72; --sev-low:#d9b44a; --sev-mid:#f0a14a; --sev-high:#ff7b72; --bar:#3a3e47;
+  --noflow:#676d79; --noflow-edge:#a2a7b1; --calc:#8a8f9a; --calc-edge:#d5d8de; --calc-plate:#f4f5f7;
+  --thr-edge:#15161a; --thr-shine:#eadcff;}}
 :root[data-theme="dark"]{
   color-scheme:dark; --paper:#15161a; --card:#1e2026; --ink:#ebecef; --muted:#9aa0aa; --line:#33363e;
   --vessel:#a3281f; --vessel-edge:#d0574c; --label:#2e3139; --label-ink:#ebecef; --flag:#3d63d8; --thrombus:#b48ce8;
-  --ok:#4cc38a; --warn:#f0a14a; --bad:#ff7b72; --sev-low:#d9b44a; --sev-mid:#f0a14a; --sev-high:#ff7b72; --bar:#3a3e47;}
+  --ok:#4cc38a; --warn:#f0a14a; --bad:#ff7b72; --sev-low:#d9b44a; --sev-mid:#f0a14a; --sev-high:#ff7b72; --bar:#3a3e47;
+  --noflow:#676d79; --noflow-edge:#a2a7b1; --calc:#8a8f9a; --calc-edge:#d5d8de; --calc-plate:#f4f5f7;
+  --thr-edge:#15161a; --thr-shine:#eadcff;}
 *{box-sizing:border-box}
 body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 var(--font);
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
@@ -311,8 +430,15 @@ h3{margin:0 0 6px;font:600 12px/1.2 var(--font);letter-spacing:.1em;text-transfo
 .plaque{fill:none;stroke:var(--plaque);stroke-linecap:butt}
 .lumen{fill:none;stroke:var(--vessel);stroke-linecap:butt}
 .cto-mark{stroke:var(--ink);stroke-linecap:round}
-.occluded{fill:none;stroke:var(--vessel);stroke-opacity:.28;stroke-linecap:round;stroke-dasharray:2 7}
-.thrombus{fill:var(--thrombus);stroke:var(--card);stroke-width:1.2}
+.vessel.noflow{stroke:var(--noflow);filter:drop-shadow(0 0 .6px var(--noflow-edge))}
+.lumen.noflow{stroke:var(--noflow)}
+.calc path{fill:none;stroke-linecap:butt}
+.calc-edge{stroke:var(--calc-edge)}
+.calc-band{stroke:var(--calc)}
+.calc-plate{fill:var(--calc-plate);stroke:var(--calc-edge);stroke-width:1}
+.thr-edge{fill:var(--thr-edge);stroke:var(--thr-edge);stroke-width:3.4}
+.thr-lobe{fill:var(--thrombus)}
+.thr-shine{fill:var(--thr-shine)}
 .leader{stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3}
 .pin{fill:var(--card);stroke:var(--muted);stroke-width:1.2}
 .lbl rect{fill:var(--label);stroke:none}
@@ -327,8 +453,7 @@ h3{margin:0 0 6px;font:600 12px/1.2 var(--font);letter-spacing:.1em;text-transfo
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .sw{display:inline-block;width:18px;height:12px;border-radius:2px}
 .sw.flag{background:var(--flag)} .sw.lbl{background:var(--label)} .sw.plq{background:linear-gradient(var(--plaque) 0 30%,var(--vessel) 30% 70%,var(--plaque) 70%)}
-.sw.cto{background:linear-gradient(90deg,var(--vessel) 0 40%,var(--ink) 40% 60%,transparent 60%);border:1px dashed var(--vessel)}
-.sw.thr{background:var(--thrombus);border-radius:50%;width:16px;height:8px}
+.sw-cartoon{display:inline-block;flex:none;overflow:visible}
 .side{display:grid;gap:16px}
 .phys-row{display:grid;gap:5px;padding-block:10px;border-top:1px solid var(--line)}
 .phys-row:first-of-type{border-top:0;padding-top:0}
@@ -525,7 +650,9 @@ def render_report(preds: dict, model_version: str, recommendation: str) -> str:
     <div class="scroll">{schema_svg(segs, cuts, left_dominant=left)}</div>
     <div class="legend"><span><i class="sw flag"></i>Flagged: P(significant) above its segment threshold, or CTO</span>
       <span><i class="sw lbl"></i>Not flagged</span><span><i class="sw plq"></i>Plaque, lumen narrowed to the shown % (≥15%)</span>
-      <span><i class="sw cto"></i>Occluded (CTO flag): reported as 100%</span><span><i class="sw thr"></i>Thrombus flag</span></div>
+      <span>{legend_cartoon("cto")}Occluded (CTO flag): reported as 100%; no antegrade flow shown distal to it (grey vessel)</span>
+      <span>{legend_cartoon("calcif")}Calcification flag: grey band with calcium plates along the segment</span>
+      <span>{legend_cartoon("thrombus")}Thrombus flag: clot in the lumen</span></div>
   </section>
   <aside class="side">{physiology_card(phys) if phys else ''}{thr}</aside>
 </div>
