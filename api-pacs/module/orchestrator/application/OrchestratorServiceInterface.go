@@ -19,4 +19,7 @@ type OrchestratorServiceInterface interface {
 
 	// GetThread gets thread information with authentication from context
 	GetThread(ctx context.Context, threadID string) (types.GetThreadResponse, error)
+
+	// GetChatProgress gets the steps so far of the chat request in flight for a thread
+	GetChatProgress(ctx context.Context, threadID string) (types.ChatProgressResponse, error)
 }
