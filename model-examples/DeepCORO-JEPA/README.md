@@ -230,6 +230,8 @@ point; 3 of about 860,000 lesion calls differ at the two other lesion points.
   geometric mean of sensitivity and specificity (`balanced`).
 - **Calcification, thrombus, CTO:** the lowest threshold with a validation specificity of at least 0.99
   (`specificity_99`). The balanced point would raise about three flags per study for each finding, nearly all false.
+  Since 1.4.1 the thrombus flag does not use this point: it has the fixed threshold 0.40
+  (`lesion_threshold_overrides`), chosen on the validation split for a higher positive predictive value.
 
 The test split was used only to report the numbers below. One disclosure: when the default lesion operating point
 was picked, the test numbers of the three candidate points were visible; the choice was made on the validation
@@ -240,7 +242,8 @@ operating points, not validated clinical ones.
 `models/config.json`:
 
 ```json
-"Thresholds": {"path": "thresholds.json", "pressure_operating_point": "balanced", "lesion_operating_point": "specificity_99"}
+"Thresholds": {"path": "thresholds.json", "pressure_operating_point": "balanced", "lesion_operating_point": "specificity_99",
+               "lesion_threshold_overrides": {"thrombus": 0.4}}
 ```
 
 | Key | Meaning | Default |

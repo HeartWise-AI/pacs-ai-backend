@@ -382,7 +382,12 @@ def test_a_lesion_threshold_override_replaces_one_finding_and_is_named_in_the_op
     # a checkpoint without a lesion head ignores it
     plain = CustomPredictionService.load_thresholds(models_dir, settings, GROUPS, physiology=True, lesion=False, weights_sha256=SHA)
     assert "thrombus_prob" not in plain["values"] and plain["lesion_operating_point"] == "specificity_99"
-    for bad in ({"thrombosis": 0.4}, {"thrombus": 0.0}, {"thrombus": 1.0}, {"thrombus": "0.4"}, {"thrombus": True}, [0.4]):
+    two = CustomPredictionService.load_thresholds(models_dir, {**SETTINGS, "lesion_threshold_overrides": {"thrombus": 0.4, "cto": 0.3}},
+                                                  GROUPS, physiology=True, lesion=True, weights_sha256=SHA)
+    assert two["lesion_operating_point"] == "specificity_99 (thrombus: fixed 0.40, cto: fixed 0.30)"
+    # the label must stay within what report_input accepts, and must state the threshold exactly
+    for bad in ({"thrombosis": 0.4}, {"thrombus": 0.0}, {"thrombus": 1.0}, {"thrombus": "0.4"}, {"thrombus": True}, [0.4],
+                {"thrombus": 0.085}, {"calcif": 0.2, "thrombus": 0.4, "cto": 0.3}):
         with pytest.raises(ValueError):
             CustomPredictionService.load_thresholds(models_dir, {**SETTINGS, "lesion_threshold_overrides": bad}, GROUPS,
                                                     physiology=True, lesion=True, weights_sha256=SHA)
