@@ -43,10 +43,11 @@ def test_ambiguous_tied_pci_timing_fails_closed():
             prediction("1", "12:00:00", "present"), prediction("2", "12:00:00")])
 
 
-def test_forward_batch_is_one_and_repeated_series_preserves_sop_identity(monkeypatch):
+def _batch_service(monkeypatch, forward_batch_size, preprocess_workers=1):
     service = CustomPredictionService()
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     monkeypatch.setattr(CustomPredictionService, "config", SimpleNamespace(
+        forward_batch_size=forward_batch_size, preprocess_workers=preprocess_workers,
         head_structure=SimpleNamespace(main_structure=2, contrast_agent=1, stent_presence=1)), raising=False)
     monkeypatch.setattr(CustomPredictionService, "class_mapping", {
         "main_structure": {0: "Left Coronary", 1: "Right Coronary"},
@@ -55,23 +56,57 @@ def test_forward_batch_is_one_and_repeated_series_preserves_sop_identity(monkeyp
     calls = []
 
     def model(batch):
+        # every video is filled with its own index, so a row's output identifies the video it came from
         calls.append(tuple(batch.shape))
-        return {"main_structure": torch.tensor([[2., 0.]]),
-                "contrast_agent": torch.tensor([[0.]]),
-                "stent_presence": torch.tensor([[-1.]])}
+        index = batch[:, 0, 0, 0, 0]
+        return {"main_structure": torch.stack([-index, index - 2.5], dim=1),  # Right Coronary from the 3rd video on
+                "contrast_agent": (index % 2 * 2 - 1).unsqueeze(1),            # yes for odd indices
+                "stent_presence": torch.full((batch.shape[0], 1), -1.)}
 
     monkeypatch.setattr(CustomPredictionService, "models", {"vaso_vision": model})
-    monkeypatch.setattr(service, "_process_dicom", lambda _: torch.zeros(3, 2, 4, 4))
+    monkeypatch.setattr(service, "_process_dicom", lambda d: torch.full((3, 2, 4, 4), float(d.Index)))
     dicoms = []
-    for i in range(3):
+    for i in range(5):
         d = Dataset()
-        d.SeriesInstanceUID, d.SOPInstanceUID, d.SeriesTime = "1.2.3", f"1.2.3.{i+1}", f"12000{i}"
+        d.SeriesInstanceUID, d.SOPInstanceUID, d.SeriesTime, d.Index = "1.2.3", f"1.2.3.{i+1}", f"12000{i}", i
         dicoms.append(d)
-    results = service._run_inference(dicoms, ["1.2.3"] * 3)
-    assert calls == [(1, 3, 2, 4, 4)] * 3
-    assert [r["sop_instance_uid"] for r in results] == ["1.2.3.1", "1.2.3.2", "1.2.3.3"]
+    return service, dicoms, calls
+
+
+@pytest.mark.parametrize("size, workers, shapes", [
+    (1, 1, [(1, 3, 2, 4, 4)] * 5),
+    (2, 1, [(2, 3, 2, 4, 4), (2, 3, 2, 4, 4), (1, 3, 2, 4, 4)]),
+    (8, 4, [(5, 3, 2, 4, 4)]),
+    (1, 8, [(1, 3, 2, 4, 4)] * 5),  # the shipped setting: parallel preparation, one video per forward
+    (2, 3, [(2, 3, 2, 4, 4), (2, 3, 2, 4, 4), (1, 3, 2, 4, 4)]),
+])
+def test_forward_batches_keep_request_order_and_sop_identity(monkeypatch, size, workers, shapes):
+    service, dicoms, calls = _batch_service(monkeypatch, size, workers)
+    results = service._run_inference(dicoms, ["1.2.3"] * 5)
+    assert calls == shapes
+    assert [r["sop_instance_uid"] for r in results] == [f"1.2.3.{i+1}" for i in range(5)]
     assert all(r["series_instance_uid"] == r["dicom_name"] == "1.2.3" for r in results)
-    assert all(r["contrast_agent"] == "yes" for r in results), "binary threshold remains >= 0.5"
+    # the same labels whatever the batch size: each row is read from its own video
+    assert [r["main_structure"] for r in results] == ["Left Coronary"] * 2 + ["Right Coronary"] * 3
+    assert [r["contrast_agent"] for r in results] == ["no", "yes", "no", "yes", "no"]
+    assert [r["series_time"] for r in results] == [f"12:00:0{i}" for i in range(5)]
+
+
+def test_a_model_returning_fewer_rows_than_videos_fails(monkeypatch):
+    service, dicoms, _ = _batch_service(monkeypatch, 8)
+    full = CustomPredictionService.models["vaso_vision"]
+    monkeypatch.setattr(CustomPredictionService, "models", {"vaso_vision": lambda b: {k: v[:1] for k, v in full(b).items()}})
+    with pytest.raises(ValueError, match="different number of predictions"):
+        service._run_inference(dicoms, ["1.2.3"] * 5)
+
+
+def test_declared_forward_batch_size_is_the_configured_one():
+    import json
+    from utils.http_utils import Config
+    declared = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))["preprocessingContract"]
+    assert declared["forwardBatchSize"] == Config.model_fields["forward_batch_size"].default == 1
+    assert Config.model_fields["preprocess_workers"].default == 8
+    assert 'declared_contract.get("forwardBatchSize") != config.forward_batch_size' in (ROOT / "main.py").read_text(encoding="utf-8")
 
 
 def test_dominance_returns_label_and_left_probability(monkeypatch):
@@ -140,3 +175,11 @@ def test_json_response_keeps_labels_as_text_and_the_dominance_probability_as_a_n
     out = JsonPredictionResponse(predictions=[row]).model_dump()["predictions"][0]
     assert out["dominance_left_probability"] == 0.814933 and out["dominance"] == "left_dominant"
     assert out["series_time"] == "12:00:00" and isinstance(out["main_structure"], str)
+
+
+def test_proxy_waits_as_long_as_the_gateway_for_a_complete_study():
+    """A study is classified in one request; nginx's default 60 s read timeout failed a 37-video study."""
+    conf = (ROOT / "nginx.conf").read_text(encoding="utf-8")
+    for directive in ("proxy_read_timeout", "proxy_send_timeout"):
+        values = [line.split()[1].rstrip(";") for line in conf.splitlines() if line.strip().startswith(directive)]
+        assert values == ["300s"], directive  # api-pacs predictionClient waits 5 minutes

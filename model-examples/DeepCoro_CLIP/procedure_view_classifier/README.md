@@ -1,4 +1,13 @@
-# Angiogram procedure classifier 1.0.3
+# Angiogram procedure classifier 1.0.4
+
+**1.0.4:** same weights, class mapping, pixel conversion, thresholds and predictions as 1.0.3 (bit-identical on a
+37-video study). Two operational changes for complete studies, which arrive as one request:
+- videos are prepared (DICOM decoding, resampling) on 8 CPU threads instead of one: 11 s instead of 35 s for 37
+  videos. GPU forwards still take one video (`preprocessingContract.forwardBatchSize` stays 1, checked against the
+  configuration at start-up). `Config.forward_batch_size` can raise it, but measured batches of 2 to 8 were not
+  faster, needed 1.8 to 7.6 GiB of GPU memory instead of 0.8, and moved the dominance probability by up to 0.0015;
+- the internal proxy (`nginx.conf`) waits 300 s for a prediction instead of nginx's default 60 s, the gateway's own
+  prediction timeout. With 1.0.3 a 37-video study was cut off twice on MHI (2026-11-15).
 
 The unchanged VasoVision checkpoint and class mapping are verified by SHA-256
 before the API serves its preprocessing contract. Set `PACS_AI_SOURCE_REVISION`
