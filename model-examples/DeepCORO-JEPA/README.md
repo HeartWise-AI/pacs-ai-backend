@@ -610,8 +610,17 @@ Notes:
 - **PyTorch build.** `requirements.txt` pins `torch 2.11.0+cu128` and `torchvision 0.26.0+cu128` (CUDA 12.8) since
   2.0.0; 1.1.2 to 1.4.1 pinned `2.14.1+cu130` (CUDA 13.0), which was run on an RTX PRO 5000 Blackwell with driver
   615.71 but needs a driver newer than the 570 series. The CUDA 12.8 build contains kernels up to Blackwell (sm_120)
-  and runs on driver 570; it was run on an RTX 3090 with driver 570.124 (MHI). It has not been run on a Blackwell GPU
-  by this project: check `torch.cuda.is_available()` and one prediction there before relying on it. Versions up to 1.1.1 pinned a CUDA 12.1
+  and runs on driver 570; it was run on an RTX 3090 with driver 570.124 (MHI) and, outside Docker, on an RTX PRO 5000
+  Blackwell with driver 615 (same torch and torchvision builds, the model's `inference.py`).
+  **Not bit-identical to the evaluated model.** The test metrics of v15 were computed with an NVIDIA build of
+  PyTorch 2.14. On 24 validation studies with identical inputs and identical decoded frames, the CUDA 12.8 build
+  gives a stenosis estimate that differs by 0.2 points in median, 1.4 at the 90th percentile and 15.5 at most
+  (correlation 0.996; 0.995 for the probability of a significant lesion), and 16 of the 78 yes/no or category
+  outputs compared across those studies differ: small numeric differences occasionally change a crop or mask
+  decision and one segment then moves. Whether accuracy changes is being measured on 300 validation studies
+  (DeepCORO session, 2026-11-15); until that number is here, the reported metrics describe the evaluated
+  environment, not this build. On MHI, the v13 weights in this image reproduced three stored 1.4.1 results
+  (PyTorch 2.5.1, CUDA 12.1) to the returned precision. Versions up to 1.1.1 pinned a CUDA 12.1
   build that does not run on Blackwell GPUs. The index, torch and torchvision lines must name the same build; a test
   checks it.
 - No Docker image was built or run on the development server; steps 1 to 5 are written from the release scripts and
