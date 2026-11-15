@@ -18,7 +18,7 @@
           "thrombus": false,
           "cto_prob": 0.005463,
           "cto": false,
-          "display_pct": 40,
+          "display_pct": 39,
           "display_category": "moderate"
         },
         "mid_rca": {
@@ -108,7 +108,7 @@
           "thrombus": false,
           "cto_prob": 0.00113,
           "cto": false,
-          "display_pct": 38,
+          "display_pct": 37,
           "display_category": "moderate"
         },
         "mid_lad": {
@@ -153,7 +153,7 @@
           "thrombus": false,
           "cto_prob": 0.005234,
           "cto": false,
-          "display_pct": 40,
+          "display_pct": 39,
           "display_category": "moderate"
         },
         "D2": {
@@ -258,7 +258,7 @@
           "thrombus": false,
           "cto_prob": 0.023016,
           "cto": false,
-          "display_pct": 54,
+          "display_pct": 51,
           "display_category": "intermediate"
         },
         "lvp": {
@@ -295,7 +295,7 @@
         "cto": 0.157
       }
     },
-    "diagnosis": "Flagged for possible significant stenosis (probability above its validation threshold): Mid RCA (P 0.812, shown 100%, CTO flag; model estimate 72%), First diagonal (P 0.147, shown 40%, model estimate 29%), Ramus (bisector) (P 0.432, shown 54%, model estimate 38%). Other segments with a shown stenosis of 30% or more: Proximal RCA (40%), Proximal LAD (38%). 9 of 17 segments shown as normal (model estimate below 10%). LAD physiology: FFR predicted normal (P(FFR ≤ 0.80) 0.26, threshold 0.2644); iFR predicted normal (P(iFR ≤ 0.89) 0.29, threshold 0.4337). No segment flagged for calcification. No segment flagged for thrombus. Flagged for chronic total occlusion (P above 0.1570): Mid RCA (P 0.26).",
+    "diagnosis": "Flagged for possible significant stenosis (probability above its validation threshold): Mid RCA (P 0.812, shown 100%, CTO flag; model estimate 72%), First diagonal (P 0.147, shown 39%, model estimate 29%), Ramus (bisector) (P 0.432, shown 51%, model estimate 38%). Other segments with a shown stenosis of 30% or more: Proximal RCA (39%), Proximal LAD (37%). 9 of 17 segments shown as normal (model estimate below 10%). LAD physiology: FFR predicted normal (P(FFR ≤ 0.80) 0.26, threshold 0.2644); iFR predicted normal (P(iFR ≤ 0.89) 0.29, threshold 0.4337). No segment flagged for calcification. No segment flagged for thrombus. Flagged for chronic total occlusion (P above 0.1570): Mid RCA (P 0.26).",
     "modelRecommendations": {
       "en": "Research model, not for clinical decisions. Flags use thresholds chosen on the internal validation set, not a validated clinical operating point. Confirm every reading on the angiogram; LAD physiology outputs (test AUROC about 0.69) do not replace invasive FFR/iFR. Calcification, thrombus and chronic total occlusion flags are set for few false alarms and miss many of these findings.",
       "fr": "Modèle de recherche, ne pas utiliser pour la décision clinique. Les signalements utilisent des seuils choisis sur l'ensemble de validation interne, et non un seuil clinique validé. Confirmer chaque lecture sur l'angiographie; les sorties de physiologie IVA (AUROC test environ 0,69) ne remplacent pas la FFR/iFR invasive. Les signalements de calcification, de thrombus et d'occlusion totale chronique sont réglés pour peu de fausses alertes et manquent une bonne partie de ces lésions.",

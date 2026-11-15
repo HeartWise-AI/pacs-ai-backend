@@ -26,17 +26,18 @@ def seg(pct, significant=False, cto=False):
 def test_table_is_monotone_with_provenance():
     t = cal.calibration()
     xs, ys = t["knots"]["estimate_pct"], t["knots"]["display_pct"]
-    assert t["zero_below_pct"] == xs[0] == 10 and xs[-1] == ys[-1] == 100
+    assert t["zero_below_pct"] == xs[0] == 10 and xs == [10, 23, 37, 51, 100] and xs[-1] == ys[-1] == 100
     assert xs == sorted(xs) and ys == sorted(ys) and ys[1:4] == [30, 50, 70]  # knots sit on the category bounds
-    for key in ("date", "dataset", "method", "test_metrics"):
+    assert "validation split only" in t["provenance"]["dataset"].lower() and "LVP" in t["provenance"]["dataset"]
+    for key in ("date", "model", "dataset", "method", "validation_metrics_cross_validated"):
         assert t["provenance"][key]
 
 
 @pytest.mark.parametrize("pct, shown, category", [
     (0.0, 0, "normal"), (8.0, 0, "normal"), (9.99, 0, "normal"),  # very mild estimates are shown as normal
     (10.0, 20, "mild"), (16.5, 25, "mild"), (22.9, 30, "moderate"), (23.0, 30, "moderate"),
-    (34.9, 50, "intermediate"), (35.0, 50, "intermediate"), (48.9, 70, "severe"), (49.0, 70, "severe"),
-    (74.5, 85, "severe"), (100.0, 100, "severe")])
+    (36.9, 50, "intermediate"), (37.0, 50, "intermediate"), (50.9, 70, "severe"), (51.0, 70, "severe"),
+    (75.5, 85, "severe"), (100.0, 100, "severe")])
 def test_mapping_through_the_knots(pct, shown, category):
     assert cal.display_pct(seg(pct)) == shown and cal.display_category(seg(pct)) == category
 
@@ -55,7 +56,7 @@ def test_cto_is_occluded_and_a_flag_is_never_normal():
 
 def test_bad_table_fails_loudly(tmp_path, monkeypatch):
     table = json.loads(cal.CALIBRATION_PATH.read_text())
-    table["knots"]["estimate_pct"] = [10, 35, 23, 49, 100]
+    table["knots"]["estimate_pct"] = [10, 37, 23, 51, 100]
     bad = tmp_path / "stenosis_display.json"
     bad.write_text(json.dumps(table))
     monkeypatch.setattr(cal, "CALIBRATION_PATH", bad)
@@ -69,9 +70,9 @@ def test_bad_table_fails_loudly(tmp_path, monkeypatch):
 
 def _preds():
     severity, prob = torch.full((18,), 5.0), torch.full((18,), 0.05)
-    severity[GROUPS.index("prox_lad")], prob[GROUPS.index("prox_lad")] = 52.0, 0.6  # flagged, shown 72%
+    severity[GROUPS.index("prox_lad")], prob[GROUPS.index("prox_lad")] = 52.0, 0.6  # flagged, shown 71%
     severity[GROUPS.index("pda")], prob[GROUPS.index("pda")] = 6.0, 0.3  # flagged with a low estimate
-    severity[GROUPS.index("mid_rca")] = 30.0  # not flagged, shown 42%
+    severity[GROUPS.index("mid_rca")] = 30.0  # not flagged, shown 40%
     res = {"encoder_passes": 2, "severity": severity, "binary_probability": prob}
     return CustomPredictionService.postprocess(GROUPS, res, n_videos=2, thresholds=THRESHOLDS)
 
@@ -79,7 +80,7 @@ def _preds():
 def test_json_keeps_the_estimate_and_flags_and_adds_display_fields():
     preds = _preds()
     lad, pda, d1 = preds["segments"]["prox_lad"], preds["segments"]["pda"], preds["segments"]["D1"]
-    assert (lad["stenosis_pct"], lad["significant"], lad["display_pct"], lad["display_category"]) == (52.0, True, 72, "severe")
+    assert (lad["stenosis_pct"], lad["significant"], lad["display_pct"], lad["display_category"]) == (52.0, True, 71, "severe")
     assert (pda["stenosis_pct"], pda["significant"], pda["display_pct"], pda["display_category"]) == (6.0, True, 20, "mild")
     assert (d1["stenosis_pct"], d1["significant"], d1["display_pct"], d1["display_category"]) == (5.0, False, 0, "normal")
     assert predictions_of({"predictions": preds}) is not None
@@ -89,14 +90,14 @@ def test_report_and_diagnosis_show_the_displayed_value():
     preds = _preds()
     service = CustomPredictionService.__new__(CustomPredictionService)
     text, html = service.diagnosis_text(preds), service.render_html(preds)
-    assert "Proximal LAD (P 0.600, shown 72%, model estimate 52%)" in text
+    assert "Proximal LAD (P 0.600, shown 71%, model estimate 52%)" in text
     assert "PDA (P 0.300, shown 20%, model estimate 6%)" in text
-    assert "Other segments with a shown stenosis of 30% or more: Mid RCA (42%)." in text
+    assert "Other segments with a shown stenosis of 30% or more: Mid RCA (40%)." in text
     assert "14 of 17 segments shown as normal (model estimate below 10%)." in text
-    assert "Prox LAD 72%" in html and "Mid RCA 42%" in html and "D1 normal" in html and "PDA 20%" in html
+    assert "Prox LAD 71%" in html and "Mid RCA 40%" in html and "D1 normal" in html and "PDA 20%" in html
     row = re.search(r'<li class="seg"><span class="sname">First diagonal(.*?)</li>', html).group(1)
     assert '<span class="normal">0%</span>' in row and "model estimate 5.0%" in row
-    assert "Proximal LAD (72%)" in html  # summary strip
+    assert "Proximal LAD (71%)" in html  # summary strip
     assert "Estimates below 10% are shown as 0% (normal)" in html
     assert f"DeepCORO-JEPA {CustomPredictionService.report_model_version()}</h1>" in html
 

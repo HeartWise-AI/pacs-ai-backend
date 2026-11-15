@@ -147,43 +147,50 @@ There is no `VideoMILWrapper` and no zero-video padding.
 
 ## Displayed stenosis
 
-The regression head shrinks toward the mean: on the test split, segments the report calls 0% have a median estimate
-of 3.5% (a quarter above 8.8%), and lesions of 70%, 80% and 95-100% have medians of 35%, 44% and 45-47%. Printed
-as is, few segments read 0% and few lesions read 70% or more. From 1.4.0 the report shows `display_pct`:
+The regression head shrinks toward the mean: on the validation split, segments the report calls 0% have a median
+estimate of 4.5% (a quarter above 9.5%), and lesions of 70%, 80% and 95-100% have medians of 33%, 44% and 45-52%.
+Printed as is, few segments read 0% and few lesions read 70% or more. From 1.4.0 the report shows `display_pct`:
 
 | Model estimate (`stenosis_pct`) | Shown |
 |---|---|
 | below 10 | 0% (normal) |
-| 10 → 23 → 35 → 49 → 100 | 20 → 30 → 50 → 70 → 100%, linear in between, rounded |
+| 10 → 23 → 37 → 51 → 100 | 20 → 30 → 50 → 70 → 100%, linear in between, rounded |
 | CTO flag | 100% (occluded) |
 | significant flag and estimate below 10 | 20% (mild): a flagged segment is never shown as normal |
 
-How it was chosen (all 18 segments pooled, because single segments have few lesions):
+How it was chosen (segments pooled, because single segments have few lesions):
 
-- **Data.** MHI held-out test split, 3,321 studies, 59,778 segment readings, labels 0/20/40/50/70/80/95/100% from
-  the angiography report. The full-test predictions of v13 are on the training server only, so the fit uses the v12
-  full-test predictions from DICOM (same architecture and target). On the 120 test studies that were run with v13
-  the same mapping gives the same results (T0 PPV 0.54 / NPV 0.91, weighted kappa 0.60; v12 on those studies 0.52 /
-  0.91 and 0.58). Refit on the v13 test (or better, validation) predictions when they are copied here.
-- **T0 (shown as normal below it).** Youden's J for "report stenosis > 0%" is flat from 8% to 10% (0.522-0.523);
-  the upper end of the plateau is used, so 8-10% estimates read normal. At 10%: sensitivity 0.74 [0.73, 0.75],
-  specificity 0.79 [0.78, 0.79], PPV 0.51 [0.50, 0.51], NPV 0.91 [0.91, 0.91] (prevalence 0.23; patient bootstrap).
-  The best cut differs by segment (4-18%, higher where disease is common), and one cut for all is used.
-- **Knots.** The estimate cuts for 30, 50 and 70% maximise the quadratic-weighted kappa of the five categories
-  (0, < 30, 30-49, 50-69, ≥ 70). Chosen by 5-fold cross-validation grouped by patient (fit on 4 folds, scored on the
-  fifth); the shipped knots are the fit on all folds, rounded. Quantile matching and isotonic regression were
-  compared and did worse or were not consistent with the flags.
-- **Result (cross-validated).** Exact category agreement 25% → 65%, weighted kappa 0.41 → 0.59
-  (patient-bootstrap 95% CIs about ± 0.01). Every vessel improves (kappa LAD 0.39 → 0.57, LCx 0.32 → 0.51, LM 0.59 → 0.72,
-  RCA 0.47 → 0.67).
+- **Data.** Validation split only, served v13 weights (epoch 0): 4,647 studies, labels 0/20/40/50/70/80/95/100%
+  from the angiography report. The 4,647 posterior LV branch (LVP) rows are left out of the fit because report
+  grading of LVP is weak (31 have any stenosis), which leaves 78,999 segment readings (17 segments). The mapping is
+  still applied to every displayed segment and to LVP in the JSON. No test data was used.
+- **T0 (shown as normal below it).** Among cuts in steps of 0.5, the largest cut whose Youden's J for "report
+  stenosis > 0%" is within 0.002 of the maximum (J is 0.500-0.503 from 8.5% to 10%). At 10%: sensitivity 0.74
+  [0.73, 0.75], specificity 0.76 [0.76, 0.77], PPV 0.51 [0.50, 0.51], NPV 0.90 [0.89, 0.90] (prevalence 0.25;
+  patient bootstrap).
+- **Knots.** The estimate cuts for 30, 50 and 70% (1-point grid above T0) maximise the quadratic-weighted kappa of
+  the five categories (0, < 30, 30-49, 50-69, ≥ 70). 5-fold cross-validation grouped by patient gave T0 10 in every
+  fold and knots 23 / 36-37 / 48-52; the shipped values are the fit on all validation rows (10 / 23 / 37 / 51).
+  With the LVP rows included the fit is 9.5 / 23.5 / 35.5 / 51.5 (kappa 0.589), the same within the fold spread.
+- **Result (cross-validated).** Exact category agreement 22% → 66%, weighted kappa 0.40 → 0.59 ([0.58, 0.59]),
+  within one category 90% → 88%. Every vessel and every segment improves (kappa LAD 0.39 → 0.57, LCx 0.26 → 0.49,
+  LM 0.50 → 0.68, RCA 0.49 → 0.65; weakest segments D2 0.19 and ramus 0.21).
 - **What it does not fix.** The estimate is still noisy (r about 0.5). Within a shown category the report value is
-  lower on average: shown < 30 → mean report 13%, 30-49 → 27%, 50-69 → 39%, ≥ 70 → 60% (63% of these are ≥ 70% on
-  the report, against 81% for raw estimates ≥ 70, which found only 19% of these lesions). Stretching the scale
-  trades this per-bin calibration for categories that match the report more often.
-- **Flags.** Unchanged. No segment without a flag is shown at 70% or more. 17% of flags (2,622 of 15,006, mostly
-  ramus, posterolateral, distal LCx, distal LAD and posterior LV with very low thresholds) have an estimate below 10%;
-  89% of those are 0% on the report and 5% significant, so they are shown at 20% (mild) instead of normal. Raising
-  the thresholds of these five segments would remove most of them; that is a flag change and is not part of 1.4.0.
+  lower on average: shown < 30 → mean report 14%, 30-49 → 27%, 50-69 → 39%, ≥ 70 → 62% (68% of these are ≥ 70% on
+  the report, against 82% for raw estimates ≥ 70, which found only 20% of these lesions; shown ≥ 70 finds 38%).
+  Stretching the scale trades this per-bin calibration for categories that match the report more often.
+- **Lesions shown as normal.** 13% of the lesions reported at 70% or more (and 12% of left main lesions of 50% or
+  more) have an estimate below 10%. The raw number hid them as "5%"; the report now says "normal" unless the
+  segment is flagged, in which case it is shown as mild. Lesions of 70% or more shown as normal or mild: 38% before,
+  30% after. The flags, not the shown %, are the screening output.
+- **Flags.** Unchanged. The validation file has no probabilities, so the flag rule was checked on the earlier v12
+  test predictions only: no segment without a flag was shown at 70% or more, and 17% of flags (mostly ramus,
+  posterolateral, distal LCx, distal LAD and posterior LV with very low thresholds) had an estimate below 10%; 89% of
+  those were 0% on the report, and they are shown at 20% (mild) instead of normal. Raising the thresholds of these
+  five segments would remove most of them; that is a flag change and is not part of 1.4.0.
+- **History.** The first values of this mapping (10 / 23 / 35 / 49, never released) came from the same method on
+  v12 predictions of the test split. On the v13 validation rows the two mappings are equivalent (weighted kappa
+  difference 0.000 [-0.001, 0.001]).
 
 ## Decision thresholds
 
