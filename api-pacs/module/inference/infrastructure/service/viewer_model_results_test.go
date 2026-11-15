@@ -172,6 +172,39 @@ func TestGetStudyLatestModelResultsJoinsRegistrationRunAndCapability(t *testing.
 	}
 }
 
+func TestGetStudyLatestModelResultsPassesDispatchSeriesThrough(t *testing.T) {
+	service, provider, _ := viewerResultsService()
+	result := func(jobID, model string, series json.RawMessage) serviceTypes.StudyServiceLatestResult {
+		return serviceTypes.StudyServiceLatestResult{
+			JobID: jobID, ModelName: model, Modality: "angiogram", Status: "completed",
+			DispatchSeriesInstanceUIDs: series,
+		}
+	}
+	provider.results = serviceTypes.StudyServiceLatestResults{StudyInstanceUID: "1.2.3", Results: []serviceTypes.StudyServiceLatestResult{
+		result("job-subset", "Subset", json.RawMessage(` ["1.2.3.4","1.2.3.6"] `)),
+		result("job-full", "Full", json.RawMessage(`null`)),
+		result("job-old", "OldStudyService", nil),
+		result("job-odd", "Malformed", json.RawMessage(`[{"uid":"1.2.3.4"}]`)),
+	}}
+
+	response, err := service.GetStudyLatestModelResults(context.Background(), serviceTypes.GetStudyLatestModelResults{
+		TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, response.Results, 4)
+	payloads := make([]string, len(response.Results))
+	for i, item := range response.Results {
+		payload, err := json.Marshal(item)
+		require.NoError(t, err)
+		payloads[i] = string(payload)
+	}
+	require.Contains(t, payloads[0], `"dispatchSeriesInstanceUIDs":["1.2.3.4","1.2.3.6"]`)
+	require.Contains(t, payloads[1], `"dispatchSeriesInstanceUIDs":null`)
+	require.NotContains(t, payloads[2], "dispatchSeriesInstanceUIDs")
+	require.NotContains(t, payloads[3], "dispatchSeriesInstanceUIDs")
+}
+
 func TestGetStudyLatestModelResultsHidesForeignRunIdentifiers(t *testing.T) {
 	service, provider, _ := viewerResultsService()
 	runID := "run-foreign"

@@ -190,6 +190,10 @@ type StudyServiceLatestResult struct {
 	ProcessingRunID       *string         `json:"processingRunId"`
 	ProcessingExecutionID *string         `json:"processingExecutionId"`
 	SelectedViews         json.RawMessage `json:"selectedViews"`
+	// DispatchSeriesInstanceUIDs is the series list the run was dispatched
+	// with: null when study-service recorded none (the run used every series
+	// of the modality), and absent from a study-service that predates the field.
+	DispatchSeriesInstanceUIDs json.RawMessage `json:"dispatchSeriesInstanceUIDs,omitempty"`
 }
 
 // StudyServiceLatestResults is the study-service latest-results envelope.

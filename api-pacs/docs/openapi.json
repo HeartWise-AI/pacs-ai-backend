@@ -3016,7 +3016,13 @@
           "completedAt": { "type": "string", "nullable": true },
           "trigger": { "type": "string", "nullable": true, "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT", "VIEWER_REQUEST"] },
           "selectedViews": { "$ref": "#/components/schemas/SelectedViews" },
-          "reportAvailable": { "type": "boolean" }
+          "reportAvailable": { "type": "boolean" },
+          "dispatchSeriesInstanceUIDs": {
+            "type": "array",
+            "nullable": true,
+            "items": { "type": "string" },
+            "description": "Optional. Series Instance UIDs the run was dispatched with, passed through from study-service. A run requested from the viewer records its list whether or not the user picked series; null means no list was recorded and the run used every series of the modality. Omitted when study-service does not report the field."
+          }
         }
       },
       "StudyLatestModelResultsResponse": {

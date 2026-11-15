@@ -236,6 +236,8 @@ func (service *InferenceQueryService) GetStudyLatestModelResults(ctx context.Con
 			StudyServiceJobID: strings.TrimSpace(result.JobID),
 			CompletedAt:       trimmedPointer(result.CompletedAt),
 			SelectedViews:     normalizeSelectedViews(result.SelectedViews),
+
+			DispatchSeriesInstanceUIDs: passThroughDispatchSeries(result.DispatchSeriesInstanceUIDs),
 		}
 		if entry := directory.match(item.ModelName, trimmedPointerValue(result.ModelVersion)); entry != nil {
 			item.ModelID = nonEmptyStringPointer(entry.model.ID)
@@ -297,6 +299,21 @@ func matchLatestResultExecution(executions []entity.InferenceIngestionProcessing
 func normalizeSelectedViews(raw json.RawMessage) json.RawMessage {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || trimmed[0] != '[' || !json.Valid(trimmed) {
+		return nil
+	}
+	return append(json.RawMessage(nil), trimmed...)
+}
+
+// passThroughDispatchSeries forwards study-service's dispatched series list:
+// a JSON array of strings or null as-is, and nothing (the field is omitted)
+// when it is absent or not such a value.
+func passThroughDispatchSeries(raw json.RawMessage) json.RawMessage {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return nil
+	}
+	var uids []string
+	if err := json.Unmarshal(trimmed, &uids); err != nil {
 		return nil
 	}
 	return append(json.RawMessage(nil), trimmed...)

@@ -29,4 +29,8 @@ func TestViewerResultsOpenAPIDocumentsRoutesAndAuthorization(t *testing.T) {
 	schemas := openAPIMap(t, openAPIMap(t, document["components"])["schemas"])
 	resultProperties := openAPIMap(t, openAPIMap(t, schemas["ProcessingRunExecutionResult"])["properties"])
 	require.Contains(t, resultProperties, "selectedViews")
+
+	latest := openAPIMap(t, schemas["StudyLatestModelResult"])
+	require.Contains(t, openAPIMap(t, latest["properties"]), "dispatchSeriesInstanceUIDs")
+	require.NotContains(t, latest["required"], "dispatchSeriesInstanceUIDs")
 }

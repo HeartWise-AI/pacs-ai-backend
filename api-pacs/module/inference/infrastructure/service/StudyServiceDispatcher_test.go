@@ -590,7 +590,7 @@ func TestStudyServiceDispatcherGetLatestStudyResultsSendsTenantAndOperatorToken(
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, gotQuery = r.URL.EscapedPath(), r.URL.RawQuery
 		gotTenant, gotAuth = r.Header.Get("X-Tenant-ID"), r.Header.Get("Authorization")
-		_, _ = w.Write([]byte(`{"studyInstanceUID":"1.2.3","results":[{"jobId":"job-1","modelName":"DeepCORO-JEPA","modelVersion":"1.2.0","modality":"angiogram","status":"completed","completedAt":"2026-11-13T10:00:00Z","processingRunId":null,"processingExecutionId":null,"selectedViews":[{"sopInstanceUID":"1","seriesInstanceUID":null}]}]}`))
+		_, _ = w.Write([]byte(`{"studyInstanceUID":"1.2.3","results":[{"jobId":"job-1","modelName":"DeepCORO-JEPA","modelVersion":"1.2.0","modality":"angiogram","status":"completed","completedAt":"2026-11-13T10:00:00Z","processingRunId":null,"processingExecutionId":null,"selectedViews":[{"sopInstanceUID":"1","seriesInstanceUID":null}],"dispatchSeriesInstanceUIDs":["1.2.3.4"]},{"jobId":"job-2","modelName":"CathEF","modality":"angiogram","status":"completed","dispatchSeriesInstanceUIDs":null},{"jobId":"job-3","modelName":"Old","modality":"angiogram","status":"completed"}]}`))
 	}))
 	defer server.Close()
 	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceOperatorToken: "operator", StudyServiceClient: server.Client()}
@@ -603,8 +603,16 @@ func TestStudyServiceDispatcherGetLatestStudyResultsSendsTenantAndOperatorToken(
 	if gotPath != "/jobs/by-study/1.2.3/latest-results" || gotQuery != "modality=angiogram" || gotTenant != "tenant-a" || gotAuth != "Bearer operator" {
 		t.Fatalf("unexpected request path=%q query=%q tenant=%q auth=%q", gotPath, gotQuery, gotTenant, gotAuth)
 	}
-	if len(results.Results) != 1 || results.Results[0].Modality != "angiogram" || !strings.Contains(string(results.Results[0].SelectedViews), `"seriesInstanceUID":null`) {
+	if len(results.Results) != 3 || results.Results[0].Modality != "angiogram" || !strings.Contains(string(results.Results[0].SelectedViews), `"seriesInstanceUID":null`) {
 		t.Fatalf("unexpected results %+v", results)
+	}
+	// A list, an explicit null and an absent field stay distinguishable.
+	if got := []string{
+		string(results.Results[0].DispatchSeriesInstanceUIDs),
+		string(results.Results[1].DispatchSeriesInstanceUIDs),
+		string(results.Results[2].DispatchSeriesInstanceUIDs),
+	}; got[0] != `["1.2.3.4"]` || got[1] != "null" || got[2] != "" {
+		t.Fatalf("unexpected dispatch series %q", got)
 	}
 }
 

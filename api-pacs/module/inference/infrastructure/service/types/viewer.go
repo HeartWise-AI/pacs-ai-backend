@@ -34,6 +34,11 @@ type StudyLatestModelResult struct {
 	Trigger           *entity.InferenceIngestionProcessingRunTrigger `json:"trigger"`
 	SelectedViews     json.RawMessage                                `json:"selectedViews"`
 	ReportAvailable   bool                                           `json:"reportAvailable"`
+	// DispatchSeriesInstanceUIDs is study-service's value, unchanged: the
+	// series the run was dispatched with, or null when it recorded none (the
+	// run used every series of the modality). Omitted when study-service does
+	// not report it, so "unknown" stays distinct from "every series".
+	DispatchSeriesInstanceUIDs json.RawMessage `json:"dispatchSeriesInstanceUIDs,omitempty"`
 }
 
 // StudyLatestModelResults is the viewer latest-results response.
