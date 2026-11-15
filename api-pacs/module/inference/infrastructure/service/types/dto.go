@@ -112,6 +112,9 @@ type BuildStudyServiceDispatchRequestInput struct {
 	ProcessingExecutionID *string
 	DispatchIntent        DispatchStudyIntent
 	RequestID             *string
+	// SeriesInstanceUIDs is the caller-selected series of a viewer run; empty
+	// lets study-service use every series of the modality.
+	SeriesInstanceUIDs []string
 }
 
 type DispatchStudyRequest struct {
@@ -128,6 +131,9 @@ type DispatchStudyRequest struct {
 	Modality              string              `json:"modality"`
 	ModelName             string              `json:"model_name"`
 	ModelVersion          string              `json:"model_version"`
+	// SeriesInstanceUIDs restricts the job to these series. It is omitted for
+	// automatic and study-wide manual dispatches.
+	SeriesInstanceUIDs []string `json:"series_instance_uids,omitempty"`
 }
 
 type DispatchStudyResponse struct {
@@ -164,6 +170,32 @@ type StudyServiceJob struct {
 type StudyServiceJobResult struct {
 	StudyServiceJob
 	ResultJSON json.RawMessage `json:"result_json"`
+	// SelectedViews is study-service's top-level selection audit. It stays
+	// opaque; absent or null means the run did not record its selection.
+	SelectedViews json.RawMessage `json:"selectedViews"`
+}
+
+// StudyServiceLatestResult is one latest completed study-service job per
+// (model, modality) from GET /jobs/by-study/{uid}/latest-results. Modality uses
+// study-service values (for example "angiogram"), as dispatch does.
+type StudyServiceLatestResult struct {
+	JobID                 string          `json:"jobId"`
+	ModelName             string          `json:"modelName"`
+	ModelVersion          *string         `json:"modelVersion"`
+	Modality              string          `json:"modality"`
+	Status                string          `json:"status"`
+	CreatedAt             *string         `json:"createdAt"`
+	CompletedAt           *string         `json:"completedAt"`
+	RerunOf               *string         `json:"rerunOf"`
+	ProcessingRunID       *string         `json:"processingRunId"`
+	ProcessingExecutionID *string         `json:"processingExecutionId"`
+	SelectedViews         json.RawMessage `json:"selectedViews"`
+}
+
+// StudyServiceLatestResults is the study-service latest-results envelope.
+type StudyServiceLatestResults struct {
+	StudyInstanceUID string                     `json:"studyInstanceUID"`
+	Results          []StudyServiceLatestResult `json:"results"`
 }
 
 type StudyServiceJobsResponse struct {
@@ -249,6 +281,10 @@ type WorklistNotification struct {
 	StartedAt         *time.Time                                             `json:"startedAt"`
 	CompletedAt       *time.Time                                             `json:"completedAt"`
 	UpdatedAt         time.Time                                              `json:"updatedAt"`
+	// Optional execution context of the transition that produced this event.
+	ExecutionID string                                       `json:"executionId,omitempty"`
+	ModelName   string                                       `json:"modelName,omitempty"`
+	Status      entity.InferenceIngestionProcessingJobStatus `json:"status,omitempty"`
 }
 
 type GetContainerInfoResult struct {

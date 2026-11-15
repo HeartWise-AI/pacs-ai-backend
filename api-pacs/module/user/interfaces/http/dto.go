@@ -187,8 +187,16 @@ type GetTenantUserEmailInviteResponse struct {
 }
 
 type GetUserMetadataResponse struct {
-	UserID    string                 `json:"userId"`
-	Metadata  map[string]interface{} `json:"metadata"`
-	CreatedAt uint64                 `json:"createdAt"`
-	UpdatedAt uint64                 `json:"updatedAt"`
+	UserID                string                 `json:"userId"`
+	Metadata              map[string]interface{} `json:"metadata"`
+	ViewerTourCompletedAt *int64                 `json:"viewerTourCompletedAt"`
+	CreatedAt             uint64                 `json:"createdAt"`
+	UpdatedAt             uint64                 `json:"updatedAt"`
+}
+
+// UserViewerTourResponse is the authenticated user's viewer onboarding tour
+// state. viewerTourCompletedAt is unix seconds, or null when the tour should show.
+type UserViewerTourResponse struct {
+	UserID                string `json:"userId"`
+	ViewerTourCompletedAt *int64 `json:"viewerTourCompletedAt"`
 }

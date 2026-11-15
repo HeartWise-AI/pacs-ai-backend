@@ -46,6 +46,12 @@ type inferenceWorklistHandlers struct {
 	getRunDetail       http.HandlerFunc
 	getExecutionResult http.HandlerFunc
 	reprocessStudy     http.HandlerFunc
+	// Viewer previous results: reads and single-model runs are available to
+	// every authenticated tenant user who accepted the policy, like predict.
+	getLatestResults   http.HandlerFunc
+	getExecutionReport http.HandlerFunc
+	getStudyJobReport  http.HandlerFunc
+	runStudyModel      http.HandlerFunc
 }
 
 type inferenceFeedbackHandlers struct {
@@ -61,6 +67,22 @@ func mountInferenceFeedbackRoutes(r chi.Router, handlers inferenceFeedbackHandle
 	r.Get("/{modelID}/feedback", handlers.get)
 	r.Put("/feedback/update", handlers.update)
 	r.Delete("/{modelID}/feedback/remove", handlers.remove)
+}
+
+type userViewerTourHandlers struct {
+	get      http.HandlerFunc
+	complete http.HandlerFunc
+	reset    http.HandlerFunc
+}
+
+// mountUserViewerTourRoutes exposes the viewer onboarding tour state. The
+// routes carry no user id: handlers act on the user stored in the
+// authenticated request context, so callers must mount them behind
+// TokenSessionAuthGuard.
+func mountUserViewerTourRoutes(r chi.Router, handlers userViewerTourHandlers) {
+	r.Get("/viewer-tour", handlers.get)
+	r.Put("/viewer-tour/complete", handlers.complete)
+	r.Post("/viewer-tour/reset", handlers.reset)
 }
 
 // mountInferenceWorklistRoutes keeps authentication and policy acceptance
@@ -81,6 +103,10 @@ func mountInferenceWorklistRoutes(
 		r.Get("/worklist/studies/{studyInstanceUID}/runs", handlers.getRunHistory)
 		r.Get("/processing/runs/{runId}", handlers.getRunDetail)
 		r.Get("/processing/runs/{runId}/executions/{executionId}/result", handlers.getExecutionResult)
+		r.Get("/worklist/studies/{studyInstanceUID}/latest-results", handlers.getLatestResults)
+		r.Get("/processing/runs/{runId}/executions/{executionId}/report", handlers.getExecutionReport)
+		r.Get("/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/report", handlers.getStudyJobReport)
+		r.Post("/worklist/studies/{studyInstanceUID}/models/{modelId}/run", handlers.runStudyModel)
 
 		r.Group(func(r chi.Router) {
 			r.Use(ownerOrAdmin)
@@ -287,6 +313,10 @@ func (router *router) InitRouter() *chi.Mux {
 						getRunDetail:       inferenceQueryController.GetProcessingRunDetail,
 						getExecutionResult: inferenceQueryController.GetProcessingRunExecutionResult,
 						reprocessStudy:     inferenceCommandController.ReprocessStudy,
+						getLatestResults:   inferenceQueryController.GetStudyLatestModelResults,
+						getExecutionReport: inferenceQueryController.GetProcessingRunExecutionReport,
+						getStudyJobReport:  inferenceQueryController.GetStudyJobReport,
+						runStudyModel:      inferenceCommandController.RunStudyModel,
 					},
 				)
 			})
@@ -382,6 +412,11 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Get("/metadata", userQueryController.GetUserMetadata)
 					r.Put("/password/update", userCommandController.UpdateTenantUserPassword)
 					r.Put("/metadata/update", userCommandController.UpdateUserMetadata)
+					mountUserViewerTourRoutes(r, userViewerTourHandlers{
+						get:      userQueryController.GetUserViewerTour,
+						complete: userCommandController.CompleteUserViewerTour,
+						reset:    userCommandController.ResetUserViewerTour,
+					})
 
 					// admin or owner only
 					r.Group(func(r chi.Router) {

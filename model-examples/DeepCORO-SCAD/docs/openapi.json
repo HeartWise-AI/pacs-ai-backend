@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "1.0.0"
+    "version": "1.0.1"
   },
   "servers": [
     {
@@ -91,6 +91,100 @@
         }
       }
     },
+    "/inference/render-report": {
+      "post": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Render report",
+        "description": "HTML report of a stored JSON-mode result, the same document HTML-mode predict returns for that prediction. CPU only: no model load, no forward pass, no GPU; does not count as model activity. Nothing stored is copied into the page: the numbers are checked and the report is rendered from them, and a result whose values or text are not what this model version writes for those numbers is refused. Body at most 64 KB.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenderReportRequest"
+              },
+              "example": {
+                "result": {
+                  "predictions": {
+                    "scad": {
+                      "name": "Spontaneous coronary artery dissection (SCAD)",
+                      "probability": 0.4499,
+                      "threshold": 0.0524009,
+                      "scadSuspected": true
+                    },
+                    "thresholdNote": "The threshold was fixed on the validation set to favour sensitivity. The probability is a model output, not a calibrated clinical risk."
+                  },
+                  "diagnosis": "DeepCORO-SCAD: SCAD suspected (probability 0.450, threshold 0.0524) | research use only, not a clinical diagnosis",
+                  "modelRecommendations": {
+                    "en": "<strong>SCAD suspected (probability 0.450).</strong> The model output is above the research threshold. Review the angiogram for spontaneous coronary artery dissection; the model does not localise the lesion. Research use only: do not change management on the basis of this output.",
+                    "fr": "<strong>DCS suspectée (probabilité 0.450).</strong> La sortie du modèle dépasse le seuil de recherche. Réviser la coronarographie à la recherche d'une dissection coronarienne spontanée ; le modèle ne localise pas la lésion. Usage en recherche seulement : ne pas modifier la prise en charge sur la base de ce résultat.",
+                    "presentable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Report rendered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/RenderReportResponse"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body larger than 64 KB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Body larger than 65536 bytes",
+                  "data": {},
+                  "errorCode": "PAYLOAD_TOO_LARGE"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Body is not JSON, or the result is not a JSON-mode result of this model version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Cannot render this result: diagnosis: is not what this model writes for these predictions",
+                  "data": {},
+                  "errorCode": "INVALID_RESULT"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/inference/model-info": {
       "get": {
         "tags": [
@@ -127,7 +221,7 @@
                     "domainName": "Cardiology",
                     "stage": "ai_inference",
                     "modality": "Angiogram",
-                    "version": "1.0.0",
+                    "version": "1.0.1",
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
@@ -142,6 +236,9 @@
                       "peakMemoryMiB": 3350,
                       "maxConcurrentInferences": 1,
                       "idleTimeoutSeconds": 600
+                    },
+                    "capabilities": {
+                      "renderReport": true
                     },
                     "dicomTargetLevel": "STUDY",
                     "dicomUploadMin": 1,
@@ -584,7 +681,7 @@
           "version": {
             "type": "string",
             "description": "Model version",
-            "example": "1.0.0"
+            "example": "1.0.1"
           },
           "dicomTargetLevel": {
             "type": "string",
@@ -772,6 +869,33 @@
           },
           "error": {
             "type": "string"
+          }
+        }
+      },
+      "RenderReportRequest": {
+        "type": "object",
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "type": "object",
+            "description": "The data object of a JSON-mode predict response ({diagnosis, predictions, modelRecommendations}) as stored by the caller; the whole response envelope is accepted too. The stored no-video answer (predictions {}) renders the no-video page."
+          }
+        }
+      },
+      "RenderReportResponse": {
+        "type": "object",
+        "properties": {
+          "htmlBase64": {
+            "type": "string",
+            "description": "Base64-encoded HTML report, identical to HTML-mode predict for the same prediction"
+          },
+          "modelVersion": {
+            "type": "string",
+            "description": "Container version that rendered the report",
+            "example": "1.0.1"
           }
         }
       }

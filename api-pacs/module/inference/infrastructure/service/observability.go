@@ -29,7 +29,7 @@ var (
 )
 
 var inferenceQuotaEvents = map[string]struct{}{
-	"accepted": {}, "rejected_allowance": {}, "rejected_concurrency": {},
+	"accepted": {}, "rejected_allowance": {}, "rejected_concurrency": {}, "rejected_queue_limit": {},
 	"completed": {}, "released": {}, "refunded": {}, "unavailable": {},
 }
 

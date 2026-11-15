@@ -19,6 +19,9 @@ type InferenceQuotaResponse struct {
 	MaxConcurrentExecutions      int64   `json:"maxConcurrentExecutions"`
 	ActiveExecutions             int64   `json:"activeExecutions"`
 	ConcurrencyRetryAfterSeconds int64   `json:"concurrencyRetryAfterSeconds"`
+	MaxQueuedExecutions          int64   `json:"maxQueuedExecutions"`
+	QueuedExecutions             int64   `json:"queuedExecutions"`
+	QueuedRetryAfterSeconds      int64   `json:"queuedRetryAfterSeconds"`
 }
 
 var (

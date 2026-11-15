@@ -313,6 +313,33 @@ func (repository *UserCommandRepositoryCircuitBreaker) UpdateTenantUserPassword(
 	}
 }
 
+// UpdateUserViewerTourCompletedAt decorator pattern to set or clear the viewer tour completion time
+func (repository *UserCommandRepositoryCircuitBreaker) UpdateUserViewerTourCompletedAt(ctx context.Context, data repositoryTypes.UpdateUserViewerTourCompletedAt) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("update_user_viewer_tour_completed_at", config.Settings())
+	errors := hystrix.Go("update_user_viewer_tour_completed_at", func() error {
+		err := repository.UserCommandRepositoryInterface.UpdateUserViewerTourCompletedAt(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // UpsertUserMetadata decorator pattern to upsert user metadata
 func (repository *UserCommandRepositoryCircuitBreaker) UpsertUserMetadata(ctx context.Context, data repositoryTypes.UpsertUserMetadata) error {
 	output := make(chan bool, 1)

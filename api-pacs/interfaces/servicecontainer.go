@@ -499,6 +499,13 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
 	}
 
+	studyResults := &inferenceService.StudyServiceDispatcher{
+		StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
+		StudyServiceOperatorToken: os.Getenv("STUDY_SERVICE_OPERATOR_TOKEN"),
+		StudyServiceClient:        &http.Client{Timeout: 5 * time.Second},
+	}
+	reportRenderTimeout, reportMaxBytes := inferenceService.ViewerReportLimitsFromEnvironment()
+
 	service := &inferenceService.InferenceQueryService{
 		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
 			InferenceQueryRepositoryInterface: repository,
@@ -509,14 +516,14 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		InferenceModelVersionRepositoryInterface: &inferenceRepository.InferenceModelVersionRepository{
 			FirebaseAdminSDK: firebaseAdminSDK,
 		},
-		DockerSDKInterface:             dockerSDK,
-		DockerInferenceAPIInterface:    dockerInferenceAPI,
-		InferenceQuotaManagerInterface: inferenceQuotaManager,
-		ProcessingResultProviderInterface: &inferenceService.StudyServiceDispatcher{
-			StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
-			StudyServiceOperatorToken: os.Getenv("STUDY_SERVICE_OPERATOR_TOKEN"),
-			StudyServiceClient:        &http.Client{Timeout: 5 * time.Second},
-		},
+		DockerSDKInterface:                dockerSDK,
+		DockerInferenceAPIInterface:       dockerInferenceAPI,
+		InferenceQuotaManagerInterface:    inferenceQuotaManager,
+		ProcessingResultProviderInterface: studyResults,
+		StudyResultsProvider:              studyResults,
+		ModelReportRenderer:               dockerInferenceAPI,
+		ReportRenderTimeout:               reportRenderTimeout,
+		ReportMaxBytes:                    reportMaxBytes,
 	}
 
 	return service

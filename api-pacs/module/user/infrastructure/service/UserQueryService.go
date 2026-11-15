@@ -189,6 +189,23 @@ func (service *UserQueryService) GetUserMetadata(ctx context.Context, userID str
 	return userMetadata, nil
 }
 
+// GetUserViewerTourState returns the user's viewer tour state. A user without a
+// metadata document has not completed the tour yet, which is not an error.
+func (service *UserQueryService) GetUserViewerTourState(ctx context.Context, userID string) (types.UserViewerTourState, error) {
+	userMetadata, err := service.UserQueryRepositoryInterface.SelectUserMetadataByID(ctx, userID)
+	if err != nil {
+		if err.Error() == apiError.MissingRecord {
+			return types.UserViewerTourState{UserID: userID}, nil
+		}
+		return types.UserViewerTourState{}, err
+	}
+
+	return types.UserViewerTourState{
+		UserID:                userID,
+		ViewerTourCompletedAt: userMetadata.ViewerTourCompletedAt,
+	}, nil
+}
+
 func (service *UserQueryService) updateTenantUserConsentStatus(ctx context.Context, tenant tenantTypes.GetTenantResult, userID string) (bool, error) {
 	/// get user
 	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, tenant.ID, userID)

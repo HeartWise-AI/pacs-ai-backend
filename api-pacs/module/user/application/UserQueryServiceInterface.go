@@ -23,4 +23,6 @@ type UserQueryServiceInterface interface {
 	GetTenantUserEmailInvites(ctx context.Context, tenantID string) ([]entity.UserEmailInvite, error)
 	// GetUserMetadata gets user metadata
 	GetUserMetadata(ctx context.Context, userID string) (entity.UserMetadata, error)
+	// GetUserViewerTourState gets the viewer onboarding tour state of a user
+	GetUserViewerTourState(ctx context.Context, userID string) (types.UserViewerTourState, error)
 }
