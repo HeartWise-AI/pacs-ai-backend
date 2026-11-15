@@ -59,3 +59,24 @@ The token and downloaded checkpoint are excluded from the Docker build context a
 3. Confirm `/inference/model-info` and `/inference/model-facts` respond.
 4. Run a representative XA study end to end and have the research team reconcile the outputs
    against the reference inference pipeline before production registration.
+
+## Report of a stored result
+
+`POST /inference/render-report` with `{"result": <data of a JSON-mode predict response>}` returns
+`{"htmlBase64", "modelVersion"}`: the same HTML document HTML-mode predict returns for that prediction.
+It runs on the CPU, does not load the model, and does not count as model activity.
+`GET /inference/model-info` advertises it as `capabilities.renderReport: true`.
+
+Nothing stored is copied into the page. The stored numbers are checked (type, finite, range, decimals),
+then `CustomPredictionService.report_html` looks for a raw model output whose JSON output, regenerated
+by the predict code, is the stored result, and renders the report from it. A result whose values or
+text are not what this model version writes for those numbers (an edited recommendation, a result of
+another model version with other thresholds) is refused with 422 (`INVALID_RESULT`); a body over
+64 KB is refused with 413.
+
+## Changelog
+
+- After 1.0.2 (not yet released): adds `POST /inference/render-report` and
+  `capabilities.renderReport` in model-info. No change to the model, weights, preprocessing,
+  predictions or live report. If an image of 1.0.2 is already published, releasing this
+  needs its own version.
