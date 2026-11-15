@@ -15,7 +15,18 @@ const (
 	InferenceIngestionProcessingRunTriggerAuto            InferenceIngestionProcessingRunTrigger = "AUTO"
 	InferenceIngestionProcessingRunTriggerManualReprocess InferenceIngestionProcessingRunTrigger = "MANUAL_REPROCESS"
 	InferenceIngestionProcessingRunTriggerLegacyImport    InferenceIngestionProcessingRunTrigger = "LEGACY_IMPORT"
+	// InferenceIngestionProcessingRunTriggerViewerRequest is a single-model run
+	// requested from the image viewer. Unlike study-wide runs it may coexist with
+	// other active runs for the same study; uniqueness is per study and model.
+	InferenceIngestionProcessingRunTriggerViewerRequest InferenceIngestionProcessingRunTrigger = "VIEWER_REQUEST"
 )
+
+// IsUserRequested reports whether the run was explicitly requested by a user
+// and therefore uses strict execution correlation and user quota accounting.
+func (trigger InferenceIngestionProcessingRunTrigger) IsUserRequested() bool {
+	return trigger == InferenceIngestionProcessingRunTriggerManualReprocess ||
+		trigger == InferenceIngestionProcessingRunTriggerViewerRequest
+}
 
 const (
 	InferenceIngestionProcessingRunPhaseQueued     InferenceIngestionProcessingRunPhase = "QUEUED"

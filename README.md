@@ -290,7 +290,8 @@ Update `api-pacs/.env` with the following variables:
 | `LOGIN_TRUSTED_PROXY_CIDRS` | Comma-separated direct-proxy CIDRs allowed to supply login `X-Real-IP`; leave empty for direct access                         |
 | `INFERENCE_USER_QUOTA_WINDOW_SECONDS` | Per-user fixed quota window; defaults to `86400` seconds                                                        |
 | `INFERENCE_USER_QUOTA_ALLOWANCE` | Maximum accepted user-triggered inference units per window; defaults to `50`                                      |
-| `INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS` | Maximum active direct predictions or manual reprocessing runs per tenant/user; defaults to `2`           |
+| `INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS` | Maximum active synchronous (interactive) predictions per tenant/user; defaults to `2`                    |
+| `INFERENCE_USER_MAX_QUEUED_EXECUTIONS` | Safety cap on active queued runs (viewer model runs, manual reprocessing) per tenant/user; defaults to `50`; independent of the interactive cap |
 | `INFERENCE_USER_RESERVATION_TTL_SECONDS` | Safety expiry for abandoned active reservations; defaults to `7200` seconds                                  |
 | `INFERENCE_USER_QUOTA_TENANT_OVERRIDES_JSON` | Optional JSON limits keyed by tenant ID; omitted fields inherit global defaults                           |
 | `DOCKER_USERNAME`           | Your DockerHub username                                                                                                   |

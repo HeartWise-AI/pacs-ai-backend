@@ -36,6 +36,12 @@ type InferenceQueryServiceInterface interface {
 	GetProcessingRunDetail(ctx context.Context, data types.GetProcessingRunDetail) (types.ProcessingRunDetail, error)
 	// GetProcessingRunExecutionResult lazily returns one correlated completed model result.
 	GetProcessingRunExecutionResult(ctx context.Context, data types.GetProcessingRunExecutionResult) (types.ProcessingRunExecutionResult, error)
+	// GetStudyLatestModelResults returns the latest completed result per model for one study.
+	GetStudyLatestModelResults(ctx context.Context, data types.GetStudyLatestModelResults) (types.StudyLatestModelResults, error)
+	// GetProcessingRunExecutionReport re-renders the HTML report of one completed execution.
+	GetProcessingRunExecutionReport(ctx context.Context, data types.GetProcessingRunExecutionReport) (types.ModelReport, error)
+	// GetStudyJobReport re-renders the HTML report of one legacy study-service job.
+	GetStudyJobReport(ctx context.Context, data types.GetStudyJobReport) (types.ModelReport, error)
 	// GetModelFeedBackByUser gets the model feedback by user
 	GetModelFeedBackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (types.GetModelFeedbackResult, error)
 	// GetOnboardingModelQuestionnaireAnswers gets the onboarding model questionnaire answers

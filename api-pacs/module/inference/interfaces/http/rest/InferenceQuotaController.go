@@ -55,6 +55,9 @@ func inferenceQuotaResponse(status serviceTypes.InferenceQuotaStatus) *types.Inf
 		MaxConcurrentExecutions:      status.MaxConcurrentExecutions,
 		ActiveExecutions:             status.ActiveExecutions,
 		ConcurrencyRetryAfterSeconds: durationSecondsCeilingForHTTP(status.ConcurrentRetryAfter),
+		MaxQueuedExecutions:          status.MaxQueuedExecutions,
+		QueuedExecutions:             status.QueuedExecutions,
+		QueuedRetryAfterSeconds:      durationSecondsCeilingForHTTP(status.QueuedRetryAfter),
 	}
 }
 
@@ -72,8 +75,11 @@ func writeInferenceQuotaError(w http.ResponseWriter, err error) bool {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	message := "Inference allowance exhausted. Please try again after the quota resets."
-	if limitError.ErrorCode == apiError.InferenceConcurrencyExceeded {
+	switch limitError.ErrorCode {
+	case apiError.InferenceConcurrencyExceeded:
 		message = "Too many inference executions are already active. Please try again later."
+	case apiError.InferenceQueueLimitExceeded:
+		message = "Too many inference runs are already queued. Please wait for some to finish."
 	}
 	response := viewmodels.HTTPResponseVM{
 		Status: http.StatusTooManyRequests, Success: false, Message: message,
@@ -86,6 +92,8 @@ func writeInferenceQuotaError(w http.ResponseWriter, err error) bool {
 			"maxConcurrentExecutions": limitError.MaxConcurrentExecutions,
 			"activeExecutions":        limitError.ActiveExecutions,
 			"retryAfterSeconds":       retryAfter,
+			"maxQueuedExecutions":     limitError.MaxQueuedExecutions,
+			"queuedExecutions":        limitError.QueuedExecutions,
 		},
 	}
 	response.JSON(w)
