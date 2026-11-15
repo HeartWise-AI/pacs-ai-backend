@@ -1,0 +1,26 @@
+# Dependabot must not bump torch, torchvision or torchaudio in the model directories.
+#
+# Each model pins a matched torch/torchvision pair for one CUDA build (for example torch==2.4.0+cu121 with
+# torchvision==0.19.0+cu121 from the cu121 index). Dependabot's grouped security updates raised torch alone, to a
+# version torchvision does not support and without the CUDA suffix, three times (2026-10-08, 2026-10-27 and
+# 2026-11-14); each time the pairs had to be restored by hand before an image could be built. The pair is
+# checked by each model's tests/test_provenance.py.
+#
+# `ignore` applies to security updates as well as version updates, so a torch advisory no longer opens a pull
+# request for these directories: upgrade torch by hand, together with torchvision and the index URL, and
+# re-validate the model. Other dependencies still receive security updates.
+# `open-pull-requests-limit: 0` keeps version updates off, as they were before this file existed (it does not
+# limit security updates).
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directories:
+      - "/model-examples/*"
+      - "/model-examples/*/*"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "torch"
+      - dependency-name: "torchvision"
+      - dependency-name: "torchaudio"
