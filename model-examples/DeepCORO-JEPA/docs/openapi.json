@@ -823,7 +823,7 @@
                     "resources": {
                       "gpuRequired": true,
                       "residentMemoryMiB": 1700,
-                      "peakMemoryMiB": 11000,
+                      "peakMemoryMiB": 16000,
                       "maxConcurrentInferences": 1,
                       "idleTimeoutSeconds": 600
                     },
