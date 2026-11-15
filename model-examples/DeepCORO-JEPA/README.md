@@ -617,9 +617,12 @@ Notes:
   gives a stenosis estimate that differs by 0.2 points in median, 1.4 at the 90th percentile and 15.5 at most
   (correlation 0.996; 0.995 for the probability of a significant lesion), and 16 of the 78 yes/no or category
   outputs compared across those studies differ: small numeric differences occasionally change a crop or mask
-  decision and one segment then moves. Whether accuracy changes is being measured on 300 validation studies
-  (DeepCORO session, 2026-11-15); until that number is here, the reported metrics describe the evaluated
-  environment, not this build. On MHI, the v13 weights in this image reproduced three stored 1.4.1 results
+  decision and one segment then moves. Accuracy is unchanged: on 300 random validation studies the
+  17-segment mean correlation with the report is 0.4933 with the CUDA 12.8 build against 0.4932 for the evaluated
+  reference; per segment the estimate differs by 0.25 points in median, 2.9 at the 95th percentile, 6.4 at the 99th
+  and 49 at most (dossier `v15/deployment/parity_cu128.json`, 2026-11-15). So this image is numerically close to
+  the evaluated model, with equal accuracy on those studies; an individual reading can differ by a few points and
+  rarely by much more. The test-set metrics were not recomputed with this build. On MHI, the v13 weights in this image reproduced three stored 1.4.1 results
   (PyTorch 2.5.1, CUDA 12.1) to the returned precision. Versions up to 1.1.1 pinned a CUDA 12.1
   build that does not run on Blackwell GPUs. The index, torch and torchvision lines must name the same build; a test
   checks it.
