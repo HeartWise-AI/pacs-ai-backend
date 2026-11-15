@@ -243,7 +243,7 @@ def test_model_facts_name_the_training_run_of_the_served_weights():
     facts = json.loads((ROOT / "data/model_facts.json").read_text(encoding="utf-8"))["en"]
     info = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     assert "https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/2563ce01" in facts["Summary"]["Training_run"]
-    assert facts["Summary"]["Model_version"] == "v15" and info["version"] == "2.0.0"
+    assert facts["Summary"]["Model_version"] == "v15" and info["version"] == "2.1.0"
     assert facts["Summary"]["Version"] == info["version"]
 
 
@@ -396,7 +396,7 @@ def test_a_lesion_threshold_override_replaces_one_finding_and_is_named_in_the_op
 
 def test_the_shipped_configuration_flags_thrombus_above_0_40():
     config = json.loads((Path(__file__).resolve().parents[1] / "models/config.json").read_text(encoding="utf-8"))
-    assert config["Thresholds"]["lesion_threshold_overrides"] == {"thrombus": 0.4}
+    assert config["Thresholds"]["lesion_threshold_overrides"] == {"thrombus": 0.4, "cto": 0.7}
 
 
 # -- model v15: study-level lesion probabilities, the model's own dominance, the unsupported posterior LV branch ------

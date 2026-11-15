@@ -32,7 +32,7 @@ def test_openapi_describes_registered_model():
         "supportedOutputModes"
     ]
     assert "200" in document["paths"]["/inference/predict"]["post"]["responses"]
-    assert document["info"]["version"] == info["version"] == "2.0.0"
+    assert document["info"]["version"] == info["version"] == "2.1.0"
     rendered = document["paths"]["/inference/render-report"]["post"]["responses"]["200"]["content"]["application/json"]["example"]
     assert rendered["data"]["modelVersion"] == info["version"]
 
@@ -86,8 +86,8 @@ def test_predict_example_is_a_v15_result_with_the_v15_thresholds_and_display_map
     facts = json.loads((MODEL_ROOT / "data/model_facts.json").read_text(encoding="utf-8"))["en"]["Summary"]
     assert predictions["model_version"] == facts["Model_version"] == "v15"
     assert {g: v["prob_threshold"] for g, v in predictions["segments"].items()} == V15_THRESHOLDS
-    assert predictions["lesion_thresholds"] == {"operating_point": "specificity_99 (thrombus: fixed 0.40)",
-                                                "calcif": 0.3631, "thrombus": 0.4, "cto": 0.2134}
+    assert predictions["lesion_thresholds"] == {"operating_point": "specificity_99 (thrombus: fixed 0.40, cto: fixed 0.70)",
+                                                "calcif": 0.3631, "thrombus": 0.4, "cto": 0.7}
     physiology = predictions["lad_physiology"]
     assert (physiology["ffr_abnormal_threshold"], physiology["ifr_abnormal_threshold"]) == (0.5936, 0.6939)
     assert predictions["model_dominance"]["dominance_left_threshold"] == 0.0383

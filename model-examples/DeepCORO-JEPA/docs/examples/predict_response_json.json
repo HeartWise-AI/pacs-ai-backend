@@ -48,9 +48,9 @@
           "thrombus_prob": 0.61639,
           "thrombus": true,
           "cto_prob": 0.67164,
-          "cto": true,
-          "display_pct": 100,
-          "display_category": "occluded"
+          "cto": false,
+          "display_pct": 94,
+          "display_category": "severe"
         },
         "pda": {
           "stenosis_pct": 12.5,
@@ -289,10 +289,10 @@
         "ifr_abnormal": false
       },
       "lesion_thresholds": {
-        "operating_point": "specificity_99 (thrombus: fixed 0.40)",
+        "operating_point": "specificity_99 (thrombus: fixed 0.40, cto: fixed 0.70)",
         "calcif": 0.3631,
         "thrombus": 0.4,
-        "cto": 0.2134
+        "cto": 0.7
       },
       "study_lesions": {
         "study_calcif_prob": 0.50894,
@@ -310,7 +310,7 @@
         "lvp"
       ]
     },
-    "diagnosis": "Flagged for possible significant stenosis (probability above its validation threshold): Mid RCA (P 0.357, shown 58%, model estimate 40%), Distal RCA (P 0.918, shown 100%, CTO flag; model estimate 90%), PDA (P 0.149, shown 22%, model estimate 12%), Posterolateral (P 0.063, shown 20%, model estimate 8%), Mid LAD (P 0.311, shown 52%, model estimate 36%), First diagonal (P 0.311, shown 47%, model estimate 33%), Second diagonal (P 0.139, shown 22%, model estimate 13%), Proximal LCx (P 0.441, shown 73%, model estimate 56%), Mid LCx (P 0.559, shown 67%, model estimate 48%), Distal LCx (P 0.024, shown 20%, model estimate 6%), First obtuse marginal (P 0.168, shown 23%, model estimate 13%), Second obtuse marginal (P 0.162, shown 23%, model estimate 14%). Other segments with a shown stenosis of 30% or more: Proximal RCA (30%), Proximal LAD (34%). 2 of 17 segments shown as normal (model estimate below 9.5%). LAD physiology: FFR predicted normal (P(FFR ≤ 0.80) 0.47, threshold 0.5936); iFR predicted normal (P(iFR ≤ 0.89) 0.29, threshold 0.6939). Flagged for calcification (P above 0.3631): Distal RCA (P 0.47). Flagged for thrombus (P above 0.4000): Distal RCA (P 0.62). Flagged for chronic total occlusion (P above 0.2134): Distal RCA (P 0.67). Study-level probability, any segment (no yes/no call): calcification 0.51, thrombus 0.46, chronic total occlusion 0.61. Model estimate of the dominance: right (P(left) 0.017, threshold 0.0383; trained on model-derived labels, not used to draw the schema).",
+    "diagnosis": "Flagged for possible significant stenosis (probability above its validation threshold): Mid RCA (P 0.357, shown 58%, model estimate 40%), Distal RCA (P 0.918, shown 94%, model estimate 90%), PDA (P 0.149, shown 22%, model estimate 12%), Posterolateral (P 0.063, shown 20%, model estimate 8%), Mid LAD (P 0.311, shown 52%, model estimate 36%), First diagonal (P 0.311, shown 47%, model estimate 33%), Second diagonal (P 0.139, shown 22%, model estimate 13%), Proximal LCx (P 0.441, shown 73%, model estimate 56%), Mid LCx (P 0.559, shown 67%, model estimate 48%), Distal LCx (P 0.024, shown 20%, model estimate 6%), First obtuse marginal (P 0.168, shown 23%, model estimate 13%), Second obtuse marginal (P 0.162, shown 23%, model estimate 14%). Other segments with a shown stenosis of 30% or more: Proximal RCA (30%), Proximal LAD (34%). 2 of 17 segments shown as normal (model estimate below 9.5%). LAD physiology: FFR predicted normal (P(FFR ≤ 0.80) 0.47, threshold 0.5936); iFR predicted normal (P(iFR ≤ 0.89) 0.29, threshold 0.6939). Flagged for calcification (P above 0.3631): Distal RCA (P 0.47). Flagged for thrombus (P above 0.4000): Distal RCA (P 0.62). No segment flagged for chronic total occlusion. Study-level probability, any segment (no yes/no call): calcification 0.51, thrombus 0.46, chronic total occlusion 0.61. Model estimate of the dominance: right (P(left) 0.017, threshold 0.0383; trained on model-derived labels, not used to draw the schema).",
     "modelRecommendations": {
       "en": "Research model, not for clinical decisions. Flags use thresholds chosen on the internal validation set, not a validated clinical operating point. Confirm every reading on the angiogram; LAD physiology outputs (test AUROC about 0.67) do not replace invasive FFR/iFR. Calcification, thrombus and chronic total occlusion flags are set for few false alarms and miss many of these findings.",
       "fr": "Modèle de recherche, ne pas utiliser pour la décision clinique. Les signalements utilisent des seuils choisis sur l'ensemble de validation interne, et non un seuil clinique validé. Confirmer chaque lecture sur l'angiographie; les sorties de physiologie IVA (AUROC test environ 0,67) ne remplacent pas la FFR/iFR invasive. Les signalements de calcification, de thrombus et d'occlusion totale chronique sont réglés pour peu de fausses alertes et manquent une bonne partie de ces lésions.",

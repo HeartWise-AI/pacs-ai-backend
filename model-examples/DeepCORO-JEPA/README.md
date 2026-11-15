@@ -25,7 +25,8 @@ The encoder runs **at most twice per study**:
 
 | Container version | Model | Hugging Face revision | Training run (Weights & Biases, `mhi_ai/deepcoro-segmentation`) |
 |---|---|---|---|
-| **2.0.0** (this one) | **v15** | `heartwise/DeepCORO_JEPA@ab6d12f` (branch `v15`, tag `v15.1`) | [`2563ce01`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/2563ce01) |
+| **2.1.0** (this one) | **v15** | `heartwise/DeepCORO_JEPA@ab6d12f` (branch `v15`, tag `v15.1`) | [`2563ce01`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/2563ce01) |
+| 2.0.0 | v15 | same revision | same run |
 | 1.4.1 | v13 | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
 | 1.4.0 | v13 | same revision | same run |
 | 1.3.0 | v13 | same revision | same run |
@@ -37,6 +38,16 @@ The encoder runs **at most twice per study**:
 
 The served weights are the ones exported from the checkpoint of that training run; `data/model_facts.json`
 (`Summary.Training_run`) and `model_config.json` of the Hugging Face revision carry the same link.
+
+**What 2.1.0 changes against 2.0.0:** same weights and probabilities. The CTO flag needs `cto_prob` above **0.70**
+instead of 0.2134 (`lesion_threshold_overrides` now `{"thrombus": 0.4, "cto": 0.7}`; `operating_point` reads
+`"specificity_99 (thrombus: fixed 0.40, cto: fixed 0.70)"`). The model owner chose it for a higher positive predictive value after
+2.0.0 drew two occlusions that the angiography reports of three MHI studies did not describe. On the v15 validation
+split (78,999 readings of the 17 shown segments, 551 with a CTO in the report): at 0.70, 172 segments are flagged, 57
+with a CTO in the report (PPV 0.33, sensitivity 0.10) and 107 with a CTO or a 100 % stenosis (0.62); at 0.2134, 1,017
+are flagged (PPV 0.18, 0.40 counting any reported occlusion, sensitivity 0.34). The PPV plateaus near 0.33 from 0.70
+upwards, so a higher threshold only loses findings. Not evaluated on the test set. Because a CTO flag draws the
+segment as occluded at 100 %, fewer segments are shown occluded. Results stored by 2.0.0 keep their flags.
 
 **What 2.0.0 changes against 1.4.1:** it serves **model v15** (weights SHA-256 `23b8255b…c54c`, exported from epoch 1
 of run `2563ce01`; release dossier on the model NAS, `DeepCoro_Integrated/v15/`) instead of v13. Every key of the
@@ -314,7 +325,9 @@ returned probability (6 decimals) is strictly above its threshold.
 
 - **Stenosis, pressure and dominance:** the rule of the deployed DeepCORO-CLIP checkpoint, i.e. the threshold with
   the highest geometric mean of sensitivity and specificity (`balanced`).
-- **Calcification and CTO:** the lowest threshold with a validation specificity of at least 0.99
+- **CTO (since 2.1.0):** the fixed threshold 0.70 (`lesion_threshold_overrides`), not the `specificity_99` point
+  0.2134; see "What 2.1.0 changes".
+- **Calcification (and CTO up to 2.0.0):** the lowest threshold with a validation specificity of at least 0.99
   (`specificity_99`). The balanced point would raise two to four flags per study for each finding, nearly all false.
 - **Thrombus:** the fixed threshold 0.40 (`lesion_threshold_overrides`, since 1.4.1, kept for v15 by the model
   owner), not the `specificity_99` point 0.0648. Validation split of v15 (83,646 segment readings, 200 with thrombus
@@ -336,7 +349,7 @@ internal operating points, not validated clinical ones.
 
 ```json
 "Thresholds": {"path": "thresholds.json", "pressure_operating_point": "balanced", "lesion_operating_point": "specificity_99",
-               "lesion_threshold_overrides": {"thrombus": 0.4}}
+               "lesion_threshold_overrides": {"thrombus": 0.4, "cto": 0.7}}
 ```
 
 | Key | Meaning | Default |
@@ -574,7 +587,7 @@ python3 scripts/release-model.py model-examples/DeepCORO-JEPA \
 instead of calling at once:
 
 ```bash
-docker run -d --rm --gpus all --name deepcoro-jepa -p 127.0.0.1:8080:80 heartwisehub/deepcoro-jepa:2.0.0
+docker run -d --rm --gpus all --name deepcoro-jepa -p 127.0.0.1:8080:80 heartwisehub/deepcoro-jepa:2.1.0
 for i in $(seq 1 60); do
   curl -sf http://127.0.0.1:8080/api/inference/model-info > /dev/null && break
   sleep 2

@@ -203,7 +203,7 @@ def test_a_stored_v13_result_is_rendered_as_v13_by_this_container(client, monkey
     assert response.status_code == 200, response.text
     data = response.json()["data"]
     import main
-    assert data["modelVersion"] == main.served_model_info["version"] == "2.0.0"  # the container that drew it
+    assert data["modelVersion"] == main.served_model_info["version"] == "2.1.0"  # the container that drew it
     assert data["reportModelVersion"] == "v13-cal1"  # the model that produced the result
     html = base64.b64decode(data["htmlBase64"]).decode("utf-8")
     assert "DeepCORO-JEPA v13-cal1</h1>" in html and "v15-cal1" not in html
