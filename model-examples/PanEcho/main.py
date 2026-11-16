@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 import signal
 import asyncio
+import time
 
 from utils.http_utils import (
     Config,
@@ -18,6 +19,7 @@ from utils.http_utils import (
     WebAppPredictionResponse
 )
 from logic import CustomPredictionService
+from utils.fast_request import parse_predict_request, read_body
 from utils.resource_config import create_inference_semaphore, load_model_info, model_info_payload
 from utils.model_lifecycle import (
     ModelLifecycle,
@@ -84,7 +86,18 @@ async def update_last_request_time(request: Request, call_next):
     return response
 
 @app.post("/inference/predict")
-async def predict(request: PredictRequest):
+async def predict(http_request: Request):
+    # The body is read and parsed here rather than by FastAPI: see utils/fast_request.py.
+    started = time.perf_counter()
+    body = await read_body(http_request)
+    received = time.perf_counter()
+    body_bytes = len(body)
+    request = parse_predict_request(body)
+    del body
+    print(
+        f"PanEcho request: {body_bytes / 2**20:.0f} MiB received in {received - started:.2f}s, "
+        f"parsed in {time.perf_counter() - received:.2f}s"
+    )
     async with model_lifecycle.inference():
         try:
             PredictionService.load_model(config)
