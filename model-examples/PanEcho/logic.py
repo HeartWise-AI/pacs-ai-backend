@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import torch
 import base64
 import pydicom
@@ -14,7 +15,14 @@ from typing import Any, List, Dict, Union, Tuple, Optional
 from models.pan_echo import PanEcho
 from models.echo_prime_view_classifier import EchoPrimeViewClassifier
 from utils.dicom_pixels import to_display_uint8
-from models.view_classifier_utils import handle_colorspace, load_pixel_array, mask_and_crop
+from models.view_classifier_utils import (
+    clip_window,
+    handle_colorspace,
+    load_frame_window,
+    load_pixel_array,
+    mask_and_crop,
+)
+from utils.fast_request import decode_base64
 from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
@@ -39,8 +47,45 @@ def matches_selected_view(pred_class: Optional[str]) -> bool:
     return any(view in pred_class for view in SELECTED_VIEWS)
 
 
+class StageTimer:
+    """Accumulates wall-clock seconds per stage of one predict request."""
+
+    def __init__(self):
+        self.seconds: Dict[str, float] = {}
+        self.started = time.perf_counter()
+
+    def add(self, stage: str, started: float) -> float:
+        now = time.perf_counter()
+        self.seconds[stage] = self.seconds.get(stage, 0.0) + now - started
+        return now
+
+    def summary(self) -> str:
+        stages = " ".join(f"{name}={value:.2f}s" for name, value in self.seconds.items())
+        return f"{stages} total={time.perf_counter() - self.started:.2f}s"
+
+
 class CustomPredictionService(BasePredictionService):
     _view_classifier_batch_size = 8
+    _timer: Optional[StageTimer] = None
+
+    def _time(self, stage: str, started: float) -> float:
+        """Record ``stage`` for the request being served and return the current time."""
+        timer = self._timer
+        return timer.add(stage, started) if timer is not None else time.perf_counter()
+
+    def _start_timer(self) -> None:
+        self._timer = StageTimer()
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+
+    def _report_timer(self) -> None:
+        timer, self._timer = self._timer, None
+        if timer is None:
+            return
+        gpu = ""
+        if torch.cuda.is_available():
+            gpu = f" gpu_peak_allocated={torch.cuda.max_memory_allocated() / 2**20:.0f}MiB"
+        print(f"PanEcho predict timings: {timer.summary()}{gpu}")
 
     def load_model(self, config: Config):        
         if CustomPredictionService.is_initialized:
@@ -545,8 +590,10 @@ class CustomPredictionService(BasePredictionService):
         metadata_source = "request.additionalMetadata"
 
         if not metadata:
+            started = time.perf_counter()
             metadata = self._generate_view_classifier_metadata(dicoms)
             metadata_source = "PanEcho view classifier"
+            self._time("view_classifier", started)
 
         if metadata:
             filtered_dicoms = self._filter_dicoms_with_metadata(dicoms, metadata)
@@ -567,6 +614,8 @@ class CustomPredictionService(BasePredictionService):
         """Extract and filter multi-frame DICOMs from the request payload."""
         dicoms = []
         total = 0
+        # Requests built by utils.fast_request keep large strings as views of the body.
+        resolve_payload = getattr(request, "payload", lambda value: value)
         for series_number in request.seriesInstanceImages:
             for instance_number in request.seriesInstanceImages[series_number]:
                 total += 1
@@ -577,16 +626,24 @@ class CustomPredictionService(BasePredictionService):
                 else:
                     dicom_base64 = instance_data
 
-                if isinstance(dicom_base64, str) and not self._is_valid_base64(dicom_base64):
-                    print(f"Invalid base64 string for series {series_number} instance {instance_number}")
-                    continue
-
-                dicom_data = base64.b64decode(dicom_base64)
+                # Decode once: decode_base64 accepts and returns exactly what the former
+                # validate-then-decode pair did, without the second pass over the payload.
+                started = time.perf_counter()
+                if isinstance(dicom_base64, str):
+                    dicom_data = decode_base64(resolve_payload(dicom_base64))
+                    if dicom_data is None:
+                        print(f"Invalid base64 string for series {series_number} instance {instance_number}")
+                        continue
+                else:
+                    dicom_data = base64.b64decode(dicom_base64)
+                started = self._time("base64", started)
                 if not self._is_valid_dicom(dicom_data):
                     print(f"Invalid DICOM data for series {series_number} instance {instance_number}")
                     continue
 
                 dicom = pydicom.dcmread(BytesIO(dicom_data))
+                del dicom_data
+                self._time("dicom_parse", started)
 
                 # Skip single-frame DICOMs — PanEcho expects video clips
                 num_frames = getattr(dicom, 'NumberOfFrames', None)
@@ -596,10 +653,22 @@ class CustomPredictionService(BasePredictionService):
 
                 dicoms.append(dicom)
 
+        # Every instance is decoded; let the request body go before inference allocates.
+        release_payloads = getattr(request, "release_payloads", None)
+        if release_payloads is not None:
+            release_payloads()
+
         print(f"{total} DICOMs found, {len(dicoms)} multi-frame DICOMs kept")
         return dicoms
 
     async def _handle_html_output(self, request: PredictRequest):
+        self._start_timer()
+        try:
+            return await self._html_output(request)
+        finally:
+            self._report_timer()
+
+    async def _html_output(self, request: PredictRequest):
         try:
             dicoms = self._extract_dicoms(request)
             dicoms = self._prepare_dicoms_for_inference(dicoms, request.additionalMetadata)
@@ -687,6 +756,13 @@ class CustomPredictionService(BasePredictionService):
             raise e
 
     async def _handle_json_output(self, request: PredictRequest):
+        self._start_timer()
+        try:
+            return await self._json_output(request)
+        finally:
+            self._report_timer()
+
+    async def _json_output(self, request: PredictRequest):
         print(f"request.additionalMetadata: {request.additionalMetadata}")
 
         try:
@@ -803,6 +879,22 @@ class CustomPredictionService(BasePredictionService):
         
         return clip
 
+    def _load_display_pixels(self, dicom: pydicom.Dataset, clip_len: int) -> np.ndarray:
+        """Return the 8-bit pixels ``_load_clip_from_dicom`` needs for this DICOM.
+
+        For 8-bit multi-frame data only the ``clip_len`` frames that are sampled are decoded;
+        ``_load_clip_from_dicom`` then keeps all of them, so the clip is identical to the one
+        cut from the whole decoded video. Anything else is decoded in full as before.
+        """
+        frame_count = int(getattr(dicom, "NumberOfFrames", 1) or 1)
+        if frame_count > 1:
+            window = load_frame_window(dicom, *clip_window(frame_count, clip_len))
+            if window is not None:
+                return to_display_uint8(window, getattr(dicom, "PhotometricInterpretation", None))
+        return to_display_uint8(
+            load_pixel_array(dicom), getattr(dicom, "PhotometricInterpretation", None)
+        )
+
     def _create_transform(self, normalization: str = ''):
         """
         Create transform pipeline based on normalization settings.
@@ -836,6 +928,7 @@ class CustomPredictionService(BasePredictionService):
             transform = self._create_transform(normalization=self.config.models['pan_echo'].normalization)
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             MAX_BATCH_SIZE = 8
+            clip_len = self.config.models['pan_echo'].clip_len
 
             accumulated_logits: Dict[str, torch.Tensor] = {}
             total_clips = 0
@@ -846,33 +939,38 @@ class CustomPredictionService(BasePredictionService):
                 batch_clips = []
 
                 for i, dicom in enumerate(batch_dicoms):
+                    started = time.perf_counter()
                     try:
-                        pixel_array: np.ndarray = to_display_uint8(
-                            load_pixel_array(dicom), getattr(dicom, "PhotometricInterpretation", None)
-                        )
+                        pixel_array = self._load_display_pixels(dicom, clip_len)
                     except Exception as e:
                         print(f"Skipping DICOM {batch_start + i}: {e}")
                         continue
+                    started = self._time("pixel_decode", started)
                     if pixel_array.ndim < 3:
                         print(f"Skipping DICOM {batch_start + i} with invalid dimensions: {pixel_array.shape}")
                         continue
 
                     clip = self._load_clip_from_dicom(
                         pixel_array,
-                        clip_len=self.config.models['pan_echo'].clip_len
+                        clip_len=clip_len
                     )
                     clip_tensor = tv_tensors.Video(np.transpose(clip, (0, 3, 1, 2)))
                     clip_tensor = transform(clip_tensor)
                     clip_tensor = torch.permute(clip_tensor, (1, 0, 2, 3))
                     batch_clips.append(clip_tensor)
+                    self._time("clip_transform", started)
 
                 if not batch_clips:
                     continue
 
+                started = time.perf_counter()
                 batch_tensor = torch.stack(batch_clips).to(device)
 
                 with torch.no_grad():
                     batch_outputs = CustomPredictionService.models['pan_echo'](batch_tensor)
+                if device == 'cuda':
+                    torch.cuda.synchronize()  # attribute GPU time to this stage
+                self._time("model_forward", started)
 
                 for key, output_tensor in batch_outputs.items():
                     batch_sum = torch.sum(output_tensor, dim=0)
