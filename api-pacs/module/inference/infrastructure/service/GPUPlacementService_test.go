@@ -340,6 +340,21 @@ func TestPlacementPlanIsIncompleteAndNeverAppliedWhenAReservationIsUnknown(t *te
 		require.Contains(t, fixture.service.autoPlacementCycle(context.Background()), "The plan is incomplete")
 		require.Empty(t, fixture.deployer.requests)
 	})
+	t.Run("stopped container pinned to no GPU", func(t *testing.T) {
+		fixture := newPlacementFixture(t, nil)
+		info := fixture.docker.infos[placementID(4)]
+		info.Lifecycle = dockerTypes.LifecycleFromStatus(dockerTypes.Status("exited"))
+		info.GPUUUID = ""
+		fixture.docker.infos[placementID(4)] = info
+		unread := fixture.backend.models[placementID(4)]
+		unread.Resources = dockerAPI.ModelResources{}
+		fixture.backend.models[placementID(4)] = unread
+		require.NoError(t, fixture.manager.Reconcile(context.Background(), fixture.ids))
+		plan, err := fixture.service.PlacementPlan(context.Background(), "tenant-a")
+		require.NoError(t, err)
+		require.False(t, plan.Incomplete, "a stopped, unpinned container holds no GPU memory")
+		require.Contains(t, plan.Skipped, GPUPlacementSkippedView{ModelID: "model-a4", Reason: reasonStopped})
+	})
 	t.Run("missing container", func(t *testing.T) {
 		fixture := newPlacementFixture(t, nil)
 		delete(fixture.docker.infos, placementID(4))
