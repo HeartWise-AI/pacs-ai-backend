@@ -1029,7 +1029,8 @@ docker compose images > pacs-ai-versions.txt
 | `LOGIN_ACCOUNT_CHALLENGE_FAILURES` | optional | `3` | Normalized account failures before Turnstile is required; account scope has no hard lock |
 | `LOGIN_IP_CHALLENGE_FAILURES` / `LOGIN_IP_MAX_FAILURES` | optional | `5` / `30` | Trusted client-IP challenge and hard-limit thresholds |
 | `LOGIN_TENANT_CHALLENGE_FAILURES` / `LOGIN_TENANT_MAX_FAILURES` | optional | `50` / `500` | Tenant challenge and hard-limit thresholds |
-| `LOGIN_TURNSTILE_ALLOWED_HOSTNAMES` | yes when protection is enabled | — | Comma-separated exact frontend hostnames returned by Siteverify for the `login` action |
+| `LOGIN_TURNSTILE_ALLOWED_HOSTNAMES` | yes in `turnstile` mode | — | Comma-separated exact frontend hostnames returned by Siteverify for the `login` action |
+| `LOGIN_CHALLENGE_MODE` | optional | `turnstile` when `CLOUDFLARE_SECRET_KEY` and `LOGIN_TURNSTILE_ALLOWED_HOSTNAMES` are set, else `cooldown` | `cooldown` answers every would-be challenge with HTTP 429 and `Retry-After` (remaining TTL of the triggering counter, 30 s to the window); use it for internal hostnames or workstations that cannot reach Cloudflare |
 | `LOGIN_TRUSTED_PROXY_CIDRS` | required behind a reverse proxy | empty | Direct-proxy CIDRs allowed to supply login `X-Real-IP`; normally the same exact `pacs-net` subnet used for registration |
 | **Public-demo inference quotas** | | | |
 | `INFERENCE_USER_QUOTA_WINDOW_SECONDS` | optional | `86400` | Fixed usage-allowance window in seconds |
@@ -1093,6 +1094,19 @@ or configuration failures return `CLOUDFLARE_API_ERROR` (503) and do not poison
 failure counters. Turnstile must return `action=login` and a hostname in
 `LOGIN_TURNSTILE_ALLOWED_HOSTNAMES`; missing, expired, replayed, or mismatched
 tokens fail closed.
+
+Deployments where Turnstile cannot work (internal hostname, no frontend
+`APP_PUBLIC_TURNSTILE_SITE_KEY`, workstations that cannot reach
+`challenges.cloudflare.com`) set `LOGIN_CHALLENGE_MODE=cooldown`. Wherever a
+challenge would be required, the gateway then answers `LOGIN_RATE_LIMITED`
+(429) with `Retry-After` set to the remaining TTL of the counter that triggered
+it (at least 30 s, at most `LOGIN_FAILURE_WINDOW_SECONDS`); tokens are ignored,
+hard limits are unchanged, and unknown e-mails receive the same answers. Note
+that the IP and tenant challenge thresholds become temporary lockouts for every
+user behind that IP or in that tenant, so check `LOGIN_TRUSTED_PROXY_CIDRS` and
+consider raising `LOGIN_IP_CHALLENGE_FAILURES` / `LOGIN_TENANT_CHALLENGE_FAILURES`
+where many users share one address. The effective mode is logged at startup as
+`[security] event=login_challenge_mode mode=…`.
 
 The login request contract changes incompatibly from `{tenantId,idToken}` to
 `{tenantId,email,password,turnstileToken?}`. Deploy the paired frontend and

@@ -287,6 +287,7 @@ Update `api-pacs/.env` with the following variables:
 | `LOGIN_IP_CHALLENGE_FAILURES` / `LOGIN_IP_MAX_FAILURES` | IP challenge/hard-limit thresholds; defaults to `5` / `30`                                  |
 | `LOGIN_TENANT_CHALLENGE_FAILURES` / `LOGIN_TENANT_MAX_FAILURES` | Tenant challenge/hard-limit thresholds; defaults to `50` / `500`                  |
 | `LOGIN_TURNSTILE_ALLOWED_HOSTNAMES` | Comma-separated exact frontend hostnames accepted for the login action                                             |
+| `LOGIN_CHALLENGE_MODE` | `turnstile` or `cooldown` (429 + `Retry-After` instead of a challenge); defaults to `turnstile` only when `CLOUDFLARE_SECRET_KEY` and `LOGIN_TURNSTILE_ALLOWED_HOSTNAMES` are both set |
 | `LOGIN_TRUSTED_PROXY_CIDRS` | Comma-separated direct-proxy CIDRs allowed to supply login `X-Real-IP`; leave empty for direct access                         |
 | `INFERENCE_USER_QUOTA_WINDOW_SECONDS` | Per-user fixed quota window; defaults to `86400` seconds                                                        |
 | `INFERENCE_USER_QUOTA_ALLOWANCE` | Maximum accepted user-triggered inference units per window; defaults to `50`                                      |

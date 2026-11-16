@@ -476,7 +476,8 @@ func (k *kernel) iamCommandServiceContainer() *iamService.IAMCommandService {
 		LoginTurnstileAllowedHostnames: iamService.LoginTurnstileAllowedHostnamesFromEnvironment(
 			os.Getenv("LOGIN_TURNSTILE_ALLOWED_HOSTNAMES"),
 		),
-		MailgunSDK: mailgunSDK,
+		LoginChallengeMode: iamService.LoginChallengeModeFromEnvironment(),
+		MailgunSDK:         mailgunSDK,
 	}
 
 	return service

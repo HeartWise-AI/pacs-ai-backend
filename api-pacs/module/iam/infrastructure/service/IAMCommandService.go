@@ -41,7 +41,9 @@ type IAMCommandService struct {
 	LoginTurnstileAPIInterface     cloudflareAPITypes.LoginTurnstileAPIInterface
 	LoginAbuseProtectionInterface  iamApplication.LoginAbuseProtectionInterface
 	LoginTurnstileAllowedHostnames map[string]struct{}
-	MailgunSDK                     *mailgun.MailgunSDK
+	// LoginChallengeMode is turnstile (the zero value) or cooldown.
+	LoginChallengeMode LoginChallengeMode
+	MailgunSDK         *mailgun.MailgunSDK
 }
 
 // ForgotTenantUserPassword forgot password
@@ -117,8 +119,9 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, data type
 		return "", newLoginRateLimitError(decision.RetryAfter)
 	}
 	if decision.ChallengeRequired {
-		if data.TurnstileToken == "" {
-			log.Printf("[security] event=login_challenge_required tenant_id=%s", data.TenantID)
+		if service.loginCooldownMode() || data.TurnstileToken == "" {
+			// In cooldown mode a token is never accepted in place of waiting.
+			log.Printf("[security] event=login_challenge_required tenant_id=%s mode=%s", data.TenantID, service.loginChallengeMode())
 			return "", service.handleDeniedLogin(ctx, signals, apiError.LoginChallengeRequired)
 		}
 		if err := service.validateLoginTurnstile(ctx, data.TurnstileToken, signals); err != nil {
@@ -214,10 +217,14 @@ func (service *IAMCommandService) handleRejectedLogin(ctx context.Context, signa
 	if err != nil {
 		return newLoginError(apiError.LoginProtectionUnavailable, false, 0)
 	}
-	log.Printf("[security] event=login_credentials_rejected tenant_id=%s challenge_required=%t rate_limited=%t",
-		signals.TenantID, decision.ChallengeRequired, decision.RetryAfter > 0)
+	cooldown := service.loginCooldownMode() && decision.ChallengeRequired
+	log.Printf("[security] event=login_credentials_rejected tenant_id=%s challenge_required=%t rate_limited=%t mode=%s",
+		signals.TenantID, decision.ChallengeRequired, decision.RetryAfter > 0 || cooldown, service.loginChallengeMode())
 	if decision.RetryAfter > 0 {
 		return newLoginRateLimitError(decision.RetryAfter)
+	}
+	if cooldown {
+		return newLoginRateLimitError(loginCooldownRetryAfter(decision))
 	}
 	return newLoginError(apiError.UnauthorizedAccess, decision.ChallengeRequired, 0)
 }
@@ -261,7 +268,32 @@ func (service *IAMCommandService) handleDeniedLogin(ctx context.Context, signals
 	if decision.RetryAfter > 0 {
 		return newLoginRateLimitError(decision.RetryAfter)
 	}
+	if service.loginCooldownMode() {
+		return newLoginRateLimitError(loginCooldownRetryAfter(decision))
+	}
 	return newLoginError(originalCode, true, 0)
+}
+
+func (service *IAMCommandService) loginChallengeMode() LoginChallengeMode {
+	if service.LoginChallengeMode == LoginChallengeModeCooldown {
+		return LoginChallengeModeCooldown
+	}
+	return LoginChallengeModeTurnstile
+}
+
+func (service *IAMCommandService) loginCooldownMode() bool {
+	return service.loginChallengeMode() == LoginChallengeModeCooldown
+}
+
+// loginCooldownRetryAfter is the wait advertised in cooldown mode. The
+// protection layer already bounds it; the floor only guards a decision that
+// carries no TTL (for example from a protection implementation that does not
+// report one).
+func loginCooldownRetryAfter(decision types.LoginProtectionDecision) time.Duration {
+	if decision.ChallengeRetryAfter < minimumLoginCooldown {
+		return minimumLoginCooldown
+	}
+	return decision.ChallengeRetryAfter
 }
 
 func (service *IAMCommandService) validateLoginTurnstile(ctx context.Context, token string, signals types.LoginAbuseSignals) error {
