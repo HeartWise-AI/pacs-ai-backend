@@ -17,6 +17,12 @@ tenant. The response uses the standard API envelope and contains:
 - `models`: registration `modelId`, current `containerId`, nullable `gpuUuid` and
   `desiredGpuUuid`, `placementSupported`, and a bounded unsupported reason.
 
+When the measurement sampler is enabled, each model also carries its declared
+and current reservation and the measured peak, resident and last memory, and
+each device the memory of processes outside managed models (`foreignMiB`); see
+[multi-gpu-model-placement.md](multi-gpu-model-placement.md). These fields are
+null until known. `GET /v1/inference/gpus/placement-plan` is described there too.
+
 Physical counters come from a fixed `nvidia-smi` command executed inside an
 already-running, UUID-pinned registered model container. This read never creates
 or starts a helper container and never loads a model. It accepts no shell command

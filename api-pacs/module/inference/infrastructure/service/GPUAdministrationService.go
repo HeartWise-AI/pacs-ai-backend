@@ -107,8 +107,12 @@ type GPUAdministrationService struct {
 	Docker   GPUAdminDocker
 	API      GPUAdminModelAPI
 	Deployer GPUAdminDeployer
-	mu       sync.Mutex
-	cache    map[string]cachedGPUProbe
+	// Clock is replaced in tests; nil means time.Now.
+	Clock  func() time.Time
+	mu     sync.Mutex
+	cache  map[string]cachedGPUProbe
+	autoMu sync.Mutex
+	auto   autoPlacementState
 }
 
 func optionalGPUUUID(value string) *string {

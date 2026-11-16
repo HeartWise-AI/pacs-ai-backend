@@ -18,6 +18,21 @@ enable managed inference on a deployed host.**
 | `MODEL_RETAIN_PEAK_WHILE_LOADED` | `true` when enabled | Hold the GPU peak reservation until confirmed unload; set false only after validating post-inference allocator residency. |
 | `MODEL_GPU_MEMORY_RESERVATION_PERCENT` | `100` | Conservative scaling of GPU peak declarations, rounded up; integer 100–1000. Does not modify immutable image metadata. |
 | `MODEL_QUEUE_TIMEOUT_SECONDS` | `600` | Maximum time waiting for admission, including startup/readiness and eviction. |
+| `MODEL_EVICTION_POLICY` | `idle-timeout` | `lru-on-demand` lets a waiting request evict the least recently used idle model. |
+| `MODEL_MIN_RESIDENCY_SECONDS` | `30` | Minimum idle time before `lru-on-demand` (or an automatic move) may evict a model. |
+| `MODEL_GPU_MEASURE_INTERVAL_SECONDS` | `2` | Period of the per-process GPU memory sampler; `0` disables it. |
+| `MODEL_GPU_MEASURE_STATE_PATH` | unset | Store measurements in this JSON file instead of the Postgres table `model_gpu_measurements`. |
+| `MODEL_RESERVATION_SOURCE` | `declared` | `measured` reserves from observed peaks once enough predictions were seen. |
+| `MODEL_MEASURED_MIN_SAMPLES` | `5` | Observed completed predictions required before a measured reservation applies. |
+| `MODEL_MEASURED_SAFETY_PERCENT` | `125` | Scaling of the measured peak (plus 256 MiB); integer 100-1000. |
+| `MODEL_GPU_PLACEMENT` | `pinned` | `propose` serves the placement plan; `auto` also applies one move per interval. |
+| `MODEL_GPU_PLACEMENT_INTERVAL_SECONDS` | `300` | Period of the automatic placement loop; 30-86400. |
+| `MODEL_GPU_ALLOWED_UUIDS` | all configured GPUs | Comma-separated GPUs a plan may move models to. |
+| `MODEL_GPU_PLACEMENT_TENANT_ID` | required for `auto` | Workspace whose models the automatic loop may move. |
+| `MODEL_GPU_PLACEMENT_ACTOR` | `system:gpu-auto-placement` | Actor recorded on automatic deployments. |
+
+Measured reservations and placement are described in
+[multi-gpu-model-placement.md](multi-gpu-model-placement.md).
 
 For example, a budget of 81920 MiB with a 4096 MiB margin gives 77824 MiB
 schedulable capacity. The operator must also exclude capacity assigned to other

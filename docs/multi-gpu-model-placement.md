@@ -40,7 +40,8 @@ angiography models on the 3090. With conservative 150% peaks and a 4096 MiB
 safety margin, JEPA and SCAD cannot coexist within the A5000 budget. It is a starting allocation, not a benchmarked
 throughput recommendation. Validate cold/warm peaks for the intended working set
 and move additional models if necessary. Placement is explicit configuration;
-this change does not dynamically migrate resident models between GPUs.
+this change does not dynamically migrate resident models between GPUs. See "Placement planning"
+below for the optional planner.
 
 `GPU_MEMORY_BUDGETS_MIB` enables separate reservation ledgers and replaces the
 legacy scalar `GPU_MEMORY_BUDGET_MIB`. The safety margin is subtracted from
@@ -72,6 +73,100 @@ automated model can be unloaded and reloaded for its next study just like a manu
 model. Do not stop its Docker container or delete its ingestion job to reclaim
 idle weights. Active inference cannot be evicted. This policy trades cold-start
 latency for lower idle GPU residency, without changing ingestion schedules.
+
+## Measured reservations (stage 2)
+
+Declared peaks scaled by `MODEL_GPU_MEMORY_RESERVATION_PERCENT` are far above
+what most models use, so a GPU's budget is exhausted by three or four models
+while its memory is mostly free. The manager therefore measures.
+
+While the manager is enabled a sampler runs every
+`MODEL_GPU_MEASURE_INTERVAL_SECONDS` (default `2`; `0` disables it) and once
+more when a prediction starts or ends. For each GPU it executes the fixed
+read-only command `nvidia-smi --query-compute-apps=pid,gpu_uuid,used_memory`
+inside one already-running model container pinned to that GPU. The driver
+reports host PIDs for every process on the device, which are matched to model
+containers through Docker's process list; memory of processes in no managed
+container is reported as foreign. The sampler never starts a container, never
+holds the admission lock during a Docker call, skips a GPU that has no running
+container, and slows to one sample per 30 seconds for a GPU with nothing loaded.
+
+Per container the manager keeps the last sample, the peak (highest sample while
+loading, predicting or loaded), the resident value (highest sample while loaded
+and idle), the number of completed predictions during which a sample was taken,
+and the number of overshoots. The record belongs to the container: a new image
+starts again from its declaration, while a container recreated from the same
+image (a move to the other GPU) inherits it. Records are stored in the Postgres
+table `model_gpu_measurements` (migration `000010`), or in a JSON file when
+`MODEL_GPU_MEASURE_STATE_PATH` is set. If storage is unavailable the sampler
+keeps working in memory and retries.
+
+`MODEL_RESERVATION_SOURCE` selects what is reserved:
+
+- `declared` (default) is shadow mode. Reservations are exactly as before;
+  measurements are only reported.
+- `measured` reserves `ceil(peak x MODEL_MEASURED_SAFETY_PERCENT / 100) + 256` MiB
+  (default 125%) once `MODEL_MEASURED_MIN_SAMPLES` (default 5) predictions were
+  observed, never below the measured resident value and never above the
+  declared reservation. Until then the declared reservation applies. With
+  `MODEL_RETAIN_PEAK_WHILE_LOADED=false` the resident reservation is derived
+  from the measured resident value in the same way, capped at the declared
+  resident value.
+
+A sample above a model's current reservation is an overshoot: it is counted,
+logged, and becomes the stored peak at once, so the next reservation is larger.
+With `measured` the reservation the model currently holds is raised as far as
+the device's free budget allows. Sampling every two seconds can miss a short
+spike; the safety percentage, the 256 MiB allowance and the per-GPU safety
+margin are what absorb it. Run in shadow mode first and compare
+`reservationMiB` with `measuredPeakMiB` before switching.
+
+`GET /v1/inference/gpus` adds per model `declaredPeakMiB`,
+`declaredReservationMiB`, `reservationMiB` (what would be reserved now),
+`measuredPeakMiB`, `measuredResidentMiB`, `measuredLastMiB`, `measuredSamples`,
+`measuredOvershoots`, `measuredAt` and `reservationSource`, and per device
+`foreignMiB`, `managedMiB` and `processSampledAt`. `/debug/vars` adds
+`model_manager_gpu_process_memory_mib` (managed and foreign per GPU),
+`model_manager_reservation_mib` (total declared, effective, and what `measured`
+would reserve today), `model_manager_measured_models`,
+`model_manager_reservation_overshoots_total`, and the events `gpu_sample`,
+`reservation_overshoot` and `placement_move`.
+
+## Placement planning (stage 3)
+
+A running container cannot change GPU, so placement is a plan plus an optional
+applier that uses the existing "Move to GPU" redeployment.
+`MODEL_GPU_PLACEMENT` selects the behaviour:
+
+- `pinned` (default): no planning; the plan endpoint answers 409.
+- `propose`: `GET /v1/inference/gpus/placement-plan` (owner/admin, same guards
+  as the GPU status) returns the current and proposed GPU of every model, the
+  moves, and for each GPU the reserved total and the number of models that fit
+  before and after. It has no side effects.
+- `auto`: in addition, every `MODEL_GPU_PLACEMENT_INTERVAL_SECONDS` (default
+  300) the gateway applies at most one planned move for the workspace named by
+  `MODEL_GPU_PLACEMENT_TENANT_ID`, recorded under `MODEL_GPU_PLACEMENT_ACTOR`.
+
+The plan uses each model's current peak reservation (measured or declared) and
+each GPU's schedulable budget. It maximises the number of models whose
+reservations fit at the same time, then minimises the number of moves, then
+keeps the tightest GPU as free as possible. A placement in which everything
+already fits is never changed. Models that cannot be redeployed
+(`placementSupported: false`, for example without an immutable catalog
+deployment) stay where they are, a model is never sent to a GPU it would not fit
+on alone, and `MODEL_GPU_ALLOWED_UUIDS` limits the destinations. Reservations of
+other workspaces count as fixed load. Up to 16 movable models every assignment
+is examined; above that a first-fit-decreasing pass is used.
+
+The automatic loop moves a model only when the plan lets more models fit, no
+request is waiting for admission, no deployment is in progress, and the model is
+idle and either unloaded or evictable (loaded, idle for at least
+`MODEL_MIN_RESIDENCY_SECONDS`). A model is not moved again for six intervals (at
+least 30 minutes), and nothing else moves while the previous move is still
+deploying. Every move is logged with its reason; every refusal is reported in
+the plan response (`auto.blockedReason`, `auto.lastOutcome`, and
+`blockedReason` on each move) instead of being forced. A move redeploys the
+container, so the model's next prediction is a cold start.
 
 ## Controlled rollout
 

@@ -18,6 +18,28 @@ import (
 type GPUAdministration interface {
 	Snapshot(context.Context, string) (service.GPUAdministrationSnapshot, error)
 	Move(context.Context, string, string, string, string, string) (serviceTypes.DeployInferenceModelVersionResult, error)
+	PlacementPlan(context.Context, string) (service.GPUPlacementPlan, error)
+}
+
+// GetGPUPlacementPlan returns the proposed GPU assignment. It has no side effects.
+func (controller *InferenceCommandController) GetGPUPlacementPlan(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	if controller.GPUAdministration == nil {
+		writeManagedInferenceResponse(w, http.StatusServiceUnavailable, "GPU administration is unavailable.", apiError.InferenceUpgradeUnavailable)
+		return
+	}
+	result, err := controller.GPUAdministration.PlacementPlan(r.Context(), tenantID)
+	if errors.Is(err, service.ErrGPUPlacementPinned) {
+		writeManagedInferenceResponse(w, http.StatusConflict, "GPU placement planning is disabled; set MODEL_GPU_PLACEMENT to propose or auto.", apiError.InferenceUpgradeUnavailable)
+		return
+	}
+	if err != nil {
+		writeGPUAdministrationError(w, err)
+		return
+	}
+	response := viewmodels.HTTPResponseVM{Status: http.StatusOK, Success: true, Message: "GPU placement plan computed.", Data: result}
+	response.JSON(w)
 }
 
 func (controller *InferenceCommandController) GetGPUs(w http.ResponseWriter, r *http.Request) {

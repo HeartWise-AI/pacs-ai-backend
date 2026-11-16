@@ -237,6 +237,7 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Use(iamMiddleware.PolicyAcceptanceGuard)
 					r.Get("/quota", inferenceQueryController.GetInferenceQuota)
 					r.With(iamMiddleware.RBACOwnerOrAdminGuard).Get("/gpus", inferenceCommandController.GetGPUs)
+					r.With(iamMiddleware.RBACOwnerOrAdminGuard).Get("/gpus/placement-plan", inferenceCommandController.GetGPUPlacementPlan)
 
 					r.Post("/onboarding-model-questionnaire-answers/add", inferenceCommandController.AddOnboardingModelQuestionnaireAnswers)
 					r.Get("/onboarding-model-questionnaire-answers", inferenceQueryController.GetOnboardingModelQuestionnaireAnswers)

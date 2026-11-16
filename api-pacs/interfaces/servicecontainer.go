@@ -111,6 +111,7 @@ var (
 	mailgunSDK                 *mailgun.MailgunSDK
 	dockerSDK                  *docker.DockerSDK
 	dockerInferenceAPI         *dockerinference.DockerInferenceAPI
+	autoGPUPlacementOnce       sync.Once
 	modelManager               *modelmanager.Manager
 	modelUpgradeCoordinator    *modelupgrade.UpgradeCoordinator
 	modelDeploymentOperations  *modelupgrade.OperationManager
@@ -199,8 +200,11 @@ func (k *kernel) RegisterIAMRESTCommandController() iamREST.IAMCommandController
 func (k *kernel) RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController {
 	service := k.inferenceCommandServiceContainer()
 
+	gpuAdministration := &inferenceService.GPUAdministrationService{Manager: modelManager, Models: service.InferenceQueryRepositoryInterface, Docker: dockerSDK, API: dockerInferenceAPI, Deployer: service}
+	// Returns at once unless MODEL_GPU_PLACEMENT=auto.
+	autoGPUPlacementOnce.Do(func() { go gpuAdministration.RunAutoPlacement(context.Background()) })
 	controller := inferenceREST.InferenceCommandController{
-		GPUAdministration:                           &inferenceService.GPUAdministrationService{Manager: modelManager, Models: service.InferenceQueryRepositoryInterface, Docker: dockerSDK, API: dockerInferenceAPI, Deployer: service},
+		GPUAdministration:                           gpuAdministration,
 		InferenceCommandServiceInterface:            service,
 		ModelDeploymentOperationSubscriberInterface: modelDeploymentEventBroker,
 		ModelDeploymentEventHeartbeatInterval:       20 * time.Second,
