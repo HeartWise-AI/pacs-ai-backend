@@ -1,10 +1,12 @@
 package rest
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -34,6 +36,25 @@ func (controller *InferenceCommandController) PredictPreparedInferenceModel(w ht
 		"INTERNAL_INFERENCE_PREDICT_MAX_REQUEST_BODY_BYTES",
 		defaultManagedInferenceMaxRequestBodyBytes,
 	)
+	if r.ContentLength > maxBytes {
+		requestbody.ObserveRejection(r, maxBytes, "internal_inference")
+		requestbody.WriteTooLarge(w)
+		return
+	}
+	if managedPredictStreamingEnabled() && r.ContentLength >= managedFastPathMinBytes {
+		// A study payload of known length is forwarded while it arrives. A
+		// layout the head parser does not recognise is left unread in the
+		// buffered reader and takes the buffered path below.
+		limited := http.MaxBytesReader(w, r.Body, maxBytes)
+		head := bufio.NewReaderSize(limited, managedHeadPeekBytes)
+		if controller.predictPreparedStream(w, r, head, limited, maxBytes) {
+			return
+		}
+		r.Body = struct {
+			io.Reader
+			io.Closer
+		}{head, limited}
+	}
 	body, err := readManagedBody(w, r, maxBytes)
 	if err != nil {
 		if requestbody.IsTooLarge(err) {
@@ -68,19 +89,7 @@ func (controller *InferenceCommandController) PredictPreparedInferenceModel(w ht
 		r.Context(), request.TenantID, request.ContainerRef, dockerInferenceTypes.PredictRequest{Raw: request.Request},
 	)
 	if err != nil {
-		if writeInferenceManagerError(w, err) {
-			return
-		}
-		switch err.Error() {
-		case apiError.InvalidPayload:
-			writeManagedInferenceResponse(w, http.StatusBadRequest, "Invalid payload request.", err.Error())
-		case apiError.MissingRecord:
-			writeManagedInferenceResponse(w, http.StatusNotFound, "Inference model is not registered for this tenant.", err.Error())
-		case apiError.DockerError, apiError.DockerInferenceError:
-			writeManagedInferenceResponse(w, http.StatusInternalServerError, "Inference runtime encountered an error.", err.Error())
-		default:
-			writeManagedInferenceResponse(w, http.StatusInternalServerError, "Please contact technical support.", err.Error())
-		}
+		writeManagedPredictError(w, err)
 		return
 	}
 
@@ -91,6 +100,22 @@ func (controller *InferenceCommandController) PredictPreparedInferenceModel(w ht
 		Data:    result.Data,
 	}
 	response.JSON(w)
+}
+
+func writeManagedPredictError(w http.ResponseWriter, err error) {
+	if writeInferenceManagerError(w, err) {
+		return
+	}
+	switch err.Error() {
+	case apiError.InvalidPayload:
+		writeManagedInferenceResponse(w, http.StatusBadRequest, "Invalid payload request.", err.Error())
+	case apiError.MissingRecord:
+		writeManagedInferenceResponse(w, http.StatusNotFound, "Inference model is not registered for this tenant.", err.Error())
+	case apiError.DockerError, apiError.DockerInferenceError:
+		writeManagedInferenceResponse(w, http.StatusInternalServerError, "Inference runtime encountered an error.", err.Error())
+	default:
+		writeManagedInferenceResponse(w, http.StatusInternalServerError, "Please contact technical support.", err.Error())
+	}
 }
 
 func authorizeStudyService(w http.ResponseWriter, r *http.Request) bool {
@@ -154,46 +179,65 @@ func splitManagedEnvelope(body []byte) (managedPredictEnvelope, bool) {
 	if len(body) < managedFastPathMinBytes {
 		return envelope, false
 	}
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	if token, err := decoder.Token(); err != nil || token != json.Delim('{') {
+	envelope, offset, ok := parseManagedHead(body)
+	if !ok {
 		return envelope, false
+	}
+	rest := bytes.TrimRight(body[offset:], " \t\r\n")
+	// rest is now `<request value>}`: drop the envelope's closing brace.
+	if len(rest) < 3 || rest[len(rest)-1] != '}' {
+		return envelope, false
+	}
+	value := bytes.TrimRight(rest[:len(rest)-1], " \t\r\n")
+	if len(value) < 2 || value[0] != '{' || value[len(value)-1] != '}' {
+		return envelope, false
+	}
+	envelope.Request = value
+	return envelope, true
+}
+
+// parseManagedHead reads the envelope up to its "request" key and returns the
+// tenantId and containerRef found before it and the offset of the first byte
+// of the request value, an opening brace. head may be only the start of the
+// body: whatever cannot be decided from it returns false.
+func parseManagedHead(head []byte) (managedPredictEnvelope, int, bool) {
+	var envelope managedPredictEnvelope
+	decoder := json.NewDecoder(bytes.NewReader(head))
+	if token, err := decoder.Token(); err != nil || token != json.Delim('{') {
+		return envelope, 0, false
 	}
 	for {
 		token, err := decoder.Token()
 		if err != nil {
-			return envelope, false
+			return envelope, 0, false
 		}
 		key, ok := token.(string)
 		if !ok {
-			return envelope, false
+			return envelope, 0, false
 		}
 		switch key {
 		case "tenantId":
 			if decoder.Decode(&envelope.TenantID) != nil {
-				return envelope, false
+				return envelope, 0, false
 			}
 		case "containerRef":
 			if decoder.Decode(&envelope.ContainerRef) != nil {
-				return envelope, false
+				return envelope, 0, false
 			}
 		case "request":
-			rest := bytes.TrimLeft(body[decoder.InputOffset():], " \t\r\n")
-			if len(rest) == 0 || rest[0] != ':' {
-				return envelope, false
+			offset := int(decoder.InputOffset())
+			offset += len(head[offset:]) - len(bytes.TrimLeft(head[offset:], " \t\r\n"))
+			if offset >= len(head) || head[offset] != ':' {
+				return envelope, 0, false
 			}
-			rest = bytes.TrimRight(bytes.TrimLeft(rest[1:], " \t\r\n"), " \t\r\n")
-			// rest is now `<request value>}`: drop the envelope's closing brace.
-			if len(rest) < 3 || rest[len(rest)-1] != '}' {
-				return envelope, false
+			offset++
+			offset += len(head[offset:]) - len(bytes.TrimLeft(head[offset:], " \t\r\n"))
+			if offset >= len(head) || head[offset] != '{' {
+				return envelope, 0, false
 			}
-			value := bytes.TrimRight(rest[:len(rest)-1], " \t\r\n")
-			if len(value) < 2 || value[0] != '{' || value[len(value)-1] != '}' {
-				return envelope, false
-			}
-			envelope.Request = value
-			return envelope, true
+			return envelope, offset, true
 		default:
-			return envelope, false
+			return envelope, 0, false
 		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"path"
 	"regexp"
 	"strings"
@@ -37,6 +38,12 @@ type PredictRequest struct {
 	// decoding it into the fields above and encoding it again costs tens of
 	// seconds and several copies, and the gateway never reads its content.
 	Raw json.RawMessage `json:"-"`
+	// Stream, when set, is the encoded JSON request object read from its
+	// source as it is sent to the model, StreamLength bytes exactly. It is
+	// never held in memory and it can be sent only once: a caller that sets it
+	// accepts that the prediction is not retried.
+	Stream       io.Reader `json:"-"`
+	StreamLength int64     `json:"-"`
 }
 
 type ModelResources struct {

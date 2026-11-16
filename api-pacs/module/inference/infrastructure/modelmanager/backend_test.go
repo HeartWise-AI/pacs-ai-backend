@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -223,5 +224,72 @@ func TestBackendUnloadStillFailsWhenProcessStaysDown(t *testing.T) {
 	b := &ContainerBackend{Docker: d, API: &dockerinference.DockerInferenceAPI{}, PollInterval: time.Millisecond, ReadinessTimeout: 20 * time.Millisecond}
 	if err := b.Unload(context.Background(), Model{Name: d.name, ContainerID: id(1)}); err == nil {
 		t.Fatal("a process that never comes back must not release its reservation")
+	}
+}
+
+// A streamed request cannot be sent twice, so the backend confirms the model
+// is loaded, waiting out a process respawn, before the first byte leaves.
+func TestBackendStreamedPredictWaitsForAReadyModel(t *testing.T) {
+	var mu sync.Mutex
+	runtimeCalls, predicted := 0, ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.URL.Path {
+		case "/api/inference/model/runtime":
+			runtimeCalls++
+			if runtimeCalls <= 3 {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			json.NewEncoder(w).Encode(api.ModelRuntimeResponse{Success: true, Data: api.ModelRuntime{State: api.RuntimeReady, Loaded: true}})
+		case "/api/inference/predict":
+			if runtimeCalls <= 3 {
+				t.Error("the stream started before the model answered READY")
+			}
+			body, _ := io.ReadAll(r.Body)
+			predicted = string(body)
+			json.NewEncoder(w).Encode(api.PredictResponse{Success: true})
+		}
+	}))
+	defer server.Close()
+	b := &ContainerBackend{API: &dockerinference.DockerInferenceAPI{}, PollInterval: time.Millisecond, ReadinessTimeout: time.Second}
+	value := `{"outputMode":"JSON"}`
+	request := api.PredictRequest{Stream: strings.NewReader(value), StreamLength: int64(len(value))}
+	if _, err := b.Predict(context.Background(), Model{Name: strings.TrimPrefix(server.URL, "http://")}, request); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if predicted != value {
+		t.Fatalf("streamed request was altered: %q", predicted)
+	}
+}
+
+func TestBackendStreamedPredictLeavesTheStreamUnreadWhenTheModelIsNotReady(t *testing.T) {
+	for name, handler := range map[string]http.HandlerFunc{
+		"process down": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusBadGateway) },
+		"unloaded": func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/api/inference/predict" {
+				t.Error("prediction sent to a model that is not ready")
+			}
+			json.NewEncoder(w).Encode(api.ModelRuntimeResponse{Success: true, Data: api.ModelRuntime{State: api.RuntimeUnloaded}})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(handler)
+			defer server.Close()
+			b := &ContainerBackend{API: &dockerinference.DockerInferenceAPI{}, PollInterval: time.Millisecond, ReadinessTimeout: 20 * time.Millisecond}
+			stream := strings.NewReader(`{"outputMode":"JSON"}`)
+			_, err := b.Predict(context.Background(), Model{Name: strings.TrimPrefix(server.URL, "http://")},
+				api.PredictRequest{Stream: stream, StreamLength: int64(stream.Len())})
+			var notReady *ModelNotReadyError
+			if !errors.As(err, &notReady) || !notReady.ModelNotReady() {
+				t.Fatalf("expected a not-ready error, got %v", err)
+			}
+			if stream.Len() != len(`{"outputMode":"JSON"}`) {
+				t.Fatal("the stream was read although the model was not ready")
+			}
+		})
 	}
 }

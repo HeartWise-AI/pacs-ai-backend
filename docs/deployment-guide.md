@@ -1043,6 +1043,7 @@ docker compose images > pacs-ai-versions.txt
 | `INFERENCE_PREDICT_MAX_REQUEST_BODY_BYTES` | optional | `1048576` | Stricter JSON body limit for direct model predictions |
 | `INTERNAL_INFERENCE_PREDICT_MAX_REQUEST_BODY_BYTES` | optional | `2147483648` | Authenticated study-service inference-gateway body limit; keep above the largest prepared DICOM payload |
 | `INTERNAL_INFERENCE_READ_TIMEOUT_SECONDS` | optional | `7200` | Read deadline for the authenticated prepared-DICOM gateway |
+| `INTERNAL_INFERENCE_PREDICT_STREAMING` | optional | `true` | Forward a study-service request of 8 MiB or more to the model while it arrives instead of holding it in memory; `false` restores the buffered path. A streamed request is never replayed: a model lost while receiving is answered `502`, which study-service retries |
 | `DICOMWEB_MAX_REQUEST_BODY_BYTES` | optional | `6442450944` | Go-side ceiling for the authenticated DICOMweb large-upload exception; keep consistent with the Nginx 6g default |
 | `INFERENCE_MAX_SERIES_UIDS` | optional | `256` | Hard series-count ceiling before a model request is assembled |
 | `INFERENCE_MAX_METADATA_BYTES` | optional | `65536` | Maximum encoded prediction metadata size |

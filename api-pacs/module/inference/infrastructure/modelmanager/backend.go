@@ -102,8 +102,34 @@ func (b *ContainerBackend) Load(ctx context.Context, m Model) error {
 	return nil
 }
 func (b *ContainerBackend) Predict(ctx context.Context, m Model, r api.PredictRequest) (api.PredictResponse, error) {
+	if r.Stream != nil {
+		// A streamed request body is consumed as it is sent and cannot be sent
+		// again. Confirm the inference process answers and holds the model
+		// before the first byte leaves, waiting out a process respawn, so the
+		// only failures left are those of a prediction already under way.
+		runtime, err := b.runtimeDuringRestart(ctx, m)
+		if err != nil {
+			return api.PredictResponse{}, &ModelNotReadyError{cause: err}
+		}
+		if !runtime.Loaded || runtime.State != api.RuntimeReady {
+			return api.PredictResponse{}, &ModelNotReadyError{cause: fmt.Errorf("model runtime is %s", runtime.State)}
+		}
+	}
 	return b.API.Predict(ctx, m.Name, r)
 }
+
+// ModelNotReadyError reports that a streamed prediction was not started
+// because the model did not confirm it was loaded. No request byte was sent.
+type ModelNotReadyError struct{ cause error }
+
+func (e *ModelNotReadyError) Error() string {
+	return fmt.Sprintf("model is not ready for a streamed prediction: %v", e.cause)
+}
+func (e *ModelNotReadyError) Unwrap() error { return e.cause }
+
+// ModelNotReady marks the error for the HTTP layer, which answers it as a
+// transient upstream failure.
+func (*ModelNotReadyError) ModelNotReady() bool { return true }
 
 // runtimeDuringRestart reads the runtime, waiting out the short window in which
 // the supervised inference process is being respawned. A model that has just
