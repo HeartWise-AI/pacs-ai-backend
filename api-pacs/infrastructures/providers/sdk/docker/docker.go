@@ -147,6 +147,15 @@ func (d *DockerSDK) CreateCandidateContainer(ctx context.Context, config types.C
 		return "", fmt.Errorf("candidate container name must differ from the active container name")
 	}
 
+	if config.KeepActiveConfiguration {
+		if expected := strings.TrimSpace(config.ExpectedImageID); expected != "" && active.Image != expected {
+			return "", fmt.Errorf("active container no longer runs the expected image")
+		}
+		if dropped := len(active.HostConfig.PortBindings); dropped > 0 {
+			log.Printf("[docker] candidate %s does not keep %d published host port(s) of %s: the active container still holds them", config.Name, dropped, strings.TrimPrefix(active.Name, "/"))
+		}
+	}
+
 	containerConfig, hostConfig, networkConfig := d.candidateContainerConfigs(config, active)
 	response, err := d.Client.ContainerCreate(ctx, containerConfig, hostConfig, networkConfig, nil, config.Name)
 	if err != nil {
@@ -164,6 +173,31 @@ func (d *DockerSDK) candidateContainerConfigs(
 	containerConfig := &container.Config{
 		Image: config.Image,
 		Env:   append([]string(nil), config.Envs...),
+	}
+	keep := config.KeepActiveConfiguration && active.Config != nil
+	if keep {
+		// A move keeps the container as it runs: same environment, labels,
+		// command and entrypoint. Only the image field is set by the caller,
+		// and it names the very image the active container uses.
+		copied := *active.Config
+		copied.Image = config.Image
+		copied.Env = append([]string(nil), active.Config.Env...)
+		copied.Cmd = append([]string(nil), active.Config.Cmd...)
+		copied.Entrypoint = append([]string(nil), active.Config.Entrypoint...)
+		copied.Labels = make(map[string]string, len(active.Config.Labels)+1)
+		for key, value := range active.Config.Labels {
+			copied.Labels[key] = value
+		}
+		copied.Volumes = make(map[string]struct{}, len(active.Config.Volumes))
+		for volume := range active.Config.Volumes {
+			copied.Volumes[volume] = struct{}{}
+		}
+		// Docker names a container's host after its own ID unless told otherwise.
+		if active.ContainerJSONBase != nil && len(copied.Hostname) >= 12 && strings.HasPrefix(active.ID, copied.Hostname) {
+			copied.Hostname = ""
+		}
+		copied.MacAddress = "" //nolint:staticcheck // an address cannot be shared with the running container
+		containerConfig = &copied
 	}
 	if active.Config != nil {
 		containerConfig.ExposedPorts = clonePortSet(active.Config.ExposedPorts)
@@ -186,7 +220,9 @@ func (d *DockerSDK) candidateContainerConfigs(
 		copied.Links = nil
 		copied.AutoRemove = false
 		copied.ContainerIDFile = ""
-		copied.RestartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
+		if !keep {
+			copied.RestartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
+		}
 		hostConfig = &copied
 	}
 
@@ -199,7 +235,10 @@ func (d *DockerSDK) candidateContainerConfigs(
 	if active.Config != nil && active.Config.Labels[gpuPlacementNameLabel] != "" {
 		activeName = active.Config.Labels[gpuPlacementNameLabel]
 	}
-	containerConfig.Labels = map[string]string{gpuPlacementNameLabel: activeName}
+	if !keep {
+		containerConfig.Labels = map[string]string{}
+	}
+	containerConfig.Labels[gpuPlacementNameLabel] = activeName
 	uuid := config.GPUUUID
 	if uuid == "" {
 		uuid = d.gpuForContainer(activeName)
@@ -211,8 +250,12 @@ func (d *DockerSDK) candidateContainerConfigs(
 
 	networkConfig := &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{}}
 	if active.NetworkSettings != nil {
-		for networkName := range active.NetworkSettings.Networks {
-			networkConfig.EndpointsConfig[networkName] = &network.EndpointSettings{}
+		for networkName, endpoint := range active.NetworkSettings.Networks {
+			settings := &network.EndpointSettings{}
+			if keep && endpoint != nil {
+				settings.Aliases = extraNetworkAliases(active, endpoint.Aliases)
+			}
+			networkConfig.EndpointsConfig[networkName] = settings
 		}
 	}
 	if len(networkConfig.EndpointsConfig) == 0 && strings.TrimSpace(d.Network) != "" {
@@ -220,6 +263,25 @@ func (d *DockerSDK) candidateContainerConfigs(
 	}
 
 	return containerConfig, hostConfig, networkConfig
+}
+
+// extraNetworkAliases returns the aliases an operator gave the active
+// container. Its name and ID are left out: Docker resolves those to the active
+// container, which keeps running beside the candidate, and a candidate that
+// answered to them would receive requests meant for the other one.
+func extraNetworkAliases(active engine.ContainerJSON, aliases []string) []string {
+	name, id := "", ""
+	if active.ContainerJSONBase != nil {
+		name, id = strings.TrimPrefix(active.Name, "/"), active.ID
+	}
+	var kept []string
+	for _, alias := range aliases {
+		if alias == "" || alias == name || (len(alias) >= 12 && strings.HasPrefix(id, alias)) {
+			continue
+		}
+		kept = append(kept, alias)
+	}
+	return kept
 }
 
 func clonePortSet(source nat.PortSet) nat.PortSet {
@@ -284,19 +346,21 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 		return types.GetContainerInfoResult{}, err
 	}
 
-	placementName := ""
+	placementName, imageReference := "", ""
 	if containerJSON.Config != nil {
 		placementName = containerJSON.Config.Labels[gpuPlacementNameLabel]
+		imageReference = containerJSON.Config.Image
 	}
 	return types.GetContainerInfoResult{
-		PlacementName: placementName,
-		GPUUUID:       singleGPUUUID(containerJSON.HostConfig),
-		ID:            containerJSON.ID,
-		ImageID:       containerJSON.Image,
-		Name:          containerJSON.Name,
-		Lifecycle:     types.LifecycleFromStatus(types.Status(containerJSON.State.Status)),
-		StartedAt:     startedAtTime,
-		FinishedAt:    finishedAtTime,
+		PlacementName:  placementName,
+		GPUUUID:        singleGPUUUID(containerJSON.HostConfig),
+		ID:             containerJSON.ID,
+		ImageID:        containerJSON.Image,
+		ImageReference: imageReference,
+		Name:           containerJSON.Name,
+		Lifecycle:      types.LifecycleFromStatus(types.Status(containerJSON.State.Status)),
+		StartedAt:      startedAtTime,
+		FinishedAt:     finishedAtTime,
 	}, nil
 }
 
@@ -363,6 +427,7 @@ func (d *DockerSDK) InspectImage(ctx context.Context, imageName string) (types.I
 	return types.InspectImageResult{
 		ID:          inspection.ID,
 		RepoDigests: append([]string(nil), inspection.RepoDigests...),
+		RepoTags:    append([]string(nil), inspection.RepoTags...),
 		Labels:      labels,
 	}, nil
 }

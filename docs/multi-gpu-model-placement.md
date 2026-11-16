@@ -196,6 +196,16 @@ the plan response (`auto.blockedReason`, `auto.lastOutcome`, and
 `blockedReason` on each move) instead of being forced. A move redeploys the
 container, so the model's next prediction is a cold start.
 
+A move keeps the image the container runs (see "Moving a registered model" in
+`model-gpu-administration.md`). The plan sets `imageDrift` and lists
+`imageDriftModels` when a model runs an image other than its registered catalog
+version; that does not block a move. An automatic move is never applied when it
+could not keep the running image (`runningImageUnavailable`), and never to a
+model that is serving or has a waiting request: the loop looks at the model
+again just before moving, and the deployment closes admission only if the model
+is still idle at that instant (`BlockAndDrainIdle`), otherwise it is abandoned
+with the model untouched.
+
 ## Controlled rollout
 
 1. Merge and deploy the code with both managed routing flags disabled. Keep a

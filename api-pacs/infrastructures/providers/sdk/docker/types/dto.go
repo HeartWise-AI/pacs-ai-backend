@@ -68,6 +68,14 @@ type CreateCandidateContainer struct {
 	Image             string
 	Envs              []string
 	ActiveContainerID string
+	// KeepActiveConfiguration recreates the active container as it runs now:
+	// its environment, labels, command, entrypoint, restart policy and extra
+	// network aliases are kept and Envs is ignored. Only the GPU device request
+	// and the container's own identity (name, ID aliases, host ports) change.
+	KeepActiveConfiguration bool
+	// ExpectedImageID, when set with KeepActiveConfiguration, must be the local
+	// image the active container runs; otherwise nothing is created.
+	ExpectedImageID string
 }
 
 type GetContainerInfoResult struct {
@@ -75,10 +83,13 @@ type GetContainerInfoResult struct {
 	GPUUUID       string
 	ID            string
 	ImageID       string
-	Name          string
-	Lifecycle     Lifecycle
-	StartedAt     time.Time
-	FinishedAt    time.Time
+	// ImageReference is the reference the container was created with. It is a
+	// bare image ID for containers created from an immutable local image.
+	ImageReference string
+	Name           string
+	Lifecycle      Lifecycle
+	StartedAt      time.Time
+	FinishedAt     time.Time
 }
 
 // InspectImageResult exposes only the immutable image identity and release
@@ -87,5 +98,6 @@ type GetContainerInfoResult struct {
 type InspectImageResult struct {
 	ID          string
 	RepoDigests []string
+	RepoTags    []string
 	Labels      map[string]string
 }

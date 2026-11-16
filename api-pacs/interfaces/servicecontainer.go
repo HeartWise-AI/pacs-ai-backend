@@ -201,6 +201,9 @@ func (k *kernel) RegisterInferenceRESTCommandController() inferenceREST.Inferenc
 	service := k.inferenceCommandServiceContainer()
 
 	gpuAdministration := &inferenceService.GPUAdministrationService{Manager: modelManager, Models: service.InferenceQueryRepositoryInterface, Docker: dockerSDK, API: dockerInferenceAPI, Deployer: service}
+	if service.InferenceModelVersionRepositoryInterface != nil {
+		gpuAdministration.Versions = service.InferenceModelVersionRepositoryInterface
+	}
 	if modelDeploymentOperations != nil {
 		gpuAdministration.Operations = modelDeploymentOperations
 	}

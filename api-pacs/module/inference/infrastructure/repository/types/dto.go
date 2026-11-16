@@ -356,6 +356,9 @@ type ReplaceInferenceModelRegistration struct {
 	ExpectedContainerID    string
 	ExpectedImageReference string
 	Deployment             entity.InferenceModelDeployment
+	// KeepsRunningImage marks a move of the running image to another GPU. Such
+	// an image may be a local build, which has no registry digest.
+	KeepsRunningImage bool
 }
 
 // RestoreInferenceModelRegistration atomically restores the rollback baseline

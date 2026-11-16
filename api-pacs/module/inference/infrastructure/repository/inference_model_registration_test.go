@@ -243,3 +243,34 @@ func TestRollbackDeploymentRetainsPersistedGPUPreference(t *testing.T) {
 		t.Fatal("rollback snapshot mutated current registration")
 	}
 }
+
+func TestRegistrationOfAMovedLocalImageNeedsNoRegistryDigest(t *testing.T) {
+	moved := validRegistrationReplacement()
+	moved.Deployment.ImageDigest = ""
+	if err := validateRegistrationReplacement(moved); err == nil || err.Error() != apiError.InvalidPayload {
+		t.Fatalf("a catalog deployment without a digest returned %v", err)
+	}
+	moved.KeepsRunningImage = true
+	if err := validateRegistrationReplacement(moved); err != nil {
+		t.Fatalf("a moved local image was refused: %v", err)
+	}
+	moved.Deployment.LocalImageID = ""
+	if err := validateRegistrationReplacement(moved); err == nil {
+		t.Fatal("a move must still record the local image it runs")
+	}
+
+	// The registration of a hand-deployed local build is the rollback baseline
+	// of a move; it must be restorable, with its snapshot kept.
+	replacement := validRegistrationReplacement()
+	baseline := repositoryTypes.RestoreInferenceModelRegistration{
+		ID: replacement.ID, TenantID: replacement.TenantID,
+		ExpectedContainerID: replacement.Deployment.ContainerID, ExpectedImageReference: replacement.Deployment.ImageReference,
+		Previous: replacement.Deployment,
+	}
+	baseline.Previous.ContainerID = replacement.ExpectedContainerID
+	baseline.Previous.ImageReference = replacement.ExpectedImageReference
+	baseline.Previous.ImageDigest = ""
+	if persist, err := validateRegistrationRestore(baseline); err != nil || !persist {
+		t.Fatalf("local build rollback baseline: persist=%v err=%v", persist, err)
+	}
+}

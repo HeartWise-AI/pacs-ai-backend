@@ -249,7 +249,7 @@ func TestGPUAdminMoveKeepsArtifactAndPropagatesCompareAndSwapIdentity(t *testing
 	_, err := service.Move(context.Background(), "tenant-a", "operator", "model-a", adminGPUB, before.ContainerID)
 	require.NoError(t, err)
 	require.Equal(t, []string{"model-a"}, api.names)
-	require.Equal(t, []serviceTypes.DeployInferenceModelVersion{{TenantID: "tenant-a", ActorUserID: "operator", ModelID: "model-a", VersionID: "artifact-v1", TargetGPUUUID: adminGPUB, ExpectedContainerID: before.ContainerID}}, deployer.requests)
+	require.Equal(t, []serviceTypes.DeployInferenceModelVersion{{TenantID: "tenant-a", ActorUserID: "operator", ModelID: "model-a", VersionID: "artifact-v1", TargetGPUUUID: adminGPUB, ExpectedContainerID: before.ContainerID, KeepRunningImage: true}}, deployer.requests)
 	require.Equal(t, before, models.models[0])
 }
 

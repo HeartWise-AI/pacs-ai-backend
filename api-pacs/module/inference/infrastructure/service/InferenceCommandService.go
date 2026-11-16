@@ -834,7 +834,10 @@ func (service *InferenceCommandService) DeployInferenceModelVersion(
 		return types.DeployInferenceModelVersionResult{}, err
 	}
 	version.Normalize()
-	if err = version.Validate(); err != nil || version.ID != data.VersionID || version.Status != entity.InferenceModelVersionAvailable {
+	// A move does not deploy the catalog version, so a version that was
+	// withdrawn since must not keep the model from being moved.
+	if err = version.Validate(); err != nil || version.ID != data.VersionID ||
+		(version.Status != entity.InferenceModelVersionAvailable && !data.KeepRunningImage) {
 		return types.DeployInferenceModelVersionResult{}, errors.New(apiError.InvalidPayload)
 	}
 	source := entity.InferenceModelDeployment{}
@@ -850,6 +853,7 @@ func (service *InferenceCommandService) DeployInferenceModelVersion(
 	operation, err := service.ModelDeploymentOperations.Start(ctx, modelupgrade.StartDeploymentOperation{
 		TenantID: data.TenantID, ModelID: data.ModelID, ActorUserID: data.ActorUserID,
 		Source: source, Target: version, TargetGPUUUID: data.TargetGPUUUID,
+		KeepRunningImage: data.KeepRunningImage, Automatic: data.Automatic,
 	})
 	if err != nil {
 		return types.DeployInferenceModelVersionResult{}, err

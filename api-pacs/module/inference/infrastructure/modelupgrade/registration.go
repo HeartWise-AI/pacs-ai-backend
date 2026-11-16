@@ -57,3 +57,67 @@ func DeploymentFromCandidate(
 		DeployedAt: deployedAt.Unix(),
 	}, nil
 }
+
+// DeploymentFromMovedCandidate records a container recreated from the image the
+// previous container ran. The catalog reference of the registration is kept as
+// it was; the image identity is the one that actually runs, which for a locally
+// built image has no registry digest.
+func DeploymentFromMovedCandidate(
+	candidate ValidatedCandidate,
+	registered entity.InferenceModel,
+	running RunningImage,
+	catalogVersionID string,
+	deployedAt time.Time,
+) (entity.InferenceModelDeployment, error) {
+	previous := entity.InferenceModelDeployment{}
+	if registered.Deployment != nil {
+		previous = *registered.Deployment
+	}
+	if strings.TrimSpace(candidate.ContainerID) == "" || strings.TrimSpace(running.ImageID) == "" ||
+		candidate.LocalImageID != running.ImageID || strings.TrimSpace(candidate.ModelInfo.ModelID) == "" ||
+		strings.TrimSpace(candidate.ModelInfo.Version) == "" {
+		return entity.InferenceModelDeployment{}, fmt.Errorf("%w: moved candidate identity is incomplete", ErrCandidateContract)
+	}
+	if deployedAt.IsZero() {
+		return entity.InferenceModelDeployment{}, fmt.Errorf("%w: deployment time is required", ErrCandidateContract)
+	}
+	deployment := entity.InferenceModelDeployment{
+		GPUUUID:          candidate.GPUUUID,
+		ContainerID:      strings.TrimSpace(candidate.ContainerID),
+		CatalogVersionID: strings.TrimSpace(previous.CatalogVersionID),
+		ArtifactModelID:  strings.TrimSpace(candidate.ModelInfo.ModelID),
+		ImageReference:   strings.TrimSpace(running.Reference),
+		ImageDigest:      strings.TrimSpace(running.Digest),
+		LocalImageID:     strings.TrimSpace(running.ImageID),
+		ModelVersion:     strings.TrimSpace(candidate.ModelInfo.Version),
+		Provenance:       previous.Provenance,
+		DeployedAt:       deployedAt.Unix(),
+	}
+	if deployment.CatalogVersionID == "" {
+		deployment.CatalogVersionID = strings.TrimSpace(catalogVersionID)
+	}
+	// The registration already describes this very image: keep its wording.
+	if strings.TrimSpace(previous.LocalImageID) == running.ImageID {
+		if reference := strings.TrimSpace(previous.ImageReference); reference != "" {
+			deployment.ImageReference = reference
+		}
+		if deployment.ImageDigest == "" {
+			deployment.ImageDigest = strings.TrimSpace(previous.ImageDigest)
+		}
+	}
+	if provenance := candidate.ModelInfo.Provenance; provenance != nil && provenance.Validate() == nil && provenance.SourceRevision != nil {
+		revision := *provenance.SourceRevision
+		deployment.Provenance = &entity.InferenceModelProvenance{
+			SourceRepository: provenance.SourceRepository,
+			SourceRevision:   &revision,
+			ModelRepository:  provenance.ModelRepository,
+			ModelRevision:    provenance.ModelRevision,
+			WeightsPath:      provenance.WeightsPath,
+			WeightsSHA256:    provenance.WeightsSHA256,
+		}
+	}
+	if deployment.CatalogVersionID == "" || deployment.ImageReference == "" || deployment.Provenance == nil {
+		return entity.InferenceModelDeployment{}, fmt.Errorf("%w: moved candidate identity is incomplete", ErrCandidateContract)
+	}
+	return deployment, nil
+}
