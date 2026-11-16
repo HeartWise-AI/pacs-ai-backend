@@ -337,6 +337,47 @@ class ReleaseModelTests(unittest.TestCase):
         self.assertNotIn("super-secret-token", flattened)
         self.assertNotIn(":latest", flattened)
 
+    def test_build_retries_once_without_cache_after_clearing_the_build_cache(self):
+        self.write_dockerfile()
+        commands = []
+
+        def flaky(command, **kwargs):
+            commands.append(list(command))
+            if list(command[:2]) == ["docker", "build"] and "--no-cache" not in command:
+                raise RELEASE.ReleaseError("Command failed with exit code 1")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with mock.patch.object(RELEASE, "run_command", side_effect=flaky):
+            RELEASE.build_image(
+                self.model_dir,
+                self.model_dir / "Dockerfile",
+                "heartwisehub/pacs-ai-example:1.2.3",
+                self.metadata(),
+                None,
+            )
+
+        self.assertEqual(commands[1], ["docker", "builder", "prune", "--all", "--force"])
+        self.assertEqual(commands[2][:3], ["docker", "build", "--no-cache"])
+        self.assertEqual(len(commands), 3)
+
+    def test_build_failure_after_retry_is_reported(self):
+        self.write_dockerfile()
+
+        def failing(command, **kwargs):
+            if list(command[:2]) == ["docker", "build"]:
+                raise RELEASE.ReleaseError("Command failed with exit code 1")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with mock.patch.object(RELEASE, "run_command", side_effect=failing):
+            with self.assertRaises(RELEASE.ReleaseError):
+                RELEASE.build_image(
+                    self.model_dir,
+                    self.model_dir / "Dockerfile",
+                    "heartwisehub/pacs-ai-example:1.2.3",
+                    self.metadata(),
+                    None,
+                )
+
     def test_label_and_runtime_mismatches_are_rejected(self):
         metadata = self.metadata()
         RELEASE.verify_image_labels(metadata.labels, metadata)
