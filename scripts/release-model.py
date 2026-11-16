@@ -486,7 +486,19 @@ def build_image(
     except ValueError:
         dockerfile_label = dockerfile
     log(f"Building {image} from {dockerfile_label}")
-    run_command(command, capture_output=False)
+    try:
+        run_command(command, capture_output=False)
+    except ReleaseError:
+        # A self-hosted runner's BuildKit cache can lose a parent snapshot
+        # ("failed to prepare ... parent snapshot ... does not exist"); every
+        # later build that reuses that layer then fails the same way. Clear the
+        # build cache (never images, containers or volumes) and retry once
+        # without cache. A genuine build error fails again and is reported.
+        log("Build failed; clearing the BuildKit cache and retrying once without cache")
+        run_command(("docker", "builder", "prune", "--all", "--force"), check=False)
+        retry = list(command)
+        retry.insert(retry.index("build") + 1, "--no-cache")
+        run_command(retry, capture_output=False)
 
 
 def inspect_image(image: str) -> tuple[str, dict[str, str], list[str]]:
