@@ -2,12 +2,15 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
@@ -49,6 +52,26 @@ func (repository *recoveryRunRepository) ListProcessingRunExecutions(_ context.C
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
 	return append([]entity.InferenceIngestionProcessingJob(nil), repository.executions[runID]...), nil
+}
+func (repository *recoveryRunRepository) FailPendingProcessingRunExecution(_ context.Context, data repositoryTypes.FailPendingInferenceIngestionProcessingJob) (bool, error) {
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	executions := repository.executions[data.ProcessingRunID]
+	for index := range executions {
+		if executions[index].ID == data.ID && executions[index].CandidateID == data.CandidateID &&
+			executions[index].ModelName == data.ModelName && executions[index].Status == entity.InferenceIngestionProcessingJobStatusPending {
+			executions[index].Status = entity.InferenceIngestionProcessingJobStatusFailed
+			executions[index].ErrorMessage = data.ErrorMessage
+			executions[index].UpdatedAt = time.Now()
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (repository *recoveryRunRepository) run() entity.InferenceIngestionProcessingRun {
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	return repository.runs[0]
 }
 func (repository *recoveryRunRepository) execution(runID string) entity.InferenceIngestionProcessingJob {
 	repository.mu.Lock()
@@ -122,6 +145,7 @@ func newRecoveryFixture(t *testing.T) *recoveryFixture {
 	t.Setenv(reconciliationQueuedStaleMinutesEnv, "10")
 	t.Setenv(reconciliationRunningStaleMinutesEnv, "65")
 	t.Setenv(reconciliationModelRunningStaleMinutesEnv, "")
+	t.Setenv(reconciliationRedispatchMaxMinutesEnv, "")
 	t.Setenv("INFERENCE_INGESTION_RECONCILIATION_STALE_MINUTES", "")
 	retries := studyServiceDispatchRetrySchedule
 	studyServiceDispatchRetrySchedule = []time.Duration{0}
@@ -304,6 +328,91 @@ func TestPendingExecutionIsLeftAloneUnlessItsDispatchWasProvablyLost(t *testing.
 		defer liveStudyServiceDispatches.end(fixture.key)
 		require.Zero(t, fixture.cycle(t))
 		require.Empty(t, fixture.dispatched)
+	})
+}
+
+// Observed live: executions of a three-day-old run whose model registration
+// was gone were dispatched again, and failed again, every five minutes.
+func TestExecutionWhoseRecoveredDispatchCanNeverSucceedIsFailedOnce(t *testing.T) {
+	for _, dispatchErr := range []error{
+		errors.New(apiError.MissingRecord),
+		fmt.Errorf("cannot dispatch execution outside committed processing run: %w", errors.New(apiError.MissingRecord)),
+	} {
+		t.Run(dispatchErr.Error(), func(t *testing.T) {
+			fixture := newRecoveryFixture(t)
+			fixture.dispatcher.buildErr = dispatchErr
+
+			require.Equal(t, 1, fixture.cycle(t))
+			require.Eventually(t, func() bool { return !liveStudyServiceDispatches.isLive(fixture.key) }, 5*time.Second, time.Millisecond)
+
+			execution := fixture.runs.execution(fixture.runID)
+			require.Equal(t, entity.InferenceIngestionProcessingJobStatusFailed, execution.Status)
+			require.NotNil(t, execution.ErrorMessage)
+			require.Contains(t, *execution.ErrorMessage, "its dispatch was lost and cannot be started again")
+			require.Contains(t, *execution.ErrorMessage, apiError.MissingRecord)
+			require.Equal(t, entity.InferenceIngestionProcessingRunPhaseTerminal, fixture.runs.run().Phase, "the run reaches a terminal state")
+
+			// Failed, not pending: nothing is dispatched at the next cycles.
+			require.Zero(t, fixture.cycle(t))
+			require.Zero(t, fixture.cycle(t))
+			require.False(t, liveStudyServiceDispatches.isLive(fixture.key))
+			require.Equal(t, 1, fixture.dispatcher.buildCalls)
+			require.Zero(t, fixture.dispatcher.dispatchCalls)
+		})
+	}
+}
+
+func TestExecutionWhoseRecoveredDispatchFailsForAPassingReasonStaysPending(t *testing.T) {
+	fixture := newRecoveryFixture(t)
+	fixture.dispatcher.buildErr = errors.New(apiError.DatabaseError)
+
+	require.Equal(t, 1, fixture.cycle(t))
+	require.Eventually(t, func() bool { return !liveStudyServiceDispatches.isLive(fixture.key) }, 5*time.Second, time.Millisecond)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusPending, fixture.runs.execution(fixture.runID).Status)
+
+	// The next cycle tries again.
+	require.Equal(t, 1, fixture.cycle(t))
+	require.Eventually(t, func() bool { return !liveStudyServiceDispatches.isLive(fixture.key) }, 5*time.Second, time.Millisecond)
+	require.Equal(t, 2, fixture.dispatcher.buildCalls)
+}
+
+func TestExecutionPendingLongerThanTheAgeLimitIsNotDispatchedAgain(t *testing.T) {
+	age := func(fixture *recoveryFixture, pendingFor time.Duration) {
+		since := time.Now().Add(-pendingFor)
+		fixture.runs.executions[fixture.runID][0].CreatedAt = since
+		fixture.runs.executions[fixture.runID][0].UpdatedAt = since
+		candidate := fixture.queries.candidates["candidate-"+fixture.runID[len("run-"):]]
+		candidate.RetrievedAt = &since
+		fixture.queries.candidates[candidate.ID] = candidate
+	}
+	t.Run("three days old, default limit of six hours", func(t *testing.T) {
+		fixture := newRecoveryFixture(t)
+		age(fixture, 72*time.Hour)
+		require.Zero(t, fixture.cycle(t))
+		require.Zero(t, fixture.cycle(t))
+		require.False(t, liveStudyServiceDispatches.isLive(fixture.key))
+		require.Zero(t, fixture.dispatcher.buildCalls)
+		require.Equal(t, entity.InferenceIngestionProcessingJobStatusPending, fixture.runs.execution(fixture.runID).Status)
+	})
+	t.Run("five hours old, default limit", func(t *testing.T) {
+		fixture := newRecoveryFixture(t)
+		age(fixture, 5*time.Hour)
+		require.Equal(t, 1, fixture.cycle(t))
+		<-fixture.dispatched
+	})
+	t.Run("five hours old, limit set to one hour", func(t *testing.T) {
+		fixture := newRecoveryFixture(t)
+		t.Setenv(reconciliationRedispatchMaxMinutesEnv, "60")
+		age(fixture, 5*time.Hour)
+		require.Zero(t, fixture.cycle(t))
+		require.Zero(t, fixture.dispatcher.buildCalls)
+	})
+	t.Run("three days old, limit raised to a week", func(t *testing.T) {
+		fixture := newRecoveryFixture(t)
+		t.Setenv(reconciliationRedispatchMaxMinutesEnv, "10080")
+		age(fixture, 72*time.Hour)
+		require.Equal(t, 1, fixture.cycle(t))
+		<-fixture.dispatched
 	})
 }
 

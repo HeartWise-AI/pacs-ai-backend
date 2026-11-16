@@ -115,7 +115,12 @@ func (d *DockerInferenceAPI) GetModelFacts(ctx context.Context, containerName st
 // Predict predicts the result from the docker inference API
 func (d *DockerInferenceAPI) Predict(ctx context.Context, containerName string, request types.PredictRequest) (types.PredictResponse, error) {
 	var body io.Reader
-	if len(request.Raw) > 0 {
+	if request.Stream != nil {
+		if request.StreamLength <= 0 {
+			return types.PredictResponse{}, errors.New(apiError.DockerInferenceError)
+		}
+		body = request.Stream
+	} else if len(request.Raw) > 0 {
 		body = bytes.NewReader(request.Raw)
 	} else {
 		buf := new(bytes.Buffer)
@@ -130,6 +135,14 @@ func (d *DockerInferenceAPI) Predict(ctx context.Context, containerName string, 
 	if err != nil {
 		log.Println("Error:", err)
 		return types.PredictResponse{}, errors.New(apiError.DockerInferenceError)
+	}
+
+	if request.Stream != nil {
+		// A plain Content-Length request, as with a buffered body: the model's
+		// proxy never sees chunked encoding. The stream cannot be read twice,
+		// so the transport must not replay it on a reused connection.
+		req.ContentLength = request.StreamLength
+		req.GetBody = nil
 	}
 
 	// set headers
