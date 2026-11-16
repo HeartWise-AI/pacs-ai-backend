@@ -142,6 +142,8 @@ type CreateInferenceIngestionJobRequest struct {
 	StudyTimeEnd           string   `json:"studyTimeEnd,omitempty"`
 	ScheduleStartTimestamp uint64   `json:"scheduleStartTimestamp"`
 	ScheduleEndTimestamp   uint64   `json:"scheduleEndTimestamp"`
+	// NotificationsEnabled is optional; absent means on.
+	NotificationsEnabled *bool `json:"notificationsEnabled,omitempty"`
 }
 
 type CreateStudyProcessingRunResponse struct {
@@ -185,6 +187,8 @@ type UpdateInferenceIngestionJobRequest struct {
 	StudyTimeEnd           string   `json:"studyTimeEnd,omitempty"`
 	ScheduleStartTimestamp uint64   `json:"scheduleStartTimestamp"`
 	ScheduleEndTimestamp   uint64   `json:"scheduleEndTimestamp"`
+	// NotificationsEnabled is optional; absent leaves the stored value unchanged.
+	NotificationsEnabled *bool `json:"notificationsEnabled,omitempty"`
 }
 
 type UpdateModelFeedbackRequest struct {
@@ -286,6 +290,9 @@ type GetInferenceIngestionJobResponse struct {
 	LastExecutedAt         uint64   `json:"lastExecutedAt"`
 	CreatedAt              uint64   `json:"createdAt"`
 	UpdatedAt              uint64   `json:"updatedAt"`
+	// CreatedByUserID is null for jobs created before the creator was recorded.
+	CreatedByUserID      *string `json:"createdByUserId"`
+	NotificationsEnabled bool    `json:"notificationsEnabled"`
 }
 
 type GetInferenceIngestionCandidateResponse struct {
@@ -384,4 +391,6 @@ type ImportInferenceIngestionJob struct {
 	StudyTimeEnd           string `csv:"study_time_end"`
 	ScheduleStartTimestamp string `csv:"schedule_start_timestamp"`
 	ScheduleEndTimestamp   string `csv:"schedule_end_timestamp"`
+	// NotificationsEnabled is an optional column: absent or empty means on.
+	NotificationsEnabled string `csv:"notifications_enabled"`
 }

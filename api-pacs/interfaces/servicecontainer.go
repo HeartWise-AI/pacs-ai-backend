@@ -227,6 +227,7 @@ func (k *kernel) RegisterInferenceRESTQueryController() inferenceREST.InferenceQ
 		InferenceQueryServiceInterface:          service,
 		WorklistNotificationSubscriberInterface: worklistNotificationBroker,
 		WorklistEventHeartbeatInterval:          20 * time.Second,
+		UserMetadataReader:                      k.userQueryServiceContainer(),
 	}
 
 	return controller
@@ -361,6 +362,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		StudyServiceDispatchSemaphore:           make(chan struct{}, configuredStudyServiceDispatchConcurrency()),
 		WorklistNotificationPublisherInterface:  worklistNotificationBroker,
 		ProcessingReconciliationMetricsRecorder: &inferenceService.LoggingProcessingReconciliationMetricsRecorder{},
+		WorklistNotificationAudienceRepository:  processingRunRepository,
 		RequireProcessingRunID:                  configuredProcessingRunIDRequirement(),
 		ModelManager:                            managedPredictor,
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{

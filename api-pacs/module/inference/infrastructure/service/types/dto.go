@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
@@ -74,6 +75,10 @@ type CreateInferenceIngestionJob struct {
 	StudyTimeEnd           string
 	ScheduleStartTimestamp uint64
 	ScheduleEndTimestamp   uint64
+	// CreatedByUserID is the authenticated user creating the job.
+	CreatedByUserID string
+	// NotificationsEnabled nil means on.
+	NotificationsEnabled *bool
 }
 
 type CreateStudyProcessingRun struct {
@@ -294,6 +299,9 @@ type WorklistNotification struct {
 	ExecutionID string                                       `json:"executionId,omitempty"`
 	ModelName   string                                       `json:"modelName,omitempty"`
 	Status      entity.InferenceIngestionProcessingJobStatus `json:"status,omitempty"`
+	// Audience is server-only routing metadata. It travels between gateway
+	// instances inside the Redis envelope and is never serialised to browsers.
+	Audience WorklistNotificationAudience `json:"-"`
 }
 
 type GetContainerInfoResult struct {
@@ -408,6 +416,8 @@ type UpdateInferenceIngestionJob struct {
 	StudyTimeEnd           string
 	ScheduleStartTimestamp uint64
 	ScheduleEndTimestamp   uint64
+	// NotificationsEnabled nil leaves the stored value unchanged.
+	NotificationsEnabled *bool
 }
 
 type UpdateModelFeedback struct {
@@ -447,4 +457,79 @@ type OnboardingModelQuestionnaireAnswer struct {
 	QuestionnaireQuestion  string
 	QuestionnaireAnswerIDs []string
 	QuestionnaireAnswers   []string
+}
+
+// WorklistNotificationAudience says who should be notified (bell + toast)
+// about a worklist event. The status event itself reaches every tenant
+// subscriber regardless; only the notification is filtered.
+type WorklistNotificationAudience struct {
+	// Resolved is false when the publisher could not determine the jobs behind
+	// an automatic run (or the envelope came from an older gateway). Automatic
+	// runs then notify workspace admins only.
+	Resolved bool `json:"resolved"`
+	// RequestedByUserID launched a manual or viewer run.
+	RequestedByUserID string `json:"requestedByUserId,omitempty"`
+	// CancelledByUserID cancelled the run's waiting executions, if anyone did.
+	CancelledByUserID string `json:"cancelledByUserId,omitempty"`
+	// AnyJobNotificationsEnabled is true when at least one automatic ingestion
+	// job behind the run has notifications on.
+	AnyJobNotificationsEnabled bool `json:"anyJobNotificationsEnabled"`
+	// NotifyJobOwnerUserIDs are the creators of the jobs with notifications on.
+	NotifyJobOwnerUserIDs []string `json:"notifyJobOwnerUserIds,omitempty"`
+}
+
+// WorklistNotificationViewer is one connected worklist client.
+type WorklistNotificationViewer struct {
+	UserID string
+	// IsAdmin is true for workspace roles ADMIN and OWNER.
+	IsAdmin bool
+	// AutomaticRunsMuted is the user's personal opt-out of automatic-run notifications.
+	AutomaticRunsMuted bool
+}
+
+// IsAutomaticWorklistTrigger reports whether a run was started by an
+// automatic ingestion job rather than by a person.
+func IsAutomaticWorklistTrigger(trigger entity.InferenceIngestionProcessingRunTrigger) bool {
+	return trigger == entity.InferenceIngestionProcessingRunTriggerAuto ||
+		trigger == entity.InferenceIngestionProcessingRunTriggerLegacyImport
+}
+
+// ShouldNotify applies the notification audience policy for one viewer:
+//   - automatic runs notify the creators of the jobs behind the run that have
+//     notifications on, plus workspace admins, unless every job has
+//     notifications off, and never a viewer who muted automatic runs;
+//   - every other run notifies only the user who launched it.
+func (notification WorklistNotification) ShouldNotify(viewer WorklistNotificationViewer) bool {
+	audience := notification.Audience
+	userID := strings.TrimSpace(viewer.UserID)
+	if IsAutomaticWorklistTrigger(notification.Trigger) {
+		if viewer.AutomaticRunsMuted {
+			return false
+		}
+		if !audience.Resolved {
+			return viewer.IsAdmin
+		}
+		if !audience.AnyJobNotificationsEnabled {
+			return false
+		}
+		if viewer.IsAdmin {
+			return true
+		}
+		if userID == "" {
+			return false
+		}
+		for _, ownerID := range audience.NotifyJobOwnerUserIDs {
+			if ownerID == userID {
+				return true
+			}
+		}
+		return false
+	}
+	return userID != "" && audience.RequestedByUserID == userID
+}
+
+// CancelledByViewer reports whether this viewer cancelled the run.
+func (notification WorklistNotification) CancelledByViewer(viewer WorklistNotificationViewer) bool {
+	userID := strings.TrimSpace(viewer.UserID)
+	return userID != "" && notification.Audience.CancelledByUserID == userID
 }

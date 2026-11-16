@@ -1,15 +1,20 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
+	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	apiError "api-pacs/internal/errors"
+	iamEntity "api-pacs/module/iam/domain/entity"
 	inferenceService "api-pacs/module/inference/infrastructure/service"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
+	userEntity "api-pacs/module/user/domain/entity"
 )
 
 const (
@@ -36,6 +41,7 @@ func (controller *InferenceQueryController) StreamWorklistEvents(w http.Response
 		return
 	}
 
+	viewer := controller.worklistNotificationViewer(r)
 	notifications, unsubscribe := controller.SubscribeWorklistNotifications(tenantID, defaultWorklistEventBuffer)
 	defer unsubscribe()
 
@@ -66,7 +72,7 @@ func (controller *InferenceQueryController) StreamWorklistEvents(w http.Response
 			if !open {
 				return
 			}
-			if err := writeWorklistServerSentEvent(w, notification); err != nil {
+			if err := writeWorklistServerSentEvent(w, notification, viewer); err != nil {
 				inferenceService.ObserveWorklistNotification("sse_write_failed")
 				return
 			}
@@ -88,11 +94,77 @@ func (controller *InferenceQueryController) worklistEventHeartbeatInterval() tim
 	return defaultWorklistEventHeartbeatInterval
 }
 
-func writeWorklistServerSentEvent(w http.ResponseWriter, notification serviceTypes.WorklistNotification) error {
-	payload, err := json.Marshal(notification)
+// worklistClientEvent is the browser contract of one worklist event: the
+// committed status plus whether this connection's user should be notified.
+// It never carries user ids or the tenant.
+type worklistClientEvent struct {
+	serviceTypes.WorklistNotification
+	// Notify tells the client to raise a bell entry / toast. Status updates
+	// are applied whatever its value.
+	Notify bool `json:"notify"`
+	// CancelledByYou is true when this connection's user cancelled the run.
+	CancelledByYou bool `json:"cancelledByYou"`
+}
+
+func writeWorklistServerSentEvent(
+	w http.ResponseWriter,
+	notification serviceTypes.WorklistNotification,
+	viewer serviceTypes.WorklistNotificationViewer,
+) error {
+	payload, err := json.Marshal(worklistClientEvent{
+		WorklistNotification: notification,
+		Notify:               notification.ShouldNotify(viewer),
+		CancelledByYou:       notification.CancelledByViewer(viewer),
+	})
 	if err != nil {
 		return err
 	}
 	_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", notification.Type, payload)
 	return err
+}
+
+// WorklistUserMetadataReader reads a user's free-form metadata, where the
+// notifyAutomaticRuns preference lives.
+type WorklistUserMetadataReader interface {
+	GetUserMetadata(ctx context.Context, userID string) (userEntity.UserMetadata, error)
+}
+
+// worklistNotificationViewer captures who is connected. The personal mute is
+// read once when the stream opens: a change applies server-side on the next
+// reconnect (the viewer also applies it immediately on its side).
+func (controller *InferenceQueryController) worklistNotificationViewer(r *http.Request) serviceTypes.WorklistNotificationViewer {
+	userID, _ := r.Context().Value(iamTypes.UserIDCtx).(string)
+	role, _ := r.Context().Value(iamTypes.RoleCtx).(string)
+	viewer := serviceTypes.WorklistNotificationViewer{
+		UserID:  strings.TrimSpace(userID),
+		IsAdmin: role == iamEntity.AdminRole || role == iamEntity.OwnerRole,
+	}
+	if controller.UserMetadataReader != nil && viewer.UserID != "" {
+		metadata, err := controller.UserMetadataReader.GetUserMetadata(r.Context(), viewer.UserID)
+		if err == nil {
+			viewer.AutomaticRunsMuted = automaticRunNotificationsMuted(metadata.Metadata)
+		}
+	}
+	return viewer
+}
+
+// automaticRunNotificationsMuted is true only for an explicit
+// "notifyAutomaticRuns": false; anything else keeps notifications on.
+func automaticRunNotificationsMuted(rawMetadata string) bool {
+	if strings.TrimSpace(rawMetadata) == "" {
+		return false
+	}
+	var metadata map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(rawMetadata), &metadata); err != nil {
+		return false
+	}
+	value, ok := metadata["notifyAutomaticRuns"]
+	if !ok {
+		return false
+	}
+	var enabled bool
+	if err := json.Unmarshal(value, &enabled); err != nil {
+		return false
+	}
+	return !enabled
 }

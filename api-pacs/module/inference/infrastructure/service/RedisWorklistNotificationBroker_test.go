@@ -105,3 +105,33 @@ func TestRedisWorklistNotificationBrokerCloseReleasesSubscription(t *testing.T) 
 		return len(transport.subscribers) == 0
 	}, time.Second, time.Millisecond)
 }
+
+func TestRedisWorklistNotificationBrokerCarriesAudienceBetweenInstances(t *testing.T) {
+	transport := newSharedWorklistTransport()
+	instanceA := NewRedisWorklistNotificationBroker(transport)
+	instanceB := NewRedisWorklistNotificationBroker(transport)
+	require.NoError(t, instanceA.Start(context.Background()))
+	t.Cleanup(instanceA.Close)
+	require.NoError(t, instanceB.Start(context.Background()))
+	t.Cleanup(instanceB.Close)
+
+	events, unsubscribe := instanceB.SubscribeWorklistNotifications("tenant-a", 1)
+	t.Cleanup(unsubscribe)
+	notification := serviceTypes.WorklistNotification{
+		Type:     serviceTypes.WorklistNotificationTypeStudyStatusUpdated,
+		TenantID: "tenant-a", StudyInstanceUID: "study-1", RunID: "run-1", Version: 5,
+		Trigger: "AUTO",
+		Audience: serviceTypes.WorklistNotificationAudience{
+			Resolved: true, AnyJobNotificationsEnabled: true, NotifyJobOwnerUserIDs: []string{"user-a"},
+			CancelledByUserID: "user-c",
+		},
+	}
+
+	require.NoError(t, instanceA.PublishWorklistNotification(context.Background(), notification))
+	select {
+	case received := <-events:
+		require.Equal(t, notification.Audience, received.Audience)
+	case <-time.After(time.Second):
+		t.Fatal("second Go instance did not receive the Redis notification")
+	}
+}

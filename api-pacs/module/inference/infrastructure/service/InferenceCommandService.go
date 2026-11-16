@@ -55,6 +55,9 @@ type InferenceCommandService struct {
 	inferenceApplication.ProcessingDispatcherInterface
 	inferenceApplication.InferenceQuotaManagerInterface
 	inferenceApplication.WorklistNotificationPublisherInterface
+	// WorklistNotificationAudienceRepository resolves who an automatic run
+	// notifies. Nil leaves automatic-run audiences unresolved (admins only).
+	WorklistNotificationAudienceRepository  repository.WorklistNotificationAudienceRepositoryInterface
 	StudyServiceDispatchSemaphore           chan struct{}
 	ProcessingReconciliationMetricsRecorder ProcessingReconciliationMetricsRecorder
 	RequireProcessingRunID                  bool
@@ -682,6 +685,7 @@ func (service *InferenceCommandService) publishCommittedWorklistNotification(
 		ExecutionID:       transition.Execution.ID,
 		ModelName:         transition.Execution.ModelName,
 		Status:            transition.Execution.Status,
+		Audience:          service.resolveWorklistNotificationAudience(ctx, transition.Run),
 	}
 	if err := service.PublishWorklistNotification(ctx, notification); err != nil {
 		log.Printf(
@@ -926,6 +930,8 @@ func (service *InferenceCommandService) CreateInferenceIngestionJob(ctx context.
 		ScheduleStartTimestamp: time.Unix(int64(data.ScheduleStartTimestamp), 0),
 		ScheduleEndTimestamp:   time.Unix(int64(data.ScheduleEndTimestamp), 0),
 		Status:                 entity.InferenceIngestionJobStatusRunning, // default: RUNNING
+		CreatedByUserID:        optionalTrimmedString(data.CreatedByUserID),
+		NotificationsEnabled:   data.NotificationsEnabled == nil || *data.NotificationsEnabled,
 	})
 	if err != nil {
 		return err
@@ -3484,6 +3490,7 @@ func (service *InferenceCommandService) UpdateInferenceIngestionJob(ctx context.
 		StudyTimeEnd:           jobConfig.StudyTimeEnd,
 		ScheduleStartTimestamp: time.Unix(int64(data.ScheduleStartTimestamp), 0),
 		ScheduleEndTimestamp:   time.Unix(int64(data.ScheduleEndTimestamp), 0),
+		NotificationsEnabled:   data.NotificationsEnabled,
 	})
 	if err != nil {
 		return err

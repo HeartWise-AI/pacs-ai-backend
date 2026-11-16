@@ -243,10 +243,12 @@ func (repository *InferenceCommandRepository) InsertInferenceIngestionJob(data t
 		ScheduleStartTimestamp: data.ScheduleStartTimestamp,
 		ScheduleEndTimestamp:   data.ScheduleEndTimestamp,
 		Status:                 data.Status,
+		CreatedByUserID:        data.CreatedByUserID,
+		NotificationsEnabled:   data.NotificationsEnabled,
 	}
 
-	stmt := fmt.Sprintf("INSERT INTO %s (id, tenant_id, dicom_modality, container_id, model_id, model_name, model_version, modalities, stability_minutes, recent_window_minutes, missing_polls_threshold, study_time_start, study_time_end, schedule_start_timestamp, schedule_end_timestamp, status) "+
-		"VALUES (:id, :tenant_id, :dicom_modality, :container_id, :model_id, :model_name, :model_version, :modalities, :stability_minutes, :recent_window_minutes, :missing_polls_threshold, :study_time_start, :study_time_end, :schedule_start_timestamp, :schedule_end_timestamp, :status)", job.GetModelName())
+	stmt := fmt.Sprintf("INSERT INTO %s (id, tenant_id, dicom_modality, container_id, model_id, model_name, model_version, modalities, stability_minutes, recent_window_minutes, missing_polls_threshold, study_time_start, study_time_end, schedule_start_timestamp, schedule_end_timestamp, status, created_by_user_id, notifications_enabled) "+
+		"VALUES (:id, :tenant_id, :dicom_modality, :container_id, :model_id, :model_name, :model_version, :modalities, :stability_minutes, :recent_window_minutes, :missing_polls_threshold, :study_time_start, :study_time_end, :schedule_start_timestamp, :schedule_end_timestamp, :status, :created_by_user_id, :notifications_enabled)", job.GetModelName())
 	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
 	if err != nil {
 		log.Println(err)
@@ -716,30 +718,41 @@ func registeredDeployment(model entity.InferenceModel) entity.InferenceModelDepl
 	}
 }
 
-// UpdateInferenceIngestionJob updates an inference ingestion job
+// UpdateInferenceIngestionJob updates an inference ingestion job. A nil
+// NotificationsEnabled keeps the stored notification switch.
 func (repository *InferenceCommandRepository) UpdateInferenceIngestionJob(data types.UpdateInferenceIngestionJob) error {
-	job := &entity.InferenceIngestionJob{
-		ID:                     data.ID,
-		Modalities:             data.Modalities,
-		StabilityMinutes:       data.StabilityMinutes,
-		RecentWindowMinutes:    data.RecentWindowMinutes,
-		MissingPollsThreshold:  data.MissingPollsThreshold,
-		StudyTimeStart:         data.StudyTimeStart,
-		StudyTimeEnd:           data.StudyTimeEnd,
-		ScheduleStartTimestamp: data.ScheduleStartTimestamp,
-		ScheduleEndTimestamp:   data.ScheduleEndTimestamp,
-	}
+	job := &entity.InferenceIngestionJob{}
 	stmt := fmt.Sprintf("UPDATE %s SET modalities = :modalities, stability_minutes = :stability_minutes, "+
 		"recent_window_minutes = :recent_window_minutes, "+
 		"missing_polls_threshold = :missing_polls_threshold, study_time_start = :study_time_start, study_time_end = :study_time_end, "+
-		"schedule_start_timestamp = :schedule_start_timestamp, schedule_end_timestamp = :schedule_end_timestamp WHERE id = :id", job.GetModelName())
-	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
+		"schedule_start_timestamp = :schedule_start_timestamp, schedule_end_timestamp = :schedule_end_timestamp, "+
+		"notifications_enabled = COALESCE(CAST(:notifications_enabled AS boolean), notifications_enabled) WHERE id = :id", job.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, updateInferenceIngestionJobParams(data))
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.DatabaseError)
 	}
 
 	return nil
+}
+
+func updateInferenceIngestionJobParams(data types.UpdateInferenceIngestionJob) map[string]interface{} {
+	var notificationsEnabled interface{}
+	if data.NotificationsEnabled != nil {
+		notificationsEnabled = *data.NotificationsEnabled
+	}
+	return map[string]interface{}{
+		"id":                       data.ID,
+		"modalities":               pq.StringArray(data.Modalities),
+		"stability_minutes":        data.StabilityMinutes,
+		"recent_window_minutes":    data.RecentWindowMinutes,
+		"missing_polls_threshold":  data.MissingPollsThreshold,
+		"study_time_start":         data.StudyTimeStart,
+		"study_time_end":           data.StudyTimeEnd,
+		"schedule_start_timestamp": data.ScheduleStartTimestamp,
+		"schedule_end_timestamp":   data.ScheduleEndTimestamp,
+		"notifications_enabled":    notificationsEnabled,
+	}
 }
 
 // UpdateInferenceIngestionJobStatus updates the status of an inference ingestion job
