@@ -1373,7 +1373,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationW
 		default:
 		}
 
-		attempted, repaired, reconcileErr := service.reconcileProcessingRun(ctx, run, now, config)
+		attempted, repaired, reconcileErr := service.reconcileProcessingRun(ctx, run, now, config, &metrics.Redispatched)
 		if !attempted {
 			continue
 		}
@@ -1425,6 +1425,7 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 	run entity.InferenceIngestionProcessingRun,
 	now time.Time,
 	config processingReconciliationConfig,
+	redispatched *int,
 ) (bool, bool, error) {
 	executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, run.TenantID, run.ID)
 	if err != nil {
@@ -1528,6 +1529,18 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 				continue
 			}
 			if strings.TrimSpace(trimmedPointerValue(target.StudyServiceJobID)) == "" {
+				// Study-service has no job for this execution. If its dispatch
+				// was lost (a gateway restart), start it again instead of
+				// leaving the study waiting for an operator.
+				if started, reason := service.redispatchOrphanedExecution(run, candidate, target, now, config); started {
+					if redispatched != nil {
+						*redispatched++
+					}
+					continue
+				} else if target.Status == entity.InferenceIngestionProcessingJobStatusPending {
+					log.Printf("[Ingestion reconciliation worker] pending execution not re-dispatched processing_run_id=%s execution_id=%s candidate_id=%s reason=%q",
+						run.ID, target.ID, candidate.ID, reason)
+				}
 				findings.ExpectedJobMissing = true
 			} else {
 				findings.StudyServiceJobMissing = true
@@ -2134,26 +2147,11 @@ func (service *InferenceCommandService) scheduleStudyServiceDispatchWithRequestI
 		}
 	}
 
-	go func() {
-		if limiter := service.StudyServiceDispatchSemaphore; limiter != nil {
-			limiter <- struct{}{}
-			defer func() {
-				<-limiter
-			}()
-		}
-
-		if err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
-			context.Background(), job, candidate, processingRunID, requestID, processingExecutionID, dispatchIntent,
-			seriesInstanceUIDs...,
-		); err != nil {
-			log.Printf("[Ingestion dispatch] final dispatch failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
-				candidate.ID,
-				job.ID,
-				requestID,
-				err,
-			)
-		}
-	}()
+	key := studyServiceDispatchKey(candidate.TenantID, processingRunID, candidate.ID, job.ModelName)
+	liveStudyServiceDispatches.begin(key)
+	service.launchStudyServiceDispatch(
+		key, job, candidate, processingRunID, requestID, processingExecutionID, dispatchIntent, seriesInstanceUIDs...,
+	)
 }
 
 func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService(ctx context.Context, job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate, processingRunID, requestID string) error {
