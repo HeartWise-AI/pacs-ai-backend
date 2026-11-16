@@ -38,6 +38,28 @@ type CreateMessageResponse struct {
 	CompletedAt time.Time              `json:"completed_at,omitempty"`
 	// Activity is what the assistant used to answer; absent with an older chat backend.
 	Activity *ChatActivity `json:"activity,omitempty"`
+	// Citations says what each numeric marker "[n]" of the answer refers to;
+	// absent with an older chat backend or when the answer has no marker.
+	Citations []ChatCitation `json:"citations,omitempty"`
+}
+
+// ChatCitation is the target of one "[index]" marker of a chat answer: a
+// stored model result (kind "model_result") or a published source (kind
+// "web_source", which only has index, title and url). It mirrors the chat
+// backend contract and is passed through unchanged; fields the chat backend
+// does not send are omitted.
+type ChatCitation struct {
+	Index             int     `json:"index"`
+	Kind              string  `json:"kind"`
+	Title             string  `json:"title,omitempty"`
+	ModelName         string  `json:"modelName,omitempty"`
+	ModelVersion      string  `json:"modelVersion,omitempty"`
+	CompletedAt       string  `json:"completedAt,omitempty"`
+	StudyInstanceUID  string  `json:"studyInstanceUID,omitempty"`
+	StudyServiceJobID string  `json:"studyServiceJobId,omitempty"`
+	Summary           string  `json:"summary,omitempty"`
+	OutputMode        *string `json:"outputMode,omitempty"`
+	URL               string  `json:"url,omitempty"`
 }
 
 // ChatActivityStep is one tool call or delegation of a chat request. The chat
@@ -107,6 +129,8 @@ type ChatResponse struct {
 	Status   string           `json:"status" default:"success"`
 	Error    string           `json:"error,omitempty"`
 	Activity *ChatActivity    `json:"activity,omitempty"`
+	// Citations is returned by the chat backend next to activity.
+	Citations []ChatCitation `json:"citations,omitempty"`
 }
 
 // MessageRequest represents a request to send a message
