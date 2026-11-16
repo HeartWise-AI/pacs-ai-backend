@@ -222,6 +222,19 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		return types.CreateStudyProcessingRunResult{}, activeErr
 	}
 
+	if trigger == entity.InferenceIngestionProcessingRunTriggerAuto {
+		// A user cancellation is respected: the study's remaining candidates
+		// still become stable and retrieved, but they must not start a new
+		// automatic run that would re-create the cancelled executions.
+		latestRun, latestErr := service.InferenceProcessingRunRepositoryInterface.SelectLatestStudyWideProcessingRun(ctx, tenantID, studyInstanceUID)
+		if latestErr == nil && latestRun.IsUserCancelled() {
+			return types.CreateStudyProcessingRunResult{}, errAutomaticProcessingSuppressedByCancellation
+		}
+		if latestErr != nil && latestErr.Error() != apiError.MissingRecord {
+			return types.CreateStudyProcessingRunResult{}, latestErr
+		}
+	}
+
 	candidates, err := service.InferenceQueryRepositoryInterface.ListInferenceIngestionCandidates(repositoryTypes.ListInferenceIngestionCandidates{
 		TenantID:         tenantID,
 		StudyInstanceUID: &studyInstanceUID,
@@ -383,7 +396,9 @@ func (service *InferenceCommandService) finalizeProcessingRunQuota(run entity.In
 	if userID == "" {
 		return
 	}
-	refund := run.StartedAt == nil && (hasProcessingRunAttentionReason(
+	// A run that never started computing is refunded when its dispatch or
+	// retrieval failed, or when the user cancelled it.
+	refund := run.StartedAt == nil && (run.IsUserCancelled() || hasProcessingRunAttentionReason(
 		run.AttentionReasons, entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
 	) || hasProcessingRunAttentionReason(
 		run.AttentionReasons, entity.InferenceIngestionProcessingRunAttentionRetrievalFailed,
@@ -1975,6 +1990,11 @@ func (service *InferenceCommandService) persistCandidateRetrievalResult(ctx cont
 			TenantID:         candidate.TenantID,
 			StudyInstanceUID: candidate.StudyInstanceUID,
 		})
+		if errors.Is(err, errAutomaticProcessingSuppressedByCancellation) {
+			log.Printf("[Ingestion retrieval worker] automatic processing skipped candidate_id=%s reason=latest_run_cancelled_by_user",
+				candidate.ID)
+			return nil
+		}
 		if err != nil {
 			log.Printf("[Ingestion retrieval worker] cannot create automatic processing plan candidate_id=%s study_instance_uid=%s err=%v",
 				candidate.ID, candidate.StudyInstanceUID, err)

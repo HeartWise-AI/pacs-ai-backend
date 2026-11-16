@@ -106,6 +106,8 @@ const (
 	InferenceAdmissionBlocked string = "INFERENCE_ADMISSION_BLOCKED"
 	// RunAlreadyActive rejects a viewer run while the same model is already pending/queued/running for the study.
 	RunAlreadyActive string = "RUN_ALREADY_ACTIVE"
+	// ProcessingRunNotCancellable rejects a cancellation while every remaining model of the run is already computing.
+	ProcessingRunNotCancellable string = "PROCESSING_RUN_NOT_CANCELLABLE"
 	// ReportNotAvailable is returned when the result's model cannot re-render an HTML report.
 	ReportNotAvailable string = "REPORT_NOT_AVAILABLE"
 	// ReportRenderRejected is returned when the model refuses to render a stored result.

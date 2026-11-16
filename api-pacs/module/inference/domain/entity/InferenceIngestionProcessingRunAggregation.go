@@ -24,6 +24,34 @@ const (
 	InferenceIngestionProcessingRunAttentionEmptyExpectedPlan = "EMPTY_EXPECTED_PLAN"
 )
 
+// ProcessingRunHasAttentionReason reports whether the reasons include a code.
+func ProcessingRunHasAttentionReason(reasons InferenceIngestionProcessingRunAttentionReasons, code string) bool {
+	for _, reason := range reasons {
+		if reason.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+// CancellableProcessingRunExecutions returns the executions of an active run a
+// user cancellation would end; none for a terminal run.
+func CancellableProcessingRunExecutions(run InferenceIngestionProcessingRun, executions []InferenceIngestionProcessingJob) []InferenceIngestionProcessingJob {
+	cancellable := make([]InferenceIngestionProcessingJob, 0, len(executions))
+	if run.Phase == InferenceIngestionProcessingRunPhaseTerminal {
+		return cancellable
+	}
+	studyServiceJobMissing := ProcessingRunHasAttentionReason(
+		run.AttentionReasons, InferenceIngestionProcessingRunAttentionStudyServiceJobMissing,
+	)
+	for index := range executions {
+		if executions[index].IsCancellableBeforeCompute(studyServiceJobMissing) {
+			cancellable = append(cancellable, executions[index])
+		}
+	}
+	return cancellable
+}
+
 // InferenceIngestionProcessingRunExecutionCounts summarizes the frozen expected-model plan.
 type InferenceIngestionProcessingRunExecutionCounts struct {
 	Expected  int
@@ -115,7 +143,12 @@ func AggregateInferenceIngestionProcessingRun(input InferenceIngestionProcessing
 	var outcome *InferenceIngestionProcessingRunOutcome
 	var completedAt *time.Time
 	if phase == InferenceIngestionProcessingRunPhaseTerminal {
-		calculatedOutcome := aggregateProcessingRunOutcome(counts, input.WholeRunCancelled)
+		// A user cancellation that left no completed model is a cancelled run.
+		// With at least one completed model the ordinary rules apply, so the
+		// run ends PARTIAL_SUCCESS and its results stay first-class.
+		wholeRunCancelled := input.WholeRunCancelled ||
+			(input.Run.IsUserCancelled() && counts.Cancelled > 0 && counts.Completed == 0)
+		calculatedOutcome := aggregateProcessingRunOutcome(counts, wholeRunCancelled)
 		outcome = &calculatedOutcome
 		completedAt = latestCompletedAt
 	}

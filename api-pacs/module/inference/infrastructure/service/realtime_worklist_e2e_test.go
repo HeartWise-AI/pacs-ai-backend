@@ -61,6 +61,11 @@ func (state *realtimeWorklistE2EState) SelectInferenceIngestionCandidateByID(id 
 	return candidate, nil
 }
 
+// No run of the study was cancelled by a user.
+func (state *realtimeWorklistE2EState) SelectLatestStudyWideProcessingRun(context.Context, string, string) (entity.InferenceIngestionProcessingRun, error) {
+	return entity.InferenceIngestionProcessingRun{}, errors.New(apiError.MissingRecord)
+}
+
 func (state *realtimeWorklistE2EState) SelectActiveProcessingRun(_ context.Context, tenantID, studyUID string) (entity.InferenceIngestionProcessingRun, error) {
 	for _, run := range state.runs {
 		if run.TenantID == tenantID && run.StudyInstanceUID == studyUID && run.Phase != entity.InferenceIngestionProcessingRunPhaseTerminal {
