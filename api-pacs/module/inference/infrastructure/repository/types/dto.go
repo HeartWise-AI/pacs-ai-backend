@@ -274,6 +274,8 @@ type CreateInferenceIngestionJob struct {
 	ScheduleStartTimestamp time.Time
 	ScheduleEndTimestamp   time.Time
 	Status                 entity.InferenceIngestionJobStatus
+	CreatedByUserID        *string
+	NotificationsEnabled   bool
 }
 
 type GetModelFeedbackByUserModelID struct {
@@ -381,6 +383,16 @@ type UpdateInferenceIngestionJob struct {
 	StudyTimeEnd           *string
 	ScheduleStartTimestamp time.Time
 	ScheduleEndTimestamp   time.Time
+	// NotificationsEnabled nil leaves the stored value unchanged.
+	NotificationsEnabled *bool
+}
+
+// ProcessingRunNotificationJob is one automatic ingestion job behind a
+// processing run, reduced to what the notification audience needs.
+type ProcessingRunNotificationJob struct {
+	IngestionJobID       string  `db:"ingestion_job_id"`
+	CreatedByUserID      *string `db:"created_by_user_id"`
+	NotificationsEnabled bool    `db:"notifications_enabled"`
 }
 
 type UpsertModelFeedback struct {

@@ -324,6 +324,7 @@ func (service *InferenceCommandService) createViewerIngestionJob(
 		ScheduleStartTimestamp: now,
 		ScheduleEndTimestamp:   now,
 		Status:                 entity.InferenceIngestionJobStatusStopped,
+		NotificationsEnabled:   true,
 	}
 	if err := service.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(repositoryTypes.CreateInferenceIngestionJob{
 		ID:                     job.ID,
@@ -340,6 +341,7 @@ func (service *InferenceCommandService) createViewerIngestionJob(
 		ScheduleStartTimestamp: job.ScheduleStartTimestamp,
 		ScheduleEndTimestamp:   job.ScheduleEndTimestamp,
 		Status:                 job.Status,
+		NotificationsEnabled:   true,
 	}); err != nil {
 		return entity.InferenceIngestionJob{}, err
 	}

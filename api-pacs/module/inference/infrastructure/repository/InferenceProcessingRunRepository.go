@@ -978,3 +978,22 @@ func (repository *InferenceProcessingRunRepository) UpdateProcessingRunAggregate
 	}
 	return entity.InferenceIngestionProcessingRun{}, processingRunError(lookupErr)
 }
+
+// SelectProcessingRunNotificationJobs returns the distinct ingestion jobs
+// behind a run (run -> executions -> candidates -> jobs) with the fields the
+// notification audience needs. One automatic run can span several jobs.
+func (repository *InferenceProcessingRunRepository) SelectProcessingRunNotificationJobs(ctx context.Context, tenantID, processingRunID string) ([]types.ProcessingRunNotificationJob, error) {
+	jobs := make([]types.ProcessingRunNotificationJob, 0)
+	err := repository.PostgresSQLDBHandlerInterface.Query(`
+		SELECT DISTINCT ingestion_jobs.id AS ingestion_job_id,
+			ingestion_jobs.created_by_user_id,
+			ingestion_jobs.notifications_enabled
+		FROM ingestion_processing_jobs executions
+		JOIN ingestion_processing_runs runs ON runs.id = executions.processing_run_id
+		JOIN ingestion_candidates candidates ON candidates.id = executions.candidate_id
+		JOIN ingestion_jobs ON ingestion_jobs.id = candidates.ingestion_job_id
+		WHERE runs.tenant_id = :tenant_id AND runs.id = :processing_run_id
+		ORDER BY ingestion_jobs.id
+	`, map[string]interface{}{"tenant_id": tenantID, "processing_run_id": processingRunID}, &jobs)
+	return jobs, processingRunError(err)
+}

@@ -14,6 +14,9 @@ import (
 type redisWorklistNotificationEnvelope struct {
 	TenantID     string                     `json:"tenantId"`
 	Notification types.WorklistNotification `json:"notification"`
+	// Audience is carried beside the notification because the notification's
+	// own JSON form is the browser contract and must not contain user ids.
+	Audience types.WorklistNotificationAudience `json:"audience"`
 }
 
 // RedisWorklistNotificationBroker publishes committed notifications through
@@ -72,7 +75,7 @@ func (broker *RedisWorklistNotificationBroker) PublishWorklistNotification(
 		return errors.New("worklist notification tenant is required")
 	}
 	payload, err := json.Marshal(redisWorklistNotificationEnvelope{
-		TenantID: tenantID, Notification: notification,
+		TenantID: tenantID, Notification: notification, Audience: notification.Audience,
 	})
 	if err != nil {
 		ObserveWorklistNotification("encode_failed")
@@ -137,6 +140,7 @@ func (broker *RedisWorklistNotificationBroker) consume(
 			}
 			ObserveWorklistNotification("received")
 			envelope.Notification.TenantID = tenantID
+			envelope.Notification.Audience = envelope.Audience
 			if err := broker.local.PublishWorklistNotification(ctx, envelope.Notification); err != nil && ctx.Err() == nil {
 				ObserveWorklistNotification("local_fanout_failed")
 				log.Printf("[Worklist SSE] event=local_fanout_failed err=%v", err)

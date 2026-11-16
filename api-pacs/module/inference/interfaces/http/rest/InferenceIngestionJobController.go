@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -98,6 +99,8 @@ func (controller *InferenceCommandController) CreateInferenceIngestionJob(w http
 		StudyTimeEnd:           request.StudyTimeEnd,
 		ScheduleStartTimestamp: request.ScheduleStartTimestamp,
 		ScheduleEndTimestamp:   request.ScheduleEndTimestamp,
+		CreatedByUserID:        requestUserID(r),
+		NotificationsEnabled:   request.NotificationsEnabled,
 	})
 	if err != nil {
 		var httpCode int
@@ -561,8 +564,21 @@ func (controller *InferenceCommandController) ImportInferenceIngestionJobsCSVFil
 		return
 	}
 
+	creatorUserID := requestUserID(r)
 	var jobs []serviceTypes.CreateInferenceIngestionJob
 	for _, csvJob := range csvJobs {
+		notificationsEnabled, err := parseOptionalCSVBool(csvJob.NotificationsEnabled)
+		if err != nil {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   "Invalid notifications_enabled value.",
+				ErrorCode: errors.InvalidPayload,
+			}
+			response.JSON(w)
+			return
+		}
+
 		// handle modalities, split by comma and trim space
 		modalitiesStr := strings.Trim(csvJob.Modalities, `"`)
 		var modalities []string
@@ -612,6 +628,8 @@ func (controller *InferenceCommandController) ImportInferenceIngestionJobsCSVFil
 			StudyTimeEnd:           csvJob.StudyTimeEnd,
 			ScheduleStartTimestamp: startTimestamp,
 			ScheduleEndTimestamp:   endTimestamp,
+			CreatedByUserID:        creatorUserID,
+			NotificationsEnabled:   notificationsEnabled,
 		})
 	}
 
@@ -877,6 +895,7 @@ func (controller *InferenceCommandController) UpdateInferenceIngestionJob(w http
 		StudyTimeEnd:           request.StudyTimeEnd,
 		ScheduleStartTimestamp: request.ScheduleStartTimestamp,
 		ScheduleEndTimestamp:   request.ScheduleEndTimestamp,
+		NotificationsEnabled:   request.NotificationsEnabled,
 	})
 	if err != nil {
 		var httpCode int
@@ -912,6 +931,31 @@ func (controller *InferenceCommandController) UpdateInferenceIngestionJob(w http
 	}
 
 	response.JSON(w)
+}
+
+// requestUserID returns the authenticated user, or "" when the request
+// carries none.
+func requestUserID(r *http.Request) string {
+	userID, _ := r.Context().Value(iamTypes.UserIDCtx).(string)
+	return strings.TrimSpace(userID)
+}
+
+// parseOptionalCSVBool reads the optional notifications_enabled column. Files
+// without the column, or with an empty cell, keep notifications on.
+func parseOptionalCSVBool(value string) (*bool, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	switch strings.ToLower(value) {
+	case "true", "1", "yes", "on":
+		enabled := true
+		return &enabled, nil
+	case "false", "0", "no", "off":
+		enabled := false
+		return &enabled, nil
+	}
+	return nil, fmt.Errorf("invalid boolean %q", value)
 }
 
 func parseOptionalCSVTimestamp(value string) (uint64, error) {

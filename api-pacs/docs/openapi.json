@@ -3038,7 +3038,12 @@
                 "type": "string",
                 "description": "Optional: execution status after the change",
                 "enum": ["pending", "queued", "running", "completed", "failed", "skipped", "cancelled"]
-              }
+              },
+              "notify": {
+                "type": "boolean",
+                "description": "Whether the connected user should get a notification (bell entry / toast) for this event. Automatic runs notify the creators of their ingestion jobs that have notifications on, plus ADMIN/OWNER users, unless the user muted automatic runs (user metadata notifyAutomaticRuns=false, read when the stream opens); other runs notify only the user who launched them. Status updates must be applied whatever its value."
+              },
+              "cancelledByYou": { "type": "boolean", "description": "True when the connected user cancelled this run." }
             }
           }
         ]
@@ -3552,6 +3557,10 @@
           },
           "scheduleEndTimestamp": {
             "type": "integer"
+          },
+          "notificationsEnabled": {
+            "type": "boolean",
+            "description": "Optional. Whether runs started by this job notify its creator and workspace admins. Defaults to true."
           }
         }
       },
@@ -4020,6 +4029,10 @@
           },
           "scheduleEndTimestamp": {
             "type": "integer"
+          },
+          "notificationsEnabled": {
+            "type": "boolean",
+            "description": "Optional. Omit to keep the current value."
           }
         }
       },
