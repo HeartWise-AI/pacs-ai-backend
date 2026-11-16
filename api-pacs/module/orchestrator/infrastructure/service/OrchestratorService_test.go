@@ -320,6 +320,100 @@ func TestCreateMessageOmitsActivityFromAnOlderChatBackend(t *testing.T) {
 	}
 }
 
+func TestCreateMessagePassesChatCitationsThrough(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"conversation_id":"thread-123","status":"success","message":{"role":"assistant","content":"LAD 80% [1]\nGuideline [2]"},
+			"citations":[
+				{"index":1,"kind":"model_result","modelName":"DeepCORO-JEPA","modelVersion":"2.0.0","completedAt":"2026-11-13 09:00:00",
+				 "studyInstanceUID":"2.25.900000000000000000000000000000000000001","studyServiceJobId":"job-1","title":"DeepCORO-JEPA",
+				 "summary":"Coronary reading: 2 significant stenosis segment(s)","outputMode":null,"a_future_field":{"kept":false}},
+				{"index":2,"kind":"web_source","title":"2024 ESC Guidelines","url":"https://example.org/guideline"},
+				{"index":3,"kind":"a_future_kind"}
+			]}`))
+	}))
+	defer server.Close()
+
+	service := &OrchestratorService{
+		OrchestratorAPIURL: server.URL,
+		OrchestratorClient: server.Client(),
+		ThreadsByID:        map[string]*entity.Thread{},
+	}
+
+	response, err := service.CreateMessage(orchestratorTestContext(), types.CreateMessageRequest{
+		ThreadID: "thread-123",
+		Content:  "Summarize all findings",
+	})
+	if err != nil {
+		t.Fatalf("CreateMessage returned error: %v", err)
+	}
+	if len(response.Citations) != 3 {
+		t.Fatalf("unexpected citations: %#v", response.Citations)
+	}
+	model := response.Citations[0]
+	if model.Index != 1 || model.Kind != "model_result" || model.ModelName != "DeepCORO-JEPA" || model.ModelVersion != "2.0.0" ||
+		model.CompletedAt != "2026-11-13 09:00:00" || model.StudyInstanceUID != "2.25.900000000000000000000000000000000000001" ||
+		model.StudyServiceJobID != "job-1" || model.Title != "DeepCORO-JEPA" ||
+		model.Summary != "Coronary reading: 2 significant stenosis segment(s)" || model.OutputMode != nil {
+		t.Fatalf("unexpected model result citation: %#v", model)
+	}
+	source := response.Citations[1]
+	if source.Index != 2 || source.Kind != "web_source" || source.Title != "2024 ESC Guidelines" || source.URL != "https://example.org/guideline" {
+		t.Fatalf("unexpected web source citation: %#v", source)
+	}
+	if unknown := response.Citations[2]; unknown.Index != 3 || unknown.Kind != "a_future_kind" {
+		t.Fatalf("unexpected citation of an unknown kind: %#v", unknown)
+	}
+
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	var body struct {
+		Citations []map[string]interface{} `json:"citations"`
+	}
+	if err := json.Unmarshal(encoded, &body); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(body.Citations) != 3 {
+		t.Fatalf("citations missing from the response body: %s", encoded)
+	}
+	if body.Citations[0]["studyServiceJobId"] != "job-1" || body.Citations[0]["index"] != float64(1) {
+		t.Fatalf("unexpected model result citation in the body: %s", encoded)
+	}
+	// A web source carries only its own fields: no empty model fields.
+	if len(body.Citations[1]) != 4 || body.Citations[1]["url"] != "https://example.org/guideline" {
+		t.Fatalf("unexpected web source citation in the body: %s", encoded)
+	}
+}
+
+func TestCreateMessageOmitsCitationsWhenTheChatBackendSendsNone(t *testing.T) {
+	var received map[string]json.RawMessage
+	server := newCreateMessageTestServer(t, &received)
+	defer server.Close()
+
+	service := &OrchestratorService{
+		OrchestratorAPIURL: server.URL,
+		OrchestratorClient: server.Client(),
+		ThreadsByID:        map[string]*entity.Thread{},
+	}
+
+	response, err := service.CreateMessage(orchestratorTestContext(), types.CreateMessageRequest{
+		ThreadID: "thread-123",
+		Content:  "hello",
+	})
+	if err != nil {
+		t.Fatalf("CreateMessage returned error: %v", err)
+	}
+	if response.Citations != nil {
+		t.Fatalf("unexpected citations: %#v", response.Citations)
+	}
+	encoded, _ := json.Marshal(response)
+	if strings.Contains(string(encoded), `"citations"`) {
+		t.Fatalf("citations should be omitted when the chat backend sends none: %s", encoded)
+	}
+}
+
 func TestGetChatProgressForwardsIdentityAndReturnsSteps(t *testing.T) {
 	var path, rawQuery, authorization string
 	var query url.Values

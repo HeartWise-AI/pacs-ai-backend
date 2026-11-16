@@ -256,6 +256,7 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 		Status:   pythonResponse.Status,
 		Error:    pythonResponse.Error,
 		Activity: pythonResponse.Activity,
+		Citations: pythonResponse.Citations,
 		// Also maintain backward compatibility fields
 		MessageID:   messageID,
 		Content:     request.Content,
