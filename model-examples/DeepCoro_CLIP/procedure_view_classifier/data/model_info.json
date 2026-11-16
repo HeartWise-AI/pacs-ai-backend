@@ -4,7 +4,7 @@
   "domainName": "Cardiology",
   "stage": "preprocessing",
   "modality": "Angiogram",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "resources": {
     "gpuRequired": true,
     "residentMemoryMiB": 2216,
@@ -127,6 +127,8 @@
     "classMappingSha256": "840654f724b91ac1a6168e4b7a9da83053f2bbaabbde4fd0a62c06dd80cb4767",
     "forwardBatchSize": 1,
     "procedureStatusScope": "full_request",
+    "chronologyTime": "series-time-ties-by-acquisition-time-v1",
+    "ambiguousTimingStatus": "undetermined-on-request",
     "identityFields": [
       "series_instance_uid",
       "sop_instance_uid"
