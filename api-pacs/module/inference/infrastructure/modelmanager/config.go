@@ -23,10 +23,21 @@ type Config struct {
 	// are physical GPU UUIDs, never CUDA or nvidia-smi ordinals.
 	GPUBudgetsMiB     map[string]int
 	IdleSweepInterval time.Duration
+	// EvictionPolicy selects which idle models a waiting request may evict:
+	// EvictionIdleTimeout (default) only models past their idle timeout,
+	// EvictionLRUOnDemand the least recently used idle model once it has been
+	// resident for MinResidency.
+	EvictionPolicy string
+	MinResidency   time.Duration
 }
 
+const (
+	EvictionIdleTimeout = "idle-timeout"
+	EvictionLRUOnDemand = "lru-on-demand"
+)
+
 func ConfigFromEnv(getenv func(string) string) (Config, error) {
-	c := Config{SafetyMarginMiB: 1024, QueueTimeout: 10 * time.Minute, OperationTimeout: 5 * time.Minute}
+	c := Config{SafetyMarginMiB: 1024, QueueTimeout: 10 * time.Minute, OperationTimeout: 5 * time.Minute, EvictionPolicy: EvictionIdleTimeout, MinResidency: 30 * time.Second}
 	if v := getenv("MODEL_MANAGER_ENABLED"); v != "" {
 		var err error
 		c.Enabled, err = strconv.ParseBool(v)
@@ -82,6 +93,16 @@ func ConfigFromEnv(getenv func(string) string) (Config, error) {
 		}
 		c.QueueTimeout = time.Duration(n) * time.Second
 	}
+	if v := getenv("MODEL_EVICTION_POLICY"); v != "" {
+		c.EvictionPolicy = v
+	}
+	if v := getenv("MODEL_MIN_RESIDENCY_SECONDS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return c, fmt.Errorf("MODEL_MIN_RESIDENCY_SECONDS must be a non-negative integer")
+		}
+		c.MinResidency = time.Duration(n) * time.Second
+	}
 	if c.GPUReservationPercent < 100 {
 		return c, fmt.Errorf("MODEL_GPU_MEMORY_RESERVATION_PERCENT must be between 100 and 1000")
 	}
@@ -94,6 +115,12 @@ func (c Config) Validate() error {
 	}
 	if c.IdleSweepInterval < 0 {
 		return fmt.Errorf("idle sweep interval must be non-negative")
+	}
+	if c.EvictionPolicy != "" && c.EvictionPolicy != EvictionIdleTimeout && c.EvictionPolicy != EvictionLRUOnDemand {
+		return fmt.Errorf("MODEL_EVICTION_POLICY must be %q or %q", EvictionIdleTimeout, EvictionLRUOnDemand)
+	}
+	if c.MinResidency < 0 {
+		return fmt.Errorf("minimum residency must be non-negative")
 	}
 	if len(c.GPUBudgetsMiB) > 0 {
 		for uuid, budget := range c.GPUBudgetsMiB {

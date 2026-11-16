@@ -75,6 +75,9 @@ type entry struct {
 	blocked   bool // rejects new and queued admission during deployment changes
 	draining  bool // grants one drain operation exclusive ownership of the gate
 	preparing bool // prevents activation before candidate preparation completes
+	// recoverAfter delays the next background attempt to release a quarantined reservation.
+	recoverAfter  time.Time
+	recoverFailed int
 }
 type waiter struct{ id string }
 
@@ -897,11 +900,21 @@ func (m *Manager) reserve(ctx context.Context, target *entry) error {
 		var victim *entry
 		wait := m.config.QueueTimeout
 		now := time.Now()
-		for _, e := range m.models {
+		for id, e := range m.models {
 			if e == target || e.active || e.blocked || e.state != types.RuntimeReady || e.reserved == 0 || (len(m.config.GPUBudgetsMiB) > 0 && e.model.GPUUUID != target.model.GPUUUID) {
 				continue
 			}
-			remaining := time.Duration(e.model.Resources.IdleTimeoutSeconds)*time.Second - now.Sub(e.lastUsed)
+			// A model stays resident for its idle timeout, or under the
+			// on-demand policy only for the minimum residency, so a burst of
+			// different models is not held up by ones that already answered.
+			keep := time.Duration(e.model.Resources.IdleTimeoutSeconds) * time.Second
+			if m.config.EvictionPolicy == EvictionLRUOnDemand {
+				if m.hasQueuedLocked(id) {
+					continue
+				}
+				keep = m.config.MinResidency
+			}
+			remaining := keep - now.Sub(e.lastUsed)
 			if remaining > 0 {
 				if remaining < wait {
 					wait = remaining
@@ -918,10 +931,10 @@ func (m *Manager) reserve(ctx context.Context, target *entry) error {
 			model := victim.model
 			m.wakeLocked()
 			m.mu.Unlock()
-			err := m.evict(ctx, victim, model)
-			if err != nil {
-				return fmt.Errorf("idle model eviction failed: %w", err)
-			}
+			// A failed eviction quarantines that model's reservation (see
+			// evict). The request then looks for another victim or waits; it
+			// does not fail because one neighbour could not be unloaded.
+			_ = m.evict(ctx, victim, model)
 			continue
 		}
 		changed := m.changed
