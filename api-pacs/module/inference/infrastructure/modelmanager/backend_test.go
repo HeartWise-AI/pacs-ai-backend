@@ -191,3 +191,37 @@ func TestBackendInspectReadsRunningRuntimeWithoutLoading(t *testing.T) {
 		t.Fatalf("running inspection mutated or misread state: model=%+v runtime=%+v starts=%d", model, runtime, d.starts)
 	}
 }
+
+func TestBackendUnloadWaitsOutProcessRestart(t *testing.T) {
+	var mu sync.Mutex
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		if calls <= 3 {
+			// The container proxy while the inference process respawns.
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		json.NewEncoder(w).Encode(api.ModelRuntimeResponse{Success: true, Data: api.ModelRuntime{State: api.RuntimeUnloaded}})
+	}))
+	defer server.Close()
+	d := &dockerFake{name: strings.TrimPrefix(server.URL, "http://"), running: true, pid: "10"}
+	b := &ContainerBackend{Docker: d, API: &dockerinference.DockerInferenceAPI{}, PollInterval: time.Millisecond, ReadinessTimeout: time.Second}
+	if err := b.Unload(context.Background(), Model{Name: d.name, ContainerID: id(1)}); err != nil {
+		t.Fatalf("a model that restarted on its own and reports UNLOADED must release: %v", err)
+	}
+}
+
+func TestBackendUnloadStillFailsWhenProcessStaysDown(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+	d := &dockerFake{name: strings.TrimPrefix(server.URL, "http://"), running: true, pid: "10"}
+	b := &ContainerBackend{Docker: d, API: &dockerinference.DockerInferenceAPI{}, PollInterval: time.Millisecond, ReadinessTimeout: 20 * time.Millisecond}
+	if err := b.Unload(context.Background(), Model{Name: d.name, ContainerID: id(1)}); err == nil {
+		t.Fatal("a process that never comes back must not release its reservation")
+	}
+}
