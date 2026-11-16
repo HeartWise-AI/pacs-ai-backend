@@ -41,7 +41,12 @@ class PanEcho:
         task_list = [Task(t, task_dict[t]['task_type'], task_dict[t]['class_names'], task_dict[t]['mean']) for t in all_tasks]
 
         # Initialize model
-        encoder = FrameTransformer(arch, n_heads, n_layers, transformer_dropout, pooling, clip_len)
+        # The released checkpoint supplies every backbone tensor (checked below), so the
+        # ImageNet initialisation is only fetched when that checkpoint is not loaded.
+        encoder = FrameTransformer(
+            arch, n_heads, n_layers, transformer_dropout, pooling, clip_len,
+            pretrained_backbone=not pretrained,
+        )
         encoder_dim = encoder.encoder.n_features
 
         model = MultiTaskModel(encoder, encoder_dim, task_list, 0.25, activations)
@@ -50,7 +55,13 @@ class PanEcho:
         if pretrained:
             weights = torch.load(model_path, map_location='cpu', weights_only=True)['weights']
             del weights['encoder.time_encoder.pe']  # allow for variable clip_len (fixed positional encoding does not need to be loaded from PanEcho)
-            model.load_state_dict(weights, strict=False)
+            incompatible = model.load_state_dict(weights, strict=False)
+            missing = set(incompatible.missing_keys) - {'encoder.time_encoder.pe'}
+            if missing or incompatible.unexpected_keys:
+                raise RuntimeError(
+                    'PanEcho checkpoint does not match the architecture: '
+                    f'missing={sorted(missing)[:5]} unexpected={list(incompatible.unexpected_keys)[:5]}'
+                )
 
         # Subset for desired tasks
         if tasks != 'all':
