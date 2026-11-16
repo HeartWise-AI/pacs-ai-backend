@@ -79,6 +79,9 @@ func (m *Manager) recoverQuarantined(ctx context.Context) {
 }
 
 func (m *Manager) evictIdle(ctx context.Context) {
+	// First forget reservations of containers that are gone: recovering or
+	// evicting one would address whatever container now holds its name.
+	m.dropGhostReservations(ctx)
 	m.recoverQuarantined(ctx)
 	// Each victim is claimed under the same lock as inference/deployment. An
 	// unload failure quarantines its reservation rather than freeing capacity.

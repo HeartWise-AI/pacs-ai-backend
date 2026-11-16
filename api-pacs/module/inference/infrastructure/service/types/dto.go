@@ -24,6 +24,11 @@ type DeployInferenceModelVersion struct {
 	ModelID             string
 	VersionID           string
 	ActorUserID         string
+	// KeepRunningImage recreates the container from the image it runs (a GPU
+	// move) instead of deploying VersionID. Automatic marks a move started by
+	// the placement loop: it is refused rather than disturb a model in use.
+	KeepRunningImage bool
+	Automatic        bool
 }
 
 type DeployInferenceModelVersionResult struct {

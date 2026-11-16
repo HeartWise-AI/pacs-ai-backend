@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"log"
 	"sort"
 	"strings"
 	"sync"
@@ -12,8 +13,10 @@ import (
 	dockerSDK "api-pacs/infrastructures/providers/sdk/docker"
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
 	"api-pacs/module/inference/infrastructure/modelmanager"
+	"api-pacs/module/inference/infrastructure/modelupgrade"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 )
 
@@ -55,6 +58,36 @@ type GPUModelView struct {
 	MeasuredOvershoots     int        `json:"measuredOvershoots"`
 	MeasuredAt             *time.Time `json:"measuredAt"`
 	ReservationSource      string     `json:"reservationSource,omitempty"`
+	GPUModelImageView
+}
+
+// GPUModelImageView compares the image a model container runs with the image
+// registered for it in the catalog. A move keeps the running image, so
+// imageDrift tells an operator that the registration names another one.
+type GPUModelImageView struct {
+	// ImageDrift is true when the container runs an image other than the
+	// registered catalog version (for example a local build deployed by hand).
+	ImageDrift      bool   `json:"imageDrift"`
+	RunningImage    string `json:"runningImage,omitempty"`
+	RunningImageID  string `json:"runningImageId,omitempty"`
+	RegisteredImage string `json:"registeredImage,omitempty"`
+	// RunningImageUnavailable is true when the running image is no longer
+	// present on the host: a move could not keep it and would deploy the
+	// registered image, so the automatic loop never moves such a model.
+	RunningImageUnavailable bool `json:"runningImageUnavailable,omitempty"`
+}
+
+// imageStateMaxAge is how long a model's image comparison is reused.
+const imageStateMaxAge = time.Minute
+
+type cachedImageState struct {
+	at    time.Time
+	value GPUModelImageView
+}
+
+// GPUAdminVersionReader reads the catalog version a registration refers to.
+type GPUAdminVersionReader interface {
+	SelectInferenceModelVersion(context.Context, string) (entity.InferenceModelVersion, error)
 }
 
 // processSampleMaxAge is how long a per-process GPU sample is still reported.
@@ -110,10 +143,14 @@ type GPUAdministrationService struct {
 	// Operations is optional: with it the automatic placement loop learns at
 	// once that a deployment it started has failed.
 	Operations GPUAdminOperations
+	// Versions is optional: with it the running image of each model is compared
+	// with its catalog version, otherwise with the registration's own snapshot.
+	Versions GPUAdminVersionReader
 	// Clock is replaced in tests; nil means time.Now.
 	Clock  func() time.Time
 	mu     sync.Mutex
 	cache  map[string]cachedGPUProbe
+	images map[string]cachedImageState
 	autoMu sync.Mutex
 	auto   autoPlacementState
 }
@@ -142,6 +179,45 @@ func (service *GPUAdministrationService) sample(ctx context.Context, id, uuid st
 	}
 	service.cache[key] = cachedGPUProbe{at: time.Now(), value: value, err: err}
 	return value, err
+}
+
+// imageState compares what a model container runs with its registration. It
+// only reads Docker and the catalog, and is cached because the status is polled.
+func (service *GPUAdministrationService) imageState(ctx context.Context, model entity.InferenceModel, info dockerTypes.GetContainerInfoResult) GPUModelImageView {
+	inspector, ok := service.Docker.(modelupgrade.ImageInspector)
+	if !ok || info.ImageID == "" {
+		return GPUModelImageView{}
+	}
+	versionID := ""
+	if model.Deployment != nil {
+		versionID = model.Deployment.CatalogVersionID
+	}
+	key := info.ID + "/" + info.ImageID + "/" + versionID
+	service.mu.Lock()
+	cached, hit := service.images[key]
+	service.mu.Unlock()
+	if hit && time.Since(cached.at) < imageStateMaxAge {
+		return cached.value
+	}
+	var version *entity.InferenceModelVersion
+	if service.Versions != nil && versionID != "" {
+		if found, err := service.Versions.SelectInferenceModelVersion(ctx, versionID); err == nil {
+			found.Normalize()
+			version = &found
+		}
+	}
+	running := modelupgrade.ResolveRunningImage(ctx, inspector, info, model, version)
+	view := GPUModelImageView{
+		ImageDrift: running.Drift, RunningImage: running.Reference, RunningImageID: running.ImageID,
+		RegisteredImage: running.RegisteredReference, RunningImageUnavailable: !running.Available,
+	}
+	service.mu.Lock()
+	if service.images == nil || len(service.images) > 256 {
+		service.images = map[string]cachedImageState{}
+	}
+	service.images[key] = cachedImageState{at: time.Now(), value: view}
+	service.mu.Unlock()
+	return view
 }
 
 func (service *GPUAdministrationService) Snapshot(ctx context.Context, tenantID string) (GPUAdministrationSnapshot, error) {
@@ -180,6 +256,7 @@ func (service *GPUAdministrationService) Snapshot(ctx context.Context, tenantID 
 			view.Reason = "Container is unavailable"
 		} else {
 			view.GPUUUID = optionalGPUUUID(info.GPUUUID)
+			view.GPUModelImageView = service.imageState(ctx, model, info)
 			if info.GPUUUID != "" && info.Lifecycle == dockerTypes.LifecycleRunning {
 				if _, exists := probes[info.GPUUUID]; !exists {
 					probes[info.GPUUUID] = info.ID
@@ -237,7 +314,11 @@ func (service *GPUAdministrationService) Snapshot(ctx context.Context, tenantID 
 	return result, nil
 }
 
-func (service *GPUAdministrationService) move(ctx context.Context, tenantID, actor, modelID, uuid, expectedContainerID string) (serviceTypes.DeployInferenceModelVersionResult, error) {
+// move recreates a model's container on another GPU from the image and
+// configuration of the container that runs now, not from the catalog version:
+// a model deployed by hand from a newer or local image must not be downgraded
+// by being moved. automatic is true for the placement loop.
+func (service *GPUAdministrationService) move(ctx context.Context, tenantID, actor, modelID, uuid, expectedContainerID string, automatic bool) (serviceTypes.DeployInferenceModelVersionResult, error) {
 	empty := serviceTypes.DeployInferenceModelVersionResult{}
 	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(actor) == "" || strings.TrimSpace(modelID) == "" || strings.TrimSpace(uuid) == "" || strings.TrimSpace(expectedContainerID) == "" {
 		return empty, errors.New(apiError.InvalidPayload)
@@ -275,5 +356,21 @@ func (service *GPUAdministrationService) move(ctx context.Context, tenantID, act
 	if err := service.Manager.ValidateGPUPlacement(uuid, metadata.Data.Resources); err != nil {
 		return empty, errors.New(apiError.InvalidPayload)
 	}
-	return service.Deployer.DeployInferenceModelVersion(ctx, serviceTypes.DeployInferenceModelVersion{TenantID: tenantID, ActorUserID: actor, ModelID: modelID, VersionID: model.Deployment.CatalogVersionID, TargetGPUUUID: uuid, ExpectedContainerID: expectedContainerID})
+	image := service.imageState(ctx, model, info)
+	source := modelupgrade.ImageSourceRunning
+	if image.RunningImageUnavailable {
+		// Without the running image the container can only be recreated from
+		// the registered one. The automatic loop never does that.
+		if automatic {
+			log.Printf("[gpu-placement] move of model=%s refused: the image it runs (%s) is not present on the host and the registered image %q would be deployed instead", modelID, image.RunningImageID, image.RegisteredImage)
+			return empty, errors.New(apiError.InferenceUpgradeConflict)
+		}
+		source = modelupgrade.ImageSourceRegistered
+	}
+	log.Printf("[gpu-placement] move of model=%s container=%.12s to=%s automatic=%t image_source=%s running_image=%q running_image_id=%s registered_image=%q image_drift=%t",
+		modelID, expectedContainerID, uuid, automatic, source, image.RunningImage, image.RunningImageID, image.RegisteredImage, image.ImageDrift)
+	return service.Deployer.DeployInferenceModelVersion(ctx, serviceTypes.DeployInferenceModelVersion{
+		TenantID: tenantID, ActorUserID: actor, ModelID: modelID, VersionID: model.Deployment.CatalogVersionID,
+		TargetGPUUUID: uuid, ExpectedContainerID: expectedContainerID, KeepRunningImage: true, Automatic: automatic,
+	})
 }

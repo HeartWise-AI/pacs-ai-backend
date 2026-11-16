@@ -834,7 +834,10 @@ func (service *InferenceCommandService) DeployInferenceModelVersion(
 		return types.DeployInferenceModelVersionResult{}, err
 	}
 	version.Normalize()
-	if err = version.Validate(); err != nil || version.ID != data.VersionID || version.Status != entity.InferenceModelVersionAvailable {
+	// A move does not deploy the catalog version, so a version that was
+	// withdrawn since must not keep the model from being moved.
+	if err = version.Validate(); err != nil || version.ID != data.VersionID ||
+		(version.Status != entity.InferenceModelVersionAvailable && !data.KeepRunningImage) {
 		return types.DeployInferenceModelVersionResult{}, errors.New(apiError.InvalidPayload)
 	}
 	source := entity.InferenceModelDeployment{}
@@ -850,6 +853,7 @@ func (service *InferenceCommandService) DeployInferenceModelVersion(
 	operation, err := service.ModelDeploymentOperations.Start(ctx, modelupgrade.StartDeploymentOperation{
 		TenantID: data.TenantID, ModelID: data.ModelID, ActorUserID: data.ActorUserID,
 		Source: source, Target: version, TargetGPUUUID: data.TargetGPUUUID,
+		KeepRunningImage: data.KeepRunningImage, Automatic: data.Automatic,
 	})
 	if err != nil {
 		return types.DeployInferenceModelVersionResult{}, err
@@ -1369,7 +1373,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationW
 		default:
 		}
 
-		attempted, repaired, reconcileErr := service.reconcileProcessingRun(ctx, run, now, config)
+		attempted, repaired, reconcileErr := service.reconcileProcessingRun(ctx, run, now, config, &metrics.Redispatched)
 		if !attempted {
 			continue
 		}
@@ -1421,6 +1425,7 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 	run entity.InferenceIngestionProcessingRun,
 	now time.Time,
 	config processingReconciliationConfig,
+	redispatched *int,
 ) (bool, bool, error) {
 	executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, run.TenantID, run.ID)
 	if err != nil {
@@ -1524,6 +1529,18 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 				continue
 			}
 			if strings.TrimSpace(trimmedPointerValue(target.StudyServiceJobID)) == "" {
+				// Study-service has no job for this execution. If its dispatch
+				// was lost (a gateway restart), start it again instead of
+				// leaving the study waiting for an operator.
+				if started, reason := service.redispatchOrphanedExecution(run, candidate, target, now, config); started {
+					if redispatched != nil {
+						*redispatched++
+					}
+					continue
+				} else if target.Status == entity.InferenceIngestionProcessingJobStatusPending {
+					log.Printf("[Ingestion reconciliation worker] pending execution not re-dispatched processing_run_id=%s execution_id=%s candidate_id=%s reason=%q",
+						run.ID, target.ID, candidate.ID, reason)
+				}
 				findings.ExpectedJobMissing = true
 			} else {
 				findings.StudyServiceJobMissing = true
@@ -2130,26 +2147,11 @@ func (service *InferenceCommandService) scheduleStudyServiceDispatchWithRequestI
 		}
 	}
 
-	go func() {
-		if limiter := service.StudyServiceDispatchSemaphore; limiter != nil {
-			limiter <- struct{}{}
-			defer func() {
-				<-limiter
-			}()
-		}
-
-		if err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
-			context.Background(), job, candidate, processingRunID, requestID, processingExecutionID, dispatchIntent,
-			seriesInstanceUIDs...,
-		); err != nil {
-			log.Printf("[Ingestion dispatch] final dispatch failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
-				candidate.ID,
-				job.ID,
-				requestID,
-				err,
-			)
-		}
-	}()
+	key := studyServiceDispatchKey(candidate.TenantID, processingRunID, candidate.ID, job.ModelName)
+	liveStudyServiceDispatches.begin(key)
+	service.launchStudyServiceDispatch(
+		key, job, candidate, processingRunID, requestID, processingExecutionID, dispatchIntent, seriesInstanceUIDs...,
+	)
 }
 
 func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService(ctx context.Context, job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate, processingRunID, requestID string) error {

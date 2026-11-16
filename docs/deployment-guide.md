@@ -769,6 +769,8 @@ WHERE id = '<candidate-id>' AND status = 'RETRIEVAL_QUEUED';
 
 The next retrieval-worker tick (≤ 1 min) will pick it up. Always copy the row to a one-off audit table before mutating production state.
 
+A `RETRIEVED` candidate whose automatic execution stays `pending` no longer needs this. The dispatch to study-service runs in memory in api-pacs, so an api-pacs restart used to lose it. The reconciliation worker (at startup and every `INFERENCE_INGESTION_RECONCILIATION_INTERVAL_MINUTES`, default 5) now dispatches such an execution again when all of this holds: study-service has no job for it (asked by processing run and by candidate), the run is automatic and not finished, the execution is pending without a study-service job and the candidate retrieved, both for longer than `INFERENCE_INGESTION_RECONCILIATION_PENDING_MINUTES` (default 2), no dispatch for it is under way in the process, and its ingestion job is running for that model. It logs `re-dispatching orphaned execution ...` and counts it as `redispatched=` in the cycle summary; an execution it leaves alone is logged with `pending execution not re-dispatched ... reason=`. The dispatch is the ordinary one: it does nothing unless the execution is still pending, and study-service answers a repeated automatic request with the job it already has. Manual and viewer runs, and executions that already carry a study-service job ID, are never dispatched again; they keep raising attention as before.
+
 ### 12.2 Celery queue backed up
 ```bash
 docker compose exec redis redis-cli -n 2 LLEN celery     # cardio-agent uses Redis DB 2 in integrated mode

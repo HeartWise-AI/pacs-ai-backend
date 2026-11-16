@@ -267,3 +267,116 @@ func TestRemoveContainerIsIdempotentWhenCandidateIsAlreadyGone(t *testing.T) {
 }
 
 var _ dockertypes.CandidateDockerSDKInterface = (*DockerSDK)(nil)
+
+func TestMovedContainerKeepsEverythingButItsGPU(t *testing.T) {
+	const otherGPU = "GPU-22222222-2222-2222-2222-222222222222"
+	activeID := strings.Repeat("ab", 32)
+	active := engine.ContainerJSON{
+		ContainerJSONBase: &engine.ContainerJSONBase{
+			ID: activeID, Name: "/DeepRV-CLIP", Image: "sha256:running",
+			HostConfig: &container.HostConfig{
+				Binds:         []string{"model-data:/models:ro"},
+				Mounts:        []mount.Mount{{Type: mount.TypeBind, Source: "/srv/cache", Target: "/cache"}},
+				ShmSize:       2 << 30,
+				Runtime:       "nvidia",
+				DNS:           []string{"0.0.0.0"},
+				RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyUnlessStopped},
+				PortBindings:  nat.PortMap{"80/tcp": []nat.PortBinding{{HostPort: "8080"}}},
+				Resources: container.Resources{DeviceRequests: []container.DeviceRequest{{
+					Driver: "nvidia", DeviceIDs: []string{"GPU-11111111-1111-1111-1111-111111111111"}, Capabilities: [][]string{{"gpu"}},
+				}}},
+			},
+		},
+		Config: &container.Config{
+			Image:        "deeprv-clip-local:1.0.1-render-report-1",
+			Hostname:     activeID[:12],
+			Env:          []string{"PATH=/usr/bin", "MODEL_SETTING=local"},
+			Cmd:          []string{"/usr/bin/supervisord", "-c", "/etc/supervisord.conf"},
+			Entrypoint:   []string{"/entry.sh"},
+			WorkingDir:   "/app",
+			User:         "model",
+			Labels:       map[string]string{"ai.heartwise.pacs.deployment": "render-report-1", gpuPlacementNameLabel: "DeepRV-CLIP"},
+			ExposedPorts: nat.PortSet{"80/tcp": struct{}{}},
+		},
+		NetworkSettings: &engine.NetworkSettings{Networks: map[string]*network.EndpointSettings{
+			"pacs-net": {IPAddress: "172.20.0.5", Aliases: []string{"DeepRV-CLIP", activeID[:12], "deeprv"}},
+		}},
+	}
+
+	sdk := &DockerSDK{GPUDefaultUUID: "GPU-11111111-1111-1111-1111-111111111111"}
+	containerConfig, hostConfig, networkConfig := sdk.candidateContainerConfigs(dockertypes.CreateCandidateContainer{
+		Image: "deeprv-clip-local:1.0.1-render-report-1", GPUUUID: otherGPU,
+		Envs:                    []string{"REGISTRATION_SETTING=stale"},
+		KeepActiveConfiguration: true,
+	}, active)
+
+	if containerConfig.Image != "deeprv-clip-local:1.0.1-render-report-1" {
+		t.Fatalf("image = %q", containerConfig.Image)
+	}
+	if !slices.Equal(containerConfig.Env, active.Config.Env) {
+		t.Fatalf("environment was not kept: %v", containerConfig.Env)
+	}
+	if !slices.Equal(containerConfig.Cmd, active.Config.Cmd) || !slices.Equal(containerConfig.Entrypoint, active.Config.Entrypoint) ||
+		containerConfig.WorkingDir != "/app" || containerConfig.User != "model" {
+		t.Fatalf("command was not kept: %+v", containerConfig)
+	}
+	if containerConfig.Labels["ai.heartwise.pacs.deployment"] != "render-report-1" || containerConfig.Labels[gpuPlacementNameLabel] != "DeepRV-CLIP" {
+		t.Fatalf("labels were not kept: %v", containerConfig.Labels)
+	}
+	if containerConfig.Hostname != "" {
+		t.Fatalf("the old container's generated hostname leaked: %q", containerConfig.Hostname)
+	}
+	if hostConfig.RestartPolicy.Name != container.RestartPolicyUnlessStopped || hostConfig.ShmSize != 2<<30 ||
+		!slices.Equal(hostConfig.Binds, active.HostConfig.Binds) || len(hostConfig.Mounts) != 1 || !slices.Equal(hostConfig.DNS, []string{"0.0.0.0"}) {
+		t.Fatalf("host configuration was not kept: %+v", hostConfig)
+	}
+	if len(hostConfig.DeviceRequests) != 1 || !slices.Equal(hostConfig.DeviceRequests[0].DeviceIDs, []string{otherGPU}) {
+		t.Fatalf("the GPU request is the one thing a move changes: %+v", hostConfig.DeviceRequests)
+	}
+	if hostConfig.PortBindings != nil {
+		t.Fatal("host ports are still held by the active container and cannot be bound twice")
+	}
+	if aliases := networkConfig.EndpointsConfig["pacs-net"].Aliases; !slices.Equal(aliases, []string{"deeprv"}) {
+		t.Fatalf("only operator aliases are kept, never the active container's own name or ID: %v", aliases)
+	}
+
+	// The active container's inspection must not be modified.
+	containerConfig.Labels["changed"] = "yes"
+	containerConfig.Env[0] = "changed"
+	if _, leaked := active.Config.Labels["changed"]; leaked || active.Config.Env[0] != "PATH=/usr/bin" {
+		t.Fatal("building the moved configuration mutated the active container's")
+	}
+}
+
+func TestMoveIsNotCreatedWhenTheActiveContainerRunsAnotherImage(t *testing.T) {
+	created := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/containers/active/json"):
+			json.NewEncoder(w).Encode(engine.ContainerJSON{
+				ContainerJSONBase: &engine.ContainerJSONBase{ID: "active-id", Name: "/active-model", Image: "sha256:replaced", HostConfig: &container.HostConfig{}},
+				Config:            &container.Config{},
+			})
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/containers/create"):
+			created = true
+			json.NewEncoder(w).Encode(map[string]any{"Id": "candidate-id"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, err := client.NewClientWithOpts(client.WithHost(server.URL), client.WithVersion("1.47"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	_, err = (&DockerSDK{Client: client}).CreateCandidateContainer(context.Background(), dockertypes.CreateCandidateContainer{
+		Name: "active-model-candidate-1", Image: "model-local:1", ActiveContainerID: "active",
+		KeepActiveConfiguration: true, ExpectedImageID: "sha256:running",
+	})
+	if err == nil || created {
+		t.Fatalf("a move from a container whose image changed must be refused: err=%v created=%v", err, created)
+	}
+}

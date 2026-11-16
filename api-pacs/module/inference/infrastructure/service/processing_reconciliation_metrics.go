@@ -7,6 +7,9 @@ type ProcessingReconciliationCycleMetrics struct {
 	Repaired   int
 	Failed     int
 	Unresolved int
+	// Redispatched counts pending executions whose lost dispatch was started
+	// again in this cycle.
+	Redispatched int
 }
 
 type ProcessingReconciliationMetricsRecorder interface {
@@ -20,10 +23,11 @@ type LoggingProcessingReconciliationMetricsRecorder struct{}
 func (*LoggingProcessingReconciliationMetricsRecorder) RecordProcessingReconciliationCycle(
 	metrics ProcessingReconciliationCycleMetrics,
 ) {
-	log.Printf("[Ingestion reconciliation metrics] checked=%d repaired=%d failed=%d unresolved=%d",
+	log.Printf("[Ingestion reconciliation metrics] checked=%d repaired=%d failed=%d unresolved=%d redispatched=%d",
 		metrics.Checked,
 		metrics.Repaired,
 		metrics.Failed,
 		metrics.Unresolved,
+		metrics.Redispatched,
 	)
 }

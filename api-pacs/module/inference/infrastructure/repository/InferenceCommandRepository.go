@@ -636,7 +636,7 @@ func validateRegistrationReplacement(data types.ReplaceInferenceModelRegistratio
 	deployment := data.Deployment
 	if data.ID == "" || data.TenantID == "" || data.ExpectedContainerID == "" || data.ExpectedImageReference == "" ||
 		deployment.ContainerID == "" || deployment.CatalogVersionID == "" || deployment.ArtifactModelID == "" ||
-		deployment.ImageReference == "" || deployment.ImageDigest == "" ||
+		deployment.ImageReference == "" || (deployment.ImageDigest == "" && !data.KeepsRunningImage) ||
 		deployment.LocalImageID == "" || deployment.ModelVersion == "" || deployment.DeployedAt <= 0 ||
 		deployment.Provenance == nil {
 		return errors.New(apiError.InvalidPayload)
@@ -663,10 +663,15 @@ func validateRegistrationRestore(data types.RestoreInferenceModelRegistration) (
 	complete := deploymentSnapshotComplete(previous)
 	legacy := previous.ImageDigest == "" && previous.LocalImageID == "" && previous.ModelVersion == "" &&
 		previous.Provenance == nil && previous.DeployedAt == 0
-	if !complete && !legacy {
+	// A locally built image is a complete snapshot without a registry digest.
+	// Refusing it would leave a failed move unable to restore the registration.
+	withDigest := previous
+	withDigest.ImageDigest = "sha256:local-build"
+	localBuild := previous.ImageDigest == "" && deploymentSnapshotComplete(withDigest)
+	if !complete && !legacy && !localBuild {
 		return false, errors.New(apiError.InvalidPayload)
 	}
-	return complete, nil
+	return complete || localBuild, nil
 }
 
 func deploymentSnapshotComplete(deployment entity.InferenceModelDeployment) bool {

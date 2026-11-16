@@ -29,28 +29,38 @@ const (
 // InferenceModelDeploymentOperation is the durable state of one administrator-
 // initiated model deployment. It is also the source of truth for live progress.
 type InferenceModelDeploymentOperation struct {
-	TargetGPUUUID        string                                  `firestore:"target_gpu_uuid,omitempty" json:"targetGpuUuid,omitempty"`
-	ID                   string                                  `firestore:"id,omitempty" json:"id"`
-	TenantID             string                                  `firestore:"tenant_id" json:"tenantId"`
-	ModelID              string                                  `firestore:"model_id" json:"modelId"`
-	ActorUserID          string                                  `firestore:"actor_user_id" json:"actorUserId"`
-	CatalogVersionID     string                                  `firestore:"catalog_version_id" json:"catalogVersionId"`
-	RequestedVersion     string                                  `firestore:"requested_version" json:"requestedVersion"`
-	RequestedImage       string                                  `firestore:"requested_image" json:"requestedImage"`
-	RequestedImageDigest string                                  `firestore:"requested_image_digest" json:"requestedImageDigest"`
-	Source               InferenceModelDeployment                `firestore:"source" json:"source"`
-	Active               *InferenceModelDeployment               `firestore:"active,omitempty" json:"active,omitempty"`
-	ContainerName        string                                  `firestore:"container_name,omitempty" json:"containerName,omitempty"`
-	Status               InferenceModelDeploymentOperationStatus `firestore:"status" json:"status"`
-	Stage                InferenceModelDeploymentOperationStage  `firestore:"stage" json:"stage"`
-	Sequence             int64                                   `firestore:"sequence" json:"sequence"`
-	ErrorCode            string                                  `firestore:"error_code,omitempty" json:"errorCode,omitempty"`
-	ErrorMessage         string                                  `firestore:"error_message,omitempty" json:"errorMessage,omitempty"`
-	RollbackError        string                                  `firestore:"rollback_error,omitempty" json:"rollbackError,omitempty"`
-	CreatedAt            int64                                   `firestore:"created_at" json:"createdAt"`
-	StartedAt            int64                                   `firestore:"started_at,omitempty" json:"startedAt,omitempty"`
-	UpdatedAt            int64                                   `firestore:"updated_at" json:"updatedAt"`
-	FinishedAt           int64                                   `firestore:"finished_at,omitempty" json:"finishedAt,omitempty"`
+	TargetGPUUUID        string `firestore:"target_gpu_uuid,omitempty" json:"targetGpuUuid,omitempty"`
+	ID                   string `firestore:"id,omitempty" json:"id"`
+	TenantID             string `firestore:"tenant_id" json:"tenantId"`
+	ModelID              string `firestore:"model_id" json:"modelId"`
+	ActorUserID          string `firestore:"actor_user_id" json:"actorUserId"`
+	CatalogVersionID     string `firestore:"catalog_version_id" json:"catalogVersionId"`
+	RequestedVersion     string `firestore:"requested_version" json:"requestedVersion"`
+	RequestedImage       string `firestore:"requested_image" json:"requestedImage"`
+	RequestedImageDigest string `firestore:"requested_image_digest" json:"requestedImageDigest"`
+	// KeepRunningImage marks a GPU move: the container is recreated from the
+	// image it runs, and the catalog fields above only name the registered
+	// version that image is compared with. Automatic marks a move started by
+	// the placement loop.
+	KeepRunningImage bool `firestore:"keep_running_image,omitempty" json:"keepRunningImage,omitempty"`
+	Automatic        bool `firestore:"automatic,omitempty" json:"automatic,omitempty"`
+	// ImageSource is set when a move completes: "running" when the running
+	// image was kept, "registered" when the catalog version was deployed.
+	ImageSource   string                                  `firestore:"image_source,omitempty" json:"imageSource,omitempty"`
+	ImageDrift    bool                                    `firestore:"image_drift,omitempty" json:"imageDrift,omitempty"`
+	Source        InferenceModelDeployment                `firestore:"source" json:"source"`
+	Active        *InferenceModelDeployment               `firestore:"active,omitempty" json:"active,omitempty"`
+	ContainerName string                                  `firestore:"container_name,omitempty" json:"containerName,omitempty"`
+	Status        InferenceModelDeploymentOperationStatus `firestore:"status" json:"status"`
+	Stage         InferenceModelDeploymentOperationStage  `firestore:"stage" json:"stage"`
+	Sequence      int64                                   `firestore:"sequence" json:"sequence"`
+	ErrorCode     string                                  `firestore:"error_code,omitempty" json:"errorCode,omitempty"`
+	ErrorMessage  string                                  `firestore:"error_message,omitempty" json:"errorMessage,omitempty"`
+	RollbackError string                                  `firestore:"rollback_error,omitempty" json:"rollbackError,omitempty"`
+	CreatedAt     int64                                   `firestore:"created_at" json:"createdAt"`
+	StartedAt     int64                                   `firestore:"started_at,omitempty" json:"startedAt,omitempty"`
+	UpdatedAt     int64                                   `firestore:"updated_at" json:"updatedAt"`
+	FinishedAt    int64                                   `firestore:"finished_at,omitempty" json:"finishedAt,omitempty"`
 }
 
 func (*InferenceModelDeploymentOperation) GetModelName() string {

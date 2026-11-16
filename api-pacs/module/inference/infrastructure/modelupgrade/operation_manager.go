@@ -31,6 +31,9 @@ type StartDeploymentOperation struct {
 	ActorUserID   string
 	Source        entity.InferenceModelDeployment
 	Target        entity.InferenceModelVersion
+	// KeepRunningImage and Automatic are described on UpgradeRequest.
+	KeepRunningImage bool
+	Automatic        bool
 }
 
 type OperationManagerConfig struct {
@@ -87,6 +90,7 @@ func (manager *OperationManager) Start(
 		TargetGPUUUID: request.TargetGPUUUID, ID: manager.newID(), TenantID: request.TenantID, ModelID: request.ModelID, ActorUserID: request.ActorUserID,
 		CatalogVersionID: request.Target.ID, RequestedVersion: request.Target.Version,
 		RequestedImage: request.Target.ImageReference, RequestedImageDigest: request.Target.ImageDigest,
+		KeepRunningImage: request.KeepRunningImage, Automatic: request.Automatic,
 		Source: request.Source, Status: entity.InferenceModelDeploymentOperationPending,
 		Stage: entity.InferenceModelDeploymentStageResolveActive, Sequence: 1, CreatedAt: now, UpdatedAt: now,
 	}
@@ -173,6 +177,7 @@ func (manager *OperationManager) run(operation entity.InferenceModelDeploymentOp
 	result, err := manager.executor.Upgrade(ctx, UpgradeRequest{
 		TenantID: operation.TenantID, ModelID: operation.ModelID, VersionID: operation.CatalogVersionID,
 		TargetGPUUUID: operation.TargetGPUUUID, ExpectedContainerID: operation.Source.ContainerID,
+		KeepRunningImage: operation.KeepRunningImage, Automatic: operation.Automatic,
 		OnStage: func(_ context.Context, stage UpgradeStage) error {
 			now := manager.now().UnixMilli()
 			next := operation
@@ -198,6 +203,10 @@ func (manager *OperationManager) run(operation entity.InferenceModelDeploymentOp
 	operation.Status = entity.InferenceModelDeploymentOperationCompleted
 	operation.Active = &result.Active
 	operation.ContainerName = result.ContainerName
+	if operation.KeepRunningImage {
+		operation.ImageSource = result.ImageSource
+		operation.ImageDrift = result.Image != nil && result.Image.Drift
+	}
 	operation.Sequence++
 	operation.UpdatedAt = now
 	operation.FinishedAt = now
@@ -278,6 +287,9 @@ func deploymentPublicErrorCode(err error) string {
 			apiError.InferenceUpgradeUnavailable,
 			apiError.InferenceCandidateDeploymentDisabled:
 			return upgradeErr.Err.Error()
+		}
+		if errors.Is(upgradeErr.Err, ErrModelBusy) || errors.Is(upgradeErr.Err, ErrMoveWouldChangeImage) {
+			return apiError.InferenceUpgradeConflict
 		}
 	}
 	return apiError.InferenceDeploymentFailed

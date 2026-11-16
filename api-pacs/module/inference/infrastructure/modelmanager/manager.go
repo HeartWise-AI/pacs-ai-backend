@@ -25,7 +25,10 @@ var (
 	ErrNotReconciled     = errors.New("model manager startup reconciliation is incomplete")
 	ErrReconciling       = errors.New("model manager reconciliation is already running")
 	ErrAdmissionBlocked  = errors.New("model admission is blocked for a deployment transition")
-	containerIDPattern   = regexp.MustCompile(`^[a-f0-9]{64}$`)
+	// ErrModelBusy refuses an operation that must not disturb a model with an
+	// admitted or waiting request.
+	ErrModelBusy       = errors.New("model is serving or has waiting requests")
+	containerIDPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 )
 
 // AdmissionTimeout is the retryable service result for Phase 4 HTTP adapters.
@@ -113,6 +116,9 @@ type Manager struct {
 	gpuUsage        map[string]GPUUsage
 	kicked          map[string]struct{} // GPUs with a sample requested by a prediction
 	measureKick     chan struct{}
+	// lastGhostSweep is when reservations were last checked against the
+	// containers that exist; guarded by mu.
+	lastGhostSweep time.Time
 }
 
 func New(config Config, backend Backend) (*Manager, error) {
@@ -704,6 +710,18 @@ func (m *Manager) admit(ctx context.Context, id string) (*waiter, *entry, error)
 // admitted work to finish, and confirms that its model is unloaded. The gate
 // stays closed until the upgrade controller explicitly calls Unblock.
 func (m *Manager) BlockAndDrain(ctx context.Context, id string) (err error) {
+	return m.blockAndDrain(ctx, id, false)
+}
+
+// BlockAndDrainIdle is BlockAndDrain for automatic placement: it refuses with
+// ErrModelBusy, leaving admission open, when the model has an admitted request
+// or one waiting. The check and the gate are taken under one lock, so a request
+// cannot slip in between them.
+func (m *Manager) BlockAndDrainIdle(ctx context.Context, id string) error {
+	return m.blockAndDrain(ctx, id, true)
+}
+
+func (m *Manager) blockAndDrain(ctx context.Context, id string, requireIdle bool) (err error) {
 	if !m.config.Enabled {
 		return ErrDisabled
 	}
@@ -724,6 +742,11 @@ func (m *Manager) BlockAndDrain(ctx context.Context, id string) (err error) {
 	if e.draining {
 		m.mu.Unlock()
 		return errors.New("model drain is already in progress")
+	}
+	if requireIdle && (e.active || e.leased || m.hasQueuedLocked(id)) {
+		m.mu.Unlock()
+		m.metrics.ObserveEvent("drain", "refused_busy")
+		return ErrModelBusy
 	}
 	e.blocked = true
 	e.draining = true
@@ -1023,9 +1046,16 @@ func (m *Manager) reserve(ctx context.Context, target *entry) error {
 			m.mu.Unlock()
 			return nil
 		}
+		now := time.Now()
+		// Before making this request wait or unload a neighbour, make sure the
+		// memory it lacks is not held for a container that no longer exists.
+		if m.ghostSweepDueLocked(now) {
+			m.mu.Unlock()
+			m.dropGhostReservations(ctx)
+			continue
+		}
 		var victim *entry
 		wait := m.config.QueueTimeout
-		now := time.Now()
 		for id, e := range m.models {
 			if e == target || e.active || e.blocked || e.state != types.RuntimeReady || e.reserved == 0 || (len(m.config.GPUBudgetsMiB) > 0 && e.model.GPUUUID != target.model.GPUUUID) {
 				continue

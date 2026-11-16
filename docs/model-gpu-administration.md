@@ -66,7 +66,28 @@ UUID whose capacity fits the model's scaled peak reservation. CPU-only models,
 unconfigured UUIDs, unsupported legacy registrations, and the current GPU are
 rejected. An existing deployment operation keeps its normal conflict lock.
 
-The server selects the currently deployed catalog artifact and returns the
+A move recreates the container from the image and configuration of the
+container that is running, not from the catalog version: its image,
+environment, labels, command, entrypoint, mounts, shared memory size, restart
+policy and operator-defined network aliases are kept, and only the GPU device
+request changes. (The new container has its own name and ID, and does not take
+over host ports, which the retained old container still holds.) A model that was
+deployed by hand from a newer or locally built image therefore stays on that
+image when it is moved. The candidate must report the same model, version,
+provenance, resources and capabilities as the running container, and must run
+the same local image ID, or the move is abandoned before the running model is
+touched. Only when the running image is no longer present on the host does a
+manual move deploy the registered catalog version as before; the automatic loop
+refuses that case. The gateway logs `event=move_image ... image_source=running|registered
+... image_drift=true|false`, and the finished operation carries `imageSource`
+and `imageDrift`.
+
+The GPU status and the placement plan report, per model, `runningImage`,
+`runningImageId`, `registeredImage` and `imageDrift` (true when the container
+runs an image other than its registered catalog version), and
+`runningImageUnavailable` when the running image is missing from the host.
+
+The server returns the
 existing deployment-operation response with HTTP 202. Use the existing operation
 status/events endpoints for progress. Changing GPUs recreates the inference
 container after draining active work; the control must explain this before
