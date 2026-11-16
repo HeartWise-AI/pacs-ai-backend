@@ -32,6 +32,11 @@ type PredictRequest struct {
 	SeriesInstanceMetadata map[int]map[int]interface{} `json:"seriesInstanceMetadata,omitempty"`
 	AdditionalMetadata     map[string]interface{}      `json:"additionalMetadata,omitempty"`
 	OutputMode             OutputMode                  `json:"outputMode"`
+	// Raw, when set, is the already-encoded JSON request object and is sent to
+	// the model as is. A prepared study payload can be gigabytes of base64;
+	// decoding it into the fields above and encoding it again costs tens of
+	// seconds and several copies, and the gateway never reads its content.
+	Raw json.RawMessage `json:"-"`
 }
 
 type ModelResources struct {
