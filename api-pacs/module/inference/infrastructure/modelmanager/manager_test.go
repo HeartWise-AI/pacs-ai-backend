@@ -25,6 +25,24 @@ type fakeBackend struct {
 	inspect        func(context.Context, string) (Model, types.ModelRuntime, error)
 	unload         func(context.Context, Model) error
 	load           func(context.Context, Model) error
+	// presence overrides what Docker reports for a container; one that is not
+	// listed exists and runs under the name the manager knows.
+	presence  map[string]ContainerPresence
+	locateErr error
+	located   []string
+}
+
+func (b *fakeBackend) Locate(_ context.Context, id, knownName string) (ContainerPresence, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.located = append(b.located, id)
+	if b.locateErr != nil {
+		return ContainerPresence{}, b.locateErr
+	}
+	if presence, ok := b.presence[id]; ok {
+		return presence, nil
+	}
+	return ContainerPresence{Exists: true, Running: true, Name: knownName}, nil
 }
 
 func newFake() *fakeBackend {

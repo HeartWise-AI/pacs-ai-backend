@@ -116,6 +116,9 @@ type Manager struct {
 	gpuUsage        map[string]GPUUsage
 	kicked          map[string]struct{} // GPUs with a sample requested by a prediction
 	measureKick     chan struct{}
+	// lastGhostSweep is when reservations were last checked against the
+	// containers that exist; guarded by mu.
+	lastGhostSweep time.Time
 }
 
 func New(config Config, backend Backend) (*Manager, error) {
@@ -1043,9 +1046,16 @@ func (m *Manager) reserve(ctx context.Context, target *entry) error {
 			m.mu.Unlock()
 			return nil
 		}
+		now := time.Now()
+		// Before making this request wait or unload a neighbour, make sure the
+		// memory it lacks is not held for a container that no longer exists.
+		if m.ghostSweepDueLocked(now) {
+			m.mu.Unlock()
+			m.dropGhostReservations(ctx)
+			continue
+		}
 		var victim *entry
 		wait := m.config.QueueTimeout
-		now := time.Now()
 		for id, e := range m.models {
 			if e == target || e.active || e.blocked || e.state != types.RuntimeReady || e.reserved == 0 || (len(m.config.GPUBudgetsMiB) > 0 && e.model.GPUUUID != target.model.GPUUUID) {
 				continue

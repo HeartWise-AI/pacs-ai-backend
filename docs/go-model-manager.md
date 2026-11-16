@@ -137,6 +137,36 @@ Reconciliation never cold-loads a model or starts a stopped container. Only one 
 the supported scope. Explicit multi-GPU placement and per-device budgets are
 now available; see [per-GPU placement and idle offloading](multi-gpu-model-placement.md).
 
+## Reservations of containers replaced outside the gateway
+
+A model container can be replaced without the gateway, for example by a rollout
+script that stops and renames the old container and starts a new one under the
+same name. The manager would keep the old container's reservation until the next
+restart, and every attempt to release it would address the new container, which
+answers to the old name.
+
+Every 30 seconds, at each idle sweep, and before a request that is short of
+memory waits or evicts a neighbour (at most once every 5 seconds), the manager
+inspects the container of every reservation it holds:
+
+- a container that no longer exists, or exists but is stopped, has no process
+  and no GPU memory: its reservation is dropped
+  (`[model-manager] ghost reservation dropped ... reason=container_missing|container_stopped`);
+- if another container now holds exactly the name the manager knew, is not in
+  the inventory yet and is idle, it is adopted with the reservation its state
+  calls for: nothing when unloaded, the resident reservation when loaded
+  (`[model-manager] replacement adopted ...`). A replacement that is serving a
+  request is not adopted; it is accounted for at its first managed request;
+- a container that was renamed but still runs keeps its reservation and is
+  addressed by its new name;
+- when Docker does not answer, nothing changes.
+
+Reservations owned by an admitted request, a queue, a drain or a deployment are
+never examined. Events are counted in `model_manager_events_total` as
+`ghost_reservation` with outcome `dropped` or `adopted`. The registration must
+still be pointed at the new container ID by whoever replaced it: the manager
+only receives requests for registered container IDs.
+
 ## Operational metrics
 
 Aggregate Model Manager metrics are exposed through the existing authenticated

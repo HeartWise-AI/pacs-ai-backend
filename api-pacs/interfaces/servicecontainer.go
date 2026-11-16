@@ -825,6 +825,7 @@ func registerHandlers() {
 			log.Printf("[SERVER] model manager reconciled models=%d", len(modelManager.Snapshot().Models))
 		}
 		go modelManager.RunIdleEviction(context.Background())
+		go modelManager.RunReservationReconciliation(context.Background())
 
 		candidateValidator, validationErr := modelupgrade.NewCandidateValidator(
 			dockerSDK,
