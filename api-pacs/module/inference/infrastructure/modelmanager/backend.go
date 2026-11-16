@@ -105,8 +105,32 @@ func (b *ContainerBackend) Predict(ctx context.Context, m Model, r api.PredictRe
 	return b.API.Predict(ctx, m.Name, r)
 }
 
+// runtimeDuringRestart reads the runtime, waiting out the short window in which
+// the supervised inference process is being respawned. A model that has just
+// exited (for example at its own idle timeout) answers 502 through its proxy
+// for a second or two; failing the eviction on that answer would quarantine a
+// reservation for memory that is in fact free.
+func (b *ContainerBackend) runtimeDuringRestart(ctx context.Context, m Model) (api.ModelRuntime, error) {
+	timeout, poll := b.timings()
+	deadline := time.Now().Add(timeout)
+	for {
+		r, err := b.API.GetModelRuntime(ctx, m.Name)
+		var status interface{ Restarting() bool }
+		if err == nil || !errors.As(err, &status) || !status.Restarting() || !time.Now().Before(deadline) {
+			return r, err
+		}
+		timer := time.NewTimer(poll)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return r, err
+		case <-timer.C:
+		}
+	}
+}
+
 func (b *ContainerBackend) Unload(ctx context.Context, m Model) error {
-	r, err := b.API.GetModelRuntime(ctx, m.Name)
+	r, err := b.runtimeDuringRestart(ctx, m)
 	if err != nil {
 		return err
 	}
