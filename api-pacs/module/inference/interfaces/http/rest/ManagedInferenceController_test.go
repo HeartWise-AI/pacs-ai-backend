@@ -65,7 +65,11 @@ func TestManagedInferenceGatewayAuthenticatesAndForwardsPreparedRequest(t *testi
 	require.Equal(t, 1, service.calls)
 	require.Equal(t, "tenant-a", service.tenantID)
 	require.Equal(t, "echo-prime", service.containerRef)
-	require.Equal(t, dockerInferenceTypes.OutputModeJSON, service.request.OutputMode)
+	// The model request is forwarded encoded, not decoded into fields.
+	var forwarded dockerInferenceTypes.PredictRequest
+	require.NoError(t, json.Unmarshal(service.request.Raw, &forwarded))
+	require.Equal(t, dockerInferenceTypes.OutputModeJSON, forwarded.OutputMode)
+	service.request = forwarded
 	var response struct {
 		Success bool                   `json:"success"`
 		Data    map[string]interface{} `json:"data"`

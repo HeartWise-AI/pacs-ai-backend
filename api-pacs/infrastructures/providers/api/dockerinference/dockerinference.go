@@ -114,14 +114,19 @@ func (d *DockerInferenceAPI) GetModelFacts(ctx context.Context, containerName st
 
 // Predict predicts the result from the docker inference API
 func (d *DockerInferenceAPI) Predict(ctx context.Context, containerName string, request types.PredictRequest) (types.PredictResponse, error) {
-	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(request)
-	if err != nil {
-		log.Println("Error:", err)
-		return types.PredictResponse{}, errors.New(apiError.DockerInferenceError)
+	var body io.Reader
+	if len(request.Raw) > 0 {
+		body = bytes.NewReader(request.Raw)
+	} else {
+		buf := new(bytes.Buffer)
+		if err := json.NewEncoder(buf).Encode(request); err != nil {
+			log.Println("Error:", err)
+			return types.PredictResponse{}, errors.New(apiError.DockerInferenceError)
+		}
+		body = buf
 	}
 
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/api/inference/predict", containerName), buf)
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/api/inference/predict", containerName), body)
 	if err != nil {
 		log.Println("Error:", err)
 		return types.PredictResponse{}, errors.New(apiError.DockerInferenceError)

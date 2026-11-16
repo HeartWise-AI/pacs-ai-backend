@@ -1,13 +1,16 @@
 package rest
 
 import (
+	"bytes"
 	"crypto/subtle"
+	"encoding/json"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
 
+	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
 	"api-pacs/interfaces/http/rest/middlewares/requestbody"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	apiError "api-pacs/internal/errors"
@@ -24,7 +27,12 @@ func (controller *InferenceCommandController) PredictPreparedInferenceModel(w ht
 		return
 	}
 
-	var request types.ManagedInferencePredictRequest
+	// The model request stays encoded: it is forwarded untouched (see PredictRequest.Raw).
+	var request struct {
+		TenantID     string          `json:"tenantId" validate:"required"`
+		ContainerRef string          `json:"containerRef" validate:"required"`
+		Request      json.RawMessage `json:"request" validate:"required"`
+	}
 	maxBytes := requestbody.PositiveInt64FromEnvironment(
 		"INTERNAL_INFERENCE_PREDICT_MAX_REQUEST_BODY_BYTES",
 		defaultManagedInferenceMaxRequestBodyBytes,
@@ -47,8 +55,13 @@ func (controller *InferenceCommandController) PredictPreparedInferenceModel(w ht
 		return
 	}
 
+	if trimmed := bytes.TrimLeft(request.Request, " \t\r\n"); len(trimmed) == 0 || trimmed[0] != '{' {
+		writeManagedInferenceResponse(w, http.StatusBadRequest, "Invalid payload request.", apiError.InvalidRequestPayload)
+		return
+	}
+
 	result, err := controller.InferenceCommandServiceInterface.PredictPreparedInferenceModel(
-		r.Context(), request.TenantID, request.ContainerRef, request.Request,
+		r.Context(), request.TenantID, request.ContainerRef, dockerInferenceTypes.PredictRequest{Raw: request.Request},
 	)
 	if err != nil {
 		if writeInferenceManagerError(w, err) {
