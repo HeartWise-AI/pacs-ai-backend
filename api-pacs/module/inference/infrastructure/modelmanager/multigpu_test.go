@@ -54,8 +54,13 @@ func TestPerGPUReconciliationAndPlacement(t *testing.T) {
 		t.Fatal(s)
 	}
 	assign(b, 2, gpuA)
-	if err := m.Reconcile(context.Background(), []string{id(1), id(2)}); err == nil {
-		t.Fatal("accepted overbooking on one GPU")
+	// Two loaded models that overbook one GPU no longer stop admission: the
+	// least recently used one is unloaded so that the ledger fits.
+	if err := m.Reconcile(context.Background(), []string{id(1), id(2)}); err != nil {
+		t.Fatal(err)
+	}
+	if s := m.Snapshot(); !s.Ready || s.GPUs[gpuA].ReservedMiB != 70 || len(b.unloads) != 1 {
+		t.Fatalf("overbooked GPU was not brought within budget: %+v unloads=%v", s, b.unloads)
 	}
 	assign(b, 2, "")
 	if err := m.Reconcile(context.Background(), []string{id(2)}); err == nil {
@@ -179,8 +184,13 @@ func TestLegacyReconciliationRetainsSingleSharedBudget(t *testing.T) {
 		b.loaded[id(n+1)] = true
 	}
 	m := manager(t, b, 100)
-	if err := m.Reconcile(context.Background(), []string{id(1), id(2)}); err == nil {
-		t.Fatal("legacy scalar budget was split implicitly")
+	// Both models count against the one shared budget whatever their GPU:
+	// together they exceed it, so one is unloaded.
+	if err := m.Reconcile(context.Background(), []string{id(1), id(2)}); err != nil {
+		t.Fatal(err)
+	}
+	if s := m.Snapshot(); s.ReservedMiB != 70 || len(b.unloads) != 1 {
+		t.Fatalf("legacy scalar budget was split implicitly: %+v unloads=%v", s, b.unloads)
 	}
 }
 

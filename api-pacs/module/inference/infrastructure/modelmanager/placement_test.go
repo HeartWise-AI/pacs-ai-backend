@@ -190,3 +190,24 @@ func TestPlanFallsBackToFirstFitDecreasingAboveTheLimit(t *testing.T) {
 		t.Fatalf("fallback moved a model that already fits: %+v", plan.Moves)
 	}
 }
+
+func TestPlanReportsHowManyModelsFitAfterEachMoveAlone(t *testing.T) {
+	// Four of five fit; all five need three moves, and the move of "m0" on
+	// its own would leave only three fitting until the others follow.
+	models := []PlacementModel{planModel("m0", gpuB, 60), planModel("m1", gpuA, 80), planModel("m2", gpuA, 30), planModel("m3", gpuA, 90), planModel("m4", gpuB, 10)}
+	plan := PlanPlacement(planGPUs(150, 120), models, 0)
+	if plan.FitBefore != 4 || plan.FitAfter != 5 || len(plan.Moves) != 3 {
+		t.Fatalf("fit %d -> %d moves=%+v", plan.FitBefore, plan.FitAfter, plan.Moves)
+	}
+	alone := map[string]int{}
+	for _, move := range plan.Moves {
+		alone[move.ModelID] = move.FitAlone
+	}
+	if !reflect.DeepEqual(alone, map[string]int{"m0": 3, "m1": 4, "m2": 4}) {
+		t.Fatalf("single-step results: %v", alone)
+	}
+	// Moves that are safe alone come first; the one with room before the other.
+	if got := moved(plan); !reflect.DeepEqual(got, []string{"m2>" + gpuB, "m1>" + gpuB, "m0>" + gpuA}) {
+		t.Fatalf("order: %v", got)
+	}
+}

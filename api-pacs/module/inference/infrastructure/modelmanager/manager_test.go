@@ -649,11 +649,16 @@ func TestReconcileMissingContractAndOverCapacityFailClosed(t *testing.T) {
 	b.inspect = func(_ context.Context, containerID string) (Model, types.ModelRuntime, error) {
 		return b.models[containerID], types.ModelRuntime{State: types.RuntimeReady, Loaded: true}, nil
 	}
-	if err = m.Reconcile(context.Background(), []string{id(1)}); err == nil {
-		t.Fatal("over-capacity reconciliation succeeded")
+	// A loaded model above the budget is unloaded so that reconciliation
+	// succeeds; it can still never be admitted.
+	if err = m.Reconcile(context.Background(), []string{id(1)}); err != nil {
+		t.Fatal(err)
 	}
-	if _, err = m.Predict(context.Background(), id(1), types.PredictRequest{}); !errors.Is(err, ErrNotReconciled) {
-		t.Fatalf("failed reconciliation did not block admission: %v", err)
+	if snapshot := m.Snapshot(); !snapshot.Ready || snapshot.ReservedMiB != 0 || len(b.unloads) != 1 {
+		t.Fatalf("over-capacity model was not unloaded: %+v", snapshot)
+	}
+	if _, err = m.Predict(context.Background(), id(1), types.PredictRequest{}); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("a model above the budget was admitted: %v", err)
 	}
 }
 

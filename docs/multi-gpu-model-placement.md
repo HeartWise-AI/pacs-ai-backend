@@ -56,7 +56,10 @@ request on one device does not hold the global admission gate for the other.
 In multi-GPU mode, a GPU model must expose exactly one configured physical UUID.
 All-device requests and numeric ordinals are rejected for admission, rather than
 guessing CUDA's ordering. Startup fails closed if resident allocations cannot
-be attributed or exceed a device budget. CPU models remain supported. Existing
+be attributed. If the models found loaded exceed a device budget, idle ones are
+unloaded, least recently used first, until the ledger fits; a model that cannot
+be unloaded is quarantined in `ERROR` and that device admits nothing until it
+is released, while the manager stays ready for the other device. CPU models remain supported. Existing
 legacy single-GPU configuration remains supported unchanged.
 
 ## Offloading policy
@@ -81,20 +84,31 @@ what most models use, so a GPU's budget is exhausted by three or four models
 while its memory is mostly free. The manager therefore measures.
 
 While the manager is enabled a sampler runs every
-`MODEL_GPU_MEASURE_INTERVAL_SECONDS` (default `2`; `0` disables it) and once
-more when a prediction starts or ends. For each GPU it executes the fixed
-read-only command `nvidia-smi --query-compute-apps=pid,gpu_uuid,used_memory`
-inside one already-running model container pinned to that GPU. The driver
-reports host PIDs for every process on the device, which are matched to model
-containers through Docker's process list; memory of processes in no managed
-container is reported as foreign. The sampler never starts a container, never
-holds the admission lock during a Docker call, skips a GPU that has no running
-container, and slows to one sample per 30 seconds for a GPU with nothing loaded.
+`MODEL_GPU_MEASURE_INTERVAL_SECONDS` (default `5`; `0` disables it). A
+prediction also asks for a sample of its own GPU, `MODEL_MEASURED_MIN_BUSY_SECONDS`
+after it starts and when it ends, at most once per second per GPU. For each GPU
+the sampler executes the fixed read-only command
+`timeout -s KILL 2 nvidia-smi --query-compute-apps=pid,gpu_uuid,used_memory`
+inside one already-running model container pinned to that GPU (an image without
+`timeout` runs the bare command). The driver reports host PIDs for every process
+on the device, which are matched to model containers through Docker's process
+list; memory of processes in no managed container is reported as foreign, and
+memory whose owner could not be determined in that sample as unattributed. The
+sampler never starts a container, never holds the admission lock during a
+Docker call, gives every Docker call its own deadline, and slows to one sample
+per 30 seconds for a GPU with nothing loaded. When a container is not running it
+asks the next one; when nvidia-smi times out or fails it does not, and that GPU
+is retried with a doubling delay up to five minutes.
+`model_manager_gpu_sample_age_seconds` shows per GPU how old the last sample
+is (`-1`: never sampled) and keeps growing if sampling stops.
 
 Per container the manager keeps the last sample, the peak (highest sample while
 loading, predicting or loaded), the resident value (highest sample while loaded
-and idle), the number of completed predictions during which a sample was taken,
-and the number of overshoots. The record belongs to the container: a new image
+and idle), the number of observed predictions, and the number of overshoots. A
+prediction is observed when a sample was taken at least
+`MODEL_MEASURED_MIN_BUSY_SECONDS` (default 1) after inference began, or when it
+was sampled twice; a sample while the model loads or at the instant inference
+starts does not count, because it shows little more than the idle footprint. The record belongs to the container: a new image
 starts again from its declaration, while a container recreated from the same
 image (a move to the other GPU) inherits it. Records are stored in the Postgres
 table `model_gpu_measurements` (migration `000010`), or in a JSON file when
@@ -106,17 +120,17 @@ keeps working in memory and retries.
 - `declared` (default) is shadow mode. Reservations are exactly as before;
   measurements are only reported.
 - `measured` reserves `ceil(peak x MODEL_MEASURED_SAFETY_PERCENT / 100) + 256` MiB
-  (default 125%) once `MODEL_MEASURED_MIN_SAMPLES` (default 5) predictions were
-  observed, never below the measured resident value and never above the
-  declared reservation. Until then the declared reservation applies. With
-  `MODEL_RETAIN_PEAK_WHILE_LOADED=false` the resident reservation is derived
-  from the measured resident value in the same way, capped at the declared
-  resident value.
+  (default 125%) once `MODEL_MEASURED_MIN_SAMPLES` (default 10) predictions were
+  observed, never below the measured resident value scaled the same way and
+  never above the declared reservation. Until then the declared reservation
+  applies. With `MODEL_RETAIN_PEAK_WHILE_LOADED=false` the resident reservation
+  is derived from the measured resident value in the same way, capped at the
+  declared resident value and at the model's peak reservation.
 
 A sample above a model's current reservation is an overshoot: it is counted,
 logged, and becomes the stored peak at once, so the next reservation is larger.
 With `measured` the reservation the model currently holds is raised as far as
-the device's free budget allows. Sampling every two seconds can miss a short
+the device's free budget allows. Periodic sampling can miss a short
 spike; the safety percentage, the 256 MiB allowance and the per-GPU safety
 margin are what absorb it. Run in shadow mode first and compare
 `reservationMiB` with `measuredPeakMiB` before switching.
@@ -158,12 +172,26 @@ on alone, and `MODEL_GPU_ALLOWED_UUIDS` limits the destinations. Reservations of
 other workspaces count as fixed load. Up to 16 movable models every assignment
 is examined; above that a first-fit-decreasing pass is used.
 
-The automatic loop moves a model only when the plan lets more models fit, no
-request is waiting for admission, no deployment is in progress, and the model is
-idle and either unloaded or evictable (loaded, idle for at least
-`MODEL_MIN_RESIDENCY_SECONDS`). A model is not moved again for six intervals (at
-least 30 minutes), and nothing else moves while the previous move is still
-deploying. Every move is logged with its reason; every refusal is reported in
+The automatic loop moves a model only when the plan is complete and lets more
+models fit, the time is inside `MODEL_GPU_PLACEMENT_WINDOW` (for example
+`22:00-06:00`, server local time; empty allows any time), no request is waiting
+for admission, no deployment is in progress, and the model is unloaded or has
+been loaded and idle for `MODEL_GPU_PLACEMENT_MIN_IDLE_SECONDS` (default 900):
+a move drains and redeploys the container and requests for it are refused
+meanwhile. Of the planned moves it applies only one that, applied alone, does
+not reduce how many models fit (`modelsFitAlone`), and it computes the plan
+again before the next. A plan is `incomplete`, and never applied, when some
+model's reservation is unknown: a container that was stopped when the gateway
+started has not reported its resource contract, and a model with no known GPU
+could load anywhere.
+
+A model is not moved again for six intervals (at least 30 minutes), and nothing
+else moves while the previous move is still deploying. A refused move, a
+deployment that ends failed or rolled back, or one that has not replaced the
+container after that period counts as a failure: the next attempt for that
+model waits twice as long each time, and after three failures the model is
+excluded until the gateway restarts or an administrator moves it. These
+counters are in memory and listed under `auto.failures`. Every move is logged with its reason; every refusal is reported in
 the plan response (`auto.blockedReason`, `auto.lastOutcome`, and
 `blockedReason` on each move) instead of being forced. A move redeploys the
 container, so the model's next prediction is a cold start.

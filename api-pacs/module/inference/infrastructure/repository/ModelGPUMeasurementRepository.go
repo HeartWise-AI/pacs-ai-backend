@@ -2,17 +2,28 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 
-	postgresqlTypes "api-pacs/infrastructures/database/postgresql/types"
+	"github.com/jmoiron/sqlx"
+
 	"api-pacs/module/inference/infrastructure/modelmanager"
 )
 
+// ModelGPUMeasurementDB is the context-aware part of *sqlx.DB the store uses.
+// The shared Postgres handler has no context parameters, and a store that
+// cannot be cancelled would let a hung database block startup.
+type ModelGPUMeasurementDB interface {
+	NamedExecContext(ctx context.Context, query string, arg interface{}) (sql.Result, error)
+	PrepareNamedContext(ctx context.Context, query string) (*sqlx.NamedStmt, error)
+}
+
 // ModelGPUMeasurementRepository persists the model manager's measured GPU
-// memory in Postgres (table model_gpu_measurements, migration 000010).
+// memory in Postgres (table model_gpu_measurements, migration 000010). Every
+// statement is bound to the caller's context.
 type ModelGPUMeasurementRepository struct {
-	postgresqlTypes.PostgresSQLDBHandlerInterface
+	DB ModelGPUMeasurementDB
 }
 
 type modelGPUMeasurementRow struct {
@@ -51,12 +62,17 @@ const upsertModelGPUMeasurement = `
 
 const deleteModelGPUMeasurement = `DELETE FROM model_gpu_measurements WHERE container_id = :container_id`
 
-func (repository *ModelGPUMeasurementRepository) Load(context.Context) ([]modelmanager.Measurement, error) {
-	if repository.PostgresSQLDBHandlerInterface == nil {
+func (repository *ModelGPUMeasurementRepository) Load(ctx context.Context) ([]modelmanager.Measurement, error) {
+	if repository.DB == nil {
 		return nil, errors.New("GPU measurement storage is not configured")
 	}
+	statement, err := repository.DB.PrepareNamedContext(ctx, selectModelGPUMeasurements)
+	if err != nil {
+		return nil, err
+	}
+	defer statement.Close()
 	var rows []modelGPUMeasurementRow
-	if err := repository.PostgresSQLDBHandlerInterface.Query(selectModelGPUMeasurements, map[string]interface{}{}, &rows); err != nil {
+	if err := statement.SelectContext(ctx, &rows, map[string]interface{}{}); err != nil {
 		return nil, err
 	}
 	measurements := make([]modelmanager.Measurement, 0, len(rows))
@@ -73,8 +89,8 @@ func (repository *ModelGPUMeasurementRepository) Load(context.Context) ([]modelm
 	return measurements, nil
 }
 
-func (repository *ModelGPUMeasurementRepository) Save(_ context.Context, upsert []modelmanager.Measurement, remove []string) error {
-	if repository.PostgresSQLDBHandlerInterface == nil {
+func (repository *ModelGPUMeasurementRepository) Save(ctx context.Context, upsert []modelmanager.Measurement, remove []string) error {
+	if repository.DB == nil {
 		return errors.New("GPU measurement storage is not configured")
 	}
 	for _, item := range upsert {
@@ -86,12 +102,12 @@ func (repository *ModelGPUMeasurementRepository) Save(_ context.Context, upsert 
 			sampledAt := item.SampledAt.UTC()
 			row.SampledAt = &sampledAt
 		}
-		if _, err := repository.PostgresSQLDBHandlerInterface.Execute(upsertModelGPUMeasurement, row); err != nil {
+		if _, err := repository.DB.NamedExecContext(ctx, upsertModelGPUMeasurement, row); err != nil {
 			return err
 		}
 	}
 	for _, id := range remove {
-		if _, err := repository.PostgresSQLDBHandlerInterface.Execute(deleteModelGPUMeasurement, map[string]interface{}{"container_id": id}); err != nil {
+		if _, err := repository.DB.NamedExecContext(ctx, deleteModelGPUMeasurement, map[string]interface{}{"container_id": id}); err != nil {
 			return err
 		}
 	}

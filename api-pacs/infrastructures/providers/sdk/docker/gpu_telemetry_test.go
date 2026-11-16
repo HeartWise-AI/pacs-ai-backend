@@ -3,8 +3,10 @@ package docker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -69,6 +71,49 @@ func TestGPUProcessesKeepHostPIDsOfTheExpectedGPU(t *testing.T) {
 	for _, value := range []string{"abc, " + testGPUUUID + ", 10", "12, " + testGPUUUID + ", -4", "12, " + testGPUUUID, "0, " + testGPUUUID + ", 10"} {
 		if _, err := parseGPUProcesses(value, testGPUUUID); err == nil {
 			t.Fatalf("invalid process telemetry accepted: %q", value)
+		}
+	}
+}
+
+func TestNvidiaSMIRunsUnderAKillTimeoutAndFallsBackWhenTimeoutIsMissing(t *testing.T) {
+	command := []string{"/usr/bin/nvidia-smi", "--query"}
+	wrapped := append([]string{"timeout", "-s", "KILL", "2"}, command...)
+	var calls [][]string
+	run := func(result map[string][2]any) func([]string) (string, int, error) {
+		return func(command []string) (string, int, error) {
+			calls = append(calls, command)
+			outcome := result[command[0]]
+			err, _ := outcome[1].(error)
+			return "out", outcome[0].(int), err
+		}
+	}
+
+	// The normal case: one wrapped execution.
+	output, err := runWithKillTimeout("ok", command, run(map[string][2]any{"timeout": {0, nil}}))
+	if err != nil || output != "out" || !reflect.DeepEqual(calls, [][]string{wrapped}) {
+		t.Fatalf("output=%q err=%v calls=%v", output, err, calls)
+	}
+	// A stuck driver is killed inside the container and reported as a timeout;
+	// the bare command is not tried, which would leave a second stuck process.
+	calls = nil
+	if _, err = runWithKillTimeout("stuck", command, run(map[string][2]any{"timeout": {137, nil}})); !errors.Is(err, ErrGPUProbeTimeout) || len(calls) != 1 {
+		t.Fatalf("err=%v calls=%v", err, calls)
+	}
+	// nvidia-smi failing under timeout is a failed probe, not a missing timeout.
+	calls = nil
+	if _, err = runWithKillTimeout("failing", command, run(map[string][2]any{"timeout": {9, nil}})); err == nil || errors.Is(err, ErrGPUProbeTimeout) || len(calls) != 1 {
+		t.Fatalf("err=%v calls=%v", err, calls)
+	}
+	// An image without timeout: fall back once, then remember it.
+	for name, missing := range map[string][2]any{"status": {127, nil}, "runtime": {0, errors.New(`exec: "timeout": executable file not found in $PATH`)}} {
+		calls = nil
+		outcomes := map[string][2]any{"timeout": missing, "/usr/bin/nvidia-smi": {0, nil}}
+		if output, err = runWithKillTimeout("bare-"+name, command, run(outcomes)); err != nil || output != "out" || !reflect.DeepEqual(calls, [][]string{wrapped, command}) {
+			t.Fatalf("%s: output=%q err=%v calls=%v", name, output, err, calls)
+		}
+		calls = nil
+		if _, err = runWithKillTimeout("bare-"+name, command, run(outcomes)); err != nil || !reflect.DeepEqual(calls, [][]string{command}) {
+			t.Fatalf("%s: the missing timeout was probed again: %v %v", name, err, calls)
 		}
 	}
 }

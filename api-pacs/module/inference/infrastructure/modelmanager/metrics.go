@@ -5,7 +5,9 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"math"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -25,6 +27,28 @@ var (
 	modelManagerMeasuredModels       = expvar.NewMap("model_manager_measured_models")
 	modelManagerOvershootsTotal      = expvar.NewInt("model_manager_reservation_overshoots_total")
 )
+
+// gpuLastSampled holds, per GPU, when its processes were last read. The age
+// gauge is computed when /debug/vars is read, so it keeps growing if the
+// sampler stops; -1 means the GPU has never been sampled.
+var gpuLastSampled sync.Map
+
+func gpuSampleAges() map[string]float64 {
+	ages := map[string]float64{}
+	gpuLastSampled.Range(func(key, value any) bool {
+		age := -1.0
+		if at := value.(time.Time); !at.IsZero() {
+			age = math.Round(time.Since(at).Seconds()*10) / 10
+		}
+		ages["gpu="+key.(string)] = age
+		return true
+	})
+	return ages
+}
+
+func init() {
+	expvar.Publish("model_manager_gpu_sample_age_seconds", expvar.Func(func() any { return gpuSampleAges() }))
+}
 
 var modelManagerDurationBuckets = []time.Duration{
 	10 * time.Millisecond, 50 * time.Millisecond, 100 * time.Millisecond,
@@ -53,8 +77,13 @@ type expvarMetrics struct{}
 // container identifier; per-model values are served by the GPU status endpoint.
 func (expvarMetrics) SetMeasurements(report MeasurementReport) {
 	for uuid, usage := range report.GPUs {
+		gpuLastSampled.Store(uuid, usage.SampledAt)
+		if usage.SampledAt.IsZero() {
+			continue
+		}
 		setMapInt(modelManagerGPUProcessMemoryMiB, "gpu="+uuid+",kind=managed", int64(usage.ManagedMiB))
 		setMapInt(modelManagerGPUProcessMemoryMiB, "gpu="+uuid+",kind=foreign", int64(usage.ForeignMiB))
+		setMapInt(modelManagerGPUProcessMemoryMiB, "gpu="+uuid+",kind=unattributed", int64(usage.UnattributedMiB))
 	}
 	var declared, effective, measured, observedPeak, sampled, eligible, overshoots int64
 	for _, model := range report.Models {

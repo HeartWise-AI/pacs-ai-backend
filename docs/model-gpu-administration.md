@@ -26,7 +26,7 @@ null until known. `GET /v1/inference/gpus/placement-plan` is described there too
 Physical counters come from a fixed `nvidia-smi` command executed inside an
 already-running, UUID-pinned registered model container. This read never creates
 or starts a helper container and never loads a model. It accepts no shell command
-or user-supplied executable arguments. Probe reads have a two-second timeout,
+or user-supplied executable arguments. Probe reads are killed inside the container after two seconds (four-second client deadline),
 16 KiB output limits, and a five-second cache including failures. Unknown driver
 errors are not returned to the browser.
 

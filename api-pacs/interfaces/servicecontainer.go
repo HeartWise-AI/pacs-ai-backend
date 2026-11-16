@@ -201,6 +201,9 @@ func (k *kernel) RegisterInferenceRESTCommandController() inferenceREST.Inferenc
 	service := k.inferenceCommandServiceContainer()
 
 	gpuAdministration := &inferenceService.GPUAdministrationService{Manager: modelManager, Models: service.InferenceQueryRepositoryInterface, Docker: dockerSDK, API: dockerInferenceAPI, Deployer: service}
+	if modelDeploymentOperations != nil {
+		gpuAdministration.Operations = modelDeploymentOperations
+	}
 	// Returns at once unless MODEL_GPU_PLACEMENT=auto.
 	autoGPUPlacementOnce.Do(func() { go gpuAdministration.RunAutoPlacement(context.Background()) })
 	controller := inferenceREST.InferenceCommandController{
@@ -790,7 +793,7 @@ func registerHandlers() {
 		// Measured GPU memory survives restarts in Postgres, or in a JSON file
 		// when MODEL_GPU_MEASURE_STATE_PATH is set. A missing table or file only
 		// means measurement starts again from nothing.
-		var measurementStore modelmanager.MeasurementStore = &inferenceRepository.ModelGPUMeasurementRepository{PostgresSQLDBHandlerInterface: postgresqlDBHanddler}
+		var measurementStore modelmanager.MeasurementStore = &inferenceRepository.ModelGPUMeasurementRepository{DB: postgresqlDBHanddler.Conn}
 		if managerConfig.MeasureStatePath != "" {
 			measurementStore = &modelmanager.FileMeasurementStore{Path: managerConfig.MeasureStatePath}
 		}

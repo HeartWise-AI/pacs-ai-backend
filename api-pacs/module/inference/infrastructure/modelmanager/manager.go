@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"sort"
 	"sync"
 	"time"
 
@@ -84,6 +85,9 @@ type entry struct {
 	// sampledActive records that the GPU sampler saw this model's process
 	// during the prediction in progress, so its completion counts as observed.
 	sampledActive bool
+	// busySince and busySamples describe the prediction in progress.
+	busySince   time.Time
+	busySamples int
 }
 type waiter struct{ id string }
 
@@ -107,6 +111,7 @@ type Manager struct {
 	removedMeasures []string
 	replaces        map[string]string // candidate container ID -> container it replaces
 	gpuUsage        map[string]GPUUsage
+	kicked          map[string]struct{} // GPUs with a sample requested by a prediction
 	measureKick     chan struct{}
 }
 
@@ -126,6 +131,12 @@ func New(config Config, backend Backend) (*Manager, error) {
 	if config.MeasuredSafetyPercent == 0 {
 		config.MeasuredSafetyPercent = defaultMeasuredSafetyPercent
 	}
+	if config.MeasuredMinBusy == 0 {
+		config.MeasuredMinBusy = defaultMeasuredMinBusy
+	}
+	if config.PlacementMinIdle == 0 {
+		config.PlacementMinIdle = defaultPlacementMinIdle
+	}
 	if config.PlacementMode == "" {
 		config.PlacementMode = PlacementPinned
 	}
@@ -140,6 +151,7 @@ func New(config Config, backend Backend) (*Manager, error) {
 		measurements:      make(map[string]*measurement),
 		replaces:          make(map[string]string),
 		gpuUsage:          make(map[string]GPUUsage),
+		kicked:            make(map[string]struct{}),
 		measureKick:       make(chan struct{}, 1),
 	}
 	manager.metrics.SetSnapshot(manager.snapshotLocked())
@@ -159,11 +171,16 @@ func (m *Manager) residentReservation(model Model) int {
 	if m.config.RetainPeakWhileLoaded && model.Resources.GPURequired {
 		return m.peakReservation(model)
 	}
-	declared := model.Resources.ResidentMemoryMiB
+	resident := model.Resources.ResidentMemoryMiB
 	if measured, ok := m.measuredResident(model); ok {
-		return min(measured, declared)
+		resident = min(measured, resident)
 	}
-	return declared
+	if !model.Resources.GPURequired {
+		return resident
+	}
+	// What a loaded model holds never exceeds what it was admitted with: a
+	// measured peak reservation may be below the declared resident value.
+	return min(resident, m.peakReservation(model))
 }
 
 // Model declarations are immutable image metadata, not instantaneous memory
@@ -295,7 +312,6 @@ func (m *Manager) Reconcile(ctx context.Context, containerIDs []string) (err err
 
 	staged := make(map[string]*entry, len(containerIDs))
 	seen := make(map[string]struct{}, len(containerIDs))
-	reserved := map[string]int{}
 	quarantined := false
 	for _, id := range containerIDs {
 		if !containerIDPattern.MatchString(id) {
@@ -357,16 +373,10 @@ func (m *Manager) Reconcile(ctx context.Context, containerIDs []string) (err err
 				return err
 			}
 		}
-		pool := model.GPUUUID
-		if len(m.config.GPUBudgetsMiB) == 0 {
-			pool = ""
-		}
-		if e.reserved > m.deviceCapacity(pool)-reserved[pool] {
-			outcome = "failed"
-			return errors.New("reconciled reservations exceed schedulable GPU capacity")
-		}
-		reserved[pool] += e.reserved
 		staged[id] = e
+	}
+	if m.shedOverCapacity(ctx, staged) {
+		quarantined = true
 	}
 
 	m.mu.Lock()
@@ -378,6 +388,66 @@ func (m *Manager) Reconcile(ctx context.Context, containerIDs []string) (err err
 		outcome = "quarantined"
 	}
 	return nil
+}
+
+// shedOverCapacity makes a reconstructed ledger fit its devices. Loaded models
+// can add up to more than a budget after a restart: reservations were measured
+// and are declared again, the stored measurements were lost, or a peak grew
+// past what was free. Failing closed would stop all admission for memory that
+// is merely idle, so idle models are unloaded, least recently used first, until
+// each device fits. A model that cannot be unloaded keeps its reservation in
+// ERROR; the result reports whether any device is still over its budget, in
+// which case that device admits nothing until the quarantine is released.
+func (m *Manager) shedOverCapacity(ctx context.Context, staged map[string]*entry) bool {
+	pools := map[string][]*entry{}
+	used := map[string]int{}
+	for _, e := range staged {
+		pool := e.model.GPUUUID
+		if len(m.config.GPUBudgetsMiB) == 0 {
+			pool = ""
+		}
+		if e.reserved > 0 {
+			pools[pool] = append(pools[pool], e)
+			used[pool] = addMemory(used[pool], e.reserved)
+		}
+	}
+	over := false // also set when an unload failed and left a quarantined model
+	for pool, entries := range pools {
+		capacity := m.deviceCapacity(pool)
+		if used[pool] <= capacity {
+			continue
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			if !entries[i].lastUsed.Equal(entries[j].lastUsed) {
+				return entries[i].lastUsed.Before(entries[j].lastUsed)
+			}
+			return entries[i].model.ContainerID < entries[j].model.ContainerID
+		})
+		for _, e := range entries {
+			if used[pool] <= capacity || ctx.Err() != nil {
+				break
+			}
+			if e.state != types.RuntimeReady || !e.loaded {
+				continue
+			}
+			unloadCtx, cancel := context.WithTimeout(ctx, m.config.OperationTimeout)
+			err := m.backend.Unload(unloadCtx, e.model)
+			cancel()
+			m.metrics.ObserveEvent("reconciliation_eviction", metricOutcome(err))
+			if err != nil {
+				e.state = types.RuntimeError
+				over = true
+				continue
+			}
+			used[pool] -= e.reserved
+			e.reserved, e.loaded, e.state = 0, false, types.RuntimeUnloaded
+		}
+		if used[pool] > capacity {
+			over = true
+			m.metrics.ObserveEvent("reconciliation", "over_capacity")
+		}
+	}
+	return over
 }
 
 // Predict owns the lease through confirmed completion or cleanup. A canceled
@@ -530,9 +600,11 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 	}
 	m.mu.Lock()
 	e.state = types.RuntimeBusy
+	e.busySince, e.busySamples, e.sampledActive = time.Now(), 0, false
 	m.wakeLocked()
 	m.mu.Unlock()
-	m.kickMeasurement()
+	// Ask for a sample of this GPU once the prediction is well under way.
+	defer m.kickMeasurementAfter(model.GPUUUID, m.config.MeasuredMinBusy)()
 	inferenceStarted := time.Now()
 	response, err = m.backend.Predict(opCtx, model, request)
 	if err == nil && !response.Success {
@@ -1069,7 +1141,7 @@ func (m *Manager) finish(ctx context.Context, w *waiter, e *entry, success bool)
 		m.releaseResidentAdmissionLocked(w)
 		m.wakeLocked()
 		m.mu.Unlock()
-		m.kickMeasurement()
+		m.kickMeasurement(model.GPUUUID)
 		if p != nil {
 			panic(p)
 		}

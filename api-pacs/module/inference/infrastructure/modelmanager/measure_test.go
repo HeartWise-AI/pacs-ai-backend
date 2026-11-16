@@ -12,24 +12,41 @@ import (
 	dockerSDK "api-pacs/infrastructures/providers/sdk/docker"
 )
 
+// fakeProbe honours its context like the Docker client: a hung call returns
+// only when the caller's deadline expires.
 type fakeProbe struct {
 	mu        sync.Mutex
 	processes map[string][]dockerSDK.GPUProcess // by GPU
 	pids      map[string][]string               // by container
 	stopped   map[string]bool
+	hungRead  map[string]bool  // nvidia-smi never answers in this container
+	readErr   map[string]error // by GPU
+	topErr    map[string]error // by container
+	hungTop   map[string]bool
 	reads     []string
+	attempts  []string // every read attempt, including failed ones
 	tops      int
 	onRead    func()
 }
 
 func newProbe() *fakeProbe {
-	return &fakeProbe{processes: map[string][]dockerSDK.GPUProcess{}, pids: map[string][]string{}, stopped: map[string]bool{}}
+	return &fakeProbe{processes: map[string][]dockerSDK.GPUProcess{}, pids: map[string][]string{}, stopped: map[string]bool{}, hungRead: map[string]bool{}, readErr: map[string]error{}, topErr: map[string]error{}, hungTop: map[string]bool{}}
 }
-func (p *fakeProbe) ReadGPUProcesses(_ context.Context, container, gpu string) ([]dockerSDK.GPUProcess, error) {
+func (p *fakeProbe) ReadGPUProcesses(ctx context.Context, container, gpu string) ([]dockerSDK.GPUProcess, error) {
 	p.mu.Lock()
+	p.attempts = append(p.attempts, container)
 	if p.stopped[container] {
 		p.mu.Unlock()
-		return nil, errors.New("GPU telemetry probe is unavailable")
+		return nil, dockerSDK.ErrGPUProbeNotRunning
+	}
+	if p.hungRead[container] {
+		p.mu.Unlock()
+		<-ctx.Done()
+		return nil, dockerSDK.ErrGPUProbeTimeout
+	}
+	if err := p.readErr[gpu]; err != nil {
+		p.mu.Unlock()
+		return nil, err
 	}
 	p.reads = append(p.reads, container)
 	processes := append([]dockerSDK.GPUProcess(nil), p.processes[gpu]...)
@@ -38,21 +55,33 @@ func (p *fakeProbe) ReadGPUProcesses(_ context.Context, container, gpu string) (
 	if hook != nil {
 		hook()
 	}
-	return processes, nil
+	return processes, ctx.Err()
 }
-func (p *fakeProbe) ContainerProcessIDs(_ context.Context, container string) ([]string, error) {
+func (p *fakeProbe) ContainerProcessIDs(ctx context.Context, container string) ([]string, error) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.tops++
-	if p.stopped[container] {
-		return nil, errors.New("container is not running")
+	stopped, hung, err, pids := p.stopped[container], p.hungTop[container], p.topErr[container], p.pids[container]
+	p.mu.Unlock()
+	switch {
+	case stopped:
+		return nil, dockerSDK.ErrGPUProbeNotRunning
+	case hung:
+		<-ctx.Done()
+		return nil, ctx.Err()
+	case err != nil:
+		return nil, err
 	}
-	return p.pids[container], nil
+	return pids, ctx.Err()
 }
 func (p *fakeProbe) use(gpu string, processes ...dockerSDK.GPUProcess) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.processes[gpu] = processes
+}
+func (p *fakeProbe) set(change func()) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	change()
 }
 
 type fakeMetrics struct {
@@ -111,10 +140,12 @@ func (s *memoryStore) Save(_ context.Context, upsert []Measurement, remove []str
 }
 
 // measuredManager has one 10000 MiB device budget per GPU and scales
-// declarations by 150%, like production.
+// declarations by 150%, like production. Measured reservations apply after
+// five observed predictions, and any sample during a prediction observes it.
 func measuredManager(t *testing.T, b Backend, source string, change func(*Config)) *Manager {
 	t.Helper()
-	config := Config{Enabled: true, RetainPeakWhileLoaded: true, GPUReservationPercent: 150, GPUBudgetsMiB: map[string]int{gpuA: 10000, gpuB: 10000}, QueueTimeout: time.Second, OperationTimeout: time.Second, ReservationSource: source}
+	config := Config{Enabled: true, RetainPeakWhileLoaded: true, GPUReservationPercent: 150, GPUBudgetsMiB: map[string]int{gpuA: 10000, gpuB: 10000}, QueueTimeout: time.Second, OperationTimeout: time.Second, ReservationSource: source,
+		MeasuredMinSamples: 5, MeasuredMinBusy: time.Nanosecond}
 	if change != nil {
 		change(&config)
 	}
@@ -158,7 +189,7 @@ func TestSamplerAttributesHostPIDsToModelsAndCountsForeignMemory(t *testing.T) {
 	probe.use(gpuA, process("101", 1898), process("102", 300), process("200", 2374), process("999", 700))
 	probe.use(gpuB, process("300", 3300))
 	sampler := newGPUSampler(m, probe, nil)
-	sampler.sample(context.Background())
+	sampler.sample(context.Background(), nil)
 
 	report := m.Measurements()
 	if got := report.Models[id(1)]; got.LastMiB != 2198 || got.MeasuredPeakMiB != 2198 || got.MeasuredResidentMiB != 2198 || !got.Sampled {
@@ -178,19 +209,19 @@ func TestSamplerAttributesHostPIDsToModelsAndCountsForeignMemory(t *testing.T) {
 	if reads != 2 {
 		t.Fatalf("expected one probe per GPU, got %v", probe.reads)
 	}
-	sampler.sample(context.Background())
+	sampler.sample(context.Background(), nil)
 	if probe.tops != tops || len(probe.reads) != reads+2 {
 		t.Fatalf("steady state listed processes again: tops %d -> %d reads=%v", tops, probe.tops, probe.reads)
 	}
 	// A PID that moves to another container (PID reuse after a restart) is
 	// attributed again once it has been absent.
 	probe.use(gpuA, process("200", 2374))
-	sampler.sample(context.Background())
+	sampler.sample(context.Background(), nil)
 	probe.pids[id(1)], probe.pids[id(2)] = []string{"200"}, []string{"201"}
 	probe.use(gpuA, process("201", 50))
-	sampler.sample(context.Background())
+	sampler.sample(context.Background(), nil)
 	probe.use(gpuA, process("200", 1000), process("201", 50))
-	sampler.sample(context.Background())
+	sampler.sample(context.Background(), nil)
 	if report = m.Measurements(); report.Models[id(1)].LastMiB != 1000 || report.Models[id(2)].LastMiB != 50 {
 		t.Fatalf("stale PID ownership: %+v", report.Models)
 	}
@@ -212,17 +243,17 @@ func TestSamplerSkipsAGPUWithoutARunningContainerAndPrefersLoadedModels(t *testi
 	probe.pids[id(2)] = []string{"20"}
 	probe.use(gpuA, process("20", 2100))
 	sampler := newGPUSampler(m, probe, nil)
-	sampler.sample(context.Background())
+	sampler.sample(context.Background(), nil)
 	if len(probe.reads) != 1 || probe.reads[0] != id(2) {
 		t.Fatalf("the loaded model must be the probe: %v", probe.reads)
 	}
 	report := m.Measurements()
-	if _, sampled := report.GPUs[gpuB]; sampled || report.Models[id(3)].Sampled {
+	if !report.GPUs[gpuB].SampledAt.IsZero() || report.Models[id(3)].Sampled {
 		t.Fatalf("a GPU with no running container must be skipped: %+v", report)
 	}
 	// The stopped probe falls back to another container on the same GPU.
 	probe.stopped[id(2)] = true
-	sampler.sample(context.Background())
+	sampler.sample(context.Background(), nil)
 	if last := probe.reads[len(probe.reads)-1]; last != id(1) {
 		t.Fatalf("expected a fallback probe, got %v", probe.reads)
 	}
@@ -230,12 +261,12 @@ func TestSamplerSkipsAGPUWithoutARunningContainerAndPrefersLoadedModels(t *testi
 	now := time.Now()
 	sampler.now = func() time.Time { return now }
 	probe.stopped[id(3)] = false
-	sampler.sample(context.Background())
+	sampler.sample(context.Background(), nil)
 	if m.Measurements().Models[id(3)].Sampled {
 		t.Fatal("an idle GPU was sampled again at once")
 	}
 	sampler.now = func() time.Time { return now.Add(idleGPUSampleInterval + time.Second) }
-	sampler.sample(context.Background())
+	sampler.sample(context.Background(), nil)
 	if !m.Measurements().Models[id(3)].Sampled {
 		t.Fatal("an idle GPU must still be sampled eventually")
 	}
@@ -269,7 +300,7 @@ func TestMeasurementTracksLoadPredictIdleAndUnload(t *testing.T) {
 		} else {
 			probe.use(gpuA)
 		}
-		sampler.sample(context.Background())
+		sampler.sample(context.Background(), nil)
 		return m.Measurements().Models[id(1)]
 	}
 
@@ -278,7 +309,15 @@ func TestMeasurementTracksLoadPredictIdleAndUnload(t *testing.T) {
 	if got := sample(1500); got.MeasuredPeakMiB != 1500 || got.MeasuredResidentMiB != 0 || got.Samples != 0 {
 		t.Fatalf("loading counts towards the peak only: %+v", got)
 	}
+	// A prediction seen only while its model loaded is not an observed one.
 	close(finishLoad)
+	<-started
+	release <- struct{}{}
+	receive(t, done)
+	if got := m.Measurements().Models[id(1)]; got.Samples != 0 {
+		t.Fatalf("a sample during load observed the prediction: %+v", got)
+	}
+	done = request(m, 1)
 	<-started
 	if got := sample(2900); got.MeasuredPeakMiB != 2900 || got.MeasuredResidentMiB != 0 {
 		t.Fatalf("an active prediction is never the idle footprint: %+v", got)
@@ -341,7 +380,9 @@ func TestReservationComputationInBothSources(t *testing.T) {
 		{"safety percent rounds up", ReservationMeasured, Measurement{PeakMiB: 2001, ResidentMiB: 100, Samples: 5}, true, 0, 2758, 2758},
 		{"custom safety percent", ReservationMeasured, Measurement{PeakMiB: 2000, ResidentMiB: 100, Samples: 9}, true, 200, 4256, 4256},
 		{"capped at the declared reservation", ReservationMeasured, Measurement{PeakMiB: 5000, ResidentMiB: 4000, Samples: 5}, true, 0, 5201, 5201},
-		{"never below the measured resident", ReservationMeasured, Measurement{PeakMiB: 1000, ResidentMiB: 2500, Samples: 5}, true, 0, 2500, 2500},
+		{"never below the measured resident with its safety margin", ReservationMeasured, Measurement{PeakMiB: 1000, ResidentMiB: 2500, Samples: 5}, true, 0, 3381, 3381},
+		{"peak close to the resident footprint", ReservationMeasured, Measurement{PeakMiB: 2010, ResidentMiB: 2000, Samples: 5}, true, 0, 2769, 2769},
+		{"resident never exceeds the measured peak reservation", ReservationMeasured, Measurement{PeakMiB: 500, Samples: 5}, false, 0, 881, 881},
 		{"declared resident without retained peak", ReservationDeclared, Measurement{PeakMiB: 2374, ResidentMiB: 1000, Samples: 5}, false, 0, 5201, 2000},
 		{"measured resident without retained peak", ReservationMeasured, Measurement{PeakMiB: 2374, ResidentMiB: 1000, Samples: 5}, false, 0, 3224, 1506},
 		{"measured resident capped at its declaration", ReservationMeasured, Measurement{PeakMiB: 2374, ResidentMiB: 1900, Samples: 5}, false, 0, 3224, 2000},
@@ -425,8 +466,8 @@ func TestOvershootRaisesTheStoredPeakAndTheHeldReservation(t *testing.T) {
 		probe.pids[id(1)], probe.pids[id(2)] = []string{"10"}, []string{"20"}
 		probe.use(gpuA, process("10", 3000), process("20", 1900))
 		sampler := newGPUSampler(m, probe, nil)
-		sampler.sample(context.Background())
-		sampler.sample(context.Background())
+		sampler.sample(context.Background(), nil)
+		sampler.sample(context.Background(), nil)
 		return m, metrics
 	}
 
@@ -457,7 +498,7 @@ func TestOvershootRaisesTheStoredPeakAndTheHeldReservation(t *testing.T) {
 	probe := newProbe()
 	probe.pids[id(1)] = []string{"10"}
 	probe.use(gpuA, process("10", 1898))
-	newGPUSampler(m, probe, nil).sample(context.Background())
+	newGPUSampler(m, probe, nil).sample(context.Background(), nil)
 	if got := m.Measurements().Models[id(1)]; got.Overshoots != 1 || got.ReservationMiB != 1500 || m.Snapshot().Models[id(1)].ReservedMiB != 1500 {
 		t.Fatalf("shadow mode must only report: %+v", got)
 	}
@@ -491,12 +532,12 @@ func TestMeasurementsSurviveARestart(t *testing.T) {
 	done := request(first, 1)
 	<-started
 	probe.use(gpuA, process("10", 2400), process("20", 1700))
-	sampler.sample(context.Background())
+	sampler.sample(context.Background(), nil)
 	release <- struct{}{}
 	receive(t, done)
 	probe.use(gpuA, process("10", 2100), process("20", 1700))
 	sampler.now = func() time.Time { return time.Now().Add(time.Minute) }
-	sampler.sample(context.Background())
+	sampler.sample(context.Background(), nil)
 
 	// A new process starts with the stored observations and reconciles the
 	// already loaded models with measured reservations.
@@ -526,7 +567,7 @@ func TestMeasurementsSurviveARestart(t *testing.T) {
 	if _, err := resumed.store.Load(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	resumed.sample(context.Background())
+	resumed.sample(context.Background(), nil)
 	rows, err := (&FileMeasurementStore{Path: path}).Load(context.Background())
 	if err != nil || len(rows) != 1 || rows[0].ContainerID != id(1) {
 		t.Fatalf("stale container was kept: %+v %v", rows, err)
@@ -553,7 +594,7 @@ func TestMeasurementPersistenceFailureNeverStopsSampling(t *testing.T) {
 	sampler := newGPUSampler(m, probe, store)
 	now := time.Now()
 	sampler.now = func() time.Time { return now }
-	sampler.sample(context.Background())
+	sampler.sample(context.Background(), nil)
 	if got := m.Measurements().Models[id(1)]; got.MeasuredResidentMiB != 2100 {
 		t.Fatalf("sampling must continue in memory: %+v", got)
 	}
@@ -562,7 +603,7 @@ func TestMeasurementPersistenceFailureNeverStopsSampling(t *testing.T) {
 	store.err = nil
 	store.mu.Unlock()
 	sampler.now = func() time.Time { return now.Add(2 * time.Minute) }
-	sampler.sample(context.Background())
+	sampler.sample(context.Background(), nil)
 	if store.rows[id(1)].ResidentMiB != 2100 {
 		t.Fatalf("the record was not retried: %+v", store.rows)
 	}
@@ -622,7 +663,7 @@ func TestSamplerNeverHoldsTheManagerLockAcrossDockerCalls(t *testing.T) {
 	probe.use(gpuA, process("10", 2100))
 	// Admission of the model completes while the probe is still blocked.
 	probe.onRead = func() { receive(t, request(m, 1)) }
-	newGPUSampler(m, probe, nil).sample(context.Background())
+	newGPUSampler(m, probe, nil).sample(context.Background(), nil)
 	if len(probe.reads) != 1 {
 		t.Fatal(probe.reads)
 	}
@@ -665,12 +706,17 @@ func TestMeasurementSettingsAreValidated(t *testing.T) {
 		return ConfigFromEnv(func(k string) string { return env[k] })
 	}
 	c, err := load(nil)
-	if err != nil || c.MeasureInterval != 2*time.Second || c.ReservationSource != ReservationDeclared || c.MeasuredMinSamples != 5 || c.MeasuredSafetyPercent != 125 ||
+	if err != nil || c.MeasureInterval != 5*time.Second || c.ReservationSource != ReservationDeclared || c.MeasuredMinSamples != 10 || c.MeasuredSafetyPercent != 125 ||
+		c.MeasuredMinBusy != time.Second || c.PlacementMinIdle != 900*time.Second || c.PlacementWindow != "" ||
 		c.PlacementMode != PlacementPinned || c.PlacementInterval != 300*time.Second || len(c.AllowedGPUUUIDs) != 0 || c.MeasureStatePath != "" {
 		t.Fatalf("wrong defaults: %+v %v", c, err)
 	}
 	c, err = load(map[string]string{"MODEL_GPU_MEASURE_INTERVAL_SECONDS": "0", "MODEL_GPU_MEASURE_STATE_PATH": " /data/gpu.json ", "MODEL_RESERVATION_SOURCE": "declared", "MODEL_MEASURED_MIN_SAMPLES": "9", "MODEL_MEASURED_SAFETY_PERCENT": "150",
+		"MODEL_MEASURED_MIN_BUSY_SECONDS": "3", "MODEL_GPU_PLACEMENT_MIN_IDLE_SECONDS": "0", "MODEL_GPU_PLACEMENT_WINDOW": " 22:00-06:00 ",
 		"MODEL_GPU_PLACEMENT": "auto", "MODEL_GPU_PLACEMENT_INTERVAL_SECONDS": "60", "MODEL_GPU_ALLOWED_UUIDS": gpuA + " , " + gpuB, "MODEL_GPU_PLACEMENT_TENANT_ID": "tenant-a"})
+	if err != nil || c.MeasuredMinBusy != 3*time.Second || c.PlacementMinIdle != time.Nanosecond || c.PlacementWindow != "22:00-06:00" {
+		t.Fatalf("settings were not read: %+v %v", c, err)
+	}
 	if err != nil || c.MeasureInterval != 0 || c.MeasureStatePath != "/data/gpu.json" || c.MeasuredMinSamples != 9 || c.MeasuredSafetyPercent != 150 || c.PlacementMode != PlacementAuto ||
 		c.PlacementInterval != time.Minute || len(c.AllowedGPUUUIDs) != 2 || c.PlacementTenantID != "tenant-a" || c.PlacementActor != "system:gpu-auto-placement" {
 		t.Fatalf("settings were not read: %+v %v", c, err)
@@ -690,6 +736,11 @@ func TestMeasurementSettingsAreValidated(t *testing.T) {
 		"allowed duplicate":    {"MODEL_GPU_ALLOWED_UUIDS": gpuA + "," + gpuA},
 		"allowed empty":        {"MODEL_GPU_ALLOWED_UUIDS": " , "},
 		"auto needs a tenant":  {"MODEL_GPU_PLACEMENT": "auto"},
+		"busy seconds":         {"MODEL_MEASURED_MIN_BUSY_SECONDS": "-1"},
+		"idle seconds":         {"MODEL_GPU_PLACEMENT_MIN_IDLE_SECONDS": "soon"},
+		"window format":        {"MODEL_GPU_PLACEMENT_WINDOW": "22-06"},
+		"window hour":          {"MODEL_GPU_PLACEMENT_WINDOW": "25:00-06:00"},
+		"window empty span":    {"MODEL_GPU_PLACEMENT_WINDOW": "06:00-06:00"},
 	} {
 		if _, err := load(extra); err == nil {
 			t.Errorf("%s: invalid setting accepted", name)
@@ -699,5 +750,23 @@ func TestMeasurementSettingsAreValidated(t *testing.T) {
 	single := map[string]string{"MODEL_MANAGER_ENABLED": "true", "GPU_MEMORY_BUDGET_MIB": "81920", "MODEL_GPU_PLACEMENT": "propose"}
 	if _, err := ConfigFromEnv(func(k string) string { return single[k] }); err == nil {
 		t.Error("placement without per-GPU budgets accepted")
+	}
+}
+
+func TestPlacementWindowCoversLocalTimeAcrossMidnight(t *testing.T) {
+	at := func(hour, minute int) time.Time { return time.Date(2026, 11, 16, hour, minute, 0, 0, time.UTC) }
+	for _, test := range []struct {
+		window string
+		at     time.Time
+		want   bool
+	}{
+		{"", at(13, 0), true},
+		{"22:00-06:00", at(23, 30), true}, {"22:00-06:00", at(5, 59), true}, {"22:00-06:00", at(6, 0), false}, {"22:00-06:00", at(21, 59), false}, {"22:00-06:00", at(22, 0), true},
+		{"01:00-04:30", at(2, 0), true}, {"01:00-04:30", at(4, 30), false}, {"01:00-04:30", at(0, 59), false},
+		{"nonsense", at(2, 0), false},
+	} {
+		if got := InPlacementWindow(test.window, test.at); got != test.want {
+			t.Errorf("window %q at %s: got %v", test.window, test.at.Format("15:04"), got)
+		}
 	}
 }

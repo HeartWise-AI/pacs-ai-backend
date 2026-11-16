@@ -33,6 +33,10 @@ type PlacementMove struct {
 	ModelID        string
 	From, To       string
 	ReservationMiB int
+	// FitAlone is how many models fit if only this move is applied to the
+	// current placement. A move of a swap can be below PlacementPlan.FitBefore:
+	// applying it alone would make things worse until its counterpart follows.
+	FitAlone int
 }
 
 type PlacementGPUResult struct {
@@ -201,7 +205,10 @@ func PlanPlacement(gpus []PlacementGPU, models []PlacementModel, maxExhaustive i
 		results[best[i]].ReservedAfterMiB += model.ReservationMiB
 		results[best[i]].ModelsAfter++
 		if best[i] != current[i] {
-			plan.Moves = append(plan.Moves, PlacementMove{ModelID: model.ID, From: gpus[current[i]].UUID, To: gpus[best[i]].UUID, ReservationMiB: model.ReservationMiB})
+			step := append([]int(nil), current...)
+			step[i] = best[i]
+			alone, _ := score(step)
+			plan.Moves = append(plan.Moves, PlacementMove{ModelID: model.ID, From: gpus[current[i]].UUID, To: gpus[best[i]].UUID, ReservationMiB: model.ReservationMiB, FitAlone: alone.fit})
 		}
 	}
 	plan.GPUs = results
@@ -247,9 +254,10 @@ func firstFitDecreasing(gpus []PlacementGPU, models []PlacementModel, current []
 	return assignment
 }
 
-// orderMoves puts first the moves whose destination already has room, so that
-// applying them one at a time never needs a device to be over its budget
-// longer than necessary. Larger models go first within each group.
+// orderMoves puts first the moves that help most when applied alone, then
+// those whose destination already has room, larger models first. The order is
+// advice for a person reading the plan: an applier must still check FitAlone,
+// because in a swap no single move may be safe on its own.
 func orderMoves(plan *PlacementPlan) {
 	free := map[string]int{}
 	for _, gpu := range plan.GPUs {
@@ -272,5 +280,6 @@ func orderMoves(plan *PlacementPlan) {
 		ordered = append(ordered, move)
 		remaining = append(remaining[:pick], remaining[pick+1:]...)
 	}
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].FitAlone > ordered[j].FitAlone })
 	plan.Moves = ordered
 }

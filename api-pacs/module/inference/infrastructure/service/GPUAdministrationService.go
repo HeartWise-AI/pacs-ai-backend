@@ -107,6 +107,9 @@ type GPUAdministrationService struct {
 	Docker   GPUAdminDocker
 	API      GPUAdminModelAPI
 	Deployer GPUAdminDeployer
+	// Operations is optional: with it the automatic placement loop learns at
+	// once that a deployment it started has failed.
+	Operations GPUAdminOperations
 	// Clock is replaced in tests; nil means time.Now.
 	Clock  func() time.Time
 	mu     sync.Mutex
@@ -234,7 +237,7 @@ func (service *GPUAdministrationService) Snapshot(ctx context.Context, tenantID 
 	return result, nil
 }
 
-func (service *GPUAdministrationService) Move(ctx context.Context, tenantID, actor, modelID, uuid, expectedContainerID string) (serviceTypes.DeployInferenceModelVersionResult, error) {
+func (service *GPUAdministrationService) move(ctx context.Context, tenantID, actor, modelID, uuid, expectedContainerID string) (serviceTypes.DeployInferenceModelVersionResult, error) {
 	empty := serviceTypes.DeployInferenceModelVersionResult{}
 	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(actor) == "" || strings.TrimSpace(modelID) == "" || strings.TrimSpace(uuid) == "" || strings.TrimSpace(expectedContainerID) == "" {
 		return empty, errors.New(apiError.InvalidPayload)

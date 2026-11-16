@@ -10,7 +10,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/require"
 
-	"api-pacs/infrastructures/database/postgresql"
 	"api-pacs/module/inference/infrastructure/modelmanager"
 )
 
@@ -31,7 +30,7 @@ func TestModelGPUMeasurementRepositoryRoundTrip(t *testing.T) {
 	database, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { database.Close() })
-	repository := &ModelGPUMeasurementRepository{PostgresSQLDBHandlerInterface: &postgresql.PostgreSQLDBHandler{Conn: sqlx.NewDb(database, "sqlmock")}}
+	repository := &ModelGPUMeasurementRepository{DB: sqlx.NewDb(database, "sqlmock")}
 	id := strings.Repeat("a", 64)
 	at := time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
 
@@ -53,4 +52,35 @@ func TestModelGPUMeasurementRepositoryRoundTrip(t *testing.T) {
 	require.Equal(t, modelmanager.Measurement{ContainerID: id, Name: "DeepRV-CLIP", ImageID: "sha256:image", GPUUUID: "GPU-x", LastMiB: 3300, PeakMiB: 3400, ResidentMiB: 3300, Samples: 7, Overshoots: 1, SampledAt: at}, loaded[0])
 	require.True(t, loaded[1].SampledAt.IsZero())
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestModelGPUMeasurementRepositoryHonoursItsContext(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { database.Close() })
+	repository := &ModelGPUMeasurementRepository{DB: sqlx.NewDb(database, "sqlmock")}
+
+	// A database that does not answer must not hold the caller past its deadline.
+	mock.ExpectPrepare("SELECT container_id")
+	mock.ExpectQuery("SELECT container_id").WillDelayFor(5 * time.Second).WillReturnRows(sqlmock.NewRows([]string{"container_id"}))
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	_, err = repository.Load(ctx)
+	require.Error(t, err)
+	require.Less(t, time.Since(started), 2*time.Second)
+
+	mock.ExpectExec("INSERT INTO model_gpu_measurements").WillDelayFor(5 * time.Second).WillReturnResult(sqlmock.NewResult(0, 1))
+	ctx, cancel = context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	started = time.Now()
+	err = repository.Save(ctx, []modelmanager.Measurement{{ContainerID: "c"}}, nil)
+	require.Error(t, err)
+	require.Less(t, time.Since(started), 2*time.Second)
+
+	cancelled, stop := context.WithCancel(context.Background())
+	stop()
+	require.Error(t, repository.Save(cancelled, nil, []string{"gone"}))
+	_, err = (&ModelGPUMeasurementRepository{}).Load(context.Background())
+	require.Error(t, err)
 }

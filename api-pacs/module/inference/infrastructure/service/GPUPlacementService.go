@@ -10,11 +10,24 @@ import (
 
 	dockerAPI "api-pacs/infrastructures/providers/api/dockerinference/types"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/infrastructure/modelmanager"
+	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 )
 
 // ErrGPUPlacementPinned is returned while MODEL_GPU_PLACEMENT=pinned.
 var ErrGPUPlacementPinned = errors.New("GPU placement planning is disabled")
+
+// maxAutoMoveFailures is how many failed automatic moves of one model are
+// tolerated before it is left alone until a restart or a manual move.
+const maxAutoMoveFailures = 3
+
+const reasonNoGPU = "This model does not require a GPU"
+
+// GPUAdminOperations reads the state of a deployment started by a move.
+type GPUAdminOperations interface {
+	Get(ctx context.Context, tenantID, modelID, operationID string) (entity.InferenceModelDeploymentOperation, error)
+}
 
 type GPUPlacementMoveView struct {
 	ModelID        string `json:"modelId"`
@@ -22,6 +35,8 @@ type GPUPlacementMoveView struct {
 	FromGPUUUID    string `json:"fromGpuUuid"`
 	ToGPUUUID      string `json:"toGpuUuid"`
 	ReservationMiB int    `json:"reservationMiB"`
+	// ModelsFitAlone is how many models fit if only this move is applied.
+	ModelsFitAlone int `json:"modelsFitAlone"`
 	// BlockedReason says why the automatic loop would not apply this move now.
 	BlockedReason string `json:"blockedReason,omitempty"`
 }
@@ -52,20 +67,37 @@ type GPUPlacementSkippedView struct {
 	ModelID string `json:"modelId"`
 	Reason  string `json:"reason"`
 }
+
+// GPUPlacementFailureView reports a model whose automatic moves failed.
+type GPUPlacementFailureView struct {
+	ModelID    string     `json:"modelId"`
+	Failures   int        `json:"failures"`
+	RetryAfter *time.Time `json:"retryAfter"`
+	// Excluded models are not moved automatically again until the gateway
+	// restarts or an administrator moves them.
+	Excluded  bool   `json:"excluded"`
+	LastError string `json:"lastError,omitempty"`
+}
 type GPUPlacementAutoView struct {
 	Enabled bool `json:"enabled"`
 	// BlockedReason says why the automatic loop would apply nothing now.
-	BlockedReason string     `json:"blockedReason,omitempty"`
-	LastRunAt     *time.Time `json:"lastRunAt"`
-	LastOutcome   string     `json:"lastOutcome,omitempty"`
-	LastMoveAt    *time.Time `json:"lastMoveAt"`
-	LastMoveModel string     `json:"lastMoveModelId,omitempty"`
+	BlockedReason string                    `json:"blockedReason,omitempty"`
+	Window        string                    `json:"window,omitempty"`
+	LastRunAt     *time.Time                `json:"lastRunAt"`
+	LastOutcome   string                    `json:"lastOutcome,omitempty"`
+	LastMoveAt    *time.Time                `json:"lastMoveAt"`
+	LastMoveModel string                    `json:"lastMoveModelId,omitempty"`
+	Failures      []GPUPlacementFailureView `json:"failures"`
 }
 type GPUPlacementPlan struct {
-	SampledAt         time.Time                 `json:"sampledAt"`
-	Mode              string                    `json:"mode"`
-	ReservationSource string                    `json:"reservationSource"`
-	Strategy          string                    `json:"strategy"`
+	SampledAt         time.Time `json:"sampledAt"`
+	Mode              string    `json:"mode"`
+	ReservationSource string    `json:"reservationSource"`
+	Strategy          string    `json:"strategy"`
+	// Incomplete is true when some model's GPU reservation could not be
+	// determined: the plan is then optimistic and is never applied automatically.
+	Incomplete        bool                      `json:"incomplete"`
+	IncompleteReasons []string                  `json:"incompleteReasons"`
 	Current           map[string]string         `json:"current"`
 	Proposed          map[string]string         `json:"proposed"`
 	Moves             []GPUPlacementMoveView    `json:"moves"`
@@ -79,15 +111,48 @@ type GPUPlacementPlan struct {
 	Auto              GPUPlacementAutoView      `json:"auto"`
 }
 
+type autoModelState struct {
+	failures   int
+	retryAfter time.Time
+	excluded   bool
+	lastError  string
+	movedAt    time.Time // last accepted automatic move
+}
+
+type autoPendingMove struct {
+	tenantID, modelID string
+	source            string // the container the model was moved away from
+	operationID       string
+	at                time.Time
+}
+
 type autoPlacementState struct {
-	lastRunAt       time.Time
-	lastOutcome     string
-	pendingModel    string // model whose automatic move may still be deploying
-	pendingSource   string // the container it was moved away from
-	pendingAt       time.Time
-	lastMoveAt      map[string]time.Time
-	lastMovedModel  string
-	lastMovedModelT time.Time
+	lastRunAt      time.Time
+	lastOutcome    string
+	pending        *autoPendingMove
+	models         map[string]*autoModelState
+	lastMovedModel string
+	lastMovedAt    time.Time
+}
+
+func (state *autoPlacementState) model(id string) *autoModelState {
+	if state.models == nil {
+		state.models = map[string]*autoModelState{}
+	}
+	if state.models[id] == nil {
+		state.models[id] = &autoModelState{}
+	}
+	return state.models[id]
+}
+
+// fail records one failed automatic move: the next attempt waits twice as long
+// each time, and after maxAutoMoveFailures the model is excluded.
+func (state *autoPlacementState) fail(id, reason string, now time.Time, cooldown time.Duration) {
+	model := state.model(id)
+	model.failures++
+	model.lastError = reason
+	model.retryAfter = now.Add(cooldown << min(model.failures-1, 10))
+	model.excluded = model.failures >= maxAutoMoveFailures
 }
 
 func (service *GPUAdministrationService) now() time.Time {
@@ -98,15 +163,63 @@ func (service *GPUAdministrationService) now() time.Time {
 }
 
 // autoMoveCooldown keeps a model from being redeployed again soon after an
-// automatic move, and bounds how long an unfinished move blocks the next one.
+// automatic move, bounds how long an unfinished move blocks the next one, and
+// is the first delay after a failed move.
 func autoMoveCooldown(interval time.Duration) time.Duration {
 	return max(6*interval, 30*time.Minute)
 }
 
-// PlacementPlan computes, without side effects, where the workspace's models
-// should run so that as many reservations as possible fit at the same time.
+// settlePendingMove decides what became of the last automatic move. The
+// deployment runs asynchronously: it succeeded when the model is served by
+// another container, failed when its operation says so or when nothing changed
+// for a whole cooldown, and is otherwise still in progress.
+func (service *GPUAdministrationService) settlePendingMove(ctx context.Context, containers map[string]string, tenantID string, cooldown time.Duration, now time.Time) {
+	service.autoMu.Lock()
+	pending := service.auto.pending
+	service.autoMu.Unlock()
+	if pending == nil {
+		return
+	}
+	outcome, reason := "", ""
+	current, visible := containers[pending.modelID]
+	switch {
+	case visible && tenantID == pending.tenantID && current != pending.source:
+		outcome = "succeeded"
+	case service.Operations != nil && pending.operationID != "":
+		operation, err := service.Operations.Get(ctx, pending.tenantID, pending.modelID, pending.operationID)
+		if err == nil {
+			switch operation.Status {
+			case entity.InferenceModelDeploymentOperationFailed, entity.InferenceModelDeploymentOperationRolledBack, entity.InferenceModelDeploymentOperationInterrupted:
+				outcome, reason = "failed", "deployment "+pending.operationID+" ended "+string(operation.Status)
+			}
+		}
+	}
+	if outcome == "" && now.Sub(pending.at) >= cooldown {
+		outcome, reason = "failed", "deployment did not replace the container within "+cooldown.String()
+	}
+	if outcome == "" {
+		return
+	}
+	service.autoMu.Lock()
+	defer service.autoMu.Unlock()
+	if service.auto.pending != pending {
+		return
+	}
+	service.auto.pending = nil
+	if outcome == "succeeded" {
+		model := service.auto.model(pending.modelID)
+		model.failures, model.retryAfter, model.lastError = 0, time.Time{}, ""
+		return
+	}
+	service.auto.fail(pending.modelID, reason, now, cooldown)
+	log.Printf("[gpu-placement] automatic move of model=%s failed: %s (failures=%d)", pending.modelID, reason, service.auto.models[pending.modelID].failures)
+}
+
+// PlacementPlan computes, without changing any model, where the workspace's
+// models should run so that as many reservations as possible fit at once.
 func (service *GPUAdministrationService) PlacementPlan(ctx context.Context, tenantID string) (GPUPlacementPlan, error) {
-	plan := GPUPlacementPlan{Current: map[string]string{}, Proposed: map[string]string{}, Moves: []GPUPlacementMoveView{}, Devices: []GPUPlacementDeviceView{}, Models: []GPUPlacementModelView{}, Skipped: []GPUPlacementSkippedView{}}
+	plan := GPUPlacementPlan{IncompleteReasons: []string{}, Current: map[string]string{}, Proposed: map[string]string{}, Moves: []GPUPlacementMoveView{}, Devices: []GPUPlacementDeviceView{}, Models: []GPUPlacementModelView{}, Skipped: []GPUPlacementSkippedView{}}
+	plan.Auto.Failures = []GPUPlacementFailureView{}
 	if service.Manager == nil {
 		return plan, errors.New(apiError.InferenceUpgradeUnavailable)
 	}
@@ -127,25 +240,44 @@ func (service *GPUAdministrationService) PlacementPlan(ctx context.Context, tena
 	measurements := service.Manager.Measurements()
 	now := service.now()
 	plan.SampledAt, plan.Mode, plan.ReservationSource = now.UTC(), config.PlacementMode, config.ReservationSource
+	incomplete := func(reason string) {
+		plan.Incomplete = true
+		plan.IncompleteReasons = append(plan.IncompleteReasons, reason)
+	}
 
 	allowed := map[string]bool{}
 	for _, uuid := range config.AllowedGPUUUIDs {
 		allowed[uuid] = true
 	}
 	tenantContainers := map[string]struct{}{}
+	containers := map[string]string{}
 	for _, model := range status.Models {
 		tenantContainers[model.ContainerID] = struct{}{}
+		containers[model.ModelID] = model.ContainerID
 	}
 	// Reservations of models registered elsewhere are fixed load on a device.
+	// One whose resource contract the manager has never read (its container
+	// was stopped at startup) cannot be counted, so the plan is incomplete.
 	other := map[string]int{}
+	unknownOthers := 0
 	for id, model := range measurements.Models {
-		if _, mine := tenantContainers[id]; mine || !model.GPURequired {
+		if _, mine := tenantContainers[id]; mine {
 			continue
 		}
-		if state := ledger.Models[id]; state.Blocked && state.ReservedMiB == 0 && !state.Loaded {
+		state := ledger.Models[id]
+		if state.Blocked && state.ReservedMiB == 0 && !state.Loaded {
 			continue // tombstone of a replaced container
 		}
-		other[model.GPUUUID] += max(model.ReservationMiB, ledger.Models[id].ReservedMiB)
+		if !model.ResourcesKnown && state.ReservedMiB == 0 {
+			unknownOthers++
+			continue
+		}
+		if model.GPURequired || state.ReservedMiB > 0 {
+			other[model.GPUUUID] += max(model.ReservationMiB, state.ReservedMiB)
+		}
+	}
+	if unknownOthers > 0 {
+		incomplete(fmt.Sprintf("%d model(s) outside this workspace have an unknown GPU reservation", unknownOthers))
 	}
 	gpus := make([]modelmanager.PlacementGPU, 0, len(status.Devices))
 	for _, device := range status.Devices {
@@ -155,17 +287,18 @@ func (service *GPUAdministrationService) PlacementPlan(ctx context.Context, tena
 	views := map[string]GPUPlacementModelView{}
 	models := make([]modelmanager.PlacementModel, 0, len(status.Models))
 	for _, model := range status.Models {
+		held := ledger.Models[model.ContainerID].ReservedMiB
 		reason := ""
 		switch {
+		case model.ReservationMiB != nil && *model.ReservationMiB == 0 && held == 0:
+			reason = reasonNoGPU
 		case model.GPUUUID == nil:
 			reason = model.Reason
 			if reason == "" {
 				reason = "Container has no explicit GPU placement"
 			}
-		case model.ReservationMiB == nil && ledger.Models[model.ContainerID].ReservedMiB == 0:
+		case model.ReservationMiB == nil && held == 0:
 			reason = "The model's GPU reservation is not known"
-		case model.ReservationMiB != nil && *model.ReservationMiB == 0 && ledger.Models[model.ContainerID].ReservedMiB == 0:
-			reason = "This model does not require a GPU"
 		default:
 			if _, configured := ledger.GPUs[*model.GPUUUID]; !configured {
 				reason = "The model's GPU is not managed"
@@ -173,15 +306,20 @@ func (service *GPUAdministrationService) PlacementPlan(ctx context.Context, tena
 		}
 		if reason != "" {
 			plan.Skipped = append(plan.Skipped, GPUPlacementSkippedView{ModelID: model.ModelID, Reason: reason})
+			// Only a model known to need no GPU is safe to leave out.
+			if reason != reasonNoGPU {
+				incomplete("Model " + model.ModelID + " is not counted: " + reason)
+			}
 			continue
 		}
-		reservation := ledger.Models[model.ContainerID].ReservedMiB
+		reservation := held
 		if model.ReservationMiB != nil {
 			reservation = *model.ReservationMiB
 		}
 		views[model.ModelID] = GPUPlacementModelView{ModelID: model.ModelID, ContainerID: model.ContainerID, CurrentGPUUUID: *model.GPUUUID, ReservationMiB: reservation, Movable: model.PlacementSupported, Reason: model.Reason}
 		models = append(models, modelmanager.PlacementModel{ID: model.ModelID, GPUUUID: *model.GPUUUID, ReservationMiB: reservation, Movable: model.PlacementSupported})
 	}
+	sort.Strings(plan.IncompleteReasons)
 
 	computed := modelmanager.PlanPlacement(gpus, models, 0)
 	plan.Strategy, plan.Current, plan.Proposed = computed.Strategy, computed.Current, computed.Proposed
@@ -199,43 +337,66 @@ func (service *GPUAdministrationService) PlacementPlan(ctx context.Context, tena
 	}
 	sort.Slice(plan.Models, func(i, j int) bool { return plan.Models[i].ModelID < plan.Models[j].ModelID })
 
+	cooldown := autoMoveCooldown(config.PlacementInterval)
+	service.settlePendingMove(ctx, containers, tenantID, cooldown, now)
+
 	service.autoMu.Lock()
 	defer service.autoMu.Unlock()
-	cooldown := autoMoveCooldown(config.PlacementInterval)
 	for _, move := range computed.Moves {
-		view := GPUPlacementMoveView{ModelID: move.ModelID, ContainerID: views[move.ModelID].ContainerID, FromGPUUUID: move.From, ToGPUUUID: move.To, ReservationMiB: move.ReservationMiB}
-		view.BlockedReason = moveBlockedReason(ledger.Models, view.ContainerID, config.MinResidency, now)
-		if moved, ok := service.auto.lastMoveAt[move.ModelID]; ok && view.BlockedReason == "" && now.Sub(moved) < cooldown {
+		view := GPUPlacementMoveView{ModelID: move.ModelID, ContainerID: views[move.ModelID].ContainerID, FromGPUUUID: move.From, ToGPUUUID: move.To, ReservationMiB: move.ReservationMiB, ModelsFitAlone: move.FitAlone}
+		view.BlockedReason = moveBlockedReason(ledger.Models, view.ContainerID, config, now)
+		state := service.auto.models[move.ModelID]
+		switch {
+		case view.BlockedReason != "":
+		case move.FitAlone < computed.FitBefore:
+			// One half of a swap: alone it would leave fewer models fitting.
+			view.BlockedReason = "Applying this move alone would let fewer models fit"
+		case state == nil:
+		case state.excluded:
+			view.BlockedReason = fmt.Sprintf("Automatic moves of this model are suspended after %d failed attempts; move it manually or restart the gateway", state.failures)
+		case now.Before(state.retryAfter):
+			view.BlockedReason = fmt.Sprintf("An automatic move of this model failed %d time(s); next attempt after %s", state.failures, state.retryAfter.UTC().Format(time.RFC3339))
+		case !state.movedAt.IsZero() && now.Sub(state.movedAt) < cooldown:
 			view.BlockedReason = "This model was moved automatically a short time ago"
 		}
 		plan.Moves = append(plan.Moves, view)
 	}
-	plan.Auto = GPUPlacementAutoView{Enabled: config.PlacementMode == modelmanager.PlacementAuto, LastOutcome: service.auto.lastOutcome, LastMoveModel: service.auto.lastMovedModel}
+	plan.Auto.Enabled, plan.Auto.Window = config.PlacementMode == modelmanager.PlacementAuto, config.PlacementWindow
+	plan.Auto.LastOutcome, plan.Auto.LastMoveModel = service.auto.lastOutcome, service.auto.lastMovedModel
 	if !service.auto.lastRunAt.IsZero() {
 		at := service.auto.lastRunAt.UTC()
 		plan.Auto.LastRunAt = &at
 	}
-	if !service.auto.lastMovedModelT.IsZero() {
-		at := service.auto.lastMovedModelT.UTC()
+	if !service.auto.lastMovedAt.IsZero() {
+		at := service.auto.lastMovedAt.UTC()
 		plan.Auto.LastMoveAt = &at
 	}
-	// A pending move ends when its model is served by another container, or
-	// after the cooldown if the deployment failed and left it in place.
-	if service.auto.pendingModel != "" {
-		if view, present := views[service.auto.pendingModel]; (present && view.ContainerID != service.auto.pendingSource) || now.Sub(service.auto.pendingAt) >= cooldown {
-			service.auto.pendingModel = ""
+	for id, state := range service.auto.models {
+		if state.failures == 0 {
+			continue
 		}
+		failure := GPUPlacementFailureView{ModelID: id, Failures: state.failures, Excluded: state.excluded, LastError: state.lastError}
+		if !state.excluded {
+			retry := state.retryAfter.UTC()
+			failure.RetryAfter = &retry
+		}
+		plan.Auto.Failures = append(plan.Auto.Failures, failure)
 	}
+	sort.Slice(plan.Auto.Failures, func(i, j int) bool { return plan.Auto.Failures[i].ModelID < plan.Auto.Failures[j].ModelID })
 	switch {
 	case !plan.Auto.Enabled:
 		plan.Auto.BlockedReason = "Automatic placement is not enabled (MODEL_GPU_PLACEMENT=" + config.PlacementMode + ")"
+	case plan.Incomplete:
+		plan.Auto.BlockedReason = "The plan is incomplete: " + plan.IncompleteReasons[0]
 	case len(plan.Moves) == 0:
 		plan.Auto.BlockedReason = "The current placement cannot be improved"
 	case !plan.Improves:
 		plan.Auto.BlockedReason = "The plan does not let more models fit"
+	case !modelmanager.InPlacementWindow(config.PlacementWindow, now):
+		plan.Auto.BlockedReason = "Outside the automatic placement window " + config.PlacementWindow
 	case ledger.QueueDepth > 0:
 		plan.Auto.BlockedReason = "Requests are waiting for admission"
-	case service.auto.pendingModel != "":
+	case service.auto.pending != nil:
 		plan.Auto.BlockedReason = "The previous automatic move is still being deployed"
 	default:
 		for _, state := range ledger.Models {
@@ -247,10 +408,11 @@ func (service *GPUAdministrationService) PlacementPlan(ctx context.Context, tena
 	return plan, nil
 }
 
-// moveBlockedReason applies the automatic loop's safety rules to one model: it
-// must be idle, and either unloaded or evictable under the manager's own
-// minimum residency. An administrator may still move it explicitly.
-func moveBlockedReason(models map[string]modelmanager.ModelSnapshot, containerID string, minResidency time.Duration, now time.Time) string {
+// moveBlockedReason applies the automatic loop's safety rules to one model.
+// A move drains and redeploys the container, and requests for the model are
+// refused meanwhile, so the model must be unloaded or have been idle for
+// MODEL_GPU_PLACEMENT_MIN_IDLE_SECONDS. An administrator may still move it.
+func moveBlockedReason(models map[string]modelmanager.ModelSnapshot, containerID string, config modelmanager.Config, now time.Time) string {
 	state, known := models[containerID]
 	switch {
 	case !known:
@@ -262,13 +424,28 @@ func moveBlockedReason(models map[string]modelmanager.ModelSnapshot, containerID
 	case state.State == dockerAPI.RuntimeUnloaded && state.ReservedMiB == 0:
 		return ""
 	case state.State == dockerAPI.RuntimeReady && state.Loaded:
-		if now.Sub(state.LastUsedAt) < minResidency {
-			return "The model was used too recently to be evicted"
+		if idle := now.Sub(state.LastUsedAt); idle < max(config.PlacementMinIdle, config.MinResidency) {
+			return fmt.Sprintf("The model is loaded and was used %s ago; it must be idle for %s", idle.Truncate(time.Second), max(config.PlacementMinIdle, config.MinResidency))
 		}
 		return ""
 	default:
 		return fmt.Sprintf("The model is in state %s, which is not safe to move automatically", state.State)
 	}
+}
+
+// Move redeploys a model on another GPU at an administrator's request. It
+// also clears the automatic loop's failure record for that model.
+func (service *GPUAdministrationService) Move(ctx context.Context, tenantID, actor, modelID, uuid, expectedContainerID string) (serviceTypes.DeployInferenceModelVersionResult, error) {
+	result, err := service.move(ctx, tenantID, actor, modelID, uuid, expectedContainerID)
+	if err == nil {
+		service.autoMu.Lock()
+		delete(service.auto.models, modelID)
+		if service.auto.pending != nil && service.auto.pending.modelID == modelID {
+			service.auto.pending = nil
+		}
+		service.autoMu.Unlock()
+	}
+	return result, err
 }
 
 // RunAutoPlacement applies at most one planned move per interval while
@@ -281,7 +458,7 @@ func (service *GPUAdministrationService) RunAutoPlacement(ctx context.Context) {
 	if config.PlacementMode != modelmanager.PlacementAuto || config.PlacementInterval <= 0 {
 		return
 	}
-	log.Printf("[gpu-placement] automatic placement enabled interval=%s", config.PlacementInterval)
+	log.Printf("[gpu-placement] automatic placement enabled interval=%s window=%q", config.PlacementInterval, config.PlacementWindow)
 	ticker := time.NewTicker(config.PlacementInterval)
 	defer ticker.Stop()
 	for {
@@ -296,7 +473,9 @@ func (service *GPUAdministrationService) RunAutoPlacement(ctx context.Context) {
 	}
 }
 
-// autoPlacementCycle plans once and applies the first move that is safe now.
+// autoPlacementCycle plans once and applies the first move that is safe now
+// and, applied alone, does not reduce how many models fit. The plan is computed
+// again on the next cycle, so a move is never taken from an outdated plan.
 // Every refusal is recorded and shown by the plan endpoint instead of forced.
 func (service *GPUAdministrationService) autoPlacementCycle(ctx context.Context) string {
 	config := service.Manager.Settings()
@@ -326,22 +505,24 @@ func (service *GPUAdministrationService) autoPlacementCycle(ctx context.Context)
 			blocked += fmt.Sprintf(" model %s: %s.", move.ModelID, move.BlockedReason)
 			continue
 		}
-		reason := fmt.Sprintf("%d of %d models fit now, %d after the plan (%s reservations, %d MiB for this model)", plan.ModelsFitBefore, plan.ModelsTotal, plan.ModelsFitAfter, plan.ReservationSource, move.ReservationMiB)
+		reason := fmt.Sprintf("%d of %d models fit now, %d after this move, %d after the plan (%s reservations, %d MiB for this model)", plan.ModelsFitBefore, plan.ModelsTotal, move.ModelsFitAlone, plan.ModelsFitAfter, plan.ReservationSource, move.ReservationMiB)
 		log.Printf("[gpu-placement] moving model=%s container=%.12s from=%s to=%s reason=%q", move.ModelID, move.ContainerID, move.FromGPUUUID, move.ToGPUUUID, reason)
-		result, moveErr := service.Move(ctx, config.PlacementTenantID, config.PlacementActor, move.ModelID, move.ToGPUUUID, move.ContainerID)
+		result, moveErr := service.move(ctx, config.PlacementTenantID, config.PlacementActor, move.ModelID, move.ToGPUUUID, move.ContainerID)
+		at := service.now()
+		cooldown := autoMoveCooldown(config.PlacementInterval)
 		if moveErr != nil {
 			service.Manager.ObservePlacementMove(false)
-			return record(fmt.Sprintf("skipped: move of model %s to %s was refused: %v", move.ModelID, move.ToGPUUUID, moveErr))
+			service.autoMu.Lock()
+			service.auto.fail(move.ModelID, "move refused: "+moveErr.Error(), at, cooldown)
+			failures := service.auto.models[move.ModelID].failures
+			service.autoMu.Unlock()
+			return record(fmt.Sprintf("skipped: move of model %s to %s was refused (failure %d of %d): %v", move.ModelID, move.ToGPUUUID, failures, maxAutoMoveFailures, moveErr))
 		}
 		service.Manager.ObservePlacementMove(true)
-		at := service.now()
 		service.autoMu.Lock()
-		if service.auto.lastMoveAt == nil {
-			service.auto.lastMoveAt = map[string]time.Time{}
-		}
-		service.auto.lastMoveAt[move.ModelID] = at
-		service.auto.pendingModel, service.auto.pendingSource, service.auto.pendingAt = move.ModelID, move.ContainerID, at
-		service.auto.lastMovedModel, service.auto.lastMovedModelT = move.ModelID, at
+		service.auto.model(move.ModelID).movedAt = at
+		service.auto.pending = &autoPendingMove{tenantID: config.PlacementTenantID, modelID: move.ModelID, source: move.ContainerID, operationID: result.Operation.ID, at: at}
+		service.auto.lastMovedModel, service.auto.lastMovedAt = move.ModelID, at
 		service.autoMu.Unlock()
 		return record(fmt.Sprintf("moved model %s from %s to %s (deployment %s): %s", move.ModelID, move.FromGPUUUID, move.ToGPUUUID, result.Operation.ID, reason))
 	}

@@ -8,9 +8,11 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	dockererrdefs "github.com/docker/docker/errdefs"
 	"github.com/docker/docker/pkg/stdcopy"
 )
 
@@ -59,21 +61,89 @@ func (sdk *DockerSDK) ReadGPUProcesses(ctx context.Context, id, uuid string) ([]
 	return parseGPUProcesses(output, uuid)
 }
 
+// ErrGPUProbeNotRunning means the container cannot be asked at all: it does not
+// exist, is not running, or is not pinned to the expected GPU. Another
+// container may answer. Every other probe error is about the GPU or its driver.
+var ErrGPUProbeNotRunning = errors.New("GPU telemetry probe is unavailable")
+
+// ErrGPUProbeTimeout means nvidia-smi did not answer in time.
+var ErrGPUProbeTimeout = errors.New("GPU telemetry probe timed out")
+
+const (
+	nvidiaSMIKillSeconds   = "2"
+	nvidiaSMIClientTimeout = 4 * time.Second
+)
+
+// timeoutUnavailable remembers the containers whose image has no usable
+// coreutils timeout, so the probe is not attempted twice on every sample.
+var timeoutUnavailable sync.Map
+
+// runNvidiaSMI runs one fixed query. The command is wrapped in
+// "timeout -s KILL" so a stuck driver cannot leave nvidia-smi processes behind:
+// Docker has no way to kill an exec'd process from outside. Images without
+// timeout fall back to the bare command, bounded only by the client deadline.
 func (sdk *DockerSDK) runNvidiaSMI(ctx context.Context, id, uuid, query string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, nvidiaSMIClientTimeout)
 	defer cancel()
 	info, err := sdk.GetContainerInfo(ctx, id)
 	if err != nil || info.Lifecycle != "running" || info.GPUUUID != uuid || !gpuUUIDPattern.MatchString(uuid) {
-		return "", errors.New("GPU telemetry probe is unavailable")
+		return "", ErrGPUProbeNotRunning
 	}
 	command := []string{"/usr/bin/nvidia-smi", query, "--format=csv,noheader,nounits"}
-	created, err := sdk.Client.ContainerExecCreate(ctx, info.ID, container.ExecOptions{Cmd: command, AttachStdout: true, AttachStderr: true})
+	return runWithKillTimeout(info.ID, command, func(command []string) (string, int, error) {
+		return sdk.execRead(ctx, info.ID, command)
+	})
+}
+
+// runWithKillTimeout runs the command under "timeout -s KILL" and, for a
+// container whose image has no usable timeout, falls back to the bare command
+// from then on. Status 137 is timeout's kill; 125 to 127 (or the runtime's
+// "not found" error) mean timeout itself could not run. An old BusyBox timeout
+// that rejects "-s KILL 2" with status 1 cannot be told apart from nvidia-smi
+// failing and is reported as a failed probe.
+func runWithKillTimeout(key string, command []string, run func([]string) (string, int, error)) (string, error) {
+	if _, bare := timeoutUnavailable.Load(key); !bare {
+		output, code, err := run(append([]string{"timeout", "-s", "KILL", nvidiaSMIKillSeconds}, command...))
+		missing := code == 125 || code == 126 || code == 127
+		if err != nil {
+			missing = strings.Contains(err.Error(), "executable file not found") || strings.Contains(err.Error(), "no such file or directory")
+		}
+		switch {
+		case err == nil && code == 0:
+			return output, nil
+		case err == nil && code == 137:
+			return "", ErrGPUProbeTimeout
+		case missing:
+			timeoutUnavailable.Store(key, struct{}{})
+		case err != nil:
+			return "", err
+		default:
+			return "", errors.New("GPU telemetry command failed")
+		}
+	}
+	output, code, err := run(command)
 	if err != nil {
-		return "", errors.New("GPU telemetry probe is unavailable")
+		return "", err
+	}
+	if code != 0 {
+		return "", errors.New("GPU telemetry command failed")
+	}
+	return output, nil
+}
+
+// execRead runs a command in a running container and returns its bounded
+// standard output and exit status.
+func (sdk *DockerSDK) execRead(ctx context.Context, id string, command []string) (string, int, error) {
+	created, err := sdk.Client.ContainerExecCreate(ctx, id, container.ExecOptions{Cmd: command, AttachStdout: true, AttachStderr: true})
+	if err != nil {
+		if dockererrdefs.IsNotFound(err) || dockererrdefs.IsConflict(err) {
+			return "", 0, ErrGPUProbeNotRunning
+		}
+		return "", 0, probeError(ctx, err)
 	}
 	attached, err := sdk.Client.ContainerExecAttach(ctx, created.ID, container.ExecAttachOptions{})
 	if err != nil {
-		return "", errors.New("GPU telemetry probe is unavailable")
+		return "", 0, probeError(ctx, err)
 	}
 	defer attached.Close()
 	finished := make(chan struct{})
@@ -87,13 +157,33 @@ func (sdk *DockerSDK) runNvidiaSMI(ctx context.Context, id, uuid, query string) 
 	}()
 	output, stderr := &boundedTelemetryWriter{}, &boundedTelemetryWriter{}
 	if _, err := stdcopy.StdCopy(output, stderr, attached.Reader); err != nil {
-		return "", errors.New("GPU telemetry read failed")
+		if ctx.Err() != nil {
+			return "", 0, ErrGPUProbeTimeout
+		}
+		return "", 0, errors.New("GPU telemetry read failed")
 	}
 	state, err := sdk.Client.ContainerExecInspect(ctx, created.ID)
-	if err != nil || state.Running || state.ExitCode != 0 {
-		return "", errors.New("GPU telemetry command failed")
+	if err != nil {
+		return "", 0, probeError(ctx, err)
 	}
-	return output.String(), nil
+	if state.Running {
+		return "", 0, ErrGPUProbeTimeout
+	}
+	if state.ExitCode != 0 && strings.Contains(stderr.String(), "executable file not found") {
+		return "", 127, nil
+	}
+	return output.String(), state.ExitCode, nil
+}
+
+// probeError hides driver and daemon detail but keeps what the sampler acts on.
+func probeError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ErrGPUProbeTimeout
+	}
+	if strings.Contains(err.Error(), "executable file not found") || strings.Contains(err.Error(), "no such file or directory") {
+		return err
+	}
+	return errors.New("GPU telemetry probe failed")
 }
 
 // parseGPUProcesses keeps the rows of the expected physical GPU. A process

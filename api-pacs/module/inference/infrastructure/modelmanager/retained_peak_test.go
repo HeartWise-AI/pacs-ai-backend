@@ -90,8 +90,13 @@ func TestReconciliationRetainsPeakForAlreadyLoadedRuntime(t *testing.T) {
 	}
 	b.add(2, 10, 70)
 	b.loaded[id(2)] = true
-	if err := m.Reconcile(context.Background(), []string{id(1), id(2)}); err == nil {
-		t.Fatal("overcommitted loaded runtimes accepted at startup")
+	// Overcommitted loaded runtimes are brought within budget by unloading
+	// the least recently used one, instead of refusing all admission.
+	if err := m.Reconcile(context.Background(), []string{id(1), id(2)}); err != nil {
+		t.Fatal(err)
+	}
+	if s := m.Snapshot(); !s.Ready || s.ReservedMiB != 70 || len(b.unloads) != 1 {
+		t.Fatalf("overcommitted runtimes were not reduced to the budget: %+v unloads=%v", s, b.unloads)
 	}
 }
 
@@ -150,8 +155,13 @@ func TestOversizedScaledReconciliationAndLedgersFailClosed(t *testing.T) {
 	if got := m.peakReservation(b.models[id(2)]); got != math.MaxInt {
 		t.Fatalf("huge scaled peak wrapped: %d", got)
 	}
-	if err := m.Reconcile(context.Background(), []string{id(1), id(2)}); err == nil {
-		t.Fatal("overflowing startup inventory accepted")
+	// A loaded model whose reservation can never fit is unloaded at startup
+	// rather than counted: the ledger must not start above the budget.
+	if err := m.Reconcile(context.Background(), []string{id(1), id(2)}); err != nil {
+		t.Fatal(err)
+	}
+	if s := m.Snapshot(); s.ReservedMiB > s.CapacityMiB || s.Models[id(2)].Loaded {
+		t.Fatalf("overflowing startup inventory left over budget: %+v", s)
 	}
 	m.models[id(1)] = &entry{model: b.models[id(1)], reserved: math.MaxInt, loaded: true}
 	m.models[id(2)] = &entry{model: b.models[id(2)], reserved: math.MaxInt, loaded: true}
