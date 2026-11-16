@@ -177,3 +177,15 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) UpdateProcessi
 		return repository.InferenceProcessingRunRepositoryInterface.UpdateProcessingRunAggregate(ctx, data)
 	})
 }
+
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) SelectLatestStudyWideProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error) {
+	return withProcessingRunCircuit("select_latest_study_wide_processing_run", func() (entity.InferenceIngestionProcessingRun, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.SelectLatestStudyWideProcessingRun(ctx, tenantID, studyInstanceUID)
+	})
+}
+
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) MarkProcessingRunCancelled(ctx context.Context, data types.MarkInferenceIngestionProcessingRunCancelled) (entity.InferenceIngestionProcessingRun, error) {
+	return withProcessingRunCircuit("mark_processing_run_cancelled", func() (entity.InferenceIngestionProcessingRun, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.MarkProcessingRunCancelled(ctx, data)
+	})
+}

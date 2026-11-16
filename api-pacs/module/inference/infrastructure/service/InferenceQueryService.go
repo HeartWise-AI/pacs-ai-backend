@@ -531,7 +531,9 @@ func (service *InferenceQueryService) GetProcessingRunDetail(ctx context.Context
 		return types.ProcessingRunDetail{}, err
 	}
 
-	return buildProcessingRunDetail(run, executions), nil
+	detail := buildProcessingRunDetail(run, executions)
+	service.describeStudyGrowingWait(run, executions, &detail)
+	return detail, nil
 }
 
 // GetProcessingRunExecutionResult returns an opaque result only after local
@@ -656,7 +658,15 @@ func buildProcessingRunDetail(run entity.InferenceIngestionProcessingRun, execut
 		Run: run, Executions: executions,
 	})
 
+	var waitingReason types.ProcessingRunWaitingReason
+	if processingRunIsStaleWaiting(run, aggregate.Counts) {
+		waitingReason = types.ProcessingRunWaitingReasonStale
+	}
+
 	return types.ProcessingRunDetail{
+		Cancellable:   len(entity.CancellableProcessingRunExecutions(run, executions)) > 0,
+		CancelledAt:   run.CancelledAt,
+		WaitingReason: waitingReason,
 		ProcessingRunSummary: types.ProcessingRunSummary{
 			RunID:             run.ID,
 			StudyInstanceUID:  run.StudyInstanceUID,

@@ -96,6 +96,15 @@ func (repository *concurrentProcessingRunPlannerRepository) CreateProcessingRunP
 	return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{Run: run, Executions: executions, Created: true}, nil
 }
 
+// No earlier run of the study was cancelled by a user.
+func (repository *processingRunPlannerRepository) SelectLatestStudyWideProcessingRun(context.Context, string, string) (entity.InferenceIngestionProcessingRun, error) {
+	return entity.InferenceIngestionProcessingRun{}, errors.New(apiError.MissingRecord)
+}
+
+func (repository *concurrentProcessingRunPlannerRepository) SelectLatestStudyWideProcessingRun(context.Context, string, string) (entity.InferenceIngestionProcessingRun, error) {
+	return entity.InferenceIngestionProcessingRun{}, errors.New(apiError.MissingRecord)
+}
+
 func (repository *processingRunPlannerRepository) SelectActiveProcessingRun(_ context.Context, _, _ string) (entity.InferenceIngestionProcessingRun, error) {
 	if repository.activeErr != nil {
 		return entity.InferenceIngestionProcessingRun{}, repository.activeErr

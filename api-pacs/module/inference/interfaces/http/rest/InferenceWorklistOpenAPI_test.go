@@ -123,3 +123,24 @@ func TestExecutionResultOpenAPIDocumentsLazyNoStoreContractAndSafeErrors(t *test
 	opaqueResult := openAPIMap(t, resultProperties["result"])
 	require.Equal(t, false, opaqueResult["nullable"])
 }
+
+func TestWorklistOpenAPIDocumentsRunCancellationAndWaitingFields(t *testing.T) {
+	document := loadWorklistOpenAPI(t)
+	paths := openAPIMap(t, document["paths"])
+	cancel := openAPIMap(t, openAPIMap(t, paths["/inference/processing/runs/{runId}/cancel"])["post"])
+	require.Contains(t, cancel["description"], "authenticated tenant user")
+	require.Contains(t, cancel["description"], "Idempotent")
+	responses := openAPIMap(t, cancel["responses"])
+	for _, status := range []string{"200", "401", "403", "404", "409", "500", "503"} {
+		require.Contains(t, responses, status)
+	}
+
+	schemas := openAPIMap(t, openAPIMap(t, document["components"])["schemas"])
+	detail := openAPIMap(t, schemas["ProcessingRunDetail"])
+	extension := openAPIMap(t, detail["allOf"].([]interface{})[1])
+	properties := openAPIMap(t, extension["properties"])
+	for _, field := range []string{"executions", "cancellable", "cancelledAt", "waitingReason", "stableAfter"} {
+		require.Contains(t, properties, field)
+	}
+	require.Equal(t, []interface{}{"study_growing", "stale"}, openAPIMap(t, properties["waitingReason"])["enum"])
+}

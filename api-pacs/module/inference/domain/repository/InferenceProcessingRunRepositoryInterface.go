@@ -24,6 +24,10 @@ type InferenceProcessingRunRepositoryInterface interface {
 	SelectProcessingRun(ctx context.Context, tenantID, processingRunID string) (entity.InferenceIngestionProcessingRun, error)
 	// SelectLatestProcessingRun returns the newest tenant-scoped run for a study.
 	SelectLatestProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error)
+	// SelectLatestStudyWideProcessingRun returns the newest tenant-scoped run for a study, single-model viewer runs excluded.
+	SelectLatestStudyWideProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error)
+	// MarkProcessingRunCancelled records who cancelled an active run and when; the first cancellation wins.
+	MarkProcessingRunCancelled(ctx context.Context, data types.MarkInferenceIngestionProcessingRunCancelled) (entity.InferenceIngestionProcessingRun, error)
 	// ListProcessingRunHistory returns tenant-scoped runs ordered newest first.
 	ListProcessingRunHistory(ctx context.Context, data types.ListInferenceIngestionProcessingRuns) ([]entity.InferenceIngestionProcessingRun, error)
 	// ListProcessingRunHistoryPage returns bounded tenant-scoped history with has-more information.

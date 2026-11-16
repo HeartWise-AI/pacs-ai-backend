@@ -154,6 +154,23 @@ type ApplyInferenceIngestionProcessingTransition struct {
 	EventSequence     *int64
 	StartedAt         *time.Time
 	CompletedAt       *time.Time
+	// OnlyIfCancellableBeforeCompute makes the transition a no-op ("ignored")
+	// unless the locked execution has still not started computing. A user
+	// cancellation sets it so a job that was dispatched meanwhile keeps running.
+	OnlyIfCancellableBeforeCompute bool
+	// StudyServiceJobMissing is the caller's reading of the run's
+	// STUDY_SERVICE_JOB_MISSING flag when it planned the cancellation: a queued
+	// execution study-service no longer knows may then be cancelled too.
+	StudyServiceJobMissing bool
+}
+
+// MarkInferenceIngestionProcessingRunCancelled records the first user
+// cancellation of an active run.
+type MarkInferenceIngestionProcessingRunCancelled struct {
+	ID                string    `db:"id"`
+	TenantID          string    `db:"tenant_id"`
+	CancelledByUserID string    `db:"cancelled_by_user_id"`
+	CancelledAt       time.Time `db:"cancelled_at"`
 }
 
 type ApplyInferenceIngestionProcessingTransitionResult struct {

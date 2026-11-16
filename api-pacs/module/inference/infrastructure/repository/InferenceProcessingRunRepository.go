@@ -97,6 +97,11 @@ func (repository *InferenceProcessingRunRepository) ApplyProcessingRunExecutionT
 			Outcome: processingTransitionOutcomeIgnored, Execution: execution, Run: run,
 		}, nil
 	}
+	if data.OnlyIfCancellableBeforeCompute && !execution.IsCancellableBeforeCompute(data.StudyServiceJobMissing) {
+		return types.ApplyInferenceIngestionProcessingTransitionResult{
+			Outcome: processingTransitionOutcomeIgnored, Execution: execution, Run: run,
+		}, nil
+	}
 
 	legacyReplay := data.EventID == nil && data.EventSequence == nil && execution.Status == data.Status
 	if !legacyReplay {
@@ -772,6 +777,26 @@ func (repository *InferenceProcessingRunRepository) SelectProcessingRun(ctx cont
 	`, map[string]interface{}{
 		"tenant_id": tenantID, "processing_run_id": processingRunID,
 	}, &run)
+	return run, processingRunError(err)
+}
+
+// SelectLatestStudyWideProcessingRun returns the newest tenant-scoped run for
+// a study that is not a single-model viewer run.
+func (repository *InferenceProcessingRunRepository) SelectLatestStudyWideProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error) {
+	return repository.selectStudyRun(ctx, tenantID, studyInstanceUID, viewerRunExclusion+" ORDER BY run_number DESC LIMIT 1")
+}
+
+// MarkProcessingRunCancelled records who cancelled an active run and when.
+// The first cancellation wins; a terminal or unknown run is a missing record.
+func (repository *InferenceProcessingRunRepository) MarkProcessingRunCancelled(_ context.Context, data types.MarkInferenceIngestionProcessingRunCancelled) (entity.InferenceIngestionProcessingRun, error) {
+	var run entity.InferenceIngestionProcessingRun
+	err := repository.PostgresSQLDBHandlerInterface.QueryRow(`
+		UPDATE ingestion_processing_runs SET
+			cancelled_by_user_id = COALESCE(cancelled_by_user_id, :cancelled_by_user_id),
+			cancelled_at = COALESCE(cancelled_at, :cancelled_at)
+		WHERE id = :id AND tenant_id = :tenant_id AND phase <> 'TERMINAL'
+		RETURNING *
+	`, data, &run)
 	return run, processingRunError(err)
 }
 

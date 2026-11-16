@@ -28,6 +28,8 @@ type InferenceCommandServiceInterface interface {
 	CreateManualStudyProcessingRun(ctx context.Context, data types.CreateStudyProcessingRun) (types.CreateStudyProcessingRunResult, error)
 	// CreateViewerModelRun creates a single-model VIEWER_REQUEST run requested from the viewer.
 	CreateViewerModelRun(ctx context.Context, data types.CreateViewerModelRun) (types.CreateViewerModelRunResult, error)
+	// CancelProcessingRun cancels the models of a run that have not started computing.
+	CancelProcessingRun(ctx context.Context, data types.CancelProcessingRun) (types.ProcessingRunDetail, error)
 	// RecalculateStudyProcessingRun calculates and persists one authoritative run aggregate.
 	RecalculateStudyProcessingRun(ctx context.Context, data types.RecalculateStudyProcessingRun) (types.RecalculateStudyProcessingRunResult, error)
 	// ExecuteInferenceIngestionRunner execute inference ingestion runner

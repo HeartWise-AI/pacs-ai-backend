@@ -52,6 +52,9 @@ type inferenceWorklistHandlers struct {
 	getExecutionReport http.HandlerFunc
 	getStudyJobReport  http.HandlerFunc
 	runStudyModel      http.HandlerFunc
+	// Cancelling the waiting models of a run is open to the same users as
+	// the run detail and the viewer run.
+	cancelRun http.HandlerFunc
 }
 
 type inferenceFeedbackHandlers struct {
@@ -107,6 +110,7 @@ func mountInferenceWorklistRoutes(
 		r.Get("/processing/runs/{runId}/executions/{executionId}/report", handlers.getExecutionReport)
 		r.Get("/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/report", handlers.getStudyJobReport)
 		r.Post("/worklist/studies/{studyInstanceUID}/models/{modelId}/run", handlers.runStudyModel)
+		r.Post("/processing/runs/{runId}/cancel", handlers.cancelRun)
 
 		r.Group(func(r chi.Router) {
 			r.Use(ownerOrAdmin)
@@ -318,6 +322,7 @@ func (router *router) InitRouter() *chi.Mux {
 						getExecutionReport: inferenceQueryController.GetProcessingRunExecutionReport,
 						getStudyJobReport:  inferenceQueryController.GetStudyJobReport,
 						runStudyModel:      inferenceCommandController.RunStudyModel,
+						cancelRun:          inferenceCommandController.CancelProcessingRun,
 					},
 				)
 			})

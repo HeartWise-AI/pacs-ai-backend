@@ -82,6 +82,7 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 			getExecutionReport: respond,
 			getStudyJobReport:  respond,
 			runStudyModel:      respond,
+			cancelRun:          respond,
 		},
 	)
 
@@ -152,6 +153,44 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 		router.ServeHTTP(recorder, request)
 
 		require.Equal(t, http.StatusPreconditionRequired, recorder.Code)
+	})
+
+	t.Run("regular user can cancel the waiting models of a run", func(t *testing.T) {
+		request := authenticatedWorklistRequest(http.MethodPost, "/processing/runs/run-1/cancel")
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		require.Equal(t, http.StatusNoContent, recorder.Code)
+	})
+
+	t.Run("run cancellation requires authentication", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodPost, "/processing/runs/run-1/cancel", nil)
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	})
+
+	t.Run("run cancellation requires accepted policy", func(t *testing.T) {
+		policyService.status.AcceptanceRequired = true
+		defer func() { policyService.status.AcceptanceRequired = false }()
+		request := authenticatedWorklistRequest(http.MethodPost, "/processing/runs/run-1/cancel")
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		require.Equal(t, http.StatusPreconditionRequired, recorder.Code)
+	})
+
+	t.Run("run cancellation is not readable", func(t *testing.T) {
+		request := authenticatedWorklistRequest(http.MethodGet, "/processing/runs/run-1/cancel")
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
 	})
 
 	t.Run("regular user cannot reprocess", func(t *testing.T) {

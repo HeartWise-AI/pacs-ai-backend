@@ -2557,6 +2557,46 @@
         }
       }
     },
+    "/inference/processing/runs/{runId}/cancel": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Cancel the waiting models of a processing run",
+        "description": "Cancels every model execution of the run that has not started computing (pending, or queued and never handed to study-service) and returns the run detail. Executions already handed to study-service are not interrupted: they finish and record their result, after which the run becomes terminal. The run ends CANCELLED when no model completed and PARTIAL_SUCCESS when at least one did. Idempotent: a run that already ended, or was already cancelled, returns 200 with its current state. After a cancellation, automatic ingestion does not start a new automatic run for the study; a manual reprocess or a viewer run still does. Takes no request body. Callable by any authenticated tenant user who accepted the current policies; the user and time are recorded on the run.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Processing-run detail after the cancellation",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProcessingRunDetailResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "404": { "$ref": "#/components/responses/ProcessingRunNotFound" },
+          "409": {
+            "description": "PROCESSING_RUN_NOT_CANCELLABLE: every remaining model of the run is already computing",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/WorklistUnavailable" }
+        }
+      }
+    },
     "/inference/processing/runs/{runId}/executions/{executionId}/result": {
       "get": {
         "tags": ["inference"],
@@ -3072,11 +3112,30 @@
           { "$ref": "#/components/schemas/ProcessingRunSummary" },
           {
             "type": "object",
-            "required": ["executions"],
+            "required": ["executions", "cancellable"],
             "properties": {
               "executions": {
                 "type": "array",
                 "items": { "$ref": "#/components/schemas/ProcessingRunExecutionSummary" }
+              },
+              "cancellable": {
+                "type": "boolean",
+                "description": "True while the run is active and at least one model has not started computing, so POST .../cancel would cancel something."
+              },
+              "cancelledAt": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When a user cancelled the run's waiting models. Absent otherwise."
+              },
+              "waitingReason": {
+                "type": "string",
+                "enum": ["study_growing", "stale"],
+                "description": "Why an active run is not computing. study_growing: the remaining models wait for the study to stop receiving images (reported by the run-detail endpoint only). stale: the remaining models were never started and the run carries PENDING_STALE or EXPECTED_JOB_MISSING. Absent while a model is running, or when the run is merely queued."
+              },
+              "stableAfter": {
+                "type": "string",
+                "format": "date-time",
+                "description": "With waitingReason study_growing: the earliest time the study is considered stable if no further image arrives."
               }
             }
           }
