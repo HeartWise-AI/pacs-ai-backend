@@ -23,6 +23,7 @@ var ErrGPUPlacementPinned = errors.New("GPU placement planning is disabled")
 const maxAutoMoveFailures = 3
 
 const reasonNoGPU = "This model does not require a GPU"
+const reasonStopped = "The container is stopped and not pinned to a GPU"
 
 // GPUAdminOperations reads the state of a deployment started by a move.
 type GPUAdminOperations interface {
@@ -299,6 +300,10 @@ func (service *GPUAdministrationService) PlacementPlan(ctx context.Context, tena
 		held := ledger.Models[model.ContainerID].ReservedMiB
 		reason := ""
 		switch {
+		case model.Stopped && model.GPUUUID == nil && held == 0:
+			// A stopped container pinned to no GPU holds no GPU memory and
+			// has no placement to plan around.
+			reason = reasonStopped
 		case model.ReservationMiB != nil && *model.ReservationMiB == 0 && held == 0:
 			reason = reasonNoGPU
 		case model.GPUUUID == nil:
@@ -316,7 +321,7 @@ func (service *GPUAdministrationService) PlacementPlan(ctx context.Context, tena
 		if reason != "" {
 			plan.Skipped = append(plan.Skipped, GPUPlacementSkippedView{ModelID: model.ModelID, Reason: reason})
 			// Only a model known to need no GPU is safe to leave out.
-			if reason != reasonNoGPU {
+			if reason != reasonNoGPU && reason != reasonStopped {
 				incomplete("Model " + model.ModelID + " is not counted: " + reason)
 			}
 			continue

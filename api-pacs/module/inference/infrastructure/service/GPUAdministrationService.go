@@ -46,6 +46,9 @@ type GPUModelView struct {
 	DesiredGPUUUID     *string `json:"desiredGpuUuid"`
 	PlacementSupported bool    `json:"placementSupported"`
 	Reason             string  `json:"reason,omitempty"`
+	// Stopped is true when the container exists but is not running; it then
+	// holds no GPU memory.
+	Stopped bool `json:"stopped,omitempty"`
 	// Reservation fields are null when the model's resource contract is not
 	// known; measured fields are null until the sampler has seen the model.
 	DeclaredPeakMiB        *int       `json:"declaredPeakMiB"`
@@ -256,6 +259,7 @@ func (service *GPUAdministrationService) Snapshot(ctx context.Context, tenantID 
 			view.Reason = "Container is unavailable"
 		} else {
 			view.GPUUUID = optionalGPUUUID(info.GPUUUID)
+			view.Stopped = info.Lifecycle != dockerTypes.LifecycleRunning
 			view.GPUModelImageView = service.imageState(ctx, model, info)
 			if info.GPUUUID != "" && info.Lifecycle == dockerTypes.LifecycleRunning {
 				if _, exists := probes[info.GPUUUID]; !exists {
