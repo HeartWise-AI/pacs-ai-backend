@@ -67,6 +67,16 @@ external PACS network, one physical GPU and bounded logs. Set
 `docker compose -f compose.local.yml build` from this directory. Never publish
 this local artifact as an official semantic-version release.
 
+The official `Dockerfile` follows the release contract (`scripts/release-model.py`):
+`data/model_info.json` `provenance` pins `heartwise/VasoVision` at commit
+`af6db088eae690c6eb64eabf4baf65ad7f7744b0` (the revision of the deployed checkpoint,
+`config.json` and `class_mapping.json`), and `download_model.py` downloads it with the
+`hf_token` BuildKit secret and verifies every file by SHA-256. The pytorchvideo hub
+repository is checked out at commit `7da857b418b0e05fc4005907038695b247219b3a` and the
+Kinetics `X3D_M.pyth` checkpoint read by `x3d_m(pretrained=True)` is verified by SHA-256,
+so the build makes no unpinned fetch. `download_model.py --verify-only` rechecks all of
+them inside a built image.
+
 For a new deployment, start and register the container through the normal managed
 model workflow. An existing registration identifies its container: do not run
 Compose recreation over that registered container without a coordinated model

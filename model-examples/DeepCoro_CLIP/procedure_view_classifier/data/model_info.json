@@ -12,6 +12,14 @@
     "maxConcurrentInferences": 1,
     "idleTimeoutSeconds": 600
   },
+  "provenance": {
+    "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+    "sourceRevision": null,
+    "modelRepository": "heartwise/VasoVision",
+    "modelRevision": "af6db088eae690c6eb64eabf4baf65ad7f7744b0",
+    "weightsPath": "vaso_vision.pt",
+    "weightsSha256": "8c16997b8848a3a670168403e96f2d286b472aa8addad8e3012df48d4f14c65b"
+  },
   "dicomTargetLevel": "SERIES",
   "dicomUploadMin": 1,
   "dicomUploadMax": 99,

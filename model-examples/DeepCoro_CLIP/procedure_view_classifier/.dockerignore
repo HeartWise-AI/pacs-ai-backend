@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+hf_token*
+models/*.pt
+models/config.json
+models/class_mapping.json
+models/.cache/
+facebookresearch/
