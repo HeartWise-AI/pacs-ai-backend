@@ -25,7 +25,61 @@ func (m *Manager) RunIdleEviction(ctx context.Context) {
 	}
 }
 
+// recoverQuarantined retries the unload of models whose earlier unload or
+// inference left them in ERROR with a reservation. Without it such a
+// reservation is only released when that same model is requested again, so a
+// few failures can leave a GPU fully reserved with nothing loaded.
+func (m *Manager) recoverQuarantined(ctx context.Context) {
+	for ctx.Err() == nil {
+		m.mu.Lock()
+		if !m.ready || m.reconciling {
+			m.mu.Unlock()
+			return
+		}
+		now := time.Now()
+		var victim *entry
+		for _, e := range m.models {
+			if e.active || e.blocked || e.draining || e.preparing || e.state != api.RuntimeError || (e.reserved == 0 && !e.leased) || now.Before(e.recoverAfter) {
+				continue
+			}
+			victim = e
+			break
+		}
+		if victim == nil {
+			m.mu.Unlock()
+			return
+		}
+		victim.active = true
+		model := victim.model
+		m.mu.Unlock()
+		unloadCtx, cancel := context.WithTimeout(ctx, m.config.OperationTimeout)
+		err := m.backend.Unload(unloadCtx, model)
+		cancel()
+		m.mu.Lock()
+		victim.active = false
+		if err == nil {
+			victim.reserved = 0
+			victim.leased = false
+			victim.loaded = false
+			victim.state = api.RuntimeUnloaded
+			victim.recoverFailed = 0
+			victim.recoverAfter = time.Time{}
+		} else {
+			victim.recoverFailed++
+			backoff := time.Duration(victim.recoverFailed) * time.Minute
+			if backoff > 10*time.Minute {
+				backoff = 10 * time.Minute
+			}
+			victim.recoverAfter = time.Now().Add(backoff)
+		}
+		m.wakeLocked()
+		m.mu.Unlock()
+		m.metrics.ObserveEvent("recovery", metricOutcome(err))
+	}
+}
+
 func (m *Manager) evictIdle(ctx context.Context) {
+	m.recoverQuarantined(ctx)
 	// Each victim is claimed under the same lock as inference/deployment. An
 	// unload failure quarantines its reservation rather than freeing capacity.
 	for ctx.Err() == nil {
