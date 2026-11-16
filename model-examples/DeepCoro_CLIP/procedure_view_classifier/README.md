@@ -1,4 +1,17 @@
-# Angiogram procedure classifier 1.0.4
+# Angiogram procedure classifier 1.0.5
+
+**1.0.5:** same weights, class mapping, pixel conversion, thresholds and labels as 1.0.4. Only the chronology
+used for PCI/POST_PCI status changes, and only for studies where several videos share one SeriesTime (exported
+or converted runs, e.g. "DA Image Converted", where every video carries the export's SeriesTime):
+- the videos sharing a SeriesTime are ordered by their AcquisitionTime when every one of them has a complete,
+  distinct value, else by their ContentTime under the same condition; otherwise they keep the shared SeriesTime
+  and tied PCI timing still fails closed. Those predictions carry `chronology_time` and `chronology_source`
+  (`AcquisitionTime` or `ContentTime`); `series_time` stays the video's own SeriesTime. Predictions of studies
+  without shared SeriesTimes are unchanged (no new field);
+- a consumer may send `additionalMetadata.ambiguousTimingStatus = "undetermined"`: tied PCI timing then returns
+  every video's labels with `status: "undetermined"` and `status_reason: "ambiguous_acquisition_order"` (no video
+  is diagnostic) instead of an error. Without that key the request still fails.
+`preprocessingContract` advertises both (`chronologyTime`, `ambiguousTimingStatus`).
 
 **1.0.4:** same weights, class mapping, pixel conversion, thresholds and predictions as 1.0.3 (bit-identical on a
 37-video study). Two operational changes for complete studies, which arrive as one request:

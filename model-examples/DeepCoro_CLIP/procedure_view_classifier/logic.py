@@ -21,6 +21,39 @@ from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
 
 
+UNDETERMINED_STATUS = "undetermined"
+AMBIGUOUS_TIMING_REASON = "ambiguous_acquisition_order"
+# additionalMetadata key a consumer sets to UNDETERMINED_STATUS to receive labels instead of an error
+# when the acquisition order cannot be established. Without it, tied PCI timing still fails the request.
+AMBIGUOUS_TIMING_REQUEST_KEY = "ambiguousTimingStatus"
+
+
+def chronology_times(entries: list[tuple[time, time | None, time | None]]) -> list[tuple[time, str]]:
+    """Effective acquisition time of each video and the tag it comes from.
+
+    ``entries`` holds (SeriesTime, AcquisitionTime, ContentTime) per video of the complete request.
+    A video's SeriesTime is used unless other videos share it: exported/converted runs can stamp
+    every video with one SeriesTime. The videos sharing one SeriesTime then take their
+    AcquisitionTime when every one of them has a complete, distinct value, else their ContentTime
+    under the same condition, else they keep the shared SeriesTime (tied PCI timing then still
+    fails closed). One tag is used for a whole tied group, never a mix.
+    """
+    groups: dict[time, list[int]] = {}
+    for index, (series_time, _, _) in enumerate(entries):
+        groups.setdefault(series_time, []).append(index)
+    result = [(series_time, "SeriesTime") for series_time, _, _ in entries]
+    for indices in groups.values():
+        if len(indices) < 2:
+            continue
+        for position, source in ((1, "AcquisitionTime"), (2, "ContentTime")):
+            values = [entries[i][position] for i in indices]
+            if None not in values and len(set(values)) == len(values):
+                for i, value in zip(indices, values):
+                    result[i] = (value, source)
+                break
+    return result
+
+
 class CustomPredictionService(BasePredictionService):
     def load_model(self, config: Config):
         if CustomPredictionService.is_initialized:
@@ -81,14 +114,18 @@ class CustomPredictionService(BasePredictionService):
             return False
  
  
-    def _assign_procedure_status(self, predictions: list[dict]) -> list[dict]:
+    def _assign_procedure_status(self, predictions: list[dict], undetermined_on_ambiguity: bool = False) -> list[dict]:
         """Apply the existing PCI chronology rule to the COMPLETE request.
 
+        Videos are ordered by ``chronology_time`` when the prediction carries one (SeriesTime shared by
+        several videos, resolved by their AcquisitionTime/ContentTime), otherwise by ``series_time``.
         Missing/malformed time or tied PCI/non-PCI timing cannot safely establish
-        diagnostic status, so fail rather than assigning a reassuring default.
+        diagnostic status, so fail rather than assigning a reassuring default. When the
+        caller asked for it (``undetermined_on_ambiguity``), tied timing instead returns
+        every video's labels with ``status`` ``undetermined``: no video is called diagnostic.
         """
         def timestamp(row):
-            value = row.get("series_time")
+            value = row.get("chronology_time", row.get("series_time"))
             if not isinstance(value, str) or not re.fullmatch(r"\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?", value):
                 raise ValueError("Complete SeriesTime is required for procedure classification")
             return time.fromisoformat(value)
@@ -101,7 +138,12 @@ class CustomPredictionService(BasePredictionService):
             key = (row.get("main_structure"), timestamp(row))
             by_time.setdefault(key, set()).add(row.get("stent_presence"))
         if any("present" in states and "absent" in states for states in by_time.values()):
-            raise ValueError("Ambiguous PCI timing cannot establish diagnostic status")
+            if not undetermined_on_ambiguity:
+                raise ValueError("Ambiguous PCI timing cannot establish diagnostic status")
+            for row in ordered:
+                row["status"] = UNDETERMINED_STATUS
+                row["status_reason"] = AMBIGUOUS_TIMING_REASON
+            return ordered
 
         pci_seen = set()
         for row in ordered:
@@ -134,7 +176,9 @@ class CustomPredictionService(BasePredictionService):
         if not dicoms:
             raise ValueError("Classifier requires at least one video")
         predictions = self._run_inference(dicoms, [str(d.SeriesInstanceUID) for d in dicoms])
-        return {"predictions": self._assign_procedure_status(predictions)}
+        metadata = getattr(request, "additionalMetadata", None) or {}
+        undetermined = metadata.get(AMBIGUOUS_TIMING_REQUEST_KEY) == UNDETERMINED_STATUS
+        return {"predictions": self._assign_procedure_status(predictions, undetermined_on_ambiguity=undetermined)}
 
     def _videoShenanigans(self, video)->np.ndarray:
         # Use uuid.uuid4() to create a unique file name
@@ -210,18 +254,23 @@ class CustomPredictionService(BasePredictionService):
         return torch.from_numpy(video)
 
     def _extract_series_time(self, dicom: pydicom.Dataset) -> time | None:
-        series_time_raw: str | None = dicom.get('SeriesTime')
-        if not series_time_raw:
+        return self._extract_dicom_time(dicom, 'SeriesTime')
+
+    @staticmethod
+    def _extract_dicom_time(dicom: pydicom.Dataset, keyword: str) -> time | None:
+        """A complete TM value (HHMMSS with optional fraction) of ``keyword``, else None."""
+        raw: str | None = dicom.get(keyword)
+        if not raw:
             return None
-        series_time_raw = str(series_time_raw).strip()
-        if not re.fullmatch(r"\d{6}(?:\.\d{1,6})?", series_time_raw):
+        raw = str(raw).strip()
+        if not re.fullmatch(r"\d{6}(?:\.\d{1,6})?", raw):
             return None
         try:
-            if '.' in series_time_raw:
-                main_part, frac = series_time_raw.split('.')
+            if '.' in raw:
+                main_part, frac = raw.split('.')
                 microseconds = int(frac.ljust(6, '0')[:6])
             else:
-                main_part = series_time_raw
+                main_part = raw
                 microseconds = 0
             hours = int(main_part[:2])
             minutes = int(main_part[2:4])
@@ -250,6 +299,10 @@ class CustomPredictionService(BasePredictionService):
             if not series_uid or not sop_uid or series_uid != dicom_name:
                 raise ValueError("Classifier input identity mismatch")
             identities.append((series_time, series_uid, sop_uid))
+        chronology = chronology_times([(series_time,
+                                        self._extract_dicom_time(dicom, 'AcquisitionTime'),
+                                        self._extract_dicom_time(dicom, 'ContentTime'))
+                                       for dicom, (series_time, _, _) in zip(dicoms, identities)])
         config = CustomPredictionService.config
         size = max(1, int(getattr(config, "forward_batch_size", 1)))
         workers = max(1, int(getattr(config, "preprocess_workers", 1)))
@@ -282,7 +335,8 @@ class CustomPredictionService(BasePredictionService):
                     if not np.isfinite(values).all():
                         raise ValueError("Classifier returned non-finite probabilities")
                     probabilities[head_name] = (binary, values)
-                for row, (series_time, series_uid, sop_uid) in enumerate(identities[start:start + rows]):
+                for row, ((series_time, series_uid, sop_uid), (effective, source)) in enumerate(
+                        zip(identities[start:start + rows], chronology[start:start + rows])):
                     result = {}
                     for head_name, (binary, values) in probabilities.items():
                         index = (1 if values[row][0] >= 0.5 else 0) if binary else int(np.argmax(values[row]))
@@ -303,6 +357,9 @@ class CustomPredictionService(BasePredictionService):
                         "series_instance_uid": series_uid,
                         "sop_instance_uid": sop_uid,
                     })
+                    if source != "SeriesTime":
+                        # Only for videos whose SeriesTime is shared: other predictions stay as before.
+                        result.update({"chronology_time": effective.isoformat(), "chronology_source": source})
                     results.append(result)
                 del batch, output, videos
         return results
