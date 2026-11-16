@@ -30,6 +30,11 @@ type GPUDeviceView struct {
 	ManagerCapacityMiB  int        `json:"managerCapacityMiB"`
 	ManagerReservedMiB  int        `json:"managerReservedMiB"`
 	ManagerAvailableMiB int        `json:"managerAvailableMiB"`
+	// ForeignMiB is sampled memory of processes that belong to no managed
+	// model; null until the per-process sampler has a recent sample.
+	ForeignMiB       *int       `json:"foreignMiB"`
+	ManagedMiB       *int       `json:"managedMiB"`
+	ProcessSampledAt *time.Time `json:"processSampledAt"`
 }
 type GPUModelView struct {
 	ModelID            string  `json:"modelId"`
@@ -38,7 +43,39 @@ type GPUModelView struct {
 	DesiredGPUUUID     *string `json:"desiredGpuUuid"`
 	PlacementSupported bool    `json:"placementSupported"`
 	Reason             string  `json:"reason,omitempty"`
+	// Reservation fields are null when the model's resource contract is not
+	// known; measured fields are null until the sampler has seen the model.
+	DeclaredPeakMiB        *int       `json:"declaredPeakMiB"`
+	DeclaredReservationMiB *int       `json:"declaredReservationMiB"`
+	ReservationMiB         *int       `json:"reservationMiB"`
+	MeasuredPeakMiB        *int       `json:"measuredPeakMiB"`
+	MeasuredResidentMiB    *int       `json:"measuredResidentMiB"`
+	MeasuredLastMiB        *int       `json:"measuredLastMiB"`
+	MeasuredSamples        int        `json:"measuredSamples"`
+	MeasuredOvershoots     int        `json:"measuredOvershoots"`
+	MeasuredAt             *time.Time `json:"measuredAt"`
+	ReservationSource      string     `json:"reservationSource,omitempty"`
 }
+
+// processSampleMaxAge is how long a per-process GPU sample is still reported.
+const processSampleMaxAge = 2 * time.Minute
+
+func (view *GPUModelView) setReservation(measured modelmanager.ModelMeasurement) {
+	if measured.ResourcesKnown {
+		view.DeclaredPeakMiB = &measured.DeclaredPeakMiB
+		view.DeclaredReservationMiB = &measured.DeclaredReservationMiB
+		view.ReservationMiB = &measured.ReservationMiB
+		view.ReservationSource = measured.ReservationSource
+	}
+	view.MeasuredSamples, view.MeasuredOvershoots = measured.Samples, measured.Overshoots
+	if measured.Sampled {
+		view.MeasuredPeakMiB = &measured.MeasuredPeakMiB
+		view.MeasuredResidentMiB = &measured.MeasuredResidentMiB
+		view.MeasuredLastMiB = &measured.LastMiB
+		view.MeasuredAt = &measured.SampledAt
+	}
+}
+
 type GPUAdministrationSnapshot struct {
 	SampledAt      time.Time       `json:"sampledAt"`
 	ManagerEnabled bool            `json:"managerEnabled"`
@@ -70,8 +107,15 @@ type GPUAdministrationService struct {
 	Docker   GPUAdminDocker
 	API      GPUAdminModelAPI
 	Deployer GPUAdminDeployer
-	mu       sync.Mutex
-	cache    map[string]cachedGPUProbe
+	// Operations is optional: with it the automatic placement loop learns at
+	// once that a deployment it started has failed.
+	Operations GPUAdminOperations
+	// Clock is replaced in tests; nil means time.Now.
+	Clock  func() time.Time
+	mu     sync.Mutex
+	cache  map[string]cachedGPUProbe
+	autoMu sync.Mutex
+	auto   autoPlacementState
 }
 
 func optionalGPUUUID(value string) *string {
@@ -113,8 +157,10 @@ func (service *GPUAdministrationService) Snapshot(ctx context.Context, tenantID 
 		models = nil
 	}
 	snapshot := modelmanager.Snapshot{GPUs: map[string]modelmanager.GPUSnapshot{}}
+	measurements := modelmanager.MeasurementReport{}
 	if service.Manager != nil {
 		snapshot = service.Manager.Snapshot()
+		measurements = service.Manager.Measurements()
 		result.ManagerEnabled = true
 		result.ManagerReady = snapshot.Ready
 	}
@@ -124,6 +170,11 @@ func (service *GPUAdministrationService) Snapshot(ctx context.Context, tenantID 
 			continue
 		}
 		view := GPUModelView{ModelID: model.ID, ContainerID: model.ContainerID, DesiredGPUUUID: optionalGPUUUID(model.PreferredGPUUUID)}
+		// What the manager already knows; replaced below when the running
+		// container reports its resource contract.
+		if known, ok := measurements.Models[model.ContainerID]; ok {
+			view.setReservation(known)
+		}
 		info, inspectErr := service.Docker.GetContainerInfo(ctx, model.ContainerID)
 		if inspectErr != nil || info.ID != model.ContainerID {
 			view.Reason = "Container is unavailable"
@@ -150,6 +201,7 @@ func (service *GPUAdministrationService) Snapshot(ctx context.Context, tenantID 
 				view.Reason = "This model does not require a GPU"
 			} else {
 				view.PlacementSupported = true
+				view.setReservation(service.Manager.ModelReservation(model.ContainerID, info.GPUUUID, metadata.Data.Resources))
 			}
 		}
 		result.Models = append(result.Models, view)
@@ -177,12 +229,15 @@ func (service *GPUAdministrationService) Snapshot(ctx context.Context, tenantID 
 				view.TelemetrySampledAt = &measured.SampledAt
 			}
 		}
+		if usage, ok := measurements.GPUs[uuid]; ok && time.Since(usage.SampledAt) < processSampleMaxAge {
+			view.ForeignMiB, view.ManagedMiB, view.ProcessSampledAt = &usage.ForeignMiB, &usage.ManagedMiB, &usage.SampledAt
+		}
 		result.Devices = append(result.Devices, view)
 	}
 	return result, nil
 }
 
-func (service *GPUAdministrationService) Move(ctx context.Context, tenantID, actor, modelID, uuid, expectedContainerID string) (serviceTypes.DeployInferenceModelVersionResult, error) {
+func (service *GPUAdministrationService) move(ctx context.Context, tenantID, actor, modelID, uuid, expectedContainerID string) (serviceTypes.DeployInferenceModelVersionResult, error) {
 	empty := serviceTypes.DeployInferenceModelVersionResult{}
 	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(actor) == "" || strings.TrimSpace(modelID) == "" || strings.TrimSpace(uuid) == "" || strings.TrimSpace(expectedContainerID) == "" {
 		return empty, errors.New(apiError.InvalidPayload)

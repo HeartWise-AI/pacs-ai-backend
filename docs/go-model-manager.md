@@ -18,6 +18,24 @@ enable managed inference on a deployed host.**
 | `MODEL_RETAIN_PEAK_WHILE_LOADED` | `true` when enabled | Hold the GPU peak reservation until confirmed unload; set false only after validating post-inference allocator residency. |
 | `MODEL_GPU_MEMORY_RESERVATION_PERCENT` | `100` | Conservative scaling of GPU peak declarations, rounded up; integer 100–1000. Does not modify immutable image metadata. |
 | `MODEL_QUEUE_TIMEOUT_SECONDS` | `600` | Maximum time waiting for admission, including startup/readiness and eviction. |
+| `MODEL_EVICTION_POLICY` | `idle-timeout` | `lru-on-demand` lets a waiting request evict the least recently used idle model. |
+| `MODEL_MIN_RESIDENCY_SECONDS` | `30` | Minimum idle time before `lru-on-demand` (or an automatic move) may evict a model. |
+| `MODEL_GPU_MEASURE_INTERVAL_SECONDS` | `5` | Period of the per-process GPU memory sampler; `0` disables it. |
+| `MODEL_GPU_MEASURE_STATE_PATH` | unset | Store measurements in this JSON file instead of the Postgres table `model_gpu_measurements`. |
+| `MODEL_RESERVATION_SOURCE` | `declared` | `measured` reserves from observed peaks once enough predictions were seen. |
+| `MODEL_MEASURED_MIN_SAMPLES` | `10` | Observed completed predictions required before a measured reservation applies. |
+| `MODEL_MEASURED_MIN_BUSY_SECONDS` | `1` | How far into a prediction a sample must be taken to observe it (two samples also count). |
+| `MODEL_MEASURED_SAFETY_PERCENT` | `125` | Scaling of the measured peak (plus 256 MiB); integer 100-1000. |
+| `MODEL_GPU_PLACEMENT` | `pinned` | `propose` serves the placement plan; `auto` also applies one move per interval. |
+| `MODEL_GPU_PLACEMENT_INTERVAL_SECONDS` | `300` | Period of the automatic placement loop; 30-86400. |
+| `MODEL_GPU_PLACEMENT_MIN_IDLE_SECONDS` | `900` | Idle time required before `auto` may redeploy a loaded model. |
+| `MODEL_GPU_PLACEMENT_WINDOW` | unset | Daily local-time window for automatic moves, e.g. `22:00-06:00`; empty allows any time. |
+| `MODEL_GPU_ALLOWED_UUIDS` | all configured GPUs | Comma-separated GPUs a plan may move models to. |
+| `MODEL_GPU_PLACEMENT_TENANT_ID` | required for `auto` | Workspace whose models the automatic loop may move. |
+| `MODEL_GPU_PLACEMENT_ACTOR` | `system:gpu-auto-placement` | Actor recorded on automatic deployments. |
+
+Measured reservations and placement are described in
+[multi-gpu-model-placement.md](multi-gpu-model-placement.md).
 
 For example, a budget of 81920 MiB with a 4096 MiB margin gives 77824 MiB
 schedulable capacity. The operator must also exclude capacity assigned to other
@@ -108,8 +126,11 @@ production service. Predictions are rejected until this inventory succeeds.
   with no reservation, because it cannot consume GPU memory. Requests for that
   registration fail until the container or registry is repaired, without
   preventing unrelated models from being managed.
-- A running container whose metadata cannot be trusted, or a reconstructed
-  reservation set that exceeds schedulable capacity, fails startup closed.
+- A running container whose metadata cannot be trusted fails startup closed.
+- A reconstructed reservation set that exceeds schedulable capacity does not:
+  idle loaded models are unloaded, least recently used first, until it fits. A
+  model whose unload cannot be confirmed stays reserved in `ERROR`; if a device
+  is still over its budget it admits nothing until that quarantine is released.
 - Duplicate registrations sharing one canonical container ID are counted once.
 
 Reconciliation never cold-loads a model or starts a stopped container. Only one manager process may own the host GPU budgets. Replicas remain outside

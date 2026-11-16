@@ -34,6 +34,31 @@ func (stub *gpuAdministrationStub) Move(_ context.Context, tenant, actor, model,
 	stub.expected = expected
 	return serviceTypes.DeployInferenceModelVersionResult{Operation: entity.InferenceModelDeploymentOperation{ID: "deployment", Status: entity.InferenceModelDeploymentOperationPending}}, stub.err
 }
+func (stub *gpuAdministrationStub) PlacementPlan(_ context.Context, tenant string) (service.GPUPlacementPlan, error) {
+	stub.calls++
+	stub.tenant = tenant
+	return service.GPUPlacementPlan{Mode: "propose", Moves: []service.GPUPlacementMoveView{}}, stub.err
+}
+func TestGPUPlacementPlanUsesAuthenticatedTenantAndReportsPinnedMode(t *testing.T) {
+	stub := &gpuAdministrationStub{}
+	controller := &InferenceCommandController{GPUAdministration: stub}
+	recorder := httptest.NewRecorder()
+	controller.GetGPUPlacementPlan(recorder, gpuScopedRequest("GET", "/?tenantId=attacker", ""))
+	if recorder.Code != 200 || stub.tenant != "authenticated-tenant" || !strings.Contains(recorder.Body.String(), `"mode":"propose"`) || recorder.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("incorrect plan response: %d %s", recorder.Code, recorder.Body.String())
+	}
+	stub.err = service.ErrGPUPlacementPinned
+	recorder = httptest.NewRecorder()
+	controller.GetGPUPlacementPlan(recorder, gpuScopedRequest("GET", "/", ""))
+	if recorder.Code != 409 || !strings.Contains(recorder.Body.String(), "MODEL_GPU_PLACEMENT") {
+		t.Fatalf("pinned mode must be explicit: %d %s", recorder.Code, recorder.Body.String())
+	}
+	recorder = httptest.NewRecorder()
+	(&InferenceCommandController{}).GetGPUPlacementPlan(recorder, gpuScopedRequest("GET", "/", ""))
+	if recorder.Code != 503 {
+		t.Fatalf("missing administration service: %d", recorder.Code)
+	}
+}
 func gpuScopedRequest(method, path, body string) *http.Request {
 	request := httptest.NewRequest(method, path, strings.NewReader(body))
 	ctx := context.WithValue(request.Context(), iamTypes.TenantIDCtx, "authenticated-tenant")
