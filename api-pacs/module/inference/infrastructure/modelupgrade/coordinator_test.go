@@ -76,6 +76,9 @@ func (fake *coordinatorDocker) GetContainerInfo(_ context.Context, id string) (d
 
 func (fake *coordinatorDocker) StartContainer(context.Context, string) error { return nil }
 func (fake *coordinatorDocker) StopContainer(context.Context, string) error  { return nil }
+func (fake *coordinatorDocker) RenameContainer(context.Context, string, string) error {
+	return nil
+}
 
 func (fake *coordinatorDocker) RemoveContainer(_ context.Context, id string) error {
 	fake.record("docker.remove:" + id)

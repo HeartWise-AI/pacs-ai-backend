@@ -101,6 +101,12 @@ type CoordinatorConfig struct {
 	DrainTimeout              time.Duration
 	RollbackTimeout           time.Duration
 	AllowCandidateDeployments bool
+	// NameHandOverTimeout bounds the name hand-over that ends a move,
+	// including the wait for the model's admitted request to finish.
+	NameHandOverTimeout time.Duration
+	// NameVerifyTimeout bounds the wait for the moved model to answer under
+	// its name before the renames are undone.
+	NameVerifyTimeout time.Duration
 }
 
 type UpgradeDocker interface {
@@ -173,6 +179,12 @@ func NewUpgradeCoordinator(
 	if config.RollbackTimeout <= 0 {
 		config.RollbackTimeout = 5 * time.Minute
 	}
+	if config.NameHandOverTimeout <= 0 {
+		config.NameHandOverTimeout = 2 * time.Minute
+	}
+	if config.NameVerifyTimeout <= 0 {
+		config.NameVerifyTimeout = 10 * time.Second
+	}
 	return &UpgradeCoordinator{
 		docker: dockerClient, api: apiClient, validator: validator, manager: manager,
 		models: models, versions: versions, registrations: registrations, config: config, now: time.Now,
@@ -182,7 +194,9 @@ func NewUpgradeCoordinator(
 
 // Upgrade stages and validates a candidate before closing active admission. It
 // does not remove the old container after success; that rollback baseline is
-// intentionally retained for a later cleanup step.
+// intentionally retained for a later cleanup step. A move (KeepRunningImage)
+// ends by stopping the old container and handing its name to the new one; see
+// handOverContainerNames.
 func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request UpgradeRequest) (UpgradeResult, error) {
 	request.TenantID = strings.TrimSpace(request.TenantID)
 	request.ModelID = strings.TrimSpace(request.ModelID)
@@ -484,6 +498,16 @@ func (coordinator *UpgradeCoordinator) Upgrade(ctx context.Context, request Upgr
 			"[model-deployment] event=moved model_id=%s from_container=%.12s to_container=%.12s gpu=%s image_source=registered image=%q",
 			request.ModelID, registered.ContainerID, candidateID, deployment.GPUUUID, deployment.ImageReference,
 		)
+	}
+	if request.KeepRunningImage {
+		// The move is active and can no longer roll back. Whatever happens to
+		// the names from here on is logged and never fails it.
+		handOver := coordinator.handOverContainerNames(ctx, nameHandOver{
+			Name: activeName, ModelID: request.ModelID, OldID: registered.ContainerID, NewID: candidateID,
+		})
+		if handOver.NewName != "" {
+			result.ContainerName = handOver.NewName
+		}
 	}
 	return result, nil
 }

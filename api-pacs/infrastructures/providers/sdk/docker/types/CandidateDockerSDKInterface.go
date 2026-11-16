@@ -11,5 +11,7 @@ type CandidateDockerSDKInterface interface {
 	GetContainerInfo(context.Context, string) (GetContainerInfoResult, error)
 	StartContainer(context.Context, string) error
 	StopContainer(context.Context, string) error
+	// RenameContainer renames the container with the given ID to the given name.
+	RenameContainer(context.Context, string, string) error
 	RemoveContainer(context.Context, string) error
 }
