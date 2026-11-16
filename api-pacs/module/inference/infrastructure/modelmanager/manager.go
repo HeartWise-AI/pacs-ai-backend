@@ -50,7 +50,10 @@ func (*AdmissionBlocked) PublicMessage() string {
 type Model struct {
 	ContainerID, Name string
 	GPUUUID           string
-	Resources         types.ModelResources
+	// ImageID is the local image the container was created from. Measurements
+	// follow a model to a replacement container only when it is unchanged.
+	ImageID   string
+	Resources types.ModelResources
 }
 
 // Backend.Unload must confirm the old inference process has exited, not merely
@@ -78,6 +81,9 @@ type entry struct {
 	// recoverAfter delays the next background attempt to release a quarantined reservation.
 	recoverAfter  time.Time
 	recoverFailed int
+	// sampledActive records that the GPU sampler saw this model's process
+	// during the prediction in progress, so its completion counts as observed.
+	sampledActive bool
 }
 type waiter struct{ id string }
 
@@ -93,6 +99,15 @@ type Manager struct {
 	ready             bool
 	reconciling       bool
 	metrics           Metrics
+	// measMu guards the measured-memory state below. It is a leaf lock: it may
+	// be taken while holding mu, never the reverse, and never across I/O.
+	// Every writer also holds mu, so code holding mu reads a stable view.
+	measMu          sync.Mutex
+	measurements    map[string]*measurement
+	removedMeasures []string
+	replaces        map[string]string // candidate container ID -> container it replaces
+	gpuUsage        map[string]GPUUsage
+	measureKick     chan struct{}
 }
 
 func New(config Config, backend Backend) (*Manager, error) {
@@ -102,11 +117,30 @@ func New(config Config, backend Backend) (*Manager, error) {
 	if backend == nil {
 		return nil, errors.New("model lifecycle backend is required")
 	}
+	if config.ReservationSource == "" {
+		config.ReservationSource = ReservationDeclared
+	}
+	if config.MeasuredMinSamples == 0 {
+		config.MeasuredMinSamples = defaultMeasuredMinSamples
+	}
+	if config.MeasuredSafetyPercent == 0 {
+		config.MeasuredSafetyPercent = defaultMeasuredSafetyPercent
+	}
+	if config.PlacementMode == "" {
+		config.PlacementMode = PlacementPinned
+	}
+	if config.PlacementActor == "" {
+		config.PlacementActor = defaultPlacementActor
+	}
 	manager := &Manager{
 		config: config, backend: backend, models: make(map[string]*entry),
 		changed: make(chan struct{}), ready: !config.RequireReconciliation,
 		residentAdmission: make(map[string]*waiter),
 		metrics:           defaultMetrics,
+		measurements:      make(map[string]*measurement),
+		replaces:          make(map[string]string),
+		gpuUsage:          make(map[string]GPUUsage),
+		measureKick:       make(chan struct{}, 1),
 	}
 	manager.metrics.SetSnapshot(manager.snapshotLocked())
 	return manager, nil
@@ -125,13 +159,27 @@ func (m *Manager) residentReservation(model Model) int {
 	if m.config.RetainPeakWhileLoaded && model.Resources.GPURequired {
 		return m.peakReservation(model)
 	}
-	return model.Resources.ResidentMemoryMiB
+	declared := model.Resources.ResidentMemoryMiB
+	if measured, ok := m.measuredResident(model); ok {
+		return min(measured, declared)
+	}
+	return declared
 }
 
 // Model declarations are immutable image metadata, not instantaneous memory
 // measurements. Optional conservative scaling compensates for underestimated
 // validated peaks without modifying the model's identity or resource contract.
 func (m *Manager) peakReservation(model Model) int {
+	declared := m.declaredReservation(model)
+	if measured, ok := m.measuredPeak(model); ok {
+		return min(measured, declared)
+	}
+	return declared
+}
+
+// declaredReservation is the reservation derived from image metadata alone. It
+// is the ceiling of every measured reservation.
+func (m *Manager) declaredReservation(model Model) int {
 	peak := model.Resources.PeakMemoryMiB
 	percent := m.config.GPUReservationPercent
 	if !model.Resources.GPURequired || percent <= 100 {
@@ -484,6 +532,7 @@ func (m *Manager) Predict(ctx context.Context, id string, request types.PredictR
 	e.state = types.RuntimeBusy
 	m.wakeLocked()
 	m.mu.Unlock()
+	m.kickMeasurement()
 	inferenceStarted := time.Now()
 	response, err = m.backend.Predict(opCtx, model, request)
 	if err == nil && !response.Success {
@@ -560,6 +609,7 @@ func (m *Manager) admit(ctx context.Context, id string) (*waiter, *entry, error)
 			m.removeLocked(w)
 			e := m.models[id]
 			e.active = true
+			e.sampledActive = false
 			if len(m.config.GPUBudgetsMiB) > 0 && e.reserved > 0 {
 				m.residentAdmission[e.model.GPUUUID] = w
 			}
@@ -715,6 +765,9 @@ func (m *Manager) ReplaceDrained(oldID, newID string) error {
 			blocked: true,
 		}
 	}
+	m.measMu.Lock()
+	m.replaces[newID] = oldID
+	m.measMu.Unlock()
 	m.wakeLocked()
 	return nil
 }
@@ -806,6 +859,7 @@ func (m *Manager) PrepareBlocked(ctx context.Context, id string) (err error) {
 	}
 	m.mu.Lock()
 	e.model = model
+	m.inheritMeasurementLocked(model)
 	m.mu.Unlock()
 	if err = m.reserve(ctx, e); err != nil {
 		return err
@@ -993,6 +1047,7 @@ func (m *Manager) finish(ctx context.Context, w *waiter, e *entry, success bool)
 		p := recover()
 		m.mu.Lock()
 		if success && p == nil {
+			m.countObservedPredictionLocked(e)
 			e.reserved = m.residentReservation(e.model)
 			e.leased = false
 			e.state = types.RuntimeReady
@@ -1007,12 +1062,14 @@ func (m *Manager) finish(ctx context.Context, w *waiter, e *entry, success bool)
 			e.state = types.RuntimeError
 		}
 		e.active = false
+		e.sampledActive = false
 		if m.admitting == w {
 			m.admitting = nil
 		}
 		m.releaseResidentAdmissionLocked(w)
 		m.wakeLocked()
 		m.mu.Unlock()
+		m.kickMeasurement()
 		if p != nil {
 			panic(p)
 		}

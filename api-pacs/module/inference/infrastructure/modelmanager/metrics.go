@@ -20,6 +20,10 @@ var (
 	modelManagerDurationCount        = expvar.NewMap("model_manager_duration_seconds_count")
 	modelManagerDurationSumMillis    = expvar.NewMap("model_manager_duration_milliseconds_sum")
 	modelManagerDurationBucket       = expvar.NewMap("model_manager_duration_seconds_bucket")
+	modelManagerGPUProcessMemoryMiB  = expvar.NewMap("model_manager_gpu_process_memory_mib")
+	modelManagerReservationMiB       = expvar.NewMap("model_manager_reservation_mib")
+	modelManagerMeasuredModels       = expvar.NewMap("model_manager_measured_models")
+	modelManagerOvershootsTotal      = expvar.NewInt("model_manager_reservation_overshoots_total")
 )
 
 var modelManagerDurationBuckets = []time.Duration{
@@ -36,7 +40,51 @@ type Metrics interface {
 	ObserveEvent(string, string)
 }
 
+// measurementMetrics is implemented by metric sinks that also publish the
+// measured-memory gauges. It is optional so existing sinks keep working.
+type measurementMetrics interface {
+	SetMeasurements(MeasurementReport)
+}
+
 type expvarMetrics struct{}
+
+// SetMeasurements publishes sampled process memory per device and the total
+// reservation under each source. Like the other gauges it carries no model or
+// container identifier; per-model values are served by the GPU status endpoint.
+func (expvarMetrics) SetMeasurements(report MeasurementReport) {
+	for uuid, usage := range report.GPUs {
+		setMapInt(modelManagerGPUProcessMemoryMiB, "gpu="+uuid+",kind=managed", int64(usage.ManagedMiB))
+		setMapInt(modelManagerGPUProcessMemoryMiB, "gpu="+uuid+",kind=foreign", int64(usage.ForeignMiB))
+	}
+	var declared, effective, measured, observedPeak, sampled, eligible, overshoots int64
+	for _, model := range report.Models {
+		overshoots += int64(model.Overshoots)
+		if !model.ResourcesKnown || !model.GPURequired {
+			continue
+		}
+		declared += int64(model.DeclaredReservationMiB)
+		effective += int64(model.ReservationMiB)
+		observedPeak += int64(model.MeasuredPeakMiB)
+		if model.Sampled {
+			sampled++
+		}
+		// "measured" is what MODEL_RESERVATION_SOURCE=measured would reserve
+		// today: models without enough samples still count at their declaration.
+		if model.MeasuredReservationMiB > 0 {
+			eligible++
+			measured += int64(model.MeasuredReservationMiB)
+		} else {
+			measured += int64(model.DeclaredReservationMiB)
+		}
+	}
+	setMapInt(modelManagerReservationMiB, "kind=declared", declared)
+	setMapInt(modelManagerReservationMiB, "kind=effective", effective)
+	setMapInt(modelManagerReservationMiB, "kind=measured", measured)
+	setMapInt(modelManagerReservationMiB, "kind=observed_peak", observedPeak)
+	setMapInt(modelManagerMeasuredModels, "kind=sampled", sampled)
+	setMapInt(modelManagerMeasuredModels, "kind=eligible", eligible)
+	modelManagerOvershootsTotal.Set(overshoots)
+}
 
 var defaultMetrics Metrics = expvarMetrics{}
 

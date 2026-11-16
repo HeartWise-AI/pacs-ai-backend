@@ -55,3 +55,20 @@ func TestGPUTelemetryNeverStartsStoppedOrWrongGPUProbe(t *testing.T) {
 		})
 	}
 }
+
+func TestGPUProcessesKeepHostPIDsOfTheExpectedGPU(t *testing.T) {
+	other := "GPU-0fe2f69a-78ce-4eb0-730e-2f5a15f4a1b7"
+	value := "4188440, " + testGPUUUID + ", 3300\n17, " + other + ", 900\n4188441, " + testGPUUUID + ", 1898 MiB\n55, " + testGPUUUID + ", [N/A]\n"
+	processes, err := parseGPUProcesses(value, testGPUUUID)
+	if err != nil || len(processes) != 3 || processes[0] != (GPUProcess{PID: "4188440", UsedMemoryMiB: 3300}) || processes[1].UsedMemoryMiB != 1898 || processes[2] != (GPUProcess{PID: "55"}) {
+		t.Fatalf("incorrect process attribution input: %+v %v", processes, err)
+	}
+	if processes, err = parseGPUProcesses("", testGPUUUID); err != nil || len(processes) != 0 {
+		t.Fatalf("an idle GPU must be an empty sample: %+v %v", processes, err)
+	}
+	for _, value := range []string{"abc, " + testGPUUUID + ", 10", "12, " + testGPUUUID + ", -4", "12, " + testGPUUUID, "0, " + testGPUUUID + ", 10"} {
+		if _, err := parseGPUProcesses(value, testGPUUUID); err == nil {
+			t.Fatalf("invalid process telemetry accepted: %q", value)
+		}
+	}
+}

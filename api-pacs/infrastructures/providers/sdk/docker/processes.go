@@ -10,6 +10,27 @@ import (
 // InferenceProcessIDs returns host PIDs for the single supervised API worker.
 // Tracking the old PID prevents treating an unload acknowledgement as VRAM release.
 func (d *DockerSDK) InferenceProcessIDs(ctx context.Context, id string) ([]string, error) {
+	return d.processIDs(ctx, id, func(args string) bool {
+		uvicorn, app := false, false
+		for _, arg := range strings.Fields(args) {
+			if filepath.Base(arg) == "uvicorn" {
+				uvicorn = true
+			}
+			if arg == "main:app" {
+				app = true
+			}
+		}
+		return uvicorn && app
+	})
+}
+
+// ContainerProcessIDs returns the host PID of every process in the container,
+// so GPU memory held by a worker or subprocess is attributed to its model.
+func (d *DockerSDK) ContainerProcessIDs(ctx context.Context, id string) ([]string, error) {
+	return d.processIDs(ctx, id, func(string) bool { return true })
+}
+
+func (d *DockerSDK) processIDs(ctx context.Context, id string, match func(string) bool) ([]string, error) {
 	top, err := d.Client.ContainerTop(ctx, id, []string{"-eo", "pid,args"})
 	if err != nil {
 		return nil, err
@@ -31,16 +52,7 @@ func (d *DockerSDK) InferenceProcessIDs(ctx context.Context, id string) ([]strin
 		if pidColumn >= len(row) || argsColumn >= len(row) {
 			return nil, fmt.Errorf("malformed Docker process row")
 		}
-		uvicorn, app := false, false
-		for _, arg := range strings.Fields(row[argsColumn]) {
-			if filepath.Base(arg) == "uvicorn" {
-				uvicorn = true
-			}
-			if arg == "main:app" {
-				app = true
-			}
-		}
-		if uvicorn && app {
+		if match(row[argsColumn]) {
 			pids = append(pids, row[pidColumn])
 		}
 	}

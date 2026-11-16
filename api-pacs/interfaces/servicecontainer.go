@@ -783,6 +783,21 @@ func registerHandlers() {
 			}
 			return modelManager.Reconcile(ctx, containerIDs)
 		}
+		// Measured GPU memory survives restarts in Postgres, or in a JSON file
+		// when MODEL_GPU_MEASURE_STATE_PATH is set. A missing table or file only
+		// means measurement starts again from nothing.
+		var measurementStore modelmanager.MeasurementStore = &inferenceRepository.ModelGPUMeasurementRepository{PostgresSQLDBHandlerInterface: postgresqlDBHanddler}
+		if managerConfig.MeasureStatePath != "" {
+			measurementStore = &modelmanager.FileMeasurementStore{Path: managerConfig.MeasureStatePath}
+		}
+		if managerConfig.MeasureInterval > 0 {
+			loadCtx, cancelLoad := context.WithTimeout(context.Background(), 10*time.Second)
+			if loadErr := modelManager.LoadMeasurements(loadCtx, measurementStore); loadErr != nil {
+				log.Printf("[SERVER] stored GPU measurements are unavailable; measuring from scratch: %v", loadErr)
+			}
+			cancelLoad()
+			go modelManager.RunGPUMeasurement(context.Background(), dockerSDK, measurementStore)
+		}
 		reconcileCtx, cancelReconcile := context.WithTimeout(context.Background(), managerConfig.OperationTimeout)
 		containerIDs, catalogErr := modelRepository.ListRegisteredModelContainerIDs(reconcileCtx)
 		if catalogErr != nil {
