@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
 	"time"
 
+	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/infrastructure/service/types"
 )
@@ -75,6 +77,8 @@ func (tracker *studyServiceDispatchTracker) isLive(key string) bool {
 //     by the retrieval worker when its time comes);
 //   - both have been in that state longer than the pending threshold, so a
 //     dispatch that is about to start is not raced;
+//   - the execution has not been pending longer than the re-dispatch age
+//     limit: a study that old is not sent to a model unasked;
 //   - no dispatch for it is under way in this process;
 //   - its ingestion job is running and names the same model.
 //
@@ -105,6 +109,9 @@ func (service *InferenceCommandService) redispatchOrphanedExecution(
 	pendingSince := processingExecutionStateChangedAt(execution, run)
 	if pendingSince.IsZero() || now.Before(pendingSince.Add(threshold)) {
 		return false, "execution has not been pending long enough"
+	}
+	if config.RedispatchMaxAge > 0 && now.After(pendingSince.Add(config.RedispatchMaxAge)) {
+		return false, "execution has been pending longer than the re-dispatch age limit"
 	}
 	// retrieved_at is set when the candidate becomes RETRIEVED; updated_at
 	// also moves when the study is merely seen again by the poller.
@@ -137,8 +144,49 @@ func (service *InferenceCommandService) redispatchOrphanedExecution(
 	}
 	log.Printf("[Ingestion reconciliation worker] re-dispatching orphaned execution processing_run_id=%s execution_id=%s candidate_id=%s ingestion_job_id=%s model_name=%s pending_since=%s",
 		run.ID, execution.ID, candidate.ID, job.ID, execution.ModelName, formatEasternTime(pendingSince))
-	service.launchStudyServiceDispatch(key, job, candidate, run.ID, strings.TrimSpace(candidate.ID), "", "")
+	go func() {
+		defer liveStudyServiceDispatches.end(key)
+		err := service.runStudyServiceDispatch(job, candidate, run.ID, strings.TrimSpace(candidate.ID), "", "")
+		if err != nil && isPermanentRedispatchError(err) {
+			service.failUndispatchableExecution(run, candidate, job, execution, err)
+		}
+	}()
 	return true, ""
+}
+
+// isPermanentRedispatchError reports whether a recovered dispatch failed for a
+// reason the next cycle cannot change: what it needs (the model registration,
+// the execution, the candidate's data) no longer exists or is not valid.
+func isPermanentRedispatchError(err error) bool {
+	for _, code := range []string{apiError.MissingRecord, apiError.InvalidPayload} {
+		if message := err.Error(); message == code || strings.HasSuffix(message, ": "+code) {
+			return true
+		}
+	}
+	return false
+}
+
+// failUndispatchableExecution ends an execution whose recovered dispatch can
+// never succeed. The ordinary dispatch fails the execution itself for most
+// errors; it cannot when the error comes before it knows the execution, and
+// such an execution was dispatched again, and failed again, at every cycle.
+// Only an execution that is still pending is failed.
+func (service *InferenceCommandService) failUndispatchableExecution(
+	run entity.InferenceIngestionProcessingRun,
+	candidate entity.InferenceIngestionCandidate,
+	job entity.InferenceIngestionJob,
+	execution entity.InferenceIngestionProcessingJob,
+	dispatchErr error,
+) {
+	log.Printf("[Ingestion reconciliation worker] failing execution that cannot be dispatched processing_run_id=%s execution_id=%s candidate_id=%s model_name=%s err=%v",
+		run.ID, execution.ID, candidate.ID, execution.ModelName, dispatchErr)
+	runID := run.ID
+	service.recordFailedProcessingDispatchWithAttention(
+		context.Background(), candidate, job,
+		types.DispatchStudyRequest{ProcessingRunID: &runID, Modality: canonicalStudyServiceModality(job.DICOMModality)},
+		fmt.Errorf("study was not sent to the model: its dispatch was lost and cannot be started again (%w); reprocess the study if it is still needed", dispatchErr),
+		entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
+	)
 }
 
 // launchStudyServiceDispatch runs one dispatch in the background. The caller
@@ -156,23 +204,39 @@ func (service *InferenceCommandService) launchStudyServiceDispatch(
 ) {
 	go func() {
 		defer liveStudyServiceDispatches.end(key)
-		if limiter := service.StudyServiceDispatchSemaphore; limiter != nil {
-			limiter <- struct{}{}
-			defer func() {
-				<-limiter
-			}()
-		}
-
-		if err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
-			context.Background(), job, candidate, processingRunID, requestID, processingExecutionID, dispatchIntent,
-			seriesInstanceUIDs...,
-		); err != nil {
-			log.Printf("[Ingestion dispatch] final dispatch failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
-				candidate.ID,
-				job.ID,
-				requestID,
-				err,
-			)
-		}
+		_ = service.runStudyServiceDispatch(job, candidate, processingRunID, requestID, processingExecutionID, dispatchIntent, seriesInstanceUIDs...)
 	}()
+}
+
+// runStudyServiceDispatch waits for a dispatch slot, dispatches, and returns
+// the final error after logging it.
+func (service *InferenceCommandService) runStudyServiceDispatch(
+	job entity.InferenceIngestionJob,
+	candidate entity.InferenceIngestionCandidate,
+	processingRunID string,
+	requestID string,
+	processingExecutionID string,
+	dispatchIntent types.DispatchStudyIntent,
+	seriesInstanceUIDs ...string,
+) error {
+	if limiter := service.StudyServiceDispatchSemaphore; limiter != nil {
+		limiter <- struct{}{}
+		defer func() {
+			<-limiter
+		}()
+	}
+
+	err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
+		context.Background(), job, candidate, processingRunID, requestID, processingExecutionID, dispatchIntent,
+		seriesInstanceUIDs...,
+	)
+	if err != nil {
+		log.Printf("[Ingestion dispatch] final dispatch failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
+			candidate.ID,
+			job.ID,
+			requestID,
+			err,
+		)
+	}
+	return err
 }
