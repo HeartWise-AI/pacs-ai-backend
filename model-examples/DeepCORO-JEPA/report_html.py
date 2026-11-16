@@ -2,7 +2,12 @@
 physiology, lesion thresholds and per-vessel detail. Pure Python (no torch), so it renders from a JSON response.
 
 The schema follows the coronary dominance given in the request metadata (study majority of the angiogram
-classifier); without it the tree is drawn right dominant and the report says the dominance was not provided.
+classifier); without it the tree is drawn right dominant and the report says the dominance was not provided. The
+model's own dominance estimate (v15 on, `model_dominance`) is printed as text and never changes the drawing.
+
+A report is drawn for the model version of the result it is given (`predictions.model_version`; v13 for results
+stored before 2.0.0): the shown % are the stored `display_pct` when the result has them, else the mapping of that
+model version, and the calibration note and the performance figures are those of that model version.
 """
 from __future__ import annotations
 
@@ -11,7 +16,8 @@ import math
 import sys
 from html import escape
 
-from display_calibration import CATEGORY_LABELS, calibration, display_category, display_pct
+from display_calibration import (CATEGORY_LABELS, LEGACY_MODEL_VERSION, calibration, category, display_pct,
+                                 result_model_version, with_display)
 
 SEGMENT_NAMES = {
     "prox_rca": "Proximal RCA", "mid_rca": "Mid RCA", "dist_rca": "Distal RCA", "pda": "PDA",
@@ -26,7 +32,7 @@ SHORT = {
     "D2": "D2", "prox_lcx": "Prox LCx", "mid_lcx": "Mid LCx", "dist_lcx": "Dist LCx", "om1": "OM1", "om2": "OM2",
     "bx": "Ramus", "lvp": "PLV",
 }
-HIDDEN_SEGMENTS = {"lvp"}  # posterior LV branch: still read by the model and in the JSON, not shown in the report
+HIDDEN_SEGMENTS = {"lvp"}  # posterior LV branch: in the JSON, never shown (v15: no training target, values not meaningful)
 LESION_NAMES = {"calcif": "calcification", "thrombus": "thrombus", "cto": "chronic total occlusion"}
 LESION_TAG = {"calcif": "Calcified", "thrombus": "Thrombus", "cto": "CTO"}
 VESSELS = [("Right coronary", ["prox_rca", "mid_rca", "dist_rca", "pda", "posterolateral"]),
@@ -128,9 +134,14 @@ def tangent(c, t):
 
 
 def displayed_pct(v: dict) -> int:
-    """The % shown for a segment: the calibrated display value of display_calibration (0 = normal, 100 for a CTO
-    flag); the model estimate `stenosis_pct` stays in the JSON and in the hover text."""
-    return display_pct(v)
+    """The % shown for a segment (0 = normal, 100 for a CTO flag): its `display_pct`. render_report fills it in for
+    results stored without it; a segment that still has none is a result from before 1.4.0, i.e. model v13. The
+    model estimate `stenosis_pct` stays in the JSON and in the hover text."""
+    return int(v["display_pct"]) if "display_pct" in v else display_pct(v, LEGACY_MODEL_VERSION)
+
+
+def display_category(v: dict) -> str:
+    return v.get("display_category") or category(displayed_pct(v), bool(v.get("cto")))
 
 
 def is_flagged(v: dict) -> bool:
@@ -358,7 +369,7 @@ def detail_rows(segs: dict, cuts: dict) -> str:
     return "".join(out)
 
 
-def physiology_card(p: dict) -> str:
+def physiology_card(p: dict, model_version: str = LEGACY_MODEL_VERSION) -> str:
     def row(k, label, cutoff):
         hit = p[f"{k}_abnormal"]
         prob, thr = p[f"{k}_abnormal_prob"], p[f"{k}_abnormal_threshold"]
@@ -368,8 +379,8 @@ def physiology_card(p: dict) -> str:
                 f'{prob_bar(prob, thr, hit)}'
                 f'<div class="muted small">P({label} ≤ {cutoff}) {shown(prob, thr, 2)}, threshold {thr:.4f}</div></div>')
     return (f'<section class="card"><h2>LAD physiology</h2>{row("ffr", "FFR", "0.80")}{row("ifr", "iFR", "0.89")}'
-            f'<p class="muted small">Operating point: {escape(p["operating_point"])}. Test AUROC about 0.69; '
-            f'does not replace invasive FFR/iFR.</p></section>')
+            f'<p class="muted small">Operating point: {escape(p["operating_point"])}. '
+            f'{pressure_auroc_text(model_version)}does not replace invasive FFR/iFR.</p></section>')
 
 
 CSS = """
@@ -501,7 +512,7 @@ h3{margin:0 0 6px;font:600 12px/1.2 var(--font);letter-spacing:.1em;text-transfo
 """
 
 
-ADDENDUM = """<section class="card addendum" id="method"><h2>Addendum: how this reading is made</h2>
+ADDENDUM_TEMPLATE = """<section class="card addendum" id="method"><h2>Addendum: how this reading is made</h2>
 <ol class="steps">
 <li><b>Input.</b> 1 to 12 diagnostic left and right coronary contrast runs of the study (no PCI, stent or
 ventriculography runs), 16 frames each, every second frame, centred on peak opacification.</li>
@@ -515,17 +526,29 @@ mask.</li>
 the segment across frames, and reads them with the same encoder. The encoder runs at most twice per study.</li>
 <li><b>Readout.</b> Attention pooling over videos and crops, one bag per segment, gives the % stenosis,
 P(significant) and the calcification, thrombus and CTO probabilities. A separate head on the left main, LAD and
-diagonal features gives LAD FFR and iFR.</li>
+diagonal features gives LAD FFR and iFR.@@READOUT@@</li>
 </ol>
 <div class="addendum-grid">
 <div><h3>Lesion localization</h3><p>The model reliably finds the right segment; finding the lesion inside the
 segment is not shown. On an external expert-annotated set (ARCADE, 300 images, 386 stenosis boxes) its attention
 peak fell inside the expert box 53% of the time, against 50% for the centre of the segment mask. The marks on the
 schema are therefore placed at the middle of each segment, not at the lesion's position on the angiogram.</p></div>
-<div><h3>Not in this report</h3><p>The masks, crops and attention computed for this study are used internally but
+@@NOT_IN_REPORT@@
+@@PERFORMANCE@@
+</div>
+@@SOURCES@@
+</section>"""
+
+# What the report says about the model that produced the result. A stored result is drawn with the figures of its
+# own model version, never with those of the served one. Every model version with a display mapping has an entry.
+MODEL_REPORT_FACTS = {
+    "v13": {
+        "pressure_auroc": "0.69",
+        "readout": "",
+        "not_in_report": """<div><h3>Not in this report</h3><p>The masks, crops and attention computed for this study are used internally but
 not returned by this version, so they cannot be shown on the angiogram yet. The posterior LV branch is read but not
-shown. Dominance comes from a separate angiogram classifier (majority of the diagnostic videos sent).</p></div>
-<div><h3>Held-out performance (MHI test set, 3,194 studies)</h3><dl>
+shown. Dominance comes from a separate angiogram classifier (majority of the diagnostic videos sent).</p></div>""",
+        "performance": """<div><h3>Held-out performance (MHI test set, 3,194 studies)</h3><dl>
 <dt>Stenosis, macro AUROC (18 segments)</dt><dd>0.885 (DeepCORO-CLIP 0.850)</dd>
 <dt>Segment flags: sensitivity / specificity</dt><dd>0.80 / 0.80</dd>
 <dt>Segment flags: PPV / NPV</dt><dd>0.25 / 0.98</dd>
@@ -534,15 +557,53 @@ shown. Dominance comes from a separate angiogram classifier (majority of the dia
 <dt>Same flags: PPV</dt><dd>0.27 / 0.10 / 0.21</dd>
 </dl><p class="muted small">Distal and branch segments agree less with the report (Pearson r 0.20 to 0.48).
 Trained on 22,515 MHI studies; thresholds come from the MHI validation split and have not been validated at
-another site.</p></div>
-</div>
-<p class="muted small">Sources: DeepCORO-JEPA model documentation (container README, model card and the DeepCORO
-model and experiment pages, v6 to v13).</p>
-</section>"""
+another site.</p></div>""",
+        "sources": """<p class="muted small">Sources: DeepCORO-JEPA model documentation (container README, model card and the DeepCORO
+model and experiment pages, v6 to v13).</p>""",
+    },
+    "v15": {
+        "pressure_auroc": "0.67",
+        "readout": (" A study-level reader over all pass-1 tokens adds to the lesion probabilities and gives one "
+                    "probability per finding for the whole study; one more head estimates the coronary dominance."),
+        "not_in_report": """<div><h3>Not in this report</h3><p>The masks, crops and attention computed for this study are used internally but
+not returned by this version, so they cannot be shown on the angiogram yet. The posterior LV branch had no training
+target in model v15: its outputs are not meaningful and it is not shown. The schema is drawn from the dominance of a
+separate angiogram classifier (majority of the diagnostic videos sent); the model's own dominance estimate was trained
+on labels derived from another model, is printed as text and does not change the drawing. The post-PCI outputs of
+model v15 need post-PCI runs and are not produced.</p></div>""",
+        "performance": """<div><h3>Held-out performance (MHI test set, 3,194 studies)</h3><dl>
+<dt>Stenosis, macro AUROC (17 segments)</dt><dd>0.877 (model v13 0.883, DeepCORO-CLIP 0.846)</dd>
+<dt>Segment flags: sensitivity / specificity</dt><dd>0.80 / 0.79</dd>
+<dt>Segment flags: PPV / NPV</dt><dd>0.26 / 0.98</dd>
+<dt>LAD FFR/iFR (proximal / mid LAD), AUROC</dt><dd>0.67</dd>
+<dt>Calcification / CTO flags: sensitivity</dt><dd>0.19 / 0.35</dd>
+<dt>Same flags: PPV</dt><dd>0.27 / 0.19</dd>
+<dt>Thrombus flag (above 0.40), validation set only</dt><dd>sensitivity 0.22, PPV 0.26</dd>
+<dt>Dominance estimate, AUROC (model-derived labels)</dt><dd>0.92</dd>
+</dl><p class="muted small">Distal and branch segments agree less with the report (Pearson r 0.24 to 0.45).
+Against model v13, stenosis agreement is slightly lower (mean r 0.508 against 0.521), the pressure output is not
+distinguishable and lesion detection is better. Training split: 34,146 MHI studies; thresholds come from the MHI
+validation split and have not been validated at another site.</p></div>""",
+        "sources": """<p class="muted small">Sources: DeepCORO-JEPA model documentation (container README, model card and the DeepCORO
+model and experiment pages and the v15 release dossier, v6 to v15).</p>""",
+    },
+}
 
 
-def calibration_note() -> str:
-    t = calibration()
+def pressure_auroc_text(model_version: str) -> str:
+    auroc = MODEL_REPORT_FACTS.get(model_version, {}).get("pressure_auroc")
+    return f"Test AUROC about {auroc}; " if auroc else ""
+
+
+def addendum(model_version: str) -> str:
+    facts = MODEL_REPORT_FACTS[model_version]
+    return (ADDENDUM_TEMPLATE.replace("@@READOUT@@", facts["readout"]).replace("@@NOT_IN_REPORT@@", facts["not_in_report"])
+            .replace("@@PERFORMANCE@@", facts["performance"]).replace("@@SOURCES@@", facts["sources"]))
+
+
+
+def calibration_note(model_version: str = LEGACY_MODEL_VERSION) -> str:
+    t = calibration(model_version)
     xs, ys = t["knots"]["estimate_pct"], t["knots"]["display_pct"]
     knots = ", ".join(f"{x:g}→{y:g}" for x, y in zip(xs, ys))
     return escape(f"Shown %: the model estimate is pulled toward the mean, so it is rescaled for display "
@@ -588,22 +649,41 @@ def explain_section(items: list[dict], segs: dict) -> str:
             f'lesion box about half the time on an external set.</p><div class="xgrid">{"".join(cards)}</div></section>')
 
 
-def dominance_text(dom: dict | None) -> tuple[str, str]:
-    """(value, detail) for the summary strip."""
+def model_dominance_text(model_dom: dict | None) -> str:
+    """The model's own dominance estimate (v15 on) as one sentence, or "". Text only: it never draws the schema."""
+    if not model_dom:
+        return ""
+    p, cut = model_dom["dominance_left_prob"], model_dom["dominance_left_threshold"]
+    return (f" Model estimate: {'left' if model_dom['dominance_left_pred'] else 'right'} dominant (P(left) "
+            f"{shown(p, cut, 3)}, threshold {cut:.4f}; trained on model-derived labels, not used for the drawing).")
+
+
+def study_lesion_text(study: dict | None) -> str:
+    """Study-level lesion probabilities (v15 on): a probability for the whole study, without a yes/no call."""
+    if not study:
+        return ""
+    return " · ".join(f"{'CTO' if k == 'cto' else LESION_NAMES[k]} {study[f'study_{k}_prob']:.2f}"
+                      for k in LESION_NAMES if f"study_{k}_prob" in study)
+
+
+def dominance_text(dom: dict | None, model_dom: dict | None = None) -> tuple[str, str]:
+    """(value, detail) for the summary strip. `dom` is the caller-supplied dominance; it alone decides the drawing."""
     if not dom:
-        return "Not provided", "Schema drawn right dominant (the usual anatomy)."
+        return "Not provided", "Schema drawn right dominant (the usual anatomy)." + model_dominance_text(model_dom)
     votes = f"{dom['left_votes'] if dom['call'] == 'left' else dom['right_votes']} of {dom['video_count']} diagnostic videos"
     how = (f"majority, {votes}" if dom["method"] == "majority"
            else f"tie ({dom['left_votes']}/{dom['right_votes']}) broken by mean P(left) {dom['mean_left_probability']:.2f}")
-    return f"{dom['call'].capitalize()} dominant", f"Angiogram classifier, {how}."
+    return f"{dom['call'].capitalize()} dominant", f"Angiogram classifier, {how}." + model_dominance_text(model_dom)
 
 
 def render_report(preds: dict, model_version: str, recommendation: str) -> str:
-    segs = {g: v for g, v in preds["segments"].items() if g not in HIDDEN_SEGMENTS}
+    version = result_model_version(preds)  # the model that produced this result, not necessarily the served one
+    hidden = HIDDEN_SEGMENTS | set(preds.get("unsupported_segments") or ())
+    segs = {g: with_display(v, version) for g, v in preds["segments"].items() if g not in hidden}
     cuts = preds.get("lesion_thresholds", {})
-    dom = preds.get("coronary_dominance")
+    dom = preds.get("coronary_dominance")  # caller-supplied; the model's own estimate never draws the schema
     flagged = [g for g, v in segs.items() if is_flagged(v)]
-    dom_value, dom_detail = dominance_text(dom)
+    dom_value, dom_detail = dominance_text(dom, preds.get("model_dominance"))
     verdict = [
         ("alert" if flagged else "", "Significant stenosis flagged",
          ", ".join(f"{SEGMENT_NAMES[g]} ({pct_text(segs[g])}{', occluded' if segs[g].get('cto') else ''})"
@@ -628,7 +708,10 @@ def render_report(preds: dict, model_version: str, recommendation: str) -> str:
         thr = ('<section class="card thresholds"><h2>Lesion flag thresholds</h2><dl>'
                + "".join(f"<dt>{LESION_NAMES[k].capitalize()}</dt><dd>&gt; {cuts[k]:.4f}</dd>" for k in LESION_NAMES if k in cuts)
                + f'</dl><p class="muted small" style="margin-top:8px">Operating point {escape(cuts["operating_point"])}: '
-               'few false alarms, misses many of these findings.</p></section>')
+               'few false alarms, misses many of these findings.</p>'
+               + (f'<p class="muted small" style="margin-top:8px">Study-level probability (any segment; no yes/no '
+                  f'call): {escape(study)}.</p>' if (study := study_lesion_text(preds.get("study_lesions"))) else "")
+               + '</section>')
     n = preds["n_videos"]
     left = bool(dom and dom["call"] == "left")
     drawn = ("Left dominant" if left else "Right dominant") + ("" if dom else " (dominance not provided)")
@@ -654,21 +737,23 @@ def render_report(preds: dict, model_version: str, recommendation: str) -> str:
       <span>{legend_cartoon("calcif")}Calcification flag: grey band with calcium plates along the segment</span>
       <span>{legend_cartoon("thrombus")}Thrombus flag: clot in the lumen</span></div>
   </section>
-  <aside class="side">{physiology_card(phys) if phys else ''}{thr}</aside>
+  <aside class="side">{physiology_card(phys, version) if phys else ''}{thr}</aside>
 </div>
 {explain_section(preds.get("explainability") or [], segs)}
 <section class="card"><h2>Segment detail</h2>
   <p class="muted small" style="margin-bottom:10px">Bar: P(significant stenosis) on a square-root scale; the black tick is the segment's validation threshold. Significant means ≥70% (≥50% for left main).</p>
-  <p class="muted small" style="margin-bottom:10px">{calibration_note()}</p>
+  <p class="muted small" style="margin-bottom:10px">{calibration_note(version)}</p>
   <div class="details">{detail_rows(segs, cuts)}</div></section>
 <p class="disclaimer">{escape(recommendation)}</p>
-{ADDENDUM}
+{addendum(version)}
 </div></body></html>"""
 
 
 if __name__ == "__main__":
-    # python3 report_html.py docs/examples/predict_response_json.json docs/examples/predict_report.html [model_version]
-    # Same report as HTML-mode predict and /inference/render-report for that response (model_version "v13-cal1").
+    # python3 report_html.py docs/examples/predict_response_json.json docs/examples/predict_report.html [header]
+    # Same report as HTML-mode predict and /inference/render-report for that response (header "v15-cal1").
+    from display_calibration import label
     data = json.load(open(sys.argv[1]))["data"]
-    out = render_report(data["predictions"], sys.argv[3] if len(sys.argv) > 3 else "v13-cal1", data["modelRecommendations"]["en"])
+    out = render_report(data["predictions"], sys.argv[3] if len(sys.argv) > 3 else label(result_model_version(data["predictions"])),
+                        data["modelRecommendations"]["en"])
     open(sys.argv[2], "w").write(out + "\n")

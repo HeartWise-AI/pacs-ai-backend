@@ -192,7 +192,10 @@ class StudyClips(Dataset):
         lesion = torch.tensor([[float(row[f"{g}_{k}_lesion_target"]) if f"{g}_{k}_lesion_target" in row else nan for g in self.groups]
                                for k in ("calcif", "thrombus", "cto")])  # v11; NaN = not supervised
         pressure = torch.tensor([float(row[k]) if k in row else nan for k in ("ffr_value", "ifr_value")])  # v12; NaN = none
+        anchor = torch.tensor([float(row[f"{g}_anchor"]) if f"{g}_anchor" in row else nan for g in self.groups])  # v15; v13 ep0 severity, NaN = none
+        dominance = torch.tensor([float(row[k]) if k in row else nan for k in ("dominance_target", "dominance_weight")])  # v15; 1 = left
         return {"uid": row.uid, "clips": clips, "severity": severity, "procedure": procedure, "lesion": lesion, "pressure": pressure,
+                "anchor": anchor, "dominance": dominance,
                 "patient": str(row.patient_id_anon), "video_provenance": [x[1] for x in loaded]}
 
 

@@ -5,10 +5,13 @@
 DeepCORO-JEPA (earlier working name: DeepCORO-Integrated) is one EchoJEPA ViT-L video encoder that segments the coronary tree itself. It reads a diagnostic
 angiography study end to end:
 
-- % diameter stenosis, P(significant lesion) and a yes/no flag for **18 coronary segments**;
+- % diameter stenosis, P(significant lesion) and a yes/no flag for **18 coronary segments** (17 supported in v15:
+  the posterior left ventricular branch, `lvp`, had no training target and is returned for compatibility only);
 - **LAD FFR / iFR**: value, P(abnormal) and a yes/no call, from v12 on;
 - **calcification / thrombus / chronic total occlusion (CTO)**: a probability and a yes/no flag per segment, from
-  v13 on.
+  v13 on;
+- **study-level lesion probabilities** (any segment; no yes/no call) and the model's own **coronary dominance**
+  estimate, from v15 on.
 
 Segmentation is not a separate step: nothing has to be computed before the model is called. The same forward pass
 predicts the masks, cuts the crops and reads them.
@@ -22,7 +25,9 @@ The encoder runs **at most twice per study**:
 
 | Container version | Model | Hugging Face revision | Training run (Weights & Biases, `mhi_ai/deepcoro-segmentation`) |
 |---|---|---|---|
-| **1.4.1** (this one) | **v13** | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
+| **2.1.0** (this one) | **v15** | `heartwise/DeepCORO_JEPA@ab6d12f` (branch `v15`, tag `v15.1`) | [`2563ce01`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/2563ce01) |
+| 2.0.0 | v15 | same revision | same run |
+| 1.4.1 | v13 | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
 | 1.4.0 | v13 | same revision | same run |
 | 1.3.0 | v13 | same revision | same run |
 | 1.2.0 | v13 | same revision | same run |
@@ -33,6 +38,73 @@ The encoder runs **at most twice per study**:
 
 The served weights are the ones exported from the checkpoint of that training run; `data/model_facts.json`
 (`Summary.Training_run`) and `model_config.json` of the Hugging Face revision carry the same link.
+
+**What 2.1.0 changes against 2.0.0:** same weights and probabilities. The CTO flag needs `cto_prob` above **0.70**
+instead of 0.2134 (`lesion_threshold_overrides` now `{"thrombus": 0.4, "cto": 0.7}`; `operating_point` reads
+`"specificity_99 (thrombus: fixed 0.40, cto: fixed 0.70)"`). The model owner chose it for a higher positive predictive value after
+2.0.0 drew two occlusions that the angiography reports of three MHI studies did not describe. On the v15 validation
+split (78,999 readings of the 17 shown segments, 551 with a CTO in the report): at 0.70, 172 segments are flagged, 57
+with a CTO in the report (PPV 0.33, sensitivity 0.10) and 107 with a CTO or a 100 % stenosis (0.62); at 0.2134, 1,017
+are flagged (PPV 0.18, 0.40 counting any reported occlusion, sensitivity 0.34). The PPV plateaus near 0.33 from 0.70
+upwards, so a higher threshold only loses findings. Not evaluated on the test set. Because a CTO flag draws the
+segment as occluded at 100 %, fewer segments are shown occluded. Results stored by 2.0.0 keep their flags.
+
+**What 2.0.0 changes against 1.4.1:** it serves **model v15** (weights SHA-256 `23b8255b…c54c`, exported from epoch 1
+of run `2563ce01`; release dossier on the model NAS, `DeepCoro_Integrated/v15/`) instead of v13. Every key of the
+1.4.1 JSON is still there with the same meaning; the values come from the new weights and thresholds.
+
+- **Performance against v13** (held-out test, 3,194 studies, paired differences v15 minus v13): stenosis is slightly
+  lower (mean r over 17 segments 0.508 against 0.521, −0.014 [−0.020, −0.008]; macro AUROC 0.877 against 0.883,
+  −0.006 [−0.009, −0.002]); the LAD pressure output is not distinguishable (0.674 against 0.689, −0.015
+  [−0.059, 0.030]); lesion detection is better (mean of the six lesion AUPRCs +0.034 [0.012, 0.051]; thrombus,
+  macro, 0.402 against 0.304, +0.098 [0.025, 0.159]). See "Verified performance".
+- **Model code.** `models/deepcoro_model/` is the code of the Hugging Face revision `v15.1`: the loader enables the
+  study lesion pooler, the dominance head and the procedure head from the keys of the state dict and loads strictly.
+  The v13 weights still load with it (checked on CPU: 469 keys, no pooler or dominance head).
+- **Thresholds** from `thresholds.json` of the same revision (it names the weights' SHA-256): stenosis `balanced`
+  per segment, FFR/iFR `balanced` (0.5936 / 0.6939), calcification 0.3631 and CTO 0.2134 (`specificity_99`),
+  dominance 0.0383 (`balanced`). The thrombus flag keeps the fixed threshold **0.40** of 1.4.1
+  (`lesion_threshold_overrides`). On the v15 validation split (83,646 segment readings, 200 with thrombus in the
+  report) 0.40 flags 166 segments, 43 of them with thrombus (PPV 0.26, sensitivity 0.215); the `specificity_99`
+  threshold 0.0648 flags 912, 79 with thrombus (PPV 0.087, sensitivity 0.395). With the v13 weights 0.40 flagged 60
+  segments (PPV 0.30, sensitivity 0.09). The 0.40 threshold has not been evaluated on the test set.
+- **New in `predictions`** (additions only):
+  - `model_version`: `"v15"`, the model that produced the result.
+  - `study_lesions.study_calcif_prob`, `.study_thrombus_prob`, `.study_cto_prob`: probability that the finding is
+    present in any segment of the study. A probability only: no threshold, no yes/no call, and no performance figure
+    in the release dossier.
+  - `model_dominance.dominance_left_prob`, `.dominance_left_threshold` (0.0383), `.dominance_left_pred` (`true` =
+    left dominant), `.operating_point`, `.label_source`: the model's own dominance estimate. Test AUROC 0.923
+    [0.908, 0.937] against labels derived from another model, not expert reads.
+  - `unsupported_segments`: `["lvp"]`.
+- **Dominance and the schema.** The caller-supplied `additionalMetadata.coronaryDominance` contract is unchanged:
+  it is returned as `predictions.coronary_dominance` and it alone decides whether the schema is drawn left or right
+  dominant. Without it the schema is still drawn right dominant with "dominance not provided"; the model's estimate
+  is printed next to it as text ("Model estimate: left dominant (P(left) …, threshold 0.0383; …)") and in the
+  diagnosis, and never changes the drawing, because its labels are model-derived.
+- **Posterior LV branch (`lvp`).** `model_config.json` lists it under `unsupported_outputs`: it had no training
+  target in v15 and its values are not meaningful. `segments.lvp` keeps its numeric keys (`stenosis_pct`,
+  `prob_significant`, `prob_threshold`, the three lesion probabilities) as the model writes them, gets
+  `unsupported: true`, and its four flags are **always `false`**: with the validation threshold 0.0001 the raw rule
+  would flag it in many studies (3 of the 24 studies of the dossier's parity check). It has no `display_pct` or
+  `display_category`, and is never in the report, the diagnosis or the explanations.
+- **Display calibration `cal1` refitted on v15** (`data/stenosis_display.json`): normal below 9.5; 9.5 → 20,
+  21.5 → 30, 34.5 → 50, 49.5 → 70, 100 → 100. The report header reads `v15-cal1`. The v13 mapping moved to
+  `data/stenosis_display_v13.json` and is never applied to a v15 result. See "Displayed stenosis".
+- **Stored results.** `/inference/render-report` draws a result with the display values, calibration note,
+  performance figures, recommendation and header of the model that produced it. A result without `model_version`
+  was stored by 1.1.0 to 1.4.1 and is a v13 result: its stored `display_pct` / `display_category` are shown as stored
+  (1.4.x), or computed with the v13 mapping when it has none (1.2.0, 1.3.0); its header and `reportModelVersion` read
+  `v13-cal1`. The 1.4.1 example (a real v13 response and its report, `tests/fixtures/`) renders byte for byte as
+  1.4.1 drew it. A result of a model version without a mapping in this container answers 422.
+- **Not produced.** The post-PCI outputs of v15 (stent, final TIMI flow, failed PCI) need post-PCI runs as input.
+- **PyTorch build changed to 2.11.0 for CUDA 12.8** (`torch==2.11.0+cu128`, `torchvision==0.26.0+cu128`). The CUDA 13.0
+  build pinned from 1.1.2 to 1.4.1 does not initialise CUDA on the MHI production server (RTX A5000 and RTX 3090, NVIDIA
+  driver 570.124, which stops at CUDA 12.8): an image built from that pin loaded the model on the CPU there and a
+  prediction did not finish within the proxy timeout (found on 2026-11-15 with the first image built by
+  `release-model.py` on that server; the images that had run there until then were built on an older CUDA 12.1 layer).
+  CUDA 12.8 is the only build line that serves both that driver and Blackwell GPUs. The other requirements are those
+  of the dossier's `deployment/requirements.txt`.
 
 **What v13 changes against v12:** it adds the calcification, thrombus and CTO outputs. Stenosis is unchanged on the
 test set (macro AUROC 0.885 against 0.884). The pressure AUROC is lower (0.69 against 0.72; the difference is within
@@ -124,12 +196,14 @@ There is no `VideoMILWrapper` and no zero-video padding.
   2. Read it back as grayscale.
   3. Sample 16 frames around peak opacification.
   4. The model scales frames to [0, 1] and normalizes them internally. There is no `dataset_mean`/`dataset_std`.
-- **Weights:** `model.safetensors`, no pickle, plus `model_config.json` (structure) and `thresholds.json` (decision
-  thresholds). All three come from the same pinned revision:
+- **Weights:** `model.safetensors`, no pickle, plus `model_config.json` (structure, heads, `unsupported_outputs`)
+  and `thresholds.json` (decision thresholds). All three come from the same pinned revision:
   `download_model.py --extra-file model_config.json --extra-file thresholds.json` checks the weights' SHA-256, and
   `load_thresholds` refuses a thresholds file that was derived for other weights.
-- **Model code:** `models/deepcoro_model/` is copied from the DeepCoro research repo. EchoJEPA's ViT code is vendored
-  under `echojepa_src/` (MIT).
+- **Model code:** `models/deepcoro_model/` is the `deepcoro_model/` of the Hugging Face revision `v15.1`, with one
+  line kept from the earlier copy: `load_encoder` imports EchoJEPA's ViT code from the vendored `echojepa_src/`
+  (MIT), where the released file appends `/volume/EchoJEPA` to the path (a directory of the training server).
+  `load_model` also checks that the heads named in `model_config.json` are the ones the weights have.
 
 ## Inputs and outputs
 
@@ -137,6 +211,7 @@ There is no `VideoMILWrapper` and no zero-video padding.
 - **No metadata step:** `supportedAdditionalMetadata` is `[]`, so there is no Step-2 page and uploads are not
   filtered. PCI, stent and ventriculography runs were not in training.
 - **JSON `predictions`:**
+  - `model_version` (2.0.0 on): the model that produced the result (`v15`).
   - `segments.<segment>`:
     - `stenosis_pct`: estimated % diameter stenosis (the model estimate, pulled toward the mean).
     - `display_pct`, `display_category` (1.4.0 on): the % the report shows and its category (`normal`, `mild` < 30,
@@ -150,22 +225,36 @@ There is no `VideoMILWrapper` and no zero-video padding.
     - `calcif_prob`, `thrombus_prob`, `cto_prob`: probability of calcification (moderate or severe, or a calcified
       nodule), thrombus and chronic total occlusion in that segment.
     - `calcif`, `thrombus`, `cto`: `true` when that probability is strictly above the threshold of the finding.
+  - `unsupported_segments` (2.0.0 on): `["lvp"]`. For such a segment the numeric keys above are returned as the
+    model writes them but are not meaningful; it has `unsupported: true`, `significant`, `calcif`, `thrombus` and
+    `cto` are always `false` (the one exception to "flag = probability above threshold"), and it has no
+    `display_pct` or `display_category`. Do not display it.
   - `lesion_thresholds`: `operating_point` and the three thresholds in use (`calcif`, `thrombus`, `cto`); one
     threshold per finding for all segments.
+  - `study_lesions` (2.0.0 on): `study_calcif_prob`, `study_thrombus_prob`, `study_cto_prob`, the probability that
+    the finding is present in any segment. No threshold and no yes/no call.
   - `lad_physiology`:
     - `ffr`, `ifr`: predicted values.
     - `ffr_abnormal_prob`: P(FFR ≤ 0.80); `ifr_abnormal_prob`: P(iFR ≤ 0.89).
     - `ffr_abnormal_threshold`, `ifr_abnormal_threshold`, and the calls `ffr_abnormal`, `ifr_abnormal`.
     - `operating_point`: which pressure thresholds were used.
-  - `n_videos` and `encoder_passes`.
+  - `model_dominance` (2.0.0 on): `dominance_left_prob` (P(left-dominant circulation)), `dominance_left_threshold`,
+    `dominance_left_pred` (`true` when the probability is strictly above the threshold, i.e. left dominant;
+    `inference.py` writes the same call as 0/1), `operating_point` (`balanced`) and `label_source`.
+  - `coronary_dominance`: only when the caller sent `additionalMetadata.coronaryDominance` (unchanged since 1.2.0).
+  - `n_videos` and `encoder_passes`; `explainability` (flagged segments, at most 6).
 - **`diagnosis`:** lists the flagged segments (shown % and model estimate), the other segments shown at 30% or
-  more, how many segments are shown as normal, the two pressure calls and the segments flagged for each lesion
-  finding.
+  more, how many segments are shown as normal, the two pressure calls, the segments flagged for each lesion
+  finding, the study-level lesion probabilities, the model's dominance estimate and, when sent, the caller's
+  dominance.
 - **HTML:** the segment table (threshold, flag and the three lesion probabilities) plus LAD physiology.
-- **Example:** a response of this container for one test study, with every threshold in it:
-  [`docs/examples/predict_response_json.json`](docs/examples/predict_response_json.json) and the HTML report
-  [`docs/examples/predict_report.html`](docs/examples/predict_report.html). The same response is the example of
-  `/inference/predict` in `docs/openapi.json`. It holds no patient or study identifier.
+- **Example:** [`docs/examples/predict_response_json.json`](docs/examples/predict_response_json.json) and the HTML
+  report [`docs/examples/predict_report.html`](docs/examples/predict_report.html), with every threshold in them.
+  The same response is the example of `/inference/predict` in `docs/openapi.json`. It holds no patient or study
+  identifier. **It is derived, not a live response of the built image** (see "Verification of this version"): the
+  model outputs are those the released v15 `inference.py` wrote for one validation study in the dossier's parity
+  check, passed through this container's `postprocess`, thresholds, display calibration, diagnosis and report
+  code. To do: replace it with the response of the built 2.0.0 image for a study.
 - **Failures:**
   - No readable run: the request succeeds with empty `predictions` and the text "No video could be extracted".
   - The model call fails (for example the GPU runs out of memory): the request fails with HTTP 500 and
@@ -173,77 +262,94 @@ There is no `VideoMILWrapper` and no zero-video padding.
 
 ## Displayed stenosis
 
-The regression head shrinks toward the mean: on the validation split, segments the report calls 0% have a median
-estimate of 4.5% (a quarter above 9.5%), and lesions of 70%, 80% and 95-100% have medians of 33%, 44% and 45-52%.
-Printed as is, few segments read 0% and few lesions read 70% or more. From 1.4.0 the report shows `display_pct`:
+The regression head shrinks toward the mean. Printed as is, few segments read 0% and few lesions read 70% or more:
+on the v15 validation split the raw estimate falls in the report's category for 24% of the segment readings. From
+1.4.0 the report shows `display_pct`. The mapping belongs to one model version; this is the one of v15
+(`data/stenosis_display.json`, method `cal1` refitted on v15):
 
 | Model estimate (`stenosis_pct`) | Shown |
 |---|---|
-| below 10 | 0% (normal) |
-| 10 → 23 → 37 → 51 → 100 | 20 → 30 → 50 → 70 → 100%, linear in between, rounded |
+| below 9.5 | 0% (normal) |
+| 9.5 → 21.5 → 34.5 → 49.5 → 100 | 20 → 30 → 50 → 70 → 100%, linear in between, rounded down |
 | CTO flag | 100% (occluded) |
-| significant flag and estimate below 10 | 20% (mild): a flagged segment is never shown as normal |
+| significant flag and estimate below 9.5 | 20% (mild): a flagged segment is never shown as normal |
 
-How it was chosen (segments pooled, because single segments have few lesions):
+How it was chosen (segments pooled, because single segments have few lesions; all numbers from
+`display_mapping.json` and `thresholds/display_mapping.json` of the v15 release dossier):
 
-- **Data.** Validation split only, served v13 weights (epoch 0): 4,647 studies, labels 0/20/40/50/70/80/95/100%
-  from the angiography report. The 4,647 posterior LV branch (LVP) rows are left out of the fit because report
-  grading of LVP is weak (31 have any stenosis), which leaves 78,999 segment readings (17 segments). The mapping is
-  still applied to every displayed segment and to LVP in the JSON. No test data was used.
+- **Data.** Validation split only, served v15 weights (epoch 1): 4,647 studies × 17 segments = 78,999 segment
+  readings with the report stenosis. The posterior LV branch is not in the fit and is not displayed. No test data
+  was used.
 - **T0 (shown as normal below it).** Among cuts in steps of 0.5, the largest cut whose Youden's J for "report
-  stenosis > 0%" is within 0.002 of the maximum (J is 0.500-0.503 from 8.5% to 10%). At 10%: sensitivity 0.74
-  [0.73, 0.75], specificity 0.76 [0.76, 0.77], PPV 0.51 [0.50, 0.51], NPV 0.90 [0.89, 0.90] (prevalence 0.25;
-  patient bootstrap).
-- **Knots.** The estimate cuts for 30, 50 and 70% (1-point grid above T0) maximise the quadratic-weighted kappa of
-  the five categories (0, < 30, 30-49, 50-69, ≥ 70). 5-fold cross-validation grouped by patient gave T0 10 in every
-  fold and knots 23 / 36-37 / 48-52; the shipped values are the fit on all validation rows (10 / 23 / 37 / 51).
-  With the LVP rows included the fit is 9.5 / 23.5 / 35.5 / 51.5 (kappa 0.589), the same within the fold spread.
-- **Result (cross-validated).** Exact category agreement 22% → 66%, weighted kappa 0.40 → 0.59 ([0.58, 0.59]),
-  within one category 90% → 88%. Every vessel and every segment improves (kappa LAD 0.39 → 0.57, LCx 0.26 → 0.49,
-  LM 0.50 → 0.68, RCA 0.49 → 0.65; weakest segments D2 0.19 and ramus 0.21).
-- **What it does not fix.** The estimate is still noisy (r about 0.5). Within a shown category the report value is
-  lower on average: shown < 30 → mean report 14%, 30-49 → 27%, 50-69 → 39%, ≥ 70 → 62% (68% of these are ≥ 70% on
-  the report, against 82% for raw estimates ≥ 70, which found only 20% of these lesions; shown ≥ 70 finds 38%).
-  Stretching the scale trades this per-bin calibration for categories that match the report more often.
-- **Lesions shown as normal.** 13% of the lesions reported at 70% or more (and 12% of left main lesions of 50% or
-  more) have an estimate below 10%. The raw number hid them as "5%"; the report now says "normal" unless the
-  segment is flagged, in which case it is shown as mild. Lesions of 70% or more shown as normal or mild: 38% before,
-  30% after. The flags, not the shown %, are the screening output.
-- **Flags.** Unchanged. The validation file has no probabilities, so the flag rule was checked on the earlier v12
-  test predictions only: no segment without a flag was shown at 70% or more, and 17% of flags (mostly ramus,
-  posterolateral, distal LCx, distal LAD and posterior LV with very low thresholds) had an estimate below 10%; 89% of
-  those were 0% on the report, and they are shown at 20% (mild) instead of normal. Raising the thresholds of these
-  five segments would remove most of them; that is a flag change and is not part of 1.4.0.
-- **History.** The first values of this mapping (10 / 23 / 35 / 49, never released) came from the same method on
-  v12 predictions of the test split. On the v13 validation rows the two mappings are equivalent (weighted kappa
-  difference 0.000 [-0.001, 0.001]).
+  stenosis > 0%" is within 0.002 of the maximum: 9.5. With it 74.4% of the segments the report calls 0% are shown
+  as normal. The dossier does not give the sensitivity, specificity, PPV and NPV of this cut.
+- **Knots.** The estimate cuts for 30, 50 and 70% (1-point grid from T0 + 1) maximise the quadratic-weighted kappa
+  of the five categories (0, < 30, 30-49, 50-69, ≥ 70): 21.5 / 34.5 / 49.5. They are used as fitted; the half points
+  are not rounded. 5-fold cross-validation grouped by patient (3 seeds) gave T0 9.5 to 10.5 and knots 21-22 / 34-35
+  / 47-50.5.
+- **Rounding.** The fit assigns a category from the cuts (estimate < 21.5 is "< 30"). The interpolated value is
+  therefore rounded **down**, so that an estimate of 21.4 is shown as 29% and 21.5 as 30%: the shown category is
+  the fitted category for every estimate. (The v13 mapping rounds to the nearest integer, which moves its
+  boundaries down by about half a shown point; it is left as it was.)
+- **Result on validation.** Exact category agreement 23.8% → 64.4% and weighted kappa 0.393 → 0.584 for the mapping
+  (cross-validated: 64.9% and 0.583). With the rule that a flagged segment is never shown as normal, which is what
+  the report shows: 60.2% and 0.578 (the rule changes 4,154 readings).
+- **Lesions shown as normal.** 11.6% of the lesions reported at 70% or more have an estimate below 9.5% and would
+  be shown as normal by the mapping alone; with the flag rule 7.7% are. The raw estimate shows 0.4% of them as
+  normal, and 16.9% of the report's 0% segments as normal (mapping: 74.4%; with the flag rule 68.4%). The flags,
+  not the shown %, are the screening output.
+- **Not in the dossier for v15:** per-vessel and per-segment kappa, the mean report value inside each shown
+  category, and confidence intervals. They were published for the v13 mapping (README of 1.4.1).
+- **Flags.** Unchanged by the display.
+
+**Results of model v13.** The v13 mapping (`data/stenosis_display_v13.json`: normal below 10; 10 → 20, 23 → 30,
+37 → 50, 51 → 70, 100 → 100; rounded to the nearest integer; fitted on the v13 validation split, cross-validated
+agreement 66%, kappa 0.59) is kept only so that `/inference/render-report` can draw results stored by 1.1.0 to
+1.4.1. Which mapping a result gets depends on the result, never on the served model:
+
+| Stored result | Shown % | Header |
+|---|---|---|
+| has `display_pct` and `display_category` (1.4.0 on, any model) | the stored values, not recomputed | its own model version |
+| no display fields, no `model_version` (1.2.0, 1.3.0: model v13) | computed with the v13 mapping | `v13-cal1` |
+| no display fields, `model_version: "v15"` | computed with the v15 mapping | `v15-cal1` |
+| `model_version` without a mapping here | refused (422), not drawn with another mapping | |
+
+The same estimate is shown differently by the two models (22.0% → 29% for v13, 30% for v15), so the mappings must
+not be exchanged.
 
 ## Decision thresholds
 
-The thresholds are read from `thresholds.json` of the pinned Hugging Face revision. They were chosen on the
-**validation** split only (4,647 studies). A call is positive when the returned probability (6 decimals) is
-strictly above its threshold. On the saved validation and test predictions (7,968 studies) this gives the same
-call as the unrounded probability for every stenosis and pressure output and for the lesion outputs at the default
-point; 3 of about 860,000 lesion calls differ at the two other lesion points.
+The thresholds are read from `thresholds.json` of the pinned Hugging Face revision (v15: derived for weights
+`23b8255b…c54c`). They were chosen on the **validation** split only (4,647 studies). A call is positive when the
+returned probability (6 decimals) is strictly above its threshold.
 
-- **Stenosis and pressure:** the rule of the deployed DeepCORO-CLIP checkpoint, i.e. the threshold with the highest
-  geometric mean of sensitivity and specificity (`balanced`).
-- **Calcification, thrombus, CTO:** the lowest threshold with a validation specificity of at least 0.99
-  (`specificity_99`). The balanced point would raise about three flags per study for each finding, nearly all false.
-  Since 1.4.1 the thrombus flag does not use this point: it has the fixed threshold 0.40
-  (`lesion_threshold_overrides`), chosen on the validation split for a higher positive predictive value.
+- **Stenosis, pressure and dominance:** the rule of the deployed DeepCORO-CLIP checkpoint, i.e. the threshold with
+  the highest geometric mean of sensitivity and specificity (`balanced`).
+- **CTO (since 2.1.0):** the fixed threshold 0.70 (`lesion_threshold_overrides`), not the `specificity_99` point
+  0.2134; see "What 2.1.0 changes".
+- **Calcification (and CTO up to 2.0.0):** the lowest threshold with a validation specificity of at least 0.99
+  (`specificity_99`). The balanced point would raise two to four flags per study for each finding, nearly all false.
+- **Thrombus:** the fixed threshold 0.40 (`lesion_threshold_overrides`, since 1.4.1, kept for v15 by the model
+  owner), not the `specificity_99` point 0.0648. Validation split of v15 (83,646 segment readings, 200 with thrombus
+  in the report): 166 segments flagged at 0.40, 43 with thrombus (PPV 0.26, sensitivity 0.215), against 912 flagged,
+  79 with thrombus (PPV 0.087, sensitivity 0.395) at 0.0648. **The 0.40 threshold has not been evaluated on the test
+  set.**
+- **Study-level lesion probabilities:** no threshold and no call.
+- **Posterior LV branch:** `thresholds.json` still holds a threshold for it (0.0001); the container returns it as
+  `prob_threshold` but never raises the flag (`unsupported_outputs`).
 
-The test split was used only to report the numbers below. One disclosure: when the default lesion operating point
-was picked, the test numbers of the three candidate points were visible; the choice was made on the validation
-flags per study. FFR ≤ 0.80 and iFR ≤ 0.89 are the label cut-offs the pressure
-head was trained on (the cut-offs of FAME and of DEFINE-FLAIR / iFR-SWEDEHEART). The thresholds are internal
-operating points, not validated clinical ones.
+The test split was used only to report the numbers below; the v15 thresholds were fixed on validation before the
+test set was read (`thresholds/report.json` of the release dossier). The rounding check of 1.1.1 (calls on the
+6-decimal probability against calls on the unrounded one) was done on v13 predictions and was not repeated for v15.
+FFR ≤ 0.80 and iFR ≤ 0.89 are the label cut-offs the pressure head was trained on (the cut-offs of FAME and of
+DEFINE-FLAIR / iFR-SWEDEHEART); for v15 the labels are proximal or mid LAD measurements only. The thresholds are
+internal operating points, not validated clinical ones.
 
 `models/config.json`:
 
 ```json
 "Thresholds": {"path": "thresholds.json", "pressure_operating_point": "balanced", "lesion_operating_point": "specificity_99",
-               "lesion_threshold_overrides": {"thrombus": 0.4}}
+               "lesion_threshold_overrides": {"thrombus": 0.4, "cto": 0.7}}
 ```
 
 | Key | Meaning | Default |
@@ -256,91 +362,155 @@ operating points, not validated clinical ones.
 All three keys are required. An unknown or missing key, an unknown operating point, a missing file, a missing output,
 a threshold outside (0, 1) or a file derived for other weights stops the container at start-up. There is no fallback value.
 
-LAD pressure calls on the held-out test split (FFR: 76 measurements, 29 abnormal; iFR: 198, 97 abnormal):
+LAD pressure calls on the held-out test split, v15 (proximal or mid LAD measurements. FFR: 76 measurements, 29
+abnormal; iFR: 194, 94 abnormal, one of them without a prediction):
 
 | Output | Operating point | Threshold | Sensitivity | Specificity | PPV | NPV |
 |---|---|---|---|---|---|---|
-| FFR ≤ 0.80 | `balanced` | 0.2644 | 0.83 | 0.49 | 0.50 | 0.82 |
-| FFR ≤ 0.80 | `high_sensitivity` | 0.2214 | 0.86 | 0.47 | 0.50 | 0.85 |
-| FFR ≤ 0.80 | `high_specificity` | 0.4937 | 0.21 | 0.91 | 0.60 | 0.65 |
-| iFR ≤ 0.89 | `balanced` | 0.4337 | 0.59 | 0.70 | 0.66 | 0.64 |
-| iFR ≤ 0.89 | `high_sensitivity` | 0.1848 | 0.89 | 0.28 | 0.54 | 0.72 |
-| iFR ≤ 0.89 | `high_specificity` | 0.5799 | 0.39 | 0.83 | 0.69 | 0.59 |
+| FFR ≤ 0.80 | `balanced` | 0.5936 | 0.759 | 0.702 | 0.611 | 0.825 |
+| FFR ≤ 0.80 | `high_sensitivity` | 0.4326 | 0.862 | 0.362 | 0.455 | 0.810 |
+| FFR ≤ 0.80 | `high_specificity` | 0.7571 | 0.310 | 0.894 | 0.643 | 0.677 |
+| iFR ≤ 0.89 | `balanced` | 0.6939 | 0.532 | 0.720 | 0.641 | 0.621 |
+| iFR ≤ 0.89 | `high_sensitivity` | 0.3024 | 0.851 | 0.350 | 0.552 | 0.714 |
+| iFR ≤ 0.89 | `high_specificity` | 0.8222 | 0.287 | 0.860 | 0.659 | 0.562 |
 
-The FFR `balanced` and `high_sensitivity` thresholds are close to each other, and both give a specificity near 0.5.
+Segment flags on the 3,194 test studies (`prob_significant` above the segment's threshold):
 
-Segment flags on the same 3,194 test studies (mean over the 18 segments):
-
-| Rule | Sensitivity | Specificity | PPV | NPV |
+| Mean over | Sensitivity | Specificity | PPV | NPV |
 |---|---|---|---|---|
-| `prob_significant` above the segment's threshold | 0.80 | 0.80 | 0.25 | 0.98 |
+| the 17 supported segments (mean of the per-segment values of `thresholds/report.json`) | 0.796 | 0.787 | 0.259 | 0.979 |
+| 18 segments, posterior LV branch included (as printed in the dossier) | 0.781 | 0.794 | 0.246 | 0.980 |
+
+Per segment, the test PPV goes from 0.05 (distal LCx) and 0.08 (ramus) to 0.47 (mid LAD); the full table with
+confidence intervals is `thresholds/report.json`.
 
 Calcification, thrombus and CTO flags on the same test studies: 57,492 study-segment pairs, of which 1,110 have
 calcification (1.9%), 104 thrombus (0.2%) and 382 CTO (0.7%) in the report.
 
 | Finding | Operating point | Threshold | Sensitivity | Specificity | PPV | NPV | Flags per study |
 |---|---|---|---|---|---|---|---|
-| Calcification | `specificity_99` (default) | 0.2225 | 0.19 | 0.990 | 0.27 | 0.984 | 0.25 |
-| Calcification | `specificity_95` | 0.0791 | 0.51 | 0.951 | 0.17 | 0.990 | 1.04 |
-| Calcification | `balanced` | 0.0161 | 0.82 | 0.830 | 0.09 | 0.996 | 3.29 |
-| Thrombus | `specificity_99` (until 1.4.0; since 1.4.1 the flag uses the fixed threshold 0.40, not evaluated on this test set) | 0.0851 | 0.51 | 0.992 | 0.10 | 0.999 | 0.16 |
-| Thrombus | `specificity_95` | 0.0167 | 0.70 | 0.957 | 0.03 | 0.999 | 0.79 |
-| Thrombus | `balanced` | 0.0042 | 0.83 | 0.861 | 0.01 | 1.000 | 2.52 |
-| CTO | `specificity_99` (default) | 0.1570 | 0.37 | 0.990 | 0.21 | 0.996 | 0.22 |
-| CTO | `specificity_95` | 0.0329 | 0.62 | 0.952 | 0.08 | 0.997 | 0.93 |
-| CTO | `balanced` | 0.0076 | 0.83 | 0.844 | 0.03 | 0.999 | 2.88 |
+| Calcification | `specificity_99` (default) | 0.3631 | 0.195 | 0.9895 | 0.268 | 0.984 | 0.25 |
+| Calcification | `specificity_95` | 0.1203 | 0.523 | 0.951 | 0.173 | 0.990 | 1.05 |
+| Calcification | `balanced` | 0.0176 | 0.833 | 0.810 | 0.079 | 0.996 | 3.645 |
+| Thrombus | `specificity_99` (not in use: the flag has the fixed threshold 0.40, which was not evaluated on this test set) | 0.0648 | 0.548 | 0.992 | 0.113 | 0.999 | 0.16 |
+| Thrombus | `specificity_95` | 0.0103 | 0.712 | 0.961 | 0.032 | 0.9995 | 0.72 |
+| Thrombus | `balanced` | 0.0030 | 0.740 | 0.885 | 0.012 | 0.9995 | 2.10 |
+| CTO | `specificity_99` (default) | 0.2134 | 0.353 | 0.990 | 0.195 | 0.996 | 0.22 |
+| CTO | `specificity_95` | 0.0284 | 0.634 | 0.950 | 0.079 | 0.997 | 0.965 |
+| CTO | `balanced` | 0.0063 | 0.812 | 0.863 | 0.038 | 0.999 | 2.54 |
+
+Left dominance (`dominance_left_pred`, threshold 0.0383), validation split only (3,764 studies with a label of
+agreement weight ≥ 0.9, 228 left dominant): sensitivity 0.934, specificity 0.850, PPV 0.287, NPV 0.995. The dossier
+gives no test operating point for dominance, only the test AUROC (see "Verified performance"). The labels are
+model-derived.
 
 Read the flags with these limits in mind:
 
 - **A flag is a prompt to look, not a diagnosis.** One flagged segment in four is significant in the report
-  (PPV 0.25). An unflagged segment is rarely significant (NPV 0.98).
+  (PPV 0.26). An unflagged segment is rarely significant (NPV 0.98).
 - **Most studies get at least one flag.** At least one segment is flagged in 97% of the studies with a significant
-  lesion, and in 42% of the studies without one.
-- **Rare segments have very low thresholds** (for example 0.02 for distal LCx and below 0.001 for the posterior
-  left ventricular branch), because significant lesions there are rare in the validation split.
+  lesion, and in 41% of the studies without one (dossier figures, computed with the posterior LV branch flag that
+  this container never raises; the figures without it are not in the dossier).
+- **Rare segments have very low thresholds** (for example 0.0082 for distal LCx), because significant lesions there
+  are rare in the validation split.
 - **The flag comes from the probability, not from `stenosis_pct`.** The estimated percentage is pulled toward the
   mean, so a rule on the percentage misses most lesions (measured on v12: sensitivity 0.14).
 - **Lesion flags miss most findings and most of them are false.** At the default point the model finds 19% of the
-  calcified segments, 51% of the segments with thrombus and 37% of the CTO segments, and 10% to 27% of the flags are
-  right. A missing flag does not exclude the finding.
+  calcified segments and 35% of the CTO segments on test, and 27% and 19% of those flags are right. For thrombus at
+  0.40 only validation numbers exist (sensitivity 0.215, PPV 0.26). A missing flag does not exclude the finding.
 - **Every study gets all the outputs.** The container does not check which arteries were filmed. A study with
   right coronary runs only still returns values for the left coronary segments and for LAD physiology, and these
-  are not based on images of those vessels.
+  are not based on images of those vessels. The dominance estimate is less reliable without a right coronary run.
 - **The FFR and iFR calls can disagree.** They are two outputs with two thresholds, and the model does not know
   which wire was used.
+- **The model's dominance and the caller's dominance can disagree.** Both are returned; the schema follows the
+  caller's.
 
 ## Verified performance
 
-Held-out MHI test: 3,194 studies / 2,941 patients, with patient-bootstrap 95% CIs. The checkpoint was locked on
-validation, then the test set was read once.
+Held-out MHI test: 3,194 studies / 2,941 patients, with patient-bootstrap 95% CIs (1,000 replicates). The v15
+checkpoint (epoch 1) was locked on validation, then the test set was read once. Numbers from `performance/` of the
+v15 release dossier; "17 segments" leaves out the posterior LV branch.
 
-| | v13 (served) | v12 | DeepCORO-CLIP | EchoJEPA |
+| | v15 (served) | v13 | v12 | DeepCORO-CLIP | EchoJEPA |
+|---|---|---|---|---|---|
+| Stenosis macro AUROC, 17 segments | **0.877** | 0.883 | 0.881 | 0.846 | 0.848 |
+| Stenosis macro AUROC, 18 segments | 0.877 [0.869, 0.885] | 0.885 [0.877, 0.892] | 0.884 [0.877, 0.891] | 0.850 | 0.851 |
+| Mean per-segment Pearson r, 17 segments | **0.508** [0.495, 0.519] | 0.521 [0.510, 0.533] | 0.519 [0.507, 0.530] | 0.333 | 0.449 |
+| Segments with r > 0.5 | 8 | 9 | 9 | 6 | 7 |
+| Mean ICC(A,1), 17 segments | **0.438** [0.426, 0.449] | 0.461 [0.449, 0.473] | 0.465 [0.453, 0.476] | 0.190 | 0.300 |
+| LAD FFR/iFR pooled AUROC, proximal or mid LAD (270 measurements) | **0.674** [0.605, 0.737] | 0.689 [0.624, 0.756] | 0.721 [0.654, 0.785] | not available | not available |
+| Dominance AUROC, model-derived labels (2,943 studies, 203 left dominant) | **0.923** [0.908, 0.937] | no such output | | | |
+
+Paired differences on the same studies, v15 minus v13:
+
+- **Stenosis is slightly lower.** Mean r −0.014 [−0.020, −0.008]; mean ICC −0.023 [−0.028, −0.017]; macro AUROC
+  (17 segments) −0.006 [−0.009, −0.002]. These intervals exclude zero. The per-model intervals of r overlap.
+- **Pressure is not distinguishable.** −0.015 [−0.059, 0.030]. Against v12 it is lower: −0.047 [−0.094, −0.002].
+  FFR alone 0.71 (76 measurements), iFR alone 0.67 (194).
+- **Lesion detection is better.** Mean of the six lesion AUPRCs 0.222 against 0.189, +0.034 [0.012, 0.051];
+  thrombus, macro, +0.098 [0.025, 0.159].
+- **Weaker segments:** r is 0.24 to 0.45 for the posterolateral branch, distal LAD, distal LCx, diagonals, marginals
+  and ramus.
+
+Release decision, as recorded in `decision/release_rule.md`: the rule written before the test read-out (stenosis and
+pressure no more than 0.01 below v13, lesions better) was **not met** for stenosis r (−0.014) and pressure
+(−0.015). It was amended after the stenosis numbers were seen to "the per-model 95% CIs overlap", and v15 was
+released under the amended rule.
+
+Lesion outputs, area under the precision-recall curve (AUPRC; "macro" is the mean over the segments with at least
+10 positive studies, "micro" pools all study-segment pairs). The reference models are DeepCORO-CLIP and the two
+EchoJEPA lesion baselines (the dossier prints the better one per finding):
+
+| Finding (macro / micro AUPRC) | v15 (served) | v13 | DeepCORO-CLIP | Best EchoJEPA baseline |
 |---|---|---|---|---|
-| Stenosis macro AUROC (18 segments) | **0.885** [0.878, 0.893] | 0.884 [0.877, 0.891] | 0.850 | 0.851 |
-| Mean per-segment Pearson r (segments > 0.5) | 0.50 (9/18) | 0.50 (9/18) | 0.31 (6/18) | 0.44 (7/18) |
-| LAD FFR/iFR pooled AUROC (274 measurements) | 0.692 [0.632, 0.752] | 0.721 [0.662, 0.786] | not available | not available |
+| Calcification | **0.122 / 0.188** | 0.117 / 0.181 | 0.116 / 0.180 | 0.125 / 0.203 (A) |
+| Thrombus | **0.402 / 0.321** | 0.304 / 0.224 | 0.331 / 0.224 | 0.410 / 0.305 (B) |
+| CTO | **0.139 / 0.160** | 0.133 / 0.171 | 0.125 / 0.170 | 0.139 / 0.201 (B) |
 
-- **Stenosis:** v13 minus DeepCORO-CLIP +0.035 [0.028, 0.042]; v13 minus EchoJEPA +0.034 [0.027, 0.041]; v13 minus
-  v12 +0.001 [-0.003, 0.005].
-- **Pressure:** FFR alone 0.72 (76 measurements), iFR alone 0.68 (198). v12 minus v13, pooled: +0.029
-  [-0.014, 0.075].
-- **Weaker segments:** r is 0.20 to 0.48 for the distal and branch segments.
+v15 is above v13 on five of the six numbers (CTO micro is lower, 0.160 against 0.171). Against the best EchoJEPA
+baseline it is above on thrombus micro only, equal on CTO macro and below on the others; the dossier gives no
+paired interval for these comparisons.
 
-Lesion outputs, area under the precision-recall curve (AUPRC; "macro" is the mean over segments, "micro" pools all
-study-segment pairs). The reference models are DeepCORO-CLIP and two EchoJEPA lesion baselines:
-
-| Finding (macro / micro AUPRC) | v13 | DeepCORO-CLIP | EchoJEPA A | EchoJEPA B |
-|---|---|---|---|---|
-| Calcification | 0.118 / 0.182 | 0.116 / 0.180 | 0.125 / 0.203 | 0.123 / 0.203 |
-| Thrombus | 0.304 / 0.224 | 0.331 / 0.224 | 0.343 / 0.237 | 0.410 / 0.305 |
-| CTO | 0.133 / 0.171 | 0.125 / 0.170 | 0.112 / 0.165 | 0.139 / 0.202 |
-
-v13 does not beat the best reference model on any finding. Every paired difference has a 95% CI that includes zero.
-The model card on Hugging Face (revision `v13.1`) has the full tables.
+Not measured or not in the dossier: the study-level lesion probabilities (`study_lesions`); the thrombus flag at
+0.40 on the test set; a test operating point for dominance; dominance against expert reads. The post-PCI heads
+(treated against untreated diseased segments, AUROC 0.794 [0.763, 0.826] on 754 studies) are not emitted by this
+container. The v13 numbers above are those of the v15 dossier; the README of 1.4.1 printed the pressure AUROC of
+v13 on all 274 measurements (0.692) and its calcification macro AUPRC as 0.118.
 
 ## Verification of this version
 
-Done on the development server as `.claude/skills/pacs-ai-model-mapping` prescribes, on a sample of the test set:
+**2.0.0 (model v15).** This version was written on the production server from the release dossier, without a GPU:
+the model was not run by this container's code.
+
+- **Done by the model team (release dossier, `deployment/`).** `inference.py` of the released code on 24 validation
+  studies (the training AVI files) against the training-time validation predictions of epoch 1: largest difference
+  0.0005 stenosis points and 0.000005 on every probability (stenosis, lesions per segment and per study, dominance,
+  FFR, iFR), no stenosis call changed (`parity.json`). The v13 weights with the v15 code on 5 studies: largest
+  stenosis difference 0.0005, no extra output key (`backward_compat_v13.json`).
+- **Done here, on CPU.** The vendored model code built the model from `model_config.json` and loaded
+  `model.safetensors` of the dossier strictly: 495 keys, none missing or unexpected, lesion head, study lesion
+  pooler, dominance head, procedure head and physiology head present; the file's SHA-256 is the one in
+  `data/model_info.json`; `load_thresholds` accepted `thresholds.json` (24 thresholds, thrombus 0.40, dominance
+  0.0383). The v13 weights of image 1.4.1 loaded strictly with the same code (469 keys). The study lesion pooler
+  and the dominance head were called on random features to check the shapes `postprocess` reads.
+- **Example.** `docs/examples/` is derived from row 11 of the dossier's `deployment/parity_inference.csv`: the
+  outputs of the released `inference.py` for one validation study (7 runs), given to this container's
+  `postprocess` with the v15 thresholds, then to its diagnosis and report code. The derivation checks that every
+  probability of the example equals the dossier's (which has 5 decimals, so the 6th decimal is 0), and that every
+  call equals the released code's call, except the thrombus flags (0.40 here, `specificity_99` there) and the
+  posterior LV branch (never flagged here). It has no `explainability` items, because those need the forward pass.
+- **Stored results.** The response and the report that 1.4.1 documented (a real v13 result) are kept in
+  `tests/fixtures/`; this code draws that result byte for byte as 1.4.1 did, with and without its display fields.
+- **Not done, to do on a GPU with the built image.** No forward pass through `CustomPredictionService.predict`;
+  no DICOM-path check for v15 (the dossier's parity check used the training AVI files); no comparison of this
+  container's output with `inference.py` on the same DICOM files; no check of the encoder-pass count, the peak GPU
+  memory (the study lesion pooler attends over all pass-1 tokens) or the explanation crops with v15; no rerun of
+  the PyTorch-build comparison below, which was measured with v13: the v15 test metrics come from the development
+  environment (NVIDIA build of PyTorch 2.14), not from the pinned build of this image. No image was built.
+
+**Earlier versions (model v13, kept for reference).** Done on the development server as
+`.claude/skills/pacs-ai-model-mapping` prescribes, on a sample of the test set:
 
 - **Hugging Face code on the training videos.** `inference.py` of revision `v13.1` on 120 test studies (625
   videos) reproduces the locked test predictions: the largest difference is 0.0005 stenosis points, 0.00001 on the
@@ -381,8 +551,8 @@ Done on the development server as `.claude/skills/pacs-ai-model-mapping` prescri
     test set was not rerun with the pinned requirements, so for this image they are supported only by the
     120-study comparison above. A single segment's number can change between PyTorch builds and should not be read
     as exact.
-- **Example.** The files in `docs/examples/` are the response of this code, with the pinned requirements of 1.1.2, to
-  one of the 40 studies (5 runs).
+- **Example of 1.1.2 to 1.4.1.** The response of that code, with the pinned requirements of 1.1.2, to one of the 40
+  studies (5 runs); now `tests/fixtures/stored_v13_1.4.1_response.json`.
 - **Not done.** No Docker image was built or run on the development server, and the service was not called through
   the PACS.AI backend. The check above calls the same Python code that the image runs.
 
@@ -397,7 +567,7 @@ Checklist of `.claude/skills/pacs-ai-model-mapping`:
 | `dicomUploadMax` equals the largest number of views | 12 and 12; `dicomUploadMin` is 1 |
 | Order of the runs | sorted in `logic.py` (acquisition time), checked with shuffled uploads |
 | Weights file and access | `model.safetensors` of the private Hugging Face repository, read with `hf_token` at build |
-| Provenance | commit-pinned revision and weight SHA-256 in `data/model_info.json`, checked at build and by the tests |
+| Provenance | commit-pinned revision (`ab6d12f7aa6c547cfdf5b47d3517d95566f6de0c`) and weight SHA-256 in `data/model_info.json`, checked at build and by the tests |
 | Official image | to build after merge from the merged `master` commit with the release workflow, then repoint and redeploy |
 | Registered `outputMode` | a redeploy keeps the registered mode; JSON and HTML are both supported |
 
@@ -417,7 +587,7 @@ python3 scripts/release-model.py model-examples/DeepCORO-JEPA \
 instead of calling at once:
 
 ```bash
-docker run -d --rm --gpus all --name deepcoro-jepa -p 127.0.0.1:8080:80 heartwisehub/deepcoro-jepa:1.1.2
+docker run -d --rm --gpus all --name deepcoro-jepa -p 127.0.0.1:8080:80 heartwisehub/deepcoro-jepa:2.1.0
 for i in $(seq 1 60); do
   curl -sf http://127.0.0.1:8080/api/inference/model-info > /dev/null && break
   sleep 2
@@ -444,9 +614,32 @@ gh workflow run publish-model-image.yml --ref master -f model_directory=model-ex
 Notes:
 - GPU required: about 1.7 GB resident and up to 9.9 GB peak (largest MHI test studies, bf16, measured with v12).
   With v13 the peak over the 40 verification studies (up to 9 runs each) was 8.7 GiB allocated. Declared 11 GB.
-- **PyTorch build.** `requirements.txt` pins `torch 2.14.1+cu130` and `torchvision 0.29.1+cu130` (CUDA 13.0). That
-  build contains kernels for NVIDIA GPUs from Turing (sm_75) to Blackwell (sm_120); it has none for older GPUs
-  (Pascal, Volta). It was run on an RTX PRO 5000 Blackwell with driver 615.71. Versions up to 1.1.1 pinned a CUDA 12.1
+  Those figures are memory allocated by PyTorch. For 2.0.0 the whole process was measured with `nvidia-smi` on the
+  built image (RTX 3090, driver 570.124, MHI, 2026-11-15): 1.5 GiB after loading; 8.6 GiB during a 7-run study and
+  13.1 GiB during a 12-run study (the 12 longest runs of a 37-run study, 98 to 225 frames); 13.6 and 14.8 GiB were
+  seen after three different 7-run studies in one process, with v15 and with v13 weights (the allocator keeps
+  memory between studies of different shapes). Declared peak stays **11 GB** (`resources.peakMemoryMiB` 11000):
+  the PACS-AI gateway reserves the declared peak times `MODEL_GPU_MEMORY_RESERVATION_PERCENT` (150% on MHI, so
+  16.5 GB), which covers the process totals above. Declaring the process total itself (16000) made the gateway refuse
+  every prediction on a 24 GB card ("model peak exceeds schedulable GPU budget": 24000 MiB reserved against 20468
+  schedulable), which is what happened on the first deployment of 2.0.0 on 2026-11-15.
+- **PyTorch build.** `requirements.txt` pins `torch 2.11.0+cu128` and `torchvision 0.26.0+cu128` (CUDA 12.8) since
+  2.0.0; 1.1.2 to 1.4.1 pinned `2.14.1+cu130` (CUDA 13.0), which was run on an RTX PRO 5000 Blackwell with driver
+  615.71 but needs a driver newer than the 570 series. The CUDA 12.8 build contains kernels up to Blackwell (sm_120)
+  and runs on driver 570; it was run on an RTX 3090 with driver 570.124 (MHI) and, outside Docker, on an RTX PRO 5000
+  Blackwell with driver 615 (same torch and torchvision builds, the model's `inference.py`).
+  **Not bit-identical to the evaluated model.** The test metrics of v15 were computed with an NVIDIA build of
+  PyTorch 2.14. On 24 validation studies with identical inputs and identical decoded frames, the CUDA 12.8 build
+  gives a stenosis estimate that differs by 0.2 points in median, 1.4 at the 90th percentile and 15.5 at most
+  (correlation 0.996; 0.995 for the probability of a significant lesion), and 16 of the 78 yes/no or category
+  outputs compared across those studies differ: small numeric differences occasionally change a crop or mask
+  decision and one segment then moves. Accuracy is unchanged: on 300 random validation studies the
+  17-segment mean correlation with the report is 0.4933 with the CUDA 12.8 build against 0.4932 for the evaluated
+  reference; per segment the estimate differs by 0.25 points in median, 2.9 at the 95th percentile, 6.4 at the 99th
+  and 49 at most (dossier `v15/deployment/parity_cu128.json`, 2026-11-15). So this image is numerically close to
+  the evaluated model, with equal accuracy on those studies; an individual reading can differ by a few points and
+  rarely by much more. The test-set metrics were not recomputed with this build. On MHI, the v13 weights in this image reproduced three stored 1.4.1 results
+  (PyTorch 2.5.1, CUDA 12.1) to the returned precision. Versions up to 1.1.1 pinned a CUDA 12.1
   build that does not run on Blackwell GPUs. The index, torch and torchvision lines must name the same build; a test
   checks it.
 - No Docker image was built or run on the development server; steps 1 to 5 are written from the release scripts and
@@ -469,8 +662,15 @@ cd model-examples/DeepCORO-JEPA && python3 -m venv /tmp/deepcoro-jepa-venv
 The tests cover:
 - video selection and order;
 - DICOM to MJPG conversion;
-- the display calibration: knots, T0, the CTO and flag rules, monotonicity, the JSON fields, the report and the
-  diagnosis wording, and that stored 1.3.0 results render the same;
+- the display calibration: knots, T0, the category boundaries at the fitted half points, the CTO and flag rules,
+  monotonicity, the JSON fields, the report and the diagnosis wording, for the v15 mapping and for the v13 one;
+- stored results: a v13 result with display fields, a v13 result without them (1.2.0, 1.3.0) and a new v15 result
+  each get their own mapping, header, calibration note and performance figures; the real 1.4.1 example renders byte
+  for byte; a result of an unknown model version is refused;
+- the v15 outputs: study-level lesion probabilities without a call, the model's dominance and its threshold, the
+  caller's dominance keeping the schema, and the posterior LV branch never flagged, displayed or explained;
+- that the vendored loader builds the v15 heads from the state dict, loads strictly and still loads a v13 state
+  dict;
 - output postprocessing, the yes/no calls and the strict "above the threshold" rule, for stenosis, pressure and the
   three lesion findings;
 - that every call follows the returned 6-decimal probability, and that the diagnosis and the report never print a
@@ -479,4 +679,5 @@ The tests cover:
 - that a wrong or incomplete thresholds file or `Thresholds` block fails loudly;
 - provenance and weight-hash verification;
 - that the OpenAPI examples match `data/`;
-- that the example response in `docs/examples/` is the one in the OpenAPI file and agrees with its own thresholds.
+- that the example response in `docs/examples/` is the one in the OpenAPI file, carries the v15 thresholds and
+  display values, agrees with its own thresholds, and that its diagnosis and report are what this code writes.

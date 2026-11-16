@@ -53,6 +53,29 @@ def load_encoder(checkpoint: str | Path | None, device: str | torch.device = "cp
     return enc.to(device)
 
 
+def enable_chunked_block_checkpointing(encoder: nn.Module, chunk: int):
+    """Checkpoint each trainable encoder block per chunk of clips instead of per call.
+
+    Memory only: every clip still passes exactly once through every block in the same encoder call; the backward
+    pass recomputes one chunk at a time instead of all clips of the call. Blocks are independent across clips.
+    """
+    from torch.utils.checkpoint import checkpoint
+    encoder.use_activation_checkpointing = False
+    for block in encoder.blocks:
+        if not any(p.requires_grad for p in block.parameters()):
+            continue
+        inner = block.forward
+
+        def forward(x, mask=None, *args, _inner=inner, **kwargs):
+            if not torch.is_grad_enabled():
+                return _inner(x, mask, *args, **kwargs)
+            if mask is not None:
+                raise ValueError("Chunked block checkpointing does not support token masks")
+            return torch.cat([checkpoint(_inner, part, None, *args, use_reentrant=False, **kwargs)
+                              for part in x.split(chunk)])
+        block.forward = forward
+
+
 def normalize_clip(frames: Tensor) -> Tensor:
     """(B,T,H,W) grayscale [0,1] -> EchoJEPA (B,3,T,H,W)."""
     x = frames[:, None].expand(-1, 3, -1, -1, -1)
@@ -203,6 +226,43 @@ class ProcedureHead(nn.Module):
         return (self.norm(features.to(self.weight.dtype))[None] * self.weight).sum(-1) + self.bias
 
 
+class DominanceHead(nn.Module):
+    """v15: one study logit for coronary dominance (1 = left dominant) from all pooled segment features
+    (LayerNorm + per-segment linear, summed); zero weights at start, bias at the ~7% left-dominant prior."""
+    def __init__(self, d: int, ng: int):
+        super().__init__()
+        self.norm = nn.LayerNorm(d)
+        self.weight = nn.Parameter(torch.zeros(ng, d))
+        self.bias = nn.Parameter(torch.tensor(-2.6))
+
+    def forward(self, features: Tensor) -> Tensor:
+        """(groups, d) -> () logit."""
+        return (self.norm(features.to(self.weight.dtype)) * self.weight).sum() + self.bias
+
+
+class StudyLesionPooler(nn.Module):
+    """Study-level lesion evidence (v14). Per finding, learned queries cross-attend over all pass-1 tokens of all
+    views; the study vector gives a per-segment logit offset (zero at start) and one "any segment" logit."""
+    def __init__(self, d: int, ng: int, n_out: int = len(LESION_OUTPUTS), width: int = 256, queries: int = 4, heads: int = 8):
+        super().__init__()
+        self.n_out = n_out
+        self.proj = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, width))
+        self.query = nn.Parameter(torch.randn(n_out * queries, width) * .02)
+        self.attn = nn.MultiheadAttention(width, heads, batch_first=True)
+        self.mlp = nn.Sequential(nn.LayerNorm(width), nn.Linear(width, width), nn.GELU())
+        self.norm = nn.LayerNorm(queries * width)
+        self.segment = nn.Parameter(torch.zeros(n_out, ng, queries * width))
+        self.any = nn.Parameter(torch.randn(n_out, queries * width) * .002)
+        self.any_bias = nn.Parameter(torch.full((n_out,), -2.0))
+
+    def forward(self, tokens: Tensor) -> tuple[Tensor, Tensor]:
+        """(views, tokens, d) -> ((n_out, groups) logit offsets, (n_out,) any-segment logits)."""
+        x = self.proj(tokens.reshape(1, -1, tokens.shape[-1]).to(self.query.dtype))
+        z = self.attn(self.query[None], x, x, need_weights=False)[0][0]
+        z = self.norm((z + self.mlp(z)).reshape(self.n_out, -1))
+        return (z[:, None] * self.segment).sum(-1), (z * self.any).sum(-1) + self.any_bias
+
+
 class IntegratedStudyModel(nn.Module):
     def __init__(self, encoder: nn.Module, groups: Sequence[str] = ALL_SEGMENTS,
                  train_blocks: int = 0, decoder_width: int = 128):
@@ -235,6 +295,8 @@ class IntegratedStudyModel(nn.Module):
         self.physiology_head = None
         self.procedure_head = None  # optional (v10): per-segment stent / final TIMI<3 / PCI-failed logits
         self.lesion_head = None  # optional (v11): per-segment calcification / thrombus / CTO logits
+        self.lesion_pooler = None  # optional (v14): study-level attentive pooler added to the lesion logits
+        self.dominance_head = None  # optional (v15): study coronary dominance logit
 
     def enable_procedure_head(self):
         """Per-segment linear logits on the pooled segment feature; initialised to a ~2% prior."""
@@ -247,6 +309,15 @@ class IntegratedStudyModel(nn.Module):
         d, ng = self.q.shape[1], len(self.groups)
         self.lesion_head = ProcedureHead(d, ng, len(LESION_OUTPUTS)).to(self.q.device)
         return self.lesion_head
+
+    def enable_dominance_head(self):
+        self.dominance_head = DominanceHead(self.q.shape[1], len(self.groups)).to(self.q.device)
+        return self.dominance_head
+
+    def enable_lesion_pooler(self):
+        """Study-level attentive lesion pooler over all pass-1 tokens; adds to the per-segment lesion logits."""
+        self.lesion_pooler = StudyLesionPooler(self.q.shape[1], len(self.groups)).to(self.q.device)
+        return self.lesion_pooler
 
     def encode(self, frames: Tensor) -> Tensor:
         return self.enc(normalize_clip(frames))
@@ -372,8 +443,17 @@ class IntegratedStudyModel(nn.Module):
             for name, logits in zip(PROCEDURE_OUTPUTS, self.procedure_head(features)):
                 result[f"{name}_logits"], result[f"{name}_probability"] = logits, logits.sigmoid()
         if self.lesion_head is not None:
-            for name, logits in zip(LESION_OUTPUTS, self.lesion_head(features)):
+            lesion_logits = self.lesion_head(features)
+            if self.lesion_pooler is not None:  # no extra encoder pass: reads the pass-1 tokens
+                offset, study_logits = self.lesion_pooler(tokens)
+                lesion_logits = lesion_logits + offset.to(lesion_logits.dtype)
+                for name, logit in zip(LESION_OUTPUTS, study_logits):
+                    result[f"lesion_{name}_study_logit"] = logit
+            for name, logits in zip(LESION_OUTPUTS, lesion_logits):
                 result[f"lesion_{name}_logits"], result[f"lesion_{name}_probability"] = logits, logits.sigmoid()
+        if self.dominance_head is not None:
+            result["dominance_logit"] = self.dominance_head(features)
+            result["dominance_probability"] = result["dominance_logit"].sigmoid()
         if self.physiology_head is not None:
             geometry_audit = None
             if self.physiology_head.geometry_dim and measurements is None:

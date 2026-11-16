@@ -1,4 +1,4 @@
-"""DeepCORO-JEPA 1.1.2 artifact identity and build verification."""
+"""DeepCORO-JEPA 2.0.0 (model v15) artifact identity and build verification."""
 
 import hashlib
 import json
@@ -19,15 +19,15 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     provenance = manifest["provenance"]
 
-    assert manifest["version"] == "1.4.1"
+    assert manifest["version"] == "2.1.0"
     assert config["ModelStateDict"]["model_path"] == provenance["weightsPath"]
     assert provenance == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,
         "modelRepository": "heartwise/DeepCORO_JEPA",
-        "modelRevision": "8144d015bfdd2a6fa4f18e859f1cb8da0cb8689e",
+        "modelRevision": "ab6d12f7aa6c547cfdf5b47d3517d95566f6de0c",  # heartwise/DeepCORO_JEPA branch v15, tag v15.1
         "weightsPath": "model.safetensors",
-        "weightsSha256": "370e14c587af4ad9597c99788c4aa91d98df17d7a98515d79ae2b216089fe729",
+        "weightsSha256": "23b8255ba90818738e1d10f35421bb79f669eafe5ee68fdde7a2cdf27531c54c",
     }
 
 
@@ -62,7 +62,7 @@ def test_official_dockerfile_consumes_release_metadata_and_fetches_the_structure
     config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
     assert config["Thresholds"] == {"path": "thresholds.json", "pressure_operating_point": "balanced",
                                     "lesion_operating_point": "specificity_99",
-                                    "lesion_threshold_overrides": {"thrombus": 0.4}}
+                                    "lesion_threshold_overrides": {"thrombus": 0.4, "cto": 0.7}}
 
 
 def test_requirements_pin_one_cuda_build_that_runs_on_blackwell():
@@ -71,4 +71,7 @@ def test_requirements_pin_one_cuda_build_that_runs_on_blackwell():
     builds = {line.split("==")[0]: line.rsplit("+", 1)[1] for line in lines if line.startswith(("torch==", "torchvision=="))}
 
     assert builds == {"torch": index, "torchvision": index}
-    assert int(index.removeprefix("cu")) >= 128  # older builds do not run on Blackwell (sm_120) GPUs
+    # cu128 exactly: older builds do not run on Blackwell (sm_120) GPUs, and newer ones (cu129, cu130) need an NVIDIA
+    # driver above 570. With the cu130 build of 1.1.2-1.4.1 the image fell back to the CPU on the MHI server
+    # (RTX A5000 / RTX 3090, driver 570.124: "The NVIDIA driver on your system is too old (found version 12080)").
+    assert index == "cu128"

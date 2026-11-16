@@ -3,6 +3,11 @@
 The report is rebuilt from what an earlier predict returned (`data` of the JSON response, as stored by the caller),
 so every value the renderer reads is checked here: type, range, known segment names and JPEG base64 images (they go
 into data: URIs unescaped). A failure raises ResultError with the path of the first bad value.
+
+Results of every version from 1.1.0 are accepted. 2.0.0 (model v15) adds `model_version`, `unsupported_segments`,
+`study_lesions`, `model_dominance` and, on an unsupported segment, `unsupported: true` without display fields; all
+are optional here so that older results still render. A result without `model_version` is a v13 result. A result of
+a model version this container has no display mapping for is refused instead of being drawn with another mapping.
 """
 from __future__ import annotations
 
@@ -11,7 +16,7 @@ import binascii
 import math
 import re
 
-from display_calibration import CATEGORY_LABELS
+from display_calibration import CATEGORY_LABELS, calibrations, category
 from report_html import LESION_NAMES, SEGMENT_NAMES
 
 DOMINANCE_METHODS = ("majority", "tie_mean_probability")
@@ -89,10 +94,17 @@ def _segments(segs, cuts: dict) -> None:
         _prob(v.get("prob_significant"), f"{p}.prob_significant")
         _prob(v.get("prob_threshold"), f"{p}.prob_threshold")
         _bool(v.get("significant"), f"{p}.significant")
-        if "display_pct" in v:  # 1.4.0 and later; the report recomputes it from stenosis_pct
-            _num(v["display_pct"], f"{p}.display_pct", 0.0, 100.0)
-        if "display_category" in v and v["display_category"] not in CATEGORY_LABELS:
-            _fail(f"{p}.display_category", f"must be one of {tuple(CATEGORY_LABELS)}")
+        if "unsupported" in v:  # 2.0.0: an output the model has no training target for (v15: lvp)
+            _bool(v["unsupported"], f"{p}.unsupported")
+        if "display_pct" in v:  # 1.4.0 and later; the report shows the stored value
+            shown = _num(v["display_pct"], f"{p}.display_pct", 0.0, 100.0)
+            if shown != int(shown):
+                _fail(f"{p}.display_pct", "must be a whole number")
+        if "display_category" in v:
+            if v["display_category"] not in CATEGORY_LABELS:
+                _fail(f"{p}.display_category", f"must be one of {tuple(CATEGORY_LABELS)}")
+            if "display_pct" in v and v["display_category"] != category(v["display_pct"], v.get("cto") is True):
+                _fail(f"{p}.display_category", "does not match display_pct")
         if "significant_threshold_pct" in v:
             _num(v["significant_threshold_pct"], f"{p}.significant_threshold_pct", 0.0, 100.0)
         for k in LESION_NAMES:
@@ -120,6 +132,43 @@ def _lesion_thresholds(cuts) -> None:
         if k not in LESION_NAMES:
             _fail(f"{p}.{k}", "unknown lesion")
         _prob(cuts[k], f"{p}.{k}")
+
+
+def _model_version(version) -> None:
+    p = "predictions.model_version"
+    _text(version, p, 16)
+    if version not in calibrations():
+        _fail(p, f"no display calibration for this model version (known: {sorted(calibrations())})")
+
+
+def _unsupported_segments(names, segs: dict) -> None:
+    p = "predictions.unsupported_segments"
+    if not isinstance(names, list) or len(names) > len(SEGMENT_NAMES):
+        _fail(p, "must be a list of segment names")
+    for i, g in enumerate(names):
+        if g not in SEGMENT_NAMES:
+            _fail(f"{p}[{i}]", "unknown segment")
+
+
+def _study_lesions(study) -> None:
+    p = "predictions.study_lesions"
+    _dict(study, p)
+    for k in study:
+        if k not in {f"study_{name}_prob" for name in LESION_NAMES}:
+            _fail(f"{p}.{k}", "unknown key")
+        _prob(study[k], f"{p}.{k}")
+
+
+def _model_dominance(dom) -> None:
+    p = "predictions.model_dominance"
+    _dict(dom, p)
+    _prob(dom.get("dominance_left_prob"), f"{p}.dominance_left_prob")
+    _prob(dom.get("dominance_left_threshold"), f"{p}.dominance_left_threshold")
+    _bool(dom.get("dominance_left_pred"), f"{p}.dominance_left_pred")
+    if "operating_point" in dom:
+        _text(dom["operating_point"], f"{p}.operating_point", 64)
+    if "label_source" in dom:
+        _text(dom["label_source"], f"{p}.label_source")
 
 
 def _dominance(dom) -> None:
@@ -174,6 +223,8 @@ def predictions_of(result) -> dict:
     preds = _dict(result["predictions"], "predictions")
     if not preds:
         return preds
+    if "model_version" in preds:  # 2.0.0 and later; absent means model v13
+        _model_version(preds["model_version"])
     _int(preds.get("n_videos"), "predictions.n_videos", 1)
     _int(preds.get("encoder_passes"), "predictions.encoder_passes")
     cuts = preds.get("lesion_thresholds")
@@ -182,6 +233,12 @@ def predictions_of(result) -> dict:
     _segments(preds.get("segments"), cuts or {})
     if preds.get("lad_physiology") is not None:
         _physiology(preds["lad_physiology"])
+    if preds.get("unsupported_segments") is not None:
+        _unsupported_segments(preds["unsupported_segments"], preds["segments"])
+    if preds.get("study_lesions") is not None:
+        _study_lesions(preds["study_lesions"])
+    if preds.get("model_dominance") is not None:
+        _model_dominance(preds["model_dominance"])
     if preds.get("coronary_dominance") is not None:
         _dominance(preds["coronary_dominance"])
     if preds.get("explainability") is not None:

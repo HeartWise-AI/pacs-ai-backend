@@ -1,7 +1,8 @@
-# CUDA 13.0 build: runs on NVIDIA GPUs from Turing (sm_75) to Blackwell (sm_120). The index, torch and torchvision must name the same build.
---extra-index-url https://download.pytorch.org/whl/cu130
-torch==2.14.1+cu130
-torchvision==0.29.1+cu130
+# CUDA 12.8 build: the only one that runs both on Blackwell GPUs (sm_120, needs cu128 or later) and on hosts whose NVIDIA
+# driver stops at CUDA 12.8 (driver 570, the MHI production server). The index, torch and torchvision must name the same build.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
 fastapi==0.115.6
 uvicorn==0.34.0
 pydicom==3.0.2

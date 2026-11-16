@@ -230,7 +230,7 @@ def test_thrombus_is_drawn_and_the_posterior_lv_branch_is_hidden():
            "lesion_calcif_probability": torch.zeros(18), "lesion_thrombus_probability": thrombus,
            "lesion_cto_probability": torch.zeros(18)}
     preds = CustomPredictionService.postprocess(GROUPS, res, n_videos=1, thresholds=THRESHOLDS)
-    assert preds["segments"]["lvp"]["thrombus"] and preds["segments"]["lvp"]["significant"]  # still in the JSON
+    assert preds["segments"]["lvp"]["thrombus"] and preds["segments"]["lvp"]["significant"]  # v13 weights: still in the JSON
     service = CustomPredictionService.__new__(CustomPredictionService)
     html, text = service.render_html(preds), service.diagnosis_text(preds)
     assert html.count('class="thrombus"') == 1 and "Flagged for thrombus (P above 0.0851): Mid LAD (P 0.50)." in text
@@ -242,7 +242,8 @@ def test_thrombus_is_drawn_and_the_posterior_lv_branch_is_hidden():
 def test_model_facts_name_the_training_run_of_the_served_weights():
     facts = json.loads((ROOT / "data/model_facts.json").read_text(encoding="utf-8"))["en"]
     info = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
-    assert "https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77" in facts["Summary"]["Training_run"]
+    assert "https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/2563ce01" in facts["Summary"]["Training_run"]
+    assert facts["Summary"]["Model_version"] == "v15" and info["version"] == "2.1.0"
     assert facts["Summary"]["Version"] == info["version"]
 
 
@@ -395,4 +396,191 @@ def test_a_lesion_threshold_override_replaces_one_finding_and_is_named_in_the_op
 
 def test_the_shipped_configuration_flags_thrombus_above_0_40():
     config = json.loads((Path(__file__).resolve().parents[1] / "models/config.json").read_text(encoding="utf-8"))
-    assert config["Thresholds"]["lesion_threshold_overrides"] == {"thrombus": 0.4}
+    assert config["Thresholds"]["lesion_threshold_overrides"] == {"thrombus": 0.4, "cto": 0.7}
+
+
+# -- model v15: study-level lesion probabilities, the model's own dominance, the unsupported posterior LV branch ------
+
+V15_THRESHOLDS = {"pressure_operating_point": "balanced", "lesion_operating_point": "specificity_99 (thrombus: fixed 0.40)",
+                  "values": {**{f"{g}_prob_significant": 0.1 for g in GROUPS}, "lvp_prob_significant": 0.0001,
+                             "ffr_abnormal_prob": 0.5936, "ifr_abnormal_prob": 0.6939, "calcif_prob": 0.3631,
+                             "thrombus_prob": 0.4, "cto_prob": 0.2134, "dominance_left_prob": 0.0383}}
+
+
+def _v15_result(dominance: float = 0.012, **overrides) -> dict:
+    """What the v15 forward pass returns (shapes as the model writes them: 0-d study logits and dominance)."""
+    severity, prob = torch.full((18,), 5.0), torch.full((18,), 0.01)
+    severity[GROUPS.index("prox_lad")], prob[GROUPS.index("prox_lad")] = 60.0, 0.7
+    severity[GROUPS.index("lvp")], prob[GROUPS.index("lvp")] = 55.0, 0.9  # would be flagged and shown if it were supported
+    lesions = {name: torch.full((18,), 0.001) for name in ("calcif", "thrombus", "cto")}
+    for name in lesions:
+        lesions[name][GROUPS.index("lvp")] = 0.95
+    res = {"encoder_passes": 2, "severity": severity, "binary_probability": prob,
+           "physiology": {"ffr": torch.tensor([0.78]), "ifr": torch.tensor([0.9]),
+                          "ffr_logit": torch.tensor([0.5]), "ifr_logit": torch.tensor([-1.0])},
+           **{f"lesion_{name}_probability": p for name, p in lesions.items()},
+           "lesion_calcif_study_logit": torch.tensor(0.0), "lesion_thrombus_study_logit": torch.tensor(-2.0),
+           "lesion_cto_study_logit": torch.tensor(2.0),
+           "dominance_logit": torch.tensor(0.0), "dominance_probability": torch.tensor(dominance)}
+    res.update(overrides)
+    return res
+
+
+def _v15(dominance: float = 0.012, **overrides) -> dict:
+    return CustomPredictionService.postprocess(GROUPS, _v15_result(dominance, **overrides), n_videos=3, thresholds=V15_THRESHOLDS,
+                                               model_version="v15", unsupported=("lvp",))
+
+
+def test_v15_adds_study_lesions_and_model_dominance_without_changing_existing_keys():
+    preds = _v15()
+    older = CustomPredictionService.postprocess(
+        GROUPS, {k: v for k, v in _v15_result().items() if "study_logit" not in k and not k.startswith("dominance")},
+        n_videos=3, thresholds=V15_THRESHOLDS, model_version="v15")
+    # the new keys are additions: everything a 1.4.1 consumer reads is still there with the same value
+    assert set(preds) - set(older) == {"study_lesions", "model_dominance", "unsupported_segments"}
+    for key in ("n_videos", "encoder_passes", "lad_physiology", "lesion_thresholds"):
+        assert preds[key] == older[key]
+    assert {g: v for g, v in preds["segments"].items() if g != "lvp"} == {g: v for g, v in older["segments"].items() if g != "lvp"}
+    assert list(preds["segments"]["prox_lad"]) == [
+        "stenosis_pct", "prob_significant", "prob_threshold", "significant", "significant_threshold_pct", "calcif_prob",
+        "calcif", "thrombus_prob", "thrombus", "cto_prob", "cto", "display_pct", "display_category"]
+    assert preds["model_version"] == "v15"
+    # study level: a probability with 6 decimals and no yes/no call
+    assert preds["study_lesions"] == {"study_calcif_prob": 0.5, "study_thrombus_prob": 0.119203, "study_cto_prob": 0.880797}
+    assert preds["model_dominance"] == {
+        "dominance_left_prob": 0.012, "dominance_left_threshold": 0.0383, "dominance_left_pred": False,
+        "operating_point": "balanced", "label_source": "model-derived labels (ObjectRecon RCA-video majority), not expert reads"}
+    assert "coronary_dominance" not in preds  # only the caller supplies that one
+    assert _v15(0.0383)["model_dominance"]["dominance_left_pred"] is False  # strictly above the threshold
+    assert _v15(0.038301)["model_dominance"]["dominance_left_pred"] is True
+    json.dumps(preds)
+
+
+def test_the_unsupported_posterior_lv_branch_keeps_its_keys_and_can_never_be_flagged_or_displayed():
+    from report_input import predictions_of
+    preds = _v15()
+    lvp = preds["segments"]["lvp"]
+    assert preds["unsupported_segments"] == ["lvp"] and lvp["unsupported"] is True
+    # the model's numbers are returned as written, for compatibility ...
+    assert (lvp["stenosis_pct"], lvp["prob_significant"], lvp["prob_threshold"]) == (55.0, 0.9, 0.0001)
+    assert (lvp["calcif_prob"], lvp["thrombus_prob"], lvp["cto_prob"]) == (0.95, 0.95, 0.95)
+    # ... but no flag, although every probability is above its threshold, and nothing to display
+    assert [lvp[k] for k in ("significant", "calcif", "thrombus", "cto")] == [False] * 4
+    assert "display_pct" not in lvp and "display_category" not in lvp
+    assert all("unsupported" not in v and "display_pct" in v for g, v in preds["segments"].items() if g != "lvp")
+    service = CustomPredictionService.__new__(CustomPredictionService)
+    assert service.significant_segments(preds) == ["prox_lad"]
+    html, text = service.render_html(preds), service.diagnosis_text(preds)
+    for out in (html, text):
+        assert "Posterior left ventricular" not in out and "PLV" not in out
+    assert "<b>17</b> segments shown" in html and "16 of 17 segments shown as normal" in text
+    assert "No segment flagged for thrombus." in text and "No segment flagged for chronic total occlusion." in text
+    assert 'class="cto-mark"' not in html and 'class="thrombus"' not in html and 'class="vessel noflow"' not in html
+    assert predictions_of({"predictions": json.loads(json.dumps(preds))})
+    # explanations never target it
+    preds["segments"]["lvp"].update(significant=True, cto=True)  # even if a stored result said so
+    assert CustomPredictionService.explanations(None, {}, [], [], {"segments": {"lvp": preds["segments"]["lvp"]}}, 320) == []
+    # without the unsupported list (v13 weights) the same outputs are flagged as before
+    v13 = CustomPredictionService.postprocess(GROUPS, _v15_result(), n_videos=3, thresholds=V15_THRESHOLDS, model_version="v13")
+    assert v13["segments"]["lvp"]["significant"] and v13["segments"]["lvp"]["cto"] and "unsupported_segments" not in v13
+    with pytest.raises(ValueError, match="not segments"):
+        CustomPredictionService.unsupported_segments({"groups": list(GROUPS), "unsupported_outputs": {"ffr": "x"}})
+    assert CustomPredictionService.unsupported_segments({"groups": list(GROUPS), "unsupported_outputs": {"lvp": "no target"}}) == ("lvp",)
+    assert CustomPredictionService.unsupported_segments({"groups": list(GROUPS)}) == ()
+
+
+def test_the_model_dominance_is_text_only_and_the_caller_dominance_still_draws_the_schema():
+    service = CustomPredictionService.__new__(CustomPredictionService)
+    left = _v15(0.9)  # the model says left dominant, the caller says nothing
+    html, text = service.render_html(left), service.diagnosis_text(left)
+    assert 'aria-label="Right-dominant' in html and 'aria-label="Left-dominant' not in html
+    assert "Not provided" in html and "Right dominant (dominance not provided)" in html
+    assert "Model estimate: left dominant (P(left) 0.900, threshold 0.0383; trained on model-derived labels, not used for the drawing)." in html
+    assert "Model estimate of the dominance: left (P(left) 0.900, threshold 0.0383; trained on model-derived labels, not used to draw the schema)." in text
+    assert "Coronary dominance:" not in text
+    # the caller-supplied dominance keeps its contract and its precedence, whatever the model says
+    right = {**VALID_DOMINANCE, "call": "right", "leftVotes": 1, "rightVotes": 3}
+    left["coronary_dominance"] = CustomPredictionService.coronary_dominance(_dominance_request(**right))
+    html, text = service.render_html(left), service.diagnosis_text(left)
+    assert 'aria-label="Right-dominant' in html and "Right dominant" in html and "3 of 4 diagnostic videos" in html
+    assert "Model estimate: left dominant" in html and "(dominance not provided)" not in html
+    assert text.endswith("Coronary dominance: right (angiogram classifier, majority of 4 diagnostic videos: 1 left, 3 right).")
+    both = _v15(0.001)
+    both["coronary_dominance"] = CustomPredictionService.coronary_dominance(_dominance_request(**VALID_DOMINANCE))
+    html = service.render_html(both)
+    assert 'aria-label="Left-dominant' in html and "Model estimate: right dominant (P(left) 0.001" in html
+
+
+def test_study_level_lesion_probabilities_are_reported_without_a_call():
+    preds = _v15()
+    service = CustomPredictionService.__new__(CustomPredictionService)
+    html, text = service.render_html(preds), service.diagnosis_text(preds)
+    assert ("Study-level probability, any segment (no yes/no call): calcification 0.50, thrombus 0.12, "
+            "chronic total occlusion 0.88.") in text
+    assert "Study-level probability (any segment; no yes/no call): calcification 0.50 · thrombus 0.12 · CTO 0.88." in html
+    assert "Flagged for chronic total occlusion" not in text  # a high study probability raises no flag
+    assert not any(k.endswith(("_pred", "_flag")) or isinstance(v, bool) for k, v in preds["study_lesions"].items())
+
+
+def test_dominance_needs_its_threshold_and_a_model_without_the_head_does_not(tmp_path):
+    models_dir = _thresholds_file(tmp_path)
+    with pytest.raises(ValueError, match=r"no threshold for \['dominance_left_prob'\]"):
+        CustomPredictionService.load_thresholds(models_dir, SETTINGS, GROUPS, physiology=True, lesion=True, dominance=True, weights_sha256=SHA)
+    table = json.loads((models_dir / "thresholds.json").read_text())["thresholds"]
+    table["dominance_left_prob"] = {"balanced": 0.0383}
+    models_dir = _thresholds_file(tmp_path, thresholds=table)
+    got = CustomPredictionService.load_thresholds(models_dir, SETTINGS, GROUPS, physiology=True, lesion=True, dominance=True, weights_sha256=SHA)
+    assert got["values"]["dominance_left_prob"] == 0.0383 and len(got["values"]) == 24
+    without = CustomPredictionService.load_thresholds(models_dir, SETTINGS, GROUPS, physiology=True, lesion=True, weights_sha256=SHA)
+    assert "dominance_left_prob" not in without["values"]
+
+
+def test_the_recommendation_and_the_report_quote_the_pressure_auroc_of_the_result_model():
+    new = _v15()
+    old = {k: v for k, v in new.items() if k != "model_version"}  # stored before 2.0.0: model v13
+    assert "test AUROC about 0.67" in CustomPredictionService.recommendations(new)["en"]
+    assert "AUROC test environ 0,67" in CustomPredictionService.recommendations(new)["fr"]
+    assert "test AUROC about 0.69" in CustomPredictionService.recommendations(old)["en"]
+    assert "AUROC test environ 0,69" in CustomPredictionService.recommendations(old)["fr"]
+    assert "Test AUROC about 0.67" in CustomPredictionService.report_html(new)
+    assert "Test AUROC about 0.69" in CustomPredictionService.report_html(old)
+
+
+def test_the_vendored_model_code_builds_the_v15_heads_from_the_state_dict_and_loads_strictly(monkeypatch):
+    """integrated_multilayer.multilayer_model_from_payload (code of Hugging Face revision v15.1): the study lesion
+    pooler, the dominance head and the procedure head are enabled by the keys of the state dict; a v13 state dict
+    still loads and has none of them. A ViT-tiny stands in for the ViT-L encoder; no weights are read."""
+    import integrated_model
+    import integrated_multilayer
+    from integrated_multilayer import BUNDLE_SCHEMA, MultiLayerStudyModel, multilayer_model_from_payload
+
+    source = (ROOT / "models/deepcoro_model/integrated_model.py").read_text(encoding="utf-8")
+    assert "/volume/" not in source and '"echojepa_src"' in source  # the encoder code is the vendored one
+
+    def tiny_encoder(checkpoint=None, device="cpu"):
+        sys.path.insert(0, str(ROOT / "models/deepcoro_model/echojepa_src"))
+        from src.models import vision_transformer as vit
+        return vit.vit_tiny(patch_size=integrated_model.PATCH, img_size=(224, 224), num_frames=integrated_model.N_FRAMES,
+                            tubelet_size=integrated_model.TUBELET, use_rope=True, uniform_power=True, use_sdpa=True)
+    monkeypatch.setattr(integrated_multilayer, "load_encoder", tiny_encoder)
+    layers = [3, 7]  # of the 12 blocks of the stand-in encoder
+    reference = MultiLayerStudyModel(tiny_encoder(), GROUPS, 0, 128, layers)
+    reference.enable_lesion_head()
+    v13_state = dict(reference.state_dict())
+    reference.enable_lesion_pooler(), reference.enable_dominance_head(), reference.enable_procedure_head()
+    v15_state = dict(reference.state_dict())
+    new_keys = set(v15_state) - set(v13_state)
+    assert {k.split(".")[0] for k in new_keys} == {"lesion_pooler", "dominance_head", "procedure_head"}
+    payload = {"bundle_schema": BUNDLE_SCHEMA, "groups": GROUPS, "decoder_width": 128,
+               "block_indices_zero_based": layers, "physiology": None}
+    v15 = multilayer_model_from_payload({**payload, "state_dict": v15_state})
+    assert v15.lesion_pooler is not None and v15.dominance_head is not None and v15.procedure_head is not None
+    assert set(v15.state_dict()) == set(v15_state)
+    v13 = multilayer_model_from_payload({**payload, "state_dict": v13_state})  # v13 weights still load with this code
+    assert v13.lesion_pooler is None and v13.dominance_head is None and v13.procedure_head is None and v13.lesion_head is not None
+    with pytest.raises(RuntimeError):  # strict: a v15 state dict with a key missing does not load
+        multilayer_model_from_payload({**payload, "state_dict": {k: v for k, v in v15_state.items() if k != "dominance_head.bias"}})
+    with torch.inference_mode():
+        d = v15.q.shape[1]
+        offsets, study = v15.lesion_pooler(torch.randn(2, 30, d))
+        assert offsets.shape == (3, 18) and study.shape == (3,) and v15.dominance_head(torch.randn(18, d)).shape == ()
