@@ -17,4 +17,6 @@ type DockerSDKInterface interface {
 	StartContainer(ctx context.Context, containerID string) error
 	// StopContainer stops a container
 	StopContainer(ctx context.Context, containerID string) error
+	// RenameContainer renames a container
+	RenameContainer(ctx context.Context, containerID string, newName string) error
 }

@@ -497,6 +497,22 @@ func (d *DockerSDK) StopContainer(ctx context.Context, containerID string) error
 	return nil
 }
 
+// RenameContainer gives a container another Docker name. Docker refuses a name
+// another container holds; on a running container the name it answers to on
+// its networks changes with it.
+func (d *DockerSDK) RenameContainer(ctx context.Context, containerID, newName string) error {
+	containerID, newName = strings.TrimSpace(containerID), strings.TrimPrefix(strings.TrimSpace(newName), "/")
+	if containerID == "" || !containerNameReferencePattern.MatchString(newName) || len(newName) < 2 {
+		return fmt.Errorf("a container and a valid new container name are required")
+	}
+	if err := d.Client.ContainerRename(ctx, containerID, newName); err != nil {
+		log.Println("[docker] error:", err)
+		return err
+	}
+
+	return nil
+}
+
 func (d *DockerSDK) checkNvidiaRuntime(ctx context.Context) (bool, error) {
 	info, err := d.Client.Info(ctx)
 	if err != nil {

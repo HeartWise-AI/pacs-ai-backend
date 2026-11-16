@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -1003,6 +1004,70 @@ func (m *Manager) Unblock(id string) error {
 	e.blocked = false
 	m.wakeLocked()
 	return nil
+}
+
+// HoldAdmissionForRename runs rename while no request is admitted to the model:
+// it waits for admitted work to finish, then claims the model the way an
+// eviction does, so requests that arrive meanwhile wait in the queue instead of
+// failing. The model stays loaded and its reservation is untouched. When rename
+// succeeds, the name it returns is the one the container is addressed by from
+// then on. The gateway reaches a model container by its Docker name, so a
+// rename outside this hold could fail a request already on its way.
+func (m *Manager) HoldAdmissionForRename(ctx context.Context, id string, rename func(context.Context) (string, error)) (err error) {
+	if !m.config.Enabled {
+		return ErrDisabled
+	}
+	if !containerIDPattern.MatchString(id) {
+		return errors.New("a full registered Docker container ID is required")
+	}
+	if rename == nil {
+		return errors.New("a rename operation is required")
+	}
+	m.mu.Lock()
+	var e *entry
+	for {
+		if !m.ready || m.reconciling {
+			m.mu.Unlock()
+			return ErrNotReconciled
+		}
+		current, ok := m.models[id]
+		if !ok {
+			m.mu.Unlock()
+			return errors.New("model is absent from the manager inventory")
+		}
+		if !current.active && !current.draining && !current.preparing {
+			e = current
+			break
+		}
+		changed := m.changed
+		m.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-changed:
+		}
+		m.mu.Lock()
+	}
+	e.active = true
+	m.wakeLocked()
+	m.mu.Unlock()
+
+	name := ""
+	defer func() {
+		p := recover()
+		m.mu.Lock()
+		e.active = false
+		if name = strings.TrimPrefix(strings.TrimSpace(name), "/"); err == nil && p == nil && name != "" {
+			e.model.Name = name
+		}
+		m.wakeLocked()
+		m.mu.Unlock()
+		if p != nil {
+			panic(p)
+		}
+	}()
+	name, err = rename(ctx)
+	return err
 }
 
 func (m *Manager) removeLocked(w *waiter) {
