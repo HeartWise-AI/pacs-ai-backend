@@ -52,17 +52,17 @@ func manualBootstrapState() *realtimeWorklistE2EState {
 			"xa-new": {
 				ID: "xa-new", TenantID: "tenant-a", DICOMModality: "PACS_QUERY", Modalities: []string{"XA"},
 				ModelName: "CoroModel", ModelVersion: "v2", ContainerID: "coro-v2",
-				Status: entity.InferenceIngestionJobStatusRunning, UpdatedAt: now,
+				Status: entity.InferenceIngestionJobStatusRunning, CreatedAt: now, UpdatedAt: now.Add(-2 * time.Hour),
 			},
 			"xa-old-duplicate": {
 				ID: "xa-old-duplicate", TenantID: "tenant-a", DICOMModality: "PACS_QUERY", Modalities: []string{"XA"},
 				ModelName: "CoroModel", ModelVersion: "v1", ContainerID: "coro-v1",
-				Status: entity.InferenceIngestionJobStatusRunning, UpdatedAt: now.Add(-time.Hour),
+				Status: entity.InferenceIngestionJobStatusRunning, CreatedAt: now.Add(-time.Hour), UpdatedAt: now,
 			},
 			"xa-second": {
 				ID: "xa-second", TenantID: "tenant-a", DICOMModality: "PACS_QUERY", Modalities: []string{"XA"},
 				ModelName: "SecondModel", ModelVersion: "v1", ContainerID: "second",
-				Status: entity.InferenceIngestionJobStatusRunning, UpdatedAt: now.Add(-time.Minute),
+				Status: entity.InferenceIngestionJobStatusRunning, CreatedAt: now.Add(-time.Minute), UpdatedAt: now.Add(-time.Minute),
 			},
 			"us-model": {
 				ID: "us-model", TenantID: "tenant-a", DICOMModality: "PACS_QUERY", Modalities: []string{"US"},
@@ -108,6 +108,16 @@ func TestBootstrapLocalManualStudyCandidatesCreatesOnlyCurrentCompatibleModels(t
 	require.Equal(t, map[string]bool{"xa-new": true, "xa-second": true}, jobIDs)
 	require.Len(t, orthanc.requests, 1)
 	require.ElementsMatch(t, manualReprocessCandidateTags, orthanc.requests[0].RequestedTags)
+}
+
+func TestManualReprocessJobIsNewerIgnoresRuntimeUpdatesAndBreaksTies(t *testing.T) {
+	now := time.Now().UTC()
+	current := entity.InferenceIngestionJob{ID: "job-a", CreatedAt: now, UpdatedAt: now.Add(-time.Hour)}
+	olderButRecentlyRun := entity.InferenceIngestionJob{ID: "job-z", CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
+	equalCreationWithHigherID := entity.InferenceIngestionJob{ID: "job-b", CreatedAt: now, UpdatedAt: now.Add(-2 * time.Hour)}
+
+	require.False(t, manualReprocessJobIsNewer(olderButRecentlyRun, current))
+	require.True(t, manualReprocessJobIsNewer(equalCreationWithHigherID, current))
 }
 
 func TestBootstrapLocalManualStudyCandidatesIsIdempotent(t *testing.T) {

@@ -253,6 +253,25 @@ func (state *realtimeWorklistE2EState) UpsertIngestionCandidate(data repositoryT
 	return nil
 }
 
+func (state *realtimeWorklistE2EState) UpsertRetrievedIngestionCandidates(_ context.Context, data []repositoryTypes.UpsertIngestionCandidate) error {
+	for _, item := range data {
+		if err := state.UpsertIngestionCandidate(item); err != nil {
+			return err
+		}
+	}
+	local := string(candidateRetrievalOutcomeLocal)
+	for _, item := range data {
+		for id, candidate := range state.candidates {
+			if candidate.TenantID == item.TenantID && candidate.IngestionJobID == item.IngestionJobID && candidate.StudyInstanceUID == item.StudyInstanceUID {
+				candidate.Status = entity.InferenceIngestionCandidateStatusRetrieved
+				candidate.LastRetrievalState = &local
+				state.candidates[id] = candidate
+			}
+		}
+	}
+	return nil
+}
+
 func (state *realtimeWorklistE2EState) MarkCandidateRetrievedWithContext(data repositoryTypes.UpdateCandidateRetrievalState) error {
 	candidate, exists := state.candidates[data.ID]
 	if !exists {

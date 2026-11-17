@@ -135,7 +135,7 @@ func TestCreateAutomaticStudyProcessingRunFreezesAllKnownModels(t *testing.T) {
 		candidates: []entity.InferenceIngestionCandidate{
 			{ID: "candidate-b", TenantID: "tenant-a", IngestionJobID: "job-b", StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusStable},
 			{ID: "candidate-gone", TenantID: "tenant-a", IngestionJobID: "job-gone", StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusDisappeared},
-			{ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: "job-a", StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved},
+			{ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: "job-a", StudyInstanceUID: "1.2.3", ModalitiesInStudy: stringPointer("XA"), Status: entity.InferenceIngestionCandidateStatusRetrieved},
 		},
 		jobs: map[string]entity.InferenceIngestionJob{
 			"job-a": {ID: "job-a", TenantID: "tenant-a", ModelName: "AlphaModel", ModelVersion: "v1", DICOMModality: "US"},
@@ -307,11 +307,11 @@ func TestConcurrentAutomaticSchedulingConvergesOnOneFrozenPlan(t *testing.T) {
 func TestCreateAutomaticStudyProcessingRunSkipsViewerOnlyModels(t *testing.T) {
 	queryRepository := &processingRunPlannerQueryRepository{
 		candidates: []entity.InferenceIngestionCandidate{
-			{ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: "job-a", StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved},
+			{ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: "job-a", StudyInstanceUID: "1.2.3", ModalitiesInStudy: stringPointer("XA"), Status: entity.InferenceIngestionCandidateStatusRetrieved},
 			{ID: "candidate-viewer", TenantID: "tenant-a", IngestionJobID: "job-viewer", StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved},
 		},
 		jobs: map[string]entity.InferenceIngestionJob{
-			"job-a":      {ID: "job-a", TenantID: "tenant-a", ModelName: "AlphaModel", ModelVersion: "v1", DICOMModality: "PACS_QUERY"},
+			"job-a":      {ID: "job-a", TenantID: "tenant-a", ModelName: "AlphaModel", ModelVersion: "v1", DICOMModality: "PACS_QUERY", Modalities: []string{"XA"}},
 			"job-viewer": {ID: "job-viewer", TenantID: "tenant-a", ModelName: "ViewerOnlyModel", ModelVersion: "v1", DICOMModality: viewerIngestionJobSource},
 		},
 	}
@@ -319,6 +319,7 @@ func TestCreateAutomaticStudyProcessingRunSkipsViewerOnlyModels(t *testing.T) {
 		create: func(data repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error) {
 			require.Len(t, data.Executions, 1)
 			require.Equal(t, "AlphaModel", data.Executions[0].ModelName)
+			require.Equal(t, "angiogram", *data.Executions[0].Modality)
 			return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{
 				Run:        entity.InferenceIngestionProcessingRun{ID: "run-1"},
 				Executions: []entity.InferenceIngestionProcessingJob{{ID: "execution-a"}},

@@ -67,8 +67,7 @@ func (service *InferenceCommandService) bootstrapLocalManualStudyCandidates(
 	if err != nil {
 		return nil, err
 	}
-	selectedJobs := make([]entity.InferenceIngestionJob, 0, len(jobs))
-	selectedModels := make(map[string]struct{}, len(jobs))
+	selectedByModel := make(map[string]entity.InferenceIngestionJob, len(jobs))
 	for _, job := range jobs {
 		if job.TenantID != tenantID || job.Status != entity.InferenceIngestionJobStatusRunning ||
 			strings.TrimSpace(job.DICOMModality) == viewerIngestionJobSource ||
@@ -79,10 +78,13 @@ func (service *InferenceCommandService) bootstrapLocalManualStudyCandidates(
 		if modelKey == "" {
 			continue
 		}
-		if _, duplicate := selectedModels[modelKey]; duplicate {
-			continue
+		current, exists := selectedByModel[modelKey]
+		if !exists || manualReprocessJobIsNewer(job, current) {
+			selectedByModel[modelKey] = job
 		}
-		selectedModels[modelKey] = struct{}{}
+	}
+	selectedJobs := make([]entity.InferenceIngestionJob, 0, len(selectedByModel))
+	for _, job := range selectedByModel {
 		selectedJobs = append(selectedJobs, job)
 	}
 	if len(selectedJobs) == 0 {
@@ -91,8 +93,9 @@ func (service *InferenceCommandService) bootstrapLocalManualStudyCandidates(
 
 	seriesCount, _ := parseNullableInt(tags["NumberOfStudyRelatedSeries"])
 	instanceCount, _ := parseNullableInt(tags["NumberOfStudyRelatedInstances"])
+	upserts := make([]repositoryTypes.UpsertIngestionCandidate, 0, len(selectedJobs))
 	for _, job := range selectedJobs {
-		if err := service.InferenceCommandRepositoryInterface.UpsertIngestionCandidate(repositoryTypes.UpsertIngestionCandidate{
+		upserts = append(upserts, repositoryTypes.UpsertIngestionCandidate{
 			ID:                generateID(),
 			TenantID:          tenantID,
 			IngestionJobID:    job.ID,
@@ -104,9 +107,10 @@ func (service *InferenceCommandService) bootstrapLocalManualStudyCandidates(
 			AccessionNumber:   nullableString(tags["AccessionNumber"]),
 			SeriesCount:       seriesCount,
 			InstanceCount:     instanceCount,
-		}); err != nil {
-			return nil, err
-		}
+		})
+	}
+	if err := service.InferenceCommandRepositoryInterface.UpsertRetrievedIngestionCandidates(ctx, upserts); err != nil {
+		return nil, err
 	}
 
 	candidates, err := service.InferenceQueryRepositoryInterface.ListInferenceIngestionCandidates(repositoryTypes.ListInferenceIngestionCandidates{
@@ -128,12 +132,7 @@ func (service *InferenceCommandService) bootstrapLocalManualStudyCandidates(
 			return nil, errors.New(apiError.DatabaseError)
 		}
 		if candidate.Status != entity.InferenceIngestionCandidateStatusRetrieved {
-			if err := service.InferenceCommandRepositoryInterface.MarkCandidateRetrievedWithContext(repositoryTypes.UpdateCandidateRetrievalState{
-				ID: candidate.ID, LastRetrievalState: stringPointer(string(candidateRetrievalOutcomeLocal)),
-			}); err != nil {
-				return nil, err
-			}
-			candidate.Status = entity.InferenceIngestionCandidateStatusRetrieved
+			return nil, errors.New(apiError.DatabaseError)
 		}
 		ready = append(ready, candidate)
 	}
@@ -143,6 +142,15 @@ func (service *InferenceCommandService) bootstrapLocalManualStudyCandidates(
 	log.Printf("[Manual reprocess] bootstrapped local study candidates tenant_id=%s study_instance_uid=%s candidates=%d",
 		tenantID, studyInstanceUID, len(ready))
 	return ready, nil
+}
+
+// Job activity mutates updated_at, so it cannot identify the latest job
+// definition. Creation time is stable; ID provides a deterministic tie-break.
+func manualReprocessJobIsNewer(candidate, current entity.InferenceIngestionJob) bool {
+	if !candidate.CreatedAt.Equal(current.CreatedAt) {
+		return candidate.CreatedAt.After(current.CreatedAt)
+	}
+	return strings.Compare(candidate.ID, current.ID) > 0
 }
 
 func ingestionJobSupportsStudyModality(job entity.InferenceIngestionJob, studyModalities map[string]struct{}) bool {
