@@ -36,6 +36,182 @@ func (service *InferenceCommandService) bootstrapManualStudyCandidates(
 	return service.bootstrapRemoteManualStudyCandidates(ctx, tenantID, studyInstanceUID)
 }
 
+// reconcileExistingManualStudyCandidates refreshes a previously discovered
+// study against the tenant's current ingestion-job definitions. Historical
+// studies therefore gain newly registered models and stop using superseded or
+// stopped jobs without needing to re-enter the automatic recent-study window.
+func (service *InferenceCommandService) reconcileExistingManualStudyCandidates(
+	ctx context.Context,
+	tenantID string,
+	studyInstanceUID string,
+	existing []entity.InferenceIngestionCandidate,
+) ([]entity.InferenceIngestionCandidate, error) {
+	if len(existing) == 0 {
+		return service.bootstrapManualStudyCandidates(ctx, tenantID, studyInstanceUID)
+	}
+
+	studyModalitySet := make(map[string]struct{})
+	sourceSet := make(map[string]struct{})
+	var metadata *entity.InferenceIngestionCandidate
+	for index := range existing {
+		candidate := existing[index]
+		if candidate.TenantID != tenantID || strings.TrimSpace(candidate.StudyInstanceUID) != studyInstanceUID {
+			return nil, errors.New(apiError.DatabaseError)
+		}
+		if candidate.Status == entity.InferenceIngestionCandidateStatusDisappeared {
+			continue
+		}
+		for _, modality := range parseCandidateModalities(candidate.ModalitiesInStudy) {
+			studyModalitySet[modality] = struct{}{}
+		}
+		job, jobErr := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionJobByID(candidate.IngestionJobID)
+		if jobErr != nil {
+			return nil, jobErr
+		}
+		if job.TenantID != tenantID {
+			return nil, errors.New(apiError.DatabaseError)
+		}
+		source := strings.ToLower(strings.TrimSpace(job.DICOMModality))
+		if source != "" && !strings.EqualFold(source, viewerIngestionJobSource) {
+			sourceSet[source] = struct{}{}
+		}
+		if len(studyModalitySet) == 0 {
+			for _, modality := range normalizeDispatchModalities([]string(job.Modalities)) {
+				studyModalitySet[modality] = struct{}{}
+			}
+			if len(studyModalitySet) == 0 && source != "" && !strings.EqualFold(source, "PACS_QUERY") {
+				studyModalitySet[canonicalStudyServiceModality(source)] = struct{}{}
+			}
+		}
+		if metadata == nil || manualCandidateMetadataIsNewer(candidate, *metadata) {
+			metadata = &existing[index]
+		}
+	}
+	if metadata == nil {
+		return service.bootstrapManualStudyCandidates(ctx, tenantID, studyInstanceUID)
+	}
+	// Legacy candidates without modality metadata cannot be safely expanded to
+	// new models. Preserve their prior behavior instead of guessing.
+	if len(studyModalitySet) == 0 {
+		return existing, nil
+	}
+
+	jobs, err := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionJobs(&tenantID)
+	if err != nil {
+		return nil, err
+	}
+	selectedByModel := make(map[string]entity.InferenceIngestionJob, len(jobs))
+	for _, job := range jobs {
+		source := strings.ToLower(strings.TrimSpace(job.DICOMModality))
+		if job.TenantID != tenantID || job.Status != entity.InferenceIngestionJobStatusRunning ||
+			source == "" || strings.EqualFold(source, viewerIngestionJobSource) ||
+			!ingestionJobSupportsStudyModality(job, studyModalitySet) {
+			continue
+		}
+		if len(sourceSet) > 0 {
+			if _, exists := sourceSet[source]; !exists {
+				continue
+			}
+		}
+		modelKey := strings.ToLower(strings.TrimSpace(job.ModelName))
+		if modelKey == "" {
+			continue
+		}
+		current, exists := selectedByModel[modelKey]
+		if !exists || manualReprocessJobIsNewer(job, current) {
+			selectedByModel[modelKey] = job
+		}
+	}
+	if len(selectedByModel) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+
+	selectedJobs := make([]entity.InferenceIngestionJob, 0, len(selectedByModel))
+	for _, job := range selectedByModel {
+		selectedJobs = append(selectedJobs, job)
+	}
+	slices.SortFunc(selectedJobs, func(left, right entity.InferenceIngestionJob) int {
+		return strings.Compare(left.ID, right.ID)
+	})
+	modalities := make([]string, 0, len(studyModalitySet))
+	for modality := range studyModalitySet {
+		modalities = append(modalities, modality)
+	}
+	slices.Sort(modalities)
+	modalitiesInStudy := strings.Join(modalities, "\\")
+	existingByJobID := make(map[string]entity.InferenceIngestionCandidate, len(existing))
+	for _, candidate := range existing {
+		if candidate.Status != entity.InferenceIngestionCandidateStatusDisappeared {
+			existingByJobID[candidate.IngestionJobID] = candidate
+		}
+	}
+	unchanged := make([]entity.InferenceIngestionCandidate, 0, len(selectedJobs))
+	for _, job := range selectedJobs {
+		candidate, exists := existingByJobID[job.ID]
+		if !exists {
+			unchanged = nil
+			break
+		}
+		unchanged = append(unchanged, candidate)
+	}
+	if len(unchanged) == len(selectedJobs) {
+		return unchanged, nil
+	}
+
+	upserts := make([]repositoryTypes.UpsertIngestionCandidate, 0, len(selectedJobs))
+	for _, job := range selectedJobs {
+		upserts = append(upserts, repositoryTypes.UpsertIngestionCandidate{
+			ID: generateID(), TenantID: tenantID, IngestionJobID: job.ID,
+			StudyInstanceUID: studyInstanceUID,
+			StudyDate:        metadata.StudyDate, StudyTime: metadata.StudyTime,
+			ModalitiesInStudy: nonEmptyStringPointer(modalitiesInStudy),
+			PatientID:         metadata.PatientID, AccessionNumber: metadata.AccessionNumber,
+			SeriesCount: metadata.SeriesCount, InstanceCount: metadata.InstanceCount,
+		})
+	}
+	if err := service.InferenceCommandRepositoryInterface.UpsertIngestionCandidates(ctx, upserts); err != nil {
+		return nil, err
+	}
+
+	candidates, err := service.InferenceQueryRepositoryInterface.ListInferenceIngestionCandidates(repositoryTypes.ListInferenceIngestionCandidates{
+		TenantID: tenantID, StudyInstanceUID: &studyInstanceUID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	selectedJobIDs := make(map[string]struct{}, len(selectedJobs))
+	for _, job := range selectedJobs {
+		selectedJobIDs[job.ID] = struct{}{}
+	}
+	ready := make([]entity.InferenceIngestionCandidate, 0, len(selectedJobs))
+	for _, candidate := range candidates {
+		if _, selected := selectedJobIDs[candidate.IngestionJobID]; !selected {
+			continue
+		}
+		if candidate.TenantID != tenantID || strings.TrimSpace(candidate.StudyInstanceUID) != studyInstanceUID ||
+			candidate.Status == entity.InferenceIngestionCandidateStatusDisappeared {
+			return nil, errors.New(apiError.DatabaseError)
+		}
+		ready = append(ready, candidate)
+	}
+	if len(ready) != len(selectedJobs) {
+		return nil, errors.New(apiError.DatabaseError)
+	}
+	log.Printf("[Manual reprocess] reconciled current study candidates tenant_id=%s study_instance_uid=%s candidates=%d",
+		tenantID, studyInstanceUID, len(ready))
+	return ready, nil
+}
+
+func manualCandidateMetadataIsNewer(candidate, current entity.InferenceIngestionCandidate) bool {
+	if !candidate.LastSeenAt.Equal(current.LastSeenAt) {
+		return candidate.LastSeenAt.After(current.LastSeenAt)
+	}
+	if !candidate.UpdatedAt.Equal(current.UpdatedAt) {
+		return candidate.UpdatedAt.After(current.UpdatedAt)
+	}
+	return strings.Compare(candidate.ID, current.ID) > 0
+}
+
 // bootstrapLocalManualStudyCandidates creates the model-specific candidate
 // records that recent-window discovery never created for an older local study.
 // Only running, non-viewer ingestion jobs whose configured modalities intersect

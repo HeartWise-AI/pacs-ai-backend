@@ -461,6 +461,7 @@ func TestRealtimeWorklistAutomaticMixedOutcomeAndManualHistoryEndToEnd(t *testin
 		state.jobs[jobID] = entity.InferenceIngestionJob{
 			ID: jobID, TenantID: "tenant-a", ContainerID: "container-" + fixture.suffix,
 			ModelName: fixture.model, ModelVersion: "v1", DICOMModality: "US", Modalities: modalities,
+			Status: entity.InferenceIngestionJobStatusRunning,
 		}
 		state.candidates[candidateID] = entity.InferenceIngestionCandidate{
 			ID: candidateID, TenantID: "tenant-a", IngestionJobID: jobID, StudyInstanceUID: "study-1",
