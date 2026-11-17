@@ -95,6 +95,10 @@ const (
 	InferenceIngestionProcessingJobSkipReasonModelNotApplicable    InferenceIngestionProcessingJobSkipReasonCode = "MODEL_NOT_APPLICABLE"
 	InferenceIngestionProcessingJobSkipReasonPrerequisiteNotMet    InferenceIngestionProcessingJobSkipReasonCode = "PREREQUISITE_NOT_MET"
 	InferenceIngestionProcessingJobSkipReasonModelDisabled         InferenceIngestionProcessingJobSkipReasonCode = "MODEL_DISABLED"
+	// InferenceIngestionProcessingJobSkipReasonExpiredNeverRan is set by the
+	// gateway, not by study-service: an automatic execution that was never
+	// handed to study-service and was closed by the expiry of automatic runs.
+	InferenceIngestionProcessingJobSkipReasonExpiredNeverRan InferenceIngestionProcessingJobSkipReasonCode = "EXPIRED_NEVER_RAN"
 )
 
 // InferenceIngestionProcessingJobSkipReason describes why an expected model did not run.
@@ -111,7 +115,8 @@ func (code InferenceIngestionProcessingJobSkipReasonCode) IsValid() bool {
 		InferenceIngestionProcessingJobSkipReasonRequiredSeriesMissing,
 		InferenceIngestionProcessingJobSkipReasonModelNotApplicable,
 		InferenceIngestionProcessingJobSkipReasonPrerequisiteNotMet,
-		InferenceIngestionProcessingJobSkipReasonModelDisabled:
+		InferenceIngestionProcessingJobSkipReasonModelDisabled,
+		InferenceIngestionProcessingJobSkipReasonExpiredNeverRan:
 		return true
 	default:
 		return false
@@ -166,6 +171,19 @@ type InferenceIngestionProcessingJob struct {
 // HasStudyServiceJob reports whether the execution was handed to study-service.
 func (entity *InferenceIngestionProcessingJob) HasStudyServiceJob() bool {
 	return entity.StudyServiceJobID != nil && strings.TrimSpace(*entity.StudyServiceJobID) != ""
+}
+
+// NeverRan reports whether the execution is still waiting without ever having
+// been handed to study-service: pending, or queued without a study-service job.
+func (entity *InferenceIngestionProcessingJob) NeverRan() bool {
+	return (entity.Status == InferenceIngestionProcessingJobStatusPending ||
+		entity.Status == InferenceIngestionProcessingJobStatusQueued) && !entity.HasStudyServiceJob()
+}
+
+// IsExpiredNeverRan reports whether the expiry of automatic runs closed the execution.
+func (entity *InferenceIngestionProcessingJob) IsExpiredNeverRan() bool {
+	return entity.Status == InferenceIngestionProcessingJobStatusSkipped && entity.SkipReasonCode != nil &&
+		*entity.SkipReasonCode == InferenceIngestionProcessingJobSkipReasonExpiredNeverRan
 }
 
 // IsCancellableBeforeCompute reports whether a user cancellation may end the

@@ -115,6 +115,24 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListProcessing
 	})
 }
 
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListNeverRanAutomaticProcessingRuns(
+	ctx context.Context,
+	data types.ListNeverRanAutomaticProcessingRuns,
+) ([]entity.InferenceIngestionProcessingRun, error) {
+	return withProcessingRunCircuit("list_never_ran_automatic_processing_runs", func() ([]entity.InferenceIngestionProcessingRun, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.ListNeverRanAutomaticProcessingRuns(ctx, data)
+	})
+}
+
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ExpireNeverRanProcessingRun(
+	ctx context.Context,
+	data types.ExpireNeverRanProcessingRun,
+) (types.ExpireNeverRanProcessingRunResult, error) {
+	return withProcessingRunCircuit("expire_never_ran_processing_run", func() (types.ExpireNeverRanProcessingRunResult, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.ExpireNeverRanProcessingRun(ctx, data)
+	})
+}
+
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListLegacyProcessingRunBackfillRows(ctx context.Context) ([]types.LegacyProcessingRunBackfillRow, error) {
 	return withProcessingRunCircuit("list_legacy_processing_run_backfill_rows", func() ([]types.LegacyProcessingRunBackfillRow, error) {
 		return repository.InferenceProcessingRunRepositoryInterface.ListLegacyProcessingRunBackfillRows(ctx)

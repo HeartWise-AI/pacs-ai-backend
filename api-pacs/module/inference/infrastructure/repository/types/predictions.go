@@ -29,7 +29,8 @@ const (
 	// running and not stalled.
 	PredictionsExamStatusActive PredictionsExamStatus = "active"
 	// PredictionsExamStatusAttention: at least one model failed, was skipped
-	// or stalled (never ran).
+	// or stalled (never ran). Expired models (closed by the expiry of
+	// automatic runs) do not need attention.
 	PredictionsExamStatusAttention PredictionsExamStatus = "attention"
 	// PredictionsExamStatusCompleted: every model completed.
 	PredictionsExamStatusCompleted PredictionsExamStatus = "completed"

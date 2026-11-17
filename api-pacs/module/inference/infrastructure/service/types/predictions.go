@@ -28,7 +28,10 @@ const (
 	// PredictionStateStalled: never ran. The execution is still pending or
 	// queued without a study-service job long after its run was created; the
 	// dispatcher will not pick it up again, so it needs to be closed.
-	PredictionStateStalled   PredictionState = "stalled"
+	PredictionStateStalled PredictionState = "stalled"
+	// PredictionStateExpired: an automatic execution that never ran and was
+	// closed by the expiry of automatic runs (INFERENCE_AUTO_RUN_EXPIRE_AFTER_HOURS).
+	PredictionStateExpired   PredictionState = "expired"
 	PredictionStateRunning   PredictionState = "running"
 	PredictionStateCompleted PredictionState = "completed"
 	PredictionStateFailed    PredictionState = "failed"
@@ -114,6 +117,7 @@ type PredictionCounts struct {
 	Failed    int `json:"failed"`
 	Skipped   int `json:"skipped"`
 	Cancelled int `json:"cancelled"`
+	Expired   int `json:"expired"`
 }
 
 // PredictionLauncher counts the runs one launcher started on an exam.

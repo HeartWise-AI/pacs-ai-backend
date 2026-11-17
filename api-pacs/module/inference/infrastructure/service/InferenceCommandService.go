@@ -60,6 +60,9 @@ type InferenceCommandService struct {
 	WorklistNotificationAudienceRepository  repository.WorklistNotificationAudienceRepositoryInterface
 	StudyServiceDispatchSemaphore           chan struct{}
 	ProcessingReconciliationMetricsRecorder ProcessingReconciliationMetricsRecorder
+	// AutoRunExpireAfter closes, in each reconciliation cycle, the automatic
+	// runs older than this whose executions never ran; zero disables it.
+	AutoRunExpireAfter                      time.Duration
 	RequireProcessingRunID                  bool
 	inferenceContainerReadinessTimeout      time.Duration
 	inferenceContainerReadinessPollInterval time.Duration
@@ -1351,6 +1354,12 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationW
 	}()
 
 	now := time.Now()
+	// Close the automatic runs that will never run before reconciling, so
+	// they are not re-dispatched or flagged again.
+	metrics.Expired = service.expireNeverRanAutomaticRuns(ctx, now).Expired
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	config := configuredProcessingReconciliation()
 	activeStaleBefore := now.Add(-config.earliestStaleAfter())
 

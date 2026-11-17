@@ -54,7 +54,7 @@ func TestPredictionExamsQueryKeepsStalledModelsOutOfActiveAndInAttention(t *test
 					AND NULLIF(BTRIM(j.study_service_job_id), '') IS NULL
 					AND r.created_at < :stalled_before) AS stalled`)
 	require.Contains(t, query, `BOOL_OR(latest.status IN ('pending', 'queued', 'running') AND NOT latest.stalled) AS any_active`)
-	require.Contains(t, query, `BOOL_OR(latest.status IN ('failed', 'skipped') OR latest.stalled) AS any_attention`)
+	require.Contains(t, query, `BOOL_OR((latest.status IN ('failed', 'skipped') AND NOT latest.expired) OR latest.stalled) AS any_attention`)
 	require.Contains(t, query, "AND exams.any_active")
 }
 

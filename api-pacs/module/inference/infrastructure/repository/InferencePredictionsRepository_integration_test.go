@@ -264,13 +264,15 @@ func TestPredictionsRepositoryAgainstPostgreSQL(t *testing.T) {
 	for _, fixture := range []struct {
 		study, status     string
 		studyServiceJobID interface{}
+		skipReasonCode    interface{}
 		at                time.Time
 	}{
-		{"8.1", "pending", nil, now.Add(-30 * time.Hour)},     // stalled
-		{"8.2", "queued", "ss-8-2", now.Add(-31 * time.Hour)}, // at study-service: active
-		{"8.3", "queued", nil, now.Add(-23 * time.Hour)},      // recent: active
-		{"8.4", "queued", "  ", now.Add(-32 * time.Hour)},     // blank job id: stalled
-		{"8.5", "completed", nil, now.Add(-33 * time.Hour)},   // finished
+		{"8.1", "pending", nil, nil, now.Add(-30 * time.Hour)},                 // stalled
+		{"8.2", "queued", "ss-8-2", nil, now.Add(-31 * time.Hour)},             // at study-service: active
+		{"8.3", "queued", nil, nil, now.Add(-23 * time.Hour)},                  // recent: active
+		{"8.4", "queued", "  ", nil, now.Add(-32 * time.Hour)},                 // blank job id: stalled
+		{"8.5", "completed", nil, nil, now.Add(-33 * time.Hour)},               // finished
+		{"8.6", "skipped", nil, "EXPIRED_NEVER_RAN", now.Add(-34 * time.Hour)}, // expired
 	} {
 		suffix := fixture.study
 		_, err = tx.Exec(`
@@ -290,20 +292,21 @@ func TestPredictionsRepositoryAgainstPostgreSQL(t *testing.T) {
 		_, err = tx.Exec(`
 			INSERT INTO ingestion_processing_jobs (
 				id, processing_run_id, candidate_id, tenant_id, model_name, status,
-				study_service_job_id, created_at, updated_at
-			) VALUES ($1, $2, $3, 'aip-tenant-c', 'DeepCORO-JEPA', $4, $5, $6, $6)
-		`, "aip-ex-c"+suffix, "aip-run-c"+suffix, "aip-cand-c"+suffix, fixture.status, fixture.studyServiceJobID, fixture.at)
+				study_service_job_id, skip_reason_code, created_at, updated_at
+			) VALUES ($1, $2, $3, 'aip-tenant-c', 'DeepCORO-JEPA', $4, $5, $6, $7, $7)
+		`, "aip-ex-c"+suffix, "aip-run-c"+suffix, "aip-cand-c"+suffix, fixture.status, fixture.studyServiceJobID,
+			fixture.skipReasonCode, fixture.at)
 		require.NoError(t, err)
 	}
 	uids, total = exams(types.ListPredictionExams{TenantID: "aip-tenant-c", StalledBefore: stalledBefore})
-	require.Equal(t, []string{"8.3", "8.1", "8.2", "8.4", "8.5"}, uids)
-	require.Equal(t, 5, total)
+	require.Equal(t, []string{"8.3", "8.1", "8.2", "8.4", "8.5", "8.6"}, uids)
+	require.Equal(t, 6, total)
 	uids, _ = exams(types.ListPredictionExams{TenantID: "aip-tenant-c", StalledBefore: stalledBefore,
 		Status: types.PredictionsExamStatusActive})
 	require.Equal(t, []string{"8.3", "8.2"}, uids, "stalled exams are not active")
 	uids, _ = exams(types.ListPredictionExams{TenantID: "aip-tenant-c", StalledBefore: stalledBefore,
 		Status: types.PredictionsExamStatusAttention})
-	require.Equal(t, []string{"8.1", "8.4"}, uids, "stalled exams need attention")
+	require.Equal(t, []string{"8.1", "8.4"}, uids, "stalled exams need attention, expired ones do not")
 	uids, _ = exams(types.ListPredictionExams{TenantID: "aip-tenant-c", StalledBefore: stalledBefore,
 		Status: types.PredictionsExamStatusCompleted})
 	require.Equal(t, []string{"8.5"}, uids)

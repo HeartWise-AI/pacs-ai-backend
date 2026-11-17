@@ -562,3 +562,43 @@ func TestExportPredictionsShowsStalledRuns(t *testing.T) {
 	require.Equal(t, "stalled", lines[1][10])
 	require.Equal(t, "", lines[1][13])
 }
+
+func TestExpiredExecutionsAreShownCountedAndNotActive(t *testing.T) {
+	expired := stalledPredictionRow(entity.InferenceIngestionProcessingJobStatusSkipped, nil, 800*time.Hour)
+	code := entity.InferenceIngestionProcessingJobSkipReasonExpiredNeverRan
+	expired.SkipReasonCode, expired.SkipReasonMessage = &code, strPointer("Expired: never ran within 30 days (automatic)")
+	expired.RunPhase = entity.InferenceIngestionProcessingRunPhaseTerminal
+	skipped := stalledPredictionRow(entity.InferenceIngestionProcessingJobStatusSkipped, nil, 800*time.Hour)
+	other := entity.InferenceIngestionProcessingJobSkipReasonModelDisabled
+	skipped.SkipReasonCode, skipped.ModelName, skipped.ExecutionID = &other, "DeepCORO-SYNTAX", "ex-k"
+
+	stalledBefore := predictionsTestNow.Add(-24 * time.Hour)
+	require.Equal(t, types.PredictionStateExpired, predictionExecutionState(&expired, stalledBefore))
+	require.Equal(t, types.PredictionStateSkipped, predictionExecutionState(&skipped, stalledBefore))
+
+	repository := &predictionsRepositoryFake{
+		pages:      []repositoryTypes.PredictionExamPage{{Total: 1, Exams: []repositoryTypes.PredictionExamRow{{StudyInstanceUID: "2.1", Total: 1}}}},
+		executions: []repositoryTypes.PredictionExecutionRow{expired, skipped},
+	}
+	page, err := (&InferencePredictionsService{Now: pinnedNow, Repository: repository}).ListPredictions(context.Background(),
+		basePredictionsRequest(types.PredictionsViewAutomatic, "USER"))
+	require.NoError(t, err)
+	exam := page.Exams[0]
+	require.False(t, exam.Active)
+	require.Equal(t, types.PredictionCounts{Total: 2, Expired: 1, Skipped: 1}, exam.Counts)
+	require.False(t, exam.Models[0].Cancellable)
+	require.Equal(t, entity.InferenceIngestionProcessingJobSkipReasonExpiredNeverRan, exam.Models[0].SkipReason.Code)
+
+	repository = &predictionsRepositoryFake{
+		pages:      []repositoryTypes.PredictionExamPage{{Total: 1, Exams: []repositoryTypes.PredictionExamRow{{StudyInstanceUID: "2.1", Total: 1}}}},
+		executions: []repositoryTypes.PredictionExecutionRow{expired},
+	}
+	var buffer bytes.Buffer
+	_, err = (&InferencePredictionsService{Now: pinnedNow, Repository: repository}).ExportPredictions(context.Background(),
+		basePredictionsRequest(types.PredictionsViewAutomatic, "USER"), func(bool) io.Writer { return &buffer })
+	require.NoError(t, err)
+	lines, err := csv.NewReader(&buffer).ReadAll()
+	require.NoError(t, err)
+	require.Equal(t, "expired", lines[1][10])
+	require.Equal(t, "EXPIRED_NEVER_RAN: Expired: never ran within 30 days (automatic)", lines[1][13])
+}

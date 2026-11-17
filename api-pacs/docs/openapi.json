@@ -2607,7 +2607,7 @@
             "name": "status",
             "in": "query",
             "required": false,
-            "description": "any (default); active: a model is waiting, queued or running (stalled models excluded); attention: a model failed, was skipped or stalled; completed: every model completed. Reads the latest execution of each model.",
+            "description": "any (default); active: a model is waiting, queued or running (stalled models excluded); attention: a model failed, was skipped or stalled (expired models excluded); completed: every model completed. Reads the latest execution of each model.",
             "schema": {
               "type": "string",
               "enum": [
@@ -2767,6 +2767,9 @@
                                   },
                                   "cancelled": {
                                     "type": "integer"
+                                  },
+                                  "expired": {
+                                    "type": "integer"
                                   }
                                 }
                               },
@@ -2844,9 +2847,10 @@
                                             "completed",
                                             "failed",
                                             "skipped",
-                                            "cancelled"
+                                            "cancelled",
+                                            "expired"
                                           ],
-                                          "description": "waiting: not dispatched because the exam is still receiving images. stalled: never ran; still pending or queued without a study-service job more than INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS (default 24) after the run was created."
+                                          "description": "waiting: not dispatched because the exam is still receiving images. stalled: never ran; still pending or queued without a study-service job more than INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS (default 24) after the run was created. expired: an automatic execution that never ran, closed by INFERENCE_AUTO_RUN_EXPIRE_AFTER_HOURS (skip reason EXPIRED_NEVER_RAN)."
                                         },
                                         "status": {
                                           "type": "string",
@@ -2985,7 +2989,7 @@
             "name": "status",
             "in": "query",
             "required": false,
-            "description": "any (default); active: a model is waiting, queued or running (stalled models excluded); attention: a model failed, was skipped or stalled; completed: every model completed. Reads the latest execution of each model.",
+            "description": "any (default); active: a model is waiting, queued or running (stalled models excluded); attention: a model failed, was skipped or stalled (expired models excluded); completed: every model completed. Reads the latest execution of each model.",
             "schema": {
               "type": "string",
               "enum": [
@@ -3226,9 +3230,10 @@
                                   "completed",
                                   "failed",
                                   "skipped",
-                                  "cancelled"
+                                  "cancelled",
+                                  "expired"
                                 ],
-                                "description": "waiting: not dispatched because the exam is still receiving images. stalled: never ran; still pending or queued without a study-service job more than INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS (default 24) after the run was created."
+                                "description": "waiting: not dispatched because the exam is still receiving images. stalled: never ran; still pending or queued without a study-service job more than INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS (default 24) after the run was created. expired: an automatic execution that never ran, closed by INFERENCE_AUTO_RUN_EXPIRE_AFTER_HOURS (skip reason EXPIRED_NEVER_RAN)."
                               },
                               "status": {
                                 "type": "string",
@@ -3789,7 +3794,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "enum": ["NO_USABLE_DICOM", "UNSUPPORTED_MODALITY", "REQUIRED_SERIES_MISSING", "MODEL_NOT_APPLICABLE", "PREREQUISITE_NOT_MET", "MODEL_DISABLED"]
+            "enum": ["NO_USABLE_DICOM", "UNSUPPORTED_MODALITY", "REQUIRED_SERIES_MISSING", "MODEL_NOT_APPLICABLE", "PREREQUISITE_NOT_MET", "MODEL_DISABLED", "EXPIRED_NEVER_RAN"]
           },
           "message": { "type": "string", "nullable": true }
         }

@@ -362,7 +362,8 @@ func predictionStalled(row *repositoryTypes.PredictionExecutionRow, stalledBefor
 // predictionExecutionState maps a stored execution to the state the page
 // shows. A pending execution never dispatched while its exam is still
 // receiving images waits for the exam to finish; one that never reached
-// study-service long after its run was created is stalled.
+// study-service long after its run was created is stalled, and one the expiry
+// of automatic runs closed is expired.
 func predictionExecutionState(row *repositoryTypes.PredictionExecutionRow, stalledBefore time.Time) types.PredictionState {
 	if predictionStalled(row, stalledBefore) {
 		return types.PredictionStateStalled
@@ -384,6 +385,9 @@ func predictionExecutionState(row *repositoryTypes.PredictionExecutionRow, stall
 	case entity.InferenceIngestionProcessingJobStatusFailed:
 		return types.PredictionStateFailed
 	case entity.InferenceIngestionProcessingJobStatusSkipped:
+		if row.SkipReasonCode != nil && *row.SkipReasonCode == entity.InferenceIngestionProcessingJobSkipReasonExpiredNeverRan {
+			return types.PredictionStateExpired
+		}
 		return types.PredictionStateSkipped
 	case entity.InferenceIngestionProcessingJobStatusCancelled:
 		return types.PredictionStateCancelled
@@ -498,6 +502,8 @@ func countPredictionStates(models []types.PredictionModel) (types.PredictionCoun
 			counts.Skipped++
 		case types.PredictionStateCancelled:
 			counts.Cancelled++
+		case types.PredictionStateExpired:
+			counts.Expired++
 		}
 	}
 	return counts, counts.Waiting+counts.Queued+counts.Running > 0

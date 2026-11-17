@@ -86,7 +86,7 @@ func escapeLikePattern(value string) string {
 // latest keeps the newest execution of each model of those exams and marks
 // the stalled ones exactly like predictionExecutionState does; exams
 // aggregates the latest states (a stalled model needs attention and is not
-// active); meta picks the stored patient ID, accession,
+// active; an expired one needs neither); meta picks the stored patient ID, accession,
 // modalities and study date from the candidates of those executions.
 func buildListPredictionExamsQuery(data types.ListPredictionExams) (string, map[string]interface{}, error) {
 	scope, err := predictionsScopeFragment(data.Scope)
@@ -151,7 +151,9 @@ func buildListPredictionExamsQuery(data types.ListPredictionExams) (string, map[
 				GREATEST(r.updated_at, j.updated_at) AS activity_at,
 				(CAST(j.status AS text) IN ('pending', 'queued')
 					AND NULLIF(BTRIM(j.study_service_job_id), '') IS NULL
-					AND r.created_at < :stalled_before) AS stalled
+					AND r.created_at < :stalled_before) AS stalled,
+				(CAST(j.status AS text) = 'skipped'
+					AND COALESCE(j.skip_reason_code, '') = 'EXPIRED_NEVER_RAN') AS expired
 			FROM exam_keys
 			JOIN ingestion_processing_runs r
 				ON r.tenant_id = :tenant_id AND r.study_instance_uid = exam_keys.study_instance_uid
@@ -164,7 +166,7 @@ func buildListPredictionExamsQuery(data types.ListPredictionExams) (string, map[
 			SELECT latest.study_instance_uid,
 				MAX(latest.activity_at) AS last_activity_at,
 				BOOL_OR(latest.status IN ('pending', 'queued', 'running') AND NOT latest.stalled) AS any_active,
-				BOOL_OR(latest.status IN ('failed', 'skipped') OR latest.stalled) AS any_attention,
+				BOOL_OR((latest.status IN ('failed', 'skipped') AND NOT latest.expired) OR latest.stalled) AS any_attention,
 				BOOL_AND(latest.status = 'completed') AS all_completed,
 				BOOL_OR(UPPER(COALESCE(latest.modality, '')) = :modality) AS dispatched_with_modality
 			FROM latest

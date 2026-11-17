@@ -376,6 +376,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		StudyServiceDispatchSemaphore:           make(chan struct{}, configuredStudyServiceDispatchConcurrency()),
 		WorklistNotificationPublisherInterface:  worklistNotificationBroker,
 		ProcessingReconciliationMetricsRecorder: &inferenceService.LoggingProcessingReconciliationMetricsRecorder{},
+		AutoRunExpireAfter:                      inferenceService.ConfiguredAutoRunExpireAfter(),
 		WorklistNotificationAudienceRepository:  processingRunRepository,
 		RequireProcessingRunID:                  configuredProcessingRunIDRequirement(),
 		ModelManager:                            managedPredictor,
