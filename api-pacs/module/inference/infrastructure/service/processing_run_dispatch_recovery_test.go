@@ -376,7 +376,7 @@ func TestExecutionWhoseRecoveredDispatchFailsForAPassingReasonStaysPending(t *te
 	require.Equal(t, 2, fixture.dispatcher.buildCalls)
 }
 
-func TestExecutionPendingLongerThanTheAgeLimitIsNotDispatchedAgain(t *testing.T) {
+func TestExecutionPendingLongerThanTheAgeLimitIsClosedWithoutRedispatch(t *testing.T) {
 	age := func(fixture *recoveryFixture, pendingFor time.Duration) {
 		since := time.Now().Add(-pendingFor)
 		fixture.runs.executions[fixture.runID][0].CreatedAt = since
@@ -392,7 +392,11 @@ func TestExecutionPendingLongerThanTheAgeLimitIsNotDispatchedAgain(t *testing.T)
 		require.Zero(t, fixture.cycle(t))
 		require.False(t, liveStudyServiceDispatches.isLive(fixture.key))
 		require.Zero(t, fixture.dispatcher.buildCalls)
-		require.Equal(t, entity.InferenceIngestionProcessingJobStatusPending, fixture.runs.execution(fixture.runID).Status)
+		execution := fixture.runs.execution(fixture.runID)
+		require.Equal(t, entity.InferenceIngestionProcessingJobStatusSkipped, execution.Status)
+		require.NotNil(t, execution.SkipReasonCode)
+		require.Equal(t, entity.InferenceIngestionProcessingJobSkipReasonExpiredNeverRan, *execution.SkipReasonCode)
+		require.Equal(t, entity.InferenceIngestionProcessingRunPhaseTerminal, fixture.runs.run().Phase)
 	})
 	t.Run("five hours old, default limit", func(t *testing.T) {
 		fixture := newRecoveryFixture(t)
@@ -406,6 +410,8 @@ func TestExecutionPendingLongerThanTheAgeLimitIsNotDispatchedAgain(t *testing.T)
 		age(fixture, 5*time.Hour)
 		require.Zero(t, fixture.cycle(t))
 		require.Zero(t, fixture.dispatcher.buildCalls)
+		require.Equal(t, entity.InferenceIngestionProcessingJobStatusSkipped, fixture.runs.execution(fixture.runID).Status)
+		require.Equal(t, entity.InferenceIngestionProcessingRunPhaseTerminal, fixture.runs.run().Phase)
 	})
 	t.Run("three days old, limit raised to a week", func(t *testing.T) {
 		fixture := newRecoveryFixture(t)

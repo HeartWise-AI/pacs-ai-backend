@@ -61,6 +61,11 @@ func (repository *reconciliationWorkerRunRepository) ApplyProcessingRunExecution
 		}
 		executions[index].Status = data.Status
 		executions[index].StudyServiceJobID = data.StudyServiceJobID
+		if data.SkipReason != nil {
+			code := data.SkipReason.Code
+			executions[index].SkipReasonCode = &code
+			executions[index].SkipReasonMessage = data.SkipReason.Message
+		}
 		executions[index].StartedAt = data.StartedAt
 		executions[index].CompletedAt = data.CompletedAt
 		executions[index].UpdatedAt = time.Now()
@@ -338,6 +343,134 @@ func TestReconciliationWorkerRepairsMissedTerminalCallbackByExactJobID(t *testin
 	require.False(t, runRepository.runs[0].AttentionRequired)
 	require.Empty(t, runRepository.runs[0].AttentionReasons)
 	require.Equal(t, []ProcessingReconciliationCycleMetrics{{Checked: 1, Repaired: 1}}, metricsRecorder.cycles)
+}
+
+func TestReconciliationWorkerAdoptsExactReusedAutomaticJobFromEarlierRun(t *testing.T) {
+	t.Setenv(reconciliationPendingStaleMinutesEnv, "2")
+	t.Setenv(reconciliationQueuedStaleMinutesEnv, "10")
+	t.Setenv(reconciliationRunningStaleMinutesEnv, "65")
+	t.Setenv(reconciliationModelRunningStaleMinutesEnv, "")
+	now := time.Now()
+	completedAt := now.Add(-time.Minute)
+	runID := "run-current"
+	candidateID := "candidate-current"
+	tenantID := "tenant-a"
+	jobID := "python-job-reused"
+	runRepository := &reconciliationWorkerRunRepository{
+		runs: []entity.InferenceIngestionProcessingRun{{
+			ID: runID, TenantID: tenantID, StudyInstanceUID: "study-1",
+			RunTrigger: entity.InferenceIngestionProcessingRunTriggerAuto,
+			Phase:      entity.InferenceIngestionProcessingRunPhaseQueued,
+		}},
+		executions: map[string][]entity.InferenceIngestionProcessingJob{
+			runID: {{
+				ID: "execution-current", ProcessingRunID: &runID, CandidateID: candidateID, TenantID: tenantID,
+				ModelName: "EchoPrime", Status: entity.InferenceIngestionProcessingJobStatusQueued,
+				StudyServiceJobID: &jobID, UpdatedAt: now.Add(-11 * time.Minute),
+			}},
+		},
+	}
+	queryRepository := &reconciliationWorkerQueryRepository{candidates: map[string]entity.InferenceIngestionCandidate{
+		candidateID: {ID: candidateID, TenantID: tenantID, StudyInstanceUID: "study-1"},
+	}}
+	dispatcher := &reconciliationWorkerDispatcher{jobsByID: map[string]serviceTypes.StudyServiceJob{
+		jobID: {
+			JobID: jobID, StudyInstanceUID: "study-1", TenantID: &tenantID,
+			CandidateID: stringPointer("candidate-earlier"), ProcessingRunID: stringPointer("run-earlier"),
+			ModelName: "EchoPrime", Status: "completed", CompletedAt: &completedAt,
+		},
+	}}
+	metricsRecorder := &reconciliationMetricsRecorderTestDouble{}
+	service := &InferenceCommandService{
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		InferenceQueryRepositoryInterface:         queryRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+		ProcessingReconciliationMetricsRecorder:   metricsRecorder,
+	}
+
+	err := service.ExecuteInferenceIngestionReconciliationWorker(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusCompleted, runRepository.executions[runID][0].Status)
+	require.Equal(t, entity.InferenceIngestionProcessingRunPhaseTerminal, runRepository.runs[0].Phase)
+	require.Len(t, runRepository.attempts, 1)
+	require.True(t, runRepository.attempts[0].Succeeded)
+	require.Equal(t, []ProcessingReconciliationCycleMetrics{{Checked: 1, Repaired: 1}}, metricsRecorder.cycles)
+}
+
+func TestReconciliationWorkerClosesAutomaticExecutionsThatCannotBeRedispatched(t *testing.T) {
+	t.Setenv(reconciliationPendingStaleMinutesEnv, "2")
+	t.Setenv(reconciliationQueuedStaleMinutesEnv, "10")
+	t.Setenv(reconciliationRunningStaleMinutesEnv, "65")
+	t.Setenv(reconciliationRedispatchMaxMinutesEnv, "5")
+	t.Setenv(reconciliationModelRunningStaleMinutesEnv, "")
+
+	tests := []struct {
+		name       string
+		status     entity.InferenceIngestionCandidateStatus
+		wantReason entity.InferenceIngestionProcessingJobSkipReasonCode
+	}{
+		{
+			name: "candidate disappeared", status: entity.InferenceIngestionCandidateStatusDisappeared,
+			wantReason: entity.InferenceIngestionProcessingJobSkipReasonNoUsableDICOM,
+		},
+		{
+			name: "candidate failed", status: entity.InferenceIngestionCandidateStatusFailed,
+			wantReason: entity.InferenceIngestionProcessingJobSkipReasonNoUsableDICOM,
+		},
+		{
+			name: "dispatch recovery window elapsed", status: entity.InferenceIngestionCandidateStatusRetrieved,
+			wantReason: entity.InferenceIngestionProcessingJobSkipReasonExpiredNeverRan,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			now := time.Now()
+			runID := "run-stale"
+			candidateID := "candidate-stale"
+			tenantID := "tenant-a"
+			retrievedAt := now.Add(-10 * time.Minute)
+			runRepository := &reconciliationWorkerRunRepository{
+				runs: []entity.InferenceIngestionProcessingRun{{
+					ID: runID, TenantID: tenantID, StudyInstanceUID: "study-1",
+					RunTrigger: entity.InferenceIngestionProcessingRunTriggerAuto,
+					Phase:      entity.InferenceIngestionProcessingRunPhaseQueued,
+				}},
+				executions: map[string][]entity.InferenceIngestionProcessingJob{
+					runID: {{
+						ID: "execution-stale", ProcessingRunID: &runID, CandidateID: candidateID, TenantID: tenantID,
+						ModelName: "EchoPrime", Status: entity.InferenceIngestionProcessingJobStatusPending,
+						UpdatedAt: now.Add(-10 * time.Minute),
+					}},
+				},
+			}
+			queryRepository := &reconciliationWorkerQueryRepository{candidates: map[string]entity.InferenceIngestionCandidate{
+				candidateID: {
+					ID: candidateID, TenantID: tenantID, StudyInstanceUID: "study-1",
+					Status: test.status, RetrievedAt: &retrievedAt, UpdatedAt: retrievedAt,
+				},
+			}}
+			metricsRecorder := &reconciliationMetricsRecorderTestDouble{}
+			service := &InferenceCommandService{
+				InferenceProcessingRunRepositoryInterface: runRepository,
+				InferenceQueryRepositoryInterface:         queryRepository,
+				ProcessingDispatcherInterface:             &reconciliationWorkerDispatcher{},
+				ProcessingReconciliationMetricsRecorder:   metricsRecorder,
+			}
+
+			err := service.ExecuteInferenceIngestionReconciliationWorker(context.Background())
+
+			require.NoError(t, err)
+			execution := runRepository.executions[runID][0]
+			require.Equal(t, entity.InferenceIngestionProcessingJobStatusSkipped, execution.Status)
+			require.NotNil(t, execution.SkipReasonCode)
+			require.Equal(t, test.wantReason, *execution.SkipReasonCode)
+			require.NotNil(t, execution.CompletedAt)
+			require.Equal(t, entity.InferenceIngestionProcessingRunPhaseTerminal, runRepository.runs[0].Phase)
+			require.Equal(t, []ProcessingReconciliationCycleMetrics{{Checked: 1, Repaired: 1}}, metricsRecorder.cycles)
+		})
+	}
 }
 
 func TestReconciliationWorkerRepairsMissedRunningCallback(t *testing.T) {
@@ -705,5 +838,26 @@ func TestValidateReconciledManualJobRequiresExactExecutionIdentity(t *testing.T)
 	require.ErrorContains(t, validateReconciledStudyServiceJob(run, execution, job), "processing-execution mismatch")
 
 	run.RunTrigger = entity.InferenceIngestionProcessingRunTriggerAuto
+	require.NoError(t, validateReconciledStudyServiceJob(run, execution, job))
+}
+
+func TestValidateReconciledAutomaticJobRequiresExactBackendBindingForCrossRunReuse(t *testing.T) {
+	run := entity.InferenceIngestionProcessingRun{
+		ID: "run-current", TenantID: "tenant-a", StudyInstanceUID: "study-1",
+		RunTrigger: entity.InferenceIngestionProcessingRunTriggerAuto,
+	}
+	boundJobID := "job-bound"
+	execution := entity.InferenceIngestionProcessingJob{
+		ID: "execution-current", CandidateID: "candidate-current", ModelName: "EchoPrime",
+		StudyServiceJobID: &boundJobID,
+	}
+	oldRunID := "run-earlier"
+	job := serviceTypes.StudyServiceJob{
+		JobID: "job-different", ProcessingRunID: &oldRunID,
+		StudyInstanceUID: "study-1", ModelName: "EchoPrime",
+	}
+
+	require.ErrorContains(t, validateReconciledStudyServiceJob(run, execution, job), "processing-run mismatch")
+	job.JobID = boundJobID
 	require.NoError(t, validateReconciledStudyServiceJob(run, execution, job))
 }
