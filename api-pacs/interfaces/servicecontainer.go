@@ -83,6 +83,7 @@ type ServiceContainerInterface interface {
 	RegisterIAMRESTCommandController() iamREST.IAMCommandController
 	RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController
 	RegisterInferenceRESTQueryController() inferenceREST.InferenceQueryController
+	RegisterInferenceRESTPredictionsController() inferenceREST.InferencePredictionsController
 	RegisterLeadRESTCommandController() leadREST.LeadCommandController
 	RegisterOrchestratorRESTController() orchestratorREST.OrchestratorController
 	RegisterOrthancRESTCommandController() orthancREST.OrthancCommandController
@@ -231,6 +232,18 @@ func (k *kernel) RegisterInferenceRESTQueryController() inferenceREST.InferenceQ
 	}
 
 	return controller
+}
+
+// RegisterInferenceRESTPredictionsController wires the AI Predictions page.
+func (k *kernel) RegisterInferenceRESTPredictionsController() inferenceREST.InferencePredictionsController {
+	return inferenceREST.InferencePredictionsController{
+		InferencePredictionsServiceInterface: &inferenceService.InferencePredictionsService{
+			Repository: &inferenceRepository.InferencePredictionsRepository{
+				PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
+			},
+			Users: k.userQueryServiceContainer(),
+		},
+	}
 }
 
 // RegisterOrchestratorRESTController performs dependency injection to the RegisterOrchestratorRESTController
