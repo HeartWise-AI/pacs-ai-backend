@@ -245,6 +245,10 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		TenantID:         tenantID,
 		StudyInstanceUID: &studyInstanceUID,
 	})
+	if trigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess &&
+		(err != nil && err.Error() == apiError.MissingRecord || err == nil && len(candidates) == 0) {
+		candidates, err = service.bootstrapLocalManualStudyCandidates(ctx, tenantID, studyInstanceUID)
+	}
 	if err != nil {
 		return types.CreateStudyProcessingRunResult{}, err
 	}
@@ -286,12 +290,19 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		seen[key] = struct{}{}
 
 		executionID := generateID()
+		plannedModality := canonicalStudyServiceModality(job.DICOMModality)
+		if strings.EqualFold(strings.TrimSpace(job.DICOMModality), "PACS_QUERY") {
+			plannedModality, jobErr = resolveDispatchModality(job, candidate)
+			if jobErr != nil {
+				return types.CreateStudyProcessingRunResult{}, jobErr
+			}
+		}
 		expected = append(expected, repositoryTypes.CreateInferenceIngestionProcessingExecution{
 			ID:           executionID,
 			CandidateID:  candidate.ID,
 			ModelName:    modelName,
 			ModelVersion: nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
-			Modality:     nonEmptyStringPointer(canonicalStudyServiceModality(job.DICOMModality)),
+			Modality:     nonEmptyStringPointer(plannedModality),
 		})
 		dispatchTargets = append(dispatchTargets, processingRunDispatchTarget{
 			job: job, candidate: candidate, requestID: executionID,

@@ -340,9 +340,18 @@ WHERE id = :id`, processingJob.GetModelName())
 
 // UpsertIngestionCandidate upserts an ingestion candidate
 func (repository *InferenceCommandRepository) UpsertIngestionCandidate(data types.UpsertIngestionCandidate) error {
-	var candidate entity.InferenceIngestionCandidate
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(ingestionCandidateUpsertStatement(), ingestionCandidateUpsertData(data))
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
 
-	stmt := fmt.Sprintf(`INSERT INTO %s (
+	return nil
+}
+
+func ingestionCandidateUpsertStatement() string {
+	var candidate entity.InferenceIngestionCandidate
+	return fmt.Sprintf(`INSERT INTO %s (
 		id,
 		tenant_id,
 		ingestion_job_id,
@@ -398,8 +407,10 @@ func (repository *InferenceCommandRepository) UpsertIngestionCandidate(data type
 			WHEN %s.status = 'DISAPPEARED' THEN 'DISCOVERED'
 			ELSE %s.status
 		END`, candidate.GetModelName(), candidate.GetModelName(), candidate.GetModelName(), candidate.GetModelName(), candidate.GetModelName(), candidate.GetModelName())
+}
 
-	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+func ingestionCandidateUpsertData(data types.UpsertIngestionCandidate) map[string]interface{} {
+	return map[string]interface{}{
 		"id":                  data.ID,
 		"tenant_id":           data.TenantID,
 		"ingestion_job_id":    data.IngestionJobID,
@@ -411,8 +422,52 @@ func (repository *InferenceCommandRepository) UpsertIngestionCandidate(data type
 		"accession_number":    nullableStringValue(data.AccessionNumber),
 		"series_count":        nullableIntValue(data.SeriesCount),
 		"instance_count":      nullableIntValue(data.InstanceCount),
-	})
+	}
+}
+
+// UpsertRetrievedIngestionCandidates publishes a complete manual bootstrap in
+// one transaction. A failed write cannot leave a partial candidate set visible
+// to another reprocess request.
+func (repository *InferenceCommandRepository) UpsertRetrievedIngestionCandidates(ctx context.Context, data []types.UpsertIngestionCandidate) error {
+	if len(data) == 0 {
+		return errors.New(apiError.InvalidPayload)
+	}
+	tx, err := repository.PostgresSQLDBHandlerInterface.Begin()
 	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var candidate entity.InferenceIngestionCandidate
+	markRetrieved := fmt.Sprintf(`UPDATE %s
+SET status = :status,
+	retrieved_at = CURRENT_TIMESTAMP,
+	last_retrieval_state = :last_retrieval_state,
+	last_retrieval_error = NULL,
+	last_retrieval_error_details = NULL,
+	last_retrieval_checked_at = CURRENT_TIMESTAMP
+WHERE tenant_id = :tenant_id
+	AND ingestion_job_id = :ingestion_job_id
+	AND study_instance_uid = :study_instance_uid`, candidate.GetModelName())
+
+	for _, item := range data {
+		if _, err = tx.NamedExecContext(ctx, ingestionCandidateUpsertStatement(), ingestionCandidateUpsertData(item)); err != nil {
+			log.Println(err)
+			return errors.New(apiError.DatabaseError)
+		}
+		if _, err = tx.NamedExecContext(ctx, markRetrieved, map[string]interface{}{
+			"status":               entity.InferenceIngestionCandidateStatusRetrieved,
+			"last_retrieval_state": "local",
+			"tenant_id":            item.TenantID,
+			"ingestion_job_id":     item.IngestionJobID,
+			"study_instance_uid":   item.StudyInstanceUID,
+		}); err != nil {
+			log.Println(err)
+			return errors.New(apiError.DatabaseError)
+		}
+	}
+	if err = tx.Commit(); err != nil {
 		log.Println(err)
 		return errors.New(apiError.DatabaseError)
 	}

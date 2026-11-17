@@ -342,6 +342,32 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) UpsertIngestionCandi
 	}
 }
 
+// UpsertRetrievedIngestionCandidates atomically publishes a complete local bootstrap.
+func (repository *InferenceCommandRepositoryCircuitBreaker) UpsertRetrievedIngestionCandidates(ctx context.Context, data []types.UpsertIngestionCandidate) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("upsert_retrieved_ingestion_candidates", config.Settings())
+	errors := hystrix.Go("upsert_retrieved_ingestion_candidates", func() error {
+		err := repository.InferenceCommandRepositoryInterface.UpsertRetrievedIngestionCandidates(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // InsertOnboardingModelQuestionnaireAnswer is the decorator for the inference command repository to insert onboarding model questionnaire answer
 func (repository *InferenceCommandRepositoryCircuitBreaker) InsertOnboardingModelQuestionnaireAnswer(ctx context.Context, data types.AddOnboardingModelQuestionnaireAnswer) error {
 	output := make(chan bool, 1)
