@@ -245,9 +245,12 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		TenantID:         tenantID,
 		StudyInstanceUID: &studyInstanceUID,
 	})
-	if trigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess &&
-		(err != nil && err.Error() == apiError.MissingRecord || err == nil && len(candidates) == 0) {
-		candidates, err = service.bootstrapManualStudyCandidates(ctx, tenantID, studyInstanceUID)
+	if trigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess {
+		if err != nil && err.Error() == apiError.MissingRecord || err == nil && len(candidates) == 0 {
+			candidates, err = service.bootstrapManualStudyCandidates(ctx, tenantID, studyInstanceUID)
+		} else if err == nil {
+			candidates, err = service.reconcileExistingManualStudyCandidates(ctx, tenantID, studyInstanceUID, candidates)
+		}
 	}
 	if err != nil {
 		return types.CreateStudyProcessingRunResult{}, err
@@ -270,6 +273,10 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		}
 		if job.TenantID != tenantID {
 			return types.CreateStudyProcessingRunResult{}, errors.New(apiError.DatabaseError)
+		}
+		if trigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess &&
+			job.Status != entity.InferenceIngestionJobStatusRunning {
+			continue
 		}
 
 		if strings.TrimSpace(job.DICOMModality) == viewerIngestionJobSource {

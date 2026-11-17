@@ -145,6 +145,94 @@ func TestManualReprocessJobIsNewerIgnoresRuntimeUpdatesAndBreaksTies(t *testing.
 	require.True(t, manualReprocessJobIsNewer(equalCreationWithHigherID, current))
 }
 
+func TestReconcileExistingManualStudyCandidatesAddsNewModelsAndReplacesOldJob(t *testing.T) {
+	state := manualBootstrapState()
+	modalities := "XA"
+	lastSeen := time.Now().UTC().Add(-time.Hour)
+	state.candidates["old-candidate"] = entity.InferenceIngestionCandidate{
+		ID: "old-candidate", TenantID: "tenant-a", IngestionJobID: "xa-old-duplicate",
+		StudyInstanceUID: "1.2.3", ModalitiesInStudy: &modalities,
+		Status: entity.InferenceIngestionCandidateStatusRetrieved, LastSeenAt: lastSeen,
+	}
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface: state, InferenceCommandRepositoryInterface: state,
+	}
+
+	first, err := service.reconcileExistingManualStudyCandidates(
+		context.Background(), "tenant-a", "1.2.3", []entity.InferenceIngestionCandidate{state.candidates["old-candidate"]},
+	)
+	require.NoError(t, err)
+	require.Len(t, first, 2)
+
+	jobIDs := make(map[string]bool, len(first))
+	firstIDs := make([]string, 0, len(first))
+	for _, candidate := range first {
+		jobIDs[candidate.IngestionJobID] = true
+		firstIDs = append(firstIDs, candidate.ID)
+		require.Equal(t, entity.InferenceIngestionCandidateStatusDiscovered, candidate.Status)
+	}
+	require.Equal(t, map[string]bool{"xa-new": true, "xa-second": true}, jobIDs)
+	require.False(t, jobIDs["xa-old-duplicate"])
+
+	second, err := service.reconcileExistingManualStudyCandidates(context.Background(), "tenant-a", "1.2.3", first)
+	require.NoError(t, err)
+	secondIDs := make([]string, 0, len(second))
+	for _, candidate := range second {
+		secondIDs = append(secondIDs, candidate.ID)
+	}
+	require.ElementsMatch(t, firstIDs, secondIDs)
+	require.Len(t, state.candidates, 3, "the obsolete candidate remains auditable but is not selected")
+}
+
+func TestCreateManualStudyProcessingRunReconcilesCurrentModelSet(t *testing.T) {
+	state := manualBootstrapState()
+	modalities := "XA"
+	state.candidates["old-candidate"] = entity.InferenceIngestionCandidate{
+		ID: "old-candidate", TenantID: "tenant-a", IngestionJobID: "xa-old-duplicate",
+		StudyInstanceUID: "1.2.3", ModalitiesInStudy: &modalities,
+		Status: entity.InferenceIngestionCandidateStatusRetrieved, LastSeenAt: time.Now().UTC(),
+	}
+	state.dispatchUpdates = make(chan string, 2)
+	dispatchCalls := make(chan serviceTypes.DispatchStudyRequest, 2)
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface: state, InferenceCommandRepositoryInterface: state,
+		InferenceProcessingRunRepositoryInterface: state,
+		InferenceQuotaManagerInterface:            &recordingInferenceQuotaManager{},
+		OrthancAPIInterface: &manualBootstrapOrthancAPI{
+			resources: []orthancAPITypes.GetLocalResourceResponse{localXAStudyResource()},
+		},
+		ProcessingDispatcherInterface: &guardedProcessingDispatcher{
+			dispatchCall: dispatchCalls, response: serviceTypes.DispatchStudyResponse{JobID: "study-service-job"},
+			echoManualCorrelation: true,
+		},
+		// This test verifies candidate reconciliation, not concurrent dispatch.
+		// Serialize the asynchronous dispatches because the shared in-memory
+		// repository and dispatcher test doubles are intentionally lock-free.
+		StudyServiceDispatchSemaphore: make(chan struct{}, 1),
+	}
+	configureReadyInferenceContainer(service)
+	userID := "user-a"
+
+	result, err := service.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
+		TenantID: "tenant-a", StudyInstanceUID: "1.2.3", UserID: &userID,
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Executions, 2)
+
+	selectedJobIDs := make(map[string]bool, 2)
+	for _, execution := range result.Executions {
+		candidate := state.candidates[execution.CandidateID]
+		selectedJobIDs[candidate.IngestionJobID] = true
+		select {
+		case <-state.dispatchUpdates:
+		case <-time.After(time.Second):
+			t.Fatal("reconciled execution was not dispatched")
+		}
+	}
+	require.Equal(t, map[string]bool{"xa-new": true, "xa-second": true}, selectedJobIDs)
+	require.False(t, selectedJobIDs["xa-old-duplicate"])
+}
+
 func TestBootstrapLocalManualStudyCandidatesIsIdempotent(t *testing.T) {
 	state := manualBootstrapState()
 	service := &InferenceCommandService{

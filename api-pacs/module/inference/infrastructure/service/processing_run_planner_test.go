@@ -37,6 +37,22 @@ func (repository *processingRunPlannerQueryRepository) SelectInferenceIngestionJ
 	return job, nil
 }
 
+func (repository *processingRunPlannerQueryRepository) SelectInferenceIngestionJobs(tenantID *string) ([]entity.InferenceIngestionJob, error) {
+	if repository.err != nil {
+		return nil, repository.err
+	}
+	jobs := make([]entity.InferenceIngestionJob, 0, len(repository.jobs))
+	for _, job := range repository.jobs {
+		if tenantID == nil || job.TenantID == *tenantID {
+			jobs = append(jobs, job)
+		}
+	}
+	if len(jobs) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+	return jobs, nil
+}
+
 type processingRunPlannerRepository struct {
 	domainRepository.InferenceProcessingRunRepositoryInterface
 	activeRun         *entity.InferenceIngestionProcessingRun
