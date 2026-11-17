@@ -111,6 +111,34 @@ type ListInferenceIngestionProcessingRunExecutions struct {
 // ListInferenceIngestionProcessingRunsForReconciliation bounds the internal
 // cross-tenant worker query. ActiveStaleBefore is the earliest configured
 // threshold; state-specific thresholds are applied by the service.
+// ListNeverRanAutomaticProcessingRuns selects automatic runs created before
+// CreatedBefore that are not finished and whose executions all never ran.
+type ListNeverRanAutomaticProcessingRuns struct {
+	CreatedBefore time.Time
+	Limit         int
+}
+
+// ExpireNeverRanProcessingRun closes one such run: every execution becomes
+// skipped with the EXPIRED_NEVER_RAN reason and the run is re-aggregated.
+type ExpireNeverRanProcessingRun struct {
+	ID            string
+	TenantID      string
+	CreatedBefore time.Time
+	Message       string
+	ExpiredAt     time.Time
+}
+
+// ExpireNeverRanProcessingRunResult tells whether the run was changed; when
+// not, NotExpiredReason says why (it changed since it was selected).
+type ExpireNeverRanProcessingRunResult struct {
+	Expired bool
+	// Empty is true when the run had no execution and was closed as NO_RESULT.
+	Empty            bool
+	NotExpiredReason string
+	Executions       int
+	Run              entity.InferenceIngestionProcessingRun
+}
+
 type ListInferenceIngestionProcessingRunsForReconciliation struct {
 	ActiveStaleBefore time.Time `db:"active_stale_before"`
 	Limit             int       `db:"limit"`

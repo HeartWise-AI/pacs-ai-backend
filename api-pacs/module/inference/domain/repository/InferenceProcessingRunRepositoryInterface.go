@@ -35,6 +35,12 @@ type InferenceProcessingRunRepositoryInterface interface {
 	// ListProcessingRunsForReconciliation returns bounded active stale or attention-required work.
 	// Terminal history is never continuously polled.
 	ListProcessingRunsForReconciliation(ctx context.Context, data types.ListInferenceIngestionProcessingRunsForReconciliation) ([]entity.InferenceIngestionProcessingRun, error)
+	// ListNeverRanAutomaticProcessingRuns returns a bounded batch of old
+	// automatic runs that are not finished and whose executions all never ran.
+	ListNeverRanAutomaticProcessingRuns(ctx context.Context, data types.ListNeverRanAutomaticProcessingRuns) ([]entity.InferenceIngestionProcessingRun, error)
+	// ExpireNeverRanProcessingRun atomically re-checks and closes one such run.
+	// No row is deleted.
+	ExpireNeverRanProcessingRun(ctx context.Context, data types.ExpireNeverRanProcessingRun) (types.ExpireNeverRanProcessingRunResult, error)
 	// ListLegacyProcessingRunBackfillRows returns only run-less execution metadata needed by the read-only dry run.
 	ListLegacyProcessingRunBackfillRows(ctx context.Context) ([]types.LegacyProcessingRunBackfillRow, error)
 	// LoadLegacyProcessingRunVerificationSnapshot reads runs, executions, and orphans at one point in time.

@@ -83,6 +83,7 @@ type ServiceContainerInterface interface {
 	RegisterIAMRESTCommandController() iamREST.IAMCommandController
 	RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController
 	RegisterInferenceRESTQueryController() inferenceREST.InferenceQueryController
+	RegisterInferenceRESTPredictionsController() inferenceREST.InferencePredictionsController
 	RegisterLeadRESTCommandController() leadREST.LeadCommandController
 	RegisterOrchestratorRESTController() orchestratorREST.OrchestratorController
 	RegisterOrthancRESTCommandController() orthancREST.OrthancCommandController
@@ -233,6 +234,19 @@ func (k *kernel) RegisterInferenceRESTQueryController() inferenceREST.InferenceQ
 	return controller
 }
 
+// RegisterInferenceRESTPredictionsController wires the AI Predictions page.
+func (k *kernel) RegisterInferenceRESTPredictionsController() inferenceREST.InferencePredictionsController {
+	return inferenceREST.InferencePredictionsController{
+		InferencePredictionsServiceInterface: &inferenceService.InferencePredictionsService{
+			Repository: &inferenceRepository.InferencePredictionsRepository{
+				PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
+			},
+			Users:        k.userQueryServiceContainer(),
+			StalledAfter: inferenceService.ConfiguredPredictionsStalledAfter(),
+		},
+	}
+}
+
 // RegisterOrchestratorRESTController performs dependency injection to the RegisterOrchestratorRESTController
 func (k *kernel) RegisterOrchestratorRESTController() orchestratorREST.OrchestratorController {
 	service := k.orchestratorServiceContainer()
@@ -362,6 +376,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		StudyServiceDispatchSemaphore:           make(chan struct{}, configuredStudyServiceDispatchConcurrency()),
 		WorklistNotificationPublisherInterface:  worklistNotificationBroker,
 		ProcessingReconciliationMetricsRecorder: &inferenceService.LoggingProcessingReconciliationMetricsRecorder{},
+		AutoRunExpireAfter:                      inferenceService.ConfiguredAutoRunExpireAfter(),
 		WorklistNotificationAudienceRepository:  processingRunRepository,
 		RequireProcessingRunID:                  configuredProcessingRunIDRequirement(),
 		ModelManager:                            managedPredictor,

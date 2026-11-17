@@ -119,6 +119,31 @@ func mountInferenceWorklistRoutes(
 	})
 }
 
+type inferencePredictionsHandlers struct {
+	list    http.HandlerFunc
+	history http.HandlerFunc
+	export  http.HandlerFunc
+}
+
+// mountInferencePredictionsRoutes exposes the AI Predictions page to every
+// authenticated tenant user who accepted the policies. The "all" view is
+// limited to workspace administrators by the service, which reads the role
+// from the authenticated request context; "mine" always means that user.
+func mountInferencePredictionsRoutes(
+	r chi.Router,
+	authenticate func(http.Handler) http.Handler,
+	acceptPolicy func(http.Handler) http.Handler,
+	handlers inferencePredictionsHandlers,
+) {
+	r.Group(func(r chi.Router) {
+		r.Use(authenticate)
+		r.Use(acceptPolicy)
+		r.Get("/predictions", handlers.list)
+		r.Get("/predictions/export.csv", handlers.export)
+		r.Get("/predictions/{studyInstanceUID}/history", handlers.history)
+	})
+}
+
 var (
 	m          *router
 	routerOnce sync.Once
@@ -134,6 +159,7 @@ func (router *router) InitRouter() *chi.Mux {
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
 	inferenceCommandController := interfaces.ServiceContainer().RegisterInferenceRESTCommandController()
 	inferenceQueryController := interfaces.ServiceContainer().RegisterInferenceRESTQueryController()
+	inferencePredictionsController := interfaces.ServiceContainer().RegisterInferenceRESTPredictionsController()
 	leadCommandController := interfaces.ServiceContainer().RegisterLeadRESTCommandController()
 	orchestratorController := interfaces.ServiceContainer().RegisterOrchestratorRESTController()
 	orthancProxy := interfaces.ServiceContainer().RegisterOrthancProxy()
@@ -323,6 +349,17 @@ func (router *router) InitRouter() *chi.Mux {
 						getStudyJobReport:  inferenceQueryController.GetStudyJobReport,
 						runStudyModel:      inferenceCommandController.RunStudyModel,
 						cancelRun:          inferenceCommandController.CancelProcessingRun,
+					},
+				)
+
+				mountInferencePredictionsRoutes(
+					r,
+					iamMiddleware.TokenSessionAuthGuard,
+					iamMiddleware.PolicyAcceptanceGuard,
+					inferencePredictionsHandlers{
+						list:    inferencePredictionsController.ListPredictions,
+						history: inferencePredictionsController.GetPredictionModelHistory,
+						export:  inferencePredictionsController.ExportPredictions,
 					},
 				)
 			})
