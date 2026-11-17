@@ -14,11 +14,11 @@ import (
 
 const (
 	// DefaultAutoRunExpireAfter is how long after its creation an automatic run
-	// whose executions never ran is closed (30 days).
+	// stops waiting for its unfinished executions (30 days).
 	DefaultAutoRunExpireAfter = 720 * time.Hour
 	// AutoRunExpireAfterEnv sets that age in hours. The study images are
 	// removed from the local image store about 24 hours after they arrive, so
-	// an execution that has not started by then can never run: 48 is the
+	// an execution that has not completed by then can never run: 48 is the
 	// meaningful value with that retention. The default keeps 30 days.
 	AutoRunExpireAfterEnv = "INFERENCE_AUTO_RUN_EXPIRE_AFTER_HOURS"
 	// autoRunExpiryBatchLimit bounds the runs closed in one reconciliation cycle.
@@ -41,13 +41,13 @@ func ConfiguredAutoRunExpireAfter() time.Duration {
 }
 
 // autoRunExpiryMessage is stored as the skip reason message of each closed
-// execution, e.g. "Expired: never ran within 30 days (automatic)".
+// execution, e.g. "Expired: did not complete within 30 days (automatic)".
 func autoRunExpiryMessage(expireAfter time.Duration) string {
 	hours := int(expireAfter.Hours())
 	if hours >= 48 && hours%24 == 0 {
-		return fmt.Sprintf("Expired: never ran within %d days (automatic)", hours/24)
+		return fmt.Sprintf("Expired: did not complete within %d days (automatic)", hours/24)
 	}
-	return fmt.Sprintf("Expired: never ran within %d hours (automatic)", hours)
+	return fmt.Sprintf("Expired: did not complete within %d hours (automatic)", hours)
 }
 
 // AutoRunExpiryCycle summarises one expiry pass.
@@ -59,12 +59,13 @@ type AutoRunExpiryCycle struct {
 	Failed     int
 }
 
-// expireNeverRanAutomaticRuns closes the automatic runs (AUTO, LEGACY_IMPORT)
-// older than AutoRunExpireAfter whose executions are all still pending or
-// queued without a study-service job: each execution is marked skipped with
-// the EXPIRED_NEVER_RAN reason and the run becomes terminal through the
-// ordinary aggregation. Manual and viewer runs, and runs with any execution
-// that was dispatched, started or finished, are never touched; no row is
+// expireNeverRanAutomaticRuns stops automatic runs (AUTO, LEGACY_IMPORT)
+// older than AutoRunExpireAfter from waiting for ever: every execution still
+// pending or queued (with or without a study-service job) and not updated for
+// that long is marked skipped with the EXPIRED_NEVER_RAN reason; completed,
+// failed and skipped executions are untouched, and the run is re-aggregated
+// (terminal with the usual outcome, e.g. PARTIAL_SUCCESS). Manual and viewer
+// runs, and runs with a running execution, are never touched; no row is
 // deleted. At most autoRunExpiryBatchLimit runs are closed per cycle; the
 // rest follow in the next cycles. A zero AutoRunExpireAfter disables it.
 func (service *InferenceCommandService) expireNeverRanAutomaticRuns(ctx context.Context, now time.Time) AutoRunExpiryCycle {

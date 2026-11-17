@@ -29,8 +29,8 @@ const (
 	// queued without a study-service job long after its run was created; the
 	// dispatcher will not pick it up again, so it needs to be closed.
 	PredictionStateStalled PredictionState = "stalled"
-	// PredictionStateExpired: an automatic execution that never ran and was
-	// closed by the expiry of automatic runs (INFERENCE_AUTO_RUN_EXPIRE_AFTER_HOURS).
+	// PredictionStateExpired: an automatic execution that did not complete and
+	// was closed by the expiry of automatic runs (INFERENCE_AUTO_RUN_EXPIRE_AFTER_HOURS).
 	PredictionStateExpired   PredictionState = "expired"
 	PredictionStateRunning   PredictionState = "running"
 	PredictionStateCompleted PredictionState = "completed"

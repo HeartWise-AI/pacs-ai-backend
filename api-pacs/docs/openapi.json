@@ -2850,7 +2850,7 @@
                                             "cancelled",
                                             "expired"
                                           ],
-                                          "description": "waiting: not dispatched because the exam is still receiving images. stalled: never ran; still pending or queued without a study-service job more than INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS (default 24) after the run was created. expired: an automatic execution that never ran, closed by INFERENCE_AUTO_RUN_EXPIRE_AFTER_HOURS (skip reason EXPIRED_NEVER_RAN)."
+                                          "description": "waiting: not dispatched because the exam is still receiving images. stalled: never ran; still pending or queued without a study-service job more than INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS (default 24) after the run was created. expired: an automatic execution that did not complete and was closed by INFERENCE_AUTO_RUN_EXPIRE_AFTER_HOURS (skip reason EXPIRED_NEVER_RAN)."
                                         },
                                         "status": {
                                           "type": "string",
@@ -3233,7 +3233,7 @@
                                   "cancelled",
                                   "expired"
                                 ],
-                                "description": "waiting: not dispatched because the exam is still receiving images. stalled: never ran; still pending or queued without a study-service job more than INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS (default 24) after the run was created. expired: an automatic execution that never ran, closed by INFERENCE_AUTO_RUN_EXPIRE_AFTER_HOURS (skip reason EXPIRED_NEVER_RAN)."
+                                "description": "waiting: not dispatched because the exam is still receiving images. stalled: never ran; still pending or queued without a study-service job more than INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS (default 24) after the run was created. expired: an automatic execution that did not complete and was closed by INFERENCE_AUTO_RUN_EXPIRE_AFTER_HOURS (skip reason EXPIRED_NEVER_RAN)."
                               },
                               "status": {
                                 "type": "string",

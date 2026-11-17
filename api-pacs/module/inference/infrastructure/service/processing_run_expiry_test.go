@@ -64,7 +64,7 @@ func TestAutoRunExpiryClosesTheSelectedRunsAndCountsTheOutcome(t *testing.T) {
 		selected: []entity.InferenceIngestionProcessingRun{expiryRun("run-1"), expiryRun("run-2"), expiryRun("run-3")},
 		results: map[string]repositoryTypes.ExpireNeverRanProcessingRunResult{
 			"run-1": {Expired: true, Executions: 2, Run: terminal},
-			"run-2": {NotExpiredReason: "an execution was dispatched, started or finished"},
+			"run-2": {NotExpiredReason: "an execution is running"},
 		},
 		errs: map[string]error{"run-3": errors.New(apiError.DatabaseError)},
 	}
@@ -80,7 +80,7 @@ func TestAutoRunExpiryClosesTheSelectedRunsAndCountsTheOutcome(t *testing.T) {
 	require.Len(t, repository.expireInputs, 3, "a failed run does not stop the others")
 	require.Equal(t, repositoryTypes.ExpireNeverRanProcessingRun{
 		ID: "run-1", TenantID: "tenant-a", CreatedBefore: now.Add(-720 * time.Hour),
-		Message: "Expired: never ran within 30 days (automatic)", ExpiredAt: now,
+		Message: "Expired: did not complete within 30 days (automatic)", ExpiredAt: now,
 	}, repository.expireInputs[0])
 }
 
@@ -96,7 +96,7 @@ func TestAutoRunExpiryIsBoundedPerCycle(t *testing.T) {
 	cycle := service.expireNeverRanAutomaticRuns(context.Background(), time.Now())
 	require.Equal(t, autoRunExpiryBatchLimit, cycle.Expired)
 	require.Len(t, repository.expireInputs, autoRunExpiryBatchLimit)
-	require.Equal(t, "Expired: never ran within 2 days (automatic)", repository.expireInputs[0].Message)
+	require.Equal(t, "Expired: did not complete within 2 days (automatic)", repository.expireInputs[0].Message)
 }
 
 func TestAutoRunExpiryIsDisabledWithoutAnAgeAndSurvivesAListError(t *testing.T) {
@@ -136,7 +136,7 @@ func TestAutoRunExpireAfterConfiguration(t *testing.T) {
 		t.Setenv(AutoRunExpireAfterEnv, value)
 		require.Equal(t, expected, ConfiguredAutoRunExpireAfter(), value)
 	}
-	require.Equal(t, "Expired: never ran within 30 days (automatic)", autoRunExpiryMessage(720*time.Hour))
-	require.Equal(t, "Expired: never ran within 36 hours (automatic)", autoRunExpiryMessage(36*time.Hour))
-	require.Equal(t, "Expired: never ran within 24 hours (automatic)", autoRunExpiryMessage(24*time.Hour))
+	require.Equal(t, "Expired: did not complete within 30 days (automatic)", autoRunExpiryMessage(720*time.Hour))
+	require.Equal(t, "Expired: did not complete within 36 hours (automatic)", autoRunExpiryMessage(36*time.Hour))
+	require.Equal(t, "Expired: did not complete within 24 hours (automatic)", autoRunExpiryMessage(24*time.Hour))
 }

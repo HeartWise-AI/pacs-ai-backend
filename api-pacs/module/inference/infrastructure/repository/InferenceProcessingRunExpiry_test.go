@@ -12,19 +12,22 @@ import (
 	"api-pacs/module/inference/infrastructure/repository/types"
 )
 
-func TestNeverRanAutomaticRunsQuerySelectsOnlyAutomaticRunsThatNeverRan(t *testing.T) {
+func TestExpirableAutomaticRunsQuerySelectsOldAutomaticRunsWithWaitingExecutions(t *testing.T) {
 	for _, fragment := range []string{
 		"runs.phase <> 'TERMINAL'",
 		"runs.run_trigger IN ('AUTO', 'LEGACY_IMPORT')",
 		"runs.created_at < :created_before",
+		"CAST(jobs.status AS text) = 'running'",
 		"CAST(jobs.status AS text) IN ('pending', 'queued')",
-		"NULLIF(BTRIM(jobs.study_service_job_id), '') IS NULL",
+		"jobs.updated_at < :created_before",
 		"ORDER BY runs.created_at ASC, runs.id ASC",
 		"LIMIT :limit",
 	} {
-		require.Contains(t, neverRanAutomaticRunsQuery, fragment)
+		require.Contains(t, expirableAutomaticRunsQuery, fragment)
 	}
-	require.NotContains(t, neverRanAutomaticRunsQuery, "DELETE")
+	require.NotContains(t, expirableAutomaticRunsQuery, "DELETE")
+	require.NotContains(t, expirableAutomaticRunsQuery, "study_service_job_id",
+		"a queued execution with a study-service job expires too")
 
 	repository := InferenceProcessingRunRepository{PostgresSQLDBHandlerInterface: &processingRunTestHandler{}}
 	_, err := repository.ListNeverRanAutomaticProcessingRuns(context.Background(), types.ListNeverRanAutomaticProcessingRuns{Limit: 1})
@@ -33,34 +36,56 @@ func TestNeverRanAutomaticRunsQuerySelectsOnlyAutomaticRunsThatNeverRan(t *testi
 	require.EqualError(t, err, apiError.InvalidPayload)
 }
 
-func TestNeverRanExpiryRefusal(t *testing.T) {
+func TestExpirableExecutions(t *testing.T) {
 	createdBefore := time.Date(2026, 10, 17, 0, 0, 0, 0, time.UTC)
-	data := types.ExpireNeverRanProcessingRun{CreatedBefore: createdBefore}
+	longAgo, recently := createdBefore.Add(-time.Hour), createdBefore.Add(time.Hour)
 	run := entity.InferenceIngestionProcessingRun{
 		RunTrigger: entity.InferenceIngestionProcessingRunTriggerAuto, Phase: entity.InferenceIngestionProcessingRunPhaseQueued,
 		CreatedAt: createdBefore.Add(-time.Second),
 	}
-	pending := entity.InferenceIngestionProcessingJob{Status: entity.InferenceIngestionProcessingJobStatusPending}
-	running := entity.InferenceIngestionProcessingJob{Status: entity.InferenceIngestionProcessingJobStatusRunning}
-	require.Equal(t, "", neverRanExpiryRefusal(run, []entity.InferenceIngestionProcessingJob{pending}, data))
+	job := func(status entity.InferenceIngestionProcessingJobStatus, updated time.Time, studyServiceJobID string) entity.InferenceIngestionProcessingJob {
+		execution := entity.InferenceIngestionProcessingJob{Status: status, UpdatedAt: updated}
+		if studyServiceJobID != "" {
+			execution.StudyServiceJobID = &studyServiceJobID
+		}
+		return execution
+	}
+	completed := job(entity.InferenceIngestionProcessingJobStatusCompleted, longAgo, "ss-1")
+	pending := job(entity.InferenceIngestionProcessingJobStatusPending, longAgo, "")
+	queuedDispatched := job(entity.InferenceIngestionProcessingJobStatusQueued, longAgo, "ss-lost")
+	queuedRecent := job(entity.InferenceIngestionProcessingJobStatusQueued, recently, "ss-2")
+	running := job(entity.InferenceIngestionProcessingJobStatusRunning, longAgo, "ss-3")
+
+	targets, reason := expirableExecutions(run, []entity.InferenceIngestionProcessingJob{completed, pending, queuedDispatched, queuedRecent}, createdBefore)
+	require.Empty(t, reason)
+	require.Equal(t, []int{1, 2}, targets, "completed and recently updated executions stay")
 
 	legacy := run
 	legacy.RunTrigger = entity.InferenceIngestionProcessingRunTriggerLegacyImport
-	require.Equal(t, "", neverRanExpiryRefusal(legacy, []entity.InferenceIngestionProcessingJob{pending}, data))
+	targets, _ = expirableExecutions(legacy, []entity.InferenceIngestionProcessingJob{pending}, createdBefore)
+	require.Equal(t, []int{0}, targets)
+
 	for _, trigger := range []entity.InferenceIngestionProcessingRunTrigger{
 		entity.InferenceIngestionProcessingRunTriggerViewerRequest, entity.InferenceIngestionProcessingRunTriggerManualReprocess,
 	} {
 		manual := run
 		manual.RunTrigger = trigger
-		require.Equal(t, "run was not started automatically", neverRanExpiryRefusal(manual, []entity.InferenceIngestionProcessingJob{pending}, data))
+		_, reason = expirableExecutions(manual, []entity.InferenceIngestionProcessingJob{pending}, createdBefore)
+		require.Equal(t, "run was not started automatically", reason)
 	}
 	atLimit := run
 	atLimit.CreatedAt = createdBefore
-	require.Equal(t, "run is not old enough", neverRanExpiryRefusal(atLimit, []entity.InferenceIngestionProcessingJob{pending}, data))
-	require.Equal(t, "an execution was dispatched, started or finished",
-		neverRanExpiryRefusal(run, []entity.InferenceIngestionProcessingJob{pending, running}, data))
-	require.Equal(t, "run has no executions", neverRanExpiryRefusal(run, nil, data))
+	_, reason = expirableExecutions(atLimit, []entity.InferenceIngestionProcessingJob{pending}, createdBefore)
+	require.Equal(t, "run is not old enough", reason)
+	_, reason = expirableExecutions(run, []entity.InferenceIngestionProcessingJob{pending, running}, createdBefore)
+	require.Equal(t, "an execution is running", reason)
+	_, reason = expirableExecutions(run, []entity.InferenceIngestionProcessingJob{completed, queuedRecent}, createdBefore)
+	require.Equal(t, "no waiting execution old enough", reason)
+	atBoundary := job(entity.InferenceIngestionProcessingJobStatusPending, createdBefore, "")
+	_, reason = expirableExecutions(run, []entity.InferenceIngestionProcessingJob{atBoundary}, createdBefore)
+	require.Equal(t, "no waiting execution old enough", reason)
 	terminal := run
 	terminal.Phase = entity.InferenceIngestionProcessingRunPhaseTerminal
-	require.Equal(t, "run is finished", neverRanExpiryRefusal(terminal, []entity.InferenceIngestionProcessingJob{pending}, data))
+	_, reason = expirableExecutions(terminal, []entity.InferenceIngestionProcessingJob{pending}, createdBefore)
+	require.Equal(t, "run is finished", reason)
 }

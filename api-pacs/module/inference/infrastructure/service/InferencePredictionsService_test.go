@@ -566,7 +566,7 @@ func TestExportPredictionsShowsStalledRuns(t *testing.T) {
 func TestExpiredExecutionsAreShownCountedAndNotActive(t *testing.T) {
 	expired := stalledPredictionRow(entity.InferenceIngestionProcessingJobStatusSkipped, nil, 800*time.Hour)
 	code := entity.InferenceIngestionProcessingJobSkipReasonExpiredNeverRan
-	expired.SkipReasonCode, expired.SkipReasonMessage = &code, strPointer("Expired: never ran within 30 days (automatic)")
+	expired.SkipReasonCode, expired.SkipReasonMessage = &code, strPointer("Expired: did not complete within 30 days (automatic)")
 	expired.RunPhase = entity.InferenceIngestionProcessingRunPhaseTerminal
 	skipped := stalledPredictionRow(entity.InferenceIngestionProcessingJobStatusSkipped, nil, 800*time.Hour)
 	other := entity.InferenceIngestionProcessingJobSkipReasonModelDisabled
@@ -600,5 +600,5 @@ func TestExpiredExecutionsAreShownCountedAndNotActive(t *testing.T) {
 	lines, err := csv.NewReader(&buffer).ReadAll()
 	require.NoError(t, err)
 	require.Equal(t, "expired", lines[1][10])
-	require.Equal(t, "EXPIRED_NEVER_RAN: Expired: never ran within 30 days (automatic)", lines[1][13])
+	require.Equal(t, "EXPIRED_NEVER_RAN: Expired: did not complete within 30 days (automatic)", lines[1][13])
 }

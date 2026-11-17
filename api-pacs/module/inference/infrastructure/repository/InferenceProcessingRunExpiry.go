@@ -4,39 +4,48 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/infrastructure/repository/types"
 )
 
-// neverRanAutomaticRunsQuery selects automatic runs (AUTO, LEGACY_IMPORT)
-// created before :created_before that are not finished, have at least one
-// execution, and whose executions are all pending or queued without a
-// study-service job. A run with any execution that started, finished or was
-// handed to study-service is never selected. Oldest first, bounded.
-const neverRanAutomaticRunsQuery = `
+// expiredRunAttentionCodes are the attention reasons about executions still
+// waiting; once nothing waits any more they no longer apply.
+var expiredRunAttentionCodes = map[string]bool{
+	entity.InferenceIngestionProcessingRunAttentionPendingStale:           true,
+	entity.InferenceIngestionProcessingRunAttentionQueueStale:             true,
+	entity.InferenceIngestionProcessingRunAttentionExpectedJobMissing:     true,
+	entity.InferenceIngestionProcessingRunAttentionStudyServiceJobMissing: true,
+}
+
+// expirableAutomaticRunsQuery selects automatic runs (AUTO, LEGACY_IMPORT)
+// created before :created_before that are not finished, have no running
+// execution, and have at least one pending or queued execution (with or
+// without a study-service job) not updated since :created_before. Oldest
+// first, bounded.
+const expirableAutomaticRunsQuery = `
 	SELECT runs.* FROM ingestion_processing_runs runs
 	WHERE runs.phase <> 'TERMINAL'
 	  AND runs.run_trigger IN ('AUTO', 'LEGACY_IMPORT')
 	  AND runs.created_at < :created_before
-	  AND EXISTS (
-		SELECT 1 FROM ingestion_processing_jobs jobs
-		WHERE jobs.processing_run_id = runs.id
-	  )
 	  AND NOT EXISTS (
 		SELECT 1 FROM ingestion_processing_jobs jobs
 		WHERE jobs.processing_run_id = runs.id
-		  AND NOT (
-			CAST(jobs.status AS text) IN ('pending', 'queued')
-			AND NULLIF(BTRIM(jobs.study_service_job_id), '') IS NULL
-		  )
+		  AND CAST(jobs.status AS text) = 'running'
+	  )
+	  AND EXISTS (
+		SELECT 1 FROM ingestion_processing_jobs jobs
+		WHERE jobs.processing_run_id = runs.id
+		  AND CAST(jobs.status AS text) IN ('pending', 'queued')
+		  AND jobs.updated_at < :created_before
 	  )
 	ORDER BY runs.created_at ASC, runs.id ASC
 	LIMIT :limit`
 
-// ListNeverRanAutomaticProcessingRuns returns a bounded batch of automatic
-// runs that never ran and are older than the expiry.
+// ListNeverRanAutomaticProcessingRuns returns a bounded batch of old
+// automatic runs with executions that are still waiting and can be expired.
 func (repository *InferenceProcessingRunRepository) ListNeverRanAutomaticProcessingRuns(
 	_ context.Context,
 	data types.ListNeverRanAutomaticProcessingRuns,
@@ -45,18 +54,21 @@ func (repository *InferenceProcessingRunRepository) ListNeverRanAutomaticProcess
 	if data.CreatedBefore.IsZero() || data.Limit <= 0 {
 		return nil, errors.New(apiError.InvalidPayload)
 	}
-	err := repository.PostgresSQLDBHandlerInterface.Query(neverRanAutomaticRunsQuery, map[string]interface{}{
+	err := repository.PostgresSQLDBHandlerInterface.Query(expirableAutomaticRunsQuery, map[string]interface{}{
 		"created_before": data.CreatedBefore, "limit": data.Limit,
 	}, &runs)
 	return runs, processingRunError(err)
 }
 
-// ExpireNeverRanProcessingRun closes one automatic run that never ran. Under
-// row locks it re-checks every selection rule (a dispatch may have happened
-// since the run was listed), marks each execution skipped with the
-// EXPIRED_NEVER_RAN reason, and stores the run aggregate, which is then
-// terminal. Nothing is deleted. A run that no longer qualifies is left
-// unchanged and reported with the reason, which makes the call idempotent.
+// ExpireNeverRanProcessingRun closes the waiting executions of one old
+// automatic run. Under row locks it re-checks the run (a callback may have
+// arrived since it was listed), marks each pending or queued execution not
+// updated since CreatedBefore as skipped with the EXPIRED_NEVER_RAN reason,
+// leaves completed, failed, skipped and cancelled executions untouched, and
+// stores the run aggregate (terminal when nothing else waits, with the usual
+// outcome). A run with a running execution is left alone. Nothing is
+// deleted; a run with nothing left to expire is reported unchanged, which
+// makes the call idempotent.
 func (repository *InferenceProcessingRunRepository) ExpireNeverRanProcessingRun(
 	ctx context.Context,
 	data types.ExpireNeverRanProcessingRun,
@@ -90,13 +102,14 @@ func (repository *InferenceProcessingRunRepository) ExpireNeverRanProcessingRun(
 	}
 
 	result := types.ExpireNeverRanProcessingRunResult{Run: run}
-	if reason := neverRanExpiryRefusal(run, executions, data); reason != "" {
+	targets, reason := expirableExecutions(run, executions, data.CreatedBefore)
+	if reason != "" {
 		result.NotExpiredReason = reason
 		return result, nil
 	}
 
 	code := entity.InferenceIngestionProcessingJobSkipReasonExpiredNeverRan
-	for index := range executions {
+	for _, index := range targets {
 		if err = tx.GetContext(ctx, &executions[index], `
 			UPDATE ingestion_processing_jobs SET
 				status = $1,
@@ -108,6 +121,24 @@ func (repository *InferenceProcessingRunRepository) ExpireNeverRanProcessingRun(
 		`, entity.InferenceIngestionProcessingJobStatusSkipped, code, data.Message, data.ExpiredAt,
 			executions[index].ID, data.ID); err != nil {
 			return types.ExpireNeverRanProcessingRunResult{}, processingRunError(err)
+		}
+	}
+
+	// The waiting-execution attention reasons no longer apply once nothing waits.
+	stillWaiting := false
+	for index := range executions {
+		stillWaiting = stillWaiting || !executions[index].Status.IsTerminal()
+	}
+	if !stillWaiting {
+		kept := make(entity.InferenceIngestionProcessingRunAttentionReasons, 0, len(run.AttentionReasons))
+		for _, attention := range run.AttentionReasons {
+			if !expiredRunAttentionCodes[attention.Code] {
+				kept = append(kept, attention)
+			}
+		}
+		if len(kept) != len(run.AttentionReasons) {
+			run.AttentionReasons = kept
+			run.AttentionRequired = len(kept) > 0
 		}
 	}
 
@@ -129,31 +160,39 @@ func (repository *InferenceProcessingRunRepository) ExpireNeverRanProcessingRun(
 	if err = tx.Commit(); err != nil {
 		return types.ExpireNeverRanProcessingRunResult{}, processingRunError(err)
 	}
-	return types.ExpireNeverRanProcessingRunResult{Expired: true, Executions: len(executions), Run: run}, nil
+	return types.ExpireNeverRanProcessingRunResult{Expired: true, Executions: len(targets), Run: run}, nil
 }
 
-// neverRanExpiryRefusal applies the selection rules to the locked rows and
-// returns why the run must not be expired, or "".
-func neverRanExpiryRefusal(
+// expirableExecutions applies the rules to the locked rows: the indexes of
+// the executions to expire, or why the run must be left alone.
+func expirableExecutions(
 	run entity.InferenceIngestionProcessingRun,
 	executions []entity.InferenceIngestionProcessingJob,
-	data types.ExpireNeverRanProcessingRun,
-) string {
+	createdBefore time.Time,
+) ([]int, string) {
 	switch {
 	case run.Phase == entity.InferenceIngestionProcessingRunPhaseTerminal:
-		return "run is finished"
+		return nil, "run is finished"
 	case run.RunTrigger != entity.InferenceIngestionProcessingRunTriggerAuto &&
 		run.RunTrigger != entity.InferenceIngestionProcessingRunTriggerLegacyImport:
-		return "run was not started automatically"
-	case !run.CreatedAt.Before(data.CreatedBefore):
-		return "run is not old enough"
-	case len(executions) == 0:
-		return "run has no executions"
+		return nil, "run was not started automatically"
+	case !run.CreatedAt.Before(createdBefore):
+		return nil, "run is not old enough"
 	}
+	targets := make([]int, 0, len(executions))
 	for index := range executions {
-		if !executions[index].NeverRan() {
-			return "an execution was dispatched, started or finished"
+		execution := &executions[index]
+		switch execution.Status {
+		case entity.InferenceIngestionProcessingJobStatusRunning:
+			return nil, "an execution is running"
+		case entity.InferenceIngestionProcessingJobStatusPending, entity.InferenceIngestionProcessingJobStatusQueued:
+			if execution.UpdatedAt.Before(createdBefore) {
+				targets = append(targets, index)
+			}
 		}
 	}
-	return ""
+	if len(targets) == 0 {
+		return nil, "no waiting execution old enough"
+	}
+	return targets, ""
 }

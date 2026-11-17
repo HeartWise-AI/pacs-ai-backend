@@ -85,43 +85,67 @@ func TestAutoRunExpiryAgainstPostgreSQL(t *testing.T) {
 	type job struct {
 		status            string
 		studyServiceJobID interface{}
+		// updated is how long ago the execution last changed; zero means
+		// when the run was created.
+		updated time.Duration
 	}
 	type run struct {
 		id, trigger, phase string
 		at                 time.Time
+		attention          string
 		jobs               []job
 	}
-	never := job{"pending", nil}
+	pending := job{status: "pending"}
+	old := now.Add(-800 * time.Hour)
+	missingJob := `[{"code":"STUDY_SERVICE_JOB_MISSING"},{"code":"DISPATCH_FAILED"}]`
 	runs := []run{
-		{"exp-auto-old", "AUTO", "QUEUED", now.Add(-800 * time.Hour), []job{never, {"queued", nil}, {"queued", " "}}},
-		{"exp-legacy-old", "LEGACY_IMPORT", "QUEUED", now.Add(-900 * time.Hour), []job{never}},
-		{"exp-viewer-old", "VIEWER_REQUEST", "QUEUED", now.Add(-800 * time.Hour), []job{never}},
-		{"exp-manual-old", "MANUAL_REPROCESS", "QUEUED", now.Add(-800 * time.Hour), []job{never}},
-		{"exp-auto-young", "AUTO", "QUEUED", now.Add(-700 * time.Hour), []job{never}},
-		{"exp-auto-boundary", "AUTO", "QUEUED", createdBefore, []job{never}},
-		{"exp-auto-partial", "AUTO", "QUEUED", now.Add(-800 * time.Hour), []job{{"completed", "ss-1"}, never}},
-		{"exp-auto-gateway-skip", "AUTO", "QUEUED", now.Add(-800 * time.Hour), []job{{"skipped", nil}, never}},
-		{"exp-auto-running", "AUTO", "PROCESSING", now.Add(-800 * time.Hour), []job{{"running", "ss-2"}, never}},
-		{"exp-auto-dispatched", "AUTO", "QUEUED", now.Add(-800 * time.Hour), []job{{"queued", "ss-3"}}},
-		{"exp-auto-terminal", "AUTO", "TERMINAL", now.Add(-800 * time.Hour), []job{{"cancelled", nil}}},
-		{"exp-auto-empty", "AUTO", "QUEUED", now.Add(-800 * time.Hour), nil},
+		// Partial progress: completed + pending + queued with a study-service
+		// job study-service no longer knows.
+		{"exp-auto-partial", "AUTO", "QUEUED", old, "", []job{
+			{status: "completed", studyServiceJobID: "ss-1"}, pending, {status: "queued", studyServiceJobID: "ss-lost"}}},
+		{"exp-auto-failed", "AUTO", "QUEUED", old.Add(time.Minute), "", []job{
+			{status: "completed", studyServiceJobID: "ss-2"}, {status: "failed"}, pending}},
+		{"exp-legacy-old", "LEGACY_IMPORT", "QUEUED", now.Add(-900 * time.Hour), "", []job{pending}},
+		{"exp-auto-attention", "AUTO", "QUEUED", old.Add(2 * time.Minute), missingJob, []job{
+			{status: "queued", studyServiceJobID: "ss-3"}}},
+		// One waiting execution changed recently: only the old one expires.
+		{"exp-auto-mixed", "AUTO", "QUEUED", old.Add(3 * time.Minute), "", []job{
+			pending, {status: "queued", studyServiceJobID: "ss-4", updated: 10 * time.Hour}}},
+		{"exp-auto-recent-callback", "AUTO", "QUEUED", old, "", []job{
+			{status: "queued", studyServiceJobID: "ss-5", updated: 10 * time.Hour}}},
+		{"exp-auto-running", "AUTO", "PROCESSING", old, "", []job{{status: "running", studyServiceJobID: "ss-6"}, pending}},
+		{"exp-viewer-old", "VIEWER_REQUEST", "QUEUED", old, "", []job{pending}},
+		{"exp-manual-old", "MANUAL_REPROCESS", "QUEUED", old, "", []job{{status: "completed"}, pending}},
+		{"exp-auto-young", "AUTO", "QUEUED", now.Add(-700 * time.Hour), "", []job{pending}},
+		{"exp-auto-boundary", "AUTO", "QUEUED", createdBefore, "", []job{pending}},
+		{"exp-auto-terminal", "AUTO", "TERMINAL", old, "", []job{{status: "cancelled"}}},
+		{"exp-auto-empty", "AUTO", "QUEUED", old, "", nil},
 	}
 	for runIndex, fixture := range runs {
+		attention := fixture.attention
+		if attention == "" {
+			attention = "[]"
+		}
 		_, err = database.Exec(`
 			INSERT INTO ingestion_processing_runs (
 				id, tenant_id, study_instance_uid, run_number, run_trigger, phase,
 				attention_required, attention_reasons, version, created_at, updated_at
-			) VALUES ($1, $2, $3, 1, $4, $5, FALSE, '[]', 1, $6, $6)
-		`, fixture.id, tenant, fmt.Sprintf("7.%d", runIndex+1), fixture.trigger, fixture.phase, fixture.at)
+			) VALUES ($1, $2, $3, 1, $4, $5, $6, $7, 1, $8, $8)
+		`, fixture.id, tenant, fmt.Sprintf("7.%d", runIndex+1), fixture.trigger, fixture.phase,
+			attention != "[]", attention, fixture.at)
 		require.NoError(t, err)
 		for jobIndex, execution := range fixture.jobs {
+			updated := fixture.at
+			if execution.updated > 0 {
+				updated = now.Add(-execution.updated)
+			}
 			_, err = database.Exec(`
 				INSERT INTO ingestion_processing_jobs (
 					id, processing_run_id, candidate_id, tenant_id, model_name, status,
 					study_service_job_id, created_at, updated_at
-				) VALUES ($1, $2, 'exp-cand', $3, $4, $5, $6, $7, $7)
+				) VALUES ($1, $2, 'exp-cand', $3, $4, $5, $6, $7, $8)
 			`, fixture.id+"-"+string(rune('a'+jobIndex)), fixture.id, tenant, "model-"+string(rune('a'+jobIndex)),
-				execution.status, execution.studyServiceJobID, fixture.at)
+				execution.status, execution.studyServiceJobID, fixture.at, updated)
 			require.NoError(t, err)
 		}
 	}
@@ -147,76 +171,103 @@ func TestAutoRunExpiryAgainstPostgreSQL(t *testing.T) {
 		}
 		return ids
 	}
-	require.Equal(t, []string{"exp-legacy-old", "exp-auto-old"}, list(200),
-		"automatic, older than the limit, every execution never ran; oldest first")
+	require.Equal(t, []string{
+		"exp-legacy-old", "exp-auto-partial", "exp-auto-failed", "exp-auto-attention", "exp-auto-mixed",
+	}, list(200), "automatic, old enough, nothing running, something waiting for long; oldest first")
 	bounded, err := repository.ListNeverRanAutomaticProcessingRuns(ctx, types.ListNeverRanAutomaticProcessingRuns{
 		CreatedBefore: createdBefore, Limit: 1,
 	})
 	require.NoError(t, err)
 	require.Len(t, bounded, 1, "bounded batch")
 
+	const message = "Expired: did not complete within 30 days (automatic)"
 	expire := func(id string) types.ExpireNeverRanProcessingRunResult {
 		t.Helper()
 		result, err := repository.ExpireNeverRanProcessingRun(ctx, types.ExpireNeverRanProcessingRun{
-			ID: id, TenantID: tenant, CreatedBefore: createdBefore,
-			Message: "Expired: never ran within 30 days (automatic)", ExpiredAt: now,
+			ID: id, TenantID: tenant, CreatedBefore: createdBefore, Message: message, ExpiredAt: now,
 		})
 		require.NoError(t, err)
 		return result
 	}
+	statuses := func(id string) []string {
+		t.Helper()
+		var values []string
+		require.NoError(t, database.Select(&values, `
+			SELECT CAST(status AS text) || COALESCE('/' || skip_reason_code, '')
+			FROM ingestion_processing_jobs WHERE processing_run_id = $1 ORDER BY id`, id))
+		return values
+	}
 
 	// The re-check under lock refuses what the selection leaves out.
 	for id, reason := range map[string]string{
-		"exp-viewer-old":        "run was not started automatically",
-		"exp-manual-old":        "run was not started automatically",
-		"exp-auto-young":        "run is not old enough",
-		"exp-auto-boundary":     "run is not old enough",
-		"exp-auto-partial":      "an execution was dispatched, started or finished",
-		"exp-auto-gateway-skip": "an execution was dispatched, started or finished",
-		"exp-auto-running":      "an execution was dispatched, started or finished",
-		"exp-auto-dispatched":   "an execution was dispatched, started or finished",
-		"exp-auto-terminal":     "run is finished",
-		"exp-auto-empty":        "run has no executions",
+		"exp-viewer-old":           "run was not started automatically",
+		"exp-manual-old":           "run was not started automatically",
+		"exp-auto-young":           "run is not old enough",
+		"exp-auto-boundary":        "run is not old enough",
+		"exp-auto-running":         "an execution is running",
+		"exp-auto-recent-callback": "no waiting execution old enough",
+		"exp-auto-terminal":        "run is finished",
+		"exp-auto-empty":           "no waiting execution old enough",
 	} {
 		result := expire(id)
 		require.False(t, result.Expired, id)
 		require.Equal(t, reason, result.NotExpiredReason, id)
 	}
+	require.Equal(t, []string{"pending"}, statuses("exp-viewer-old"))
+	require.Equal(t, []string{"completed", "pending"}, statuses("exp-manual-old"))
+	require.Equal(t, []string{"running", "pending"}, statuses("exp-auto-running"))
 
-	result := expire("exp-auto-old")
+	// Partial progress: the completed execution stays, the waiting ones expire.
+	result := expire("exp-auto-partial")
 	require.True(t, result.Expired)
-	require.Equal(t, 3, result.Executions)
+	require.Equal(t, 2, result.Executions)
 	require.Equal(t, entity.InferenceIngestionProcessingRunPhaseTerminal, result.Run.Phase)
-	require.Equal(t, entity.InferenceIngestionProcessingRunOutcomeNoResult, *result.Run.Outcome)
+	require.Equal(t, entity.InferenceIngestionProcessingRunOutcomeSuccessWithSkips, *result.Run.Outcome)
 	require.EqualValues(t, 2, result.Run.Version)
-
-	executions, err := (&InferenceProcessingRunRepository{PostgresSQLDBHandlerInterface: &expiryIntegrationHandler{database: database}}).
-		ListProcessingRunExecutions(ctx, tenant, "exp-auto-old")
+	require.Equal(t, []string{"completed", "skipped/EXPIRED_NEVER_RAN", "skipped/EXPIRED_NEVER_RAN"}, statuses("exp-auto-partial"))
+	executions, err := repository.ListProcessingRunExecutions(ctx, tenant, "exp-auto-partial")
 	require.NoError(t, err)
-	require.Len(t, executions, 3)
 	for _, execution := range executions {
-		require.Equal(t, entity.InferenceIngestionProcessingJobStatusSkipped, execution.Status)
-		require.True(t, execution.IsExpiredNeverRan())
-		require.Equal(t, "Expired: never ran within 30 days (automatic)", *execution.SkipReasonMessage)
-		require.NotNil(t, execution.CompletedAt)
+		if execution.IsExpiredNeverRan() {
+			require.Equal(t, message, *execution.SkipReasonMessage)
+			require.NotNil(t, execution.CompletedAt)
+		}
 	}
+	require.Equal(t, "ss-lost", *executions[2].StudyServiceJobID, "the study-service job id is kept for the audit trail")
+
+	failed := expire("exp-auto-failed")
+	require.True(t, failed.Expired)
+	require.Equal(t, entity.InferenceIngestionProcessingRunOutcomePartialSuccess, *failed.Run.Outcome)
+	require.Equal(t, []string{"completed", "failed", "skipped/EXPIRED_NEVER_RAN"}, statuses("exp-auto-failed"))
+
+	legacy := expire("exp-legacy-old")
+	require.True(t, legacy.Expired)
+	require.Equal(t, entity.InferenceIngestionProcessingRunOutcomeNoResult, *legacy.Run.Outcome)
+
+	// The waiting-execution attention reasons go with the waiting executions.
+	attention := expire("exp-auto-attention")
+	require.True(t, attention.Expired)
+	require.Equal(t, []string{entity.InferenceIngestionProcessingRunAttentionDispatchFailed},
+		[]string{attention.Run.AttentionReasons[0].Code})
+	require.Len(t, attention.Run.AttentionReasons, 1)
+	require.True(t, attention.Run.AttentionRequired)
+
+	// Only the old waiting execution expires; the run keeps waiting for the other.
+	mixed := expire("exp-auto-mixed")
+	require.True(t, mixed.Expired)
+	require.Equal(t, 1, mixed.Executions)
+	require.NotEqual(t, entity.InferenceIngestionProcessingRunPhaseTerminal, mixed.Run.Phase)
+	require.Equal(t, []string{"skipped/EXPIRED_NEVER_RAN", "queued"}, statuses("exp-auto-mixed"))
 
 	// Idempotent: a second pass changes nothing.
-	again := expire("exp-auto-old")
+	again := expire("exp-auto-partial")
 	require.False(t, again.Expired)
 	require.Equal(t, "run is finished", again.NotExpiredReason)
 	require.EqualValues(t, 2, again.Run.Version)
-	require.Equal(t, []string{"exp-legacy-old"}, list(200))
-	require.True(t, expire("exp-legacy-old").Expired)
+	require.Equal(t, "no waiting execution old enough", expire("exp-auto-mixed").NotExpiredReason)
 	require.Empty(t, list(200))
 
-	// Untouched runs keep their state, and nothing was deleted.
-	var untouched []string
-	require.NoError(t, database.Select(&untouched, `
-		SELECT DISTINCT processing_run_id FROM ingestion_processing_jobs
-		WHERE tenant_id = $1 AND skip_reason_code = 'EXPIRED_NEVER_RAN' ORDER BY 1`, tenant))
-	require.Equal(t, []string{"exp-auto-old", "exp-legacy-old"}, untouched)
 	runsAfter, jobsAfter := countRows()
-	require.Equal(t, runsBefore, runsAfter)
-	require.Equal(t, jobsBefore, jobsAfter)
+	require.Equal(t, runsBefore, runsAfter, "nothing is deleted")
+	require.Equal(t, jobsBefore, jobsAfter, "nothing is deleted")
 }
