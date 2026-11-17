@@ -20,6 +20,40 @@ func manualCandidateBatch() []types.UpsertIngestionCandidate {
 	}
 }
 
+func TestUpsertIngestionCandidatesIsAtomic(t *testing.T) {
+	t.Run("commit", func(t *testing.T) {
+		database, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer database.Close()
+
+		mock.ExpectBegin()
+		for range manualCandidateBatch() {
+			mock.ExpectExec("INSERT INTO ingestion_candidates").WillReturnResult(sqlmock.NewResult(0, 1))
+		}
+		mock.ExpectCommit()
+
+		repository := &InferenceCommandRepository{PostgresSQLDBHandlerInterface: &processingRunTestHandler{db: sqlx.NewDb(database, "sqlmock")}}
+		require.NoError(t, repository.UpsertIngestionCandidates(context.Background(), manualCandidateBatch()))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("rollback", func(t *testing.T) {
+		database, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer database.Close()
+
+		mock.ExpectBegin()
+		mock.ExpectExec("INSERT INTO ingestion_candidates").WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectExec("INSERT INTO ingestion_candidates").WillReturnError(errors.New("write failed"))
+		mock.ExpectRollback()
+
+		repository := &InferenceCommandRepository{PostgresSQLDBHandlerInterface: &processingRunTestHandler{db: sqlx.NewDb(database, "sqlmock")}}
+		err = repository.UpsertIngestionCandidates(context.Background(), manualCandidateBatch())
+		require.EqualError(t, err, apiError.DatabaseError)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 func TestUpsertRetrievedIngestionCandidatesCommitsCompleteBatch(t *testing.T) {
 	database, mock, err := sqlmock.New()
 	require.NoError(t, err)

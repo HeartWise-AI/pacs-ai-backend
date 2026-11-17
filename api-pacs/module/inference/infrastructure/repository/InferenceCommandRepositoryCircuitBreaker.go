@@ -342,6 +342,32 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) UpsertIngestionCandi
 	}
 }
 
+// UpsertIngestionCandidates atomically publishes a complete candidate bootstrap.
+func (repository *InferenceCommandRepositoryCircuitBreaker) UpsertIngestionCandidates(ctx context.Context, data []types.UpsertIngestionCandidate) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("upsert_ingestion_candidates", config.Settings())
+	errors := hystrix.Go("upsert_ingestion_candidates", func() error {
+		err := repository.InferenceCommandRepositoryInterface.UpsertIngestionCandidates(ctx, data)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // UpsertRetrievedIngestionCandidates atomically publishes a complete local bootstrap.
 func (repository *InferenceCommandRepositoryCircuitBreaker) UpsertRetrievedIngestionCandidates(ctx context.Context, data []types.UpsertIngestionCandidate) error {
 	output := make(chan bool, 1)

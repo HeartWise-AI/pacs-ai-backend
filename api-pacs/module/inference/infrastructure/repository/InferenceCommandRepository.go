@@ -425,6 +425,33 @@ func ingestionCandidateUpsertData(data types.UpsertIngestionCandidate) map[strin
 	}
 }
 
+// UpsertIngestionCandidates publishes a complete candidate bootstrap in one
+// transaction without claiming that the studies have already been retrieved.
+func (repository *InferenceCommandRepository) UpsertIngestionCandidates(ctx context.Context, data []types.UpsertIngestionCandidate) error {
+	if len(data) == 0 {
+		return errors.New(apiError.InvalidPayload)
+	}
+	tx, err := repository.PostgresSQLDBHandlerInterface.Begin()
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, item := range data {
+		if _, err = tx.NamedExecContext(ctx, ingestionCandidateUpsertStatement(), ingestionCandidateUpsertData(item)); err != nil {
+			log.Println(err)
+			return errors.New(apiError.DatabaseError)
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
 // UpsertRetrievedIngestionCandidates publishes a complete manual bootstrap in
 // one transaction. A failed write cannot leave a partial candidate set visible
 // to another reprocess request.

@@ -247,7 +247,7 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 	})
 	if trigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess &&
 		(err != nil && err.Error() == apiError.MissingRecord || err == nil && len(candidates) == 0) {
-		candidates, err = service.bootstrapLocalManualStudyCandidates(ctx, tenantID, studyInstanceUID)
+		candidates, err = service.bootstrapManualStudyCandidates(ctx, tenantID, studyInstanceUID)
 	}
 	if err != nil {
 		return types.CreateStudyProcessingRunResult{}, err
