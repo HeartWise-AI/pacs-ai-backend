@@ -205,7 +205,10 @@ func TestCreateManualStudyProcessingRunReconcilesCurrentModelSet(t *testing.T) {
 			dispatchCall: dispatchCalls, response: serviceTypes.DispatchStudyResponse{JobID: "study-service-job"},
 			echoManualCorrelation: true,
 		},
-		StudyServiceDispatchSemaphore: make(chan struct{}, 2),
+		// This test verifies candidate reconciliation, not concurrent dispatch.
+		// Serialize the asynchronous dispatches because the shared in-memory
+		// repository and dispatcher test doubles are intentionally lock-free.
+		StudyServiceDispatchSemaphore: make(chan struct{}, 1),
 	}
 	configureReadyInferenceContainer(service)
 	userID := "user-a"
