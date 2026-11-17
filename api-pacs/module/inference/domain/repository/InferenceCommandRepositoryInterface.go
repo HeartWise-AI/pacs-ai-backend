@@ -46,6 +46,9 @@ type InferenceCommandRepositoryInterface interface {
 	RestoreInferenceModelRegistration(ctx context.Context, data types.RestoreInferenceModelRegistration) error
 	// UpsertIngestionCandidate upserts an ingestion candidate
 	UpsertIngestionCandidate(data types.UpsertIngestionCandidate) error
+	// UpsertIngestionCandidates atomically creates or refreshes a complete
+	// candidate set without advancing its retrieval state.
+	UpsertIngestionCandidates(ctx context.Context, data []types.UpsertIngestionCandidate) error
 	// UpsertRetrievedIngestionCandidates atomically creates or refreshes a complete
 	// set of local candidates and marks them retrieved.
 	UpsertRetrievedIngestionCandidates(ctx context.Context, data []types.UpsertIngestionCandidate) error

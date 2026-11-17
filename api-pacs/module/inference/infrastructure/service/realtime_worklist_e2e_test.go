@@ -253,11 +253,18 @@ func (state *realtimeWorklistE2EState) UpsertIngestionCandidate(data repositoryT
 	return nil
 }
 
-func (state *realtimeWorklistE2EState) UpsertRetrievedIngestionCandidates(_ context.Context, data []repositoryTypes.UpsertIngestionCandidate) error {
+func (state *realtimeWorklistE2EState) UpsertIngestionCandidates(_ context.Context, data []repositoryTypes.UpsertIngestionCandidate) error {
 	for _, item := range data {
 		if err := state.UpsertIngestionCandidate(item); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (state *realtimeWorklistE2EState) UpsertRetrievedIngestionCandidates(ctx context.Context, data []repositoryTypes.UpsertIngestionCandidate) error {
+	if err := state.UpsertIngestionCandidates(ctx, data); err != nil {
+		return err
 	}
 	local := string(candidateRetrievalOutcomeLocal)
 	for _, item := range data {

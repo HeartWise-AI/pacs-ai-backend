@@ -12,6 +12,8 @@ import (
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
+	orthancApplication "api-pacs/module/orthanc/application"
+	orthancServiceTypes "api-pacs/module/orthanc/infrastructure/service/types"
 )
 
 type manualBootstrapOrthancAPI struct {
@@ -27,6 +29,29 @@ func (api *manualBootstrapOrthancAPI) FindLocalResources(
 ) ([]orthancAPITypes.GetLocalResourceResponse, error) {
 	api.requests = append(api.requests, request)
 	return api.resources, api.err
+}
+
+type manualBootstrapOrthancQuery struct {
+	orthancApplication.OrthancQueryServiceInterface
+	studies  map[string][]orthancAPITypes.QueryModalityStudyAnswersResponse
+	err      error
+	requests []orthancServiceTypes.FindModalityStudies
+}
+
+func (query *manualBootstrapOrthancQuery) FindModalityStudies(
+	_ context.Context,
+	request orthancServiceTypes.FindModalityStudies,
+) ([]orthancAPITypes.QueryModalityStudyAnswersResponse, string, error) {
+	query.requests = append(query.requests, request)
+	return query.studies[request.ModalityID], "query-1", query.err
+}
+
+func remoteXAStudy() orthancAPITypes.QueryModalityStudyAnswersResponse {
+	return orthancAPITypes.QueryModalityStudyAnswersResponse{
+		StudyInstanceUID: "1.2.3", ModalitiesInStudy: "XA", StudyDate: "20241023", StudyTime: "101500",
+		PatientID: "patient-1", AccessionNumber: "accession-1",
+		NumberOfStudyRelatedSeries: "3", NumberOfStudyRelatedInstances: "30",
+	}
 }
 
 func localXAStudyResource() orthancAPITypes.GetLocalResourceResponse {
@@ -160,6 +185,95 @@ func TestBootstrapLocalManualStudyCandidatesFailsSafelyWithoutLocalStudyOrCompat
 		require.EqualError(t, err, apiError.MissingRecord)
 		require.Empty(t, state.candidates)
 	})
+}
+
+func TestBootstrapRemoteManualStudyCandidatesCreatesDiscoveredCompatibleCandidates(t *testing.T) {
+	state := manualBootstrapState()
+	query := &manualBootstrapOrthancQuery{studies: map[string][]orthancAPITypes.QueryModalityStudyAnswersResponse{
+		"PACS_QUERY": {remoteXAStudy()},
+	}}
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface: state, InferenceCommandRepositoryInterface: state,
+		OrthancQueryServiceInterface: query,
+	}
+
+	candidates, err := service.bootstrapRemoteManualStudyCandidates(context.Background(), "tenant-a", "1.2.3")
+
+	require.NoError(t, err)
+	require.Len(t, candidates, 2)
+	require.Len(t, state.candidates, 2)
+	for _, candidate := range candidates {
+		require.Equal(t, entity.InferenceIngestionCandidateStatusDiscovered, candidate.Status)
+		require.Equal(t, 30, *candidate.InstanceCount)
+	}
+	require.Len(t, query.requests, 1)
+	require.Equal(t, "1.2.3", query.requests[0].StudyInstanceUID)
+}
+
+func TestBootstrapRemoteManualStudyCandidatesIsIdempotent(t *testing.T) {
+	state := manualBootstrapState()
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface: state, InferenceCommandRepositoryInterface: state,
+		OrthancQueryServiceInterface: &manualBootstrapOrthancQuery{studies: map[string][]orthancAPITypes.QueryModalityStudyAnswersResponse{
+			"PACS_QUERY": {remoteXAStudy()},
+		}},
+	}
+
+	first, err := service.bootstrapRemoteManualStudyCandidates(context.Background(), "tenant-a", "1.2.3")
+	require.NoError(t, err)
+	second, err := service.bootstrapRemoteManualStudyCandidates(context.Background(), "tenant-a", "1.2.3")
+	require.NoError(t, err)
+
+	require.Len(t, state.candidates, 2)
+	require.ElementsMatch(t, []string{first[0].ID, first[1].ID}, []string{second[0].ID, second[1].ID})
+}
+
+func TestBootstrapRemoteManualStudyCandidatesRejectsWrongOrAmbiguousMatches(t *testing.T) {
+	for name, studies := range map[string][]orthancAPITypes.QueryModalityStudyAnswersResponse{
+		"wrong UID":      {{StudyInstanceUID: "9.9.9", ModalitiesInStudy: "XA"}},
+		"ambiguous":      {remoteXAStudy(), remoteXAStudy()},
+		"wrong modality": {{StudyInstanceUID: "1.2.3", ModalitiesInStudy: "CT"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			state := manualBootstrapState()
+			service := &InferenceCommandService{
+				InferenceQueryRepositoryInterface: state, InferenceCommandRepositoryInterface: state,
+				OrthancQueryServiceInterface: &manualBootstrapOrthancQuery{studies: map[string][]orthancAPITypes.QueryModalityStudyAnswersResponse{
+					"PACS_QUERY": studies,
+				}},
+			}
+			_, err := service.bootstrapRemoteManualStudyCandidates(context.Background(), "tenant-a", "1.2.3")
+			require.EqualError(t, err, apiError.MissingRecord)
+			require.Empty(t, state.candidates)
+		})
+	}
+}
+
+func TestCreateManualStudyProcessingRunBootstrapsRemoteStudyAndQueuesRetrieval(t *testing.T) {
+	state := manualBootstrapState()
+	delete(state.jobs, "xa-second")
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface: state, InferenceCommandRepositoryInterface: state,
+		InferenceProcessingRunRepositoryInterface: state,
+		InferenceQuotaManagerInterface:            &recordingInferenceQuotaManager{},
+		OrthancAPIInterface:                       &manualBootstrapOrthancAPI{err: errors.New(apiError.MissingRecord)},
+		OrthancQueryServiceInterface: &manualBootstrapOrthancQuery{studies: map[string][]orthancAPITypes.QueryModalityStudyAnswersResponse{
+			"PACS_QUERY": {remoteXAStudy()},
+		}},
+	}
+	userID := "user-a"
+
+	result, err := service.CreateManualStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
+		TenantID: "tenant-a", StudyInstanceUID: "1.2.3", UserID: &userID,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, result.Executions, 1)
+	require.Len(t, state.candidates, 1)
+	for _, candidate := range state.candidates {
+		require.Equal(t, entity.InferenceIngestionCandidateStatusRetrievalQueued, candidate.Status)
+		require.Equal(t, "queued", *candidate.LastRetrievalState)
+	}
 }
 
 func TestCreateManualStudyProcessingRunBootstrapsHistoricalLocalStudy(t *testing.T) {
