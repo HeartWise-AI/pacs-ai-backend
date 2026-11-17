@@ -30,7 +30,8 @@ type processingReconciliationConfig struct {
 	ModelRunningStaleAfter map[string]time.Duration
 	FailureThreshold       uint
 	// RedispatchMaxAge is how long an execution may have been pending and
-	// still be dispatched again; an older one is left to an operator.
+	// still be dispatched again; an older automatic execution is closed as
+	// skipped because dispatch recovery can no longer start it safely.
 	RedispatchMaxAge time.Duration
 }
 

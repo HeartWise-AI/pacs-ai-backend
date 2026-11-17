@@ -86,32 +86,50 @@ func (tracker *studyServiceDispatchTracker) isLive(key string) bool {
 // nothing unless it is still pending, it uses the candidate ID as request ID,
 // and study-service answers an automatic request for a study and model it is
 // already processing with that existing job instead of creating a second one.
+type orphanedExecutionRecoveryResult struct {
+	Started     bool
+	ShouldClose bool
+	SkipReason  entity.InferenceIngestionProcessingJobSkipReasonCode
+	Reason      string
+}
+
 func (service *InferenceCommandService) redispatchOrphanedExecution(
 	run entity.InferenceIngestionProcessingRun,
 	candidate entity.InferenceIngestionCandidate,
 	execution entity.InferenceIngestionProcessingJob,
 	now time.Time,
 	config processingReconciliationConfig,
-) (bool, string) {
+) orphanedExecutionRecoveryResult {
 	switch {
 	case run.RunTrigger != entity.InferenceIngestionProcessingRunTriggerAuto:
-		return false, "run was not started automatically"
+		return orphanedExecutionRecoveryResult{Reason: "run was not started automatically"}
 	case run.Phase == entity.InferenceIngestionProcessingRunPhaseTerminal:
-		return false, "run is finished"
+		return orphanedExecutionRecoveryResult{Reason: "run is finished"}
 	case execution.Status != entity.InferenceIngestionProcessingJobStatusPending || execution.HasStudyServiceJob():
-		return false, "execution was already dispatched"
+		return orphanedExecutionRecoveryResult{Reason: "execution was already dispatched"}
+	case candidate.Status == entity.InferenceIngestionCandidateStatusDisappeared ||
+		candidate.Status == entity.InferenceIngestionCandidateStatusFailed:
+		return orphanedExecutionRecoveryResult{
+			ShouldClose: true,
+			SkipReason:  entity.InferenceIngestionProcessingJobSkipReasonNoUsableDICOM,
+			Reason:      "candidate is " + string(candidate.Status) + ", so the execution cannot be dispatched",
+		}
 	case candidate.Status != entity.InferenceIngestionCandidateStatusRetrieved:
-		return false, "candidate is " + string(candidate.Status) + ", not retrieved"
+		return orphanedExecutionRecoveryResult{Reason: "candidate is " + string(candidate.Status) + ", not retrieved"}
 	case strings.TrimSpace(candidate.ID) == "" || strings.TrimSpace(candidate.ID) != strings.TrimSpace(execution.CandidateID):
-		return false, "candidate does not match the execution"
+		return orphanedExecutionRecoveryResult{Reason: "candidate does not match the execution"}
 	}
 	threshold := config.PendingStaleAfter
 	pendingSince := processingExecutionStateChangedAt(execution, run)
 	if pendingSince.IsZero() || now.Before(pendingSince.Add(threshold)) {
-		return false, "execution has not been pending long enough"
+		return orphanedExecutionRecoveryResult{Reason: "execution has not been pending long enough"}
 	}
 	if config.RedispatchMaxAge > 0 && now.After(pendingSince.Add(config.RedispatchMaxAge)) {
-		return false, "execution has been pending longer than the re-dispatch age limit"
+		return orphanedExecutionRecoveryResult{
+			ShouldClose: true,
+			SkipReason:  entity.InferenceIngestionProcessingJobSkipReasonExpiredNeverRan,
+			Reason:      "execution exceeded the automatic dispatch recovery window",
+		}
 	}
 	// retrieved_at is set when the candidate becomes RETRIEVED; updated_at
 	// also moves when the study is merely seen again by the poller.
@@ -120,27 +138,27 @@ func (service *InferenceCommandService) redispatchOrphanedExecution(
 		retrievedAt = *candidate.RetrievedAt
 	}
 	if retrievedAt.IsZero() || now.Before(retrievedAt.Add(threshold)) {
-		return false, "candidate was retrieved a moment ago"
+		return orphanedExecutionRecoveryResult{Reason: "candidate was retrieved a moment ago"}
 	}
 	if err := service.requireManagedIngestionReady(); err != nil {
-		return false, "model manager is not ready"
+		return orphanedExecutionRecoveryResult{Reason: "model manager is not ready"}
 	}
 	job, err := service.InferenceQueryRepositoryInterface.SelectInferenceIngestionJobByID(candidate.IngestionJobID)
 	if err != nil {
-		return false, "ingestion job cannot be read: " + err.Error()
+		return orphanedExecutionRecoveryResult{Reason: "ingestion job cannot be read: " + err.Error()}
 	}
 	switch {
 	case job.Status != entity.InferenceIngestionJobStatusRunning:
-		return false, "ingestion job is " + string(job.Status)
+		return orphanedExecutionRecoveryResult{Reason: "ingestion job is " + string(job.Status)}
 	case strings.TrimSpace(job.TenantID) != strings.TrimSpace(run.TenantID):
-		return false, "ingestion job belongs to another workspace"
+		return orphanedExecutionRecoveryResult{Reason: "ingestion job belongs to another workspace"}
 	case strings.TrimSpace(job.ModelName) != strings.TrimSpace(execution.ModelName):
-		return false, "ingestion job names another model"
+		return orphanedExecutionRecoveryResult{Reason: "ingestion job names another model"}
 	}
 	// The key is the one the ordinary dispatch registers itself under.
 	key := studyServiceDispatchKey(candidate.TenantID, run.ID, candidate.ID, job.ModelName)
 	if !liveStudyServiceDispatches.beginIfIdle(key) {
-		return false, "a dispatch is under way"
+		return orphanedExecutionRecoveryResult{Reason: "a dispatch is under way"}
 	}
 	log.Printf("[Ingestion reconciliation worker] re-dispatching orphaned execution processing_run_id=%s execution_id=%s candidate_id=%s ingestion_job_id=%s model_name=%s pending_since=%s",
 		run.ID, execution.ID, candidate.ID, job.ID, execution.ModelName, formatEasternTime(pendingSince))
@@ -151,7 +169,7 @@ func (service *InferenceCommandService) redispatchOrphanedExecution(
 			service.failUndispatchableExecution(run, candidate, job, execution, err)
 		}
 	}()
-	return true, ""
+	return orphanedExecutionRecoveryResult{Started: true}
 }
 
 // isPermanentRedispatchError reports whether a recovered dispatch failed for a

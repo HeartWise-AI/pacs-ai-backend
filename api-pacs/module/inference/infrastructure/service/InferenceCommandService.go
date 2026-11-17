@@ -1482,7 +1482,7 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 		if correlationErr := validateReconciledStudyServiceJob(run, target, job); correlationErr != nil {
 			return true, repaired, service.markProcessingRunStateConflict(ctx, run, correlationErr)
 		}
-		callbackResult, callbackErr := service.handleReconciledStudyServiceJob(ctx, run, target.CandidateID, job)
+		callbackResult, callbackErr := service.handleReconciledStudyServiceJob(ctx, run, target, job)
 		if callbackErr != nil {
 			return true, repaired, callbackErr
 		}
@@ -1505,7 +1505,7 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 			if correlationErr := validateReconciledStudyServiceJob(run, target, job); correlationErr != nil {
 				return true, repaired, service.markProcessingRunStateConflict(ctx, run, correlationErr)
 			}
-			callbackResult, callbackErr := service.handleReconciledStudyServiceJob(ctx, run, target.CandidateID, job)
+			callbackResult, callbackErr := service.handleReconciledStudyServiceJob(ctx, run, target, job)
 			if callbackErr != nil {
 				return true, repaired, callbackErr
 			}
@@ -1547,14 +1547,24 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 				// Study-service has no job for this execution. If its dispatch
 				// was lost (a gateway restart), start it again instead of
 				// leaving the study waiting for an operator.
-				if started, reason := service.redispatchOrphanedExecution(run, candidate, target, now, config); started {
+				recovery := service.redispatchOrphanedExecution(run, candidate, target, now, config)
+				if recovery.Started {
 					if redispatched != nil {
 						*redispatched++
 					}
 					continue
-				} else if target.Status == entity.InferenceIngestionProcessingJobStatusPending {
+				}
+				if recovery.ShouldClose {
+					closed, closeErr := service.closeUnrecoverableOrphanedExecution(ctx, run, target, now, recovery)
+					if closeErr != nil {
+						return true, repaired, closeErr
+					}
+					repaired = repaired || closed
+					continue
+				}
+				if target.Status == entity.InferenceIngestionProcessingJobStatusPending {
 					log.Printf("[Ingestion reconciliation worker] pending execution not re-dispatched processing_run_id=%s execution_id=%s candidate_id=%s reason=%q",
-						run.ID, target.ID, candidate.ID, reason)
+						run.ID, target.ID, candidate.ID, recovery.Reason)
 				}
 				findings.ExpectedJobMissing = true
 			} else {
@@ -1643,7 +1653,7 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 		}
 		matched[key] = struct{}{}
 
-		result, err := service.handleReconciledStudyServiceJob(ctx, run, candidate.ID, job)
+		result, err := service.handleReconciledStudyServiceJob(ctx, run, target, job)
 		if err != nil {
 			return matched, repaired, err
 		}
@@ -1659,6 +1669,45 @@ type processingReconciliationAttentionFindings struct {
 	ExpectedJobMissing     bool
 	StudyServiceJobMissing bool
 	CallbackDeadLettered   bool
+}
+
+func (service *InferenceCommandService) closeUnrecoverableOrphanedExecution(
+	ctx context.Context,
+	run entity.InferenceIngestionProcessingRun,
+	execution entity.InferenceIngestionProcessingJob,
+	now time.Time,
+	recovery orphanedExecutionRecoveryResult,
+) (bool, error) {
+	message := strings.TrimSpace(recovery.Reason)
+	skipReason := entity.InferenceIngestionProcessingJobSkipReason{
+		Code:    recovery.SkipReason,
+		Message: nonEmptyStringPointer(message),
+	}
+	completedAt := now.UTC()
+	transition, err := service.InferenceProcessingRunRepositoryInterface.ApplyProcessingRunExecutionTransition(
+		ctx,
+		repositoryTypes.ApplyInferenceIngestionProcessingTransition{
+			TenantID:                       run.TenantID,
+			ProcessingRunID:                run.ID,
+			ExecutionID:                    execution.ID,
+			CandidateID:                    execution.CandidateID,
+			ModelName:                      execution.ModelName,
+			Status:                         entity.InferenceIngestionProcessingJobStatusSkipped,
+			SkipReason:                     &skipReason,
+			CompletedAt:                    &completedAt,
+			OnlyIfCancellableBeforeCompute: true,
+		},
+	)
+	if err != nil {
+		return false, err
+	}
+	if !transition.Changed {
+		return false, nil
+	}
+	service.publishCommittedWorklistNotification(ctx, transition)
+	log.Printf("[Ingestion reconciliation worker] closed unrecoverable orphaned execution processing_run_id=%s execution_id=%s candidate_id=%s model_name=%s skip_reason=%s reason=%q",
+		run.ID, execution.ID, execution.CandidateID, execution.ModelName, recovery.SkipReason, message)
+	return true, nil
 }
 
 type processingReconciliationStateConflictError struct {
@@ -1714,6 +1763,9 @@ func validateReconciledStudyServiceJob(
 	execution entity.InferenceIngestionProcessingJob,
 	job types.StudyServiceJob,
 ) error {
+	if isReusedAutomaticStudyServiceJob(run, execution, job) {
+		return nil
+	}
 	if strings.TrimSpace(trimmedPointerValue(job.ProcessingRunID)) != strings.TrimSpace(run.ID) {
 		return fmt.Errorf("reconciliation job %s processing-run mismatch", strings.TrimSpace(job.JobID))
 	}
@@ -1740,17 +1792,39 @@ func validateReconciledStudyServiceJob(
 	return nil
 }
 
+func isReusedAutomaticStudyServiceJob(
+	run entity.InferenceIngestionProcessingRun,
+	execution entity.InferenceIngestionProcessingJob,
+	job types.StudyServiceJob,
+) bool {
+	if run.RunTrigger != entity.InferenceIngestionProcessingRunTriggerAuto ||
+		strings.TrimSpace(trimmedPointerValue(execution.StudyServiceJobID)) == "" ||
+		strings.TrimSpace(trimmedPointerValue(execution.StudyServiceJobID)) != strings.TrimSpace(job.JobID) ||
+		strings.TrimSpace(job.StudyInstanceUID) != strings.TrimSpace(run.StudyInstanceUID) ||
+		strings.TrimSpace(job.ModelName) != strings.TrimSpace(execution.ModelName) {
+		return false
+	}
+	jobTenantID := strings.TrimSpace(trimmedPointerValue(job.TenantID))
+	return jobTenantID == "" || jobTenantID == strings.TrimSpace(run.TenantID)
+}
+
 func (service *InferenceCommandService) handleReconciledStudyServiceJob(
 	ctx context.Context,
 	run entity.InferenceIngestionProcessingRun,
-	candidateID string,
+	execution entity.InferenceIngestionProcessingJob,
 	job types.StudyServiceJob,
 ) (types.HandleStudyServiceProcessingCallbackResult, error) {
+	processingRunID := trimmedPointerValue(job.ProcessingRunID)
+	processingExecutionID := trimmedPointerValue(job.ProcessingExecutionID)
+	if isReusedAutomaticStudyServiceJob(run, execution, job) {
+		processingRunID = run.ID
+		processingExecutionID = execution.ID
+	}
 	result, err := service.HandleStudyServiceProcessingCallback(ctx, types.HandleStudyServiceProcessingCallback{
-		CandidateID:           strings.TrimSpace(candidateID),
-		RequestID:             fmt.Sprintf("reconcile:%s:%s", strings.TrimSpace(candidateID), strings.TrimSpace(job.JobID)),
-		ProcessingRunID:       trimmedPointerValue(job.ProcessingRunID),
-		ProcessingExecutionID: trimmedPointerValue(job.ProcessingExecutionID),
+		CandidateID:           strings.TrimSpace(execution.CandidateID),
+		RequestID:             fmt.Sprintf("reconcile:%s:%s", strings.TrimSpace(execution.CandidateID), strings.TrimSpace(job.JobID)),
+		ProcessingRunID:       processingRunID,
+		ProcessingExecutionID: processingExecutionID,
 		StudyInstanceUID:      strings.TrimSpace(job.StudyInstanceUID),
 		ModelName:             strings.TrimSpace(job.ModelName),
 		ModelVersion:          trimmedPointerValue(job.ModelVersion),
@@ -1767,7 +1841,7 @@ func (service *InferenceCommandService) handleReconciledStudyServiceJob(
 
 	log.Printf("[Ingestion reconciliation worker] reconciled processing_run_id=%s candidate_id=%s tenant_id=%s study_service_job_id=%s model_name=%s outcome=%s status=%s",
 		run.ID,
-		candidateID,
+		execution.CandidateID,
 		run.TenantID,
 		job.JobID,
 		job.ModelName,
