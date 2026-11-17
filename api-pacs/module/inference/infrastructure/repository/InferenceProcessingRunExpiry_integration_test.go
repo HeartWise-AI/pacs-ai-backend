@@ -119,7 +119,11 @@ func TestAutoRunExpiryAgainstPostgreSQL(t *testing.T) {
 		{"exp-auto-young", "AUTO", "QUEUED", now.Add(-700 * time.Hour), "", []job{pending}},
 		{"exp-auto-boundary", "AUTO", "QUEUED", createdBefore, "", []job{pending}},
 		{"exp-auto-terminal", "AUTO", "TERMINAL", old, "", []job{{status: "cancelled"}}},
-		{"exp-auto-empty", "AUTO", "QUEUED", old, "", nil},
+		// Runs without any execution: they can never do anything.
+		{"exp-auto-empty", "AUTO", "QUEUED", old, `[{"code":"EMPTY_MODEL_PLAN"}]`, nil},
+		{"exp-manual-empty", "MANUAL_REPROCESS", "QUEUED", old, "", nil},
+		{"exp-viewer-empty", "VIEWER_REQUEST", "QUEUED", old, "", nil},
+		{"exp-auto-empty-young", "AUTO", "QUEUED", now.Add(-700 * time.Hour), "", nil},
 	}
 	for runIndex, fixture := range runs {
 		attention := fixture.attention
@@ -172,8 +176,9 @@ func TestAutoRunExpiryAgainstPostgreSQL(t *testing.T) {
 		return ids
 	}
 	require.Equal(t, []string{
-		"exp-legacy-old", "exp-auto-partial", "exp-auto-failed", "exp-auto-attention", "exp-auto-mixed",
-	}, list(200), "automatic, old enough, nothing running, something waiting for long; oldest first")
+		"exp-legacy-old", "exp-auto-empty", "exp-auto-partial", "exp-manual-empty",
+		"exp-auto-failed", "exp-auto-attention", "exp-auto-mixed",
+	}, list(200), "old enough and either automatic with something waiting for long, or empty; oldest first")
 	bounded, err := repository.ListNeverRanAutomaticProcessingRuns(ctx, types.ListNeverRanAutomaticProcessingRuns{
 		CreatedBefore: createdBefore, Limit: 1,
 	})
@@ -207,7 +212,8 @@ func TestAutoRunExpiryAgainstPostgreSQL(t *testing.T) {
 		"exp-auto-running":         "an execution is running",
 		"exp-auto-recent-callback": "no waiting execution old enough",
 		"exp-auto-terminal":        "run is finished",
-		"exp-auto-empty":           "no waiting execution old enough",
+		"exp-viewer-empty":         "run was started from the viewer",
+		"exp-auto-empty-young":     "run is not old enough",
 	} {
 		result := expire(id)
 		require.False(t, result.Expired, id)
@@ -258,6 +264,23 @@ func TestAutoRunExpiryAgainstPostgreSQL(t *testing.T) {
 	require.Equal(t, 1, mixed.Executions)
 	require.NotEqual(t, entity.InferenceIngestionProcessingRunPhaseTerminal, mixed.Run.Phase)
 	require.Equal(t, []string{"skipped/EXPIRED_NEVER_RAN", "queued"}, statuses("exp-auto-mixed"))
+
+	// An empty run is closed without a result and without attention.
+	empty := expire("exp-auto-empty")
+	require.True(t, empty.Expired)
+	require.True(t, empty.Empty)
+	require.Zero(t, empty.Executions)
+	require.Equal(t, entity.InferenceIngestionProcessingRunPhaseTerminal, empty.Run.Phase)
+	require.Equal(t, entity.InferenceIngestionProcessingRunOutcomeNoResult, *empty.Run.Outcome)
+	require.False(t, empty.Run.AttentionRequired)
+	require.Empty(t, empty.Run.AttentionReasons)
+	require.NotNil(t, empty.Run.CompletedAt)
+	require.EqualValues(t, 2, empty.Run.Version)
+	require.True(t, expire("exp-manual-empty").Empty)
+	emptyAgain := expire("exp-auto-empty")
+	require.False(t, emptyAgain.Expired)
+	require.Equal(t, "run is finished", emptyAgain.NotExpiredReason)
+	require.EqualValues(t, 2, emptyAgain.Run.Version)
 
 	// Idempotent: a second pass changes nothing.
 	again := expire("exp-auto-partial")

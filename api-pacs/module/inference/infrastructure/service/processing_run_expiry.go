@@ -52,11 +52,13 @@ func autoRunExpiryMessage(expireAfter time.Duration) string {
 
 // AutoRunExpiryCycle summarises one expiry pass.
 type AutoRunExpiryCycle struct {
-	Selected   int
-	Expired    int
-	Executions int
-	Unchanged  int
-	Failed     int
+	Selected int
+	Expired  int
+	// EmptyClosed counts, among Expired, runs without executions closed as NO_RESULT.
+	EmptyClosed int
+	Executions  int
+	Unchanged   int
+	Failed      int
 }
 
 // expireNeverRanAutomaticRuns stops automatic runs (AUTO, LEGACY_IMPORT)
@@ -65,8 +67,9 @@ type AutoRunExpiryCycle struct {
 // that long is marked skipped with the EXPIRED_NEVER_RAN reason; completed,
 // failed and skipped executions are untouched, and the run is re-aggregated
 // (terminal with the usual outcome, e.g. PARTIAL_SUCCESS). Manual and viewer
-// runs, and runs with a running execution, are never touched; no row is
-// deleted. At most autoRunExpiryBatchLimit runs are closed per cycle; the
+// runs, and runs with a running execution, are never touched. A run with no
+// execution at all (AUTO, LEGACY_IMPORT or MANUAL_REPROCESS) can never do
+// anything and is closed as NO_RESULT. No row is deleted. At most autoRunExpiryBatchLimit runs are closed per cycle; the
 // rest follow in the next cycles. A zero AutoRunExpireAfter disables it.
 func (service *InferenceCommandService) expireNeverRanAutomaticRuns(ctx context.Context, now time.Time) AutoRunExpiryCycle {
 	cycle := AutoRunExpiryCycle{}
@@ -100,6 +103,11 @@ func (service *InferenceCommandService) expireNeverRanAutomaticRuns(ctx context.
 			cycle.Unchanged++
 			log.Printf("[Automatic run expiry] left processing_run_id=%s tenant_id=%s reason=%q",
 				run.ID, run.TenantID, result.NotExpiredReason)
+		case result.Empty:
+			cycle.Expired++
+			cycle.EmptyClosed++
+			log.Printf("[Automatic run expiry] expired_empty processing_run_id=%s tenant_id=%s study_instance_uid=%s trigger=%s run_created_at=%s phase=%s outcome=NO_RESULT",
+				run.ID, run.TenantID, run.StudyInstanceUID, run.RunTrigger, formatEasternTime(run.CreatedAt), result.Run.Phase)
 		default:
 			cycle.Expired++
 			cycle.Executions += result.Executions
@@ -112,8 +120,8 @@ func (service *InferenceCommandService) expireNeverRanAutomaticRuns(ctx context.
 				result.Executions, result.Run.Phase, outcome)
 		}
 	}
-	log.Printf("[Automatic run expiry] cycle selected=%d expired=%d executions=%d unchanged=%d failed=%d batch_limit=%d expire_after_hours=%d created_before=%s",
-		cycle.Selected, cycle.Expired, cycle.Executions, cycle.Unchanged, cycle.Failed, autoRunExpiryBatchLimit,
+	log.Printf("[Automatic run expiry] cycle selected=%d expired=%d expired_empty=%d executions=%d unchanged=%d failed=%d batch_limit=%d expire_after_hours=%d created_before=%s",
+		cycle.Selected, cycle.Expired, cycle.EmptyClosed, cycle.Executions, cycle.Unchanged, cycle.Failed, autoRunExpiryBatchLimit,
 		int(service.AutoRunExpireAfter.Hours()), formatEasternTime(createdBefore))
 	return cycle
 }

@@ -20,6 +20,7 @@ func TestExpirableAutomaticRunsQuerySelectsOldAutomaticRunsWithWaitingExecutions
 		"CAST(jobs.status AS text) = 'running'",
 		"CAST(jobs.status AS text) IN ('pending', 'queued')",
 		"jobs.updated_at < :created_before",
+		"runs.run_trigger IN ('AUTO', 'LEGACY_IMPORT', 'MANUAL_REPROCESS')",
 		"ORDER BY runs.created_at ASC, runs.id ASC",
 		"LIMIT :limit",
 	} {
@@ -34,6 +35,27 @@ func TestExpirableAutomaticRunsQuerySelectsOldAutomaticRunsWithWaitingExecutions
 	require.EqualError(t, err, apiError.InvalidPayload)
 	_, err = repository.ExpireNeverRanProcessingRun(context.Background(), types.ExpireNeverRanProcessingRun{ID: "run", TenantID: "t"})
 	require.EqualError(t, err, apiError.InvalidPayload)
+}
+
+func TestExpirableEmptyRun(t *testing.T) {
+	createdBefore := time.Date(2026, 10, 17, 0, 0, 0, 0, time.UTC)
+	run := entity.InferenceIngestionProcessingRun{Phase: entity.InferenceIngestionProcessingRunPhaseQueued, CreatedAt: createdBefore.Add(-time.Second)}
+	for _, trigger := range []entity.InferenceIngestionProcessingRunTrigger{
+		entity.InferenceIngestionProcessingRunTriggerAuto, entity.InferenceIngestionProcessingRunTriggerLegacyImport,
+		entity.InferenceIngestionProcessingRunTriggerManualReprocess,
+	} {
+		run.RunTrigger = trigger
+		require.Empty(t, expirableEmptyRun(run, createdBefore), trigger)
+	}
+	run.RunTrigger = entity.InferenceIngestionProcessingRunTriggerViewerRequest
+	require.Equal(t, "run was started from the viewer", expirableEmptyRun(run, createdBefore))
+	run.RunTrigger = entity.InferenceIngestionProcessingRunTriggerAuto
+	young := run
+	young.CreatedAt = createdBefore
+	require.Equal(t, "run is not old enough", expirableEmptyRun(young, createdBefore))
+	terminal := run
+	terminal.Phase = entity.InferenceIngestionProcessingRunPhaseTerminal
+	require.Equal(t, "run is finished", expirableEmptyRun(terminal, createdBefore))
 }
 
 func TestExpirableExecutions(t *testing.T) {

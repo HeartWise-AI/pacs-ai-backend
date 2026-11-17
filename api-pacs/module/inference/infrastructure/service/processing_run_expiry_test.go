@@ -61,10 +61,11 @@ func TestAutoRunExpiryClosesTheSelectedRunsAndCountsTheOutcome(t *testing.T) {
 	terminal := expiryRun("run-1")
 	terminal.Phase, terminal.Outcome = entity.InferenceIngestionProcessingRunPhaseTerminal, &outcome
 	repository := &expiryRunRepository{
-		selected: []entity.InferenceIngestionProcessingRun{expiryRun("run-1"), expiryRun("run-2"), expiryRun("run-3")},
+		selected: []entity.InferenceIngestionProcessingRun{expiryRun("run-1"), expiryRun("run-2"), expiryRun("run-3"), expiryRun("run-4")},
 		results: map[string]repositoryTypes.ExpireNeverRanProcessingRunResult{
 			"run-1": {Expired: true, Executions: 2, Run: terminal},
 			"run-2": {NotExpiredReason: "an execution is running"},
+			"run-4": {Expired: true, Empty: true, Run: terminal},
 		},
 		errs: map[string]error{"run-3": errors.New(apiError.DatabaseError)},
 	}
@@ -73,11 +74,11 @@ func TestAutoRunExpiryClosesTheSelectedRunsAndCountsTheOutcome(t *testing.T) {
 
 	cycle := service.expireNeverRanAutomaticRuns(context.Background(), now)
 
-	require.Equal(t, AutoRunExpiryCycle{Selected: 3, Expired: 1, Executions: 2, Unchanged: 1, Failed: 1}, cycle)
+	require.Equal(t, AutoRunExpiryCycle{Selected: 4, Expired: 2, EmptyClosed: 1, Executions: 2, Unchanged: 1, Failed: 1}, cycle)
 	require.Equal(t, []repositoryTypes.ListNeverRanAutomaticProcessingRuns{{
 		CreatedBefore: now.Add(-720 * time.Hour), Limit: autoRunExpiryBatchLimit,
 	}}, repository.listInputs)
-	require.Len(t, repository.expireInputs, 3, "a failed run does not stop the others")
+	require.Len(t, repository.expireInputs, 4, "a failed run does not stop the others")
 	require.Equal(t, repositoryTypes.ExpireNeverRanProcessingRun{
 		ID: "run-1", TenantID: "tenant-a", CreatedBefore: now.Add(-720 * time.Hour),
 		Message: "Expired: did not complete within 30 days (automatic)", ExpiredAt: now,

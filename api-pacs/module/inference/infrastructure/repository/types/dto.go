@@ -128,10 +128,12 @@ type ExpireNeverRanProcessingRun struct {
 	ExpiredAt     time.Time
 }
 
-// ExpireNeverRanProcessingRunResult tells whether the run was closed; when
+// ExpireNeverRanProcessingRunResult tells whether the run was changed; when
 // not, NotExpiredReason says why (it changed since it was selected).
 type ExpireNeverRanProcessingRunResult struct {
-	Expired          bool
+	Expired bool
+	// Empty is true when the run had no execution and was closed as NO_RESULT.
+	Empty            bool
 	NotExpiredReason string
 	Executions       int
 	Run              entity.InferenceIngestionProcessingRun
