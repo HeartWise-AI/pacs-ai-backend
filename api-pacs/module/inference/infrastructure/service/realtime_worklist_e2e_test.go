@@ -45,6 +45,23 @@ func (state *realtimeWorklistE2EState) ListInferenceIngestionCandidates(data rep
 	return result, nil
 }
 
+func (state *realtimeWorklistE2EState) SelectInferenceIngestionJobs(tenantID *string) ([]entity.InferenceIngestionJob, error) {
+	result := make([]entity.InferenceIngestionJob, 0, len(state.jobs))
+	for _, job := range state.jobs {
+		if tenantID != nil && job.TenantID != *tenantID {
+			continue
+		}
+		result = append(result, job)
+	}
+	sort.Slice(result, func(left, right int) bool {
+		return result[left].UpdatedAt.After(result[right].UpdatedAt)
+	})
+	if len(result) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+	return result, nil
+}
+
 func (state *realtimeWorklistE2EState) SelectInferenceIngestionJobByID(id string) (entity.InferenceIngestionJob, error) {
 	job, exists := state.jobs[id]
 	if !exists {
@@ -205,6 +222,34 @@ func (state *realtimeWorklistE2EState) MarkCandidateRetrievalQueued(id string) e
 	candidate.LastRetrievalError = nil
 	candidate.LastRetrievalErrorDetails = nil
 	state.candidates[id] = candidate
+	return nil
+}
+
+func (state *realtimeWorklistE2EState) UpsertIngestionCandidate(data repositoryTypes.UpsertIngestionCandidate) error {
+	for id, existing := range state.candidates {
+		if existing.IngestionJobID != data.IngestionJobID || existing.StudyInstanceUID != data.StudyInstanceUID {
+			continue
+		}
+		existing.StudyDate = data.StudyDate
+		existing.StudyTime = data.StudyTime
+		existing.ModalitiesInStudy = data.ModalitiesInStudy
+		existing.PatientID = data.PatientID
+		existing.AccessionNumber = data.AccessionNumber
+		existing.SeriesCount = data.SeriesCount
+		existing.InstanceCount = data.InstanceCount
+		if existing.Status == entity.InferenceIngestionCandidateStatusDisappeared {
+			existing.Status = entity.InferenceIngestionCandidateStatusDiscovered
+		}
+		state.candidates[id] = existing
+		return nil
+	}
+	state.candidates[data.ID] = entity.InferenceIngestionCandidate{
+		ID: data.ID, TenantID: data.TenantID, IngestionJobID: data.IngestionJobID,
+		StudyInstanceUID: data.StudyInstanceUID, StudyDate: data.StudyDate, StudyTime: data.StudyTime,
+		ModalitiesInStudy: data.ModalitiesInStudy, PatientID: data.PatientID, AccessionNumber: data.AccessionNumber,
+		SeriesCount: data.SeriesCount, InstanceCount: data.InstanceCount,
+		Status: entity.InferenceIngestionCandidateStatusDiscovered,
+	}
 	return nil
 }
 

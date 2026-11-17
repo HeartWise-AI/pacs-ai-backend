@@ -35,9 +35,10 @@ type QueryModalitiesRequest struct {
 }
 
 type QueryLocalResourceRequest struct {
-	Level  string             `json:"Level"`
-	Query  QueryLocalResource `json:"Query"`
-	Expand bool               `json:"Expand,omitempty"`
+	Level         string             `json:"Level"`
+	Query         QueryLocalResource `json:"Query"`
+	Expand        bool               `json:"Expand,omitempty"`
+	RequestedTags []string           `json:"RequestedTags,omitempty"`
 }
 
 type RetrieveQueryModalityAnswerRequest struct {
@@ -88,8 +89,9 @@ type GetJobResponse struct {
 }
 
 type GetLocalResourceResponse struct {
-	ID            string `json:"ID"`
-	LastUpdate    string `json:"LastUpdate"` // in 20240627T182452 format
+	ID            string            `json:"ID"`
+	LastUpdate    string            `json:"LastUpdate"` // in 20240627T182452 format
+	RequestedTags map[string]string `json:"RequestedTags,omitempty"`
 	MainDICOMTags struct {
 		SeriesInstanceUID string `json:"SeriesInstanceUID"`
 		SeriesTime        string `json:"SeriesTime"`
@@ -122,7 +124,7 @@ type QueryModalityStudyAnswersResponse struct {
 	NumberOfStudyRelatedSeries    string `json:"NumberOfStudyRelatedSeries"`
 	NumberOfStudyRelatedInstances string `json:"NumberOfStudyRelatedInstances"`
 	PatientBirthDate              string `json:"PatientBirthDate"`
-	PatientID                  	  string `json:"PatientID"`
+	PatientID                     string `json:"PatientID"`
 	PatientName                   string `json:"PatientName"`
 	PatientSex                    string `json:"PatientSex"`
 	QueryRetrieveLevel            string `json:"QueryRetrieveLevel"`
