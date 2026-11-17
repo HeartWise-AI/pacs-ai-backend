@@ -79,11 +79,29 @@ func escapeLikePattern(value string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
 }
 
+// predictionExecutionEventSQL is the last event of an execution aliased
+// activity_jobs, exactly as the expression index of migration 000013 has it.
+const predictionExecutionEventSQL = `COALESCE(activity_jobs.completed_at, activity_jobs.started_at)`
+
+// predictionActivitySQL is the activity time of an execution aliased j of a
+// run aliased r.
+const predictionActivitySQL = `COALESCE(j.completed_at, j.started_at, r.created_at)`
+
 // buildListPredictionExamsQuery returns the exam page statement and its arguments.
 //
-// exam_keys narrows the tenant's exams by scope (and by recent activity when a
-// start date is given, which the index on (tenant_id, updated_at) serves);
-// latest keeps the newest execution of each model of those exams and marks
+// The activity time of an execution is a real event: when it completed, else
+// when it started, else when its run was created (predictionActivitySQL).
+// updated_at is never used: reconciliation and restarts touch it without
+// anything happening to the exam. An exam's last activity is the latest
+// activity of the newest execution of each of its models; the page is ordered
+// by it and the date filter applies to it.
+//
+// exam_keys narrows the tenant's exams by scope, and when a start date is
+// given to the exams with a run created or an execution completed or started
+// since then: a superset of those whose last activity is in range, which the
+// indexes on runs (tenant_id, created_at) and on executions (tenant_id,
+// COALESCE(completed_at, started_at)) serve; latest keeps the newest
+// execution of each model of those exams and marks
 // the stalled ones exactly like predictionExecutionState does; exams
 // aggregates the latest states (a stalled model needs attention and is not
 // active; an expired one needs neither); meta picks the stored patient ID, accession,
@@ -106,9 +124,22 @@ func buildListPredictionExamsQuery(data types.ListPredictionExams) (string, map[
 		"offset":               data.Offset,
 	}
 
-	keyFilters := scope
+	examKeys := `
+			SELECT DISTINCT r.study_instance_uid
+			FROM ingestion_processing_runs r
+			WHERE r.tenant_id = :tenant_id` + scope
 	if data.From != nil {
-		keyFilters += ` AND r.updated_at >= :from`
+		examKeys = `
+			SELECT r.study_instance_uid
+			FROM ingestion_processing_runs r
+			WHERE r.tenant_id = :tenant_id AND r.created_at >= :from` + scope + `
+			UNION
+			SELECT r.study_instance_uid
+			FROM ingestion_processing_jobs activity_jobs
+			JOIN ingestion_processing_runs r
+				ON r.id = activity_jobs.processing_run_id AND r.tenant_id = :tenant_id
+			WHERE activity_jobs.tenant_id = :tenant_id
+			  AND ` + predictionExecutionEventSQL + ` >= :from` + scope
 		args["from"] = *data.From
 	}
 	latestFilters := ""
@@ -140,15 +171,12 @@ func buildListPredictionExamsQuery(data types.ListPredictionExams) (string, map[
 	}
 
 	query := `
-		WITH exam_keys AS (
-			SELECT DISTINCT r.study_instance_uid
-			FROM ingestion_processing_runs r
-			WHERE r.tenant_id = :tenant_id` + keyFilters + `
+		WITH exam_keys AS (` + examKeys + `
 		),
 		latest AS (
 			SELECT DISTINCT ON (r.study_instance_uid, j.model_name)
 				r.study_instance_uid, j.model_name, CAST(j.status AS text) AS status, j.modality, j.candidate_id,
-				GREATEST(r.updated_at, j.updated_at) AS activity_at,
+				` + predictionActivitySQL + ` AS activity_at,
 				(CAST(j.status AS text) IN ('pending', 'queued')
 					AND NULLIF(BTRIM(j.study_service_job_id), '') IS NULL
 					AND r.created_at < :stalled_before) AS stalled,

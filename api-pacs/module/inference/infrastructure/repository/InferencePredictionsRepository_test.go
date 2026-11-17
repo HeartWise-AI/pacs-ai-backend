@@ -58,6 +58,33 @@ func TestPredictionExamsQueryKeepsStalledModelsOutOfActiveAndInAttention(t *test
 	require.Contains(t, query, "AND exams.any_active")
 }
 
+func TestPredictionExamActivityComesFromRealEventsOnly(t *testing.T) {
+	query, _, err := buildListPredictionExamsQuery(types.ListPredictionExams{
+		TenantID: "tenant-a", Scope: types.PredictionsScopeAll, Limit: 25,
+	})
+	require.NoError(t, err)
+	require.Contains(t, query, "COALESCE(j.completed_at, j.started_at, r.created_at) AS activity_at")
+	require.NotContains(t, query, "UNION", "no date filter, no activity pre-filter")
+	require.NotContains(t, query, "r.updated_at")
+	require.NotContains(t, query, "j.updated_at")
+
+	from := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
+	query, args, err := buildListPredictionExamsQuery(types.ListPredictionExams{
+		TenantID: "tenant-a", Scope: types.PredictionsScopeAutomatic, From: &from, Limit: 25,
+	})
+	require.NoError(t, err)
+	require.Equal(t, from, args["from"])
+	// Index-friendly pre-filter: runs (tenant_id, created_at) and executions
+	// (tenant_id, COALESCE(completed_at, started_at)), each with the scope.
+	require.Contains(t, query, "WHERE r.tenant_id = :tenant_id AND r.created_at >= :from AND r.study_instance_uid IN")
+	require.Contains(t, query, "AND COALESCE(activity_jobs.completed_at, activity_jobs.started_at) >= :from AND r.study_instance_uid IN")
+	require.Contains(t, query, "UNION")
+	require.Contains(t, query, "AND exams.last_activity_at >= :from")
+	require.Contains(t, query, "ORDER BY exams.last_activity_at DESC, exams.study_instance_uid DESC")
+	require.NotContains(t, query, "updated_at >= :from")
+	require.NotContains(t, query, "r.updated_at")
+}
+
 func TestPredictionExamsRequireTenantAndRequester(t *testing.T) {
 	repository := InferencePredictionsRepository{PostgresSQLDBHandlerInterface: &processingRunTestHandler{}}
 	for _, data := range []types.ListPredictionExams{

@@ -321,4 +321,42 @@ func TestPredictionsRepositoryAgainstPostgreSQL(t *testing.T) {
 	require.Len(t, stalledRows, 1)
 	require.Nil(t, stalledRows[0].StudyServiceJobID)
 	require.True(t, stalledRows[0].RunCreatedAt.Before(stalledBefore))
+
+	// Activity is a real event. Reconciliation or a restart touching runs and
+	// executions (updated_at) moves nothing.
+	_, err = tx.Exec(`UPDATE ingestion_processing_runs SET version = version + 1, updated_at = $2 WHERE tenant_id = $1`,
+		"aip-tenant-a", now.Add(time.Minute))
+	require.NoError(t, err)
+	_, err = tx.Exec(`UPDATE ingestion_processing_jobs SET last_event_id = last_event_id, updated_at = $2 WHERE tenant_id = $1`,
+		"aip-tenant-a", now.Add(time.Minute))
+	require.NoError(t, err)
+	page, err = repository.ListPredictionExams(ctx, types.ListPredictionExams{
+		TenantID: "aip-tenant-a", Scope: types.PredictionsScopeAll, Limit: 10,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "9.3", page.Exams[2].StudyInstanceUID)
+	require.WithinDuration(t, now.Add(-48*time.Hour), page.Exams[2].LastActivityAt, time.Second,
+		"the run creation, not the touch")
+	uids, _ = exams(types.ListPredictionExams{From: &from})
+	require.Equal(t, []string{"9.2", "9.1"}, uids, "a touched old exam is not in a recent range")
+
+	// A completion is activity: it moves the exam up and into the range,
+	// although its run was created long before.
+	_, err = tx.Exec(`UPDATE ingestion_processing_jobs SET started_at = $2, completed_at = $3 WHERE id = $1`,
+		"aip-ex-6", now.Add(-3*time.Minute), now.Add(-2*time.Minute))
+	require.NoError(t, err)
+	uids, _ = exams(types.ListPredictionExams{From: &from})
+	require.Equal(t, []string{"9.3", "9.2", "9.1"}, uids)
+	to = now.Add(-5 * time.Minute)
+	uids, _ = exams(types.ListPredictionExams{From: &from, To: &to})
+	require.Equal(t, []string{"9.2", "9.1"}, uids, "the completion two minutes ago is after the end")
+	started := now.Add(-4 * time.Hour)
+	_, err = tx.Exec(`UPDATE ingestion_processing_jobs SET started_at = $2, completed_at = NULL WHERE id = $1`, "aip-ex-6", started)
+	require.NoError(t, err)
+	page, err = repository.ListPredictionExams(ctx, types.ListPredictionExams{
+		TenantID: "aip-tenant-a", Scope: types.PredictionsScopeAll, Limit: 10,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "9.3", page.Exams[2].StudyInstanceUID)
+	require.WithinDuration(t, started, page.Exams[2].LastActivityAt, time.Second, "started when not completed")
 }
