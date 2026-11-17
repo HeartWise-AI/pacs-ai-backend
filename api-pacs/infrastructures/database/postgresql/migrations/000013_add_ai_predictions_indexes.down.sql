@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS idx_ingestion_processing_runs_tenant_updated;
+DROP INDEX IF EXISTS idx_ingestion_processing_runs_tenant_requester_study;
