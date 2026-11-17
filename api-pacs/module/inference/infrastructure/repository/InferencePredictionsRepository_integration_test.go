@@ -70,11 +70,11 @@ func TestPredictionsRepositoryAgainstPostgreSQL(t *testing.T) {
 	}
 
 	type run struct {
-		id, tenantID, study  string
-		number               int
-		trigger, phase       string
-		requestedBy          interface{}
-		at                   time.Time
+		id, tenantID, study string
+		number              int
+		trigger, phase      string
+		requestedBy         interface{}
+		at                  time.Time
 	}
 	for _, fixture := range []run{
 		{"aip-run-a1", "aip-tenant-a", "9.1", 1, "AUTO", "TERMINAL", nil, now.Add(-3 * time.Hour)},
@@ -246,4 +246,76 @@ func TestPredictionsRepositoryAgainstPostgreSQL(t *testing.T) {
 	require.Empty(t, otherHistory)
 	uids, _ = exams(types.ListPredictionExams{TenantID: "aip-tenant-b", Search: "MRN-001"})
 	require.Empty(t, uids)
+
+	// Executions that never ran: pending or queued without a study-service
+	// job long after their run was created are stalled, need attention and
+	// are not active. A separate tenant keeps the assertions above unchanged.
+	_, err = tx.Exec(`
+		INSERT INTO ingestion_jobs (
+			id, tenant_id, dicom_modality, container_id, model_id, model_name,
+			model_version, modalities, stability_minutes, recent_window_minutes,
+			missing_polls_threshold, schedule_start_timestamp,
+			schedule_end_timestamp, status, created_at, updated_at
+		) VALUES ('aip-job-c', 'aip-tenant-c', 'XA', 'container', 'model', 'model', 'v1',
+			ARRAY['XA'], 1, 60, 3, $1, $2, 'RUNNING', $1, $1)
+	`, now, now.Add(time.Hour))
+	require.NoError(t, err)
+	stalledBefore := now.Add(-24 * time.Hour)
+	for _, fixture := range []struct {
+		study, status     string
+		studyServiceJobID interface{}
+		at                time.Time
+	}{
+		{"8.1", "pending", nil, now.Add(-30 * time.Hour)},     // stalled
+		{"8.2", "queued", "ss-8-2", now.Add(-31 * time.Hour)}, // at study-service: active
+		{"8.3", "queued", nil, now.Add(-23 * time.Hour)},      // recent: active
+		{"8.4", "queued", "  ", now.Add(-32 * time.Hour)},     // blank job id: stalled
+		{"8.5", "completed", nil, now.Add(-33 * time.Hour)},   // finished
+	} {
+		suffix := fixture.study
+		_, err = tx.Exec(`
+			INSERT INTO ingestion_candidates (
+				id, tenant_id, ingestion_job_id, study_instance_uid, first_seen_at, last_seen_at,
+				last_changed_at, missing_polls, status, created_at, updated_at
+			) VALUES ($1, 'aip-tenant-c', 'aip-job-c', $2, $3, $3, $3, 0, 'RETRIEVED', $3, $3)
+		`, "aip-cand-c"+suffix, fixture.study, fixture.at)
+		require.NoError(t, err)
+		_, err = tx.Exec(`
+			INSERT INTO ingestion_processing_runs (
+				id, tenant_id, study_instance_uid, run_number, run_trigger, phase,
+				attention_required, attention_reasons, version, created_at, updated_at
+			) VALUES ($1, 'aip-tenant-c', $2, 1, 'AUTO', 'QUEUED', FALSE, '[]', 1, $3, $3)
+		`, "aip-run-c"+suffix, fixture.study, fixture.at)
+		require.NoError(t, err)
+		_, err = tx.Exec(`
+			INSERT INTO ingestion_processing_jobs (
+				id, processing_run_id, candidate_id, tenant_id, model_name, status,
+				study_service_job_id, created_at, updated_at
+			) VALUES ($1, $2, $3, 'aip-tenant-c', 'DeepCORO-JEPA', $4, $5, $6, $6)
+		`, "aip-ex-c"+suffix, "aip-run-c"+suffix, "aip-cand-c"+suffix, fixture.status, fixture.studyServiceJobID, fixture.at)
+		require.NoError(t, err)
+	}
+	uids, total = exams(types.ListPredictionExams{TenantID: "aip-tenant-c", StalledBefore: stalledBefore})
+	require.Equal(t, []string{"8.3", "8.1", "8.2", "8.4", "8.5"}, uids)
+	require.Equal(t, 5, total)
+	uids, _ = exams(types.ListPredictionExams{TenantID: "aip-tenant-c", StalledBefore: stalledBefore,
+		Status: types.PredictionsExamStatusActive})
+	require.Equal(t, []string{"8.3", "8.2"}, uids, "stalled exams are not active")
+	uids, _ = exams(types.ListPredictionExams{TenantID: "aip-tenant-c", StalledBefore: stalledBefore,
+		Status: types.PredictionsExamStatusAttention})
+	require.Equal(t, []string{"8.1", "8.4"}, uids, "stalled exams need attention")
+	uids, _ = exams(types.ListPredictionExams{TenantID: "aip-tenant-c", StalledBefore: stalledBefore,
+		Status: types.PredictionsExamStatusCompleted})
+	require.Equal(t, []string{"8.5"}, uids)
+	// Without a limit nothing is stalled (as before this state existed).
+	uids, _ = exams(types.ListPredictionExams{TenantID: "aip-tenant-c", Status: types.PredictionsExamStatusActive})
+	require.Equal(t, []string{"8.3", "8.1", "8.2", "8.4"}, uids)
+
+	stalledRows, err := repository.ListPredictionExecutions(ctx, types.ListPredictionExecutions{
+		TenantID: "aip-tenant-c", StudyInstanceUIDs: []string{"8.1"}, LatestOnly: true,
+	})
+	require.NoError(t, err)
+	require.Len(t, stalledRows, 1)
+	require.Nil(t, stalledRows[0].StudyServiceJobID)
+	require.True(t, stalledRows[0].RunCreatedAt.Before(stalledBefore))
 }

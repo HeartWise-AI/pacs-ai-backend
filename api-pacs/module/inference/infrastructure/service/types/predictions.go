@@ -23,8 +23,12 @@ type PredictionState string
 
 const (
 	// PredictionStateWaiting: not dispatched because the exam is still receiving images.
-	PredictionStateWaiting   PredictionState = "waiting"
-	PredictionStateQueued    PredictionState = "queued"
+	PredictionStateWaiting PredictionState = "waiting"
+	PredictionStateQueued  PredictionState = "queued"
+	// PredictionStateStalled: never ran. The execution is still pending or
+	// queued without a study-service job long after its run was created; the
+	// dispatcher will not pick it up again, so it needs to be closed.
+	PredictionStateStalled   PredictionState = "stalled"
 	PredictionStateRunning   PredictionState = "running"
 	PredictionStateCompleted PredictionState = "completed"
 	PredictionStateFailed    PredictionState = "failed"
@@ -104,6 +108,7 @@ type PredictionCounts struct {
 	Total     int `json:"total"`
 	Waiting   int `json:"waiting"`
 	Queued    int `json:"queued"`
+	Stalled   int `json:"stalled"`
 	Running   int `json:"running"`
 	Completed int `json:"completed"`
 	Failed    int `json:"failed"`
@@ -126,16 +131,18 @@ type PredictionLauncher struct {
 // PredictionExam is one row of the AI Predictions page. The gateway does not
 // store patient names; clients resolve them from the local DICOMweb store.
 type PredictionExam struct {
-	StudyInstanceUID  string               `json:"studyInstanceUID"`
-	PatientID         *string              `json:"patientId"`
-	AccessionNumber   *string              `json:"accessionNumber"`
-	ModalitiesInStudy *string              `json:"modalitiesInStudy"`
-	StudyDate         *string              `json:"studyDate"`
-	LastActivityAt    time.Time            `json:"lastActivityAt"`
-	Active            bool                 `json:"active"`
-	Counts            PredictionCounts     `json:"counts"`
-	Models            []PredictionModel    `json:"models"`
-	Launchers         []PredictionLauncher `json:"launchers"`
+	StudyInstanceUID  string    `json:"studyInstanceUID"`
+	PatientID         *string   `json:"patientId"`
+	AccessionNumber   *string   `json:"accessionNumber"`
+	ModalitiesInStudy *string   `json:"modalitiesInStudy"`
+	StudyDate         *string   `json:"studyDate"`
+	LastActivityAt    time.Time `json:"lastActivityAt"`
+	// Active is true while a model is waiting, queued or running; stalled
+	// models do not count.
+	Active    bool                 `json:"active"`
+	Counts    PredictionCounts     `json:"counts"`
+	Models    []PredictionModel    `json:"models"`
+	Launchers []PredictionLauncher `json:"launchers"`
 }
 
 // PredictionsPage is one page of exams.

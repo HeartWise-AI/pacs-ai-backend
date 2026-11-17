@@ -241,7 +241,8 @@ func (k *kernel) RegisterInferenceRESTPredictionsController() inferenceREST.Infe
 			Repository: &inferenceRepository.InferencePredictionsRepository{
 				PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
 			},
-			Users: k.userQueryServiceContainer(),
+			Users:        k.userQueryServiceContainer(),
+			StalledAfter: inferenceService.ConfiguredPredictionsStalledAfter(),
 		},
 	}
 }

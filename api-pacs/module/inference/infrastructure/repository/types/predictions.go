@@ -25,9 +25,11 @@ type PredictionsExamStatus string
 
 const (
 	PredictionsExamStatusAny PredictionsExamStatus = ""
-	// PredictionsExamStatusActive: at least one model is waiting, queued or running.
+	// PredictionsExamStatusActive: at least one model is waiting, queued or
+	// running and not stalled.
 	PredictionsExamStatusActive PredictionsExamStatus = "active"
-	// PredictionsExamStatusAttention: at least one model failed or was skipped.
+	// PredictionsExamStatusAttention: at least one model failed, was skipped
+	// or stalled (never ran).
 	PredictionsExamStatusAttention PredictionsExamStatus = "attention"
 	// PredictionsExamStatusCompleted: every model completed.
 	PredictionsExamStatusCompleted PredictionsExamStatus = "completed"
@@ -51,10 +53,14 @@ type ListPredictionExams struct {
 	// case-insensitive) or the exact Study Instance UID.
 	Search string
 	// From and To bound the exam's last activity (inclusive, exclusive).
-	From   *time.Time
-	To     *time.Time
-	Limit  int
-	Offset int
+	From *time.Time
+	To   *time.Time
+	// StalledBefore: a pending or queued execution without a study-service
+	// job whose run was created before this time never ran (stalled). The
+	// zero time marks nothing as stalled.
+	StalledBefore time.Time
+	Limit         int
+	Offset        int
 }
 
 // PredictionExamRow is one exam of a page with the metadata the gateway

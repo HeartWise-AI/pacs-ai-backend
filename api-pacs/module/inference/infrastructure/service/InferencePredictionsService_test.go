@@ -82,6 +82,10 @@ func (fake *predictionsUsersFake) GetTenantUsers(context.Context, string) ([]use
 
 func strPointer(value string) *string { return &value }
 
+var predictionsTestNow = time.Date(2026, 11, 16, 10, 0, 0, 0, time.UTC)
+
+func pinnedNow() time.Time { return predictionsTestNow }
+
 func basePredictionsRequest(view types.PredictionsView, role string) types.ListPredictions {
 	return types.ListPredictions{TenantID: "tenant-a", UserID: "user-a", Role: role, View: view}
 }
@@ -115,7 +119,7 @@ func TestPredictionsViewsAreAuthorizedPerRole(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			repository := &predictionsRepositoryFake{}
-			service := InferencePredictionsService{Repository: repository}
+			service := InferencePredictionsService{Now: pinnedNow, Repository: repository}
 			page, err := service.ListPredictions(context.Background(), testCase.request)
 			if testCase.err != "" {
 				require.EqualError(t, err, testCase.err)
@@ -148,7 +152,7 @@ func TestPredictionsLaunchedByFilterIsOnlyForTheAllView(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		repository := &predictionsRepositoryFake{}
-		service := InferencePredictionsService{Repository: repository}
+		service := InferencePredictionsService{Now: pinnedNow, Repository: repository}
 		request := basePredictionsRequest(types.PredictionsViewAll, "ADMIN")
 		request.LaunchedBy = testCase.launchedBy
 		_, err := service.ListPredictions(context.Background(), request)
@@ -160,7 +164,7 @@ func TestPredictionsLaunchedByFilterIsOnlyForTheAllView(t *testing.T) {
 	for _, invalid := range []string{"user:", "someone", "user: "} {
 		request := basePredictionsRequest(types.PredictionsViewAll, "ADMIN")
 		request.LaunchedBy = invalid
-		_, err := (&InferencePredictionsService{Repository: &predictionsRepositoryFake{}}).ListPredictions(context.Background(), request)
+		_, err := (&InferencePredictionsService{Now: pinnedNow, Repository: &predictionsRepositoryFake{}}).ListPredictions(context.Background(), request)
 		require.EqualError(t, err, apiError.InvalidPayload, invalid)
 	}
 	// A regular user cannot read someone else's runs through "Launched by".
@@ -168,7 +172,7 @@ func TestPredictionsLaunchedByFilterIsOnlyForTheAllView(t *testing.T) {
 		request := basePredictionsRequest(view, "USER")
 		request.LaunchedBy = "user:user-b"
 		repository := &predictionsRepositoryFake{}
-		_, err := (&InferencePredictionsService{Repository: repository}).ListPredictions(context.Background(), request)
+		_, err := (&InferencePredictionsService{Now: pinnedNow, Repository: repository}).ListPredictions(context.Background(), request)
 		require.EqualError(t, err, apiError.InvalidPayload)
 		require.Empty(t, repository.examQueries)
 	}
@@ -178,7 +182,7 @@ func TestPredictionsFiltersAreValidatedAndPassedThrough(t *testing.T) {
 	from := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
 	to := from.Add(7 * 24 * time.Hour)
 	repository := &predictionsRepositoryFake{}
-	service := InferencePredictionsService{Repository: repository}
+	service := InferencePredictionsService{Now: pinnedNow, Repository: repository}
 	request := basePredictionsRequest(types.PredictionsViewAutomatic, "USER")
 	request.Search, request.Model, request.Status, request.Modality = "  ACC-1 ", "DeepCORO-JEPA", "attention", "XA"
 	request.From, request.To, request.Limit, request.Offset = &from, &to, 50, 100
@@ -187,7 +191,7 @@ func TestPredictionsFiltersAreValidatedAndPassedThrough(t *testing.T) {
 	require.Equal(t, repositoryTypes.ListPredictionExams{
 		TenantID: "tenant-a", Scope: repositoryTypes.PredictionsScopeAutomatic, ModelName: "DeepCORO-JEPA",
 		Status: repositoryTypes.PredictionsExamStatusAttention, Modality: "XA", Search: "ACC-1",
-		From: &from, To: &to, Limit: 50, Offset: 100,
+		From: &from, To: &to, StalledBefore: predictionsTestNow.Add(-24 * time.Hour), Limit: 50, Offset: 100,
 	}, repository.examQueries[0])
 
 	for status, expected := range map[string]repositoryTypes.PredictionsExamStatus{
@@ -197,7 +201,7 @@ func TestPredictionsFiltersAreValidatedAndPassedThrough(t *testing.T) {
 		repository := &predictionsRepositoryFake{}
 		request := basePredictionsRequest(types.PredictionsViewMine, "USER")
 		request.Status = status
-		_, err := (&InferencePredictionsService{Repository: repository}).ListPredictions(context.Background(), request)
+		_, err := (&InferencePredictionsService{Now: pinnedNow, Repository: repository}).ListPredictions(context.Background(), request)
 		require.NoError(t, err)
 		require.Equal(t, expected, repository.examQueries[0].Status)
 		require.Equal(t, defaultPredictionsPageSize, repository.examQueries[0].Limit)
@@ -215,23 +219,23 @@ func TestPredictionsFiltersAreValidatedAndPassedThrough(t *testing.T) {
 	for index, mutate := range invalid {
 		request := basePredictionsRequest(types.PredictionsViewMine, "USER")
 		mutate(&request)
-		_, err := (&InferencePredictionsService{Repository: &predictionsRepositoryFake{}}).ListPredictions(context.Background(), request)
+		_, err := (&InferencePredictionsService{Now: pinnedNow, Repository: &predictionsRepositoryFake{}}).ListPredictions(context.Background(), request)
 		require.EqualError(t, err, apiError.InvalidPayload, "case %d", index)
 	}
 	request = basePredictionsRequest(types.PredictionsViewMine, "USER")
 	request.Limit = 101
-	_, err = (&InferencePredictionsService{Repository: &predictionsRepositoryFake{}}).ListPredictions(context.Background(), request)
+	_, err = (&InferencePredictionsService{Now: pinnedNow, Repository: &predictionsRepositoryFake{}}).ListPredictions(context.Background(), request)
 	require.EqualError(t, err, apiError.MaximumLimitReached)
 }
 
 func predictionsFixture() *predictionsRepositoryFake {
-	now := time.Date(2026, 11, 16, 10, 0, 0, 0, time.UTC)
+	now := predictionsTestNow
 	started := now.Add(-2 * time.Minute)
 	completed := now.Add(-time.Minute)
 	growing := entity.InferenceIngestionCandidateStatusGrowing
 	retrieved := entity.InferenceIngestionCandidateStatusRetrieved
 	skip := entity.InferenceIngestionProcessingJobSkipReasonRequiredSeriesMissing
-	return &predictionsRepositoryFake{
+	fake := &predictionsRepositoryFake{
 		pages: []repositoryTypes.PredictionExamPage{{Total: 3, Exams: []repositoryTypes.PredictionExamRow{
 			{StudyInstanceUID: "1.1", LastActivityAt: now, PatientID: strPointer("MRN-1"), Total: 3},
 			{StudyInstanceUID: "1.2", LastActivityAt: now.Add(-time.Hour), Total: 3},
@@ -264,6 +268,10 @@ func predictionsFixture() *predictionsRepositoryFake {
 			{StudyInstanceUID: "1.2", RunTrigger: entity.InferenceIngestionProcessingRunTriggerManualReprocess, RequestedByUserID: strPointer("user-a"), Runs: 1, FirstAt: now.Add(-time.Hour)},
 		},
 	}
+	for index := range fake.executions {
+		fake.executions[index].RunCreatedAt = now.Add(-30 * time.Minute)
+	}
+	return fake
 }
 
 func TestListPredictionsBuildsExamRowsWithStatesNamesAndLaunchers(t *testing.T) {
@@ -273,7 +281,7 @@ func TestListPredictionsBuildsExamRowsWithStatesNamesAndLaunchers(t *testing.T) 
 		{ID: "user-b", TenantID: "tenant-a", Name: "Dr B"},
 		{ID: "user-x", TenantID: "tenant-b", Name: "Other tenant"},
 	}}
-	service := InferencePredictionsService{Repository: repository, Users: users}
+	service := InferencePredictionsService{Now: pinnedNow, Repository: repository, Users: users}
 
 	page, err := service.ListPredictions(context.Background(), basePredictionsRequest(types.PredictionsViewMine, "USER"))
 	require.NoError(t, err)
@@ -290,6 +298,7 @@ func TestListPredictionsBuildsExamRowsWithStatesNamesAndLaunchers(t *testing.T) 
 	require.Equal(t, "MRN-1", *exam.PatientID)
 	require.True(t, exam.Active)
 	require.Equal(t, types.PredictionCounts{Total: 3, Completed: 1, Waiting: 1, Queued: 1}, exam.Counts)
+	require.Equal(t, predictionsTestNow.Add(-24*time.Hour), repository.examQueries[0].StalledBefore)
 	jepa, cathEF, deepRV := exam.Models[0], exam.Models[1], exam.Models[2]
 	require.Equal(t, types.PredictionStateCompleted, jepa.State)
 	require.Equal(t, 2, jepa.EarlierRuns)
@@ -319,7 +328,7 @@ func TestListPredictionsBuildsExamRowsWithStatesNamesAndLaunchers(t *testing.T) 
 }
 
 func TestListPredictionsLeavesNamesUnknownWhenTheLookupFails(t *testing.T) {
-	service := InferencePredictionsService{Repository: predictionsFixture(), Users: &predictionsUsersFake{err: errors.New("firestore down")}}
+	service := InferencePredictionsService{Now: pinnedNow, Repository: predictionsFixture(), Users: &predictionsUsersFake{err: errors.New("firestore down")}}
 	page, err := service.ListPredictions(context.Background(), basePredictionsRequest(types.PredictionsViewMine, "USER"))
 	require.NoError(t, err)
 	require.Nil(t, page.Exams[0].Models[1].RequestedByName)
@@ -327,7 +336,7 @@ func TestListPredictionsLeavesNamesUnknownWhenTheLookupFails(t *testing.T) {
 }
 
 func TestListPredictionsPropagatesRepositoryErrors(t *testing.T) {
-	service := InferencePredictionsService{Repository: &predictionsRepositoryFake{err: errors.New(apiError.DatabaseError)}}
+	service := InferencePredictionsService{Now: pinnedNow, Repository: &predictionsRepositoryFake{err: errors.New(apiError.DatabaseError)}}
 	_, err := service.ListPredictions(context.Background(), basePredictionsRequest(types.PredictionsViewMine, "USER"))
 	require.EqualError(t, err, apiError.DatabaseError)
 }
@@ -335,7 +344,7 @@ func TestListPredictionsPropagatesRepositoryErrors(t *testing.T) {
 func TestPredictionModelHistoryPagesNewestFirst(t *testing.T) {
 	repository := predictionsFixture()
 	repository.history = repository.executions[:3]
-	service := InferencePredictionsService{Repository: repository}
+	service := InferencePredictionsService{Now: pinnedNow, Repository: repository}
 	page, err := service.GetPredictionModelHistory(context.Background(), types.GetPredictionModelHistory{
 		TenantID: "tenant-a", UserID: "user-a", StudyInstanceUID: " 1.1 ", Model: "DeepCORO-JEPA", Limit: 2,
 	})
@@ -383,7 +392,7 @@ func TestExportPredictionsWritesOneEscapedLinePerRun(t *testing.T) {
 	repository := predictionsFixture()
 	repository.pages[0].Total = 2
 	users := &predictionsUsersFake{users: []userTypes.GetTenantUser{{ID: "user-a", TenantID: "tenant-a", Name: "=cmd|'/C calc'!A0"}}}
-	service := InferencePredictionsService{Repository: repository, Users: users}
+	service := InferencePredictionsService{Now: pinnedNow, Repository: repository, Users: users}
 	var buffer bytes.Buffer
 	truncated := true
 	request := basePredictionsRequest(types.PredictionsViewAll, "OWNER")
@@ -417,7 +426,7 @@ func TestExportPredictionsWritesOneEscapedLinePerRun(t *testing.T) {
 }
 
 func TestExportPredictionsRefusesBeforeWritingAndReportsTruncation(t *testing.T) {
-	service := InferencePredictionsService{Repository: &predictionsRepositoryFake{}}
+	service := InferencePredictionsService{Now: pinnedNow, Repository: &predictionsRepositoryFake{}}
 	started := false
 	_, err := service.ExportPredictions(context.Background(), basePredictionsRequest(types.PredictionsViewAll, "USER"),
 		func(bool) io.Writer { started = true; return io.Discard })
@@ -428,7 +437,7 @@ func TestExportPredictionsRefusesBeforeWritingAndReportsTruncation(t *testing.T)
 		Total: MaximumPredictionsExportExams + 1, Exams: []repositoryTypes.PredictionExamRow{},
 	}}}
 	truncated := false
-	_, err = (&InferencePredictionsService{Repository: repository}).ExportPredictions(context.Background(),
+	_, err = (&InferencePredictionsService{Now: pinnedNow, Repository: repository}).ExportPredictions(context.Background(),
 		basePredictionsRequest(types.PredictionsViewMine, "USER"),
 		func(value bool) io.Writer { truncated = value; return io.Discard })
 	require.NoError(t, err)
@@ -446,9 +455,110 @@ func TestExportPredictionsReadsEveryPage(t *testing.T) {
 		{Total: predictionsExportBatch + 1, Exams: first},
 		{Total: predictionsExportBatch + 1, Exams: []repositoryTypes.PredictionExamRow{{StudyInstanceUID: "1.2"}}},
 	}}
-	_, err := (&InferencePredictionsService{Repository: repository}).ExportPredictions(context.Background(),
+	_, err := (&InferencePredictionsService{Now: pinnedNow, Repository: repository}).ExportPredictions(context.Background(),
 		basePredictionsRequest(types.PredictionsViewAutomatic, "USER"), func(bool) io.Writer { return io.Discard })
 	require.NoError(t, err)
 	require.Len(t, repository.examQueries, 2)
 	require.Equal(t, predictionsExportBatch, repository.examQueries[1].Offset)
+}
+
+func stalledPredictionRow(status entity.InferenceIngestionProcessingJobStatus, studyServiceJobID *string, age time.Duration) repositoryTypes.PredictionExecutionRow {
+	growing := entity.InferenceIngestionCandidateStatusGrowing
+	return repositoryTypes.PredictionExecutionRow{
+		StudyInstanceUID: "2.1", RunID: "run-s", ExecutionID: "ex-s", ModelName: "DeepCORO-JEPA",
+		RunTrigger: entity.InferenceIngestionProcessingRunTriggerAuto,
+		RunPhase:   entity.InferenceIngestionProcessingRunPhaseQueued,
+		Status:     status, StudyServiceJobID: studyServiceJobID, CandidateStatus: &growing,
+		RunCreatedAt: predictionsTestNow.Add(-age),
+	}
+}
+
+func TestPredictionExecutionStateMarksExecutionsThatNeverRanAsStalled(t *testing.T) {
+	stalledBefore := predictionsTestNow.Add(-24 * time.Hour)
+	pending := entity.InferenceIngestionProcessingJobStatusPending
+	queued := entity.InferenceIngestionProcessingJobStatusQueued
+	cases := []struct {
+		name     string
+		row      repositoryTypes.PredictionExecutionRow
+		expected types.PredictionState
+	}{
+		{"pending older than the limit", stalledPredictionRow(pending, nil, 25*time.Hour), types.PredictionStateStalled},
+		{"queued older than the limit", stalledPredictionRow(queued, nil, 25*time.Hour), types.PredictionStateStalled},
+		{"blank study-service job id counts as none", stalledPredictionRow(queued, strPointer("  "), 25*time.Hour), types.PredictionStateStalled},
+		{"one nanosecond past the limit", stalledPredictionRow(pending, nil, 24*time.Hour+time.Nanosecond), types.PredictionStateStalled},
+		{"exactly at the limit is not stalled yet", stalledPredictionRow(pending, nil, 24*time.Hour), types.PredictionStateWaiting},
+		{"recent pending on a growing exam waits", stalledPredictionRow(pending, nil, 23*time.Hour), types.PredictionStateWaiting},
+		{"recent queued stays queued", stalledPredictionRow(queued, nil, 23*time.Hour), types.PredictionStateQueued},
+		{"old but at study-service stays queued", stalledPredictionRow(queued, strPointer("ss-1"), 25*time.Hour), types.PredictionStateQueued},
+		{"old running is running", stalledPredictionRow(entity.InferenceIngestionProcessingJobStatusRunning, nil, 25*time.Hour), types.PredictionStateRunning},
+		{"old completed is completed", stalledPredictionRow(entity.InferenceIngestionProcessingJobStatusCompleted, nil, 25*time.Hour), types.PredictionStateCompleted},
+		{"old cancelled is cancelled", stalledPredictionRow(entity.InferenceIngestionProcessingJobStatusCancelled, nil, 25*time.Hour), types.PredictionStateCancelled},
+	}
+	for _, testCase := range cases {
+		row := testCase.row
+		require.Equal(t, testCase.expected, predictionExecutionState(&row, stalledBefore), testCase.name)
+	}
+}
+
+func TestStalledModelsAreCountedAndDoNotMakeTheExamActive(t *testing.T) {
+	stalled := stalledPredictionRow(entity.InferenceIngestionProcessingJobStatusPending, nil, 72*time.Hour)
+	completed := stalledPredictionRow(entity.InferenceIngestionProcessingJobStatusCompleted, nil, 72*time.Hour)
+	completed.ModelName, completed.ExecutionID = "DeepCORO-SYNTAX", "ex-c"
+	repository := &predictionsRepositoryFake{
+		pages:      []repositoryTypes.PredictionExamPage{{Total: 1, Exams: []repositoryTypes.PredictionExamRow{{StudyInstanceUID: "2.1", Total: 1}}}},
+		executions: []repositoryTypes.PredictionExecutionRow{stalled, completed},
+	}
+	service := InferencePredictionsService{Now: pinnedNow, Repository: repository}
+	page, err := service.ListPredictions(context.Background(), basePredictionsRequest(types.PredictionsViewAutomatic, "USER"))
+	require.NoError(t, err)
+	exam := page.Exams[0]
+	require.False(t, exam.Active, "a stalled model will not progress")
+	require.Equal(t, types.PredictionCounts{Total: 2, Stalled: 1, Completed: 1}, exam.Counts)
+	require.Equal(t, types.PredictionStateStalled, exam.Models[0].State)
+	require.True(t, exam.Models[0].Cancellable, "an administrator can close it from the page")
+
+	// Next to a running model the exam is still active.
+	running := stalledPredictionRow(entity.InferenceIngestionProcessingJobStatusRunning, strPointer("ss-2"), time.Hour)
+	running.ModelName = "DeepRV-CLIP"
+	counts, active := countPredictionStates([]types.PredictionModel{
+		{PredictionExecution: buildPredictionExecution(&stalled, "user-a", nil, predictionsTestNow.Add(-24*time.Hour))},
+		{PredictionExecution: buildPredictionExecution(&running, "user-a", nil, predictionsTestNow.Add(-24*time.Hour))},
+	})
+	require.True(t, active)
+	require.Equal(t, types.PredictionCounts{Total: 2, Stalled: 1, Running: 1}, counts)
+}
+
+func TestStalledAfterIsConfigurable(t *testing.T) {
+	service := InferencePredictionsService{Now: pinnedNow, StalledAfter: 2 * time.Hour}
+	require.Equal(t, predictionsTestNow.Add(-2*time.Hour), service.stalledBefore())
+	service.StalledAfter = 0
+	require.Equal(t, predictionsTestNow.Add(-24*time.Hour), service.stalledBefore(), "default 24 hours")
+
+	for value, expected := range map[string]time.Duration{
+		"": 24 * time.Hour, "48": 48 * time.Hour, " 6 ": 6 * time.Hour, "0.5": 30 * time.Minute,
+		"0": 24 * time.Hour, "-3": 24 * time.Hour, "soon": 24 * time.Hour,
+	} {
+		t.Setenv(predictionsStalledAfterEnv, value)
+		require.Equal(t, expected, ConfiguredPredictionsStalledAfter(), value)
+	}
+}
+
+func TestExportPredictionsShowsStalledRuns(t *testing.T) {
+	stalled := stalledPredictionRow(entity.InferenceIngestionProcessingJobStatusQueued, nil, 72*time.Hour)
+	repository := &predictionsRepositoryFake{
+		pages:      []repositoryTypes.PredictionExamPage{{Total: 1, Exams: []repositoryTypes.PredictionExamRow{{StudyInstanceUID: "2.1", Total: 1}}}},
+		executions: []repositoryTypes.PredictionExecutionRow{stalled},
+	}
+	var buffer bytes.Buffer
+	request := basePredictionsRequest(types.PredictionsViewAutomatic, "USER")
+	request.Status = "attention"
+	_, err := (&InferencePredictionsService{Now: pinnedNow, Repository: repository}).ExportPredictions(context.Background(),
+		request, func(bool) io.Writer { return &buffer })
+	require.NoError(t, err)
+	require.Equal(t, predictionsTestNow.Add(-24*time.Hour), repository.examQueries[0].StalledBefore)
+	lines, err := csv.NewReader(&buffer).ReadAll()
+	require.NoError(t, err)
+	require.Len(t, lines, 2)
+	require.Equal(t, "stalled", lines[1][10])
+	require.Equal(t, "", lines[1][13])
 }

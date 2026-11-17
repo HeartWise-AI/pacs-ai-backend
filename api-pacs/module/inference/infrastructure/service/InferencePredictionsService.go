@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"log"
+	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -25,7 +27,28 @@ const (
 	maximumPredictionsSearch   = 128
 	maximumPredictionsModel    = 255
 	maximumPredictionsHistory  = 50
+
+	// DefaultPredictionsStalledAfter is how long after its run was created a
+	// pending or queued execution without a study-service job is shown as
+	// stalled ("never ran").
+	DefaultPredictionsStalledAfter = 24 * time.Hour
+	predictionsStalledAfterEnv     = "INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS"
 )
+
+// ConfiguredPredictionsStalledAfter reads INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS
+// (a positive number of hours, default 24).
+func ConfiguredPredictionsStalledAfter() time.Duration {
+	value := strings.TrimSpace(os.Getenv(predictionsStalledAfterEnv))
+	if value == "" {
+		return DefaultPredictionsStalledAfter
+	}
+	hours, err := strconv.ParseFloat(value, 64)
+	if err != nil || hours <= 0 || hours > 24*365 {
+		log.Printf("[AI predictions] invalid %s=%q, using %s", predictionsStalledAfterEnv, value, DefaultPredictionsStalledAfter)
+		return DefaultPredictionsStalledAfter
+	}
+	return time.Duration(hours * float64(time.Hour))
+}
 
 var predictionsModalityPattern = regexp.MustCompile(`^[A-Za-z0-9]{1,16}$`)
 
@@ -41,6 +64,24 @@ type InferencePredictionsService struct {
 	Repository repository.InferencePredictionsRepositoryInterface
 	// Users is optional; without it (or when it fails) names are left null.
 	Users PredictionsUserDirectory
+	// StalledAfter defaults to DefaultPredictionsStalledAfter when zero.
+	StalledAfter time.Duration
+	// Now defaults to time.Now; tests pin it.
+	Now func() time.Time
+}
+
+// stalledBefore is the run creation time before which an execution that
+// never reached study-service is shown as stalled.
+func (service *InferencePredictionsService) stalledBefore() time.Time {
+	now := time.Now
+	if service.Now != nil {
+		now = service.Now
+	}
+	after := service.StalledAfter
+	if after <= 0 {
+		after = DefaultPredictionsStalledAfter
+	}
+	return now().Add(-after)
 }
 
 // IsWorkspaceAdministrator reports whether a role may use the "all" view.
@@ -58,6 +99,8 @@ type predictionsQuery struct {
 	view       types.PredictionsView
 	userID     string
 	canViewAll bool
+	// stalledBefore is shared by the SQL status filter and the state mapping.
+	stalledBefore time.Time
 }
 
 func parsePredictionsStatus(value string) (repositoryTypes.PredictionsExamStatus, bool) {
@@ -78,13 +121,13 @@ func parsePredictionsStatus(value string) (repositoryTypes.PredictionsExamStatus
 // buildPredictionsQuery validates the request and enforces the view rules:
 // "mine" always means the authenticated user, "all" needs ADMIN or OWNER, and
 // "Launched by" is only accepted in "all".
-func buildPredictionsQuery(data types.ListPredictions, maximumLimit int) (predictionsQuery, error) {
+func buildPredictionsQuery(data types.ListPredictions, maximumLimit int, stalledBefore time.Time) (predictionsQuery, error) {
 	tenantID := strings.TrimSpace(data.TenantID)
 	userID := strings.TrimSpace(data.UserID)
 	if tenantID == "" || userID == "" {
 		return predictionsQuery{}, errors.New(apiError.UnauthorizedAccess)
 	}
-	query := predictionsQuery{userID: userID, canViewAll: IsWorkspaceAdministrator(data.Role)}
+	query := predictionsQuery{userID: userID, canViewAll: IsWorkspaceAdministrator(data.Role), stalledBefore: stalledBefore}
 
 	view := types.PredictionsView(strings.TrimSpace(string(data.View)))
 	if view == "" {
@@ -155,14 +198,14 @@ func buildPredictionsQuery(data types.ListPredictions, maximumLimit int) (predic
 	query.exams = repositoryTypes.ListPredictionExams{
 		TenantID: tenantID, Scope: scope, RequestedByUserID: requestedBy,
 		ModelName: model, Status: status, Modality: modality, Search: search,
-		From: data.From, To: data.To, Limit: limit, Offset: data.Offset,
+		From: data.From, To: data.To, StalledBefore: stalledBefore, Limit: limit, Offset: data.Offset,
 	}
 	return query, nil
 }
 
 // ListPredictions returns one page of exams for the requested view.
 func (service *InferencePredictionsService) ListPredictions(ctx context.Context, data types.ListPredictions) (types.PredictionsPage, error) {
-	query, err := buildPredictionsQuery(data, maximumPredictionsPageSize)
+	query, err := buildPredictionsQuery(data, maximumPredictionsPageSize, service.stalledBefore())
 	if err != nil {
 		return types.PredictionsPage{}, err
 	}
@@ -191,7 +234,7 @@ func (service *InferencePredictionsService) ListPredictions(ctx context.Context,
 	for index := range executions {
 		row := &executions[index]
 		modelsByExam[row.StudyInstanceUID] = append(modelsByExam[row.StudyInstanceUID], types.PredictionModel{
-			PredictionExecution: buildPredictionExecution(row, query.userID, names),
+			PredictionExecution: buildPredictionExecution(row, query.userID, names, query.stalledBefore),
 			EarlierRuns:         row.EarlierRuns,
 		})
 	}
@@ -259,13 +302,14 @@ func (service *InferencePredictionsService) GetPredictionModelHistory(ctx contex
 		rows = rows[:limit]
 	}
 	names := service.userNames(ctx, tenantID, rows, nil)
+	stalledBefore := service.stalledBefore()
 	page := types.PredictionHistoryPage{
 		StudyInstanceUID: studyInstanceUID, ModelName: model,
 		Executions: make([]types.PredictionExecution, 0, len(rows)),
 		Limit:      limit, Offset: data.Offset, HasMore: hasMore,
 	}
 	for index := range rows {
-		page.Executions = append(page.Executions, buildPredictionExecution(&rows[index], userID, names))
+		page.Executions = append(page.Executions, buildPredictionExecution(&rows[index], userID, names, stalledBefore))
 	}
 	return page, nil
 }
@@ -305,10 +349,24 @@ func (service *InferencePredictionsService) userNames(
 	return names
 }
 
+// predictionStalled reports whether an execution never ran: still pending
+// or queued without a study-service job although its run was created before
+// stalledBefore. The re-dispatch recovery skips executions that old, so they
+// will not progress. The exam list status filter applies the same rule in SQL.
+func predictionStalled(row *repositoryTypes.PredictionExecutionRow, stalledBefore time.Time) bool {
+	return (row.Status == entity.InferenceIngestionProcessingJobStatusPending ||
+		row.Status == entity.InferenceIngestionProcessingJobStatusQueued) &&
+		trimmedPointerValue(row.StudyServiceJobID) == "" && row.RunCreatedAt.Before(stalledBefore)
+}
+
 // predictionExecutionState maps a stored execution to the state the page
 // shows. A pending execution never dispatched while its exam is still
-// receiving images waits for the exam to finish.
-func predictionExecutionState(row *repositoryTypes.PredictionExecutionRow) types.PredictionState {
+// receiving images waits for the exam to finish; one that never reached
+// study-service long after its run was created is stalled.
+func predictionExecutionState(row *repositoryTypes.PredictionExecutionRow, stalledBefore time.Time) types.PredictionState {
+	if predictionStalled(row, stalledBefore) {
+		return types.PredictionStateStalled
+	}
 	switch row.Status {
 	case entity.InferenceIngestionProcessingJobStatusPending:
 		if trimmedPointerValue(row.StudyServiceJobID) == "" && row.CandidateStatus != nil &&
@@ -334,7 +392,12 @@ func predictionExecutionState(row *repositoryTypes.PredictionExecutionRow) types
 	}
 }
 
-func buildPredictionExecution(row *repositoryTypes.PredictionExecutionRow, userID string, names map[string]string) types.PredictionExecution {
+func buildPredictionExecution(
+	row *repositoryTypes.PredictionExecutionRow,
+	userID string,
+	names map[string]string,
+	stalledBefore time.Time,
+) types.PredictionExecution {
 	execution := entity.InferenceIngestionProcessingJob{
 		Status: row.Status, StudyServiceJobID: row.StudyServiceJobID,
 		SkipReasonCode: row.SkipReasonCode, SkipReasonMessage: row.SkipReasonMessage,
@@ -345,7 +408,7 @@ func buildPredictionExecution(row *repositoryTypes.PredictionExecutionRow, userI
 	result := types.PredictionExecution{
 		RunID: row.RunID, ExecutionID: row.ExecutionID, RunNumber: row.RunNumber, Trigger: row.RunTrigger,
 		ModelName: row.ModelName, ModelVersion: row.ModelVersion, Modality: row.Modality,
-		State: predictionExecutionState(row), Status: row.Status, ErrorMessage: row.ErrorMessage,
+		State: predictionExecutionState(row, stalledBefore), Status: row.Status, ErrorMessage: row.ErrorMessage,
 		SkipReason: execution.GetSkipReason(),
 		Cancellable: row.RunPhase != entity.InferenceIngestionProcessingRunPhaseTerminal &&
 			execution.IsCancellableBeforeCompute(studyServiceJobMissing),
@@ -413,6 +476,8 @@ func insertPredictionLauncher(launchers []types.PredictionLauncher, launcher typ
 	return launchers
 }
 
+// countPredictionStates counts the latest state of each model; a stalled
+// model does not make the exam active.
 func countPredictionStates(models []types.PredictionModel) (types.PredictionCounts, bool) {
 	counts := types.PredictionCounts{Total: len(models)}
 	for _, model := range models {
@@ -421,6 +486,8 @@ func countPredictionStates(models []types.PredictionModel) (types.PredictionCoun
 			counts.Waiting++
 		case types.PredictionStateQueued:
 			counts.Queued++
+		case types.PredictionStateStalled:
+			counts.Stalled++
 		case types.PredictionStateRunning:
 			counts.Running++
 		case types.PredictionStateCompleted:

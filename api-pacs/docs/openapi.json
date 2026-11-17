@@ -2607,7 +2607,7 @@
             "name": "status",
             "in": "query",
             "required": false,
-            "description": "any (default); active: a model is waiting, queued or running; attention: a model failed or was skipped; completed: every model completed. Reads the latest execution of each model.",
+            "description": "any (default); active: a model is waiting, queued or running (stalled models excluded); attention: a model failed, was skipped or stalled; completed: every model completed. Reads the latest execution of each model.",
             "schema": {
               "type": "string",
               "enum": [
@@ -2750,6 +2750,9 @@
                                   "queued": {
                                     "type": "integer"
                                   },
+                                  "stalled": {
+                                    "type": "integer"
+                                  },
                                   "running": {
                                     "type": "integer"
                                   },
@@ -2836,13 +2839,14 @@
                                           "enum": [
                                             "waiting",
                                             "queued",
+                                            "stalled",
                                             "running",
                                             "completed",
                                             "failed",
                                             "skipped",
                                             "cancelled"
                                           ],
-                                          "description": "waiting: not dispatched because the exam is still receiving images."
+                                          "description": "waiting: not dispatched because the exam is still receiving images. stalled: never ran; still pending or queued without a study-service job more than INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS (default 24) after the run was created."
                                         },
                                         "status": {
                                           "type": "string",
@@ -2981,7 +2985,7 @@
             "name": "status",
             "in": "query",
             "required": false,
-            "description": "any (default); active: a model is waiting, queued or running; attention: a model failed or was skipped; completed: every model completed. Reads the latest execution of each model.",
+            "description": "any (default); active: a model is waiting, queued or running (stalled models excluded); attention: a model failed, was skipped or stalled; completed: every model completed. Reads the latest execution of each model.",
             "schema": {
               "type": "string",
               "enum": [
@@ -3217,13 +3221,14 @@
                                 "enum": [
                                   "waiting",
                                   "queued",
+                                  "stalled",
                                   "running",
                                   "completed",
                                   "failed",
                                   "skipped",
                                   "cancelled"
                                 ],
-                                "description": "waiting: not dispatched because the exam is still receiving images."
+                                "description": "waiting: not dispatched because the exam is still receiving images. stalled: never ran; still pending or queued without a study-service job more than INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS (default 24) after the run was created."
                               },
                               "status": {
                                 "type": "string",

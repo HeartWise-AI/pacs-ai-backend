@@ -40,6 +40,24 @@ func TestPredictionExamsQueryBindsEveryUserValue(t *testing.T) {
 	require.EqualError(t, err, apiError.InvalidPayload)
 }
 
+func TestPredictionExamsQueryKeepsStalledModelsOutOfActiveAndInAttention(t *testing.T) {
+	stalledBefore := time.Date(2026, 11, 15, 10, 0, 0, 0, time.UTC)
+	query, args, err := buildListPredictionExamsQuery(types.ListPredictionExams{
+		TenantID: "tenant-a", Scope: types.PredictionsScopeAll, StalledBefore: stalledBefore,
+		Status: types.PredictionsExamStatusActive, Limit: 25,
+	})
+	require.NoError(t, err)
+	require.Equal(t, stalledBefore, args["stalled_before"])
+	// Same rule as predictionExecutionState: pending or queued, no
+	// study-service job, run created before the limit.
+	require.Contains(t, query, `(CAST(j.status AS text) IN ('pending', 'queued')
+					AND NULLIF(BTRIM(j.study_service_job_id), '') IS NULL
+					AND r.created_at < :stalled_before) AS stalled`)
+	require.Contains(t, query, `BOOL_OR(latest.status IN ('pending', 'queued', 'running') AND NOT latest.stalled) AS any_active`)
+	require.Contains(t, query, `BOOL_OR(latest.status IN ('failed', 'skipped') OR latest.stalled) AS any_attention`)
+	require.Contains(t, query, "AND exams.any_active")
+}
+
 func TestPredictionExamsRequireTenantAndRequester(t *testing.T) {
 	repository := InferencePredictionsRepository{PostgresSQLDBHandlerInterface: &processingRunTestHandler{}}
 	for _, data := range []types.ListPredictionExams{

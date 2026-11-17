@@ -83,8 +83,10 @@ func escapeLikePattern(value string) string {
 //
 // exam_keys narrows the tenant's exams by scope (and by recent activity when a
 // start date is given, which the index on (tenant_id, updated_at) serves);
-// latest keeps the newest execution of each model of those exams; exams
-// aggregates the latest states; meta picks the stored patient ID, accession,
+// latest keeps the newest execution of each model of those exams and marks
+// the stalled ones exactly like predictionExecutionState does; exams
+// aggregates the latest states (a stalled model needs attention and is not
+// active); meta picks the stored patient ID, accession,
 // modalities and study date from the candidates of those executions.
 func buildListPredictionExamsQuery(data types.ListPredictionExams) (string, map[string]interface{}, error) {
 	scope, err := predictionsScopeFragment(data.Scope)
@@ -99,6 +101,7 @@ func buildListPredictionExamsQuery(data types.ListPredictionExams) (string, map[
 		"tenant_id":            data.TenantID,
 		"requested_by_user_id": data.RequestedByUserID,
 		"model_name":           data.ModelName,
+		"stalled_before":       data.StalledBefore,
 		"limit":                data.Limit,
 		"offset":               data.Offset,
 	}
@@ -145,7 +148,10 @@ func buildListPredictionExamsQuery(data types.ListPredictionExams) (string, map[
 		latest AS (
 			SELECT DISTINCT ON (r.study_instance_uid, j.model_name)
 				r.study_instance_uid, j.model_name, CAST(j.status AS text) AS status, j.modality, j.candidate_id,
-				GREATEST(r.updated_at, j.updated_at) AS activity_at
+				GREATEST(r.updated_at, j.updated_at) AS activity_at,
+				(CAST(j.status AS text) IN ('pending', 'queued')
+					AND NULLIF(BTRIM(j.study_service_job_id), '') IS NULL
+					AND r.created_at < :stalled_before) AS stalled
 			FROM exam_keys
 			JOIN ingestion_processing_runs r
 				ON r.tenant_id = :tenant_id AND r.study_instance_uid = exam_keys.study_instance_uid
@@ -157,8 +163,8 @@ func buildListPredictionExamsQuery(data types.ListPredictionExams) (string, map[
 		exams AS (
 			SELECT latest.study_instance_uid,
 				MAX(latest.activity_at) AS last_activity_at,
-				BOOL_OR(latest.status IN ('pending', 'queued', 'running')) AS any_active,
-				BOOL_OR(latest.status IN ('failed', 'skipped')) AS any_attention,
+				BOOL_OR(latest.status IN ('pending', 'queued', 'running') AND NOT latest.stalled) AS any_active,
+				BOOL_OR(latest.status IN ('failed', 'skipped') OR latest.stalled) AS any_attention,
 				BOOL_AND(latest.status = 'completed') AS all_completed,
 				BOOL_OR(UPPER(COALESCE(latest.modality, '')) = :modality) AS dispatched_with_modality
 			FROM latest

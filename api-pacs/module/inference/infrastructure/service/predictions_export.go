@@ -127,7 +127,7 @@ func (service *InferencePredictionsService) ExportPredictions(
 	start func(truncated bool) io.Writer,
 ) (types.PredictionsExportSummary, error) {
 	data.Limit, data.Offset = predictionsExportBatch, 0
-	query, err := buildPredictionsQuery(data, predictionsExportBatch)
+	query, err := buildPredictionsQuery(data, predictionsExportBatch, service.stalledBefore())
 	if err != nil {
 		return types.PredictionsExportSummary{}, err
 	}
@@ -196,7 +196,7 @@ func (service *InferencePredictionsService) writePredictionExportBatch(
 	grouped := make(map[string][]types.PredictionExecution, len(exams))
 	for index := range rows {
 		row := &rows[index]
-		grouped[row.StudyInstanceUID] = append(grouped[row.StudyInstanceUID], buildPredictionExecution(row, query.userID, names))
+		grouped[row.StudyInstanceUID] = append(grouped[row.StudyInstanceUID], buildPredictionExecution(row, query.userID, names, query.stalledBefore))
 	}
 	// Keep the page order: most recent exam first, newest run first within it.
 	for _, uid := range uids {
