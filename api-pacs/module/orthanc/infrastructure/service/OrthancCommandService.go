@@ -11,7 +11,6 @@ import (
 	"time"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
-	"api-pacs/internal/assert"
 	dicomUtils "api-pacs/internal/dicom"
 	apiError "api-pacs/internal/errors"
 	hashUtils "api-pacs/internal/hash"
@@ -111,95 +110,18 @@ func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, t
 
 // RetrieveModalityStudyBySeries retrieve modality study by series
 func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.Context, data types.RetrieveModalityStudyBySeries) ([]orthancAPITypes.QueryModalityResponse, error) {
-	// check if study already exist in local
-	resources, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
-		Level: "Series",
-		Query: orthancAPITypes.QueryLocalResource{
-			StudyInstanceUID: data.StudyInstanceUID,
-		},
-		Expand: true,
-	})
-	if err != nil && err.Error() != apiError.MissingRecord {
-		log.Println(err)
-		return nil, err
+	// Only what the local store lacks is moved: series that are not stored,
+	// and the missing images of partly stored ones. Nothing missing answers
+	// DuplicateRecord, as an up-to-date local copy did before.
+	// Every modality, ultrasound included, is retrieved series by series:
+	// one C-MOVE per series, first series first, a few at a time. Ultrasound
+	// used one C-MOVE per image, which opened up to one association per image
+	// against the PACS and got refused under load.
+	// Someone waiting in the viewer (a user ID) goes before automatic ingestion.
+	res, err := service.OrthancAPIInterface.RetrieveModalityStudyBySeries(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID, data.UserID != nil)
+	if err != nil && err.Error() == apiError.DuplicateRecord {
+		return nil, err // halt and proceed: the local copy is complete
 	}
-
-	if len(resources) > 0 {
-		// check if local resource series matches with modality series
-		// FIXME: ideal is to check it using last update time but modality query doesnt return time related
-		// FIXME: code will detect series changes but not study related changes like change name, etc.
-		var localSeries []string
-		for _, resource := range resources {
-			localSeries = append(localSeries, resource.MainDICOMTags.SeriesInstanceUID)
-		}
-
-		modalitySeriesResponse, err := service.OrthancAPIInterface.FindModalitySeriesByStudy(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID)
-		if err != nil {
-			log.Println(err)
-			return nil, err
-		}
-
-		var modalitySeries []string
-		for _, modality := range modalitySeriesResponse {
-			modalitySeries = append(modalitySeries, modality.SeriesInstanceUID)
-		}
-
-		// if matches (meaning no changes), skip retrieving/download
-		if assert.ElementsMatch(localSeries, modalitySeries) {
-			return nil, errors.New(apiError.DuplicateRecord) // halt and proceed
-		}
-	}
-
-	// get modality type from study information
-	var modalityType string
-	if len(data.ModalityType) > 0 {
-		// If modality type is explicitly provided, use it
-		modalityType = data.ModalityType
-	} else {
-		// otherwise, query for study details to get ModalitiesInStudy
-		studyResults, _, err := service.OrthancAPIInterface.FindModalityStudies(ctx, data.ModalityID, orthancAPITypes.QueryModalitiesRequest{
-			Level:     "Study",
-			LocalAET:  os.Getenv("ORTHANC_AET"),
-			Normalize: true,
-			Query: orthancAPITypes.QueryStudy{
-				StudyInstanceUID: data.StudyInstanceUID,
-			},
-			Timeout: 0,
-		})
-		if err != nil {
-			log.Println("Error getting study information:", err)
-			// default to non-US modality type if study info can't be retrieved
-			modalityType = "other"
-		} else if len(studyResults) > 0 {
-			// extract modality type from ModalitiesInStudy field
-			modalitiesInStudy := studyResults[0].ModalitiesInStudy
-			log.Println("ModalitiesInStudy:", modalitiesInStudy)
-
-			// check if US is in the modalities
-			if strings.Contains(modalitiesInStudy, "US") {
-				modalityType = "US"
-			} else {
-				modalityType = "other"
-			}
-		} else {
-			// default to non-US modality type if no study info found
-			modalityType = "other"
-		}
-	}
-
-	log.Println("Using modality type:", modalityType)
-
-	var res []orthancAPITypes.QueryModalityResponse
-
-	// Choose retrieval method based on modality type
-	if modalityType == "US" {
-		log.Println("Using instance-based retrieval for US modality")
-		res, err = service.OrthancAPIInterface.RetrieveModalityStudyByInstances(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID)
-	} else {
-		log.Println("Using series-based retrieval for non-US modality")
-		res, err = service.OrthancAPIInterface.RetrieveModalityStudyBySeries(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID)
-	}
-
 	if err != nil {
 		log.Println(err)
 		return nil, err

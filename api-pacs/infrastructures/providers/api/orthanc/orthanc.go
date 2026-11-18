@@ -12,10 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 
 	"api-pacs/infrastructures/providers/api/orthanc/types"
 	apiError "api-pacs/internal/errors"
@@ -197,7 +194,10 @@ func (o *OrthancAPI) FindModalitySeriesByStudy(ctx context.Context, modalityID, 
 		"LocalAet":  localAET,
 		"Normalize": true,
 		"Query": map[string]string{
-			"StudyInstanceUID": studyInstanceUID,
+			"StudyInstanceUID":               studyInstanceUID,
+			"SeriesNumber":                   "",
+			"Modality":                       "",
+			"NumberOfSeriesRelatedInstances": "",
 		},
 		"Timeout": 0,
 	}
@@ -225,8 +225,88 @@ func (o *OrthancAPI) FindModalitySeriesByStudy(ctx context.Context, modalityID, 
 	return queryModalitySeriesAnswersResponse, nil
 }
 
-// GetJobInfo get job info
+// GetJobInfo get job info. Series moves this process started are retried
+// and checked here (see series_move.go), so every caller sees the same state.
 func (o *OrthancAPI) GetJobInfo(ctx context.Context, jobID string) (types.GetJobResponse, error) {
+	job, err := o.getJobInfo(seriesMoves.current(jobID))
+	if err != nil {
+		return job, err
+	}
+	// Callers keep the ID they were given, whichever attempt answers.
+	job.ID = jobID
+
+	action := seriesMoves.decide(jobID, job)
+	if action == moveVerify {
+		parts, expected, _ := seriesMoves.parts(jobID)
+		local := 0
+		for _, part := range parts {
+			if part.expected == 0 {
+				continue // the PACS gave no count for this series
+			}
+			count, err := o.countLocalSeriesInstances(part.studyInstanceUID, part.seriesInstanceUID)
+			if err != nil {
+				log.Printf("[retrieve] cannot count local images of move job %s: %v", jobID, err)
+				return job, nil
+			}
+			local += min(count, part.expected)
+		}
+		if seriesMoves.verifiedCount(jobID, local) {
+			return job, nil
+		}
+		log.Printf("[retrieve] move job %s ended with %d of %d images", jobID, local, expected)
+		action = seriesMoves.failed(jobID)
+		if action == moveReport {
+			return incompleteView(job, local, expected), nil
+		}
+	}
+
+	switch action {
+	case moveWaitRetry:
+		return pendingView(job), nil
+	case moveResubmit:
+		modalityID, request, ok := seriesMoves.retry(jobID)
+		if !ok {
+			return job, nil
+		}
+		answer, err := o.submitSeriesMove(modalityID, request)
+		if err != nil {
+			log.Printf("[retrieve] cannot move series again for job %s: %v", jobID, err)
+			return pendingView(job), nil
+		}
+		seriesMoves.resubmitted(jobID, answer.ID)
+		log.Printf("[retrieve] series of move job %s moved again as job %s after: %s", jobID, answer.ID, job.ErrorDescription)
+		return pendingView(job), nil
+	}
+
+	return job, nil
+}
+
+// countLocalSeriesInstances counts the images of a series in the local store.
+// The series resource lists its instances, so the count is not cut by
+// Orthanc's LimitFindResults.
+func (o *OrthancAPI) countLocalSeriesInstances(studyInstanceUID, seriesInstanceUID string) (int, error) {
+	var series []struct {
+		Instances []string `json:"Instances"`
+	}
+	err := o.findLocalResources(map[string]interface{}{
+		"Level":  "Series",
+		"Expand": true,
+		"Query": map[string]string{
+			"StudyInstanceUID":  studyInstanceUID,
+			"SeriesInstanceUID": seriesInstanceUID,
+		},
+	}, &series)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, item := range series {
+		count += len(item.Instances)
+	}
+	return count, nil
+}
+
+func (o *OrthancAPI) getJobInfo(jobID string) (types.GetJobResponse, error) {
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/jobs/%s", o.BaseURL, jobID), nil)
 	if err != nil {
 		return types.GetJobResponse{}, err
@@ -365,237 +445,178 @@ func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, 
 	return answerResponse, nil
 }
 
-// RetrieveModalityStudyBySeries retrieve modality study by series
-func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modalityID, localAet, studyInstanceUID string) ([]types.QueryModalityResponse, error) {
-	// get modality series by study
-	queryModalitySeriesAnswersResponse, err := o.FindModalitySeriesByStudy(ctx, modalityID, localAet, studyInstanceUID)
+// RetrieveModalityStudyBySeries retrieves from a modality what the local
+// store lacks of a study: series that are not stored are moved whole, partly
+// stored series have only their missing images moved, complete series are
+// skipped (see series_move.go). The first series is a job of its own and goes
+// first; the other series share a few jobs (batchMoves). interactive is true
+// when someone is waiting for the study in the viewer.
+// Returns DuplicateRecord when nothing is missing.
+func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modalityID, localAet, studyInstanceUID string, interactive bool) ([]types.QueryModalityResponse, error) {
+	remote, err := o.FindModalitySeriesByStudy(ctx, modalityID, localAet, studyInstanceUID)
+	if err != nil {
+		return nil, err
+	}
+	local, err := o.localSeriesInventory(studyInstanceUID)
 	if err != nil {
 		return nil, err
 	}
 
-	// retrieve by series concurrently
-	var m = sync.Mutex{}
-	eg, _ := errgroup.WithContext(ctx)
+	jobs := batchMoves(planStudyMoves(orderSeriesForMove(remote), local))
+	results := make([]types.QueryModalityResponse, 0, len(jobs))
 
-	var results []types.QueryModalityResponse
+	// Submitting only queues the jobs in Orthanc, which runs them a few at a
+	// time, highest priority first: the first series' job comes first.
+	for index, job := range jobs {
+		priority := seriesMovePriority(interactive, index, len(jobs))
+		first := job[0]
+		request := seriesBatchMoveRequest(job, localAet, priority)
+		if first.kind == moveMissingInstances {
+			missing, err := o.missingSeriesInstances(modalityID, localAet, first)
+			if err != nil {
+				return nil, err
+			}
+			if len(missing) == 0 {
+				continue
+			}
+			request = instancesMoveRequest(first.series, missing, localAet, priority)
+		}
 
-	// set limit
-	eg.SetLimit(len(queryModalitySeriesAnswersResponse))
+		answer, err := o.submitSeriesMove(modalityID, request)
+		if err != nil {
+			return nil, err
+		}
 
-	for _, series := range queryModalitySeriesAnswersResponse {
-		func(series types.QueryModalitySeriesAnswersResponse) {
-			eg.Go(func() error {
-				// retrieve by series (c-move)
-				buf := new(bytes.Buffer)
-				err := json.NewEncoder(buf).Encode(map[string]interface{}{
-					"Level": "Series",
-					"Resources": []map[string]string{
-						{
-							"StudyInstanceUID":  series.StudyInstanceUID,
-							"SeriesInstanceUID": series.SeriesInstanceUID,
-						},
-					},
-					"Asynchronous": true,
-					"Full":         true,
-					"Permissive":   true,
-					"Priority":     0,
-					"Simplify":     true,
-					"Synchronous":  false,
-					"TargetAet":    localAet,
-					"Timeout":      0,
-				})
-				if err != nil {
-					return err
-				}
-
-				req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/move", o.BaseURL, modalityID), buf)
-				if err != nil {
-					return err
-				}
-
-				resp, err := client.Do(req)
-				if err != nil {
-					return err
-				}
-				defer resp.Body.Close()
-
-				if resp.StatusCode < 200 || resp.StatusCode > 299 {
-					response, err := io.ReadAll(resp.Body)
-					if err != nil {
-						return err
-					}
-					errorMessage := string(response)
-
-					log.Println("Error:", errorMessage)
-					return errors.New(apiError.OrthancError)
-				}
-
-				var answerResponse types.QueryModalityResponse
-				if err := json.NewDecoder(resp.Body).Decode(&answerResponse); err != nil {
-					return err
-				}
-
-				m.Lock()
-				results = append(results, answerResponse)
-				defer m.Unlock()
-
-				return nil
-			})
-		}(series)
+		series := make([]types.QueryModalitySeriesAnswersResponse, 0, len(job))
+		for _, move := range job {
+			series = append(series, move.series)
+		}
+		seriesMoves.track(answer.ID, modalityID, request, series...)
+		answer.SeriesInstanceUID = first.series.SeriesInstanceUID
+		answer.SeriesNumber = strings.TrimSpace(first.series.SeriesNumber)
+		answer.Order = len(results)
+		results = append(results, answer)
 	}
 
-	// wait for all goroutines to finish
-	if err := eg.Wait(); err != nil {
-		log.Println("Error:", err)
-		return nil, err
+	if len(results) == 0 {
+		// Every series of the PACS is complete locally.
+		return nil, errors.New(apiError.DuplicateRecord)
 	}
 
 	return results, nil
 }
 
-// RetrieveModalityStudyByInstances retrieve modality study by instances (for US modalities)
-func (o *OrthancAPI) RetrieveModalityStudyByInstances(ctx context.Context, modalityID, localAet, studyInstanceUID string) ([]types.QueryModalityResponse, error) {
-	// get modality series by study
-	queryModalitySeriesAnswersResponse, err := o.FindModalitySeriesByStudy(ctx, modalityID, localAet, studyInstanceUID)
+// localSeriesInventory lists the stored series of a study with their image counts.
+func (o *OrthancAPI) localSeriesInventory(studyInstanceUID string) (map[string]localSeries, error) {
+	var series []struct {
+		ID            string   `json:"ID"`
+		Instances     []string `json:"Instances"`
+		MainDicomTags struct {
+			SeriesInstanceUID string `json:"SeriesInstanceUID"`
+		} `json:"MainDicomTags"`
+	}
+	err := o.findLocalResources(map[string]interface{}{
+		"Level":  "Series",
+		"Expand": true,
+		"Query":  map[string]string{"StudyInstanceUID": studyInstanceUID},
+	}, &series)
 	if err != nil {
 		return nil, err
 	}
+	inventory := make(map[string]localSeries, len(series))
+	for _, item := range series {
+		inventory[item.MainDicomTags.SeriesInstanceUID] = localSeries{orthancID: item.ID, instances: len(item.Instances)}
+	}
+	return inventory, nil
+}
 
-	var results []types.QueryModalityResponse
-
-	// setup concurrency tools
-	var m = sync.Mutex{}
-	eg, _ := errgroup.WithContext(ctx)
-
-	// for each series, retrieve instances
-	for _, series := range queryModalitySeriesAnswersResponse {
-		buf := new(bytes.Buffer)
-		err := json.NewEncoder(buf).Encode(map[string]interface{}{
-			"Level":     "Instance",
-			"LocalAet":  localAet,
-			"Normalize": true,
-			"Query": map[string]string{
-				"StudyInstanceUID":  series.StudyInstanceUID,
-				"SeriesInstanceUID": series.SeriesInstanceUID,
-			},
-			"Timeout": 0,
-		})
-		if err != nil {
+// missingSeriesInstances lists the images of a partly stored series that the
+// PACS has and the local store lacks.
+func (o *OrthancAPI) missingSeriesInstances(modalityID, localAet string, move plannedMove) ([]string, error) {
+	var query types.QueryModalityResponse
+	err := o.queryModalities(modalityID, map[string]interface{}{
+		"Level":     "Instance",
+		"LocalAet":  localAet,
+		"Normalize": true,
+		"Query": map[string]string{
+			"StudyInstanceUID":  move.series.StudyInstanceUID,
+			"SeriesInstanceUID": move.series.SeriesInstanceUID,
+			"SOPInstanceUID":    "",
+		},
+		"Timeout": 0,
+	}, &query)
+	if err != nil {
+		return nil, err
+	}
+	var remoteAnswers []struct {
+		SOPInstanceUID string `json:"SOPInstanceUID"`
+	}
+	if query.ID != "" {
+		if err := o.findQueryAnswers(query.ID, &remoteAnswers); err != nil {
 			return nil, err
-		}
-
-		req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/query", o.BaseURL, modalityID), buf)
-		if err != nil {
-			return nil, err
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, err
-		}
-
-		var queryResponse types.QueryModalityResponse
-		if err := json.NewDecoder(resp.Body).Decode(&queryResponse); err != nil {
-			resp.Body.Close()
-			return nil, err
-		}
-		resp.Body.Close()
-
-		if len(queryResponse.ID) == 0 {
-			continue
-		}
-
-		var instancesResponse []map[string]interface{}
-		err = o.findQueryAnswers(queryResponse.ID, &instancesResponse)
-		if err != nil {
-			return nil, err
-		}
-
-		if len(instancesResponse) == 0 {
-			continue
-		}
-
-		// set limit for concurrency
-		eg.SetLimit(len(instancesResponse))
-
-		// retrieve each instance individually
-		for _, instance := range instancesResponse {
-			instanceCopy := instance // create a copy for the closure
-
-			eg.Go(func() error {
-				// Extract SOPInstanceUID from instance
-				sopInstanceUID, ok := instanceCopy["SOPInstanceUID"].(string)
-				if !ok || sopInstanceUID == "" {
-					return nil // skip this instance but don't fail the whole operation
-				}
-
-				// C-MOVE for this specific instance
-				moveBuf := new(bytes.Buffer)
-				err := json.NewEncoder(moveBuf).Encode(map[string]interface{}{
-					"Level": "Instance",
-					"Resources": []map[string]string{
-						{
-							"StudyInstanceUID":  series.StudyInstanceUID,
-							"SeriesInstanceUID": series.SeriesInstanceUID,
-							"SOPInstanceUID":    sopInstanceUID,
-						},
-					},
-					"Asynchronous": true,
-					"Full":         true,
-					"Permissive":   true,
-					"Priority":     0,
-					"Simplify":     true,
-					"Synchronous":  false,
-					"TargetAet":    localAet,
-					"Timeout":      0,
-				})
-				if err != nil {
-					return err
-				}
-
-				moveReq, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/move", o.BaseURL, modalityID), moveBuf)
-				if err != nil {
-					return err
-				}
-
-				moveResp, err := client.Do(moveReq)
-				if err != nil {
-					return err
-				}
-				defer moveResp.Body.Close()
-
-				if moveResp.StatusCode < 200 || moveResp.StatusCode > 299 {
-					_, err := io.ReadAll(moveResp.Body)
-					if err != nil {
-						return err
-					}
-					return errors.New(apiError.OrthancError)
-				}
-
-				var answerResponse types.QueryModalityResponse
-				if err := json.NewDecoder(moveResp.Body).Decode(&answerResponse); err != nil {
-					return err
-				}
-
-				m.Lock()
-				results = append(results, answerResponse)
-				m.Unlock()
-
-				return nil
-			})
 		}
 	}
 
-	// wait for all goroutines to finish
-	if err := eg.Wait(); err != nil {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/series/%s/instances", o.BaseURL, move.local.orthancID), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, errors.New(apiError.OrthancError)
+	}
+	var localAnswers []struct {
+		MainDicomTags struct {
+			SOPInstanceUID string `json:"SOPInstanceUID"`
+		} `json:"MainDicomTags"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&localAnswers); err != nil {
 		return nil, err
 	}
 
-	if len(results) == 0 {
-		return nil, errors.New(apiError.MissingRecord)
+	remote := make([]string, 0, len(remoteAnswers))
+	for _, answer := range remoteAnswers {
+		remote = append(remote, answer.SOPInstanceUID)
+	}
+	local := make([]string, 0, len(localAnswers))
+	for _, answer := range localAnswers {
+		local = append(local, answer.MainDicomTags.SOPInstanceUID)
+	}
+	return missingInstances(remote, local), nil
+}
+
+func (o *OrthancAPI) submitSeriesMove(modalityID string, request map[string]interface{}) (types.QueryModalityResponse, error) {
+	buf := new(bytes.Buffer)
+	if err := json.NewEncoder(buf).Encode(request); err != nil {
+		return types.QueryModalityResponse{}, err
 	}
 
-	return results, nil
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/move", o.BaseURL, modalityID), buf)
+	if err != nil {
+		return types.QueryModalityResponse{}, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return types.QueryModalityResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		response, _ := io.ReadAll(resp.Body)
+		log.Println("Error:", string(response))
+		return types.QueryModalityResponse{}, errors.New(apiError.OrthancError)
+	}
+
+	var answer types.QueryModalityResponse
+	if err := json.NewDecoder(resp.Body).Decode(&answer); err != nil {
+		return types.QueryModalityResponse{}, err
+	}
+	return answer, nil
 }
 
 // RetrieveDICOMWebInstanceFile retrieve DICOM web instance file
