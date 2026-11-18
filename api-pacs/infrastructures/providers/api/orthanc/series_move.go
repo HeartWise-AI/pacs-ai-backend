@@ -105,6 +105,7 @@ type trackedMove struct {
 	expectedInstances int                    // images the PACS announced for them; 0 when unknown
 	attempts          int
 	retryAt           time.Time // zero unless a resubmission is waiting
+	resubmitting      time.Time // when a reader started sending the next attempt; zero if none
 	verified          bool      // success checked against the local copy
 	trackedAt         time.Time
 }
@@ -214,17 +215,33 @@ func (t *moveTracker) failed(jobID string) moveAction {
 }
 
 func (t *moveTracker) retryLocked(jobID string, move *trackedMove) moveAction {
+	if !move.resubmitting.IsZero() && t.now().Sub(move.resubmitting) < resubmitClaimLifetime {
+		// Another reader is sending the next attempt right now.
+		return moveWaitRetry
+	}
 	if move.attempts >= maxSeriesMoveAttempts {
 		delete(t.moves, jobID)
 		return moveReport
 	}
 	if move.retryAt.IsZero() {
-		move.retryAt = t.now().Add(seriesMoveBackoff[move.attempts-1])
+		move.retryAt = t.now().Add(backoffAfter(move.attempts))
 	}
 	if t.now().Before(move.retryAt) {
 		return moveWaitRetry
 	}
+	// This reader sends the next attempt; others wait until it is recorded,
+	// so the viewer and ingestion polling one job never both move it again.
+	move.resubmitting = t.now()
 	return moveResubmit
+}
+
+// A reader that claimed a resubmission and never reported back (it crashed)
+// stops blocking the move after this long.
+const resubmitClaimLifetime = time.Minute
+
+// backoffAfter is the wait before the attempt that follows attempt n.
+func backoffAfter(attempts int) time.Duration {
+	return seriesMoveBackoff[min(max(attempts-1, 0), len(seriesMoveBackoff)-1)]
 }
 
 // retry returns what to send for the next attempt.
@@ -245,7 +262,22 @@ func (t *moveTracker) resubmitted(jobID, newJobID string) {
 	if move, ok := t.moves[jobID]; ok {
 		move.attempts++
 		move.retryAt = time.Time{}
+		move.resubmitting = time.Time{}
 		move.currentJobID = newJobID
+	}
+}
+
+// resubmitFailed records that sending the next attempt failed (the PACS or
+// Orthanc did not take it). It counts as an attempt and waits for the next
+// backoff, so a PACS that is down is not asked again on every poll and the
+// move is reported failed once the attempts are used up.
+func (t *moveTracker) resubmitFailed(jobID string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if move, ok := t.moves[jobID]; ok {
+		move.attempts++
+		move.resubmitting = time.Time{}
+		move.retryAt = t.now().Add(backoffAfter(move.attempts))
 	}
 }
 

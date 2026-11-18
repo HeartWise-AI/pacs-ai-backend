@@ -271,6 +271,7 @@ func (o *OrthancAPI) GetJobInfo(ctx context.Context, jobID string) (types.GetJob
 		answer, err := o.submitSeriesMove(modalityID, request)
 		if err != nil {
 			log.Printf("[retrieve] cannot move series again for job %s: %v", jobID, err)
+			seriesMoves.resubmitFailed(jobID)
 			return pendingView(job), nil
 		}
 		seriesMoves.resubmitted(jobID, answer.ID)
