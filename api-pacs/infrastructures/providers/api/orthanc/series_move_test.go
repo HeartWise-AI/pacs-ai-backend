@@ -466,7 +466,9 @@ func TestBatchMovesPutsFirstSeriesAloneAndSharesTheRest(t *testing.T) {
 		}
 		got = append(got, strings.Join(uids, "+"))
 	}
-	want := "s1|s5|s2+s6|s3+s7|s4+s8"
+	// s1 alone, the partly stored s5 alone, the 6 whole series in 2 jobs:
+	// 4 jobs in all.
+	want := "s1|s5|s2+s4+s7|s3+s6+s8"
 	if strings.Join(got, "|") != want {
 		t.Fatalf("jobs = %s, want %s", strings.Join(got, "|"), want)
 	}
@@ -558,5 +560,65 @@ func TestFailedResubmitBacksOffAndEndsAsFailure(t *testing.T) {
 	}
 	if len(fake.moves) != maxSeriesMoveAttempts-1 {
 		t.Fatalf("moves sent = %d, want %d (one per attempt, with backoff)", len(fake.moves), maxSeriesMoveAttempts-1)
+	}
+}
+
+func jobUIDs(jobs [][]plannedMove) string {
+	var got []string
+	for _, job := range jobs {
+		var uids []string
+		for _, move := range job {
+			uids = append(uids, move.series.SeriesInstanceUID)
+		}
+		got = append(got, strings.Join(uids, "+"))
+	}
+	return strings.Join(got, "|")
+}
+
+func TestBatchMovesNeverExceedsFourJobsWithManyPartlyStoredSeries(t *testing.T) {
+	var plan []plannedMove
+	for i := 1; i <= 12; i++ {
+		move := plannedMove{series: series("s"+strconv.Itoa(i), strconv.Itoa(i), "1")}
+		if i%2 == 0 {
+			move.kind = moveMissingInstances // s2, s4, ... s12 partly stored
+		}
+		plan = append(plan, move)
+	}
+	jobs := batchMoves(plan)
+	if len(jobs) > 1+restSeriesJobs {
+		t.Fatalf("%d jobs, want at most %d: %s", len(jobs), 1+restSeriesJobs, jobUIDs(jobs))
+	}
+	want := "s1|s2+s4+s6+s8+s10+s12|s3+s7+s11|s5+s9"
+	if got := jobUIDs(jobs); got != want {
+		t.Fatalf("jobs = %s, want %s", got, want)
+	}
+	for _, move := range jobs[1] {
+		if move.kind != moveMissingInstances {
+			t.Fatalf("whole series %s mixed into the missing-images job", move.series.SeriesInstanceUID)
+		}
+	}
+
+	// Only partly stored series after the first: 2 jobs.
+	onlyPartial := []plannedMove{plan[0], plan[1], plan[3]}
+	if got := jobUIDs(batchMoves(onlyPartial)); got != "s1|s2+s4" {
+		t.Fatalf("jobs = %s, want s1|s2+s4", got)
+	}
+}
+
+func TestInstancesBatchMoveRequestMovesImagesOfSeveralSeriesInOneJob(t *testing.T) {
+	request := instancesBatchMoveRequest([]seriesInstances{
+		{series: series("a", "1", "3"), sopInstanceUIDs: []string{"a1", "a2"}},
+		{series: series("b", "2", "2"), sopInstanceUIDs: []string{"b1"}},
+	}, "LOCAL", 7)
+	if request["Level"] != "Instance" || request["Permissive"] != false || request["Priority"] != 7 {
+		t.Fatalf("request = %+v", request)
+	}
+	resources := request["Resources"].([]map[string]string)
+	var got []string
+	for _, resource := range resources {
+		got = append(got, resource["SeriesInstanceUID"]+"/"+resource["SOPInstanceUID"])
+	}
+	if strings.Join(got, ",") != "a/a1,a/a2,b/b1" {
+		t.Fatalf("resources = %v", got)
 	}
 }

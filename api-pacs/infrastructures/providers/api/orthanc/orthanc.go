@@ -473,14 +473,24 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modality
 		first := job[0]
 		request := seriesBatchMoveRequest(job, localAet, priority)
 		if first.kind == moveMissingInstances {
-			missing, err := o.missingSeriesInstances(modalityID, localAet, first)
-			if err != nil {
-				return nil, err
+			// A job of partly stored series: move only their missing images.
+			var items []seriesInstances
+			var moved []plannedMove
+			for _, move := range job {
+				missing, err := o.missingSeriesInstances(modalityID, localAet, move)
+				if err != nil {
+					return nil, err
+				}
+				if len(missing) > 0 {
+					items = append(items, seriesInstances{series: move.series, sopInstanceUIDs: missing})
+					moved = append(moved, move)
+				}
 			}
-			if len(missing) == 0 {
+			if len(items) == 0 {
 				continue
 			}
-			request = instancesMoveRequest(first.series, missing, localAet, priority)
+			job, first = moved, moved[0]
+			request = instancesBatchMoveRequest(items, localAet, priority)
 		}
 
 		answer, err := o.submitSeriesMove(modalityID, request)

@@ -390,6 +390,30 @@ func missingInstances(remote, local []string) []string {
 	return missing
 }
 
+// seriesInstances is the images to move of one partly stored series.
+type seriesInstances struct {
+	series          types.QueryModalitySeriesAnswersResponse
+	sopInstanceUIDs []string
+}
+
+// instancesBatchMoveRequest moves the given images of several series of one
+// study in one job (one association to the PACS).
+func instancesBatchMoveRequest(items []seriesInstances, targetAet string, priority int) map[string]interface{} {
+	request := instancesMoveRequest(items[0].series, items[0].sopInstanceUIDs, targetAet, priority)
+	resources := request["Resources"].([]map[string]string)
+	for _, item := range items[1:] {
+		for _, sop := range item.sopInstanceUIDs {
+			resources = append(resources, map[string]string{
+				"StudyInstanceUID":  item.series.StudyInstanceUID,
+				"SeriesInstanceUID": item.series.SeriesInstanceUID,
+				"SOPInstanceUID":    sop,
+			})
+		}
+	}
+	request["Resources"] = resources
+	return request
+}
+
 // instancesMoveRequest moves the given images of one series in one job (one
 // association to the PACS).
 func instancesMoveRequest(series types.QueryModalitySeriesAnswersResponse, sopInstanceUIDs []string, targetAet string, priority int) map[string]interface{} {
@@ -414,25 +438,31 @@ func instancesMoveRequest(series types.QueryModalitySeriesAnswersResponse, sopIn
 // echo study), with no image missed and no refused association in any setting.
 const restSeriesJobs = 3
 
-// batchMoves groups the planned moves into jobs: the first series alone, so
-// it lands first and the viewer can open; the other whole series dealt round
-// robin into restSeriesJobs jobs, so each job keeps early series early and
-// moves its series over one association; a partly stored series is a job of
-// its own (its missing images).
+// batchMoves groups the planned moves into at most 1+restSeriesJobs jobs: the
+// first series alone, so it lands first and the viewer can open; the missing
+// images of every other partly stored series together in one job (an
+// instance-level move cannot share a job with series-level ones); the other
+// whole series dealt round robin into the remaining jobs, so each job keeps
+// early series early and moves its series over one association.
 func batchMoves(plan []plannedMove) [][]plannedMove {
 	if len(plan) == 0 {
 		return nil
 	}
 	jobs := [][]plannedMove{{plan[0]}}
-	var whole []plannedMove
+	var whole, partial []plannedMove
 	for _, move := range plan[1:] {
 		if move.kind == moveMissingInstances {
-			jobs = append(jobs, []plannedMove{move})
+			partial = append(partial, move)
 			continue
 		}
 		whole = append(whole, move)
 	}
-	groups := min(restSeriesJobs, len(whole))
+	wholeJobs := restSeriesJobs
+	if len(partial) > 0 {
+		jobs = append(jobs, partial)
+		wholeJobs = max(restSeriesJobs-1, 1)
+	}
+	groups := min(wholeJobs, len(whole))
 	start := len(jobs)
 	for i := 0; i < groups; i++ {
 		jobs = append(jobs, nil)
