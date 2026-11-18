@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -24,6 +26,11 @@ import (
 	inferenceService "api-pacs/module/inference/infrastructure/service"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 	types "api-pacs/module/inference/interfaces/http"
+)
+
+const (
+	bulkReprocessMaxStudies          = 10
+	bulkReprocessMaxRequestBodyBytes = 16 * 1024
 )
 
 // CreateInferenceIngestionJob creates a new inference ingestion job
@@ -205,6 +212,129 @@ func (controller *InferenceCommandController) ReprocessStudy(w http.ResponseWrit
 		},
 	}
 	response.JSON(w)
+}
+
+// ReprocessStudies creates independent manual processing runs for a bounded
+// set of tenant-scoped studies and reports every outcome without rolling back
+// runs that were already accepted.
+func (controller *InferenceCommandController) ReprocessStudies(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	var request types.BulkReprocessStudiesRequest
+	decoder := json.NewDecoder(io.LimitReader(r.Body, bulkReprocessMaxRequestBodyBytes))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		writeBulkReprocessInvalidRequest(w, "Invalid bulk reprocessing request.")
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		writeBulkReprocessInvalidRequest(w, "Invalid bulk reprocessing request.")
+		return
+	}
+	if len(request.StudyInstanceUIDs) == 0 || len(request.StudyInstanceUIDs) > bulkReprocessMaxStudies {
+		writeBulkReprocessInvalidRequest(w, fmt.Sprintf("Select between 1 and %d studies.", bulkReprocessMaxStudies))
+		return
+	}
+
+	studyInstanceUIDs := make([]string, 0, len(request.StudyInstanceUIDs))
+	seen := make(map[string]struct{}, len(request.StudyInstanceUIDs))
+	for _, rawStudyInstanceUID := range request.StudyInstanceUIDs {
+		studyInstanceUID := strings.TrimSpace(rawStudyInstanceUID)
+		if studyInstanceUID == "" {
+			writeBulkReprocessInvalidRequest(w, "Study Instance UIDs must not be empty.")
+			return
+		}
+		if _, duplicate := seen[studyInstanceUID]; duplicate {
+			writeBulkReprocessInvalidRequest(w, "Study Instance UIDs must be unique.")
+			return
+		}
+		seen[studyInstanceUID] = struct{}{}
+		studyInstanceUIDs = append(studyInstanceUIDs, studyInstanceUID)
+	}
+
+	results := make([]types.BulkReprocessStudyResultResponse, 0, len(studyInstanceUIDs))
+	acceptedCount := 0
+	for _, studyInstanceUID := range studyInstanceUIDs {
+		result, err := controller.InferenceCommandServiceInterface.CreateManualStudyProcessingRun(r.Context(), serviceTypes.CreateStudyProcessingRun{
+			TenantID: tenantID, StudyInstanceUID: studyInstanceUID, UserID: &userID,
+		})
+		if err != nil {
+			errorCode, message, retryAfterSeconds := bulkReprocessErrorPresentation(err)
+			results = append(results, types.BulkReprocessStudyResultResponse{
+				StudyInstanceUID:  studyInstanceUID,
+				Accepted:          false,
+				ErrorCode:         errorCode,
+				Message:           message,
+				RetryAfterSeconds: retryAfterSeconds,
+			})
+			continue
+		}
+
+		acceptedCount++
+		results = append(results, types.BulkReprocessStudyResultResponse{
+			StudyInstanceUID: studyInstanceUID,
+			Accepted:         true,
+			Run: &types.CreateStudyProcessingRunResponse{
+				RunID:          result.Run.ID,
+				RunNumber:      result.Run.RunNumber,
+				Trigger:        result.Run.RunTrigger,
+				Phase:          result.Run.Phase,
+				ExpectedModels: len(result.Executions),
+			},
+		})
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Finished submitting selected studies for processing.",
+		Data: &types.BulkReprocessStudiesResponse{
+			Results:       results,
+			AcceptedCount: acceptedCount,
+			RejectedCount: len(results) - acceptedCount,
+		},
+	}
+	response.JSON(w)
+}
+
+func writeBulkReprocessInvalidRequest(w http.ResponseWriter, message string) {
+	response := viewmodels.HTTPResponseVM{
+		Status:    http.StatusBadRequest,
+		Success:   false,
+		Message:   message,
+		ErrorCode: apiError.InvalidPayload,
+	}
+	response.JSON(w)
+}
+
+func bulkReprocessErrorPresentation(err error) (string, string, int64) {
+	var limitError *apiError.InferenceQuotaLimitError
+	if stderrors.As(err, &limitError) {
+		message := "Inference allowance exhausted. Please try again after the quota resets."
+		if limitError.ErrorCode == apiError.InferenceConcurrencyExceeded {
+			message = "Too many inference executions are already active. Please try again later."
+		}
+		retryAfterSeconds := limitError.RetryAfterSeconds
+		if retryAfterSeconds <= 0 {
+			retryAfterSeconds = limitError.ResetAfterSeconds
+		}
+		return limitError.ErrorCode, message, retryAfterSeconds
+	}
+
+	switch err.Error() {
+	case apiError.InvalidPayload:
+		return apiError.InvalidPayload, "The Study Instance UID is invalid.", 0
+	case apiError.MissingRecord:
+		return apiError.MissingRecord, "No processing candidates were found for this study.", 0
+	case apiError.DuplicateRecord:
+		return apiError.DuplicateRecord, "This study already has an active processing run.", 0
+	case apiError.InferenceQuotaUnavailable:
+		return apiError.InferenceQuotaUnavailable, "Inference quota enforcement is temporarily unavailable.", 0
+	default:
+		return apiError.ServerError, "The processing service could not create a new run.", 0
+	}
 }
 
 // StudyServiceProcessingCallback ingests internal processing callbacks from study-service.

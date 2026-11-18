@@ -154,6 +154,25 @@ type CreateStudyProcessingRunResponse struct {
 	ExpectedModels int                                           `json:"expectedModels"`
 }
 
+type BulkReprocessStudiesRequest struct {
+	StudyInstanceUIDs []string `json:"studyInstanceUIDs"`
+}
+
+type BulkReprocessStudyResultResponse struct {
+	StudyInstanceUID  string                            `json:"studyInstanceUID"`
+	Accepted          bool                              `json:"accepted"`
+	Run               *CreateStudyProcessingRunResponse `json:"run,omitempty"`
+	ErrorCode         string                            `json:"errorCode,omitempty"`
+	Message           string                            `json:"message,omitempty"`
+	RetryAfterSeconds int64                             `json:"retryAfterSeconds,omitempty"`
+}
+
+type BulkReprocessStudiesResponse struct {
+	Results       []BulkReprocessStudyResultResponse `json:"results"`
+	AcceptedCount int                                `json:"acceptedCount"`
+	RejectedCount int                                `json:"rejectedCount"`
+}
+
 type PredictInferenceModelRequest struct {
 	StudyInstanceUID   string                 `json:"studyInstanceUID" validate:"required"`
 	SeriesInstanceUIDs []string               `json:"seriesInstanceUIDs" validate:"required"`
