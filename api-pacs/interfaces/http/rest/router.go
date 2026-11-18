@@ -46,6 +46,7 @@ type inferenceWorklistHandlers struct {
 	getRunDetail       http.HandlerFunc
 	getExecutionResult http.HandlerFunc
 	reprocessStudy     http.HandlerFunc
+	reprocessStudies   http.HandlerFunc
 	// Viewer previous results: reads and single-model runs are available to
 	// every authenticated tenant user who accepted the policy, like predict.
 	getLatestResults   http.HandlerFunc
@@ -114,6 +115,7 @@ func mountInferenceWorklistRoutes(
 
 		r.Group(func(r chi.Router) {
 			r.Use(ownerOrAdmin)
+			r.Post("/worklist/studies/reprocess-batch", handlers.reprocessStudies)
 			r.Post("/worklist/studies/{studyInstanceUID}/reprocess", handlers.reprocessStudy)
 		})
 	})
@@ -344,6 +346,7 @@ func (router *router) InitRouter() *chi.Mux {
 						getRunDetail:       inferenceQueryController.GetProcessingRunDetail,
 						getExecutionResult: inferenceQueryController.GetProcessingRunExecutionResult,
 						reprocessStudy:     inferenceCommandController.ReprocessStudy,
+						reprocessStudies:   inferenceCommandController.ReprocessStudies,
 						getLatestResults:   inferenceQueryController.GetStudyLatestModelResults,
 						getExecutionReport: inferenceQueryController.GetProcessingRunExecutionReport,
 						getStudyJobReport:  inferenceQueryController.GetStudyJobReport,

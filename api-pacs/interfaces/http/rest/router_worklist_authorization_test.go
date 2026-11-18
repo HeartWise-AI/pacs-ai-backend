@@ -78,6 +78,7 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 			getRunDetail:       respond,
 			getExecutionResult: respond,
 			reprocessStudy:     respond,
+			reprocessStudies:   respond,
 			getLatestResults:   respond,
 			getExecutionReport: respond,
 			getStudyJobReport:  respond,
@@ -202,6 +203,15 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 		require.Equal(t, http.StatusForbidden, recorder.Code)
 	})
 
+	t.Run("regular user cannot bulk reprocess", func(t *testing.T) {
+		request := authenticatedWorklistRequest(http.MethodPost, "/worklist/studies/reprocess-batch")
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		require.Equal(t, http.StatusForbidden, recorder.Code)
+	})
+
 	for name, role := range map[string]string{
 		"admin": iamEntity.AdminRole,
 		"owner": iamEntity.OwnerRole,
@@ -210,6 +220,17 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 			authService.role = role
 			defer func() { authService.role = iamEntity.UserRole }()
 			request := authenticatedWorklistRequest(http.MethodPost, "/worklist/studies/1.2.3/reprocess")
+			recorder := httptest.NewRecorder()
+
+			router.ServeHTTP(recorder, request)
+
+			require.Equal(t, http.StatusNoContent, recorder.Code)
+		})
+
+		t.Run(name+" can bulk reprocess", func(t *testing.T) {
+			authService.role = role
+			defer func() { authService.role = iamEntity.UserRole }()
+			request := authenticatedWorklistRequest(http.MethodPost, "/worklist/studies/reprocess-batch")
 			recorder := httptest.NewRecorder()
 
 			router.ServeHTTP(recorder, request)
