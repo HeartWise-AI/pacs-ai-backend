@@ -323,7 +323,19 @@ func bulkReprocessErrorPresentation(err error) (string, string, int64) {
 		return limitError.ErrorCode, message, retryAfterSeconds
 	}
 
-	switch err.Error() {
+	// The request context is used on purpose: if the client disconnects, the
+	// studies not yet submitted are reported as cancelled while the runs
+	// already created stay accepted (partial success is the contract).
+	if stderrors.Is(err, context.Canceled) || stderrors.Is(err, context.DeadlineExceeded) {
+		return apiError.ServerError, "The request ended before this study was submitted.", 0
+	}
+
+	switch errorCodeInChain(err,
+		apiError.InvalidPayload,
+		apiError.MissingRecord,
+		apiError.DuplicateRecord,
+		apiError.InferenceQuotaUnavailable,
+	) {
 	case apiError.InvalidPayload:
 		return apiError.InvalidPayload, "The Study Instance UID is invalid.", 0
 	case apiError.MissingRecord:
@@ -335,6 +347,21 @@ func bulkReprocessErrorPresentation(err error) (string, string, int64) {
 	default:
 		return apiError.ServerError, "The processing service could not create a new run.", 0
 	}
+}
+
+// errorCodeInChain returns the first of codes that is the message of err or
+// of an error it wraps. Service errors are created as errors.New(code), so
+// errors.Is cannot match them, and a wrapped one ("...: %w") no longer has
+// the code as its whole message.
+func errorCodeInChain(err error, codes ...string) string {
+	for current := err; current != nil; current = stderrors.Unwrap(current) {
+		for _, code := range codes {
+			if current.Error() == code {
+				return code
+			}
+		}
+	}
+	return ""
 }
 
 // StudyServiceProcessingCallback ingests internal processing callbacks from study-service.
