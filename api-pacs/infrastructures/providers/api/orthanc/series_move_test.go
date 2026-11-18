@@ -65,6 +65,7 @@ type fakeOrthanc struct {
 	reads       int
 	moves       []map[string]interface{}
 	localImages int
+	failMoves   bool // answer every move with an error
 }
 
 func (f *fakeOrthanc) handler(t *testing.T) http.Handler {
@@ -86,6 +87,10 @@ func (f *fakeOrthanc) handler(t *testing.T) http.Handler {
 			var body map[string]interface{}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			f.moves = append(f.moves, body)
+			if f.failMoves {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
 			_ = json.NewEncoder(w).Encode(types.QueryModalityResponse{ID: "job-" + body["Resources"].([]interface{})[0].(map[string]interface{})["SeriesInstanceUID"].(string)})
 		case r.Method == http.MethodPost && r.URL.Path == "/tools/find":
 			instances := make([]string, f.localImages)
@@ -487,5 +492,71 @@ func TestBatchedJobIsCheckedAgainstEveryOneOfItsSeries(t *testing.T) {
 	job, _ = Init(server.URL).GetJobInfo(context.Background(), "job-short")
 	if job.State != "Pending" {
 		t.Fatalf("batch with a short series reported %s; want Pending (retry)", job.State)
+	}
+}
+
+func TestOnlyOneReaderResubmitsAMove(t *testing.T) {
+	now := time.Unix(1000, 0)
+	withTracker(t, &now)
+	trackMove("job-1", series("s1", "1", ""))
+	failure := types.GetJobResponse{State: string(types.JobFailure)}
+
+	if got := seriesMoves.decide("job-1", failure); got != moveWaitRetry {
+		t.Fatalf("first failure: %v, want wait", got)
+	}
+	now = now.Add(seriesMoveBackoff[0])
+	if got := seriesMoves.decide("job-1", failure); got != moveResubmit {
+		t.Fatalf("after backoff: %v, want resubmit", got)
+	}
+	// The viewer and ingestion read the same job at the same time.
+	if got := seriesMoves.decide("job-1", failure); got != moveWaitRetry {
+		t.Fatalf("second reader: %v, want wait while the first one resubmits", got)
+	}
+	seriesMoves.resubmitted("job-1", "job-1b")
+	if got := seriesMoves.current("job-1"); got != "job-1b" {
+		t.Fatalf("current attempt %s, want job-1b", got)
+	}
+}
+
+func TestStaleResubmitClaimExpires(t *testing.T) {
+	now := time.Unix(1000, 0)
+	withTracker(t, &now)
+	trackMove("job-1", series("s1", "1", ""))
+	failure := types.GetJobResponse{State: string(types.JobFailure)}
+	seriesMoves.decide("job-1", failure)
+	now = now.Add(seriesMoveBackoff[0])
+	if got := seriesMoves.decide("job-1", failure); got != moveResubmit {
+		t.Fatalf("after backoff: %v, want resubmit", got)
+	}
+	now = now.Add(resubmitClaimLifetime)
+	if got := seriesMoves.decide("job-1", failure); got != moveResubmit {
+		t.Fatalf("after a stale claim: %v, want resubmit", got)
+	}
+}
+
+func TestFailedResubmitBacksOffAndEndsAsFailure(t *testing.T) {
+	now := time.Unix(1000, 0)
+	withTracker(t, &now)
+	fake := &fakeOrthanc{states: []string{"Failure"}, failMoves: true}
+	server := httptest.NewServer(fake.handler(t))
+	defer server.Close()
+	api := Init(server.URL)
+	trackMove("job-1", series("s1", "1", ""))
+
+	// Poll every second for two minutes, as the viewer does, while the PACS
+	// refuses every new move.
+	var job types.GetJobResponse
+	for i := 0; i < 120; i++ {
+		job, _ = api.GetJobInfo(context.Background(), "job-1")
+		if job.State == "Failure" {
+			break
+		}
+		now = now.Add(time.Second)
+	}
+	if job.State != "Failure" {
+		t.Fatalf("never reported the failure; %d moves sent", len(fake.moves))
+	}
+	if len(fake.moves) != maxSeriesMoveAttempts-1 {
+		t.Fatalf("moves sent = %d, want %d (one per attempt, with backoff)", len(fake.moves), maxSeriesMoveAttempts-1)
 	}
 }
