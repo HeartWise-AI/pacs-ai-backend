@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -38,6 +39,33 @@ type InferenceQueryService struct {
 	ReportRenderTimeout time.Duration
 	// ReportMaxBytes caps the render response body (default 32 MiB).
 	ReportMaxBytes int64
+
+	// availableModels remembers the last good model info per running
+	// container, so a container too busy to answer stays in the list.
+	availableModels availableModelCache
+}
+
+// availableModelCache holds the last successful model info per container.
+// It is keyed by container ID, so a recreated container never reuses old info.
+type availableModelCache struct {
+	mu      sync.Mutex
+	entries map[string]types.GetInferenceAvailableModelResult
+}
+
+func (cache *availableModelCache) store(result types.GetInferenceAvailableModelResult) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if cache.entries == nil {
+		cache.entries = make(map[string]types.GetInferenceAvailableModelResult)
+	}
+	cache.entries[result.ContainerID] = result
+}
+
+func (cache *availableModelCache) load(containerID string) (types.GetInferenceAvailableModelResult, bool) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	result, ok := cache.entries[containerID]
+	return result, ok
 }
 
 // GetInferenceQuota returns the current tenant/user allowance and active work.
@@ -248,14 +276,25 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 			// check if container id is set and running
 			if len(inferenceModel.ContainerID) > 0 && containerInfo.Lifecycle == dockerTypes.LifecycleRunning {
 				// get model info
+				// A busy container may not answer in time: keep its last good info.
+				useCached := func(err error) {
+					log.Println(err)
+					if cached, ok := service.availableModels.load(inferenceModel.ContainerID); ok {
+						log.Printf("model info for %s unavailable, using last known info", containerName)
+						cached.ContainerName = containerName
+						cached.OutputMode = inferenceModel.OutputMode
+						availableByIndex[index] = &cached
+					}
+				}
+
 				modelInfo, err := service.DockerInferenceAPIInterface.GetModelInfo(egCtx, containerName)
 				if err != nil {
 					if egCtx.Err() != nil {
 						return egCtx.Err()
 					}
 
-					log.Println(err)
-					return nil // skip error
+					useCached(err)
+					return nil
 				}
 
 				// get model facts
@@ -265,8 +304,8 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 						return egCtx.Err()
 					}
 
-					log.Println(err)
-					return nil // skip error
+					useCached(err)
+					return nil
 				}
 
 				result := types.GetInferenceAvailableModelResult{
@@ -288,6 +327,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 					OnboardingModelQuestionnaires: modelInfo.Data.OnboardingModelQuestionnaires,
 					OutputMode:                    inferenceModel.OutputMode,
 				}
+				service.availableModels.store(result)
 				availableByIndex[index] = &result
 			}
 
