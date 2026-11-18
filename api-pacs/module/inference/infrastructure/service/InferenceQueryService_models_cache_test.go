@@ -119,3 +119,22 @@ func TestGetInferenceAvailableModelsIgnoresCacheOfRecreatedContainer(t *testing.
 	api.busyInfo["panecho"] = true
 	require.Equal(t, []string{"jepa-id"}, modelIDs(t, service))
 }
+
+func TestGetInferenceAvailableModelsEvictsContainersNoLongerRegistered(t *testing.T) {
+	service, repository, sdk, _ := newBusyModelFixture()
+	modelIDs(t, service)
+	require.Equal(t, 2, service.availableModels.size())
+
+	// panecho is redeployed: new container ID, the old one is unregistered.
+	repository.models[0].ContainerID = "container-a2"
+	sdk.infos["container-a2"] = dockerTypes.GetContainerInfoResult{ID: "container-a2", Name: "/panecho", Lifecycle: dockerTypes.LifecycleRunning}
+	require.Equal(t, []string{"panecho-id", "jepa-id"}, modelIDs(t, service))
+	require.Equal(t, 2, service.availableModels.size())
+	_, stale := service.availableModels.load("container-a")
+	require.False(t, stale, "the old container's entry is dropped")
+
+	// jepa is removed from the registry.
+	repository.models = repository.models[:1]
+	require.Equal(t, []string{"panecho-id"}, modelIDs(t, service))
+	require.Equal(t, 1, service.availableModels.size())
+}

@@ -61,6 +61,24 @@ func (cache *availableModelCache) store(result types.GetInferenceAvailableModelR
 	cache.entries[result.ContainerID] = result
 }
 
+// retain drops the entries of containers that are no longer registered, so
+// the cache does not grow with every redeploy or GPU move (new container ID).
+func (cache *availableModelCache) retain(containerIDs map[string]struct{}) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	for containerID := range cache.entries {
+		if _, ok := containerIDs[containerID]; !ok {
+			delete(cache.entries, containerID)
+		}
+	}
+}
+
+func (cache *availableModelCache) size() int {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	return len(cache.entries)
+}
+
 func (cache *availableModelCache) load(containerID string) (types.GetInferenceAvailableModelResult, bool) {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
@@ -253,6 +271,12 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 	if err != nil && err.Error() != apiError.MissingRecord {
 		return nil, err
 	}
+
+	registered := make(map[string]struct{}, len(inferenceModels))
+	for _, inferenceModel := range inferenceModels {
+		registered[inferenceModel.ContainerID] = struct{}{}
+	}
+	service.availableModels.retain(registered)
 
 	eg, egCtx := errgroup.WithContext(ctx)
 	availableByIndex := make([]*types.GetInferenceAvailableModelResult, len(inferenceModels))
