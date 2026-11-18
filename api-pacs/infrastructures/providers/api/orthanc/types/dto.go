@@ -116,6 +116,11 @@ type ListDICOMModalitiesResponse struct {
 type QueryModalityResponse struct {
 	ID   string `json:"ID"`
 	Path string `json:"Path"`
+	// Set on series moves: the series and its place in the retrieve order
+	// (0 = moved first, the series the viewer shows first).
+	SeriesInstanceUID string `json:"SeriesInstanceUID,omitempty"`
+	SeriesNumber      string `json:"SeriesNumber,omitempty"`
+	Order             int    `json:"Order"`
 }
 
 type QueryModalityStudyAnswersResponse struct {
@@ -146,6 +151,10 @@ type QueryModalitySeriesAnswersResponse struct {
 	SeriesInstanceUID    string `json:"SeriesInstanceUID"`
 	SpecificCharacterSet string `json:"SpecificCharacterSet"`
 	StudyInstanceUID     string `json:"StudyInstanceUID"`
+	// Asked for in the series query; empty when the PACS does not return them.
+	SeriesNumber                   string `json:"SeriesNumber,omitempty"`
+	Modality                       string `json:"Modality,omitempty"`
+	NumberOfSeriesRelatedInstances string `json:"NumberOfSeriesRelatedInstances,omitempty"`
 }
 
 type StraightDICOMStoreSCUResponse struct {

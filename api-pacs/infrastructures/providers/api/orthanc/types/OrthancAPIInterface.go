@@ -28,10 +28,9 @@ type OrthancAPIInterface interface {
 	ListDICOMModalities(ctx context.Context) (map[string]ListDICOMModalitiesResponse, error)
 	// RetrieveModalityStudy retrieves modality study
 	RetrieveModalityStudy(ctx context.Context, queryID string, answerIndex uint, request RetrieveQueryModalityAnswerRequest) (QueryModalityResponse, error)
-	// RetrieveModalityStudyBySeries retrieves modality study by series
-	RetrieveModalityStudyBySeries(ctx context.Context, modalityID, localAet, studyInstanceUID string) ([]QueryModalityResponse, error)
-	// RetrieveModalityStudyByInstances retrieves modality study by instances (for US modalities)
-	RetrieveModalityStudyByInstances(ctx context.Context, modalityID, localAet, studyInstanceUID string) ([]QueryModalityResponse, error)
+	// RetrieveModalityStudyBySeries retrieves a study with one C-MOVE per series,
+	// first series first; interactive when someone is waiting in the viewer
+	RetrieveModalityStudyBySeries(ctx context.Context, modalityID, localAet, studyInstanceUID string, interactive bool) ([]QueryModalityResponse, error)
 	// RetrieveDICOMWebInstanceFile retrieves DICOM web instance file
 	RetrieveDICOMWebInstanceFile(ctx context.Context, studyInstanceUID, seriesInstanceUID, sopInstanceUID string) ([]byte, error)
 	// RetrieveDICOMWebInstanceMetadata retrieves DICOM web instance metadata
