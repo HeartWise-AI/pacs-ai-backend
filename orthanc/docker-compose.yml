@@ -32,9 +32,10 @@ services:
         {
           "Host": "orthanc-index"
         }
-      # Moves to the hospital PACS run this many at a time. 150 opened up to
+      # Moves to the hospital PACS run this many at a time (a study is moved in
+      # at most 4 jobs, see series_move.go). 150 opened up to
       # 150 associations at once and the PACS refused or aborted many of them.
-      ORTHANC__CONCURRENT_JOBS: 6
+      ORTHANC__CONCURRENT_JOBS: 4
       ORTHANC__JOBS_HISTORY_SIZE: 500
       ORTHANC__STORAGE_COMPRESSION: "false"
       ORTHANC__MEDIA_ARCHIVE_SIZE: 50
