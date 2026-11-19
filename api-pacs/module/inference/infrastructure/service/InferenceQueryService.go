@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -43,22 +44,83 @@ type InferenceQueryService struct {
 	// availableModels remembers the last good model info per running
 	// container, so a container too busy to answer stays in the list.
 	availableModels availableModelCache
+	// AvailableModelStore keeps that last good model info across api-pacs
+	// restarts. Nil keeps it in memory only.
+	AvailableModelStore AvailableModelInfoStore
 }
+
+// AvailableModelInfoStore persists the last good model info per container
+// as JSON, keyed by container ID.
+type AvailableModelInfoStore interface {
+	LoadAvailableModelInfo(ctx context.Context, containerID string) ([]byte, bool, error)
+	SaveAvailableModelInfo(ctx context.Context, containerID string, info []byte) error
+	// DeleteAvailableModelInfoExcept removes the info of every container not in containerIDs.
+	DeleteAvailableModelInfoExcept(ctx context.Context, containerIDs []string) error
+}
+
+// availableModelStoreTimeout bounds one store call, so a slow database never
+// holds up the model list.
+const availableModelStoreTimeout = 2 * time.Second
 
 // availableModelCache holds the last successful model info per container.
 // It is keyed by container ID, so a recreated container never reuses old info.
 type availableModelCache struct {
 	mu      sync.Mutex
 	entries map[string]types.GetInferenceAvailableModelResult
+	// encoded is the JSON last stored per container, to persist only changes.
+	encoded map[string][]byte
+	// persistedSet is the registered container set last applied to the store.
+	persistedSet string
+	// storePausedUntil skips the store for a while after it fails (e.g. its
+	// table is not created yet), so the model list does not log every call.
+	storePausedUntil time.Time
 }
 
-func (cache *availableModelCache) store(result types.GetInferenceAvailableModelResult) {
+const availableModelStorePause = 5 * time.Minute
+
+func (cache *availableModelCache) storeUsable(now time.Time) bool {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	return !now.Before(cache.storePausedUntil)
+}
+
+func (cache *availableModelCache) pauseStore(now time.Time) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	cache.storePausedUntil = now.Add(availableModelStorePause)
+}
+
+// store remembers result and reports whether its JSON differs from what was
+// stored before for that container. A nil encoded always counts as a change.
+func (cache *availableModelCache) store(result types.GetInferenceAvailableModelResult, encoded []byte) bool {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	if cache.entries == nil {
 		cache.entries = make(map[string]types.GetInferenceAvailableModelResult)
+		cache.encoded = make(map[string][]byte)
 	}
 	cache.entries[result.ContainerID] = result
+	changed := encoded == nil || !bytes.Equal(cache.encoded[result.ContainerID], encoded)
+	cache.encoded[result.ContainerID] = encoded
+	return changed
+}
+
+// claimPersistedSet reports whether set differs from the set last applied to
+// the store, and records it.
+func (cache *availableModelCache) claimPersistedSet(set string) bool {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if cache.persistedSet == set {
+		return false
+	}
+	cache.persistedSet = set
+	return true
+}
+
+func (cache *availableModelCache) forgetPersistedSet() {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	cache.persistedSet = ""
 }
 
 // retain drops the entries of containers that are no longer registered, so
@@ -69,6 +131,7 @@ func (cache *availableModelCache) retain(containerIDs map[string]struct{}) {
 	for containerID := range cache.entries {
 		if _, ok := containerIDs[containerID]; !ok {
 			delete(cache.entries, containerID)
+			delete(cache.encoded, containerID)
 		}
 	}
 }
@@ -84,6 +147,85 @@ func (cache *availableModelCache) load(containerID string) (types.GetInferenceAv
 	defer cache.mu.Unlock()
 	result, ok := cache.entries[containerID]
 	return result, ok
+}
+
+// rememberModelInfo keeps result as the container's last good info, in memory
+// and, when it changed, in the store.
+func (service *InferenceQueryService) rememberModelInfo(ctx context.Context, result types.GetInferenceAvailableModelResult) {
+	if service.AvailableModelStore == nil || !service.availableModels.storeUsable(time.Now()) {
+		service.availableModels.store(result, nil)
+		return
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		log.Printf("encode model info for %s: %v", result.ContainerID, err)
+		service.availableModels.store(result, nil)
+		return
+	}
+	if !service.availableModels.store(result, encoded) {
+		return
+	}
+	storeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), availableModelStoreTimeout)
+	defer cancel()
+	if err := service.AvailableModelStore.SaveAvailableModelInfo(storeCtx, result.ContainerID, encoded); err != nil {
+		log.Printf("save model info for %s: %v", result.ContainerID, err)
+		service.availableModels.pauseStore(time.Now())
+		// Save again on the next good answer after the pause.
+		service.availableModels.store(result, nil)
+	}
+}
+
+// lastModelInfo returns the container's last good info: from memory, or from
+// the store after an api-pacs restart.
+func (service *InferenceQueryService) lastModelInfo(ctx context.Context, containerID string) (types.GetInferenceAvailableModelResult, bool) {
+	if cached, ok := service.availableModels.load(containerID); ok {
+		return cached, true
+	}
+	if service.AvailableModelStore == nil || !service.availableModels.storeUsable(time.Now()) {
+		return types.GetInferenceAvailableModelResult{}, false
+	}
+	storeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), availableModelStoreTimeout)
+	defer cancel()
+	encoded, ok, err := service.AvailableModelStore.LoadAvailableModelInfo(storeCtx, containerID)
+	if err != nil {
+		log.Printf("load stored model info for %s: %v", containerID, err)
+		service.availableModels.pauseStore(time.Now())
+		return types.GetInferenceAvailableModelResult{}, false
+	}
+	if !ok {
+		return types.GetInferenceAvailableModelResult{}, false
+	}
+	var stored types.GetInferenceAvailableModelResult
+	if err := json.Unmarshal(encoded, &stored); err != nil || stored.ContainerID != containerID {
+		log.Printf("stored model info for %s is unreadable: %v", containerID, err)
+		return types.GetInferenceAvailableModelResult{}, false
+	}
+	service.availableModels.store(stored, encoded)
+	return stored, true
+}
+
+// retainModelInfo drops the remembered info of containers that are no longer
+// registered. The store is updated only when the registered set changes.
+func (service *InferenceQueryService) retainModelInfo(ctx context.Context, registered map[string]struct{}) {
+	service.availableModels.retain(registered)
+	if service.AvailableModelStore == nil || !service.availableModels.storeUsable(time.Now()) {
+		return
+	}
+	containerIDs := make([]string, 0, len(registered))
+	for containerID := range registered {
+		containerIDs = append(containerIDs, containerID)
+	}
+	sort.Strings(containerIDs)
+	if !service.availableModels.claimPersistedSet("set:" + strings.Join(containerIDs, ",")) {
+		return
+	}
+	storeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), availableModelStoreTimeout)
+	defer cancel()
+	if err := service.AvailableModelStore.DeleteAvailableModelInfoExcept(storeCtx, containerIDs); err != nil {
+		log.Printf("drop stored model info of removed containers: %v", err)
+		service.availableModels.pauseStore(time.Now())
+		service.availableModels.forgetPersistedSet()
+	}
 }
 
 // GetInferenceQuota returns the current tenant/user allowance and active work.
@@ -276,7 +418,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 	for _, inferenceModel := range inferenceModels {
 		registered[inferenceModel.ContainerID] = struct{}{}
 	}
-	service.availableModels.retain(registered)
+	service.retainModelInfo(ctx, registered)
 
 	eg, egCtx := errgroup.WithContext(ctx)
 	availableByIndex := make([]*types.GetInferenceAvailableModelResult, len(inferenceModels))
@@ -303,7 +445,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 				// A busy container may not answer in time: keep its last good info.
 				useCached := func(err error) {
 					log.Println(err)
-					if cached, ok := service.availableModels.load(inferenceModel.ContainerID); ok {
+					if cached, ok := service.lastModelInfo(egCtx, inferenceModel.ContainerID); ok {
 						log.Printf("model info for %s unavailable, using last known info", containerName)
 						cached.ContainerName = containerName
 						cached.OutputMode = inferenceModel.OutputMode
@@ -351,7 +493,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 					OnboardingModelQuestionnaires: modelInfo.Data.OnboardingModelQuestionnaires,
 					OutputMode:                    inferenceModel.OutputMode,
 				}
-				service.availableModels.store(result)
+				service.rememberModelInfo(egCtx, result)
 				availableByIndex[index] = &result
 			}
 
