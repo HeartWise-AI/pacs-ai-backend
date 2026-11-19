@@ -92,6 +92,8 @@ func (f *fakeOrthanc) handler(t *testing.T) http.Handler {
 				return
 			}
 			_ = json.NewEncoder(w).Encode(types.QueryModalityResponse{ID: "job-" + body["Resources"].([]interface{})[0].(map[string]interface{})["SeriesInstanceUID"].(string)})
+		case r.Method == http.MethodGet && r.URL.Path == "/jobs":
+			_ = json.NewEncoder(w).Encode([]types.GetJobResponse{})
 		case r.Method == http.MethodPost && r.URL.Path == "/tools/find":
 			instances := make([]string, f.localImages)
 			_ = json.NewEncoder(w).Encode([]map[string]interface{}{{"Instances": instances}})
@@ -316,6 +318,7 @@ type diffOrthanc struct {
 	remote map[string][]string // PACS: series -> images
 	local  map[string][]string // local store: series -> images
 	moves  []map[string]interface{}
+	jobs   []types.GetJobResponse // GET /jobs?expand
 }
 
 func (f *diffOrthanc) handler(t *testing.T) http.Handler {
@@ -350,7 +353,11 @@ func (f *diffOrthanc) handler(t *testing.T) http.Handler {
 			_ = json.NewEncoder(w).Encode(answers)
 		case r.URL.Path == "/tools/find":
 			var out []map[string]interface{}
+			wanted, _ := body["Query"].(map[string]interface{})["SeriesInstanceUID"].(string)
 			for uid, sops := range f.local {
+				if wanted != "" && uid != wanted {
+					continue
+				}
 				out = append(out, map[string]interface{}{
 					"ID": "o-" + uid, "Instances": sops,
 					"MainDicomTags": map[string]string{"SeriesInstanceUID": uid},
@@ -367,6 +374,15 @@ func (f *diffOrthanc) handler(t *testing.T) http.Handler {
 		case strings.HasSuffix(r.URL.Path, "/move"):
 			f.moves = append(f.moves, body)
 			_ = json.NewEncoder(w).Encode(types.QueryModalityResponse{ID: "job-" + strconv.Itoa(len(f.moves))})
+		case r.Method == http.MethodGet && r.URL.Path == "/jobs":
+			// The jobs set up by the test, then the moves taken here, still running.
+			jobs := append([]types.GetJobResponse{}, f.jobs...)
+			for _, move := range f.moves {
+				jobs = append(jobs, types.GetJobResponse{Type: dicomMoveJobType, State: "Running", Priority: uint(move["Priority"].(float64))})
+			}
+			_ = json.NewEncoder(w).Encode(jobs)
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/jobs/"):
+			_ = json.NewEncoder(w).Encode(types.GetJobResponse{ID: strings.TrimPrefix(r.URL.Path, "/jobs/"), State: "Running", Type: dicomMoveJobType})
 		default:
 			t.Errorf("unexpected call %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
