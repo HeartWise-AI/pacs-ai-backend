@@ -24,6 +24,8 @@ type InferenceQueryController struct {
 	// Nil means no user has muted automatic-run notifications.
 	UserMetadataReader             WorklistUserMetadataReader
 	WorklistEventHeartbeatInterval time.Duration
+	// StudyMedia serves the media study-service saved per clip; nil answers 404.
+	StudyMedia StudyMediaProvider
 }
 
 // GetInferenceModelVersions lists every catalog version for one registered model.

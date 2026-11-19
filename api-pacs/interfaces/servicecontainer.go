@@ -229,6 +229,12 @@ func (k *kernel) RegisterInferenceRESTQueryController() inferenceREST.InferenceQ
 		WorklistNotificationSubscriberInterface: worklistNotificationBroker,
 		WorklistEventHeartbeatInterval:          20 * time.Second,
 		UserMetadataReader:                      k.userQueryServiceContainer(),
+		// Keyframes, thumbnails and loops saved by study-service (CA-267 M4).
+		StudyMedia: &inferenceService.StudyServiceDispatcher{
+			StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
+			StudyServiceOperatorToken: os.Getenv("STUDY_SERVICE_OPERATOR_TOKEN"),
+			StudyServiceClient:        &http.Client{Timeout: 30 * time.Second},
+		},
 	}
 
 	return controller
