@@ -553,6 +553,11 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		ReportRenderTimeout:               reportRenderTimeout,
 		ReportMaxBytes:                    reportMaxBytes,
 	}
+	// Last good model info survives restarts (migration 000014); without the
+	// table it is kept in memory only.
+	if postgresqlDBHanddler != nil && postgresqlDBHanddler.Conn != nil {
+		service.AvailableModelStore = &inferenceRepository.AvailableModelInfoRepository{DB: postgresqlDBHanddler.Conn}
+	}
 
 	return service
 }
