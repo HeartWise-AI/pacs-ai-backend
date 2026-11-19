@@ -164,3 +164,22 @@ func requireNoError(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+func TestGetAndDeleteTakesAValueOnce(t *testing.T) {
+	db := new(RedisDBHandler)
+	if _, err := db.Connect("localhost:6379", "", 0); err != nil {
+		t.Error(err)
+		return
+	}
+	if err := db.Set("handoff-test-key", "value", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	value, found, err := db.GetAndDelete("handoff-test-key")
+	if err != nil || !found || value != "value" {
+		t.Fatalf("first take = %q %v %v", value, found, err)
+	}
+	value, found, err = db.GetAndDelete("handoff-test-key")
+	if err != nil || found || value != "" {
+		t.Fatalf("second take = %q %v %v", value, found, err)
+	}
+}

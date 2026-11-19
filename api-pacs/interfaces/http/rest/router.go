@@ -75,6 +75,18 @@ func mountInferenceFeedbackRoutes(r chi.Router, handlers inferenceFeedbackHandle
 	r.Delete("/{modelID}/feedback/remove", handlers.remove)
 }
 
+type iamHandoffHandlers struct {
+	exchange http.HandlerFunc
+	link     http.HandlerFunc
+}
+
+// mountIAMHandoffRoutes exposes the sign-in handoff (CA-268): exchanging a
+// one-time code is public, linking an account needs a PACS-AI session.
+func mountIAMHandoffRoutes(r chi.Router, authenticate func(http.Handler) http.Handler, handlers iamHandoffHandlers) {
+	r.Post("/handoff/exchange", handlers.exchange)
+	r.With(authenticate).Post("/handoff/link", handlers.link)
+}
+
 type userViewerTourHandlers struct {
 	get      http.HandlerFunc
 	complete http.HandlerFunc
@@ -163,6 +175,7 @@ func (router *router) InitRouter() *chi.Mux {
 	elasticsearchQueryController := interfaces.ServiceContainer().RegisterElasticsearchRESTQueryController()
 	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
+	iamHandoffController := interfaces.ServiceContainer().RegisterIAMHandoffController()
 	inferenceCommandController := interfaces.ServiceContainer().RegisterInferenceRESTCommandController()
 	inferenceQueryController := interfaces.ServiceContainer().RegisterInferenceRESTQueryController()
 	inferencePredictionsController := interfaces.ServiceContainer().RegisterInferenceRESTPredictionsController()
@@ -260,6 +273,10 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Post("/login", iamCommandController.LoginTenantUser)
 				r.Post("/forgot-password", iamCommandController.ForgotTenantUserPassword)
 				r.Post("/verify-email", iamCommandController.VerifyTenantUserEmail)
+				mountIAMHandoffRoutes(r, iamMiddleware.TokenSessionAuthGuard, iamHandoffHandlers{
+					exchange: iamHandoffController.ExchangeHandoff,
+					link:     iamHandoffController.CompleteHandoffLink,
+				})
 			})
 
 			// inference module
@@ -374,6 +391,9 @@ func (router *router) InitRouter() *chi.Mux {
 			})
 
 			r.Route("/internal", func(r chi.Router) {
+				// Sign-in handoff minted by CardioAgent's backend (service token,
+				// internal network only).
+				r.Post("/auth/handoff", iamHandoffController.MintHandoff)
 				r.Route("/inference", func(r chi.Router) {
 					r.Post("/ingestion/candidates/{candidate_id}/processing", inferenceCommandController.StudyServiceProcessingCallback)
 				})
