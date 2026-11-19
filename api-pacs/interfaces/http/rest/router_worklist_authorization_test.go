@@ -83,6 +83,8 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 			getExecutionReport: respond,
 			getStudyJobReport:  respond,
 			runStudyModel:      respond,
+			getStudyMedia:      respond,
+			getStudyMediaFile:  respond,
 			cancelRun:          respond,
 		},
 	)
@@ -116,6 +118,8 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 		"/worklist/studies/1.2.3/latest-results",
 		"/processing/runs/run-1/executions/execution-1/report",
 		"/worklist/studies/1.2.3/jobs/job-1/report",
+		"/worklist/studies/1.2.3/media",
+		"/media/media-1",
 	} {
 		t.Run("regular user reads "+path, func(t *testing.T) {
 			request := authenticatedWorklistRequest(http.MethodGet, path)
@@ -124,6 +128,17 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 			router.ServeHTTP(recorder, request)
 
 			require.Equal(t, http.StatusNoContent, recorder.Code)
+		})
+	}
+
+	for _, path := range []string{"/worklist/studies/1.2.3/media", "/media/media-1"} {
+		t.Run("media requires authentication "+path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, path, nil)
+			recorder := httptest.NewRecorder()
+
+			router.ServeHTTP(recorder, request)
+
+			require.Equal(t, http.StatusUnauthorized, recorder.Code)
 		})
 	}
 
