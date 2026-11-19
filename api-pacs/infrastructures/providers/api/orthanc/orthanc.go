@@ -15,7 +15,9 @@ import (
 	"time"
 
 	"api-pacs/infrastructures/providers/api/orthanc/types"
+
 	apiError "api-pacs/internal/errors"
+	"github.com/segmentio/ksuid"
 )
 
 // TODO: try nginx-based header checks for orthanc? https://stackoverflow.com/a/58066868/10245760
@@ -228,6 +230,10 @@ func (o *OrthancAPI) FindModalitySeriesByStudy(ctx context.Context, modalityID, 
 // GetJobInfo get job info. Series moves this process started are retried
 // and checked here (see series_move.go), so every caller sees the same state.
 func (o *OrthancAPI) GetJobInfo(ctx context.Context, jobID string) (types.GetJobResponse, error) {
+	// A finished move, or a background move still waiting for a slot.
+	if view, ok := seriesMoves.settledView(jobID); ok {
+		return view, nil
+	}
 	job, err := o.getJobInfo(seriesMoves.current(jobID))
 	if err != nil {
 		return job, err
@@ -235,6 +241,14 @@ func (o *OrthancAPI) GetJobInfo(ctx context.Context, jobID string) (types.GetJob
 	// Callers keep the ID they were given, whichever attempt answers.
 	job.ID = jobID
 
+	view := o.moveView(jobID, job)
+	seriesMoves.finish(jobID, view)
+	return view, nil
+}
+
+// moveView is the state reported for a move whose latest attempt is job:
+// it retries a failed or incomplete move and checks a successful one.
+func (o *OrthancAPI) moveView(jobID string, job types.GetJobResponse) types.GetJobResponse {
 	action := seriesMoves.decide(jobID, job)
 	if action == moveVerify {
 		parts, expected, _ := seriesMoves.parts(jobID)
@@ -246,40 +260,46 @@ func (o *OrthancAPI) GetJobInfo(ctx context.Context, jobID string) (types.GetJob
 			count, err := o.countLocalSeriesInstances(part.studyInstanceUID, part.seriesInstanceUID)
 			if err != nil {
 				log.Printf("[retrieve] cannot count local images of move job %s: %v", jobID, err)
-				return job, nil
+				return job
 			}
 			local += min(count, part.expected)
 		}
 		if seriesMoves.verifiedCount(jobID, local) {
-			return job, nil
+			return job
 		}
 		log.Printf("[retrieve] move job %s ended with %d of %d images", jobID, local, expected)
 		action = seriesMoves.failed(jobID)
 		if action == moveReport {
-			return incompleteView(job, local, expected), nil
+			return incompleteView(job, local, expected)
 		}
 	}
 
 	switch action {
 	case moveWaitRetry:
-		return pendingView(job), nil
+		return pendingView(job)
 	case moveResubmit:
-		modalityID, request, ok := seriesMoves.retry(jobID)
+		retry, ok := seriesMoves.retry(jobID)
 		if !ok {
-			return job, nil
+			return job
 		}
-		answer, err := o.submitSeriesMove(modalityID, request)
+		if retry.background {
+			// A background move waits for a background slot again.
+			seriesMoves.requeue(jobID)
+			log.Printf("[retrieve] series of move job %s queued again after: %s", jobID, job.ErrorDescription)
+			return pendingView(job)
+		}
+		answer, err := o.submitSeriesMove(retry.modalityID, retry.request)
 		if err != nil {
 			log.Printf("[retrieve] cannot move series again for job %s: %v", jobID, err)
 			seriesMoves.resubmitFailed(jobID)
-			return pendingView(job), nil
+			return pendingView(job)
 		}
 		seriesMoves.resubmitted(jobID, answer.ID)
 		log.Printf("[retrieve] series of move job %s moved again as job %s after: %s", jobID, answer.ID, job.ErrorDescription)
-		return pendingView(job), nil
+		return pendingView(job)
 	}
 
-	return job, nil
+	return job
 }
 
 // countLocalSeriesInstances counts the images of a series in the local store.
@@ -493,16 +513,25 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modality
 			request = instancesBatchMoveRequest(items, localAet, priority)
 		}
 
-		answer, err := o.submitSeriesMove(modalityID, request)
-		if err != nil {
-			return nil, err
-		}
-
 		series := make([]types.QueryModalitySeriesAnswersResponse, 0, len(job))
 		for _, move := range job {
 			series = append(series, move.series)
 		}
-		seriesMoves.track(answer.ID, modalityID, request, series...)
+
+		var answer types.QueryModalityResponse
+		if interactive {
+			answer, err = o.submitSeriesMove(modalityID, request)
+			if err != nil {
+				return nil, err
+			}
+			seriesMoves.track(answer.ID, modalityID, request, series...)
+		} else {
+			// Background moves wait in api-pacs for a background slot; the
+			// caller keeps this ID (see move_supervisor.go).
+			id := queuedMoveIDPrefix + ksuid.New().String()
+			seriesMoves.enqueue(id, modalityID, request, series...)
+			answer = types.QueryModalityResponse{ID: id, Path: "/jobs/" + id}
+		}
 		answer.SeriesInstanceUID = first.series.SeriesInstanceUID
 		answer.SeriesNumber = strings.TrimSpace(first.series.SeriesNumber)
 		answer.Order = len(results)
@@ -513,9 +542,18 @@ func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modality
 		// Every series of the PACS is complete locally.
 		return nil, errors.New(apiError.DuplicateRecord)
 	}
+	if !interactive {
+		if err := o.DispatchBackgroundMoves(); err != nil {
+			// The supervisor sends them on its next pass.
+			log.Printf("[retrieve] cannot send background moves of study now: %v", err)
+		}
+	}
 
 	return results, nil
 }
+
+// IDs of background moves that wait in api-pacs before Orthanc has a job.
+const queuedMoveIDPrefix = "pacsai-move-"
 
 // localSeriesInventory lists the stored series of a study with their image counts.
 func (o *OrthancAPI) localSeriesInventory(studyInstanceUID string) (map[string]localSeries, error) {

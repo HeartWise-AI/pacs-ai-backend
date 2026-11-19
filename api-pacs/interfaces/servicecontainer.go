@@ -759,6 +759,12 @@ func registerHandlers() {
 
 	// init orthanc connection
 	orthancAPI = orthanc.Init(os.Getenv("ORTHANC_BASE_URL"))
+	// Retrieve moves are saved in Postgres (migration 000015) and retried by a
+	// background loop, so a restart does not drop them.
+	if err := orthanc.UseMoveStore(orthanc.PostgresMoveStore{DB: postgresqlDBHanddler}); err != nil {
+		log.Printf("[SERVER] cannot load saved Orthanc moves: %v", err)
+	}
+	go orthancAPI.SuperviseMoves(context.Background())
 
 	// init kibana connection
 	kibanaAPI = kibana.Init(os.Getenv("KIBANA_BASE_URL"))

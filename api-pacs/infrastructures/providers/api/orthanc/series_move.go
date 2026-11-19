@@ -21,9 +21,15 @@ import (
 // The jobs are not permissive: a refused or aborted association fails the job
 // instead of ending as Success with images missing. A failed job, or one that
 // ended with fewer images than the PACS announced, is moved again (a new
-// Orthanc job) with backoff the next time someone reads its status, and is
-// only reported as failed once the attempts are used up. Callers keep the
-// first job's ID: its status is read from the latest attempt.
+// Orthanc job) with backoff, and is only reported as failed once the attempts
+// are used up. Callers keep the first job's ID: its status is read from the
+// latest attempt. The moves are saved in Postgres and a background loop reads
+// them (move_supervisor.go), so retries go on when nobody polls a job and
+// after api-pacs restarts.
+//
+// Orthanc never preempts a running job, so background moves (ingestion, bulk
+// reprocess) are kept to fewer than Orthanc's job slots: the others wait in
+// api-pacs and a slot stays free for a study someone is waiting for.
 
 const (
 	// Priority of a retrieve someone is waiting for (the viewer / work list).
@@ -96,18 +102,32 @@ type movePart struct {
 	expected          int // 0 when the PACS did not say
 }
 
-// trackedMove is a move job this process started.
+// trackedMove is a move job this process started. It is saved in Postgres
+// (moveStore) on every change, so a restart of api-pacs keeps retrying it.
 type trackedMove struct {
 	modalityID        string
 	request           map[string]interface{} // the move, to send again
-	currentJobID      string                 // Orthanc job of the latest attempt
+	currentJobID      string                 // Orthanc job of the latest attempt; "" before the first one
 	parts             []movePart             // the series this job moves
 	expectedInstances int                    // images the PACS announced for them; 0 when unknown
-	attempts          int
-	retryAt           time.Time // zero unless a resubmission is waiting
-	resubmitting      time.Time // when a reader started sending the next attempt; zero if none
-	verified          bool      // success checked against the local copy
+	attempts          int                    // moves sent to Orthanc
+	retryAt           time.Time              // zero unless a resubmission is waiting
+	resubmitting      time.Time              // when a reader started sending the next attempt; zero if none
+	verified          bool                   // success checked against the local copy
 	trackedAt         time.Time
+
+	// Background (ingestion, bulk reprocess) moves wait in api-pacs for a
+	// free background slot (see move_supervisor.go) instead of in Orthanc.
+	background bool
+	queued     bool // waiting for a background slot
+	queuedAt   time.Time
+	priority   int
+
+	// Set once the move has its final state; reported without asking Orthanc.
+	done           bool
+	finalState     string
+	finalError     string
+	completionTime string
 }
 
 // How long a move is remembered: callers stop polling long before.
@@ -117,6 +137,7 @@ type moveTracker struct {
 	mu    sync.Mutex
 	moves map[string]*trackedMove
 	now   func() time.Time
+	store moveStore // nil: kept in memory only
 }
 
 func newMoveTracker() *moveTracker {
@@ -125,7 +146,7 @@ func newMoveTracker() *moveTracker {
 
 var seriesMoves = newMoveTracker()
 
-func (t *moveTracker) track(jobID, modalityID string, request map[string]interface{}, series ...types.QueryModalitySeriesAnswersResponse) {
+func newTrackedMove(now time.Time, modalityID string, request map[string]interface{}, series []types.QueryModalitySeriesAnswersResponse) *trackedMove {
 	parts := make([]movePart, 0, len(series))
 	expected := 0
 	for _, item := range series {
@@ -133,22 +154,49 @@ func (t *moveTracker) track(jobID, modalityID string, request map[string]interfa
 		parts = append(parts, movePart{studyInstanceUID: item.StudyInstanceUID, seriesInstanceUID: item.SeriesInstanceUID, expected: count})
 		expected += count
 	}
+	return &trackedMove{
+		trackedAt:         now,
+		modalityID:        modalityID,
+		request:           request,
+		parts:             parts,
+		expectedInstances: expected,
+		priority:          requestPriority(request),
+	}
+}
+
+// track records a move already sent to Orthanc as job jobID.
+func (t *moveTracker) track(jobID, modalityID string, request map[string]interface{}, series ...types.QueryModalitySeriesAnswersResponse) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	now := t.now()
+	t.forgetOldLocked(now)
+	move := newTrackedMove(now, modalityID, request, series)
+	move.currentJobID = jobID
+	move.attempts = 1
+	t.moves[jobID] = move
+	t.saveLocked(jobID, move)
+}
+
+// enqueue records a background move that waits for a free background slot
+// before it is sent to Orthanc. jobID is the ID its caller keeps.
+func (t *moveTracker) enqueue(jobID, modalityID string, request map[string]interface{}, series ...types.QueryModalitySeriesAnswersResponse) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := t.now()
+	t.forgetOldLocked(now)
+	move := newTrackedMove(now, modalityID, request, series)
+	move.background = true
+	move.queued = true
+	move.queuedAt = now
+	t.moves[jobID] = move
+	t.saveLocked(jobID, move)
+}
+
+func (t *moveTracker) forgetOldLocked(now time.Time) {
 	for id, move := range t.moves {
 		if now.Sub(move.trackedAt) > trackedMoveLifetime {
 			delete(t.moves, id)
 		}
-	}
-	t.moves[jobID] = &trackedMove{
-		trackedAt:         now,
-		modalityID:        modalityID,
-		request:           request,
-		currentJobID:      jobID,
-		parts:             parts,
-		expectedInstances: expected,
-		attempts:          1,
 	}
 }
 
@@ -166,15 +214,40 @@ const (
 	moveVerify
 )
 
-// decide looks at a job's Orthanc state and says what to do with it.
 // current is the Orthanc job holding the latest attempt of a move.
 func (t *moveTracker) current(jobID string) string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if move, ok := t.moves[jobID]; ok {
+	if move, ok := t.moves[jobID]; ok && move.currentJobID != "" {
 		return move.currentJobID
 	}
 	return jobID
+}
+
+// settledView answers for a move without asking Orthanc: one that has its
+// final state, or one waiting in api-pacs for a background slot.
+func (t *moveTracker) settledView(jobID string) (types.GetJobResponse, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	move, ok := t.moves[jobID]
+	if !ok {
+		return types.GetJobResponse{}, false
+	}
+	view := types.GetJobResponse{ID: jobID, Type: dicomMoveJobType, Priority: uint(max(move.priority, 0))}
+	switch {
+	case move.done:
+		view.State = move.finalState
+		view.ErrorDescription = move.finalError
+		view.CompletionTime = move.completionTime
+		if move.finalState == string(types.JobSuccess) {
+			view.Progress = 100
+		}
+		return view, true
+	case move.queued:
+		view.State = string(types.JobPending)
+		return view, true
+	}
+	return types.GetJobResponse{}, false
 }
 
 // decide looks at the state of a move's latest attempt (job is that attempt;
@@ -183,7 +256,7 @@ func (t *moveTracker) decide(jobID string, job types.GetJobResponse) moveAction 
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	move, ok := t.moves[jobID]
-	if !ok {
+	if !ok || move.done {
 		return moveReport
 	}
 	if !move.retryAt.IsZero() {
@@ -220,11 +293,12 @@ func (t *moveTracker) retryLocked(jobID string, move *trackedMove) moveAction {
 		return moveWaitRetry
 	}
 	if move.attempts >= maxSeriesMoveAttempts {
-		delete(t.moves, jobID)
+		// The caller reports the failure; finish records it.
 		return moveReport
 	}
 	if move.retryAt.IsZero() {
 		move.retryAt = t.now().Add(backoffAfter(move.attempts))
+		t.saveLocked(jobID, move)
 	}
 	if t.now().Before(move.retryAt) {
 		return moveWaitRetry
@@ -244,15 +318,22 @@ func backoffAfter(attempts int) time.Duration {
 	return seriesMoveBackoff[min(max(attempts-1, 0), len(seriesMoveBackoff)-1)]
 }
 
+// retryRequest is what to send for the next attempt of a move.
+type retryRequest struct {
+	modalityID string
+	request    map[string]interface{}
+	background bool
+}
+
 // retry returns what to send for the next attempt.
-func (t *moveTracker) retry(jobID string) (modalityID string, request map[string]interface{}, ok bool) {
+func (t *moveTracker) retry(jobID string) (retryRequest, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	move, found := t.moves[jobID]
 	if !found {
-		return "", nil, false
+		return retryRequest{}, false
 	}
-	return move.modalityID, move.request, true
+	return retryRequest{modalityID: move.modalityID, request: move.request, background: move.background}, true
 }
 
 // resubmitted records the Orthanc job of a new attempt.
@@ -264,6 +345,21 @@ func (t *moveTracker) resubmitted(jobID, newJobID string) {
 		move.retryAt = time.Time{}
 		move.resubmitting = time.Time{}
 		move.currentJobID = newJobID
+		t.saveLocked(jobID, move)
+	}
+}
+
+// requeue puts a background move's next attempt back in the background queue:
+// it is sent when a background slot is free.
+func (t *moveTracker) requeue(jobID string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if move, ok := t.moves[jobID]; ok {
+		move.queued = true
+		move.queuedAt = t.now()
+		move.retryAt = time.Time{}
+		move.resubmitting = time.Time{}
+		t.saveLocked(jobID, move)
 	}
 }
 
@@ -278,11 +374,12 @@ func (t *moveTracker) resubmitFailed(jobID string) {
 		move.attempts++
 		move.resubmitting = time.Time{}
 		move.retryAt = t.now().Add(backoffAfter(move.attempts))
+		t.saveLocked(jobID, move)
 	}
 }
 
-// verified records the local image count after a successful move. It returns
-// false when images are missing; the move then counts as failed.
+// verifiedCount records the local image count after a successful move. It
+// returns false when images are missing; the move then counts as failed.
 func (t *moveTracker) verifiedCount(jobID string, localInstances int) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -292,9 +389,43 @@ func (t *moveTracker) verifiedCount(jobID string, localInstances int) bool {
 	}
 	if localInstances >= move.expectedInstances {
 		move.verified = true
+		t.saveLocked(jobID, move)
 		return true
 	}
 	return false
+}
+
+// finish records the state reported for a move once it is final: a failure,
+// or a success checked against the local copy (or with no count to check).
+func (t *moveTracker) finish(jobID string, view types.GetJobResponse) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	move, ok := t.moves[jobID]
+	if !ok || move.done {
+		return
+	}
+	switch view.State {
+	case string(types.JobFailure):
+	case string(types.JobSuccess):
+		if !move.verified && move.expectedInstances > 0 {
+			return
+		}
+	default:
+		return
+	}
+	t.finishLocked(jobID, move, view.State, view.ErrorDescription, view.CompletionTime)
+}
+
+func (t *moveTracker) finishLocked(jobID string, move *trackedMove, state, errorDescription, completionTime string) {
+	move.done = true
+	move.queued = false
+	move.finalState = state
+	move.finalError = errorDescription
+	move.completionTime = completionTime
+	if move.completionTime == "" {
+		move.completionTime = t.now().UTC().Format("20060102T150405")
+	}
+	t.saveLocked(jobID, move)
 }
 
 // parts returns the series of a move with the images announced for each.
@@ -307,6 +438,126 @@ func (t *moveTracker) parts(jobID string) ([]movePart, int, bool) {
 	}
 	return append([]movePart(nil), move.parts...), move.expectedInstances, true
 }
+
+// --- the background queue ----------------------------------------------------
+
+// queuedMove is a background move waiting for a slot.
+type queuedMove struct {
+	jobID      string
+	modalityID string
+	request    map[string]interface{}
+	parts      []movePart
+}
+
+// waiting lists the background moves that may be sent now, oldest first and,
+// within one retrieve, the first series first.
+func (t *moveTracker) waiting() []queuedMove {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := t.now()
+	type entry struct {
+		queuedMove
+		queuedAt time.Time
+		priority int
+	}
+	var entries []entry
+	for id, move := range t.moves {
+		if !move.queued || move.done || now.Before(move.retryAt) {
+			continue
+		}
+		entries = append(entries, entry{
+			queuedMove: queuedMove{jobID: id, modalityID: move.modalityID, request: move.request, parts: append([]movePart(nil), move.parts...)},
+			queuedAt:   move.queuedAt,
+			priority:   move.priority,
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if !entries[i].queuedAt.Equal(entries[j].queuedAt) {
+			return entries[i].queuedAt.Before(entries[j].queuedAt)
+		}
+		if entries[i].priority != entries[j].priority {
+			return entries[i].priority > entries[j].priority
+		}
+		return entries[i].jobID < entries[j].jobID
+	})
+	out := make([]queuedMove, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.queuedMove)
+	}
+	return out
+}
+
+// dispatched records the Orthanc job a queued move was sent as.
+func (t *moveTracker) dispatched(jobID, orthancJobID string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if move, ok := t.moves[jobID]; ok {
+		move.queued = false
+		move.attempts++
+		move.currentJobID = orthancJobID
+		move.retryAt = time.Time{}
+		move.resubmitting = time.Time{}
+		t.saveLocked(jobID, move)
+	}
+}
+
+// dispatchFailed records that Orthanc did not take a queued move. It counts
+// as an attempt; the move waits for the next backoff, or fails once the
+// attempts are used up.
+func (t *moveTracker) dispatchFailed(jobID, reason string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	move, ok := t.moves[jobID]
+	if !ok {
+		return
+	}
+	move.attempts++
+	if move.attempts >= maxSeriesMoveAttempts {
+		t.finishLocked(jobID, move, string(types.JobFailure), "Cannot send the move to the PACS: "+reason, "")
+		return
+	}
+	move.retryAt = t.now().Add(backoffAfter(move.attempts))
+	t.saveLocked(jobID, move)
+}
+
+// completeWithoutMove records that a queued move's images were all stored
+// (another retrieve brought them) before it was sent.
+func (t *moveTracker) completeWithoutMove(jobID string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if move, ok := t.moves[jobID]; ok {
+		move.verified = true
+		t.finishLocked(jobID, move, string(types.JobSuccess), "", "")
+	}
+}
+
+// active lists the moves sent to Orthanc that have no final state yet.
+func (t *moveTracker) active() []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var ids []string
+	for id, move := range t.moves {
+		if !move.done && !move.queued && move.currentJobID != "" {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// requestPriority reads the Orthanc priority of a move request, as built here
+// (int) or read back from JSON (float64).
+func requestPriority(request map[string]interface{}) int {
+	switch value := request["Priority"].(type) {
+	case int:
+		return value
+	case float64:
+		return int(value)
+	}
+	return 0
+}
+
+const dicomMoveJobType = "DicomMoveScu"
 
 // pendingView is how a job waiting for a retry is reported to callers.
 func pendingView(job types.GetJobResponse) types.GetJobResponse {
