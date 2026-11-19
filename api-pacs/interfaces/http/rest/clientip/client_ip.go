@@ -44,6 +44,15 @@ func Resolve(request *http.Request, trustedProxyCIDRs []*net.IPNet) string {
 	return remoteIP.String()
 }
 
+// SocketIP is the immutable socket peer address, ignoring proxy headers.
+func SocketIP(request *http.Request) string {
+	remoteIP := parseRemoteIP(peeraddr.SocketAddress(request))
+	if remoteIP == nil {
+		return ""
+	}
+	return remoteIP.String()
+}
+
 func parseRemoteIP(remoteAddress string) net.IP {
 	host, _, err := net.SplitHostPort(strings.TrimSpace(remoteAddress))
 	if err != nil {

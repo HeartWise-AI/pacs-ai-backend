@@ -4,8 +4,11 @@ set -eu
 : "${SERVER_NAME:=localhost}"
 : "${NGINX_FRONTEND_MAX_BODY_SIZE:=1m}"
 : "${NGINX_API_MAX_BODY_SIZE:=16m}"
+# One address (or CIDR) allowed to mint sign-in handoffs through nginx (CA-268).
+# 127.0.0.1 is never a remote client, so the default keeps the route closed.
+: "${NGINX_HANDOFF_ALLOWED_IP:=127.0.0.1}"
 : "${NGINX_DICOMWEB_MAX_BODY_SIZE:=6g}"
-export SERVER_NAME NGINX_FRONTEND_MAX_BODY_SIZE NGINX_API_MAX_BODY_SIZE NGINX_DICOMWEB_MAX_BODY_SIZE
+export SERVER_NAME NGINX_FRONTEND_MAX_BODY_SIZE NGINX_API_MAX_BODY_SIZE NGINX_DICOMWEB_MAX_BODY_SIZE NGINX_HANDOFF_ALLOWED_IP
 
 validate_body_size() {
   name="$1"
@@ -68,7 +71,11 @@ else
 fi
 
 # Replace environment variables in the Nginx config template with real values
-envsubst '${SERVER_NAME} ${NGINX_FRONTEND_MAX_BODY_SIZE} ${NGINX_API_MAX_BODY_SIZE} ${NGINX_DICOMWEB_MAX_BODY_SIZE}' < /etc/nginx/nginx.conf.template > /etc/nginx/conf.d/default.conf
+case "$NGINX_HANDOFF_ALLOWED_IP" in
+  *[!0-9./]*|'') echo "NGINX_HANDOFF_ALLOWED_IP must be an IPv4 address or CIDR" >&2; exit 1 ;;
+esac
+
+envsubst '${SERVER_NAME} ${NGINX_FRONTEND_MAX_BODY_SIZE} ${NGINX_API_MAX_BODY_SIZE} ${NGINX_DICOMWEB_MAX_BODY_SIZE} ${NGINX_HANDOFF_ALLOWED_IP}' < /etc/nginx/nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 # Start Nginx
 exec nginx -g 'daemon off;'
