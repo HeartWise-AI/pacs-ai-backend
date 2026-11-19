@@ -58,3 +58,19 @@ must be linked first; email alone never decides who gets signed in.
 2. Set `PACS_AI_HANDOFF_TOKEN` (a long random secret, also given to
    CardioAgent's backend) and `PACS_AI_PUBLIC_URL` in api-pacs's `.env`.
 3. Deploy api-pacs and the viewer.
+
+## CardioAgent on another host
+
+When CardioAgent's backend runs on another server, it mints through the
+public nginx at `https://<PACS-AI host>/api/v1/internal/auth/handoff`. Two
+gates must both let that host in, plus the token:
+
+* **nginx:** `NGINX_HANDOFF_ALLOWED_IP` (one IPv4 address or CIDR, in
+  `nginx/.env`) is the only client allowed on that exact path. The default,
+  `127.0.0.1`, keeps it closed.
+* **api-pacs:** `PACS_AI_HANDOFF_ALLOWED_CIDRS` (comma-separated CIDRs). A
+  proxied request is accepted only when its socket peer is a trusted proxy
+  (`LOGIN_TRUSTED_PROXY_CIDRS`) and the client address nginx reports is in
+  this list. Otherwise it gets 404, as before.
+
+The other host must trust the PACS-AI server certificate's CA.

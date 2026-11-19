@@ -215,10 +215,16 @@ func (k *kernel) RegisterIAMHandoffController() iamREST.HandoffController {
 	if postgresqlDBHanddler != nil && postgresqlDBHanddler.Conn != nil {
 		service.Links = &iamRepository.AccountLinkRepository{DB: postgresqlDBHanddler.Conn}
 	}
+	allowedRemoteCIDRs, err := clientip.ParseTrustedProxyCIDRs(os.Getenv("PACS_AI_HANDOFF_ALLOWED_CIDRS"))
+	if err != nil {
+		log.Printf("[security] event=handoff_allowed_cidrs_invalid err=%v", err)
+		allowedRemoteCIDRs = nil
+	}
 	return iamREST.HandoffController{
-		Service:           service,
-		ServiceToken:      os.Getenv("PACS_AI_HANDOFF_TOKEN"),
-		TrustedProxyCIDRs: trustedProxyCIDRs,
+		Service:            service,
+		ServiceToken:       os.Getenv("PACS_AI_HANDOFF_TOKEN"),
+		TrustedProxyCIDRs:  trustedProxyCIDRs,
+		AllowedRemoteCIDRs: allowedRemoteCIDRs,
 	}
 }
 

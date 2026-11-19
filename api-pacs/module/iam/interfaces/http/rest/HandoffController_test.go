@@ -3,6 +3,7 @@ package rest
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -157,4 +158,60 @@ func TestLinkUsesTheSignedInUser(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, []string{"abc", "t1", "u1"}, []string{service.code, service.tenant, service.uid})
 	require.Equal(t, "/viewer", handoffBody(t, recorder)["returnPath"])
+}
+
+func mustCIDRs(t *testing.T, values ...string) []*net.IPNet {
+	t.Helper()
+	var networks []*net.IPNet
+	for _, value := range values {
+		_, network, err := net.ParseCIDR(value)
+		require.NoError(t, err)
+		networks = append(networks, network)
+	}
+	return networks
+}
+
+func proxiedMint(peer, realIP string) *http.Request {
+	request := mintRequestHTTP("secret")
+	request.RemoteAddr = peer + ":40000"
+	request.Header.Set("X-Real-IP", realIP)
+	request.Header.Set("X-Forwarded-For", realIP)
+	return request
+}
+
+func TestMintThroughNginxOnlyForAllowedRemoteHosts(t *testing.T) {
+	service := &fakeHandoffService{mintResult: iamService.MintHandoffResult{URL: "https://p/auth/handoff#code=x", ExpiresIn: 60}}
+	controller := &HandoffController{
+		Service:            service,
+		ServiceToken:       "secret",
+		TrustedProxyCIDRs:  mustCIDRs(t, "172.20.0.0/16"),
+		AllowedRemoteCIDRs: mustCIDRs(t, "10.128.228.50/32"),
+	}
+
+	cases := []struct {
+		name, peer, realIP string
+		want               int
+	}{
+		{"allowed host via nginx", "172.20.0.9", "10.128.228.50", http.StatusOK},
+		{"other host via nginx", "172.20.0.9", "10.128.228.99", http.StatusNotFound},
+		{"forged X-Real-IP from an untrusted peer", "203.0.113.7", "10.128.228.50", http.StatusNotFound},
+	}
+	for _, tc := range cases {
+		recorder := httptest.NewRecorder()
+		controller.MintHandoff(recorder, proxiedMint(tc.peer, tc.realIP))
+		require.Equal(t, tc.want, recorder.Code, tc.name)
+	}
+
+	// The token is still required for an allowed host.
+	request := proxiedMint("172.20.0.9", "10.128.228.50")
+	request.Header.Set("Authorization", "Bearer wrong")
+	recorder := httptest.NewRecorder()
+	controller.MintHandoff(recorder, request)
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+
+	// Without an allowlist, nothing proxied is accepted.
+	controller.AllowedRemoteCIDRs = nil
+	recorder = httptest.NewRecorder()
+	controller.MintHandoff(recorder, proxiedMint("172.20.0.9", "10.128.228.50"))
+	require.Equal(t, http.StatusNotFound, recorder.Code)
 }

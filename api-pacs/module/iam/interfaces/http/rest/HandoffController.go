@@ -30,6 +30,12 @@ type HandoffController struct {
 	// route (PACS_AI_HANDOFF_TOKEN). Empty disables minting.
 	ServiceToken      string
 	TrustedProxyCIDRs []*net.IPNet
+	// AllowedRemoteCIDRs lets another host (CardioAgent outside this server)
+	// mint through the public nginx: the request is accepted only when the
+	// socket peer is a trusted proxy (TrustedProxyCIDRs) and the client it
+	// reports is in one of these networks (PACS_AI_HANDOFF_ALLOWED_CIDRS).
+	// Empty: minting stays internal-only.
+	AllowedRemoteCIDRs []*net.IPNet
 }
 
 const handoffMaxBodyBytes = 16 << 10
@@ -91,6 +97,30 @@ func proxied(r *http.Request) bool {
 	return false
 }
 
+// allowedRemote is true for a request relayed by a trusted proxy on behalf of
+// a client in AllowedRemoteCIDRs. The client address comes from the proxy's
+// X-Real-IP only when the socket peer is a trusted proxy (clientip.Resolve).
+func (controller *HandoffController) allowedRemote(r *http.Request) bool {
+	if len(controller.AllowedRemoteCIDRs) == 0 || len(controller.TrustedProxyCIDRs) == 0 {
+		return false
+	}
+	peer := net.ParseIP(clientip.SocketIP(r))
+	if peer == nil || !inNetworks(peer, controller.TrustedProxyCIDRs) {
+		return false
+	}
+	client := net.ParseIP(clientip.Resolve(r, controller.TrustedProxyCIDRs))
+	return client != nil && inNetworks(client, controller.AllowedRemoteCIDRs)
+}
+
+func inNetworks(ip net.IP, networks []*net.IPNet) bool {
+	for _, network := range networks {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 // MintHandoff is POST /v1/internal/auth/handoff, called by the other app's backend.
 func (controller *HandoffController) MintHandoff(w http.ResponseWriter, r *http.Request) {
 	expected := strings.TrimSpace(controller.ServiceToken)
@@ -98,7 +128,7 @@ func (controller *HandoffController) MintHandoff(w http.ResponseWriter, r *http.
 		writeHandoffError(w, iamService.ErrHandoffUnavailable)
 		return
 	}
-	if proxied(r) {
+	if proxied(r) && !controller.allowedRemote(r) {
 		writeHandoff(w, http.StatusNotFound, "Not found.", nil)
 		return
 	}
