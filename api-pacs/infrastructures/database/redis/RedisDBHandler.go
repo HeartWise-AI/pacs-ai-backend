@@ -34,6 +34,14 @@ redis.call("SET", KEYS[2], ARGV[1], "PX", ARGV[2])
 return 1
 `)
 
+var getAndDeleteScript = db.NewScript(`
+local value = redis.call("GET", KEYS[1])
+if value then
+  redis.call("DEL", KEYS[1])
+end
+return value
+`)
+
 var deleteIfValueMatchesScript = db.NewScript(`
 if redis.call("GET", KEYS[1]) == ARGV[1] then
   return redis.call("DEL", KEYS[1])
@@ -229,4 +237,24 @@ func (r *RedisDBHandler) SetIfKeyAbsent(blockingKey, key string, val interface{}
 	}
 
 	return result == 1, nil
+}
+
+// GetAndDelete reads and deletes key atomically, so a value (a one-time code)
+// can be taken only once. found is false when the key does not exist.
+func (r *RedisDBHandler) GetAndDelete(key string) (string, bool, error) {
+	r.rw.Lock()
+	defer r.rw.Unlock()
+
+	result, err := getAndDeleteScript.Run(r.Client, []string{key}).Result()
+	if err == db.Nil {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	value, ok := result.(string)
+	if !ok {
+		return "", false, nil
+	}
+	return value, true, nil
 }

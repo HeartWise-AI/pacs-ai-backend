@@ -81,6 +81,7 @@ type ServiceContainerInterface interface {
 	RegisterElasticsearchRESTCommandController() elasticsearchREST.ElasticsearchCommandController
 	RegisterElasticsearchRESTQueryController() elasticsearchREST.ElasticsearchQueryController
 	RegisterIAMRESTCommandController() iamREST.IAMCommandController
+	RegisterIAMHandoffController() iamREST.HandoffController
 	RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController
 	RegisterInferenceRESTQueryController() inferenceREST.InferenceQueryController
 	RegisterInferenceRESTPredictionsController() inferenceREST.InferencePredictionsController
@@ -195,6 +196,30 @@ func (k *kernel) RegisterIAMRESTCommandController() iamREST.IAMCommandController
 	}
 
 	return controller
+}
+
+// RegisterIAMHandoffController wires the sign-in handoff from CardioAgent
+// (CA-268). Minting stays disabled until PACS_AI_HANDOFF_TOKEN and
+// PACS_AI_PUBLIC_URL are set.
+func (k *kernel) RegisterIAMHandoffController() iamREST.HandoffController {
+	trustedProxyCIDRs, err := clientip.ParseTrustedProxyCIDRs(os.Getenv("LOGIN_TRUSTED_PROXY_CIDRS"))
+	if err != nil {
+		log.Printf("[security] event=login_trusted_proxy_config_invalid err=%v", err)
+	}
+	service := &iamService.HandoffService{
+		Codes:     redisIAMDBHandler,
+		Users:     k.userQueryServiceContainer(),
+		Sessions:  k.iamCommandServiceContainer(),
+		PublicURL: os.Getenv("PACS_AI_PUBLIC_URL"),
+	}
+	if postgresqlDBHanddler != nil && postgresqlDBHanddler.Conn != nil {
+		service.Links = &iamRepository.AccountLinkRepository{DB: postgresqlDBHanddler.Conn}
+	}
+	return iamREST.HandoffController{
+		Service:           service,
+		ServiceToken:      os.Getenv("PACS_AI_HANDOFF_TOKEN"),
+		TrustedProxyCIDRs: trustedProxyCIDRs,
+	}
 }
 
 // RegisterInferenceRESTCommandController performs dependency injection to the RegisterInferenceRESTCommandController
