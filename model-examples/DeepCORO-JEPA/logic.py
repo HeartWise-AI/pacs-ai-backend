@@ -8,7 +8,13 @@ the two-pass budget. Yes/no calls use the thresholds.json shipped with the pinne
 validation set): a finding is positive when its probability is strictly greater than its threshold. Stenosis has one
 threshold per segment; calcification, thrombus and chronic total occlusion have one threshold per finding for all
 segments. Outputs that model_config.json lists under `unsupported_outputs` (v15: the posterior LV branch, which had
-no training target) keep their keys in the JSON but never raise a flag and are never displayed. Research use only.
+no training target) keep their keys in the JSON but never raise a flag and are never displayed.
+
+From v19 (container 2.2.0): a per-segment P(occluded) shown as "100% (occluded)" above its display threshold on the
+epicardial segments, a "possible stent" annotation from the procedure head (annotation only), the LAD FFR/iFR
+measurement region (proximal and mid LAD), and an optional side check: when the caller sends the view label of each
+run (`additionalMetadata.coronaryViews`), the segments of a coronary side with no run among those read are returned
+as not assessed. Research use only.
 """
 import base64
 import json
@@ -43,9 +49,37 @@ DOMINANCE_METHODS = ("majority", "tie_mean_probability")
 DOMINANCE_OUTPUT = "dominance_left_prob"  # thresholds.json name of the model's own dominance output (v15 on)
 DOMINANCE_LABEL_SOURCE = "model-derived labels (ObjectRecon RCA-video majority), not expert reads"
 # LAD FFR/iFR test AUROC quoted in the recommendation, by model version (a stored result keeps its own model's figure)
-PRESSURE_TEST_AUROC = {"v13": ("0.69", "0,69"), "v15": ("0.67", "0,67")}
+PRESSURE_TEST_AUROC = {"v13": ("0.69", "0,69"), "v15": ("0.67", "0,67"), "v19": ("0.71", "0,71")}
+OCCLUSION_TAGS = ("CTO", "acute/other")
+# LAD FFR/iFR labels: measurements in the proximal or mid LAD only (pressure head trained on those, PI 2026-11-13)
+PRESSURE_REGION = ("prox_lad", "mid_lad")
+PRESSURE_REGION_LABEL = "proximal and mid LAD"
+RIGHT_SEGMENTS = ("prox_rca", "mid_rca", "dist_rca")
+LEFT_SEGMENTS = ("left_main", "prox_lad", "mid_lad", "dist_lad", "D1", "D2", "prox_lcx", "mid_lcx", "dist_lcx", "om1", "om2", "bx")
+DOMINANCE_SEGMENTS = ("pda", "posterolateral", "lvp")  # on the side of the dominant artery
+SIDE_VIEW_LABELS = {"Left Coronary": "left", "Right Coronary": "right"}
+NOT_ASSESSED_REASON = {"left": "no left coronary run", "right": "no right coronary run"}
+MAX_VIEW_ENTRIES = 64
 MAX_EXPLAINED_SEGMENTS = 6
 NO_VIDEO_HTML = "<h1>No video could be extracted from the current DICOM series</h1>"
+
+
+def not_assessed(preds: dict) -> set:
+    """Segments the side check marked as not assessed (no run of their coronary side among the runs read)."""
+    return {g for g, v in (preds.get("segments") or {}).items() if v.get("assessed") is False}
+
+
+def pressure_region_sentence(p: dict, segs: dict) -> str:
+    """For a positive FFR/iFR call: the measurement region and the stenosis shown there."""
+    def seg(g):
+        v = segs.get(g)
+        if v is None:
+            return f"{SEGMENT_NAMES[g].lower()} not shown"
+        return (f"{SEGMENT_NAMES[g].lower()} shown {v['display_pct']}%"
+                + (" (occluded)" if v["display_category"] == "occluded" else "")
+                + f" ({'flagged' if v['significant'] else 'not flagged'})")
+    return ("Predicted abnormal FFR/iFR refers to the proximal-mid LAD (the measurement region in training, not a "
+            f"localisation of the culprit lesion by the model): {seg('prox_lad')}, {seg('mid_lad')}.")
 
 
 def _count(value) -> bool:
@@ -78,7 +112,8 @@ class CustomPredictionService(BasePredictionService):
         thresholds = self.load_thresholds(
             weights.parent, CustomPredictionService.model_config["Thresholds"], structure["groups"],
             physiology=bool(structure.get("physiology")), lesion=bool(heads.get("lesion")),
-            dominance=bool(heads.get("dominance")),
+            dominance=bool(heads.get("dominance")), occluded=bool(heads.get("occluded")),
+            procedure=bool(heads.get("procedure")),
             weights_sha256=CustomPredictionService.get_model_info()["provenance"]["weightsSha256"])
         unsupported = self.unsupported_segments(structure)
         display_calibration.calibration(str(structure["model_version"]))  # no mapping for this model: stop here
@@ -86,7 +121,8 @@ class CustomPredictionService(BasePredictionService):
         model = multilayer_model_from_payload(payload, device=device, train_blocks=0)
         model.eval()
         for head, attribute in (("lesion", "lesion_head"), ("lesion_pooler", "lesion_pooler"),
-                                ("dominance", "dominance_head"), ("procedure", "procedure_head")):
+                                ("dominance", "dominance_head"), ("procedure", "procedure_head"),
+                                ("occluded", "occluded_head")):
             if head in heads and bool(heads[head]) != (getattr(model, attribute, None) is not None):
                 raise ValueError(f"model_config.json says heads.{head} = {heads[head]} but the weights say otherwise")
         CustomPredictionService.models["deepcoro_jepa"] = model
@@ -107,17 +143,20 @@ class CustomPredictionService(BasePredictionService):
 
     @staticmethod
     def load_thresholds(models_dir, settings: dict, groups, *, physiology: bool, lesion: bool, weights_sha256: str,
-                        dominance: bool = False) -> dict:
+                        dominance: bool = False, occluded: bool = False, procedure: bool = False) -> dict:
         """Decision thresholds of the pinned model revision, one per output. `settings` is the "Thresholds" block of
         models/config.json. Fails on an unknown key or operating point, when the file belongs to other weights or when
         an output has no threshold: no silent default. `lesion_operating_point` is checked for every checkpoint and
         used by those with a lesion head. The optional `lesion_threshold_overrides` ({"thrombus": 0.4}) replaces the
         threshold of the named lesion findings by a fixed value; the operating point returned with a prediction then
         names them ("specificity_99 (thrombus: fixed 0.40)"). A checkpoint with a dominance head (v15 on) also needs
-        the `balanced` threshold of `dominance_left_prob`."""
+        the `balanced` threshold of `dominance_left_prob`. A checkpoint with an occluded head (v19 on) needs
+        `occluded_operating_point` (a key of thresholds.json `occluded_prob`) and `occluded_segments` (the segments
+        that may be shown 100% occluded); one with a procedure head may set `stent_annotation_threshold`."""
         keys = {"path", "pressure_operating_point", "lesion_operating_point"}
-        if not keys <= set(settings) <= keys | {"lesion_threshold_overrides"}:
-            raise ValueError(f'"Thresholds" takes {sorted(keys)} and optionally "lesion_threshold_overrides", got {sorted(settings)}')
+        optional = {"lesion_threshold_overrides", "occluded_operating_point", "occluded_segments", "stent_annotation_threshold"}
+        if not keys <= set(settings) <= keys | optional:
+            raise ValueError(f'"Thresholds" takes {sorted(keys)} and optionally {sorted(optional)}, got {sorted(settings)}')
         overrides = settings.get("lesion_threshold_overrides", {})
         if not isinstance(overrides, dict) or set(overrides) - set(LESION_NAMES):
             raise ValueError(f'"lesion_threshold_overrides" takes thresholds for {list(LESION_NAMES)}, got {overrides!r}')
@@ -155,8 +194,28 @@ class CustomPredictionService(BasePredictionService):
             if len(lesion_operating_point) > OPERATING_POINT_MAX_CHARS:  # report_input rejects longer stored results
                 raise ValueError(f'"lesion_threshold_overrides" names too many findings: {lesion_operating_point!r} '
                                  f"exceeds {OPERATING_POINT_MAX_CHARS} characters")
-        return {"pressure_operating_point": pressure_operating_point, "lesion_operating_point": lesion_operating_point,
-                "values": out}
+        result = {"pressure_operating_point": pressure_operating_point, "lesion_operating_point": lesion_operating_point,
+                  "values": out}
+        if occluded:
+            point, segments = settings.get("occluded_operating_point"), settings.get("occluded_segments")
+            if not isinstance(point, str) or point not in spec["thresholds"].get("occluded_prob", {}):
+                raise ValueError(f"{path} has no occluded_prob threshold {point!r} (Thresholds.occluded_operating_point)")
+            if (not isinstance(segments, list) or not segments or len(set(segments)) != len(segments)
+                    or set(segments) - set(groups)):
+                raise ValueError('"occluded_segments" must list distinct segments of the model')
+            cut = float(spec["thresholds"]["occluded_prob"][point])
+            if not 0.0 < cut < 1.0:
+                raise ValueError(f"{path} has an occluded_prob threshold outside (0, 1)")
+            result["occluded"] = {"threshold": cut, "operating_point": point,
+                                  "segments": [g for g in groups if g in segments]}
+        stent = settings.get("stent_annotation_threshold")
+        if stent is not None:
+            if not procedure:
+                raise ValueError('"stent_annotation_threshold" needs a checkpoint with a procedure head')
+            if isinstance(stent, bool) or not isinstance(stent, (int, float)) or not 0.0 < stent < 1.0:
+                raise ValueError('"stent_annotation_threshold" must be strictly between 0 and 1')
+            result["stent_annotation"] = float(stent)
+        return result
 
     def stop_model(self):
         CustomPredictionService.models.clear()
@@ -261,6 +320,7 @@ class CustomPredictionService(BasePredictionService):
                                  model_version=CustomPredictionService.model_version(),
                                  unsupported=CustomPredictionService.unsupported)
         preds["explainability"] = self.explanations(model, store, clips, clip_dicoms, preds, cfg["crop_res"])
+        preds["_used_sops"] = [str(getattr(d, "SOPInstanceUID", "")) for d in clip_dicoms]  # dropped by _predict
         return preds
 
     @staticmethod
@@ -268,7 +328,8 @@ class CustomPredictionService(BasePredictionService):
         """Within-crop attention for the flagged stenosis segments (significant or CTO), most probable first.
         Never fails the prediction: an error is logged and the report goes out without the crops."""
         segs = preds["segments"]
-        targets = sorted((g for g, v in segs.items() if g not in HIDDEN_SEGMENTS and (v["significant"] or v.get("cto"))),
+        targets = sorted((g for g, v in segs.items() if g not in HIDDEN_SEGMENTS
+                          and (v["significant"] or v.get("cto") or v.get("occluded"))),
                          key=lambda g: -segs[g]["prob_significant"])[:MAX_EXPLAINED_SEGMENTS]
         try:
             with torch.inference_mode():
@@ -343,16 +404,115 @@ class CustomPredictionService(BasePredictionService):
             out["model_dominance"] = {"dominance_left_prob": p, "dominance_left_threshold": cut[DOMINANCE_OUTPUT],
                                       "dominance_left_pred": bool(p > cut[DOMINANCE_OUTPUT]),
                                       "operating_point": "balanced", "label_source": DOMINANCE_LABEL_SOURCE}
+        # v19: P(occluded) per segment; "100% (occluded)" on the listed (epicardial) segments above the display
+        # threshold, tagged CTO when the CTO flag is set, else acute/other.
+        if "occluded_probability" in res and "occluded" in thresholds:
+            occ = thresholds["occluded"]
+            out["occluded_threshold"] = {"threshold": occ["threshold"], "operating_point": occ["operating_point"],
+                                         "segments": list(occ["segments"])}
+            for g, x in zip(groups, res["occluded_probability"].float().cpu().tolist()):
+                v = out["segments"][g]
+                x = round(float(x), PROBABILITY_DECIMALS)
+                hit = g in occ["segments"] and x > occ["threshold"]
+                v.update({"occluded_prob": x, "occluded": hit,
+                          "occlusion_tag": (OCCLUSION_TAGS[0] if v.get("cto") else OCCLUSION_TAGS[1]) if hit else ""})
+        # Possible stent (procedure head): an annotation only; no flag, threshold or shown % changes.
+        if "stent_probability" in res and "stent_annotation" in thresholds:
+            cut_stent = thresholds["stent_annotation"]
+            out["stent_annotation"] = {"threshold": cut_stent}
+            for g, x in zip(groups, res["stent_probability"].float().cpu().tolist()):
+                x = round(float(x), PROBABILITY_DECIMALS)
+                out["segments"][g].update({"stent_prob": x, "possible_stent": bool(x > cut_stent)})
+        if "lad_physiology" in out and "occluded_probability" in res:  # v19 results name the measurement region
+            CustomPredictionService.add_pressure_region(out)
         unsupported = [g for g in groups if g in set(unsupported)]
         if unsupported:
             out["unsupported_segments"] = unsupported
             for g in unsupported:
                 v = out["segments"][g]
-                v.update({k: False for k in ("significant", *LESION_NAMES) if k in v})
+                v.update({k: False for k in ("significant", *LESION_NAMES, "occluded", "possible_stent") if k in v})
+                if "occlusion_tag" in v:
+                    v["occlusion_tag"] = ""
                 v["unsupported"] = True
         # display only: stenosis_pct and the flags are unchanged
         display_calibration.add_display(out["segments"], model_version, skip=unsupported)
         return out
+
+    @staticmethod
+    def add_pressure_region(preds: dict) -> None:
+        """The LAD FFR/iFR region: where pressure was measured in the training labels (proximal and mid LAD), not a
+        localisation of the culprit lesion by the model. Copies the two segments' stenosis readings next to it."""
+        ph, segs = preds["lad_physiology"], preds["segments"]
+        ph["region"] = list(PRESSURE_REGION)
+        ph["region_label"] = PRESSURE_REGION_LABEL
+        ph["region_segments"] = {g: {"stenosis_pct": segs[g]["stenosis_pct"], "prob_significant": segs[g]["prob_significant"],
+                                     "significant": segs[g]["significant"]} for g in PRESSURE_REGION if g in segs}
+
+    # -- side check ------------------------------------------------------------
+
+    @staticmethod
+    def coronary_views(request: PredictRequest) -> Optional[dict]:
+        """`additionalMetadata.coronaryViews`: [{"sopInstanceUID", "viewLabel"}, ...], the view label of each run sent
+        (angiogram procedure classifier). Absent -> None (no side check); malformed -> error."""
+        views = (getattr(request, "additionalMetadata", None) or {}).get("coronaryViews")
+        if views is None:
+            return None
+        if not isinstance(views, list) or not views or len(views) > MAX_VIEW_ENTRIES:
+            raise ValueError(f"coronaryViews must be a list of 1 to {MAX_VIEW_ENTRIES} entries")
+        out = {}
+        for item in views:
+            if (not isinstance(item, dict) or not isinstance(item.get("sopInstanceUID"), str)
+                    or not item["sopInstanceUID"] or len(item["sopInstanceUID"]) > 128
+                    or not (item.get("viewLabel") is None or isinstance(item["viewLabel"], str))):
+                raise ValueError("coronaryViews entries need a sopInstanceUID and a viewLabel (string or null)")
+            out[item["sopInstanceUID"]] = item.get("viewLabel")
+        return out
+
+    @staticmethod
+    def apply_side_check(preds: dict, views: Optional[dict], used_sops: list, dominance: Optional[dict]) -> None:
+        """Marks the segments of a coronary side with no run among the runs read as not assessed: their numbers stay
+        as the model wrote them, but `assessed` is false, every flag and annotation is false, they get no display
+        fields and are left out of the report and the diagnosis. The PDA and posterolateral branch follow the
+        dominance (the caller's, else the model's own estimate). LAD physiology is not assessed without a left run.
+        Without view labels for every run read, nothing changes and `side_check.available` is false."""
+        labels = [views.get(sop) for sop in used_sops] if views is not None else []
+        sides = [SIDE_VIEW_LABELS.get(label) for label in labels]
+        if views is None or not used_sops or None in sides:
+            preds["side_check"] = {"available": False,
+                                   "reason": "view labels not provided" if views is None else
+                                             "a run read has no left/right coronary view label"}
+            return
+        left, right = sides.count("left"), sides.count("right")
+        missing = "right" if not right else "left" if not left else None
+        if dominance:
+            dom_call, dom_source = dominance["call"], "angiogram classifier"
+        elif preds.get("model_dominance"):
+            dom_call = "left" if preds["model_dominance"]["dominance_left_pred"] else "right"
+            dom_source = "model estimate"
+        else:
+            dom_call, dom_source = "right", "default (right dominant)"
+        check = {"available": True, "left_runs": left, "right_runs": right, "not_assessed_side": missing}
+        if missing:
+            check["dominance_side"] = {"call": dom_call, "source": dom_source}
+            side_of = {**{g: "right" for g in RIGHT_SEGMENTS}, **{g: "left" for g in LEFT_SEGMENTS},
+                       **{g: dom_call for g in DOMINANCE_SEGMENTS}}
+            off = [g for g in preds["segments"] if side_of.get(g) == missing]
+            for g in off:
+                v = preds["segments"][g]
+                v.update({k: False for k in ("significant", *LESION_NAMES, "occluded", "possible_stent") if k in v})
+                if "occlusion_tag" in v:
+                    v["occlusion_tag"] = ""
+                v.pop("display_pct", None)
+                v.pop("display_category", None)
+                v["assessed"] = False
+                v["not_assessed_reason"] = NOT_ASSESSED_REASON[missing]
+            check["not_assessed_segments"] = off
+            ph = preds.get("lad_physiology")
+            if ph is not None and missing == "left":
+                ph.update({"ffr_abnormal": False, "ifr_abnormal": False, "assessed": False,
+                           "not_assessed_reason": NOT_ASSESSED_REASON["left"]})
+            preds["explainability"] = [it for it in preds.get("explainability") or [] if it.get("segment") not in off]
+        preds["side_check"] = check
 
     # -- reporting -------------------------------------------------------------
 
@@ -361,33 +521,58 @@ class CustomPredictionService(BasePredictionService):
         return [g for g, v in preds["segments"].items() if v["significant"]]
 
     def diagnosis_text(self, preds: dict) -> str:
-        # The report leaves out HIDDEN_SEGMENTS (posterior LV branch); a CTO-flagged segment is reported as 100%.
+        # The report leaves out HIDDEN_SEGMENTS (posterior LV branch) and segments not assessed (side check). A segment
+        # shown occluded (v19: occluded flag; v13/v15: CTO flag) is reported as 100%.
         version = display_calibration.result_model_version(preds)
-        hidden = HIDDEN_SEGMENTS | set(preds.get("unsupported_segments") or ())
+        hidden = HIDDEN_SEGMENTS | set(preds.get("unsupported_segments") or ()) | not_assessed(preds)
         segs = {g: display_calibration.with_display(v, version) for g, v in preds["segments"].items() if g not in hidden}
-        sig = [g for g in self.significant_segments(preds) if g in segs]
+        occluded = lambda v: v["display_category"] == "occluded"
+        sig = [g for g, v in segs.items() if v["significant"] or occluded(v)]
         shown_pct = lambda v: v["display_pct"]
-        pct = lambda v: (f"shown 100%, CTO flag; model estimate {v['stenosis_pct']:.0f}%" if v.get("cto")
-                         else f"shown {shown_pct(v)}%, model estimate {v['stenosis_pct']:.0f}%")
-        text = ("Flagged for possible significant stenosis (probability above its validation threshold): "
+        stent = lambda v: " (possible stent: grade may be unreliable after PCI)" if v.get("possible_stent") else ""
+
+        def pct(v):
+            if v.get("occluded"):
+                return (f"shown 100% (occluded) - {v.get('occlusion_tag') or 'acute/other'}, P(occluded) "
+                        f"{shown(v['occluded_prob'], preds['occluded_threshold']['threshold'], 2)}")
+            if occluded(v):
+                return f"shown 100%, CTO flag; model estimate {v['stenosis_pct']:.0f}%"
+            return f"shown {shown_pct(v)}%, model estimate {v['stenosis_pct']:.0f}%"
+        text = (f"Flagged for possible significant stenosis{' or occlusion' if 'occluded_threshold' in preds else ''} "
+                "(probability above its validation threshold): "
                 + ", ".join(f"{SEGMENT_NAMES[g]} (P {shown(segs[g]['prob_significant'], segs[g]['prob_threshold'], 3)}, "
-                            f"{pct(segs[g])})" for g in sig) + "."
+                            f"{pct(segs[g])}){stent(segs[g])}" for g in sig) + "."
                 if sig else "No segment flagged for significant stenosis.")
         others = [g for g in segs if g not in sig]
         marked = [g for g in others if shown_pct(segs[g]) >= 30]
         if marked:
             text += (" Other segments with a shown stenosis of 30% or more: "
-                     + ", ".join(f"{SEGMENT_NAMES[g]} ({shown_pct(segs[g])}%)" for g in marked) + ".")
+                     + ", ".join(f"{SEGMENT_NAMES[g]} ({shown_pct(segs[g])}%){stent(segs[g])}" for g in marked) + ".")
+        rest = [g for g in others if g not in marked and segs[g].get("possible_stent")]
+        if rest:
+            text += (" Possible stent, grade may be unreliable after PCI: "
+                     + ", ".join(f"{SEGMENT_NAMES[g]} ({shown_pct(segs[g])}%)" for g in rest) + ".")
         normal = sum(shown_pct(v) == 0 for v in segs.values())
         text += (f" {normal} of {len(segs)} segments shown as normal (model estimate below "
                  f"{display_calibration.calibration(version)['zero_below_pct']:g}%).")
+        check = preds.get("side_check") or {}
+        if check.get("not_assessed_side"):
+            side = check["not_assessed_side"]
+            text += (f" Not assessed ({NOT_ASSESSED_REASON[side]} among the {check['left_runs'] + check['right_runs']} "
+                     f"runs read): " + ", ".join(SEGMENT_NAMES[g] for g in check["not_assessed_segments"] if g not in HIDDEN_SEGMENTS)
+                     + "; their values are not reported.")
         if "lad_physiology" in preds:
             p = preds["lad_physiology"]
-            call = lambda k: "abnormal" if p[f"{k}_abnormal"] else "normal"
-            prob = lambda k: shown(p[f"{k}_abnormal_prob"], p[f"{k}_abnormal_threshold"], 2)
-            text += (f" LAD physiology: FFR predicted {call('ffr')} (P(FFR ≤ 0.80) {prob('ffr')}, threshold "
-                     f"{p['ffr_abnormal_threshold']:.4f}); iFR predicted {call('ifr')} (P(iFR ≤ 0.89) "
-                     f"{prob('ifr')}, threshold {p['ifr_abnormal_threshold']:.4f}).")
+            if p.get("assessed") is False:
+                text += f" LAD physiology: not assessed ({p['not_assessed_reason']})."
+            else:
+                call = lambda k: "abnormal" if p[f"{k}_abnormal"] else "normal"
+                prob = lambda k: shown(p[f"{k}_abnormal_prob"], p[f"{k}_abnormal_threshold"], 2)
+                text += (f" LAD physiology{' (proximal-mid LAD)' if 'region' in p else ''}: FFR predicted {call('ffr')} "
+                         f"(P(FFR ≤ 0.80) {prob('ffr')}, threshold {p['ffr_abnormal_threshold']:.4f}); iFR predicted "
+                         f"{call('ifr')} (P(iFR ≤ 0.89) {prob('ifr')}, threshold {p['ifr_abnormal_threshold']:.4f}).")
+                if "region" in p and (p["ffr_abnormal"] or p["ifr_abnormal"]):
+                    text += " " + pressure_region_sentence(p, segs)
         for name, label in LESION_NAMES.items() if "lesion_thresholds" in preds else ():
             hit = [g for g, v in segs.items() if v[name]]
             cut = preds["lesion_thresholds"][name]
@@ -412,9 +597,11 @@ class CustomPredictionService(BasePredictionService):
 
     @staticmethod
     def recommendations(preds: dict) -> dict:
-        auroc_en, auroc_fr = PRESSURE_TEST_AUROC.get(display_calibration.result_model_version(preds), ("", ""))
+        version = display_calibration.result_model_version(preds)
+        auroc_en, auroc_fr = PRESSURE_TEST_AUROC.get(version, ("", ""))
         auroc_en, auroc_fr = (f" (test AUROC about {auroc_en})" if auroc_en else "",
                               f" (AUROC test environ {auroc_fr})" if auroc_fr else "")
+        region = "region" in (preds.get("lad_physiology") or {})
         en = ("Research model, not for clinical decisions. Flags use thresholds chosen on the internal validation set, "
               "not a validated clinical operating point. Confirm every reading on the angiogram; LAD physiology "
               f"outputs{auroc_en} do not replace invasive FFR/iFR. Calcification, thrombus and chronic "
@@ -424,6 +611,20 @@ class CustomPredictionService(BasePredictionService):
               f"l'angiographie; les sorties de physiologie IVA{auroc_fr} ne remplacent pas la FFR/iFR invasive. "
               "Les signalements de calcification, de thrombus et d'occlusion totale chronique sont réglés pour peu de "
               "fausses alertes et manquent une bonne partie de ces lésions.")
+        if region:
+            en += (" The predicted FFR/iFR refers to the proximal and mid LAD, where pressure was measured in the "
+                   "training data; it does not localise the culprit lesion.")
+            fr += (" La FFR/iFR prédite se rapporte à l'IVA proximale et moyenne, où la pression a été mesurée dans les "
+                   "données d'entraînement; elle ne localise pas la lésion coupable.")
+        if "occluded_threshold" in preds:
+            en += (" \"100% (occluded)\" is shown above a probability threshold chosen on validation (about a third of "
+                   "occlusions are shown so; the others show their %); the CTO / acute tag is weak.")
+            fr += (" « 100% (occlusion) » est affiché au-dessus d'un seuil choisi sur la validation (environ un tiers des "
+                   "occlusions; les autres affichent leur %); l'étiquette OTC / aiguë est peu fiable.")
+        if "stent_annotation" in preds:
+            en += (" Post-PCI runs (stented segments) are read less reliably; do not upload them with diagnostic runs.")
+            fr += (" Les injections post-ICP (segments stentés) sont lues de façon moins fiable; ne pas les téléverser avec "
+                   "les injections diagnostiques.")
         return {"en": en, "fr": fr, "presentable": True}
 
     @staticmethod
@@ -487,9 +688,15 @@ class CustomPredictionService(BasePredictionService):
 
     def _predict(self, request: PredictRequest) -> Optional[dict]:
         dominance = self.coronary_dominance(request)  # validated before the GPU runs
+        views = self.coronary_views(request)
         preds = self._run_inference(self._decode_dicoms(request))
-        if preds is not None and dominance is not None:
+        if preds is None:
+            return None
+        used_sops = preds.pop("_used_sops", [])
+        if dominance is not None:
             preds["coronary_dominance"] = dominance
+        if "occluded_threshold" in preds:  # v19 on: results of this container carry a side check
+            self.apply_side_check(preds, views, used_sops, dominance)
         return preds
 
     async def _handle_json_output(self, request: PredictRequest):

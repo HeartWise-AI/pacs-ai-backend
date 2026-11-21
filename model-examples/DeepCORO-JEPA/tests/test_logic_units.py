@@ -200,7 +200,8 @@ def test_lesion_outputs_are_reported_and_flagged_when_the_checkpoint_has_them():
     res = {"encoder_passes": 1, "severity": torch.zeros(18), "binary_probability": torch.zeros(18),
            "lesion_calcif_probability": torch.full((18,), 0.3), "lesion_thrombus_probability": torch.zeros(18),
            "lesion_cto_probability": cto}
-    preds = CustomPredictionService.postprocess(GROUPS, res, n_videos=1, thresholds=THRESHOLDS)
+    # a v15 result: up to v15 a CTO flag is shown as 100% (occluded); v19 results are tested in test_v19_outputs.py
+    preds = CustomPredictionService.postprocess(GROUPS, res, n_videos=1, thresholds=THRESHOLDS, model_version="v15")
     assert preds["segments"]["mid_lad"]["calcif_prob"] == 0.3 and "lad_physiology" not in preds
     # one threshold per finding for all segments, reported once
     assert preds["lesion_thresholds"] == {"operating_point": "specificity_99", "calcif": 0.2225, "thrombus": 0.0851, "cto": 0.157}
@@ -242,8 +243,8 @@ def test_thrombus_is_drawn_and_the_posterior_lv_branch_is_hidden():
 def test_model_facts_name_the_training_run_of_the_served_weights():
     facts = json.loads((ROOT / "data/model_facts.json").read_text(encoding="utf-8"))["en"]
     info = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
-    assert "https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/2563ce01" in facts["Summary"]["Training_run"]
-    assert facts["Summary"]["Model_version"] == "v15" and info["version"] == "2.1.0"
+    assert "https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/78768630" in facts["Summary"]["Training_run"]
+    assert facts["Summary"]["Model_version"] == "v19" and info["version"] == "2.2.0"
     assert facts["Summary"]["Version"] == info["version"]
 
 
@@ -396,7 +397,7 @@ def test_a_lesion_threshold_override_replaces_one_finding_and_is_named_in_the_op
 
 def test_the_shipped_configuration_flags_thrombus_above_0_40():
     config = json.loads((Path(__file__).resolve().parents[1] / "models/config.json").read_text(encoding="utf-8"))
-    assert config["Thresholds"]["lesion_threshold_overrides"] == {"thrombus": 0.4, "cto": 0.7}
+    assert config["Thresholds"]["lesion_threshold_overrides"] == {"thrombus": 0.4}  # 2.2.0: the v15 CTO override (0.70) is dropped; v19 CTO at specificity_99
 
 
 # -- model v15: study-level lesion probabilities, the model's own dominance, the unsupported posterior LV branch ------

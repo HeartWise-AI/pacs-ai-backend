@@ -2,6 +2,10 @@
   "ModelStateDict": {"model_path": "model.safetensors", "structure_path": "model_config.json"},
   "Forward": {"full_res": 224, "crop_res": 320, "max_views": 12, "crops_per_group": 4, "frame_sampling": "peak_s2"},
   "Thresholds": {"path": "thresholds.json", "pressure_operating_point": "balanced", "lesion_operating_point": "specificity_99",
-                 "lesion_threshold_overrides": {"thrombus": 0.4, "cto": 0.7}},
-  "Notes": "EchoJEPA ViT-L (vendored in models/deepcoro_model/echojepa_src, MIT) with SYNTAX segment masks and tracked crops; at most 2 encoder passes per study. No dataset mean/std here: grayscale frames are scaled to [0,1] and ImageNet-normalised inside the model (integrated_model.normalize_clip)."
+                 "lesion_threshold_overrides": {"thrombus": 0.4},
+                 "occluded_operating_point": "display_pi_050_epicardial",
+                 "occluded_segments": ["left_main", "prox_lad", "mid_lad", "dist_lad", "prox_lcx", "mid_lcx", "dist_lcx",
+                                       "prox_rca", "mid_rca", "dist_rca", "pda", "posterolateral"],
+                 "stent_annotation_threshold": 0.0891},
+  "Notes": "EchoJEPA ViT-L (vendored in models/deepcoro_model/echojepa_src, MIT) with SYNTAX segment masks and tracked crops; at most 2 encoder passes per study. No dataset mean/std here: grayscale frames are scaled to [0,1] and ImageNet-normalised inside the model (integrated_model.normalize_clip). occluded_operating_point: the '100% (occluded)' display threshold of thresholds.json occluded_prob (v19.2: 0.50, PI on validation), epicardial segments only. stent_annotation_threshold: P(stent visible) above which a segment is annotated 'possible stent' (annotation only, no flag or grade changes; v19-derived: 95% specificity among untreated segments on the v19 e2 validation post-PCI rows (25,222 segments, 2,469 treated; sensitivity .436, PPV .486), DeepCoro stent_guard_v19)."
 }

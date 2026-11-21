@@ -8,6 +8,9 @@ Results of every version from 1.1.0 are accepted. 2.0.0 (model v15) adds `model_
 `study_lesions`, `model_dominance` and, on an unsupported segment, `unsupported: true` without display fields; all
 are optional here so that older results still render. A result without `model_version` is a v13 result. A result of
 a model version this container has no display mapping for is refused instead of being drawn with another mapping.
+2.2.0 (model v19) adds, all optional: per segment `occluded_prob`, `occluded`, `occlusion_tag`, `stent_prob`,
+`possible_stent`, `assessed` and `not_assessed_reason`; `occluded_threshold`, `stent_annotation`, `side_check`;
+`lad_physiology.region`, `.region_label`, `.region_segments`, `.assessed`, `.not_assessed_reason`.
 """
 from __future__ import annotations
 
@@ -16,8 +19,11 @@ import binascii
 import math
 import re
 
-from display_calibration import CATEGORY_LABELS, calibrations, category
+from display_calibration import CATEGORY_LABELS, calibrations, category, shown_occluded
 from report_html import LESION_NAMES, SEGMENT_NAMES
+
+OCCLUSION_TAGS = ("", "CTO", "acute/other")
+SIDES = ("left", "right")
 
 DOMINANCE_METHODS = ("majority", "tie_mean_probability")
 MAX_EXPLAINED = 18
@@ -81,7 +87,7 @@ def _jpeg(x, path: str) -> str:
     return x
 
 
-def _segments(segs, cuts: dict) -> None:
+def _segments(segs, cuts: dict, model_version: str | None = None) -> None:
     _dict(segs, "predictions.segments")
     if not segs:
         _fail("predictions.segments", "must not be empty")
@@ -103,7 +109,7 @@ def _segments(segs, cuts: dict) -> None:
         if "display_category" in v:
             if v["display_category"] not in CATEGORY_LABELS:
                 _fail(f"{p}.display_category", f"must be one of {tuple(CATEGORY_LABELS)}")
-            if "display_pct" in v and v["display_category"] != category(v["display_pct"], v.get("cto") is True):
+            if "display_pct" in v and v["display_category"] != category(v["display_pct"], shown_occluded(v, model_version)):
                 _fail(f"{p}.display_category", "does not match display_pct")
         if "significant_threshold_pct" in v:
             _num(v["significant_threshold_pct"], f"{p}.significant_threshold_pct", 0.0, 100.0)
@@ -111,6 +117,17 @@ def _segments(segs, cuts: dict) -> None:
             if k in cuts or f"{k}_prob" in v or k in v:
                 _prob(v.get(f"{k}_prob"), f"{p}.{k}_prob")
                 _bool(v.get(k), f"{p}.{k}")
+        if "occluded" in v or "occluded_prob" in v:  # 2.2.0 (v19)
+            _prob(v.get("occluded_prob"), f"{p}.occluded_prob")
+            _bool(v.get("occluded"), f"{p}.occluded")
+            if v.get("occlusion_tag", "") not in OCCLUSION_TAGS or bool(v.get("occlusion_tag")) != v["occluded"]:
+                _fail(f"{p}.occlusion_tag", "must be CTO or acute/other on an occluded segment, empty otherwise")
+        if "possible_stent" in v or "stent_prob" in v:
+            _prob(v.get("stent_prob"), f"{p}.stent_prob")
+            _bool(v.get("possible_stent"), f"{p}.possible_stent")
+        if "assessed" in v:
+            if _bool(v["assessed"], f"{p}.assessed") is False:
+                _text(v.get("not_assessed_reason"), f"{p}.not_assessed_reason", 64)
 
 
 def _physiology(ph) -> None:
@@ -122,6 +139,16 @@ def _physiology(ph) -> None:
         _prob(ph.get(f"{k}_abnormal_threshold"), f"{p}.{k}_abnormal_threshold")
         _bool(ph.get(f"{k}_abnormal"), f"{p}.{k}_abnormal")
     _text(ph.get("operating_point"), f"{p}.operating_point", 64)
+    if "region" in ph:  # 2.2.0
+        if ph["region"] != ["prox_lad", "mid_lad"]:
+            _fail(f"{p}.region", 'must be ["prox_lad", "mid_lad"]')
+        _text(ph.get("region_label"), f"{p}.region_label", 64)
+        for g, x in _dict(ph.get("region_segments", {}), f"{p}.region_segments").items():
+            if g not in ("prox_lad", "mid_lad"):
+                _fail(f"{p}.region_segments.{g}", "unknown segment")
+            _dict(x, f"{p}.region_segments.{g}")
+    if "assessed" in ph and _bool(ph["assessed"], f"{p}.assessed") is False:
+        _text(ph.get("not_assessed_reason"), f"{p}.not_assessed_reason", 64)
 
 
 def _lesion_thresholds(cuts) -> None:
@@ -132,6 +159,32 @@ def _lesion_thresholds(cuts) -> None:
         if k not in LESION_NAMES:
             _fail(f"{p}.{k}", "unknown lesion")
         _prob(cuts[k], f"{p}.{k}")
+
+
+def _occluded_threshold(occ) -> None:
+    p = "predictions.occluded_threshold"
+    _dict(occ, p)
+    _prob(occ.get("threshold"), f"{p}.threshold")
+    _text(occ.get("operating_point"), f"{p}.operating_point", 64)
+    if not isinstance(occ.get("segments"), list) or any(g not in SEGMENT_NAMES for g in occ["segments"]):
+        _fail(f"{p}.segments", "must be a list of segment names")
+
+
+def _side_check(check, segs: dict) -> None:
+    p = "predictions.side_check"
+    _dict(check, p)
+    if not _bool(check.get("available"), f"{p}.available"):
+        if "reason" in check:
+            _text(check["reason"], f"{p}.reason")
+        return
+    _int(check.get("left_runs"), f"{p}.left_runs")
+    _int(check.get("right_runs"), f"{p}.right_runs")
+    side = check.get("not_assessed_side")
+    if side is not None and side not in SIDES:
+        _fail(f"{p}.not_assessed_side", "must be left, right or null")
+    for i, g in enumerate(check.get("not_assessed_segments", [])):
+        if g not in segs:
+            _fail(f"{p}.not_assessed_segments[{i}]", "unknown segment")
 
 
 def _model_version(version) -> None:
@@ -230,7 +283,7 @@ def predictions_of(result) -> dict:
     cuts = preds.get("lesion_thresholds")
     if cuts is not None:
         _lesion_thresholds(cuts)
-    _segments(preds.get("segments"), cuts or {})
+    _segments(preds.get("segments"), cuts or {}, str(preds.get("model_version") or "v13"))
     if preds.get("lad_physiology") is not None:
         _physiology(preds["lad_physiology"])
     if preds.get("unsupported_segments") is not None:
@@ -241,6 +294,13 @@ def predictions_of(result) -> dict:
         _model_dominance(preds["model_dominance"])
     if preds.get("coronary_dominance") is not None:
         _dominance(preds["coronary_dominance"])
+    if preds.get("occluded_threshold") is not None:
+        _occluded_threshold(preds["occluded_threshold"])
+    if preds.get("stent_annotation") is not None:
+        _prob(_dict(preds["stent_annotation"], "predictions.stent_annotation").get("threshold"),
+              "predictions.stent_annotation.threshold")
+    if preds.get("side_check") is not None:
+        _side_check(preds["side_check"], preds["segments"])
     if preds.get("explainability") is not None:
         _explainability(preds["explainability"], preds["segments"])
     return preds

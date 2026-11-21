@@ -8,6 +8,11 @@ model's own dominance estimate (v15 on, `model_dominance`) is printed as text an
 A report is drawn for the model version of the result it is given (`predictions.model_version`; v13 for results
 stored before 2.0.0): the shown % are the stored `display_pct` when the result has them, else the mapping of that
 model version, and the calibration note and the performance figures are those of that model version.
+
+v19 results (container 2.2.0) add the occluded display ("100% (occluded) - CTO / acute/other"; in v19 a CTO flag
+alone is a lesion tag, not a 100% display), the "possible stent" annotation, the FFR/iFR measurement region (the
+proximal and mid LAD rows are marked when FFR or iFR is predicted abnormal) and segments not assessed by the side
+check (no run of their coronary side), which are listed but get no %, flag or drawing.
 """
 from __future__ import annotations
 
@@ -144,8 +149,18 @@ def display_category(v: dict) -> str:
     return v.get("display_category") or category(displayed_pct(v), bool(v.get("cto")))
 
 
+def is_occluded(v: dict) -> bool:
+    """Shown 100% occluded: the stored or computed display category (v19: occluded flag; v13/v15: CTO flag)."""
+    return v.get("display_category") == "occluded" if "display_category" in v else bool(v.get("cto"))
+
+
 def is_flagged(v: dict) -> bool:
-    return v["significant"] or bool(v.get("cto"))
+    return v["significant"] or is_occluded(v)
+
+
+def occluded_text(v: dict) -> str:
+    """'100% (occluded) - CTO' for a v19 occluded segment, '100%' for a v13/v15 CTO flag."""
+    return f"100% (occluded) - {v.get('occlusion_tag') or 'acute/other'}" if v.get("occluded") else "100%"
 
 
 def severity(pct: float) -> str:
@@ -159,7 +174,7 @@ def pct_text(v: dict) -> str:
 
 
 def lesion_tags(v: dict) -> list[str]:
-    return [LESION_TAG[k] for k in LESION_NAMES if v.get(k)]
+    return [LESION_TAG[k] for k in LESION_NAMES if v.get(k)] + (["Possible stent"] if v.get("possible_stent") else [])
 
 
 def attach_t(c, point, n=200) -> float:
@@ -174,7 +189,7 @@ def occluded_upstream(segs: dict, left_dominant: bool = False):
     segment distal to an occlusion, and each branch arising at or beyond the block mark of the occluded segment
     (the mark sits at CTO_AT of its length), is without antegrade flow; branches arising before the mark keep it."""
     geometry, parent = (GEOMETRY_LEFT, PARENT_LEFT) if left_dominant else (GEOMETRY, PARENT)
-    cto = {g for g in geometry if g not in HIDDEN_SEGMENTS and (segs.get(g) or {}).get("cto")}
+    cto = {g for g in geometry if g not in HIDDEN_SEGMENTS and segs.get(g) is not None and is_occluded(segs[g])}
     known = {}
 
     def block(p, point):
@@ -241,7 +256,8 @@ def schema_svg(segs: dict, cuts: dict, left_dominant: bool = False) -> str:
     boxes, flagged_thrombus = [], []  # label boxes; segments whose clot is placed once every label is known
     geometry, decor = (GEOMETRY_LEFT, DECOR_LEFT) if left_dominant else (GEOMETRY, DECOR)
     source, block = occluded_upstream(segs, left_dominant)
-    no_flow = lambda up: f"<title>No antegrade flow shown: distal to the CTO flag of {escape(SEGMENT_NAMES[up])}</title>"
+    why = lambda up: "occlusion" if (segs.get(up) or {}).get("occluded") else "CTO flag"
+    no_flow = lambda up: f"<title>No antegrade flow shown: distal to the {why(up)} of {escape(SEGMENT_NAMES[up])}</title>"
     for c, w, parent in decor:
         up = block(parent, c[0])
         vessels.append(f'<path class="vessel noflow" d="{path_d(c)}" stroke-width="{w}">{no_flow(up)}</path>' if up
@@ -259,7 +275,7 @@ def schema_svg(segs: dict, cuts: dict, left_dominant: bool = False) -> str:
                          f'<path class="calc-edge" d="{d}" stroke-width="{w + 23}"/>'
                          f'<path class="calc-band" d="{d}" stroke-width="{w + 19}"/></g>')
             plates.append(f'<g class="calc-plates">{calcium_plates(c, w)}</g>')
-        if v is not None and v.get("cto"):
+        if v is not None and is_occluded(v):
             # Occluded: contrast stops at the block; no antegrade flow is drawn beyond it (grey vessel).
             near, far = split(c, CTO_AT)
             mx, my = bez(c, CTO_AT)
@@ -277,19 +293,23 @@ def schema_svg(segs: dict, cuts: dict, left_dominant: bool = False) -> str:
             continue
         pct, flagged = displayed_pct(v), is_flagged(v)
         # Plaque: an amber wall around a lumen narrowed in proportion to the estimated stenosis.
-        if pct >= 15 and not v.get("cto"):
+        if pct >= 15 and not is_occluded(v):
             lumen = max(w * (1 - pct / 100), 1.2)
             dash = f'stroke-dasharray="{L * .18:.1f} {L * 2:.1f}" stroke-dashoffset="{-L * .41:.1f}"'
             plaques.append(f'<path class="plaque" d="{d}" stroke-width="{w + 3}" {dash}/>'
                            f'<path class="lumen{grey}" d="{d}" stroke-width="{lumen:.1f}" {dash}/>')
         if v.get("thrombus"):
-            flagged_thrombus.append((g, c, w, bool(v.get("cto"))))
+            flagged_thrombus.append((g, c, w, is_occluded(v)))
         mx, my = bez(c, 0.5)
         tags = lesion_tags(v)
-        line1 = f"{SHORT[g]} {pct}%" if pct else f"{SHORT[g]} normal"
+        line1 = (f"{SHORT[g]} 100% (occluded)" if v.get("occluded") else f"{SHORT[g]} {pct}%" if pct else f"{SHORT[g]} normal")
         line2 = (f"P {shown(v['prob_significant'], v['prob_threshold'], 3)} > {v['prob_threshold']:.3f}"
                  if v["significant"] else "")
-        line3 = " · ".join(f"CTO · est. {v['stenosis_pct']:.0f}%" if t == "CTO" else t for t in tags)
+        if v.get("occluded"):
+            tags = [v.get("occlusion_tag") or "acute/other"] + [t for t in tags if t != "CTO"]
+            line3 = " · ".join(tags)
+        else:
+            line3 = " · ".join(f"CTO · est. {v['stenosis_pct']:.0f}%" if t == "CTO" and is_occluded(v) else t for t in tags)
         lines = [s for s in (line1, line2, line3) if s]
         bw = max(len(s) * (7.6 if i == 0 else 7.0) for i, s in enumerate(lines)) + 18
         bh = 12 + 17 * len(lines)
@@ -299,13 +319,14 @@ def schema_svg(segs: dict, cuts: dict, left_dominant: bool = False) -> str:
         pins.append(f'<line class="leader" x1="{cx:.0f}" y1="{cy:.0f}" x2="{mx:.0f}" y2="{my:.0f}"/>'
                     f'<circle class="pin" cx="{mx:.0f}" cy="{my:.0f}" r="3.4"/>')
         tip = (f"{SEGMENT_NAMES[g]}: shown {pct_text(v)} ({CATEGORY_LABELS[display_category(v)]}); "
-               f"{'occluded (CTO flag), ' if v.get('cto') else ''}model estimate "
+               f"{'occluded (P(occluded) above its display threshold, ' + (v.get('occlusion_tag') or '') + '), ' if v.get('occluded') else 'occluded (CTO flag), ' if is_occluded(v) else ''}"
+               f"{'possible stent (grade may be unreliable after PCI), ' if v.get('possible_stent') else ''}model estimate "
                f"{v['stenosis_pct']:.1f}%, P(significant) "
                f"{shown(v['prob_significant'], v['prob_threshold'], 3)} vs threshold {v['prob_threshold']:.4f}"
                f" ({'flagged' if flagged else 'not flagged'})"
                + "".join(f"; P({LESION_NAMES[k]}) {shown(v[k + '_prob'], cuts[k], 2)}" for k in LESION_NAMES
                          if k + "_prob" in v and k in cuts)
-               + (f"; no antegrade flow shown (distal to the CTO flag of {SEGMENT_NAMES[up]})" if up else ""))
+               + (f"; no antegrade flow shown (distal to the {why(up)} of {SEGMENT_NAMES[up]})" if up else ""))
         text = "".join(f'<text x="{lx + 9}" y="{ly + 21 + 17 * i}" class="{"t1" if i == 0 else "t2"}">{escape(s)}</text>'
                        for i, s in enumerate(lines))
         labels.append(f'<g class="{cls}"><title>{escape(tip)}</title>'
@@ -342,34 +363,53 @@ def prob_bar(p: float, cut: float, hit: bool) -> str:
             f'<span class="cut" style="left:{sx(cut)}"></span></span>')
 
 
-def detail_rows(segs: dict, cuts: dict) -> str:
+def detail_rows(segs: dict, cuts: dict, region: tuple = (), not_assessed: dict | None = None) -> str:
+    """Per-vessel rows. `region`: segments marked as the FFR/iFR region (only when FFR or iFR is predicted abnormal).
+    `not_assessed`: {segment: reason} of the side check, listed without values."""
     out = []
+    not_assessed = not_assessed or {}
     for vessel, keys in VESSELS:
         rows = []
         for g in keys:
+            if g in not_assessed:
+                rows.append(f'<li class="seg not-assessed"><span class="sname">{SEGMENT_NAMES[g]}</span>'
+                            f'<span class="lesions muted">Not assessed: {escape(not_assessed[g])}</span></li>')
+                continue
             v = segs.get(g)
             if v is None or g in HIDDEN_SEGMENTS:
                 continue
             pct = displayed_pct(v)
-            model = f'<span class="muted small"> est. {v["stenosis_pct"]:.0f}%</span>' if v.get("cto") else ""
-            shown_pct = f"{pct}%" if pct else '<span class="normal">0%</span>'
-            title = escape(f"{CATEGORY_LABELS[display_category(v)]}; model estimate {v['stenosis_pct']:.1f}%")
+            model = f'<span class="muted small"> est. {v["stenosis_pct"]:.0f}%</span>' if is_occluded(v) else ""
+            shown_pct = ("100% (occluded)" if v.get("occluded") else f"{pct}%") if pct else '<span class="normal">0%</span>'
+            title = escape(f"{CATEGORY_LABELS[display_category(v)]}; model estimate {v['stenosis_pct']:.1f}%"
+                           + ("; P(occluded) " + f"{v['occluded_prob']:.2f}" if "occluded_prob" in v else "")
+                           + ("; P(stent) " + f"{v['stent_prob']:.2f}" if "stent_prob" in v else ""))
             tags = "".join(f'<span class="chip warn">{t}</span>' for t in lesion_tags(v))
+            if v.get("occluded"):
+                tags += f'<span class="chip occ">{escape(v.get("occlusion_tag") or "acute/other")}</span>'
+            if g in region:
+                tags += '<span class="chip region">FFR/iFR region</span>'
+            stent_note = (' · <span class="stent-note">possible stent: grade may be unreliable after PCI</span>'
+                          if v.get("possible_stent") else "")
             sub = " · ".join(f"{'CTO' if k == 'cto' else LESION_NAMES[k].capitalize()} {shown(v[k + '_prob'], cuts[k], 2)}"
                              for k in LESION_NAMES if k + "_prob" in v and k in cuts)
             rows.append(
-                f'<li class="seg{" is-flag" if is_flagged(v) else ""}">'
+                f'<li class="seg{" is-flag" if is_flagged(v) else ""}{" is-region" if g in region else ""}">'
                 f'<span class="sname">{SEGMENT_NAMES[g]}{tags}</span>'
                 f'<span class="pct {severity(pct)}" title="{title}">{shown_pct}{model}</span>'
                 f'<span class="pcol">{prob_bar(v["prob_significant"], v["prob_threshold"], v["significant"])}'
                 f'<span class="pnum">P {shown(v["prob_significant"], v["prob_threshold"], 3)}'
                 f'<span class="muted"> / {v["prob_threshold"]:.4f}</span></span></span>'
-                f'<span class="lesions muted">{sub}</span></li>')
+                f'<span class="lesions muted">{sub}{stent_note}</span></li>')
         out.append(f'<section class="vessel-group"><h3>{vessel}</h3><ul>{"".join(rows)}</ul></section>')
     return "".join(out)
 
 
-def physiology_card(p: dict, model_version: str = LEGACY_MODEL_VERSION) -> str:
+def physiology_card(p: dict, model_version: str = LEGACY_MODEL_VERSION, segs: dict | None = None) -> str:
+    if p.get("assessed") is False:
+        return (f'<section class="card"><h2>LAD physiology</h2><p class="muted small">Not assessed: '
+                f'{escape(p.get("not_assessed_reason", ""))}.</p></section>')
+
     def row(k, label, cutoff):
         hit = p[f"{k}_abnormal"]
         prob, thr = p[f"{k}_abnormal_prob"], p[f"{k}_abnormal_threshold"]
@@ -378,7 +418,21 @@ def physiology_card(p: dict, model_version: str = LEGACY_MODEL_VERSION) -> str:
                 f'<div class="phys-value">{p[k]:.2f}<span class="muted"> estimated</span></div>'
                 f'{prob_bar(prob, thr, hit)}'
                 f'<div class="muted small">P({label} ≤ {cutoff}) {shown(prob, thr, 2)}, threshold {thr:.4f}</div></div>')
-    return (f'<section class="card"><h2>LAD physiology</h2>{row("ffr", "FFR", "0.80")}{row("ifr", "iFR", "0.89")}'
+    region = ""
+    if "region" in p:
+        region = (f'<p class="muted small region-note">Region: {escape(p.get("region_label", "proximal and mid LAD"))} '
+                  '(where pressure was measured in the training data; not a localisation of the culprit lesion).</p>')
+        if p["ffr_abnormal"] or p["ifr_abnormal"]:
+            segs = segs or {}
+            def seg(g):
+                v = segs.get(g)
+                if v is None:
+                    return f"{SEGMENT_NAMES[g]}: not shown"
+                return (f"{SEGMENT_NAMES[g]} {occluded_text(v) if is_occluded(v) else pct_text(v)}"
+                        f" ({'flagged' if v['significant'] else 'not flagged'})")
+            region += (f'<p class="small region-call">Predicted abnormal FFR/iFR refers to the proximal-mid LAD: '
+                       f'{escape(seg("prox_lad"))}; {escape(seg("mid_lad"))}.</p>')
+    return (f'<section class="card"><h2>LAD physiology</h2>{row("ffr", "FFR", "0.80")}{row("ifr", "iFR", "0.89")}{region}'
             f'<p class="muted small">Operating point: {escape(p["operating_point"])}. '
             f'{pressure_auroc_text(model_version)}does not replace invasive FFR/iFR.</p></section>')
 
@@ -512,6 +566,21 @@ h3{margin:0 0 6px;font:600 12px/1.2 var(--font);letter-spacing:.1em;text-transfo
 """
 
 
+# v19 results only (occluded tag, FFR/iFR region rows, not-assessed rows, stent note): appended to CSS so that the
+# reports of stored v13 / v15 results stay byte for byte as their own containers drew them.
+CSS_V19 = """
+:root{--region:#fbe4e2;--region-ink:#b3261e}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--region:#3a1d1c;--region-ink:#ff7b72}}
+:root[data-theme="dark"]{--region:#3a1d1c;--region-ink:#ff7b72}
+.chip.occ{background:var(--bad);color:#fff}
+.chip.region{background:var(--region-ink);color:#fff}
+.seg.is-region{background:var(--region);box-shadow:inset 3px 0 0 var(--region-ink)}
+.seg.not-assessed .sname{color:var(--muted);font-weight:500}
+.stent-note{color:var(--warn)}
+.region-call{font-weight:600}
+"""
+
+
 ADDENDUM_TEMPLATE = """<section class="card addendum" id="method"><h2>Addendum: how this reading is made</h2>
 <ol class="steps">
 <li><b>Input.</b> 1 to 12 diagnostic left and right coronary contrast runs of the study (no PCI, stent or
@@ -587,6 +656,38 @@ validation split and have not been validated at another site.</p></div>""",
         "sources": """<p class="muted small">Sources: DeepCORO-JEPA model documentation (container README, model card and the DeepCORO
 model and experiment pages and the v15 release dossier, v6 to v15).</p>""",
     },
+    "v19": {
+        "pressure_auroc": "0.71",
+        "readout": (" A study-level reader over all pass-1 tokens adds to the lesion probabilities and gives one "
+                    "probability per finding for the whole study; one more head estimates the coronary dominance, "
+                    "another the probability that each segment is 100% occluded, and a procedure head the probability "
+                    "that a stent is visible in the segment."),
+        "not_in_report": """<div><h3>Not in this report</h3><p>The masks, crops and attention computed for this study are used internally but
+not returned by this version, so they cannot be shown on the angiogram yet. The posterior LV branch had no training
+target: its outputs are not meaningful and it is not shown. The schema is drawn from the dominance of a separate
+angiogram classifier; the model's own dominance estimate is printed as text. When the runs read include only one
+coronary side, the segments of the other side are listed as not assessed: the model always outputs every segment,
+but a vessel that is not on screen cannot be read (test agreement r about 0.25 against 0.5 to 0.64 when imaged).
+Model v19 was released by the principal investigator's decision although its pre-registered release rule was not met;
+the release rests on a post-hoc endpoint (occlusion detection).</p></div>""",
+        "performance": """<div><h3>Held-out performance (MHI test set, 3,194 studies)</h3><dl>
+<dt>Stenosis, macro AUROC (17 segments)</dt><dd>0.879 (v15 0.877, DeepCORO-CLIP 0.850)</dd>
+<dt>Segment flags: sensitivity / specificity</dt><dd>0.78 / 0.80</dd>
+<dt>Segment flags: PPV / NPV</dt><dd>0.25 / 0.98</dd>
+<dt>100% (occluded) shown, main vessels: sensitivity / specificity</dt><dd>0.34 / 0.997</dd>
+<dt>Same: PPV</dt><dd>0.63</dd>
+<dt>LAD FFR/iFR (proximal / mid LAD), AUROC</dt><dd>0.71</dd>
+<dt>Calcification / CTO flags: sensitivity</dt><dd>0.19 / 0.36</dd>
+<dt>Same flags: PPV</dt><dd>0.26 / 0.19</dd>
+<dt>Thrombus flag (above 0.40): sensitivity / PPV</dt><dd>0.38 / 0.42</dd>
+<dt>Possible stent (post-PCI validation): sensitivity / PPV</dt><dd>0.44 / 0.49</dd>
+</dl><p class="muted small">Distal and branch segments agree less with the report. Of the segments shown 100% (occluded)
+on test, 63% were reported 100%, 14% 90-95% and 20% below 70%. The CTO / acute tag has no separately validated
+threshold and is weak. Thresholds come from the MHI validation split and have not been validated at another
+site.</p></div>""",
+        "sources": """<p class="muted small">Sources: DeepCORO-JEPA model documentation (container README, model card, the DeepCORO
+model and experiment pages and the v19 release dossier, v6 to v19).</p>""",
+    },
 }
 
 
@@ -610,7 +711,11 @@ def calibration_note(model_version: str = LEGACY_MODEL_VERSION) -> str:
                   f"({t['version']}). Estimates below {t['zero_below_pct']:g}% are shown as 0% (normal); above, the "
                   f"estimate is mapped through {knots} so the shown values follow the angiographic categories "
                   f"<30, 30-49, 50-69 and ≥70%. A segment flagged for significant stenosis is never shown as normal; "
-                  f"a CTO flag is shown as 100%. The flags come from the probability, not from the shown %. "
+                  + ("a CTO flag is shown as 100%. " if t.get("cto_flag_shown_occluded", True) else
+                     "a segment whose P(occluded) is above its display threshold (main vessels only) is shown as "
+                     "100% (occluded), tagged CTO when the CTO flag is set, else acute/other; the CTO flag alone does "
+                     "not show 100%. ")
+                  + f"The flags come from the probability, not from the shown %. "
                   f"Fitted on {t['provenance']['dataset_short']}.")
 
 
@@ -678,7 +783,8 @@ def dominance_text(dom: dict | None, model_dom: dict | None = None) -> tuple[str
 
 def render_report(preds: dict, model_version: str, recommendation: str) -> str:
     version = result_model_version(preds)  # the model that produced this result, not necessarily the served one
-    hidden = HIDDEN_SEGMENTS | set(preds.get("unsupported_segments") or ())
+    off = {g: v.get("not_assessed_reason", "not assessed") for g, v in preds["segments"].items() if v.get("assessed") is False}
+    hidden = HIDDEN_SEGMENTS | set(preds.get("unsupported_segments") or ()) | set(off)
     segs = {g: with_display(v, version) for g, v in preds["segments"].items() if g not in hidden}
     cuts = preds.get("lesion_thresholds", {})
     dom = preds.get("coronary_dominance")  # caller-supplied; the model's own estimate never draws the schema
@@ -686,10 +792,20 @@ def render_report(preds: dict, model_version: str, recommendation: str) -> str:
     dom_value, dom_detail = dominance_text(dom, preds.get("model_dominance"))
     verdict = [
         ("alert" if flagged else "", "Significant stenosis flagged",
-         ", ".join(f"{SEGMENT_NAMES[g]} ({pct_text(segs[g])}{', occluded' if segs[g].get('cto') else ''})"
+         ", ".join(f"{SEGMENT_NAMES[g]} ({occluded_text(segs[g]) if segs[g].get('occluded') else pct_text(segs[g])}"
+                   f"{', occluded' if is_occluded(segs[g]) and not segs[g].get('occluded') else ''})"
                    for g in flagged) or "None", ""),
         ("", "Coronary dominance", dom_value, dom_detail),
     ]
+    if off:
+        side = (preds.get("side_check") or {}).get("not_assessed_side")
+        verdict.append(("warnc", "Not assessed", ", ".join(SEGMENT_NAMES[g] for g in off if g not in HIDDEN_SEGMENTS),
+                        f"No {side} coronary run among the runs read; the model's values for these segments come from "
+                        "a vessel that is not on screen and are not reported." if side else ""))
+    stent = [g for g, v in segs.items() if v.get("possible_stent")]
+    if stent:
+        verdict.append(("warnc", "Possible stent", ", ".join(SEGMENT_NAMES[g] for g in stent),
+                        "Grade may be unreliable after PCI; post-PCI runs are read less reliably."))
     for k, label in LESION_NAMES.items():
         if k in cuts:
             hit = [g for g, v in segs.items() if v.get(k)]
@@ -698,8 +814,15 @@ def render_report(preds: dict, model_version: str, recommendation: str) -> str:
     phys = preds.get("lad_physiology")
     if phys:
         call = lambda k: "abnormal" if phys[f"{k}_abnormal"] else "normal"
-        verdict.append(("alert" if phys["ffr_abnormal"] or phys["ifr_abnormal"] else "", "LAD physiology",
-                        f"FFR {call('ffr')} · iFR {call('ifr')}", ""))
+        if phys.get("assessed") is False:
+            verdict.append(("", "LAD physiology", "Not assessed", phys.get("not_assessed_reason", "")))
+        else:
+            hit = phys["ffr_abnormal"] or phys["ifr_abnormal"]
+            verdict.append(("alert" if hit else "", "LAD physiology",
+                            f"FFR {call('ffr')} · iFR {call('ifr')}" + (" (proximal-mid LAD)" if "region" in phys else ""),
+                            "Measurement region: proximal and mid LAD (marked in the segment detail)." if hit and "region" in phys else ""))
+    region = (tuple(phys["region"]) if phys and "region" in phys and phys.get("assessed") is not False
+              and (phys["ffr_abnormal"] or phys["ifr_abnormal"]) else ())
     verdict_html = "".join(f'<div class="vcell {c}"><span class="k">{k}</span><span class="v">{escape(v)}</span>'
                            + (f'<span class="muted small">{escape(d)}</span>' if d else "") + "</div>"
                            for c, k, v, d in verdict)
@@ -713,12 +836,17 @@ def render_report(preds: dict, model_version: str, recommendation: str) -> str:
                   f'call): {escape(study)}.</p>' if (study := study_lesion_text(preds.get("study_lesions"))) else "")
                + '</section>')
     n = preds["n_videos"]
+    v19_rule = "occluded_threshold" in preds
+    occ_short = "occluded" if v19_rule else "CTO"
+    occ_legend = ("Occluded: P(occluded) above its display threshold (main vessels), shown 100% (occluded) and tagged "
+                  "CTO or acute/other; no antegrade flow shown distal to it (grey vessel)" if v19_rule else
+                  "Occluded (CTO flag): reported as 100%; no antegrade flow shown distal to it (grey vessel)")
     left = bool(dom and dom["call"] == "left")
     drawn = ("Left dominant" if left else "Right dominant") + ("" if dom else " (dominance not provided)")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DeepCORO-JEPA Coronary Report</title>
-<style>{CSS}</style></head><body>
+<style>{CSS}{CSS_V19 if v19_rule else ""}</style></head><body>
 <div class="wrap">
 <header>
   <div><div class="eyebrow">AI coronary angiography reading</div>
@@ -731,19 +859,19 @@ def render_report(preds: dict, model_version: str, recommendation: str) -> str:
   <section class="card schema-card">
     <div class="schema-title"><h2>Schéma coronaire</h2><span class="muted small">{drawn}. Estimated % diameter stenosis per segment, calibrated for display (see the note under the segment detail); hover a label for the model estimate and the probabilities.</span></div>
     <div class="scroll">{schema_svg(segs, cuts, left_dominant=left)}</div>
-    <div class="legend"><span><i class="sw flag"></i>Flagged: P(significant) above its segment threshold, or CTO</span>
+    <div class="legend"><span><i class="sw flag"></i>Flagged: P(significant) above its segment threshold, or {occ_short}</span>
       <span><i class="sw lbl"></i>Not flagged</span><span><i class="sw plq"></i>Plaque, lumen narrowed to the shown % (≥15%)</span>
-      <span>{legend_cartoon("cto")}Occluded (CTO flag): reported as 100%; no antegrade flow shown distal to it (grey vessel)</span>
+      <span>{legend_cartoon("cto")}{occ_legend}</span>
       <span>{legend_cartoon("calcif")}Calcification flag: grey band with calcium plates along the segment</span>
       <span>{legend_cartoon("thrombus")}Thrombus flag: clot in the lumen</span></div>
   </section>
-  <aside class="side">{physiology_card(phys, version) if phys else ''}{thr}</aside>
+  <aside class="side">{physiology_card(phys, version, segs) if phys else ''}{thr}</aside>
 </div>
 {explain_section(preds.get("explainability") or [], segs)}
 <section class="card"><h2>Segment detail</h2>
   <p class="muted small" style="margin-bottom:10px">Bar: P(significant stenosis) on a square-root scale; the black tick is the segment's validation threshold. Significant means ≥70% (≥50% for left main).</p>
   <p class="muted small" style="margin-bottom:10px">{calibration_note(version)}</p>
-  <div class="details">{detail_rows(segs, cuts)}</div></section>
+  <div class="details">{detail_rows(segs, cuts, region, off)}</div></section>
 <p class="disclaimer">{escape(recommendation)}</p>
 {addendum(version)}
 </div></body></html>"""

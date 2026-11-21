@@ -32,7 +32,7 @@ def test_openapi_describes_registered_model():
         "supportedOutputModes"
     ]
     assert "200" in document["paths"]["/inference/predict"]["post"]["responses"]
-    assert document["info"]["version"] == info["version"] == "2.1.0"
+    assert document["info"]["version"] == info["version"] == "2.2.0"
     rendered = document["paths"]["/inference/render-report"]["post"]["responses"]["200"]["content"]["application/json"]["example"]
     assert rendered["data"]["modelVersion"] == info["version"]
 
@@ -62,7 +62,7 @@ def test_predict_examples_are_the_documented_container_response():
         assert physiology[f"{k}_abnormal"] == (physiology[f"{k}_abnormal_prob"] > physiology[f"{k}_abnormal_threshold"])
     assert predictions["unsupported_segments"] == ["lvp"]
     for key, segment in predictions["segments"].items():
-        if key in predictions["unsupported_segments"]:  # no training target in v15: never flagged, never displayed
+        if key in predictions["unsupported_segments"]:  # no training target: never flagged, never displayed
             assert segment["unsupported"] is True and "display_pct" not in segment and "display_category" not in segment
             assert not any(segment[name] for name in ("significant", "calcif", "thrombus", "cto"))
             continue
@@ -76,7 +76,35 @@ def test_predict_examples_are_the_documented_container_response():
     assert all(isinstance(p, float) and 0 <= p <= 1 for p in predictions["study_lesions"].values())  # no yes/no call
 
 
-def test_predict_example_is_a_v15_result_with_the_v15_thresholds_and_display_mapping():
+def test_a_v15_result_stored_by_2_1_0_is_drawn_byte_for_byte_as_2_1_0_drew_it():
+    """The predict example of 2.1.0 (model v15), kept as a stored result: 2.2.0 draws it with the v15 mapping,
+    thresholds, figures and text, exactly as 2.1.0 did."""
+    import display_calibration
+    from logic import CustomPredictionService
+    from report_input import predictions_of
+
+    fixtures = MODEL_ROOT / "tests/fixtures"
+    response = json.loads((fixtures / "stored_v15_2.1.0_response.json").read_text(encoding="utf-8"))
+    predictions = response["data"]["predictions"]
+    assert predictions["model_version"] == "v15"
+    assert {g: v["prob_threshold"] for g, v in predictions["segments"].items()} == V15_THRESHOLDS
+    assert predictions["lesion_thresholds"] == {"operating_point": "specificity_99 (thrombus: fixed 0.40, cto: fixed 0.70)",
+                                                "calcif": 0.3631, "thrombus": 0.4, "cto": 0.7}
+    for key, segment in predictions["segments"].items():
+        if key == "lvp":
+            continue
+        assert segment["display_pct"] == display_calibration.display_pct(segment, "v15")
+        assert segment["display_category"] == display_calibration.display_category(segment, "v15")
+    stored = predictions_of(response["data"])
+    report = (fixtures / "stored_v15_2.1.0_report.html").read_text(encoding="utf-8")
+    assert CustomPredictionService.report_html(stored) == report.rstrip("\n")
+    assert "DeepCORO-JEPA v15-cal1</h1>" in report
+    service = CustomPredictionService.__new__(CustomPredictionService)
+    assert response["data"]["diagnosis"] == service.diagnosis_text(predictions)
+    assert response["data"]["modelRecommendations"] == CustomPredictionService.recommendations(predictions)
+
+
+def test_predict_example_is_a_v19_result_with_the_v19_2_thresholds_and_display_rules():
     import display_calibration
     from logic import CustomPredictionService
     from report_input import predictions_of
@@ -84,25 +112,30 @@ def test_predict_example_is_a_v15_result_with_the_v15_thresholds_and_display_map
     response = json.loads((MODEL_ROOT / "docs/examples/predict_response_json.json").read_text(encoding="utf-8"))
     predictions = response["data"]["predictions"]
     facts = json.loads((MODEL_ROOT / "data/model_facts.json").read_text(encoding="utf-8"))["en"]["Summary"]
-    assert predictions["model_version"] == facts["Model_version"] == "v15"
-    assert {g: v["prob_threshold"] for g, v in predictions["segments"].items()} == V15_THRESHOLDS
-    assert predictions["lesion_thresholds"] == {"operating_point": "specificity_99 (thrombus: fixed 0.40, cto: fixed 0.70)",
-                                                "calcif": 0.3631, "thrombus": 0.4, "cto": 0.7}
+    assert predictions["model_version"] == facts["Model_version"] == "v19"
+    v19 = json.loads((MODEL_ROOT / "tests/fixtures/v19_2_thresholds_excerpt.json").read_text(encoding="utf-8"))
+    assert {g: v["prob_threshold"] for g, v in predictions["segments"].items()} == v19["prob_significant"]
+    assert predictions["lesion_thresholds"] == {"operating_point": "specificity_99 (thrombus: fixed 0.40)",
+                                                "calcif": 0.3809, "thrombus": 0.4, "cto": 0.1343}
+    assert predictions["occluded_threshold"]["threshold"] == 0.5 and predictions["stent_annotation"] == {"threshold": 0.0891}
     physiology = predictions["lad_physiology"]
-    assert (physiology["ffr_abnormal_threshold"], physiology["ifr_abnormal_threshold"]) == (0.5936, 0.6939)
-    assert predictions["model_dominance"]["dominance_left_threshold"] == 0.0383
-    assert "coronary_dominance" not in predictions  # no caller dominance in the example: the schema is right dominant
+    assert (physiology["ffr_abnormal_threshold"], physiology["ifr_abnormal_threshold"]) == (0.4805, 0.5999)
+    assert physiology["region"] == ["prox_lad", "mid_lad"]
+    assert predictions["model_dominance"]["dominance_left_threshold"] == 0.0204
+    occluded = [g for g, v in predictions["segments"].items() if v.get("occluded")]
+    assert occluded and all(g in predictions["occluded_threshold"]["segments"] for g in occluded)
     for key, segment in predictions["segments"].items():
         if key == "lvp":
             continue
-        assert segment["display_pct"] == display_calibration.display_pct(segment, "v15")
-        assert segment["display_category"] == display_calibration.display_category(segment, "v15")
-    # the report and the diagnosis of the example are what this code writes for these predictions
+        assert segment["occluded"] == (key in predictions["occluded_threshold"]["segments"]
+                                       and segment["occluded_prob"] > predictions["occluded_threshold"]["threshold"])
+        assert segment["possible_stent"] == (segment["stent_prob"] > 0.0891)
+        assert segment["display_pct"] == display_calibration.display_pct(segment, "v19")
+        assert segment["display_category"] == display_calibration.display_category(segment, "v19")
     stored = predictions_of(response["data"])
     report = (MODEL_ROOT / "docs/examples/predict_report.html").read_text(encoding="utf-8")
     assert CustomPredictionService.report_html(stored) == report.rstrip("\n")
-    assert "DeepCORO-JEPA v15-cal1</h1>" in report and "Right dominant (dominance not provided)" in report
-    assert "Posterior left ventricular" not in report and "Posterior left ventricular" not in response["data"]["diagnosis"]
+    assert "DeepCORO-JEPA v19-cal1</h1>" in report and "100% (occluded)" in report
     service = CustomPredictionService.__new__(CustomPredictionService)
     assert response["data"]["diagnosis"] == service.diagnosis_text(predictions)
     assert response["data"]["modelRecommendations"] == CustomPredictionService.recommendations(predictions)

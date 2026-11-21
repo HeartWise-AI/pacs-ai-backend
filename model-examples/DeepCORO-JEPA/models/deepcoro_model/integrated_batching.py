@@ -32,11 +32,14 @@ class ViewBoundedStudyBatch:
         if self.pending and (sum(x["views"] for x in self.pending)+views > self.max_views):
             self.flush()
 
-    def add(self, severity, binary_logits, target, auxiliary, views, uid=None):
+    def add(self, severity, binary_logits, target, auxiliary, views, uid=None, weight=None, onesided=None, regression_mask=None):
+        """weight / onesided (v17, default None = pre-v17 loss): per-segment label weight and one-sided mask.
+        regression_mask (v19 B, default None = unchanged): bool per segment, False = no % regression term (label >= 99%)."""
         if sum(x["views"] for x in self.pending)+views > self.max_views:
             raise RuntimeError("Call before_study before allocating a study that exceeds the pending view budget")
         self.pending.append(dict(severity=severity, binary_logits=binary_logits, target=target,
-                                 auxiliary=auxiliary, views=views, uid=uid))
+                                 auxiliary=auxiliary, views=views, uid=uid, weight=weight, onesided=onesided,
+                                 **({} if regression_mask is None else {"regression_mask": regression_mask})))
         if (len(self.pending) >= self.max_studies or sum(x["views"] for x in self.pending) >= self.max_views
                 or self.accumulated+len(self.pending) >= self.optimizer_studies):
             self.flush()
@@ -61,11 +64,20 @@ class ViewBoundedStudyBatch:
         if not self.pending:
             return
         pending, self.pending = self.pending, []
+        extra = {}
+        if any(x.get("weight") is not None for x in pending):  # v17 arm A; studies without weights count 1
+            extra["weight"] = torch.stack([x["weight"] if x.get("weight") is not None else torch.ones_like(x["target"]) for x in pending])
+        if any(x.get("onesided") is not None for x in pending):  # v17 arm C
+            extra["onesided"] = torch.stack([x["onesided"].bool() if x.get("onesided") is not None
+                                             else torch.zeros_like(x["target"], dtype=torch.bool) for x in pending])
+        if any(x.get("regression_mask") is not None for x in pending):  # v19 B; studies without a mask keep every entry
+            extra["regression_mask"] = torch.stack([x["regression_mask"].bool() if x.get("regression_mask") is not None
+                                                    else torch.ones_like(x["target"], dtype=torch.bool) for x in pending])
         primary, parts = study_supervision_loss(
             torch.stack([x["severity"] for x in pending]),
             torch.stack([x["binary_logits"] for x in pending]),
             torch.stack([x["target"] for x in pending]), self.threshold,
-            mode=self.severity_loss, ccc_weight=self.ccc_weight, binary_weight=self.binary_weight)
+            mode=self.severity_loss, ccc_weight=self.ccc_weight, binary_weight=self.binary_weight, **extra)
         auxiliary = torch.stack([x["auxiliary"] for x in pending]).mean()
         loss = primary+auxiliary
         (loss*len(pending)/self.optimizer_studies).backward()

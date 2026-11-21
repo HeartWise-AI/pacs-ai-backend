@@ -1,0 +1,76 @@
+{
+  "version": "cal1",
+  "model_version": "v15",
+  "description": "Display-only mapping of segments.<segment>.stenosis_pct to the % shown in the report (display_pct) and its category (display_category), for model v15. stenosis_pct, prob_significant and every flag are unchanged. One mapping for every displayed segment. Kept to redraw results stored by containers 2.0.0 and 2.1.0 (model v15); not applied to v19.",
+  "zero_below_pct": 9.5,
+  "knots": {
+    "estimate_pct": [
+      9.5,
+      21.5,
+      34.5,
+      49.5,
+      100
+    ],
+    "display_pct": [
+      20,
+      30,
+      50,
+      70,
+      100
+    ]
+  },
+  "rounding": "down",
+  "rules": [
+    "stenosis_pct < zero_below_pct: shown 0% (normal)",
+    "otherwise: linear interpolation through the knots, rounded down to an integer, so an estimate below a knot stays in the category below it (the fitted category boundaries are exactly 21.5, 34.5 and 49.5)",
+    "cto flag: shown 100% (occluded)",
+    "significant flag: never shown as normal; an estimate below zero_below_pct is shown at the first display knot (20%, mild)"
+  ],
+  "categories": {
+    "normal": "0%",
+    "mild": "1-29%",
+    "moderate": "30-49%",
+    "intermediate": "50-69%",
+    "severe": "70-100%",
+    "occluded": "CTO flag"
+  },
+  "provenance": {
+    "date": "2026-11-15",
+    "model": "DeepCORO-JEPA v15 (epoch 1, the served weights)",
+    "source": "display_mapping.json and thresholds/display_mapping.json of the v15 release dossier (also in the Hugging Face revision v15.1); script evaluation/fit_display_mapping.py",
+    "dataset_short": "the MHI validation split of model v15 (4,647 studies, 78,999 segment readings; posterior LV branch excluded from the fit)",
+    "dataset": "MHI validation split only, no test data: 4,647 studies x 17 segments = 78,999 segment readings of the served v15 weights, with the angiography report stenosis. The posterior left ventricular (LVP) rows were excluded: LVP has no training target in v15 and is not displayed. The model estimate was clipped to 0-100 as the container does.",
+    "label_categories": "report 0 -> normal, below 30 -> mild, 30-49, 50-69, >=70",
+    "method": "cal1, the method of the v13 mapping, refitted on v15. T0: among cuts 0, 0.5, ..., 40 (shown normal when estimate < cut), the largest cut whose Youden J for report stenosis > 0% is within 0.002 of the maximum, all fitted segments pooled. Knots for the 30/50/70 boundaries on a 1-point grid from T0+1: the triple that maximises the quadratic-weighted Cohen kappa between the 5 report categories and the 5 shown categories (0, <30, 30-49, 50-69, >=70; shown category from estimate < T0, < a, < b, < c). The display value at T0 is the report's mild label (20%). Fit on all validation rows: 9.5 / 21.5 / 34.5 / 49.5, used as fitted (half points are not rounded). 5-fold cross-validation grouped by patient, 3 seeds: T0 9.5 to 10.5 and knots 21-22 / 34-35 / 47-50.5 across folds.",
+    "validation_metrics_full_fit": {
+      "n": 78999,
+      "exact": 0.6444,
+      "weighted_kappa": 0.5841,
+      "report_ge70_shown_normal": 0.1158,
+      "report0_shown_normal": 0.7444
+    },
+    "validation_metrics_cross_validated": {
+      "n": 78999,
+      "folds": "5 folds grouped by patient, 3 seeds",
+      "exact": 0.6486,
+      "weighted_kappa": 0.5833
+    },
+    "validation_metrics_with_flag_rule": {
+      "n": 78999,
+      "exact": 0.6016,
+      "weighted_kappa": 0.5781,
+      "report_ge70_shown_normal": 0.0768,
+      "report0_shown_normal": 0.6844,
+      "rows_changed_by_the_rule": 4154,
+      "note": "With the rule that a segment flagged for significant stenosis is never shown as normal (estimate below T0 and flagged -> mild). This is what the report shows."
+    },
+    "validation_metrics_raw_display": {
+      "n": 78999,
+      "exact": 0.2377,
+      "weighted_kappa": 0.3933,
+      "report_ge70_shown_normal": 0.004,
+      "report0_shown_normal": 0.1692
+    },
+    "not_in_the_dossier": "Sensitivity, specificity, PPV and NPV of the T0 cut, per-vessel kappa and the mean report value per shown category were published for the v13 mapping; the v15 dossier does not give them."
+  }
+}
