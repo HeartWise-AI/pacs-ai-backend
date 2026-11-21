@@ -3,9 +3,10 @@
 The regression head is pulled toward the mean: true 0% segments are often estimated at 5-10% and true >= 70% lesions
 at 35-50%. The report therefore shows a rescaled value. The mapping belongs to one model version:
 
-- data/stenosis_display.json is the mapping of the served model (v15);
-- data/stenosis_display_v13.json is the mapping of model v13, kept so that /inference/render-report can draw a
-  result stored by containers 1.1.0 to 1.4.1. A mapping is never applied to another model version.
+- data/stenosis_display.json is the mapping of the served model (v19);
+- data/stenosis_display_v15.json and data/stenosis_display_v13.json are the mappings of models v15 and v13, kept so
+  that /inference/render-report can draw a result stored by containers 2.0.0 / 2.1.0 (v15) and 1.1.0 to 1.4.1 (v13).
+  A mapping is never applied to another model version.
 
 For one mapping:
 
@@ -13,7 +14,9 @@ For one mapping:
 - above it, a monotone piecewise-linear map through the knots puts the values on the angiographic categories
   0, < 30 (mild), 30-49, 50-69 and >= 70. `rounding` says how the interpolated value becomes an integer: "nearest"
   (v13) or "down" (v15: an estimate below a knot stays in the category below it, as in the fit);
-- a CTO-flagged segment is shown as 100% (occluded);
+- a segment with `occluded: true` (v19 on: P(occluded) above its display threshold, epicardial segments) is shown
+  as 100% (occluded); up to v15 (`cto_flag_shown_occluded`, default true) a CTO-flagged segment is shown so too. In
+  v19 the CTO flag alone is a lesion flag and the occlusion tag, not a 100% display;
 - a segment flagged for significant stenosis is never shown as normal: it is shown at least at the lowest
   non-zero displayed value (the bottom of the mild category).
 
@@ -32,7 +35,7 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 CALIBRATION_PATH = DATA_DIR / "stenosis_display.json"  # the served model
-STORED_RESULT_PATHS = (DATA_DIR / "stenosis_display_v13.json",)  # earlier models, for stored results only
+STORED_RESULT_PATHS = (DATA_DIR / "stenosis_display_v15.json", DATA_DIR / "stenosis_display_v13.json")  # earlier models, for stored results only
 LEGACY_MODEL_VERSION = "v13"  # a result without `model_version` was stored by 1.1.0 to 1.4.1, which served v13
 ROUNDINGS = ("nearest", "down")
 CATEGORY_LABELS = {"normal": "Normal", "mild": "Mild (<30%)", "moderate": "30-49%", "intermediate": "50-69%",
@@ -50,6 +53,8 @@ def _load(path: Path) -> dict:
         raise ValueError(f"{Path(path).name}: model_version is required (a mapping belongs to one model version)")
     if table.get("rounding", "nearest") not in ROUNDINGS:
         raise ValueError(f"{Path(path).name}: rounding must be one of {ROUNDINGS}")
+    if not isinstance(table.get("cto_flag_shown_occluded", True), bool):
+        raise ValueError(f"{Path(path).name}: cto_flag_shown_occluded must be true or false")
     return table
 
 
@@ -98,10 +103,18 @@ def _interp(x: float, xs: list, ys: list) -> float:
     return ys[-1]
 
 
+def shown_occluded(v: dict, model_version: str | None = None) -> bool:
+    """True when the segment is shown as 100% (occluded): its `occluded` flag (v19 on), or, for a model whose mapping
+    keeps `cto_flag_shown_occluded` (v13, v15), its CTO flag."""
+    if v.get("occluded") is True:
+        return True
+    return bool(v.get("cto")) and calibration(model_version).get("cto_flag_shown_occluded", True)
+
+
 def display_pct(v: dict, model_version: str | None = None) -> int:
     """The % shown in the report for one segment of `predictions.segments` (an integer, 0 to 100), computed from
     `stenosis_pct` and the flags with the mapping of `model_version`."""
-    if v.get("cto"):
+    if shown_occluded(v, model_version):
         return 100
     table = calibration(model_version)
     xs, ys = table["knots"]["estimate_pct"], table["knots"]["display_pct"]
@@ -112,17 +125,17 @@ def display_pct(v: dict, model_version: str | None = None) -> int:
     return int(math.floor(value + 1e-9)) if table.get("rounding", "nearest") == "down" else int(round(value))
 
 
-def category(pct: float, cto: bool = False) -> str:
+def category(pct: float, occluded: bool = False) -> str:
     """Angiographic category of a displayed %: normal, mild (< 30), moderate (30-49), intermediate (50-69),
-    severe (>= 70) or occluded (CTO flag)."""
-    if cto:
+    severe (>= 70) or occluded (shown 100% occluded, see shown_occluded)."""
+    if occluded:
         return "occluded"
     return ("normal" if pct <= 0 else "mild" if pct < 30 else "moderate" if pct < 50
             else "intermediate" if pct < 70 else "severe")
 
 
 def display_category(v: dict, model_version: str | None = None) -> str:
-    return category(display_pct(v, model_version), bool(v.get("cto")))
+    return category(display_pct(v, model_version), shown_occluded(v, model_version))
 
 
 def add_display(segments: dict, model_version: str | None = None, skip=()) -> dict:
@@ -142,7 +155,7 @@ def with_display(v: dict, model_version: str | None = None) -> dict:
     if "display_pct" in v and "display_category" in v:
         return v
     pct = int(v["display_pct"]) if "display_pct" in v else display_pct(v, model_version)
-    return {**v, "display_pct": pct, "display_category": category(pct, bool(v.get("cto")))}
+    return {**v, "display_pct": pct, "display_category": category(pct, shown_occluded(v, model_version))}
 
 
 def version(model_version: str | None = None) -> str:

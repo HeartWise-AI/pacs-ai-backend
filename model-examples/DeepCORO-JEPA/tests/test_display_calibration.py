@@ -1,5 +1,5 @@
 """Display calibration of the stenosis estimate: display only, flags unchanged. data/stenosis_display.json is the
-mapping of the served model (v15); data/stenosis_display_v13.json is kept for stored v13 results only."""
+mapping of the served model (v19); data/stenosis_display_v15.json and _v13.json are kept for stored results only."""
 from __future__ import annotations
 
 import copy
@@ -24,8 +24,28 @@ def seg(pct, significant=False, cto=False):
     return {"stenosis_pct": pct, "significant": significant, "cto": cto}
 
 
-def test_table_is_monotone_with_provenance():
+def test_v19_table_is_the_v19_dossier_fit_and_the_cto_flag_alone_is_not_100():
     t = cal.calibration()
+    xs, ys = t["knots"]["estimate_pct"], t["knots"]["display_pct"]
+    assert t["model_version"] == "v19" and t["version"] == "cal1" and t["rounding"] == "down"
+    assert t["zero_below_pct"] == 10.5 and xs == [10.5, 23.5, 33.5, 42.5, 100] and ys == [20, 30, 50, 70, 100]
+    assert t["cto_flag_shown_occluded"] is False
+    fit = t["provenance"]["validation_metrics_full_fit"]
+    assert (fit["exact"], fit["weighted_kappa"]) == (0.663, 0.5911)
+    assert "validation split only" in t["provenance"]["dataset"].lower()
+    # v19: only the occluded flag shows 100%; the CTO flag alone keeps the mapped value
+    assert cal.display_pct(seg(30.0, cto=True)) == 43 and cal.display_category(seg(30.0, cto=True)) == "moderate"
+    occluded = {**seg(55.0), "occluded": True}
+    assert cal.display_pct(occluded) == 100 and cal.display_category(occluded) == "occluded"
+    # v15 / v13 results keep their rule: a CTO flag is shown 100% (occluded)
+    assert cal.display_pct(seg(30.0, cto=True), "v15") == 100 == cal.display_pct(seg(30.0, cto=True), "v13")
+    for x, shown, name in ((10.4, 0, "normal"), (10.5, 20, "mild"), (23.4, 29, "mild"), (23.5, 30, "moderate"),
+                           (33.5, 50, "intermediate"), (42.4, 69, "intermediate"), (42.5, 70, "severe")):
+        assert (cal.display_pct(seg(x)), cal.display_category(seg(x))) == (shown, name), x
+
+
+def test_table_is_monotone_with_provenance():
+    t = cal.calibration("v15")
     xs, ys = t["knots"]["estimate_pct"], t["knots"]["display_pct"]
     assert t["model_version"] == "v15" and t["version"] == "cal1" and t["rounding"] == "down"
     assert t["zero_below_pct"] == xs[0] == 9.5 and xs == [9.5, 21.5, 34.5, 49.5, 100] and xs[-1] == ys[-1] == 100
@@ -43,10 +63,10 @@ def test_table_is_monotone_with_provenance():
 
 
 def test_each_model_version_has_its_own_mapping_and_no_other_is_used():
-    assert list(cal.calibrations()) == ["v15", "v13"] and cal.served_model_version() == "v15"
+    assert list(cal.calibrations()) == ["v19", "v15", "v13"] and cal.served_model_version() == "v19"
     v13 = cal.calibration("v13")
     assert v13["knots"]["estimate_pct"] == [10, 23, 37, 51, 100] and v13.get("rounding", "nearest") == "nearest"
-    assert "v13" in v13["provenance"]["model"] and cal.label("v13") == "v13-cal1" and cal.label("v15") == cal.label() == "v15-cal1"
+    assert "v13" in v13["provenance"]["model"] and cal.label("v13") == "v13-cal1" and cal.label("v15") == "v15-cal1" and cal.label() == "v19-cal1"
     with pytest.raises(ValueError, match="No display calibration for model version 'v16'"):
         cal.calibration("v16")
     with pytest.raises(ValueError):
@@ -68,8 +88,7 @@ def test_each_model_version_has_its_own_mapping_and_no_other_is_used():
 def test_mapping_through_the_knots(pct, shown, category):
     """v15: the category changes exactly at the fitted estimates 9.5 / 21.5 / 34.5 / 49.5 (half points kept, the
     interpolated value rounded down so an estimate just below a knot stays in the category below)."""
-    assert cal.display_pct(seg(pct)) == shown and cal.display_category(seg(pct)) == category
-    assert cal.display_pct(seg(pct), "v15") == shown
+    assert cal.display_pct(seg(pct), "v15") == shown and cal.display_category(seg(pct), "v15") == category
 
 
 def test_v15_categories_are_the_fitted_cuts_for_every_returned_estimate():
@@ -166,7 +185,7 @@ def test_report_and_diagnosis_show_the_displayed_value():
 
 
 def test_report_version_names_the_model_and_calibration_of_the_result():
-    assert CustomPredictionService.report_model_version() == f"{CustomPredictionService.model_version()}-cal1" == "v15-cal1"
+    assert CustomPredictionService.report_model_version() == f"{CustomPredictionService.model_version()}-cal1" == "v19-cal1"
     assert CustomPredictionService.report_model_version({"model_version": "v15", "segments": {}}) == "v15-cal1"
     assert CustomPredictionService.report_model_version({"segments": {}}) == "v13-cal1"  # stored before 2.0.0
 

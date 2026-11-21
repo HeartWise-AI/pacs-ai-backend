@@ -1,4 +1,4 @@
-"""DeepCORO-JEPA 2.0.0 (model v15) artifact identity and build verification."""
+"""DeepCORO-JEPA 2.2.0 (model v19.2) artifact identity and build verification."""
 
 import hashlib
 import json
@@ -19,15 +19,15 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     provenance = manifest["provenance"]
 
-    assert manifest["version"] == "2.1.0"
+    assert manifest["version"] == "2.2.0"
     assert config["ModelStateDict"]["model_path"] == provenance["weightsPath"]
     assert provenance == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,
         "modelRepository": "heartwise/DeepCORO_JEPA",
-        "modelRevision": "ab6d12f7aa6c547cfdf5b47d3517d95566f6de0c",  # heartwise/DeepCORO_JEPA branch v15, tag v15.1
+        "modelRevision": "6e192ebdee3b968ad29cb45332fd7eabac7689ba",  # heartwise/DeepCORO_JEPA branch v19, tag v19.2
         "weightsPath": "model.safetensors",
-        "weightsSha256": "23b8255ba90818738e1d10f35421bb79f669eafe5ee68fdde7a2cdf27531c54c",
+        "weightsSha256": "8af2e27adb0978b5e610d21dc838d1fc34f23b22f740d9f06e47205010767eed",
     }
 
 
@@ -62,7 +62,12 @@ def test_official_dockerfile_consumes_release_metadata_and_fetches_the_structure
     config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
     assert config["Thresholds"] == {"path": "thresholds.json", "pressure_operating_point": "balanced",
                                     "lesion_operating_point": "specificity_99",
-                                    "lesion_threshold_overrides": {"thrombus": 0.4, "cto": 0.7}}
+                                    "lesion_threshold_overrides": {"thrombus": 0.4},
+                                    "occluded_operating_point": "display_pi_050_epicardial",
+                                    "occluded_segments": ["left_main", "prox_lad", "mid_lad", "dist_lad", "prox_lcx",
+                                                          "mid_lcx", "dist_lcx", "prox_rca", "mid_rca", "dist_rca",
+                                                          "pda", "posterolateral"],
+                                    "stent_annotation_threshold": 0.0891}
 
 
 def test_requirements_pin_one_cuda_build_that_runs_on_blackwell():

@@ -11,7 +11,10 @@ angiography study end to end:
 - **calcification / thrombus / chronic total occlusion (CTO)**: a probability and a yes/no flag per segment, from
   v13 on;
 - **study-level lesion probabilities** (any segment; no yes/no call) and the model's own **coronary dominance**
-  estimate, from v15 on.
+  estimate, from v15 on;
+- **100% occlusion** per segment, shown "100% (occluded) - CTO / acute/other" on the 12 epicardial segments, a
+  **possible stent** annotation, the **FFR/iFR measurement region** and a **side check** (segments of a coronary side
+  without a run are not assessed), from v19 (container 2.2.0) on.
 
 Segmentation is not a separate step: nothing has to be computed before the model is called. The same forward pass
 predicts the masks, cuts the crops and reads them.
@@ -25,7 +28,8 @@ The encoder runs **at most twice per study**:
 
 | Container version | Model | Hugging Face revision | Training run (Weights & Biases, `mhi_ai/deepcoro-segmentation`) |
 |---|---|---|---|
-| **2.1.0** (this one) | **v15** | `heartwise/DeepCORO_JEPA@ab6d12f` (branch `v15`, tag `v15.1`) | [`2563ce01`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/2563ce01) |
+| **2.2.0** (this one) | **v19** (point release v19.2) | `heartwise/DeepCORO_JEPA@6e192eb` (branch `v19`, tag `v19.2`) | [`78768630`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/78768630) |
+| 2.1.0 | v15 | `heartwise/DeepCORO_JEPA@ab6d12f` (branch `v15`, tag `v15.1`) | [`2563ce01`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/2563ce01) |
 | 2.0.0 | v15 | same revision | same run |
 | 1.4.1 | v13 | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |
 | 1.4.0 | v13 | same revision | same run |
@@ -38,6 +42,52 @@ The encoder runs **at most twice per study**:
 
 The served weights are the ones exported from the checkpoint of that training run; `data/model_facts.json`
 (`Summary.Training_run`) and `model_config.json` of the Hugging Face revision carry the same link.
+
+**What 2.2.0 changes against 2.1.0:** it serves **model v19.2** (weights SHA-256 `8af2e27a…7eed`, epoch 2 of run
+`78768630`, release dossier `DeepCoro_Integrated/v19/` on the model NAS) instead of v15. Model v16 was never deployed.
+**Release status: v19 did not meet its pre-registered release rule**; the principal investigator released it
+(2026-11-20) on a post-hoc endpoint, occlusion detection (epicardial AUPRC 0.461 [0.413, 0.513] against 0.384 for the
+v16 CTO probability). Every key of the 2.1.0 JSON is still there with the same meaning; new keys are added.
+
+- **Model code.** `models/deepcoro_model/` is the code of the Hugging Face revision `v19.2` (`code_v19` on the NAS):
+  the loader enables the occluded head from the state dict; strict load.
+- **Occluded display.** `segments.<g>.occluded_prob`, `.occluded` and `.occlusion_tag`. A segment is shown
+  **"100% (occluded)"** when `occluded_prob` > **0.50** (`thresholds.json` `occluded_prob.display_pi_050_epicardial`,
+  chosen by the PI on validation: sensitivity 0.35, specificity 0.997, PPV 0.66; test 0.34 / 0.997 / 0.63) and the
+  segment is one of the 12 epicardial segments (`Thresholds.occluded_segments`); branches never. The tag is "CTO"
+  when the CTO flag is set, else "acute/other" (no separately validated threshold: weak). This takes precedence over
+  the display mapping and the flagged-never-normal rule. The `stenosis_pct` of an occluded segment is a conditional
+  estimate (the v19 % head is trained on segments below 99%) and is never shown in its place.
+- **CTO flag.** v19's `specificity_99` threshold **0.1343** (PI, 2026-11-21: the v15 override 0.70 is dropped). In v19
+  a CTO flag alone is a lesion flag and the occlusion tag; it **no longer shows 100%** (`cto_flag_shown_occluded:
+  false` in the v19 mapping). v15 and v13 results keep their rule when drawn again.
+- **Possible stent** (annotation only, Robert 2026-11-16): `stent_prob` (procedure head) and `possible_stent`
+  (`stent_prob` > **0.0891**, 95% specificity among untreated segments on the v19 validation post-PCI rows, sensitivity
+  0.44, PPV 0.49; re-derived on v19 by the DeepCoro session, `stent_guard_v19.json`). Text and report add "possible
+  stent: grade may be unreliable after PCI"; no flag, threshold or shown % changes.
+- **FFR/iFR region.** `lad_physiology.region` (`["prox_lad", "mid_lad"]`), `.region_label`, `.region_segments` (the
+  two segments' stenosis readings). When FFR or iFR is predicted abnormal, the diagnosis names the proximal-mid LAD and
+  the report marks the two rows ("FFR/iFR region"). The region is where pressure was measured in the training labels,
+  not a localisation of the culprit lesion. No culprit-segment rule (declined by the PI).
+- **Side check.** Optional `additionalMetadata.coronaryViews` = `[{"sopInstanceUID", "viewLabel"}, …]` (the angiogram
+  classifier's view label of each run; cardio-agent study-service sends it). If every run read is labelled "Left
+  Coronary" or "Right Coronary" and one side has no run, its segments (RCA; or left main, LAD, diagonals, LCx,
+  marginals, ramus; PDA and posterolateral follow the dominance: caller's, else model's) get `assessed: false` and
+  `not_assessed_reason`, all flags false, no display fields, and are listed as "Not assessed" instead of being
+  reported; without a left run LAD physiology is not assessed. `side_check` says what was done (`available: false`
+  with a reason when labels are missing). Evidence: 26% of validation studies are single-side; unseen-side r 0.27 /
+  0.22 against 0.64 / 0.50 imaged.
+- **Display calibration** cal1 refitted on v19 (10.5 / 23.5 / 33.5 / 42.5, rounded down); v15 mapping kept in
+  `data/stenosis_display_v15.json` for stored v15 results. Header `v19-cal1`.
+- **Thresholds** from `thresholds.json` of `v19.2` (names the weights' SHA-256): FFR/iFR 0.4805 / 0.5999, calcification
+  0.3809, CTO 0.1343, dominance 0.0204; thrombus keeps the fixed 0.40.
+- **Parity** (this PR, container code path on the 24 locked test studies of the dossier's `deployment/parity_inputs.csv`,
+  NGC torch, Blackwell GPU): probabilities within 5e-6 of `parity_v19_2_inference.csv`, 0 stenosis / occluded / CTO /
+  calcification / FFR / iFR call flips, exactly 5 segments shown "100% (occluded)" in 4 studies, all tagged CTO; the 2
+  thrombus differences are the 0.40 override (the dossier uses `specificity_99` 0.0609). The image build and the
+  cu128 runtime are not tested here (no Docker on the host).
+- `docs/examples` is one parity study's output of this code (no identifiers); the 2.1.0 example is kept as
+  `tests/fixtures/stored_v15_2.1.0_*` and is drawn byte for byte as 2.1.0 drew it.
 
 **What 2.1.0 changes against 2.0.0:** same weights and probabilities. The CTO flag needs `cto_prob` above **0.70**
 instead of 0.2134 (`lesion_threshold_overrides` now `{"thrombus": 0.4, "cto": 0.7}`; `operating_point` reads

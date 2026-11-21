@@ -104,7 +104,9 @@ def test_render_report_equals_html_mode_predict(client, predicting, monkeypatch)
     body = rendered.json()
     import main
     assert body["success"] is True and body["data"]["modelVersion"] == main.served_model_info["version"]
-    assert body["data"]["reportModelVersion"] == CustomPredictionService.report_model_version() == "v15-cal1"
+    # a v15 result (as stored by 2.0.0 / 2.1.0) keeps its own model's header; the served model is v19
+    assert body["data"]["reportModelVersion"] == CustomPredictionService.report_model_version(result["predictions"]) == "v15-cal1"
+    assert CustomPredictionService.report_model_version() == "v19-cal1"
     assert body["data"]["htmlBase64"] == html_mode["data"]["htmlBase64"]
     html = base64.b64decode(body["data"]["htmlBase64"]).decode("utf-8")
     assert "DeepCORO-JEPA v15-cal1</h1>" in html and "Model estimate: left dominant (P(left) 0.600" in html
@@ -203,7 +205,7 @@ def test_a_stored_v13_result_is_rendered_as_v13_by_this_container(client, monkey
     assert response.status_code == 200, response.text
     data = response.json()["data"]
     import main
-    assert data["modelVersion"] == main.served_model_info["version"] == "2.1.0"  # the container that drew it
+    assert data["modelVersion"] == main.served_model_info["version"] == "2.2.0"  # the container that drew it
     assert data["reportModelVersion"] == "v13-cal1"  # the model that produced the result
     html = base64.b64decode(data["htmlBase64"]).decode("utf-8")
     assert "DeepCORO-JEPA v13-cal1</h1>" in html and "v15-cal1" not in html

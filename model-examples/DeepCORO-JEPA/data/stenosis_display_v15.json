@@ -1,7 +1,7 @@
 {
   "version": "cal1",
   "model_version": "v15",
-  "description": "Display-only mapping of segments.<segment>.stenosis_pct to the % shown in the report (display_pct) and its category (display_category), for model v15. stenosis_pct, prob_significant and every flag are unchanged. One mapping for every displayed segment. The mapping of model v13 is in stenosis_display_v13.json and is used only for stored v13 results.",
+  "description": "Display-only mapping of segments.<segment>.stenosis_pct to the % shown in the report (display_pct) and its category (display_category), for model v15. stenosis_pct, prob_significant and every flag are unchanged. One mapping for every displayed segment. Kept to redraw results stored by containers 2.0.0 and 2.1.0 (model v15); not applied to v19.",
   "zero_below_pct": 9.5,
   "knots": {
     "estimate_pct": [
