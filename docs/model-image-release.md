@@ -138,7 +138,7 @@ The workflow uploads `model-release-evidence.json` and includes it in the job su
 - GitHub actor and workflow run identity.
 - release channel, intended stable version, source branch, pull request, and whether an existing image was reused.
 
-It never records a token, password, secret path, or secret value. If catalog registration must be retried independently, download the evidence artifact and run `scripts/register-model-release.py` with the protected catalog URL and credential file. The operation is idempotent for the same artifact and rejects conflicting metadata.
+It never records a token, password, secret path, or secret value. If catalog registration must be retried independently, download the evidence artifact and run `scripts/register-model-release.py` with the protected catalog URL and credential file. The operation is idempotent for the same artifact and rejects conflicting metadata. Pass `--api-url` with the instance's API path prefix (for example `https://<host>/api` when nginx serves the backend under `/api`). A backend certificate signed by a private CA needs `--ca-file <ca.pem>`; `--insecure` skips TLS verification and is only for an expired certificate on a trusted network.
 
 ## Version policy
 

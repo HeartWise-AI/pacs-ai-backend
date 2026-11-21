@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import json
+import ssl
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -143,18 +146,37 @@ def register_catalog_version(
     for attempt in range(1, attempts + 1):
         try:
             with open_request(request, timeout=30) as response:
-                result = json.load(response)
+                try:
+                    result = json.load(response)
+                except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                    raise CatalogRegistrationError(
+                        f"{endpoint} did not answer with JSON, so it is not the PACS-AI API. "
+                        "Pass --api-url with the API path prefix of the instance, "
+                        "for example https://<host>/api"
+                    ) from exc
             if not isinstance(result, dict) or result.get("success") is not True:
                 raise CatalogRegistrationError("Catalog API returned an unsuccessful response")
             return result
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace").strip()
+            if exc.code in (404, 405) and not detail.lstrip().startswith("{"):
+                raise CatalogRegistrationError(
+                    f"Catalog API returned HTTP {exc.code} for {endpoint}; the backend may sit under a "
+                    "path prefix. Pass --api-url with it, for example https://<host>/api"
+                ) from exc
             if exc.code < 500 or attempt == attempts:
                 raise CatalogRegistrationError(
                     f"Catalog API returned HTTP {exc.code}: {detail or exc.reason}"
                 ) from exc
             last_error = exc
         except (urllib.error.URLError, TimeoutError) as exc:
+            reason = getattr(exc, "reason", None)
+            if isinstance(reason, ssl.SSLCertVerificationError):
+                raise CatalogRegistrationError(
+                    f"TLS certificate of {endpoint} could not be verified ({reason.verify_message}). "
+                    "Pass --ca-file with the CA that signed it; only for an expired certificate on a "
+                    "trusted network, --insecure skips verification"
+                ) from exc
             if attempt == attempts:
                 raise CatalogRegistrationError(f"Catalog API request failed: {exc}") from exc
             last_error = exc
@@ -167,7 +189,28 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("evidence", help="Published model release evidence JSON")
     parser.add_argument("--api-url", required=True, help="PACS-AI backend HTTPS origin")
     parser.add_argument("--sudo-key-file", required=True, help="Path to the backend superuser key")
+    tls = parser.add_mutually_exclusive_group()
+    tls.add_argument("--ca-file", help="PEM bundle of the CA that signed the backend certificate")
+    tls.add_argument(
+        "--insecure",
+        action="store_true",
+        help="Do not verify the backend TLS certificate (expired certificate on a trusted network only)",
+    )
     return parser.parse_args(argv)
+
+
+def tls_context(ca_file: str | None, insecure: bool) -> ssl.SSLContext:
+    if insecure:
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        return context
+    if ca_file is not None:
+        path = Path(ca_file).resolve()
+        if not path.is_file():
+            raise CatalogRegistrationError(f"CA file not found: {path}")
+        return ssl.create_default_context(cafile=str(path))
+    return ssl.create_default_context()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -176,10 +219,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = load_catalog_payload(Path(args.evidence).resolve())
         endpoint = catalog_endpoint(args.api_url)
         sudo_key = read_sudo_key(Path(args.sudo_key_file).resolve())
+        context = tls_context(args.ca_file, args.insecure)
+        if args.insecure:
+            print("[catalog] WARNING: TLS certificate verification is disabled", file=sys.stderr)
         result = register_catalog_version(
             endpoint=endpoint,
             sudo_key=sudo_key,
             payload=payload,
+            open_request=functools.partial(urllib.request.urlopen, context=context),
         )
     except CatalogRegistrationError as exc:
         print(f"[catalog] {exc}")
