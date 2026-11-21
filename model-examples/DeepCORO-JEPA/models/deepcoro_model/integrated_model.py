@@ -38,6 +38,32 @@ SEGMENT_CLASSES = {
     "om1": (15,), "om2": (24,), "bx": (14,), "lvp": (17, 18, 25),
 }
 DISTAL_CLASSES = (4, 8, 16, 19, 20, 21, 22, 23)
+# v18 (v18_prep/v18_prereg.md section 2, default off). Run side: 0 Left Coronary, 1 Right Coronary, -1 unknown.
+# Right groups only use right runs; PDA / PL may use runs of either side (dominance is unknown at deployment); every other
+# group (including lvp, per the prereg's "everything else is left") only uses left runs. Unknown-side runs are always allowed.
+RIGHT_SIDE_GROUPS = ("prox_rca", "mid_rca", "dist_rca")
+EITHER_SIDE_GROUPS = ("pda", "posterolateral")
+VISIBILITY_STATS = ("log1p_right_runs", "log1p_left_runs", "log1p_unknown_runs", "log1p_mask_mass_right",
+                    "log1p_mask_mass_left", "log1p_mask_mass_unknown", "ungated_attention_on_allowed")
+
+
+# v19 (v19_prep/v19_prereg_DRAFT.md section 2A, default off). Fixed SYNTAX parent table, copied from
+# occlusion_template_v1/common.py BASE_PARENT / PDA_PL_PARENT (the run source snapshot only copies step3/*.py). PDA / PL:
+# parent dist_rca when right dominant, dist_lcx when left dominant; the model mixes the two by its own (detached) dominance
+# probability (right when the model has no dominance head). Roots (prox_rca, left_main) and lvp have no parent.
+OCCLUDED_PARENT = {"prox_rca": None, "mid_rca": "prox_rca", "dist_rca": "mid_rca", "left_main": None, "prox_lad": "left_main",
+                   "mid_lad": "prox_lad", "dist_lad": "mid_lad", "prox_lcx": "left_main", "mid_lcx": "prox_lcx",
+                   "dist_lcx": "mid_lcx", "D1": "prox_lad", "D2": "mid_lad", "om1": "prox_lcx", "om2": "mid_lcx", "bx": "left_main",
+                   "pda": ("dist_rca", "dist_lcx"), "posterolateral": ("dist_rca", "dist_lcx"), "lvp": None}
+OCCLUDED_SCALARS = ("log1p_own_mass_max", "log_own_over_tree_max", "parent_log1p_own_mass_max", "parent_log_own_over_tree_max",
+                    "has_own_crop", "has_parent", "visibility")
+
+
+def side_allowed(group: str, side: Tensor) -> Tensor:
+    """Bool mask: may an instance from a run of this side feed this group's gated attention?"""
+    if group in EITHER_SIDE_GROUPS:
+        return torch.ones_like(side, dtype=torch.bool)
+    return (side < 0) | (side == (1 if group in RIGHT_SIDE_GROUPS else 0))
 
 
 def load_encoder(checkpoint: str | Path | None, device: str | torch.device = "cpu"):
@@ -263,6 +289,73 @@ class StudyLesionPooler(nn.Module):
         return (z[:, None] * self.segment).sum(-1), (z * self.any).sum(-1) + self.any_bias
 
 
+class CTOCollateralPath(nn.Module):
+    """v18 B: per segment, a separate small query attends over ALL of the segment's instances (every run's full view and the
+    segment's crops; NOT side-gated) so a CTO can be called from collaterals filled from the other side. Its output is
+    added to the CTO lesion logit only; it never feeds the stenosis head. Zero output weights at start (exact warm start)."""
+    def __init__(self, d: int, ng: int, width: int = 128):
+        super().__init__()
+        self.width = width
+        self.proj = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, width))
+        self.query = nn.Parameter(torch.randn(ng, width) * .02)
+        self.norm = nn.LayerNorm(width)
+        self.weight = nn.Parameter(torch.zeros(ng, width))
+        self.bias = nn.Parameter(torch.zeros(ng))
+
+    def forward(self, instances: Tensor, gi: int) -> tuple[Tensor, Tensor]:
+        """(instances, d) -> (() CTO logit offset, (instances,) attention)."""
+        k = self.proj(instances.to(self.query.dtype))
+        a = ((k * self.query[gi]).sum(-1) / self.width ** 0.5).float().softmax(0)
+        z = (a[:, None].to(k.dtype) * k).sum(0)
+        return (self.norm(z) * self.weight[gi]).sum() + self.bias[gi], a
+
+
+class VisibilityHead(nn.Module):
+    """v18 C: per-segment "imaged in this study" logit from detached bag statistics (VISIBILITY_STATS): run counts and
+    segment mask mass per side, and the share of the UNGATED attention that falls on allowed instances. Per-segment linear.
+    Start: logit 3*log1p(runs of the segment's default side) - 1 (right side for RCA / PDA / PL), i.e. ~.27 with no run."""
+    def __init__(self, groups: Sequence[str]):
+        super().__init__()
+        self.weight = nn.Parameter(torch.zeros(len(groups), len(VISIBILITY_STATS)))
+        self.bias = nn.Parameter(torch.full((len(groups),), -1.0))
+        with torch.no_grad():
+            for gi, g in enumerate(groups):
+                self.weight[gi, 0 if g in RIGHT_SIDE_GROUPS + EITHER_SIDE_GROUPS else 1] = 3.0
+
+    def forward(self, stats: Tensor) -> Tensor:
+        """(groups, stats) -> (groups,) logits."""
+        return (stats.to(self.weight.dtype) * self.weight).sum(-1) + self.bias
+
+
+class OccludedHead(nn.Module):
+    """v19 A: per-segment "100% occluded" hurdle logit. Inputs per segment: its pooled study vector (plus a learned NO_CROP
+    token when the segment has no own pass-2 crop), its parent's pooled vector (fixed SYNTAX table; a learned ROOT token for
+    segments without a parent), and detached scalars (OCCLUDED_SCALARS: own-mask mass and own / tree-fill mass, the same for
+    the parent, own-crop and has-parent flags, visibility). One MLP shared across segments with a one-hot segment input and a
+    per-segment bias. Output layer zero at start: logit = bias (-3, ~5%) for every study; no effect on any other output."""
+    def __init__(self, d: int, ng: int, width: int = 256, prior_logit: float = -3.0):
+        super().__init__()
+        self.ng = ng
+        self.no_crop = nn.Parameter(torch.zeros(d))
+        self.root = nn.Parameter(torch.zeros(d))
+        self.self_norm = nn.LayerNorm(d)
+        self.parent_norm = nn.LayerNorm(d)
+        self.mlp = nn.Sequential(nn.Linear(2 * d + len(OCCLUDED_SCALARS) + ng, width), nn.GELU(), nn.Linear(width, 1))
+        nn.init.zeros_(self.mlp[-1].weight)
+        nn.init.zeros_(self.mlp[-1].bias)
+        self.bias = nn.Parameter(torch.full((ng,), prior_logit))
+
+    def forward(self, features: Tensor, parent: Tensor, has_parent: Tensor, no_crop: Tensor, scalars: Tensor) -> Tensor:
+        """features, parent (groups, d); has_parent, no_crop (groups,) bool; scalars (groups, len(OCCLUDED_SCALARS))
+        -> (groups,) logits."""
+        dt = self.no_crop.dtype
+        x = features.to(dt) + no_crop.to(dt)[:, None] * self.no_crop
+        par = torch.where(has_parent[:, None], parent.to(dt), self.root.expand_as(parent).to(dt))
+        z = torch.cat((self.self_norm(x), self.parent_norm(par), scalars.to(dt),
+                       torch.eye(self.ng, device=x.device, dtype=dt)), dim=-1)
+        return self.mlp(z)[:, 0] + self.bias
+
+
 class IntegratedStudyModel(nn.Module):
     def __init__(self, encoder: nn.Module, groups: Sequence[str] = ALL_SEGMENTS,
                  train_blocks: int = 0, decoder_width: int = 128):
@@ -297,6 +390,33 @@ class IntegratedStudyModel(nn.Module):
         self.lesion_head = None  # optional (v11): per-segment calcification / thrombus / CTO logits
         self.lesion_pooler = None  # optional (v14): study-level attentive pooler added to the lesion logits
         self.dominance_head = None  # optional (v15): study coronary dominance logit
+        self.side_gating = False  # optional (v18 A): side-gated segment attention; enable_side_gating() adds not_imaged
+        self.cto_collateral = None  # optional (v18 B): ungated CTO collateral path
+        self.visibility_head = None  # optional (v18 C): per-segment visibility logit
+        self.occluded_head = None  # optional (v19 A): per-segment occluded hurdle logit
+
+    def enable_side_gating(self):
+        """v18 A. Segments only pool instances of runs of their side (unknown side allowed). A segment with no allowed
+        instance gets the learned not_imaged embedding as its pooled feature and is flagged in result["segment_imaged"]."""
+        if not hasattr(self, "not_imaged"):
+            self.not_imaged = nn.Parameter(torch.zeros_like(self.group_emb))
+        self.side_gating = True
+        return self.not_imaged
+
+    def enable_cto_collateral(self):
+        self.cto_collateral = CTOCollateralPath(self.q.shape[1], len(self.groups)).to(self.q.device)
+        return self.cto_collateral
+
+    def enable_visibility_head(self):
+        self.visibility_head = VisibilityHead(self.groups).to(self.q.device)
+        return self.visibility_head
+
+    def enable_occluded_head(self):
+        self.occluded_head = OccludedHead(self.q.shape[1], len(self.groups)).to(self.q.device)
+        return self.occluded_head
+
+    def v18_active(self) -> bool:
+        return bool(self.side_gating) or self.cto_collateral is not None or self.visibility_head is not None
 
     def enable_procedure_head(self):
         """Per-segment linear logits on the pooled segment feature; initialised to a ~2% prior."""
@@ -379,12 +499,123 @@ class IntegratedStudyModel(nn.Module):
             bag_attention.append(a)
         return torch.stack(predictions), torch.stack(study_features), bag_attention
 
+    def _pool_study_v18(self, tokens: Tensor, fractions: Tensor,
+                        crop_tokens: Tensor | None, crop_fractions: Tensor | None,
+                        specs: list[CropSpec], sides: Tensor) -> tuple[Tensor, Tensor, list[Tensor], dict]:
+        """_pool_study with the v18 options (only called when v18_active()). Instance construction and the attention
+        scores are the same operations as _pool_study; with side gating, instances of runs of the other side get score
+        -inf before the softmax (attention exactly 0). Extra outputs are returned in a dict."""
+        vg = tokens.mean(1)
+        nv = tokens.shape[0]
+        predictions, study_features, bag_attention = [], [], []
+        imaged, allowed_masks, instance_sides, stats, cto_offsets, cto_attention = [], [], [], [], [], []
+        side_counts = [(sides == s).sum().float() for s in (1, 0, -1)]
+        for gi, group in enumerate(self.groups):
+            fr = fractions[:, :, SEGMENT_CLASSES[group]].sum(-1)
+            mass = fr.sum(1)
+            pooled = (fr[:, :, None].to(tokens.dtype) * tokens).sum(1) / mass[:, None].clamp_min(1e-6)
+            view = torch.cat((pooled, vg, torch.log1p(mass)[:, None], torch.ones_like(mass[:, None])), dim=-1)
+            view = self.view_proj(view.to(self.q.dtype)) + self.group_emb[gi] + self.type_emb[1]
+            chosen = [i for i, s in enumerate(specs) if s.group == gi]
+            if chosen:
+                ct = crop_tokens[chosen]
+                cf = crop_fractions[chosen]
+                logits = (ct * self.q[gi][None, None]).sum(-1) / ct.shape[-1] ** 0.5
+                logits = logits + self.mask_w[gi] * (cf + 1e-3).log()
+                crop = (logits.softmax(-1)[:, :, None].to(ct.dtype) * ct).sum(1) + self.type_emb[0]
+                instances = torch.cat((crop.to(view.dtype), view), dim=0)
+                inst_video = [specs[i].video for i in chosen] + list(range(nv))
+            else:
+                instances = view
+                inst_video = list(range(nv))
+            inst_side = sides[torch.as_tensor(inst_video, device=sides.device)]
+            allowed = side_allowed(group, inst_side) if self.side_gating else torch.ones_like(inst_side, dtype=torch.bool)
+            score = self.att_w(torch.tanh(self.att_v(instances)) * torch.sigmoid(self.att_u(instances)))[:, 0].float()
+            if bool(allowed.all()):
+                a = score.softmax(0)
+                feat = (a[:, None].to(instances.dtype) * instances).sum(0)
+            elif bool(allowed.any()):
+                a = score.masked_fill(~allowed, float("-inf")).softmax(0)  # wrong-side instances: exactly 0
+                feat = (a[:, None].to(instances.dtype) * instances).sum(0)
+            else:  # no run of this segment's side in the bag: defined prediction from the learned embedding, flagged
+                a = torch.zeros_like(score)
+                feat = self.not_imaged[gi].to(instances.dtype)
+            predictions.append(self.head[gi](feat))
+            study_features.append(feat)
+            bag_attention.append(a)
+            imaged.append(bool(allowed.any()))
+            allowed_masks.append(allowed)
+            instance_sides.append(inst_side)
+            if self.visibility_head is not None:
+                with torch.no_grad():
+                    view_side, m = sides, mass.float()
+                    allowed_score = score.softmax(0)[allowed].sum() if bool(allowed.any()) else score.new_zeros(())
+                    stats.append(torch.stack([torch.log1p(c) for c in side_counts]
+                                             + [torch.log1p(m[view_side == s].sum()) for s in (1, 0, -1)] + [allowed_score]))
+            if self.cto_collateral is not None:
+                offset, ca = self.cto_collateral(instances, gi)
+                cto_offsets.append(offset)
+                cto_attention.append(ca)
+        extras = {"segment_imaged": torch.tensor(imaged, device=tokens.device), "allowed_masks": allowed_masks,
+                  "instance_sides": instance_sides}
+        if stats:
+            extras["visibility_stats"] = torch.stack(stats).detach()
+        if cto_offsets:
+            extras["cto_collateral_offset"] = torch.stack(cto_offsets)
+            extras["cto_collateral_attention"] = cto_attention
+        return torch.stack(predictions), torch.stack(study_features), bag_attention, extras
+
+    def _occluded_inputs(self, features: Tensor, fractions: Tensor, specs: list[CropSpec], result: dict):
+        """v19 A inputs (see OccludedHead). Mass per view = sum over tokens of the segment's mask fractions; tree fill = the
+        same for every non-background class; per segment the max over views of log1p(own) and of log(own / (tree + 1) + 1e-3).
+        Scalars are detached (statistics, as the v18 visibility inputs); the pooled vectors keep their gradient."""
+        ng = len(self.groups)
+        with torch.no_grad():
+            fr = fractions.float()
+            tree = fr[:, :, 1:].sum(-1).sum(1)  # (views,)
+            own = torch.stack([fr[:, :, SEGMENT_CLASSES[g]].sum(-1).sum(1) for g in self.groups])  # (groups, views)
+            s_mass = torch.log1p(own.max(1).values)
+            s_ratio = torch.log(own / (tree[None] + 1) + 1e-3).max(1).values
+            has_crop = torch.zeros(ng, dtype=torch.bool, device=fr.device)
+            for c in specs:
+                has_crop[c.group] = True
+            p_left = (result["dominance_probability"].detach().float().reshape(()) if "dominance_probability" in result
+                      else fr.new_zeros(()))
+            if "visibility_probability" in result:
+                vis = result["visibility_probability"].detach().float()
+            elif "segment_imaged" in result:
+                vis = result["segment_imaged"].float()
+            else:
+                vis = fr.new_ones(ng)
+        index = {g: i for i, g in enumerate(self.groups)}
+        parents, p_mass, p_ratio, has_parent = [], [], [], []
+        for g in self.groups:
+            par = OCCLUDED_PARENT.get(g)
+            if isinstance(par, tuple) and all(x in index for x in par):  # PDA / PL: dominance mix of dist_rca / dist_lcx
+                r, l = index[par[0]], index[par[1]]
+                w = p_left.to(features.dtype)
+                parents.append((1 - w) * features[r] + w * features[l])
+                p_mass.append((1 - p_left) * s_mass[r] + p_left * s_mass[l]); p_ratio.append((1 - p_left) * s_ratio[r] + p_left * s_ratio[l])
+                has_parent.append(True)
+            elif isinstance(par, str) and par in index:
+                parents.append(features[index[par]]); p_mass.append(s_mass[index[par]]); p_ratio.append(s_ratio[index[par]])
+                has_parent.append(True)
+            else:
+                parents.append(torch.zeros_like(features[0])); p_mass.append(s_mass.new_zeros(())); p_ratio.append(s_mass.new_zeros(()))
+                has_parent.append(False)
+        has_parent = torch.tensor(has_parent, device=features.device)
+        scalars = torch.stack([s_mass, s_ratio, torch.stack(p_mass), torch.stack(p_ratio), has_crop.float(),
+                               has_parent.float(), vis.to(s_mass.device)], dim=-1)
+        return torch.stack(parents), has_parent, ~has_crop, scalars
+
     def forward_study(self, clips: Sequence[Tensor], full_res: int = 224,
                       crop_res: int = 224, crops_per_group: int = 1,
                       max_full_views: int = 12, min_pixels: int = 200,
                       measurements: Tensor | None = None,
-                      modality: Tensor | None = None) -> dict:
+                      modality: Tensor | None = None, sides: Tensor | Sequence[int] | None = None) -> dict:
         """Raw native clips (each 16,H,W in [0,1]) -> all study predictions.
+
+        sides (v18, per clip: 0 left, 1 right, -1 unknown) is read only when a v18 option is enabled; None = all unknown.
 
         Study batching is intentionally explicit: one call holds one study, all
         its full views in one encoder call and all its selected crops in a second
@@ -399,6 +630,12 @@ class IntegratedStudyModel(nn.Module):
             raise ValueError("max_full_views must be positive; crops_per_group must be nonnegative")
         clips = list(clips)[:max_full_views]
         dev = self.q.device
+        v18 = self.v18_active()
+        if v18:
+            sides = (torch.full((len(clips),), -1, dtype=torch.long) if sides is None
+                     else torch.as_tensor(list(sides)[:max_full_views], dtype=torch.long)).to(dev)
+            if sides.shape != (len(clips),):
+                raise ValueError("sides must give one side per clip")
         clips = [x.to(device=dev, dtype=torch.float32) for x in clips]
         if any(x.ndim != 3 or x.shape[0] != N_FRAMES for x in clips):
             raise ValueError("Each clip must have shape (16,H,W)")
@@ -413,6 +650,8 @@ class IntegratedStudyModel(nn.Module):
         for gi, group in enumerate(self.groups):
             candidates = []
             for vi, raw in enumerate(clips):
+                if v18 and self.side_gating and not bool(side_allowed(group, sides[vi:vi+1])[0]):
+                    continue  # v18 A: pass-2 crops only on runs of the segment's side
                 m = np.isin(labels[vi], SEGMENT_CLASSES[group])
                 boxes = _tracked_boxes(m, tuple(raw.shape[-2:]), min_pixels)
                 if boxes is not None:
@@ -431,7 +670,11 @@ class IntegratedStudyModel(nn.Module):
                 fr_list.append(token_fractions(cp[None, :, None], (N_FRAMES // 2, crop_res // PATCH, crop_res // PATCH))[0, :, 0])
             crop_fr = torch.stack(fr_list)
             crop_tokens = self.encode(crop)  # ENCODER PASS 2, the SAME encoder
-        pred, features, attention = self._pool_study(tokens, fractions, crop_tokens, crop_fr, specs)
+        extras = {}
+        if v18:
+            pred, features, attention, extras = self._pool_study_v18(tokens, fractions, crop_tokens, crop_fr, specs, sides)
+        else:
+            pred, features, attention = self._pool_study(tokens, fractions, crop_tokens, crop_fr, specs)
         result = {
             "groups": self.groups, "severity": pred[:, 0] * 100,
             "binary_logits": pred[:, 1], "binary_probability": pred[:, 1].sigmoid(),
@@ -449,11 +692,28 @@ class IntegratedStudyModel(nn.Module):
                 lesion_logits = lesion_logits + offset.to(lesion_logits.dtype)
                 for name, logit in zip(LESION_OUTPUTS, study_logits):
                     result[f"lesion_{name}_study_logit"] = logit
+            if "cto_collateral_offset" in extras:  # v18 B: the collateral path feeds the CTO logit only
+                k = LESION_OUTPUTS.index("cto")
+                lesion_logits = torch.cat((lesion_logits[:k], (lesion_logits[k] + extras["cto_collateral_offset"].to(lesion_logits.dtype))[None],
+                                           lesion_logits[k+1:]))
             for name, logits in zip(LESION_OUTPUTS, lesion_logits):
                 result[f"lesion_{name}_logits"], result[f"lesion_{name}_probability"] = logits, logits.sigmoid()
+        if v18:
+            result.update(extras)
+            result["sides"] = sides
+            if self.cto_collateral is not None and self.lesion_head is None:
+                raise ValueError("The CTO collateral path needs the lesion head")
+            if self.visibility_head is not None:
+                result["visibility_logits"] = self.visibility_head(extras["visibility_stats"])
+                result["visibility_probability"] = result["visibility_logits"].sigmoid()
         if self.dominance_head is not None:
             result["dominance_logit"] = self.dominance_head(features)
             result["dominance_probability"] = result["dominance_logit"].sigmoid()
+        if self.occluded_head is not None:  # v19 A (after dominance / visibility, which it reads detached)
+            parent, has_parent, no_crop, scalars = self._occluded_inputs(features, fractions, specs, result)
+            result["occluded_logits"] = self.occluded_head(features, parent, has_parent, no_crop, scalars)
+            result["occluded_probability"] = result["occluded_logits"].sigmoid()
+            result["occluded_scalars"] = scalars
         if self.physiology_head is not None:
             geometry_audit = None
             if self.physiology_head.geometry_dim and measurements is None:

@@ -287,6 +287,14 @@ def multilayer_model_from_payload(payload, device="cpu", train_blocks=0, upgrade
         model.enable_lesion_pooler()
     if any(k.startswith("dominance_head.") for k in payload["state_dict"]):
         model.enable_dominance_head()
+    if "not_imaged" in payload["state_dict"]:  # v18 A: a side-gated checkpoint keeps its gating
+        model.enable_side_gating()
+    if any(k.startswith("cto_collateral.") for k in payload["state_dict"]):
+        model.enable_cto_collateral()
+    if any(k.startswith("visibility_head.") for k in payload["state_dict"]):
+        model.enable_visibility_head()
+    if any(k.startswith("occluded_head.") for k in payload["state_dict"]):  # v19 A
+        model.enable_occluded_head()
     missing, unexpected = model.load_state_dict(payload["state_dict"], strict=is_v2)
     if unexpected or any(not (k == "mask_decoder.intermediate_gate" or k.startswith("mask_decoder.intermediate_proj.")) for k in missing):
         raise ValueError(f"V1 bundle structure mismatch: missing={missing}, unexpected={unexpected}")

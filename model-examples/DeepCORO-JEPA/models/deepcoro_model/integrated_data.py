@@ -91,6 +91,13 @@ def clip_indices(frames: Sequence[np.ndarray], sampling: str = "uniform16", coun
     n = len(frames)
     if sampling == "uniform16" or n < 2 * count:
         return raw_clip_indices(n, count)
+    if sampling in ("peak_s3", "peak_s4"):  # 2026-11-16 validation-only frame screen (wider window around the same dye peak)
+        s = np.array([dye_score(f) for f in frames])
+        centre = int(np.argmax(np.convolve(s, np.ones(5) / 5, mode="same")))
+        stride = min(int(sampling[-1]), (n - 1) // (count - 1))
+        span = stride * (count - 1)
+        start = int(np.clip(round(centre - span / 2), 0, n - 1 - span))
+        return start + stride * np.arange(count, dtype=np.int64)
     if sampling == "peak_s2":
         s = np.array([dye_score(f) for f in frames])
         centre = int(np.argmax(np.convolve(s, np.ones(5) / 5, mode="same")))
@@ -166,13 +173,29 @@ class CachedMasks(Dataset):
                 "agreement": agreement[None], "sample_id": row["sample_id"]}
 
 
+VIDEO_SIDE_SOURCE = "/media/data1/datasets/DeepCoro/2b_CathReport_HEMO_MHI_MERGED_2017-2024_VIDEO_LEVEL_with_status_and_split.parquet"
+SIDE_CODES = {"Left Coronary": 0, "Right Coronary": 1}  # anything else (Unknown, Other, Catheter, missing): -1
+
+
+def load_side_lookup(path: str | Path = VIDEO_SIDE_SOURCE) -> dict:
+    """v18: FileName -> run side (0 left, 1 right, -1 otherwise) from main_structure_name, the classifier that built the
+    cohort (first row per FileName, as v17_prep/imaged_mask.py)."""
+    import pandas as pd
+    meta = pd.read_parquet(path, columns=["FileName", "main_structure_name"]).drop_duplicates("FileName")
+    return {str(f): SIDE_CODES.get(n, -1) for f, n in zip(meta.FileName, meta.main_structure_name)}
+
+
 class StudyClips(Dataset):
-    """Study-level raw clips; labels must already have the patient split checked."""
-    def __init__(self, rows, groups, max_views=12, sampling="uniform16"):
+    """Study-level raw clips; labels must already have the patient split checked.
+
+    side_lookup (v18, default None = no "side" key): FileName -> side; adds a per-view long tensor "side" (0 left, 1 right,
+    -1 unknown or not in the lookup) aligned with "clips"."""
+    def __init__(self, rows, groups, max_views=12, sampling="uniform16", side_lookup=None):
         self.rows = rows.reset_index(drop=True)
         self.groups = tuple(groups)
         self.max_views = max_views
         self.sampling = sampling
+        self.side_lookup = side_lookup
 
     def __len__(self):
         return len(self.rows)
@@ -194,9 +217,25 @@ class StudyClips(Dataset):
         pressure = torch.tensor([float(row[k]) if k in row else nan for k in ("ffr_value", "ifr_value")])  # v12; NaN = none
         anchor = torch.tensor([float(row[f"{g}_anchor"]) if f"{g}_anchor" in row else nan for g in self.groups])  # v15; v13 ep0 severity, NaN = none
         dominance = torch.tensor([float(row[k]) if k in row else nan for k in ("dominance_target", "dominance_weight")])  # v15; 1 = left
-        return {"uid": row.uid, "clips": clips, "severity": severity, "procedure": procedure, "lesion": lesion, "pressure": pressure,
-                "anchor": anchor, "dominance": dominance,
-                "patient": str(row.patient_id_anon), "video_provenance": [x[1] for x in loaded]}
+        # v16 distillation targets (NaN = no teacher): pressure (ffr, ifr, ffr_logit, ifr_logit); lesion segment logits; study logits
+        pressure_teacher = torch.tensor([float(row[f"ptch_{k}"]) if f"ptch_{k}" in row else nan for k in ("ffr", "ifr", "ffr_logit", "ifr_logit")])
+        lesion_teacher = torch.tensor([[float(row[f"{g}_ltch_{k}"]) if f"{g}_ltch_{k}" in row else nan for g in self.groups]
+                                       for k in ("calcif", "thrombus", "cto")])
+        lesion_study_teacher = torch.tensor([float(row[f"ltch_study_{k}"]) if f"ltch_study_{k}" in row else nan for k in ("calcif", "thrombus", "cto")])
+        # v17 (read only; used only when the trainer enables stenosis_label_weight / postpci_onesided): arm A per-segment
+        # label weight ({g}_stenosis_weight, 1 when absent or NaN) and arm C one-sided '<= 30%' flag ({g}_onesided, 0 when absent)
+        def _col(g, name, default):
+            v = row[f"{g}_{name}"] if f"{g}_{name}" in row else default
+            return default if v is None or (isinstance(v, float) and v != v) else float(v)
+        severity_weight = torch.tensor([_col(g, "stenosis_weight", 1.0) for g in self.groups])
+        onesided = torch.tensor([_col(g, "onesided", 0.0) > 0 for g in self.groups])
+        out = {"uid": row.uid, "clips": clips, "severity": severity, "procedure": procedure, "lesion": lesion, "pressure": pressure,
+               "anchor": anchor, "dominance": dominance, "pressure_teacher": pressure_teacher, "lesion_teacher": lesion_teacher,
+               "lesion_study_teacher": lesion_study_teacher, "severity_weight": severity_weight, "onesided": onesided,
+               "patient": str(row.patient_id_anon), "video_provenance": [x[1] for x in loaded]}
+        if self.side_lookup is not None:  # v18
+            out["side"] = torch.tensor([int(self.side_lookup.get(str(f), -1)) for f in files], dtype=torch.long)
+        return out
 
 
 def one_study(batch):

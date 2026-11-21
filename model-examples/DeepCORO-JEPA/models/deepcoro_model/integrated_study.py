@@ -178,17 +178,18 @@ def save_model(model, path, lineage, physiology_config, args, **extra):
     temporary.replace(path)
 
 
-def forward(model, clips, args):
+def forward(model, clips, args, sides=None):
+    extra = {} if sides is None else {"sides": sides}  # v18: per-clip run side, only passed when given
     with amp(args.device):
         return model(clips, full_res=args.full_res, crop_res=args.crop_res,
-                     max_full_views=args.max_views, crops_per_group=args.crops_per_group)
+                     max_full_views=args.max_views, crops_per_group=args.crops_per_group, **extra)
 
 
-def measured_forward(model, clips, args):
+def measured_forward(model, clips, args, sides=None):
     encoder_calls = []
     handle = model.enc.register_forward_hook(lambda module, inputs, outputs: encoder_calls.append(1))
     try:
-        result = forward(model, clips, args)
+        result = forward(model, clips, args, sides=sides)
     finally:
         handle.remove()
     if len(encoder_calls) > 2 or len(encoder_calls) != result["encoder_passes"]:
