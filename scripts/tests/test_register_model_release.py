@@ -192,6 +192,12 @@ class RegisterModelReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(CATALOG.CatalogRegistrationError, "CA file not found"):
             CATALOG.tls_context(str(Path(self.temp_dir.name) / "missing.pem"), False)
 
+    def test_invalid_ca_file_is_a_registration_error(self):
+        ca = Path(self.temp_dir.name) / "ca.pem"
+        ca.write_text("not a certificate", encoding="utf-8")
+        with self.assertRaisesRegex(CATALOG.CatalogRegistrationError, "could not be loaded as PEM"):
+            CATALOG.tls_context(str(ca), False)
+
     def test_ca_file_and_insecure_are_mutually_exclusive(self):
         with self.assertRaises(SystemExit), mock.patch("sys.stderr", io.StringIO()):
             CATALOG.parse_args(["e.json", "--api-url", "https://h/api", "--sudo-key-file", "k",

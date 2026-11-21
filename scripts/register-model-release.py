@@ -209,7 +209,10 @@ def tls_context(ca_file: str | None, insecure: bool) -> ssl.SSLContext:
         path = Path(ca_file).resolve()
         if not path.is_file():
             raise CatalogRegistrationError(f"CA file not found: {path}")
-        return ssl.create_default_context(cafile=str(path))
+        try:
+            return ssl.create_default_context(cafile=str(path))
+        except (ssl.SSLError, OSError) as exc:
+            raise CatalogRegistrationError(f"CA file {path} could not be loaded as PEM: {exc}") from exc
     return ssl.create_default_context()
 
 
