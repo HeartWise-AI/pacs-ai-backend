@@ -32,6 +32,12 @@ RUN --mount=type=secret,id=hf_token \
       --weights-path "${PACS_AI_WEIGHTS_PATH}" \
       --weights-sha256 "${PACS_AI_WEIGHTS_SHA256}"
 
+# Pinned procedure/view classifier used to keep only diagnostic L/R coronary runs (models/run_filter.json)
+COPY download_run_filter.py .
+COPY models/run_filter.json ./models/run_filter.json
+RUN --mount=type=secret,id=hf_token \
+    python download_run_filter.py --token-file /run/secrets/hf_token
+
 # Copy application files
 COPY main.py .
 COPY logic.py .

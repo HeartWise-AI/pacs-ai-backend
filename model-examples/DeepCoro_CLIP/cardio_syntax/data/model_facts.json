@@ -2,10 +2,10 @@
   "en": {
     "Summary": {
       "Name": "CardioSyntax",
-      "Description": "Calculate the SYNTAX score from coronary angiogram images. The SYNTAX score quantifies the complexity of coronary artery disease based on lesion characteristics. Use this tool ONLY for SYNTAX score calculation. DO NOT use for stenosis severity assessment, thrombus detection, CTO detection, or calcification detection - use DeepCoro_CLIP_generic for those.",
+      "Description": "Calculate the SYNTAX score from coronary angiogram images. The SYNTAX score quantifies the complexity of coronary artery disease based on lesion characteristics. Use this tool ONLY for SYNTAX score calculation. DO NOT use for stenosis severity assessment, thrombus detection, CTO detection, or calcification detection - use DeepCoro_CLIP_generic for those. Model v6 (run 20260929-203527, epoch 19): modified 16-segment SYNTAX score trained on merged CardioSYNTAX + MHI studies. Held-out test MAE 3.21 points (CardioSYNTAX) / 4.47 (MHI), ICC 0.86 / 0.79, AUROC for SYNTAX >= 23 0.97 / 0.89.",
       "Developed_by": "Heartwise",
-      "Development_period": "2024-2025",
-      "Version": "1.0.0"
+      "Development_period": "2024-2026",
+      "Version": "1.1.0"
     },
     "Mechanism": {
       "Outcome": "Predict cardiac syntax",
@@ -30,7 +30,8 @@
     "Warnings_and_limitations": {
       "Image_Quality": "The model requires high-quality angiograms with clear visualization of the cardiac syntax.",
       "Multiple_Devices": "The model is designed to predict cardiac syntax from multiple angiograms.",
-      "Confidence_Scores": "Current threshold applied on probability output for classification is defined in class_mapping.json"
+      "Confidence_Scores": "Current threshold applied on probability output for classification is defined in class_mapping.json",
+      "Score_definition": "Modified SYNTAX score (16 segments): tortuosity and most total-occlusion sub-modifiers are not scored, so the score is biased downward, most in complex anatomy (v6 mean bias -10 points for SYNTAX >= 33). Untested after CABG. Under peer review; not for clinical use."
     }
   }
 }
