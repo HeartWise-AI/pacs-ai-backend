@@ -65,7 +65,11 @@ func TestManagedInferenceGatewayAuthenticatesAndForwardsPreparedRequest(t *testi
 	require.Equal(t, 1, service.calls)
 	require.Equal(t, "tenant-a", service.tenantID)
 	require.Equal(t, "echo-prime", service.containerRef)
-	require.Equal(t, dockerInferenceTypes.OutputModeJSON, service.request.OutputMode)
+	// The model request is forwarded encoded, not decoded into fields.
+	var forwarded dockerInferenceTypes.PredictRequest
+	require.NoError(t, json.Unmarshal(service.request.Raw, &forwarded))
+	require.Equal(t, dockerInferenceTypes.OutputModeJSON, forwarded.OutputMode)
+	service.request = forwarded
 	var response struct {
 		Success bool                   `json:"success"`
 		Data    map[string]interface{} `json:"data"`
@@ -120,4 +124,30 @@ func TestManagedInferenceGatewayMapsDeploymentBlockToRetryable503(t *testing.T) 
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
 	require.Equal(t, "INFERENCE_ADMISSION_BLOCKED", response.ErrorCode)
 	require.Equal(t, "The model is temporarily unavailable during a deployment transition.", response.Message)
+}
+
+func TestSplitManagedEnvelopeKeepsLargeRequestBytesUntouched(t *testing.T) {
+	payload := strings.Repeat("QUJD", managedFastPathMinBytes/4+16)
+	inner := `{"outputMode":"JSON","seriesInstanceImages":{"0":{"0":"` + payload + `"}}}`
+	body := []byte(`{"tenantId":"tenant-a", "containerRef":"panecho", "request": ` + inner + ` }`)
+
+	envelope, ok := splitManagedEnvelope(body)
+
+	require.True(t, ok)
+	require.Equal(t, "tenant-a", envelope.TenantID)
+	require.Equal(t, "panecho", envelope.ContainerRef)
+	require.Equal(t, inner, string(envelope.Request))
+}
+
+func TestSplitManagedEnvelopeLeavesSmallOrUnusualBodiesToTheFullDecoder(t *testing.T) {
+	_, ok := splitManagedEnvelope([]byte(`{"tenantId":"t","containerRef":"c","request":{}}`))
+	require.False(t, ok, "small bodies are fully decoded")
+
+	payload := strings.Repeat("QUJD", managedFastPathMinBytes/4+16)
+	_, ok = splitManagedEnvelope([]byte(`{"request":{"a":"` + payload + `"},"tenantId":"t","containerRef":"c"}`))
+	require.False(t, ok, "request must be the last key")
+	_, ok = splitManagedEnvelope([]byte(`{"tenantId":"t","other":1,"request":{"a":"` + payload + `"}}`))
+	require.False(t, ok, "unknown keys fall back")
+	_, ok = splitManagedEnvelope([]byte(`{"tenantId":"t","containerRef":"c","request":"` + payload + `"}`))
+	require.False(t, ok, "request must be an object")
 }

@@ -17,6 +17,14 @@ class Config(BaseModel):
     std: list[float]
     class_mapping: str
     model_path: str
+    # Videos per GPU forward and CPU threads preparing them (not in the weights repository's config.json, so
+    # these defaults are what the image runs). Measured on a 37-video study (MHI, 2026-11-15): 1 video per
+    # forward with 8 threads takes 11 s against 35 s with 1 thread, with bit-identical predictions and 0.8 GiB
+    # of GPU memory; 8 videos per forward takes the same 11 s but 7.6 GiB and moves the dominance probability
+    # by up to 0.0015. So batching stays at 1. forward_batch_size is part of the preprocessing contract and of
+    # the declared GPU memory: change the three together.
+    forward_batch_size: int = Field(default=1, ge=1, le=16)
+    preprocess_workers: int = Field(default=8, ge=1, le=16)
 
 
 class HTTPResponse:
@@ -63,7 +71,7 @@ class PredictRequest(BaseModel):
     outputMode: str
 
 class JsonPredictionResponse(BaseModel):
-    predictions: list[dict[str, str]]
+    predictions: list[dict[str, str | float]]  # labels, and dominance_left_probability since 1.0.3
 
 class OHIFPredictionResponse(BaseModel):
     class Segmentation(BaseModel):

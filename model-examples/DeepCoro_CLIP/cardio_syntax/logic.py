@@ -12,6 +12,7 @@ from io import BytesIO
 from typing import Optional
 from torchvision.transforms import v2
 
+from utils.dicom_pixels import to_display_uint8
 from utils.html_parser import HTMLParser
 from utils.syntax_constants import SYNTAX_CATEGORY_LABELS
 from models.video_encoder import VideoEncoder
@@ -681,6 +682,8 @@ def process_dicom_video(
         print(f"Error reading PhotometricInterpretation from {dicom}")
         return None
 
+    video = to_display_uint8(video, photometrics)
+
     fourcc: int = cv.VideoWriter_fourcc("M", "J", "P", "G")
     out: cv.VideoWriter = cv.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
@@ -689,7 +692,7 @@ def process_dicom_video(
         if photometrics in ("MONOCHROME1", "MONOCHROME2")
         else cv.COLOR_RGB2BGR
     )
-    for frame in dicom.pixel_array:
+    for frame in video:
         out.write(cv.cvtColor(frame, conversion_fn))
 
     out.release()

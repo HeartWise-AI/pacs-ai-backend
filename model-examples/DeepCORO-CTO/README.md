@@ -102,3 +102,27 @@ CTO artery localisation AUROC: LAD 0.86, RCA 0.92, LCx 0.79. LCx grading is not 
 (20 test / 108 training CTOs).
 
 Research preview — not validated for clinical use outside MHI.
+
+## Report of a stored result
+
+`POST /inference/render-report` with `{"result": <data of a JSON-mode predict response>}` returns
+`{"htmlBase64", "modelVersion"}`: the HTML document HTML-mode predict returns for that prediction, with
+one difference. The four J-CTO component probabilities are printed as stored, to three decimals, under a
+short note. The live report prints two decimals of the raw probability, and the stored three decimals do
+not determine them when the third is 5 (0.135 was shown as 0.13 or 0.14). The score, difficulty band,
+Present/Absent calls, per-artery table and recommendation are identical to the live report.
+It runs on the CPU, does not load the model, and does not count as model activity.
+`GET /inference/model-info` advertises it as `capabilities.renderReport: true`.
+
+Nothing stored is copied into the page. The stored numbers are checked (type, finite, range, decimals),
+then `CustomPredictionService.report_html` looks for a raw model output whose JSON output, regenerated
+by the predict code, is the stored result, and renders the report from it. A result whose values or
+text are not what this model version writes for those numbers (an edited recommendation, a result of
+another model version with other thresholds) is refused with 422 (`INVALID_RESULT`); a body over
+64 KB is refused with 413.
+
+## Changelog
+
+- 2.0.3: adds `POST /inference/render-report` and `capabilities.renderReport` in model-info.
+  No change to the model, weights, preprocessing, predictions or live report; the version is
+  bumped because an image of 2.0.2 is already published.

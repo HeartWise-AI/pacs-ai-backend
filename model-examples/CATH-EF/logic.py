@@ -11,6 +11,7 @@ import numpy as np
 import pydicom
 import torch
 import torchvision
+from utils.dicom_pixels import dicom_display_pixels
 from utils.genericLogic import BasePredictionService
 from utils.html_parser import generate_vessel_report
 from utils.http_utils import Config, PredictRequest
@@ -141,7 +142,7 @@ class CustomPredictionService(BasePredictionService):
         self, dicom: pydicom.Dataset, mean: list[float], std: list[float], framesToUse: int
     ) -> torch.Tensor:
         """Preprocess a single DICOM series for inference"""
-        data = np.expand_dims(dicom.pixel_array, axis=1).repeat(3, axis=1)
+        data = np.expand_dims(dicom_display_pixels(dicom), axis=1).repeat(3, axis=1)
         compressedVideo = self.videoShenanigans(
             np.transpose(data, (0, 2, 3, 1)).astype(np.uint8)
         )
@@ -177,7 +178,7 @@ class CustomPredictionService(BasePredictionService):
         lvef_batch = []
 
         for serie in series:
-            data = np.expand_dims(serie.pixel_array, axis=1).repeat(3, axis=1)
+            data = np.expand_dims(dicom_display_pixels(serie), axis=1).repeat(3, axis=1)
             compressedVideo = self.videoShenanigans(
                 np.transpose(data, (0, 2, 3, 1)).astype(np.uint8)
             )

@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
@@ -18,10 +19,17 @@ type AddInferenceModel struct {
 }
 
 type DeployInferenceModelVersion struct {
-	TenantID    string
-	ModelID     string
-	VersionID   string
-	ActorUserID string
+	TargetGPUUUID       string
+	ExpectedContainerID string
+	TenantID            string
+	ModelID             string
+	VersionID           string
+	ActorUserID         string
+	// KeepRunningImage recreates the container from the image it runs (a GPU
+	// move) instead of deploying VersionID. Automatic marks a move started by
+	// the placement loop: it is refused rather than disturb a model in use.
+	KeepRunningImage bool
+	Automatic        bool
 }
 
 type DeployInferenceModelVersionResult struct {
@@ -67,6 +75,10 @@ type CreateInferenceIngestionJob struct {
 	StudyTimeEnd           string
 	ScheduleStartTimestamp uint64
 	ScheduleEndTimestamp   uint64
+	// CreatedByUserID is the authenticated user creating the job.
+	CreatedByUserID string
+	// NotificationsEnabled nil means on.
+	NotificationsEnabled *bool
 }
 
 type CreateStudyProcessingRun struct {
@@ -110,6 +122,9 @@ type BuildStudyServiceDispatchRequestInput struct {
 	ProcessingExecutionID *string
 	DispatchIntent        DispatchStudyIntent
 	RequestID             *string
+	// SeriesInstanceUIDs is the caller-selected series of a viewer run; empty
+	// lets study-service use every series of the modality.
+	SeriesInstanceUIDs []string
 }
 
 type DispatchStudyRequest struct {
@@ -126,6 +141,9 @@ type DispatchStudyRequest struct {
 	Modality              string              `json:"modality"`
 	ModelName             string              `json:"model_name"`
 	ModelVersion          string              `json:"model_version"`
+	// SeriesInstanceUIDs restricts the job to these series. It is omitted for
+	// automatic and study-wide manual dispatches.
+	SeriesInstanceUIDs []string `json:"series_instance_uids,omitempty"`
 }
 
 type DispatchStudyResponse struct {
@@ -162,6 +180,36 @@ type StudyServiceJob struct {
 type StudyServiceJobResult struct {
 	StudyServiceJob
 	ResultJSON json.RawMessage `json:"result_json"`
+	// SelectedViews is study-service's top-level selection audit. It stays
+	// opaque; absent or null means the run did not record its selection.
+	SelectedViews json.RawMessage `json:"selectedViews"`
+}
+
+// StudyServiceLatestResult is one latest completed study-service job per
+// (model, modality) from GET /jobs/by-study/{uid}/latest-results. Modality uses
+// study-service values (for example "angiogram"), as dispatch does.
+type StudyServiceLatestResult struct {
+	JobID                 string          `json:"jobId"`
+	ModelName             string          `json:"modelName"`
+	ModelVersion          *string         `json:"modelVersion"`
+	Modality              string          `json:"modality"`
+	Status                string          `json:"status"`
+	CreatedAt             *string         `json:"createdAt"`
+	CompletedAt           *string         `json:"completedAt"`
+	RerunOf               *string         `json:"rerunOf"`
+	ProcessingRunID       *string         `json:"processingRunId"`
+	ProcessingExecutionID *string         `json:"processingExecutionId"`
+	SelectedViews         json.RawMessage `json:"selectedViews"`
+	// DispatchSeriesInstanceUIDs is the series list the run was dispatched
+	// with: null when study-service recorded none (the run used every series
+	// of the modality), and absent from a study-service that predates the field.
+	DispatchSeriesInstanceUIDs json.RawMessage `json:"dispatchSeriesInstanceUIDs,omitempty"`
+}
+
+// StudyServiceLatestResults is the study-service latest-results envelope.
+type StudyServiceLatestResults struct {
+	StudyInstanceUID string                     `json:"studyInstanceUID"`
+	Results          []StudyServiceLatestResult `json:"results"`
 }
 
 type StudyServiceJobsResponse struct {
@@ -247,6 +295,13 @@ type WorklistNotification struct {
 	StartedAt         *time.Time                                             `json:"startedAt"`
 	CompletedAt       *time.Time                                             `json:"completedAt"`
 	UpdatedAt         time.Time                                              `json:"updatedAt"`
+	// Optional execution context of the transition that produced this event.
+	ExecutionID string                                       `json:"executionId,omitempty"`
+	ModelName   string                                       `json:"modelName,omitempty"`
+	Status      entity.InferenceIngestionProcessingJobStatus `json:"status,omitempty"`
+	// Audience is server-only routing metadata. It travels between gateway
+	// instances inside the Redis envelope and is never serialised to browsers.
+	Audience WorklistNotificationAudience `json:"-"`
 }
 
 type GetContainerInfoResult struct {
@@ -361,6 +416,8 @@ type UpdateInferenceIngestionJob struct {
 	StudyTimeEnd           string
 	ScheduleStartTimestamp uint64
 	ScheduleEndTimestamp   uint64
+	// NotificationsEnabled nil leaves the stored value unchanged.
+	NotificationsEnabled *bool
 }
 
 type UpdateModelFeedback struct {
@@ -400,4 +457,79 @@ type OnboardingModelQuestionnaireAnswer struct {
 	QuestionnaireQuestion  string
 	QuestionnaireAnswerIDs []string
 	QuestionnaireAnswers   []string
+}
+
+// WorklistNotificationAudience says who should be notified (bell + toast)
+// about a worklist event. The status event itself reaches every tenant
+// subscriber regardless; only the notification is filtered.
+type WorklistNotificationAudience struct {
+	// Resolved is false when the publisher could not determine the jobs behind
+	// an automatic run (or the envelope came from an older gateway). Automatic
+	// runs then notify workspace admins only.
+	Resolved bool `json:"resolved"`
+	// RequestedByUserID launched a manual or viewer run.
+	RequestedByUserID string `json:"requestedByUserId,omitempty"`
+	// CancelledByUserID cancelled the run's waiting executions, if anyone did.
+	CancelledByUserID string `json:"cancelledByUserId,omitempty"`
+	// AnyJobNotificationsEnabled is true when at least one automatic ingestion
+	// job behind the run has notifications on.
+	AnyJobNotificationsEnabled bool `json:"anyJobNotificationsEnabled"`
+	// NotifyJobOwnerUserIDs are the creators of the jobs with notifications on.
+	NotifyJobOwnerUserIDs []string `json:"notifyJobOwnerUserIds,omitempty"`
+}
+
+// WorklistNotificationViewer is one connected worklist client.
+type WorklistNotificationViewer struct {
+	UserID string
+	// IsAdmin is true for workspace roles ADMIN and OWNER.
+	IsAdmin bool
+	// AutomaticRunsMuted is the user's personal opt-out of automatic-run notifications.
+	AutomaticRunsMuted bool
+}
+
+// IsAutomaticWorklistTrigger reports whether a run was started by an
+// automatic ingestion job rather than by a person.
+func IsAutomaticWorklistTrigger(trigger entity.InferenceIngestionProcessingRunTrigger) bool {
+	return trigger == entity.InferenceIngestionProcessingRunTriggerAuto ||
+		trigger == entity.InferenceIngestionProcessingRunTriggerLegacyImport
+}
+
+// ShouldNotify applies the notification audience policy for one viewer:
+//   - automatic runs notify the creators of the jobs behind the run that have
+//     notifications on, plus workspace admins, unless every job has
+//     notifications off, and never a viewer who muted automatic runs;
+//   - every other run notifies only the user who launched it.
+func (notification WorklistNotification) ShouldNotify(viewer WorklistNotificationViewer) bool {
+	audience := notification.Audience
+	userID := strings.TrimSpace(viewer.UserID)
+	if IsAutomaticWorklistTrigger(notification.Trigger) {
+		if viewer.AutomaticRunsMuted {
+			return false
+		}
+		if !audience.Resolved {
+			return viewer.IsAdmin
+		}
+		if !audience.AnyJobNotificationsEnabled {
+			return false
+		}
+		if viewer.IsAdmin {
+			return true
+		}
+		if userID == "" {
+			return false
+		}
+		for _, ownerID := range audience.NotifyJobOwnerUserIDs {
+			if ownerID == userID {
+				return true
+			}
+		}
+		return false
+	}
+	return userID != "" && audience.RequestedByUserID == userID
+}
+
+// CancelledByViewer reports whether this viewer cancelled the run.
+func (notification WorklistNotification) CancelledByViewer(viewer WorklistNotificationViewer) bool {
+	userID := strings.TrimSpace(viewer.UserID)
+	return userID != "" && notification.Audience.CancelledByUserID == userID
 }

@@ -1,6 +1,7 @@
 import importlib.util
 import io
 import json
+import ssl
 import sys
 import tempfile
 import unittest
@@ -153,6 +154,54 @@ class RegisterModelReleaseTests(unittest.TestCase):
 
         self.assertEqual(2, open_request.call_count)
         sleep.assert_called_once_with(1.0)
+
+
+    def test_html_answer_points_to_the_api_path_prefix(self):
+        class HtmlResponse(Response):
+            def __enter__(self):
+                return io.StringIO("<!doctype html><html></html>")
+
+        with self.assertRaisesRegex(CATALOG.CatalogRegistrationError, "https://<host>/api"):
+            CATALOG.register_catalog_version(
+                endpoint="https://pacs.example/v1/inference/model/versions/publish",
+                sudo_key="secret",
+                payload={"modelId": "x"},
+                open_request=mock.Mock(return_value=HtmlResponse(None)),
+                sleep=mock.Mock(),
+            )
+
+    def test_untrusted_certificate_names_the_tls_options_without_retrying(self):
+        error = ssl.SSLCertVerificationError(1, "certificate verify failed")
+        error.verify_message = "certificate has expired"
+        open_request = mock.Mock(side_effect=urllib.error.URLError(error))
+        with self.assertRaisesRegex(CATALOG.CatalogRegistrationError, "--ca-file.*--insecure"):
+            CATALOG.register_catalog_version(
+                endpoint="https://pacs.example/api/v1/inference/model/versions/publish",
+                sudo_key="secret",
+                payload={"modelId": "x"},
+                open_request=open_request,
+                sleep=mock.Mock(),
+            )
+        self.assertEqual(1, open_request.call_count)
+
+    def test_tls_context_verifies_by_default_and_only_skips_when_asked(self):
+        self.assertEqual(ssl.CERT_REQUIRED, CATALOG.tls_context(None, False).verify_mode)
+        insecure = CATALOG.tls_context(None, True)
+        self.assertEqual(ssl.CERT_NONE, insecure.verify_mode)
+        self.assertFalse(insecure.check_hostname)
+        with self.assertRaisesRegex(CATALOG.CatalogRegistrationError, "CA file not found"):
+            CATALOG.tls_context(str(Path(self.temp_dir.name) / "missing.pem"), False)
+
+    def test_invalid_ca_file_is_a_registration_error(self):
+        ca = Path(self.temp_dir.name) / "ca.pem"
+        ca.write_text("not a certificate", encoding="utf-8")
+        with self.assertRaisesRegex(CATALOG.CatalogRegistrationError, "could not be loaded as PEM"):
+            CATALOG.tls_context(str(ca), False)
+
+    def test_ca_file_and_insecure_are_mutually_exclusive(self):
+        with self.assertRaises(SystemExit), mock.patch("sys.stderr", io.StringIO()):
+            CATALOG.parse_args(["e.json", "--api-url", "https://h/api", "--sudo-key-file", "k",
+                                "--ca-file", "ca.pem", "--insecure"])
 
 
 if __name__ == "__main__":

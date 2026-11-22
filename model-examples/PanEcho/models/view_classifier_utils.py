@@ -1,6 +1,8 @@
 import numpy as np
 import pydicom
 
+from utils.dicom_pixels import to_display_uint8
+
 
 def to_uint8(array: np.ndarray) -> np.ndarray:
     array = array - np.min(array)
@@ -12,12 +14,16 @@ def to_uint8(array: np.ndarray) -> np.ndarray:
     return np.uint8(array)
 
 
-def load_pixel_array(dcm: pydicom.Dataset) -> np.ndarray:
-    """Decode DICOM pixels, correcting mislabeled YBR_FULL_422 when needed.
+JPEG_LS_TRANSFER_SYNTAXES = {"1.2.840.10008.1.2.4.80", "1.2.840.10008.1.2.4.81"}
+_PREFERRED_JPEG_LS_PLUGIN = "pyjpegls"
+
+
+def _retag_mislabeled_ybr(dcm: pydicom.Dataset) -> None:
+    """Correct mislabeled YBR_FULL_422 before decoding.
 
     Some echo vendors tag PhotometricInterpretation as YBR_FULL_422 while the
     native PixelData buffer is full YBR_FULL/RGB sized (1/3 larger). Retag
-    before .pixel_array for that case; leave encapsulated payloads to pylibjpeg.
+    for that case; leave encapsulated payloads to the decoder plugin.
     """
     pi = getattr(dcm, "PhotometricInterpretation", None)
     if pi == "YBR_FULL_422" and hasattr(dcm, "PixelData"):
@@ -31,7 +37,71 @@ def load_pixel_array(dcm: pydicom.Dataset) -> np.ndarray:
                 dcm.PhotometricInterpretation = "YBR_FULL"
         except TypeError:
             pass
+
+
+def decoding_plugin(dcm: pydicom.Dataset) -> str:
+    """Name of the decoder plugin to request, or "" for pydicom's default order.
+
+    JPEG-LS frames decode about five times faster with the CharLS plugin (pyjpegls) than with
+    pylibjpeg and give identical pixels (the codec is lossless), so it is preferred when
+    installed.
+    """
+    try:
+        syntax = str(dcm.file_meta.TransferSyntaxUID)
+        if syntax in JPEG_LS_TRANSFER_SYNTAXES:
+            from pydicom.pixels import get_decoder
+
+            if _PREFERRED_JPEG_LS_PLUGIN in get_decoder(syntax).available_plugins:
+                return _PREFERRED_JPEG_LS_PLUGIN
+    except Exception:
+        pass
+    return ""
+
+
+def load_pixel_array(dcm: pydicom.Dataset) -> np.ndarray:
+    """Decode all DICOM pixels, correcting mislabeled YBR_FULL_422 when needed."""
+    _retag_mislabeled_ybr(dcm)
+    plugin = decoding_plugin(dcm)
+    if plugin:
+        try:
+            dcm.pixel_array_options(decoding_plugin=plugin)
+            return dcm.pixel_array
+        except Exception:
+            dcm.pixel_array_options()
     return dcm.pixel_array
+
+
+def clip_window(frame_count: int, clip_len: int) -> tuple[int, int]:
+    """Frames ``[start, stop)`` PanEcho samples from a clip: the centred ``clip_len`` frames."""
+    start = 0 if frame_count < clip_len else (frame_count - clip_len) // 2
+    return start, min(start + clip_len, frame_count)
+
+
+def load_frame_window(dcm: pydicom.Dataset, start: int, stop: int) -> np.ndarray | None:
+    """Decode only frames ``[start, stop)``; ``None`` when the caller must decode everything.
+
+    Returns exactly ``load_pixel_array(dcm)[start:stop]`` for 8-bit multi-frame data, where no
+    later step depends on statistics of the whole clip. Other data (high-bit input is windowed
+    by clip-level percentiles) and any decoding problem return ``None`` so the caller keeps the
+    whole-clip path and its error handling.
+    """
+    try:
+        if int(getattr(dcm, "BitsAllocated", 0) or 0) != 8:
+            return None
+        frame_count = int(getattr(dcm, "NumberOfFrames", 1) or 1)
+        if frame_count <= 1 or not 0 <= start < stop <= frame_count:
+            return None
+        from pydicom.pixels import iter_pixels
+
+        _retag_mislabeled_ybr(dcm)
+        frames = list(
+            iter_pixels(dcm, indices=range(start, stop), decoding_plugin=decoding_plugin(dcm))
+        )
+        if len(frames) != stop - start or any(frame.dtype != np.uint8 for frame in frames):
+            return None
+        return np.stack(frames)
+    except Exception:
+        return None
 
 
 def handle_colorspace(im_array: np.ndarray, dicom_ds: pydicom.Dataset) -> np.ndarray:
@@ -41,7 +111,7 @@ def handle_colorspace(im_array: np.ndarray, dicom_ds: pydicom.Dataset) -> np.nda
     if cspace in ["PALETTE COLOR"]:
         return to_uint8(pydicom.pixel_data_handlers.util.apply_color_lut(im_array, dicom_ds))
     if cspace in ["MONOCHROME1", "MONOCHROME2"]:
-        recolored = np.expand_dims(im_array, 3)
+        recolored = np.expand_dims(to_display_uint8(im_array, cspace), 3)
         return np.repeat(recolored, 3, 3)
     return im_array
 

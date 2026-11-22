@@ -81,8 +81,10 @@ type ServiceContainerInterface interface {
 	RegisterElasticsearchRESTCommandController() elasticsearchREST.ElasticsearchCommandController
 	RegisterElasticsearchRESTQueryController() elasticsearchREST.ElasticsearchQueryController
 	RegisterIAMRESTCommandController() iamREST.IAMCommandController
+	RegisterIAMHandoffController() iamREST.HandoffController
 	RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController
 	RegisterInferenceRESTQueryController() inferenceREST.InferenceQueryController
+	RegisterInferenceRESTPredictionsController() inferenceREST.InferencePredictionsController
 	RegisterLeadRESTCommandController() leadREST.LeadCommandController
 	RegisterOrchestratorRESTController() orchestratorREST.OrchestratorController
 	RegisterOrthancRESTCommandController() orthancREST.OrthancCommandController
@@ -111,6 +113,7 @@ var (
 	mailgunSDK                 *mailgun.MailgunSDK
 	dockerSDK                  *docker.DockerSDK
 	dockerInferenceAPI         *dockerinference.DockerInferenceAPI
+	autoGPUPlacementOnce       sync.Once
 	modelManager               *modelmanager.Manager
 	modelUpgradeCoordinator    *modelupgrade.UpgradeCoordinator
 	modelDeploymentOperations  *modelupgrade.OperationManager
@@ -195,11 +198,51 @@ func (k *kernel) RegisterIAMRESTCommandController() iamREST.IAMCommandController
 	return controller
 }
 
+// RegisterIAMHandoffController wires the sign-in handoff from CardioAgent
+// (CA-268). Minting stays disabled until PACS_AI_HANDOFF_TOKEN and
+// PACS_AI_PUBLIC_URL are set.
+func (k *kernel) RegisterIAMHandoffController() iamREST.HandoffController {
+	trustedProxyCIDRs, err := clientip.ParseTrustedProxyCIDRs(os.Getenv("LOGIN_TRUSTED_PROXY_CIDRS"))
+	if err != nil {
+		log.Printf("[security] event=login_trusted_proxy_config_invalid err=%v", err)
+	}
+	service := &iamService.HandoffService{
+		Codes:     redisIAMDBHandler,
+		Users:     k.userQueryServiceContainer(),
+		Sessions:  k.iamCommandServiceContainer(),
+		PublicURL: os.Getenv("PACS_AI_PUBLIC_URL"),
+	}
+	if postgresqlDBHanddler != nil && postgresqlDBHanddler.Conn != nil {
+		service.Links = &iamRepository.AccountLinkRepository{DB: postgresqlDBHanddler.Conn}
+	}
+	allowedRemoteCIDRs, err := clientip.ParseTrustedProxyCIDRs(os.Getenv("PACS_AI_HANDOFF_ALLOWED_CIDRS"))
+	if err != nil {
+		log.Printf("[security] event=handoff_allowed_cidrs_invalid err=%v", err)
+		allowedRemoteCIDRs = nil
+	}
+	return iamREST.HandoffController{
+		Service:            service,
+		ServiceToken:       os.Getenv("PACS_AI_HANDOFF_TOKEN"),
+		TrustedProxyCIDRs:  trustedProxyCIDRs,
+		AllowedRemoteCIDRs: allowedRemoteCIDRs,
+	}
+}
+
 // RegisterInferenceRESTCommandController performs dependency injection to the RegisterInferenceRESTCommandController
 func (k *kernel) RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController {
 	service := k.inferenceCommandServiceContainer()
 
+	gpuAdministration := &inferenceService.GPUAdministrationService{Manager: modelManager, Models: service.InferenceQueryRepositoryInterface, Docker: dockerSDK, API: dockerInferenceAPI, Deployer: service}
+	if service.InferenceModelVersionRepositoryInterface != nil {
+		gpuAdministration.Versions = service.InferenceModelVersionRepositoryInterface
+	}
+	if modelDeploymentOperations != nil {
+		gpuAdministration.Operations = modelDeploymentOperations
+	}
+	// Returns at once unless MODEL_GPU_PLACEMENT=auto.
+	autoGPUPlacementOnce.Do(func() { go gpuAdministration.RunAutoPlacement(context.Background()) })
 	controller := inferenceREST.InferenceCommandController{
+		GPUAdministration:                           gpuAdministration,
 		InferenceCommandServiceInterface:            service,
 		ModelDeploymentOperationSubscriberInterface: modelDeploymentEventBroker,
 		ModelDeploymentEventHeartbeatInterval:       20 * time.Second,
@@ -216,9 +259,29 @@ func (k *kernel) RegisterInferenceRESTQueryController() inferenceREST.InferenceQ
 		InferenceQueryServiceInterface:          service,
 		WorklistNotificationSubscriberInterface: worklistNotificationBroker,
 		WorklistEventHeartbeatInterval:          20 * time.Second,
+		UserMetadataReader:                      k.userQueryServiceContainer(),
+		// Keyframes, thumbnails and loops saved by study-service (CA-267 M4).
+		StudyMedia: &inferenceService.StudyServiceDispatcher{
+			StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
+			StudyServiceOperatorToken: os.Getenv("STUDY_SERVICE_OPERATOR_TOKEN"),
+			StudyServiceClient:        &http.Client{Timeout: 30 * time.Second},
+		},
 	}
 
 	return controller
+}
+
+// RegisterInferenceRESTPredictionsController wires the AI Predictions page.
+func (k *kernel) RegisterInferenceRESTPredictionsController() inferenceREST.InferencePredictionsController {
+	return inferenceREST.InferencePredictionsController{
+		InferencePredictionsServiceInterface: &inferenceService.InferencePredictionsService{
+			Repository: &inferenceRepository.InferencePredictionsRepository{
+				PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
+			},
+			Users:        k.userQueryServiceContainer(),
+			StalledAfter: inferenceService.ConfiguredPredictionsStalledAfter(),
+		},
+	}
 }
 
 // RegisterOrchestratorRESTController performs dependency injection to the RegisterOrchestratorRESTController
@@ -350,6 +413,8 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		StudyServiceDispatchSemaphore:           make(chan struct{}, configuredStudyServiceDispatchConcurrency()),
 		WorklistNotificationPublisherInterface:  worklistNotificationBroker,
 		ProcessingReconciliationMetricsRecorder: &inferenceService.LoggingProcessingReconciliationMetricsRecorder{},
+		AutoRunExpireAfter:                      inferenceService.ConfiguredAutoRunExpireAfter(),
+		WorklistNotificationAudienceRepository:  processingRunRepository,
 		RequireProcessingRunID:                  configuredProcessingRunIDRequirement(),
 		ModelManager:                            managedPredictor,
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
@@ -465,7 +530,8 @@ func (k *kernel) iamCommandServiceContainer() *iamService.IAMCommandService {
 		LoginTurnstileAllowedHostnames: iamService.LoginTurnstileAllowedHostnamesFromEnvironment(
 			os.Getenv("LOGIN_TURNSTILE_ALLOWED_HOSTNAMES"),
 		),
-		MailgunSDK: mailgunSDK,
+		LoginChallengeMode: iamService.LoginChallengeModeFromEnvironment(),
+		MailgunSDK:         mailgunSDK,
 	}
 
 	return service
@@ -498,6 +564,13 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
 	}
 
+	studyResults := &inferenceService.StudyServiceDispatcher{
+		StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
+		StudyServiceOperatorToken: os.Getenv("STUDY_SERVICE_OPERATOR_TOKEN"),
+		StudyServiceClient:        &http.Client{Timeout: 5 * time.Second},
+	}
+	reportRenderTimeout, reportMaxBytes := inferenceService.ViewerReportLimitsFromEnvironment()
+
 	service := &inferenceService.InferenceQueryService{
 		InferenceQueryRepositoryInterface: &inferenceRepository.InferenceQueryRepositoryCircuitBreaker{
 			InferenceQueryRepositoryInterface: repository,
@@ -508,14 +581,19 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		InferenceModelVersionRepositoryInterface: &inferenceRepository.InferenceModelVersionRepository{
 			FirebaseAdminSDK: firebaseAdminSDK,
 		},
-		DockerSDKInterface:             dockerSDK,
-		DockerInferenceAPIInterface:    dockerInferenceAPI,
-		InferenceQuotaManagerInterface: inferenceQuotaManager,
-		ProcessingResultProviderInterface: &inferenceService.StudyServiceDispatcher{
-			StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
-			StudyServiceOperatorToken: os.Getenv("STUDY_SERVICE_OPERATOR_TOKEN"),
-			StudyServiceClient:        &http.Client{Timeout: 5 * time.Second},
-		},
+		DockerSDKInterface:                dockerSDK,
+		DockerInferenceAPIInterface:       dockerInferenceAPI,
+		InferenceQuotaManagerInterface:    inferenceQuotaManager,
+		ProcessingResultProviderInterface: studyResults,
+		StudyResultsProvider:              studyResults,
+		ModelReportRenderer:               dockerInferenceAPI,
+		ReportRenderTimeout:               reportRenderTimeout,
+		ReportMaxBytes:                    reportMaxBytes,
+	}
+	// Last good model info survives restarts (migration 000014); without the
+	// table it is kept in memory only.
+	if postgresqlDBHanddler != nil && postgresqlDBHanddler.Conn != nil {
+		service.AvailableModelStore = &inferenceRepository.AvailableModelInfoRepository{DB: postgresqlDBHanddler.Conn}
 	}
 
 	return service
@@ -718,6 +796,12 @@ func registerHandlers() {
 
 	// init orthanc connection
 	orthancAPI = orthanc.Init(os.Getenv("ORTHANC_BASE_URL"))
+	// Retrieve moves are saved in Postgres (migration 000015) and retried by a
+	// background loop, so a restart does not drop them.
+	if err := orthanc.UseMoveStore(orthanc.PostgresMoveStore{DB: postgresqlDBHanddler}); err != nil {
+		log.Printf("[SERVER] cannot load saved Orthanc moves: %v", err)
+	}
+	go orthancAPI.SuperviseMoves(context.Background())
 
 	// init kibana connection
 	kibanaAPI = kibana.Init(os.Getenv("KIBANA_BASE_URL"))
@@ -746,9 +830,11 @@ func registerHandlers() {
 
 	// init docker sdk
 	dockerSDK, err = docker.NewClient(dockerTypes.Config{
-		Username: os.Getenv("DOCKER_USERNAME"),
-		Password: os.Getenv("DOCKER_PASSWORD"),
-		Network:  os.Getenv("DOCKER_NETWORK"),
+		Username:           os.Getenv("DOCKER_USERNAME"),
+		Password:           os.Getenv("DOCKER_PASSWORD"),
+		Network:            os.Getenv("DOCKER_NETWORK"),
+		GPUDefaultUUID:     os.Getenv("MODEL_GPU_DEFAULT_UUID"),
+		GPUAssignmentsJSON: os.Getenv("MODEL_GPU_ASSIGNMENTS"),
 	})
 	if err != nil {
 		log.Fatalf("[SERVER] cannot initialize docker: %v", err)
@@ -766,20 +852,46 @@ func registerHandlers() {
 			log.Fatalf("[SERVER] cannot initialize model manager: %v", managerErr)
 		}
 		modelRepository := &inferenceRepository.InferenceQueryRepository{FirebaseAdminSDK: firebaseAdminSDK}
+		reconcile := func(ctx context.Context) error {
+			containerIDs, err := modelRepository.ListRegisteredModelContainerIDs(ctx)
+			if err != nil {
+				return err
+			}
+			return modelManager.Reconcile(ctx, containerIDs)
+		}
+		// Measured GPU memory survives restarts in Postgres, or in a JSON file
+		// when MODEL_GPU_MEASURE_STATE_PATH is set. A missing table or file only
+		// means measurement starts again from nothing.
+		var measurementStore modelmanager.MeasurementStore = &inferenceRepository.ModelGPUMeasurementRepository{DB: postgresqlDBHanddler.Conn}
+		if managerConfig.MeasureStatePath != "" {
+			measurementStore = &modelmanager.FileMeasurementStore{Path: managerConfig.MeasureStatePath}
+		}
+		if managerConfig.MeasureInterval > 0 {
+			loadCtx, cancelLoad := context.WithTimeout(context.Background(), 10*time.Second)
+			if loadErr := modelManager.LoadMeasurements(loadCtx, measurementStore); loadErr != nil {
+				log.Printf("[SERVER] stored GPU measurements are unavailable; measuring from scratch: %v", loadErr)
+			}
+			cancelLoad()
+			go modelManager.RunGPUMeasurement(context.Background(), dockerSDK, measurementStore)
+		}
 		reconcileCtx, cancelReconcile := context.WithTimeout(context.Background(), managerConfig.OperationTimeout)
 		containerIDs, catalogErr := modelRepository.ListRegisteredModelContainerIDs(reconcileCtx)
-		if catalogErr == nil {
-			catalogErr = modelManager.Reconcile(reconcileCtx, containerIDs)
+		if catalogErr != nil {
+			cancelReconcile()
+			log.Fatalf("[SERVER] cannot load initial model manager inventory: %v", catalogErr)
 		}
+		catalogErr = modelManager.Reconcile(reconcileCtx, containerIDs)
 		cancelReconcile()
 		if catalogErr != nil {
-			log.Fatalf("[SERVER] model manager startup reconciliation failed: %v", catalogErr)
+			// Keep authentication, Firestore-backed configuration, worklists and
+			// callbacks available. The unreconciled manager still rejects inference.
+			log.Printf("[SERVER] GPU admission unavailable; control plane continuing: %v", catalogErr)
+			go retryModelManagerReconciliation(context.Background(), reconcile, managerConfig.OperationTimeout, 30*time.Second)
+		} else {
+			log.Printf("[SERVER] model manager reconciled models=%d", len(modelManager.Snapshot().Models))
 		}
-		snapshot := modelManager.Snapshot()
-		log.Printf(
-			"[SERVER] model manager reconciled models=%d reserved_mib=%d available_mib=%d",
-			len(snapshot.Models), snapshot.ReservedMiB, snapshot.AvailableMiB,
-		)
+		go modelManager.RunIdleEviction(context.Background())
+		go modelManager.RunReservationReconciliation(context.Background())
 
 		candidateValidator, validationErr := modelupgrade.NewCandidateValidator(
 			dockerSDK,

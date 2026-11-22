@@ -41,6 +41,10 @@ func (repository *managedGatewayRepository) SelectInferenceModelByContainer(_ co
 	return repository.model, repository.err
 }
 
+func (repository *managedGatewayRepository) SelectInferenceModels(context.Context, string) ([]entity.InferenceModel, error) {
+	return nil, nil
+}
+
 type recordingManagedPredictor struct {
 	containerID string
 	request     dockerInferenceTypes.PredictRequest

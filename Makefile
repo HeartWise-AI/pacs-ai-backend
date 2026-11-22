@@ -12,9 +12,19 @@ down:
 up-local:
 	docker compose -f docker-compose-dev.yml up --build
 
+# Production never rebuilds on "up": a rebuild from whatever source is checked
+# out on the host can silently replace a tested image under the same tag.
+# Images that do not exist yet are still built. Rebuild on purpose with
+# "make build-prod". study-service is deployed with
+# cardio-agent/study-service/scripts/deploy.sh (one image for the API and all
+# of its workers, set by STUDY_SERVICE_IMAGE in .env).
 .PHONY: up-prod
 up-prod:
-	docker compose up -d --build
+	docker compose up -d
+
+.PHONY: build-prod
+build-prod:
+	docker compose build
 
 .PHONY: down-prod
 down-prod:

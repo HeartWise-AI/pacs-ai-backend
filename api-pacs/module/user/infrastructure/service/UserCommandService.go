@@ -804,7 +804,11 @@ func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context,
 
 // UpdateUserMetadata update user metadata
 func (service *UserCommandService) UpdateUserMetadata(ctx context.Context, data types.UpdateUserMetadata) error {
-	metadataBytes, err := json.Marshal(data.Metadata)
+	merged, err := service.mergedUserMetadata(ctx, data.UserID, data.Metadata)
+	if err != nil {
+		return err
+	}
+	metadataBytes, err := json.Marshal(merged)
 	if err != nil {
 		return err
 	}
@@ -819,6 +823,69 @@ func (service *UserCommandService) UpdateUserMetadata(ctx context.Context, data 
 
 	return nil
 }
+
+// mergedUserMetadata merges the update into the stored metadata so that
+// independent features (tutorial progress, notification preferences) each
+// writing only their own keys do not erase one another.
+func (service *UserCommandService) mergedUserMetadata(ctx context.Context, userID string, update map[string]interface{}) (map[string]interface{}, error) {
+	merged := map[string]interface{}{}
+	if service.UserQueryRepositoryInterface != nil {
+		existing, err := service.UserQueryRepositoryInterface.SelectUserMetadataByID(ctx, userID)
+		if err != nil && err.Error() != apiError.MissingRecord {
+			return nil, err
+		}
+		if err == nil && strings.TrimSpace(existing.Metadata) != "" {
+			if decodeErr := json.Unmarshal([]byte(existing.Metadata), &merged); decodeErr != nil || merged == nil {
+				// An unreadable stored blob is replaced, as before.
+				merged = map[string]interface{}{}
+			}
+		}
+	}
+	for key, value := range update {
+		merged[key] = value
+	}
+	return merged, nil
+}
+
+// CompleteUserViewerTour records the first time the user completed or skipped
+// the viewer tour. It is idempotent: an existing completion time is kept.
+func (service *UserCommandService) CompleteUserViewerTour(ctx context.Context, userID string) (types.UserViewerTourState, error) {
+	userMetadata, err := service.UserQueryRepositoryInterface.SelectUserMetadataByID(ctx, userID)
+	if err != nil && err.Error() != apiError.MissingRecord {
+		return types.UserViewerTourState{}, err
+	}
+	if err == nil && userMetadata.ViewerTourCompletedAt != nil {
+		return types.UserViewerTourState{UserID: userID, ViewerTourCompletedAt: userMetadata.ViewerTourCompletedAt}, nil
+	}
+
+	completedAt := viewerTourNow().Unix()
+	err = service.UserCommandRepositoryInterface.UpdateUserViewerTourCompletedAt(ctx, repositoryTypes.UpdateUserViewerTourCompletedAt{
+		UserID:      userID,
+		CompletedAt: &completedAt,
+	})
+	if err != nil {
+		return types.UserViewerTourState{}, err
+	}
+
+	return types.UserViewerTourState{UserID: userID, ViewerTourCompletedAt: &completedAt}, nil
+}
+
+// ResetUserViewerTour clears the viewer tour completion so the tour shows again
+// the next time the user opens the viewer.
+func (service *UserCommandService) ResetUserViewerTour(ctx context.Context, userID string) (types.UserViewerTourState, error) {
+	err := service.UserCommandRepositoryInterface.UpdateUserViewerTourCompletedAt(ctx, repositoryTypes.UpdateUserViewerTourCompletedAt{
+		UserID:      userID,
+		CompletedAt: nil,
+	})
+	if err != nil {
+		return types.UserViewerTourState{}, err
+	}
+
+	return types.UserViewerTourState{UserID: userID}, nil
+}
+
+// viewerTourNow is the clock used for viewer tour completion; replaced in tests.
+var viewerTourNow = time.Now
 
 // generateID generates unique id
 func generateID() string {

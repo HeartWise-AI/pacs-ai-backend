@@ -46,7 +46,7 @@ func manualReprocessRetrievalFixture() (
 ) {
 	job := entity.InferenceIngestionJob{
 		ID: "job-a", TenantID: "tenant-a", ContainerID: "container-a", ModelName: "EchoModel", ModelVersion: "v1",
-		DICOMModality: "US", Status: entity.InferenceIngestionJobStatusRunning,
+		DICOMModality: "US", Modalities: []string{"US"}, Status: entity.InferenceIngestionJobStatusRunning,
 	}
 	lastRetrievalState := "local"
 	candidate := entity.InferenceIngestionCandidate{

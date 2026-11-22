@@ -12,6 +12,7 @@ from io import BytesIO
 from typing import List
 from torchvision.transforms import v2
 
+from utils.dicom_pixels import dicom_display_pixels
 from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
@@ -301,7 +302,7 @@ class CustomPredictionService(BasePredictionService):
         try:
             mean_output: float = 0.0
             for dicom in dicoms:
-                pixel_array: np.ndarray = dicom.pixel_array
+                pixel_array: np.ndarray = dicom_display_pixels(dicom)
                 if pixel_array.ndim == 1 or pixel_array.ndim == 2:
                     continue
                 

@@ -102,9 +102,13 @@ func manualQuotaPlannerService(t *testing.T, quotaManager *recordingInferenceQuo
 		candidates: []entity.InferenceIngestionCandidate{{
 			ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: "job-a",
 			StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved,
+			ModalitiesInStudy: nonEmptyStringPointer("US"),
 		}},
 		jobs: map[string]entity.InferenceIngestionJob{
-			"job-a": {ID: "job-a", TenantID: "tenant-a", ContainerID: "container-a", ModelName: "EchoModel"},
+			"job-a": {
+				ID: "job-a", TenantID: "tenant-a", ContainerID: "container-a", ModelName: "EchoModel",
+				DICOMModality: "US", Modalities: []string{"US"}, Status: entity.InferenceIngestionJobStatusRunning,
+			},
 		},
 	}
 	runRepository := &processingRunPlannerRepository{}
@@ -159,6 +163,7 @@ func TestManualReprocessReservesOneUserScopedUnitAndPersistsRequester(t *testing
 	require.Len(t, quotaManager.reserved, 1)
 	require.Equal(t, result.Run.ID, quotaManager.reserved[0].ReservationID)
 	require.Equal(t, int64(1), quotaManager.reserved[0].Units)
+	require.Equal(t, serviceTypes.InferenceQuotaReservationQueued, quotaManager.reserved[0].Kind)
 	select {
 	case request := <-dispatchCalls:
 		require.Equal(t, result.Run.ID, trimmedPointerValue(request.ProcessingRunID))
@@ -219,10 +224,12 @@ func TestManualReprocessPropagatesQuotaRejectionBeforeCreatingPlan(t *testing.T)
 func TestManualReprocessRefundsQuotaWhenPreDispatchRequestBuildFails(t *testing.T) {
 	job := entity.InferenceIngestionJob{
 		ID: "job-a", TenantID: "tenant-a", ContainerID: "container-a", ModelName: "EchoModel", DICOMModality: "US",
+		Modalities: []string{"US"}, Status: entity.InferenceIngestionJobStatusRunning,
 	}
 	candidate := entity.InferenceIngestionCandidate{
 		ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: job.ID,
 		StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved,
+		ModalitiesInStudy: nonEmptyStringPointer("US"),
 	}
 	state := &realtimeWorklistE2EState{
 		candidates: map[string]entity.InferenceIngestionCandidate{candidate.ID: candidate},
@@ -271,10 +278,12 @@ func TestManualReprocessRefundsQuotaWhenPreDispatchRequestBuildFails(t *testing.
 func TestManualReprocessCorrelationFailureRefundsQuotaAndLeavesStudyRetryable(t *testing.T) {
 	job := entity.InferenceIngestionJob{
 		ID: "job-a", TenantID: "tenant-a", ContainerID: "container-a", ModelName: "EchoModel", DICOMModality: "US",
+		Modalities: []string{"US"}, Status: entity.InferenceIngestionJobStatusRunning,
 	}
 	candidate := entity.InferenceIngestionCandidate{
 		ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: job.ID,
 		StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved,
+		ModalitiesInStudy: nonEmptyStringPointer("US"),
 	}
 	state := &realtimeWorklistE2EState{
 		candidates: map[string]entity.InferenceIngestionCandidate{candidate.ID: candidate},
@@ -343,10 +352,12 @@ func TestManualReprocessCorrelationFailureRefundsQuotaAndLeavesStudyRetryable(t 
 func TestManualReprocessAcceptedCorrelationFailureRemainsCharged(t *testing.T) {
 	job := entity.InferenceIngestionJob{
 		ID: "job-a", TenantID: "tenant-a", ContainerID: "container-a", ModelName: "EchoModel", DICOMModality: "US",
+		Modalities: []string{"US"}, Status: entity.InferenceIngestionJobStatusRunning,
 	}
 	candidate := entity.InferenceIngestionCandidate{
 		ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: job.ID,
 		StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved,
+		ModalitiesInStudy: nonEmptyStringPointer("US"),
 	}
 	state := &realtimeWorklistE2EState{
 		candidates: map[string]entity.InferenceIngestionCandidate{candidate.ID: candidate},

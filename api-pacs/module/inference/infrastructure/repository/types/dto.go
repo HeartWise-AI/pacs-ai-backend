@@ -111,6 +111,34 @@ type ListInferenceIngestionProcessingRunExecutions struct {
 // ListInferenceIngestionProcessingRunsForReconciliation bounds the internal
 // cross-tenant worker query. ActiveStaleBefore is the earliest configured
 // threshold; state-specific thresholds are applied by the service.
+// ListNeverRanAutomaticProcessingRuns selects automatic runs created before
+// CreatedBefore that are not finished and whose executions all never ran.
+type ListNeverRanAutomaticProcessingRuns struct {
+	CreatedBefore time.Time
+	Limit         int
+}
+
+// ExpireNeverRanProcessingRun closes one such run: every execution becomes
+// skipped with the EXPIRED_NEVER_RAN reason and the run is re-aggregated.
+type ExpireNeverRanProcessingRun struct {
+	ID            string
+	TenantID      string
+	CreatedBefore time.Time
+	Message       string
+	ExpiredAt     time.Time
+}
+
+// ExpireNeverRanProcessingRunResult tells whether the run was changed; when
+// not, NotExpiredReason says why (it changed since it was selected).
+type ExpireNeverRanProcessingRunResult struct {
+	Expired bool
+	// Empty is true when the run had no execution and was closed as NO_RESULT.
+	Empty            bool
+	NotExpiredReason string
+	Executions       int
+	Run              entity.InferenceIngestionProcessingRun
+}
+
 type ListInferenceIngestionProcessingRunsForReconciliation struct {
 	ActiveStaleBefore time.Time `db:"active_stale_before"`
 	Limit             int       `db:"limit"`
@@ -154,6 +182,23 @@ type ApplyInferenceIngestionProcessingTransition struct {
 	EventSequence     *int64
 	StartedAt         *time.Time
 	CompletedAt       *time.Time
+	// OnlyIfCancellableBeforeCompute makes the transition a no-op ("ignored")
+	// unless the locked execution has still not started computing. A user
+	// cancellation sets it so a job that was dispatched meanwhile keeps running.
+	OnlyIfCancellableBeforeCompute bool
+	// StudyServiceJobMissing is the caller's reading of the run's
+	// STUDY_SERVICE_JOB_MISSING flag when it planned the cancellation: a queued
+	// execution study-service no longer knows may then be cancelled too.
+	StudyServiceJobMissing bool
+}
+
+// MarkInferenceIngestionProcessingRunCancelled records the first user
+// cancellation of an active run.
+type MarkInferenceIngestionProcessingRunCancelled struct {
+	ID                string    `db:"id"`
+	TenantID          string    `db:"tenant_id"`
+	CancelledByUserID string    `db:"cancelled_by_user_id"`
+	CancelledAt       time.Time `db:"cancelled_at"`
 }
 
 type ApplyInferenceIngestionProcessingTransitionResult struct {
@@ -257,6 +302,8 @@ type CreateInferenceIngestionJob struct {
 	ScheduleStartTimestamp time.Time
 	ScheduleEndTimestamp   time.Time
 	Status                 entity.InferenceIngestionJobStatus
+	CreatedByUserID        *string
+	NotificationsEnabled   bool
 }
 
 type GetModelFeedbackByUserModelID struct {
@@ -339,6 +386,9 @@ type ReplaceInferenceModelRegistration struct {
 	ExpectedContainerID    string
 	ExpectedImageReference string
 	Deployment             entity.InferenceModelDeployment
+	// KeepsRunningImage marks a move of the running image to another GPU. Such
+	// an image may be a local build, which has no registry digest.
+	KeepsRunningImage bool
 }
 
 // RestoreInferenceModelRegistration atomically restores the rollback baseline
@@ -361,6 +411,16 @@ type UpdateInferenceIngestionJob struct {
 	StudyTimeEnd           *string
 	ScheduleStartTimestamp time.Time
 	ScheduleEndTimestamp   time.Time
+	// NotificationsEnabled nil leaves the stored value unchanged.
+	NotificationsEnabled *bool
+}
+
+// ProcessingRunNotificationJob is one automatic ingestion job behind a
+// processing run, reduced to what the notification audience needs.
+type ProcessingRunNotificationJob struct {
+	IngestionJobID       string  `db:"ingestion_job_id"`
+	CreatedByUserID      *string `db:"created_by_user_id"`
+	NotificationsEnabled bool    `db:"notifications_enabled"`
 }
 
 type UpsertModelFeedback struct {

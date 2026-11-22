@@ -4,7 +4,7 @@
   "domainName": "Cardiology",
   "stage": "ai_inference",
   "modality": "Echocardiogram",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "provenance": {
     "sourceRepository": "HeartWise-AI/pacs-ai-backend",
     "sourceRevision": null,

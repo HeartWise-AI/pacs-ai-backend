@@ -243,10 +243,12 @@ func (repository *InferenceCommandRepository) InsertInferenceIngestionJob(data t
 		ScheduleStartTimestamp: data.ScheduleStartTimestamp,
 		ScheduleEndTimestamp:   data.ScheduleEndTimestamp,
 		Status:                 data.Status,
+		CreatedByUserID:        data.CreatedByUserID,
+		NotificationsEnabled:   data.NotificationsEnabled,
 	}
 
-	stmt := fmt.Sprintf("INSERT INTO %s (id, tenant_id, dicom_modality, container_id, model_id, model_name, model_version, modalities, stability_minutes, recent_window_minutes, missing_polls_threshold, study_time_start, study_time_end, schedule_start_timestamp, schedule_end_timestamp, status) "+
-		"VALUES (:id, :tenant_id, :dicom_modality, :container_id, :model_id, :model_name, :model_version, :modalities, :stability_minutes, :recent_window_minutes, :missing_polls_threshold, :study_time_start, :study_time_end, :schedule_start_timestamp, :schedule_end_timestamp, :status)", job.GetModelName())
+	stmt := fmt.Sprintf("INSERT INTO %s (id, tenant_id, dicom_modality, container_id, model_id, model_name, model_version, modalities, stability_minutes, recent_window_minutes, missing_polls_threshold, study_time_start, study_time_end, schedule_start_timestamp, schedule_end_timestamp, status, created_by_user_id, notifications_enabled) "+
+		"VALUES (:id, :tenant_id, :dicom_modality, :container_id, :model_id, :model_name, :model_version, :modalities, :stability_minutes, :recent_window_minutes, :missing_polls_threshold, :study_time_start, :study_time_end, :schedule_start_timestamp, :schedule_end_timestamp, :status, :created_by_user_id, :notifications_enabled)", job.GetModelName())
 	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
 	if err != nil {
 		log.Println(err)
@@ -338,9 +340,18 @@ WHERE id = :id`, processingJob.GetModelName())
 
 // UpsertIngestionCandidate upserts an ingestion candidate
 func (repository *InferenceCommandRepository) UpsertIngestionCandidate(data types.UpsertIngestionCandidate) error {
-	var candidate entity.InferenceIngestionCandidate
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(ingestionCandidateUpsertStatement(), ingestionCandidateUpsertData(data))
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
 
-	stmt := fmt.Sprintf(`INSERT INTO %s (
+	return nil
+}
+
+func ingestionCandidateUpsertStatement() string {
+	var candidate entity.InferenceIngestionCandidate
+	return fmt.Sprintf(`INSERT INTO %s (
 		id,
 		tenant_id,
 		ingestion_job_id,
@@ -396,8 +407,10 @@ func (repository *InferenceCommandRepository) UpsertIngestionCandidate(data type
 			WHEN %s.status = 'DISAPPEARED' THEN 'DISCOVERED'
 			ELSE %s.status
 		END`, candidate.GetModelName(), candidate.GetModelName(), candidate.GetModelName(), candidate.GetModelName(), candidate.GetModelName(), candidate.GetModelName())
+}
 
-	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+func ingestionCandidateUpsertData(data types.UpsertIngestionCandidate) map[string]interface{} {
+	return map[string]interface{}{
 		"id":                  data.ID,
 		"tenant_id":           data.TenantID,
 		"ingestion_job_id":    data.IngestionJobID,
@@ -409,8 +422,79 @@ func (repository *InferenceCommandRepository) UpsertIngestionCandidate(data type
 		"accession_number":    nullableStringValue(data.AccessionNumber),
 		"series_count":        nullableIntValue(data.SeriesCount),
 		"instance_count":      nullableIntValue(data.InstanceCount),
-	})
+	}
+}
+
+// UpsertIngestionCandidates publishes a complete candidate bootstrap in one
+// transaction without claiming that the studies have already been retrieved.
+func (repository *InferenceCommandRepository) UpsertIngestionCandidates(ctx context.Context, data []types.UpsertIngestionCandidate) error {
+	if len(data) == 0 {
+		return errors.New(apiError.InvalidPayload)
+	}
+	tx, err := repository.PostgresSQLDBHandlerInterface.Begin()
 	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, item := range data {
+		if _, err = tx.NamedExecContext(ctx, ingestionCandidateUpsertStatement(), ingestionCandidateUpsertData(item)); err != nil {
+			log.Println(err)
+			return errors.New(apiError.DatabaseError)
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+
+	return nil
+}
+
+// UpsertRetrievedIngestionCandidates publishes a complete manual bootstrap in
+// one transaction. A failed write cannot leave a partial candidate set visible
+// to another reprocess request.
+func (repository *InferenceCommandRepository) UpsertRetrievedIngestionCandidates(ctx context.Context, data []types.UpsertIngestionCandidate) error {
+	if len(data) == 0 {
+		return errors.New(apiError.InvalidPayload)
+	}
+	tx, err := repository.PostgresSQLDBHandlerInterface.Begin()
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var candidate entity.InferenceIngestionCandidate
+	markRetrieved := fmt.Sprintf(`UPDATE %s
+SET status = :status,
+	retrieved_at = CURRENT_TIMESTAMP,
+	last_retrieval_state = :last_retrieval_state,
+	last_retrieval_error = NULL,
+	last_retrieval_error_details = NULL,
+	last_retrieval_checked_at = CURRENT_TIMESTAMP
+WHERE tenant_id = :tenant_id
+	AND ingestion_job_id = :ingestion_job_id
+	AND study_instance_uid = :study_instance_uid`, candidate.GetModelName())
+
+	for _, item := range data {
+		if _, err = tx.NamedExecContext(ctx, ingestionCandidateUpsertStatement(), ingestionCandidateUpsertData(item)); err != nil {
+			log.Println(err)
+			return errors.New(apiError.DatabaseError)
+		}
+		if _, err = tx.NamedExecContext(ctx, markRetrieved, map[string]interface{}{
+			"status":               entity.InferenceIngestionCandidateStatusRetrieved,
+			"last_retrieval_state": "local",
+			"tenant_id":            item.TenantID,
+			"ingestion_job_id":     item.IngestionJobID,
+			"study_instance_uid":   item.StudyInstanceUID,
+		}); err != nil {
+			log.Println(err)
+			return errors.New(apiError.DatabaseError)
+		}
+	}
+	if err = tx.Commit(); err != nil {
 		log.Println(err)
 		return errors.New(apiError.DatabaseError)
 	}
@@ -579,7 +663,12 @@ func (repository *InferenceCommandRepository) swapInferenceModelRegistration(
 		if persistDeployment {
 			deploymentValue = replacement
 		}
+		preference := interface{}(firestore.Delete)
+		if replacement.GPUUUID != "" {
+			preference = replacement.GPUUUID
+		}
 		return transaction.Update(modelRef, []firestore.Update{
+			{Path: "preferred_gpu_uuid", Value: preference},
 			{Path: "container_id", Value: replacement.ContainerID},
 			{Path: "docker_image", Value: replacement.ImageReference},
 			{Path: "deployment", Value: deploymentValue},
@@ -631,7 +720,7 @@ func validateRegistrationReplacement(data types.ReplaceInferenceModelRegistratio
 	deployment := data.Deployment
 	if data.ID == "" || data.TenantID == "" || data.ExpectedContainerID == "" || data.ExpectedImageReference == "" ||
 		deployment.ContainerID == "" || deployment.CatalogVersionID == "" || deployment.ArtifactModelID == "" ||
-		deployment.ImageReference == "" || deployment.ImageDigest == "" ||
+		deployment.ImageReference == "" || (deployment.ImageDigest == "" && !data.KeepsRunningImage) ||
 		deployment.LocalImageID == "" || deployment.ModelVersion == "" || deployment.DeployedAt <= 0 ||
 		deployment.Provenance == nil {
 		return errors.New(apiError.InvalidPayload)
@@ -658,10 +747,15 @@ func validateRegistrationRestore(data types.RestoreInferenceModelRegistration) (
 	complete := deploymentSnapshotComplete(previous)
 	legacy := previous.ImageDigest == "" && previous.LocalImageID == "" && previous.ModelVersion == "" &&
 		previous.Provenance == nil && previous.DeployedAt == 0
-	if !complete && !legacy {
+	// A locally built image is a complete snapshot without a registry digest.
+	// Refusing it would leave a failed move unable to restore the registration.
+	withDigest := previous
+	withDigest.ImageDigest = "sha256:local-build"
+	localBuild := previous.ImageDigest == "" && deploymentSnapshotComplete(withDigest)
+	if !complete && !legacy && !localBuild {
 		return false, errors.New(apiError.InvalidPayload)
 	}
-	return complete, nil
+	return complete || localBuild, nil
 }
 
 func deploymentSnapshotComplete(deployment entity.InferenceModelDeployment) bool {
@@ -693,38 +787,54 @@ func registeredDeployment(model entity.InferenceModel) entity.InferenceModelDepl
 	if model.Deployment != nil &&
 		model.Deployment.ContainerID == model.ContainerID &&
 		model.Deployment.ImageReference == model.DockerImage {
-		return *model.Deployment
+		deployment := *model.Deployment
+		if deployment.GPUUUID == "" {
+			deployment.GPUUUID = model.PreferredGPUUUID
+		}
+		return deployment
 	}
 	return entity.InferenceModelDeployment{
+		GPUUUID:        model.PreferredGPUUUID,
 		ContainerID:    model.ContainerID,
 		ImageReference: model.DockerImage,
 	}
 }
 
-// UpdateInferenceIngestionJob updates an inference ingestion job
+// UpdateInferenceIngestionJob updates an inference ingestion job. A nil
+// NotificationsEnabled keeps the stored notification switch.
 func (repository *InferenceCommandRepository) UpdateInferenceIngestionJob(data types.UpdateInferenceIngestionJob) error {
-	job := &entity.InferenceIngestionJob{
-		ID:                     data.ID,
-		Modalities:             data.Modalities,
-		StabilityMinutes:       data.StabilityMinutes,
-		RecentWindowMinutes:    data.RecentWindowMinutes,
-		MissingPollsThreshold:  data.MissingPollsThreshold,
-		StudyTimeStart:         data.StudyTimeStart,
-		StudyTimeEnd:           data.StudyTimeEnd,
-		ScheduleStartTimestamp: data.ScheduleStartTimestamp,
-		ScheduleEndTimestamp:   data.ScheduleEndTimestamp,
-	}
+	job := &entity.InferenceIngestionJob{}
 	stmt := fmt.Sprintf("UPDATE %s SET modalities = :modalities, stability_minutes = :stability_minutes, "+
 		"recent_window_minutes = :recent_window_minutes, "+
 		"missing_polls_threshold = :missing_polls_threshold, study_time_start = :study_time_start, study_time_end = :study_time_end, "+
-		"schedule_start_timestamp = :schedule_start_timestamp, schedule_end_timestamp = :schedule_end_timestamp WHERE id = :id", job.GetModelName())
-	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, job)
+		"schedule_start_timestamp = :schedule_start_timestamp, schedule_end_timestamp = :schedule_end_timestamp, "+
+		"notifications_enabled = COALESCE(CAST(:notifications_enabled AS boolean), notifications_enabled) WHERE id = :id", job.GetModelName())
+	_, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, updateInferenceIngestionJobParams(data))
 	if err != nil {
 		log.Println(err)
 		return errors.New(apiError.DatabaseError)
 	}
 
 	return nil
+}
+
+func updateInferenceIngestionJobParams(data types.UpdateInferenceIngestionJob) map[string]interface{} {
+	var notificationsEnabled interface{}
+	if data.NotificationsEnabled != nil {
+		notificationsEnabled = *data.NotificationsEnabled
+	}
+	return map[string]interface{}{
+		"id":                       data.ID,
+		"modalities":               pq.StringArray(data.Modalities),
+		"stability_minutes":        data.StabilityMinutes,
+		"recent_window_minutes":    data.RecentWindowMinutes,
+		"missing_polls_threshold":  data.MissingPollsThreshold,
+		"study_time_start":         data.StudyTimeStart,
+		"study_time_end":           data.StudyTimeEnd,
+		"schedule_start_timestamp": data.ScheduleStartTimestamp,
+		"schedule_end_timestamp":   data.ScheduleEndTimestamp,
+		"notifications_enabled":    notificationsEnabled,
+	}
 }
 
 // UpdateInferenceIngestionJobStatus updates the status of an inference ingestion job

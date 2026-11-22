@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "2.0.1"
+    "version": "2.0.3"
   },
   "servers": [
     {
@@ -189,6 +189,158 @@
         }
       }
     },
+    "/inference/render-report": {
+      "post": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Render report",
+        "description": "HTML report of a stored JSON-mode result: the document HTML-mode predict returns for that prediction, except that the four J-CTO component probabilities are printed as stored (three decimals) under a note, because the stored three decimals do not always determine the two decimals of the live report. CPU only: no model load, no forward pass, no GPU; does not count as model activity. Nothing stored is copied into the page: the numbers are checked and the report is rendered from them, and a result whose values or text are not what this model version writes for those numbers is refused. Body at most 64 KB.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenderReportRequest"
+              },
+              "example": {
+                "result": {
+                  "predictions": {
+                    "jctoScore": {
+                      "predicted": 0.72,
+                      "predictedInteger": 1,
+                      "componentsAboveThreshold": 1,
+                      "difficulty": "intermediate"
+                    },
+                    "components": {
+                      "jcto_blunt_stump": {
+                        "name": "Blunt / flush stump",
+                        "probability": 0.245,
+                        "threshold": 0.5,
+                        "present": false
+                      },
+                      "jcto_calcification": {
+                        "name": "Calcification at occlusion",
+                        "probability": 0.258,
+                        "threshold": 0.5,
+                        "present": false
+                      },
+                      "jcto_bending_gt45": {
+                        "name": "Bending > 45°",
+                        "probability": 0.022,
+                        "threshold": 0.5,
+                        "present": false
+                      },
+                      "jcto_occlusion_length_gt20": {
+                        "name": "Occlusion length ≥ 20 mm",
+                        "probability": 0.677,
+                        "threshold": 0.5,
+                        "present": true
+                      }
+                    },
+                    "ctoArtery": "LAD",
+                    "perArtery": {
+                      "LAD": {
+                        "jctoScore": 0.72,
+                        "jctoScoreInteger": 1,
+                        "components": {
+                          "jcto_blunt_stump": 0.245,
+                          "jcto_calcification": 0.258,
+                          "jcto_bending_gt45": 0.022,
+                          "jcto_occlusion_length_gt20": 0.677
+                        }
+                      },
+                      "RCA": {
+                        "jctoScore": 0.31,
+                        "jctoScoreInteger": 0,
+                        "components": {
+                          "jcto_blunt_stump": 0.181,
+                          "jcto_calcification": 0.332,
+                          "jcto_bending_gt45": 0.025,
+                          "jcto_occlusion_length_gt20": 0.345
+                        }
+                      },
+                      "LCx": {
+                        "jctoScore": 0.0,
+                        "jctoScoreInteger": 0,
+                        "components": {
+                          "jcto_blunt_stump": 0.146,
+                          "jcto_calcification": 0.148,
+                          "jcto_bending_gt45": 0.014,
+                          "jcto_occlusion_length_gt20": 0.214
+                        }
+                      }
+                    }
+                  },
+                  "diagnosis": "DeepCORO-CTO [LAD]: J-CTO score = 1 (raw 0.7, intermediate) | Occlusion length ≥ 20 mm",
+                  "modelRecommendations": {
+                    "en": "<strong>Predicted imaging J-CTO score 1 in the LAD (raw 0.7, intermediate).</strong> This is the four morphological imaging components only (range 0–4); it does not include the classic fifth point for a previously failed attempt. The score estimates the difficulty of successful guidewire crossing within 30 minutes. Higher scores indicate greater procedural complexity and may favour a hybrid or retrograde strategy and dedicated operator/lab planning. This is a research preview and must be confirmed by an operator review of the angiogram.",
+                    "fr": "<strong>Score J-CTO morphologique prédit 1 pour l’artère interventriculaire antérieure (brut 0.7, intermediate).</strong> Il s'agit des quatre composantes morphologiques d'imagerie seulement (plage 0–4); le cinquième point classique pour une tentative antérieure échouée n'est pas inclus. Le score estime la difficulté du franchissement du guide en moins de 30 minutes. Un score plus élevé indique une complexité procédurale accrue et peut orienter vers une stratégie hybride ou rétrograde. Il s'agit d'un aperçu de recherche qui doit être confirmé par la revue de l'angiogramme par l'opérateur.",
+                    "presentable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Report rendered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/RenderReportResponse"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body larger than 64 KB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Body larger than 65536 bytes",
+                  "data": {},
+                  "errorCode": "PAYLOAD_TOO_LARGE"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Body is not JSON, or the result is not a JSON-mode result of this model version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Cannot render this result: diagnosis: is not what this model writes for these predictions",
+                  "data": {},
+                  "errorCode": "INVALID_RESULT"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/inference/model-info": {
       "get": {
         "tags": [
@@ -225,7 +377,7 @@
                     "domainName": "Cardiology",
                     "stage": "ai_inference",
                     "modality": "Angiogram",
-                    "version": "2.0.1",
+                    "version": "2.0.3",
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
@@ -240,6 +392,9 @@
                       "peakMemoryMiB": 6488,
                       "maxConcurrentInferences": 1,
                       "idleTimeoutSeconds": 600
+                    },
+                    "capabilities": {
+                      "renderReport": true
                     },
                     "dicomTargetLevel": "SERIES",
                     "dicomUploadMin": 1,
@@ -811,6 +966,33 @@
           },
           "error": {
             "type": "string"
+          }
+        }
+      },
+      "RenderReportRequest": {
+        "type": "object",
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "type": "object",
+            "description": "The data object of a JSON-mode predict response ({diagnosis, predictions, modelRecommendations}) as stored by the caller; the whole response envelope is accepted too. The stored no-video answer (predictions {}) renders the no-video page."
+          }
+        }
+      },
+      "RenderReportResponse": {
+        "type": "object",
+        "properties": {
+          "htmlBase64": {
+            "type": "string",
+            "description": "Base64-encoded HTML report: HTML-mode predict for the same prediction, with the component probabilities printed as stored (three decimals)"
+          },
+          "modelVersion": {
+            "type": "string",
+            "description": "Container version that rendered the report",
+            "example": "2.0.3"
           }
         }
       }

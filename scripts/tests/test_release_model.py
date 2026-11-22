@@ -129,7 +129,7 @@ class ReleaseModelTests(unittest.TestCase):
         dockerfile, uses_secret = RELEASE.validate_dockerfile_contract(DEEPCORO_SYNTAX_PATH)
 
         self.assertEqual("DeepCORO-SYNTAX", metadata.model_name)
-        self.assertEqual("6.0.0", metadata.version)
+        self.assertEqual("6.0.1", metadata.version)
         self.assertEqual(DEEPCORO_SYNTAX_PATH / "Dockerfile", dockerfile)
         self.assertTrue(uses_secret)
 
@@ -336,6 +336,47 @@ class ReleaseModelTests(unittest.TestCase):
         self.assertIn(f"PACS_AI_MODEL_REVISION={MODEL_REVISION}", flattened)
         self.assertNotIn("super-secret-token", flattened)
         self.assertNotIn(":latest", flattened)
+
+    def test_build_retries_once_without_cache_after_clearing_the_build_cache(self):
+        self.write_dockerfile()
+        commands = []
+
+        def flaky(command, **kwargs):
+            commands.append(list(command))
+            if list(command[:2]) == ["docker", "build"] and "--no-cache" not in command:
+                raise RELEASE.ReleaseError("Command failed with exit code 1")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with mock.patch.object(RELEASE, "run_command", side_effect=flaky):
+            RELEASE.build_image(
+                self.model_dir,
+                self.model_dir / "Dockerfile",
+                "heartwisehub/pacs-ai-example:1.2.3",
+                self.metadata(),
+                None,
+            )
+
+        self.assertEqual(commands[1], ["docker", "builder", "prune", "--all", "--force"])
+        self.assertEqual(commands[2][:3], ["docker", "build", "--no-cache"])
+        self.assertEqual(len(commands), 3)
+
+    def test_build_failure_after_retry_is_reported(self):
+        self.write_dockerfile()
+
+        def failing(command, **kwargs):
+            if list(command[:2]) == ["docker", "build"]:
+                raise RELEASE.ReleaseError("Command failed with exit code 1")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with mock.patch.object(RELEASE, "run_command", side_effect=failing):
+            with self.assertRaises(RELEASE.ReleaseError):
+                RELEASE.build_image(
+                    self.model_dir,
+                    self.model_dir / "Dockerfile",
+                    "heartwisehub/pacs-ai-example:1.2.3",
+                    self.metadata(),
+                    None,
+                )
 
     def test_label_and_runtime_mismatches_are_rejected(self):
         metadata = self.metadata()

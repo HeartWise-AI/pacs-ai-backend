@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 
 	postgresqlTypes "api-pacs/infrastructures/database/postgresql/types"
@@ -92,6 +93,11 @@ func (repository *InferenceProcessingRunRepository) ApplyProcessingRunExecutionT
 		}, nil
 	}
 	if !execution.Status.CanTransitionTo(data.Status) {
+		return types.ApplyInferenceIngestionProcessingTransitionResult{
+			Outcome: processingTransitionOutcomeIgnored, Execution: execution, Run: run,
+		}, nil
+	}
+	if data.OnlyIfCancellableBeforeCompute && !execution.IsCancellableBeforeCompute(data.StudyServiceJobMissing) {
 		return types.ApplyInferenceIngestionProcessingTransitionResult{
 			Outcome: processingTransitionOutcomeIgnored, Execution: execution, Run: run,
 		}, nil
@@ -614,10 +620,25 @@ func (repository *InferenceProcessingRunRepository) CreateProcessingRunPlan(ctx 
 		return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
 	}
 
+	if data.Run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerViewerRequest {
+		// Single-model viewer runs coexist with study-wide runs but never with
+		// another active execution of the same model for the same study.
+		if err = ensureNoActiveModelExecution(ctx, tx, data); err != nil {
+			return types.CreateInferenceIngestionProcessingRunPlanResult{}, err
+		}
+		return insertProcessingRunPlan(ctx, tx, data)
+	}
+
+	// Automatic plans reuse only an active study-wide run; manual reprocessing
+	// conflicts with any active run, including single-model viewer runs.
+	activeRunFilter := ""
+	if data.Run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerAuto {
+		activeRunFilter = viewerRunExclusion
+	}
 	var activeRun entity.InferenceIngestionProcessingRun
 	err = tx.GetContext(ctx, &activeRun, `
 		SELECT * FROM ingestion_processing_runs
-		WHERE tenant_id = $1 AND study_instance_uid = $2 AND phase <> 'TERMINAL'
+		WHERE tenant_id = $1 AND study_instance_uid = $2 AND phase <> 'TERMINAL' `+activeRunFilter+`
 		ORDER BY run_number DESC LIMIT 1
 	`, data.Run.TenantID, data.Run.StudyInstanceUID)
 	if err == nil {
@@ -645,6 +666,50 @@ func (repository *InferenceProcessingRunRepository) CreateProcessingRunPlan(ctx 
 		return types.CreateInferenceIngestionProcessingRunPlanResult{}, processingRunError(err)
 	}
 
+	return insertProcessingRunPlan(ctx, tx, data)
+}
+
+// viewerRunExclusion keeps study-wide run lookups independent of single-model
+// viewer runs. The text cast avoids depending on the enum value at parse time.
+// CAST, not "::": selectStudyRun is a named query, where sqlx turns "::" into ":".
+const viewerRunExclusion = "AND CAST(run_trigger AS text) <> 'VIEWER_REQUEST'"
+
+// staleUndispatchedExecution matches a pending execution that was never sent to
+// study-service and that the processing reconciler has already reported as
+// EXPECTED_JOB_MISSING. Such executions will never run (the reconciler leaves
+// them for operator attention), so they must not block a viewer run.
+const staleUndispatchedExecution = `jobs.status = 'pending' AND jobs.study_service_job_id IS NULL AND COALESCE(runs.attention_reasons, '[]'::jsonb) @> '[{"code": "EXPECTED_JOB_MISSING"}]'::jsonb`
+
+func ensureNoActiveModelExecution(ctx context.Context, tx *sqlx.Tx, data types.CreateInferenceIngestionProcessingRunPlan) error {
+	modelNames := make([]string, 0, len(data.Executions))
+	for _, execution := range data.Executions {
+		modelNames = append(modelNames, execution.ModelName)
+	}
+	if len(modelNames) == 0 {
+		return errors.New(apiError.InvalidPayload)
+	}
+	var active int
+	if err := tx.GetContext(ctx, &active, `
+		SELECT COUNT(*) FROM ingestion_processing_jobs jobs
+		JOIN ingestion_processing_runs runs ON runs.id = jobs.processing_run_id
+		WHERE runs.tenant_id = $1
+		  AND jobs.tenant_id = $1
+		  AND runs.study_instance_uid = $2
+		  AND runs.phase <> 'TERMINAL'
+		  AND jobs.model_name = ANY($3)
+		  AND jobs.status IN ('pending', 'queued', 'running')
+		  AND NOT (`+staleUndispatchedExecution+`)
+	`, data.Run.TenantID, data.Run.StudyInstanceUID, pq.Array(modelNames)); err != nil {
+		return processingRunError(err)
+	}
+	if active > 0 {
+		return errors.New(apiError.DuplicateRecord)
+	}
+	return nil
+}
+
+func insertProcessingRunPlan(ctx context.Context, tx *sqlx.Tx, data types.CreateInferenceIngestionProcessingRunPlan) (types.CreateInferenceIngestionProcessingRunPlanResult, error) {
+	var err error
 	var runNumber int
 	if err = tx.GetContext(ctx, &runNumber, `
 		SELECT COALESCE(MAX(run_number), 0) + 1
@@ -700,7 +765,7 @@ func (repository *InferenceProcessingRunRepository) selectStudyRun(ctx context.C
 
 // SelectActiveProcessingRun returns the tenant-scoped non-terminal run for a study.
 func (repository *InferenceProcessingRunRepository) SelectActiveProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error) {
-	return repository.selectStudyRun(ctx, tenantID, studyInstanceUID, "AND phase <> 'TERMINAL' ORDER BY run_number DESC LIMIT 1")
+	return repository.selectStudyRun(ctx, tenantID, studyInstanceUID, "AND phase <> 'TERMINAL' "+viewerRunExclusion+" ORDER BY run_number DESC LIMIT 1")
 }
 
 // SelectProcessingRun returns one tenant-scoped processing run by ID.
@@ -712,6 +777,26 @@ func (repository *InferenceProcessingRunRepository) SelectProcessingRun(ctx cont
 	`, map[string]interface{}{
 		"tenant_id": tenantID, "processing_run_id": processingRunID,
 	}, &run)
+	return run, processingRunError(err)
+}
+
+// SelectLatestStudyWideProcessingRun returns the newest tenant-scoped run for
+// a study that is not a single-model viewer run.
+func (repository *InferenceProcessingRunRepository) SelectLatestStudyWideProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error) {
+	return repository.selectStudyRun(ctx, tenantID, studyInstanceUID, viewerRunExclusion+" ORDER BY run_number DESC LIMIT 1")
+}
+
+// MarkProcessingRunCancelled records who cancelled an active run and when.
+// The first cancellation wins; a terminal or unknown run is a missing record.
+func (repository *InferenceProcessingRunRepository) MarkProcessingRunCancelled(_ context.Context, data types.MarkInferenceIngestionProcessingRunCancelled) (entity.InferenceIngestionProcessingRun, error) {
+	var run entity.InferenceIngestionProcessingRun
+	err := repository.PostgresSQLDBHandlerInterface.QueryRow(`
+		UPDATE ingestion_processing_runs SET
+			cancelled_by_user_id = COALESCE(cancelled_by_user_id, :cancelled_by_user_id),
+			cancelled_at = COALESCE(cancelled_at, :cancelled_at)
+		WHERE id = :id AND tenant_id = :tenant_id AND phase <> 'TERMINAL'
+		RETURNING *
+	`, data, &run)
 	return run, processingRunError(err)
 }
 
@@ -892,4 +977,23 @@ func (repository *InferenceProcessingRunRepository) UpdateProcessingRunAggregate
 		return entity.InferenceIngestionProcessingRun{}, errors.New(apiError.DuplicateRecord)
 	}
 	return entity.InferenceIngestionProcessingRun{}, processingRunError(lookupErr)
+}
+
+// SelectProcessingRunNotificationJobs returns the distinct ingestion jobs
+// behind a run (run -> executions -> candidates -> jobs) with the fields the
+// notification audience needs. One automatic run can span several jobs.
+func (repository *InferenceProcessingRunRepository) SelectProcessingRunNotificationJobs(ctx context.Context, tenantID, processingRunID string) ([]types.ProcessingRunNotificationJob, error) {
+	jobs := make([]types.ProcessingRunNotificationJob, 0)
+	err := repository.PostgresSQLDBHandlerInterface.Query(`
+		SELECT DISTINCT ingestion_jobs.id AS ingestion_job_id,
+			ingestion_jobs.created_by_user_id,
+			ingestion_jobs.notifications_enabled
+		FROM ingestion_processing_jobs executions
+		JOIN ingestion_processing_runs runs ON runs.id = executions.processing_run_id
+		JOIN ingestion_candidates candidates ON candidates.id = executions.candidate_id
+		JOIN ingestion_jobs ON ingestion_jobs.id = candidates.ingestion_job_id
+		WHERE runs.tenant_id = :tenant_id AND runs.id = :processing_run_id
+		ORDER BY ingestion_jobs.id
+	`, map[string]interface{}{"tenant_id": tenantID, "processing_run_id": processingRunID}, &jobs)
+	return jobs, processingRunError(err)
 }

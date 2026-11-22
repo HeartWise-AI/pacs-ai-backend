@@ -37,6 +37,22 @@ func (repository *processingRunPlannerQueryRepository) SelectInferenceIngestionJ
 	return job, nil
 }
 
+func (repository *processingRunPlannerQueryRepository) SelectInferenceIngestionJobs(tenantID *string) ([]entity.InferenceIngestionJob, error) {
+	if repository.err != nil {
+		return nil, repository.err
+	}
+	jobs := make([]entity.InferenceIngestionJob, 0, len(repository.jobs))
+	for _, job := range repository.jobs {
+		if tenantID == nil || job.TenantID == *tenantID {
+			jobs = append(jobs, job)
+		}
+	}
+	if len(jobs) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
+	}
+	return jobs, nil
+}
+
 type processingRunPlannerRepository struct {
 	domainRepository.InferenceProcessingRunRepositoryInterface
 	activeRun         *entity.InferenceIngestionProcessingRun
@@ -96,6 +112,15 @@ func (repository *concurrentProcessingRunPlannerRepository) CreateProcessingRunP
 	return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{Run: run, Executions: executions, Created: true}, nil
 }
 
+// No earlier run of the study was cancelled by a user.
+func (repository *processingRunPlannerRepository) SelectLatestStudyWideProcessingRun(context.Context, string, string) (entity.InferenceIngestionProcessingRun, error) {
+	return entity.InferenceIngestionProcessingRun{}, errors.New(apiError.MissingRecord)
+}
+
+func (repository *concurrentProcessingRunPlannerRepository) SelectLatestStudyWideProcessingRun(context.Context, string, string) (entity.InferenceIngestionProcessingRun, error) {
+	return entity.InferenceIngestionProcessingRun{}, errors.New(apiError.MissingRecord)
+}
+
 func (repository *processingRunPlannerRepository) SelectActiveProcessingRun(_ context.Context, _, _ string) (entity.InferenceIngestionProcessingRun, error) {
 	if repository.activeErr != nil {
 		return entity.InferenceIngestionProcessingRun{}, repository.activeErr
@@ -126,7 +151,7 @@ func TestCreateAutomaticStudyProcessingRunFreezesAllKnownModels(t *testing.T) {
 		candidates: []entity.InferenceIngestionCandidate{
 			{ID: "candidate-b", TenantID: "tenant-a", IngestionJobID: "job-b", StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusStable},
 			{ID: "candidate-gone", TenantID: "tenant-a", IngestionJobID: "job-gone", StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusDisappeared},
-			{ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: "job-a", StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved},
+			{ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: "job-a", StudyInstanceUID: "1.2.3", ModalitiesInStudy: stringPointer("XA"), Status: entity.InferenceIngestionCandidateStatusRetrieved},
 		},
 		jobs: map[string]entity.InferenceIngestionJob{
 			"job-a": {ID: "job-a", TenantID: "tenant-a", ModelName: "AlphaModel", ModelVersion: "v1", DICOMModality: "US"},
@@ -293,4 +318,40 @@ func TestConcurrentAutomaticSchedulingConvergesOnOneFrozenPlan(t *testing.T) {
 	}
 	require.Equal(t, 1, created)
 	require.Equal(t, 1, runRepository.created)
+}
+
+func TestCreateAutomaticStudyProcessingRunSkipsViewerOnlyModels(t *testing.T) {
+	queryRepository := &processingRunPlannerQueryRepository{
+		candidates: []entity.InferenceIngestionCandidate{
+			{ID: "candidate-a", TenantID: "tenant-a", IngestionJobID: "job-a", StudyInstanceUID: "1.2.3", ModalitiesInStudy: stringPointer("XA"), Status: entity.InferenceIngestionCandidateStatusRetrieved},
+			{ID: "candidate-viewer", TenantID: "tenant-a", IngestionJobID: "job-viewer", StudyInstanceUID: "1.2.3", Status: entity.InferenceIngestionCandidateStatusRetrieved},
+		},
+		jobs: map[string]entity.InferenceIngestionJob{
+			"job-a":      {ID: "job-a", TenantID: "tenant-a", ModelName: "AlphaModel", ModelVersion: "v1", DICOMModality: "PACS_QUERY", Modalities: []string{"XA"}},
+			"job-viewer": {ID: "job-viewer", TenantID: "tenant-a", ModelName: "ViewerOnlyModel", ModelVersion: "v1", DICOMModality: viewerIngestionJobSource},
+		},
+	}
+	runRepository := &processingRunPlannerRepository{
+		create: func(data repositoryTypes.CreateInferenceIngestionProcessingRunPlan) (repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult, error) {
+			require.Len(t, data.Executions, 1)
+			require.Equal(t, "AlphaModel", data.Executions[0].ModelName)
+			require.Equal(t, "angiogram", *data.Executions[0].Modality)
+			return repositoryTypes.CreateInferenceIngestionProcessingRunPlanResult{
+				Run:        entity.InferenceIngestionProcessingRun{ID: "run-1"},
+				Executions: []entity.InferenceIngestionProcessingJob{{ID: "execution-a"}},
+				Created:    true,
+			}, nil
+		},
+	}
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface:         queryRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+	}
+
+	result, err := service.CreateAutomaticStudyProcessingRun(context.Background(), serviceTypes.CreateStudyProcessingRun{
+		TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, result.Executions, 1)
 }

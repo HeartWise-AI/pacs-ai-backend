@@ -249,7 +249,7 @@ Update `pacs-ai-backend/orthanc/.env` with appropriate port and AET settings:
 From the `pacs-ai-backend` directory:
 
 ```bash
-make up-prod # This will start the application in production mode
+make up-prod # Start production mode. Does not rebuild existing images (use `make build-prod`).
 make down-prod # This will stop the application
 ```
 
@@ -287,10 +287,12 @@ Update `api-pacs/.env` with the following variables:
 | `LOGIN_IP_CHALLENGE_FAILURES` / `LOGIN_IP_MAX_FAILURES` | IP challenge/hard-limit thresholds; defaults to `5` / `30`                                  |
 | `LOGIN_TENANT_CHALLENGE_FAILURES` / `LOGIN_TENANT_MAX_FAILURES` | Tenant challenge/hard-limit thresholds; defaults to `50` / `500`                  |
 | `LOGIN_TURNSTILE_ALLOWED_HOSTNAMES` | Comma-separated exact frontend hostnames accepted for the login action                                             |
+| `LOGIN_CHALLENGE_MODE` | `turnstile` or `cooldown` (429 + `Retry-After` instead of a challenge); defaults to `turnstile` only when `CLOUDFLARE_SECRET_KEY` and `LOGIN_TURNSTILE_ALLOWED_HOSTNAMES` are both set |
 | `LOGIN_TRUSTED_PROXY_CIDRS` | Comma-separated direct-proxy CIDRs allowed to supply login `X-Real-IP`; leave empty for direct access                         |
 | `INFERENCE_USER_QUOTA_WINDOW_SECONDS` | Per-user fixed quota window; defaults to `86400` seconds                                                        |
 | `INFERENCE_USER_QUOTA_ALLOWANCE` | Maximum accepted user-triggered inference units per window; defaults to `50`                                      |
-| `INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS` | Maximum active direct predictions or manual reprocessing runs per tenant/user; defaults to `2`           |
+| `INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS` | Maximum active synchronous (interactive) predictions per tenant/user; defaults to `2`                    |
+| `INFERENCE_USER_MAX_QUEUED_EXECUTIONS` | Safety cap on active queued runs (viewer model runs, manual reprocessing) per tenant/user; defaults to `50`; independent of the interactive cap |
 | `INFERENCE_USER_RESERVATION_TTL_SECONDS` | Safety expiry for abandoned active reservations; defaults to `7200` seconds                                  |
 | `INFERENCE_USER_QUOTA_TENANT_OVERRIDES_JSON` | Optional JSON limits keyed by tenant ID; omitted fields inherit global defaults                           |
 | `DOCKER_USERNAME`           | Your DockerHub username                                                                                                   |

@@ -41,7 +41,9 @@ type IAMCommandService struct {
 	LoginTurnstileAPIInterface     cloudflareAPITypes.LoginTurnstileAPIInterface
 	LoginAbuseProtectionInterface  iamApplication.LoginAbuseProtectionInterface
 	LoginTurnstileAllowedHostnames map[string]struct{}
-	MailgunSDK                     *mailgun.MailgunSDK
+	// LoginChallengeMode is turnstile (the zero value) or cooldown.
+	LoginChallengeMode LoginChallengeMode
+	MailgunSDK         *mailgun.MailgunSDK
 }
 
 // ForgotTenantUserPassword forgot password
@@ -117,8 +119,9 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, data type
 		return "", newLoginRateLimitError(decision.RetryAfter)
 	}
 	if decision.ChallengeRequired {
-		if data.TurnstileToken == "" {
-			log.Printf("[security] event=login_challenge_required tenant_id=%s", data.TenantID)
+		if service.loginCooldownMode() || data.TurnstileToken == "" {
+			// In cooldown mode a token is never accepted in place of waiting.
+			log.Printf("[security] event=login_challenge_required tenant_id=%s mode=%s", data.TenantID, service.loginChallengeMode())
 			return "", service.handleDeniedLogin(ctx, signals, apiError.LoginChallengeRequired)
 		}
 		if err := service.validateLoginTurnstile(ctx, data.TurnstileToken, signals); err != nil {
@@ -139,7 +142,11 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, data type
 		if errors.Is(err, identitytoolkit.ErrCredentialsRejected) {
 			return "", service.handleRejectedLogin(ctx, signals)
 		}
-		log.Printf("[security] event=login_identity_provider_unavailable")
+		if errors.Is(err, identitytoolkit.ErrTooManyAttempts) {
+			return "", service.handleProviderLockout(ctx, signals)
+		}
+		log.Printf("[security] event=login_identity_provider_unavailable tenant_id=%s reason=%s",
+			data.TenantID, identitytoolkit.FailureReason(err))
 		return "", newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
 	}
 	if service.TenantIDTokenVerifierInterface == nil {
@@ -210,12 +217,44 @@ func (service *IAMCommandService) handleRejectedLogin(ctx context.Context, signa
 	if err != nil {
 		return newLoginError(apiError.LoginProtectionUnavailable, false, 0)
 	}
-	log.Printf("[security] event=login_credentials_rejected tenant_id=%s challenge_required=%t rate_limited=%t",
-		signals.TenantID, decision.ChallengeRequired, decision.RetryAfter > 0)
+	cooldown := service.loginCooldownMode() && decision.ChallengeRequired
+	log.Printf("[security] event=login_credentials_rejected tenant_id=%s challenge_required=%t rate_limited=%t mode=%s",
+		signals.TenantID, decision.ChallengeRequired, decision.RetryAfter > 0 || cooldown, service.loginChallengeMode())
 	if decision.RetryAfter > 0 {
 		return newLoginRateLimitError(decision.RetryAfter)
 	}
+	if cooldown {
+		return newLoginRateLimitError(loginCooldownRetryAfter(decision))
+	}
 	return newLoginError(apiError.UnauthorizedAccess, decision.ChallengeRequired, 0)
+}
+
+// providerLockoutRetryAfter is the Retry-After advertised when Firebase locks
+// password sign-in for an account (TOO_MANY_ATTEMPTS_TRY_LATER). Firebase does
+// not report how long its lockout lasts; five minutes is a conservative backoff
+// that is shorter than the default login failure window (10 minutes), so a user
+// who waits is not kept out longer than our own limiter would, and a client that
+// retries too early simply receives the same response again.
+const providerLockoutRetryAfter = 5 * time.Minute
+
+// handleProviderLockout answers a Firebase account lockout with the same
+// LoginRateLimited response used by the local limiter (429, generic message,
+// challengeRequired=true, Retry-After), so it reveals nothing beyond what the
+// earlier credential rejections and the existing rate limit already do. The
+// attempt is recorded exactly once, as a denied attempt: Firebase did not check
+// the password, but the request still counts toward the IP and tenant limits.
+func (service *IAMCommandService) handleProviderLockout(ctx context.Context, signals types.LoginAbuseSignals) error {
+	log.Printf("[security] event=login_provider_lockout tenant_id=%s", signals.TenantID)
+	retryAfter := providerLockoutRetryAfter
+	if service.LoginAbuseProtectionInterface != nil {
+		decision, err := service.LoginAbuseProtectionInterface.RecordLoginFailure(ctx, signals)
+		if err != nil {
+			log.Printf("[security] event=login_protection_unavailable operation=record reason=provider_lockout")
+		} else if decision.RetryAfter > retryAfter {
+			retryAfter = decision.RetryAfter
+		}
+	}
+	return newLoginRateLimitError(retryAfter)
 }
 
 func (service *IAMCommandService) handleDeniedLogin(ctx context.Context, signals types.LoginAbuseSignals, originalCode string) error {
@@ -229,7 +268,32 @@ func (service *IAMCommandService) handleDeniedLogin(ctx context.Context, signals
 	if decision.RetryAfter > 0 {
 		return newLoginRateLimitError(decision.RetryAfter)
 	}
+	if service.loginCooldownMode() {
+		return newLoginRateLimitError(loginCooldownRetryAfter(decision))
+	}
 	return newLoginError(originalCode, true, 0)
+}
+
+func (service *IAMCommandService) loginChallengeMode() LoginChallengeMode {
+	if service.LoginChallengeMode == LoginChallengeModeCooldown {
+		return LoginChallengeModeCooldown
+	}
+	return LoginChallengeModeTurnstile
+}
+
+func (service *IAMCommandService) loginCooldownMode() bool {
+	return service.loginChallengeMode() == LoginChallengeModeCooldown
+}
+
+// loginCooldownRetryAfter is the wait advertised in cooldown mode. The
+// protection layer already bounds it; the floor only guards a decision that
+// carries no TTL (for example from a protection implementation that does not
+// report one).
+func loginCooldownRetryAfter(decision types.LoginProtectionDecision) time.Duration {
+	if decision.ChallengeRetryAfter < minimumLoginCooldown {
+		return minimumLoginCooldown
+	}
+	return decision.ChallengeRetryAfter
 }
 
 func (service *IAMCommandService) validateLoginTurnstile(ctx context.Context, token string, signals types.LoginAbuseSignals) error {

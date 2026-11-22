@@ -1,0 +1,59 @@
+{
+  "en": {
+    "Summary": {
+      "Name": "DeepCORO-SCAD",
+      "Description": "DeepCORO-CLIP based research model that estimates the study-level probability of spontaneous coronary artery dissection (SCAD) from up to four coronary angiography videos.",
+      "Developed_by": "HeartWise.AI / Montreal Heart Institute",
+      "Version": "1.0.0"
+    },
+    "Mechanism": {
+      "Outcome": "Spontaneous coronary artery dissection (SCAD) on the diagnostic coronary angiogram",
+      "Output": "SCAD probability (sigmoid of the scad head) and a SCAD-suspected flag at the validation-derived threshold of 0.0524. Auxiliary training heads (atherosclerotic CAD, other finding, stenosis) are not reported.",
+      "Target_population": "Adults undergoing diagnostic coronary angiography represented by the model development cohort (Montreal Heart Institute plus SCAD cases from the UBC Vancouver SCAD registry and UBC partner sites)",
+      "Input_data_source": "Coronary angiography study, up to four videos (ideally two left and two right coronary views), ordered by DICOM SeriesTime",
+      "Input_data_type": "dicom",
+      "Model_type": "Deep Learning (MViT video encoder, 16 frames at 224 px, plus multiple-instance linear probing with mean pooling over four videos)",
+      "Supported_DICOM_modalities": "XA"
+    },
+    "Performance": {
+      "Held_out_test_all_sites": "n=270 studies (56 SCAD): AUROC 0.95 (95% CI 0.91-0.97), sensitivity 0.91, specificity 0.84, NPV 0.97",
+      "Held_out_test_Montreal_Heart_Institute": "n=229 studies: AUROC 0.87 (95% CI 0.78-0.94), sensitivity 0.69, specificity 0.85, NPV 0.97",
+      "Threshold": "0.0524, fixed on the validation set to favour sensitivity"
+    },
+    "Uses_and_directions": {
+      "General_use": "Research and demonstration of angiography-based SCAD detection.",
+      "Directions": "Submit one diagnostic XA study with up to four videos, preferably two left and two right coronary views. Interpret the output as a model score, not a calibrated clinical probability.",
+      "Not_intended_use": "Diagnosis, ruling out SCAD, lesion localisation, or changing treatment or revascularization decisions."
+    },
+    "Warnings_and_limitations": {
+      "Research_only": "No regulatory clearance. The model and its threshold are not validated for clinical decision-making.",
+      "Site_confounding": "External sites contributed SCAD-positive studies only, so the all-sites estimate can be inflated by site differences. The single-site Montreal Heart Institute estimate is lower (AUROC 0.87, sensitivity 0.69).",
+      "Localisation": "The model gives one study-level output and does not localise the dissected segment.",
+      "Calibration": "The displayed probability is a sigmoid output and is not a calibrated absolute risk. A result below the threshold does not exclude SCAD.",
+      "Input_selection": "The service uses at most the first four processable videos after ordering by DICOM SeriesTime; additional videos are ignored and missing slots are masked out of the mean pooling."
+    },
+    "Artifact_provenance": {
+      "Repository": "heartwise/deepcoro_clip_scad",
+      "Pinned_revision": "9c03ca0928cd781b82669b8e4cd48f1b7b11ed3d",
+      "Checkpoint": "20261025-134722/models/best_model_epoch_7.pt",
+      "Checkpoint_heads": "Four heads (scad, cad, other, stenosis) under the linear_probing state-dict key; only scad is reported"
+    }
+  },
+  "fr": {
+    "Résumé": {
+      "Nom": "DeepCORO-SCAD",
+      "Description": "Modèle de recherche fondé sur DeepCORO-CLIP qui estime, à l'échelle de l'examen, la probabilité de dissection coronarienne spontanée (DCS) à partir d'au plus quatre vidéos de coronarographie.",
+      "Version": "1.0.0"
+    },
+    "Performance": {
+      "Test_tous_sites": "n=270 examens (56 DCS) : ASC 0,95 (IC 95 % 0,91-0,97), sensibilité 0,91, spécificité 0,84, VPN 0,97",
+      "Test_Institut_de_Cardiologie_de_Montréal": "n=229 examens : ASC 0,87 (IC 95 % 0,78-0,94), sensibilité 0,69, spécificité 0,85, VPN 0,97"
+    },
+    "Avertissements": {
+      "Recherche_uniquement": "Aucune autorisation réglementaire. Le modèle et son seuil ne sont pas validés pour la prise de décision clinique.",
+      "Confusion_par_site": "Les sites externes n'ont fourni que des examens avec DCS ; l'estimation tous sites peut donc être surestimée par les différences entre sites.",
+      "Localisation": "Le modèle produit un seul résultat par examen et ne localise pas le segment disséqué.",
+      "Interprétation": "La probabilité affichée n'est pas un risque absolu étalonné. Un résultat sous le seuil n'exclut pas une DCS."
+    }
+  }
+}

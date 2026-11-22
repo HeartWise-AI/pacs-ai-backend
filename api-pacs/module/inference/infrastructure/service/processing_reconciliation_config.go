@@ -14,11 +14,13 @@ const (
 	defaultReconciliationQueuedStaleMinutes   uint = 10
 	defaultReconciliationRunningStaleMinutes  uint = 65
 	defaultReconciliationFailureThreshold     uint = 3
+	defaultReconciliationRedispatchMaxMinutes uint = 360
 	reconciliationPendingStaleMinutesEnv           = "INFERENCE_INGESTION_RECONCILIATION_PENDING_MINUTES"
 	reconciliationQueuedStaleMinutesEnv            = "INFERENCE_INGESTION_RECONCILIATION_QUEUED_MINUTES"
 	reconciliationRunningStaleMinutesEnv           = "INFERENCE_INGESTION_RECONCILIATION_RUNNING_MINUTES"
 	reconciliationModelRunningStaleMinutesEnv      = "INFERENCE_INGESTION_RECONCILIATION_MODEL_RUNNING_MINUTES"
 	reconciliationFailureThresholdEnv              = "INFERENCE_INGESTION_RECONCILIATION_FAILURE_THRESHOLD"
+	reconciliationRedispatchMaxMinutesEnv          = "INFERENCE_INGESTION_RECONCILIATION_REDISPATCH_MAX_AGE_MINUTES"
 )
 
 type processingReconciliationConfig struct {
@@ -27,6 +29,10 @@ type processingReconciliationConfig struct {
 	RunningStaleAfter      time.Duration
 	ModelRunningStaleAfter map[string]time.Duration
 	FailureThreshold       uint
+	// RedispatchMaxAge is how long an execution may have been pending and
+	// still be dispatched again; an older automatic execution is closed as
+	// skipped because dispatch recovery can no longer start it safely.
+	RedispatchMaxAge time.Duration
 }
 
 func configuredProcessingReconciliation() processingReconciliationConfig {
@@ -58,6 +64,9 @@ func configuredProcessingReconciliation() processingReconciliationConfig {
 		FailureThreshold: configuredPositiveUint(
 			reconciliationFailureThresholdEnv, defaultReconciliationFailureThreshold,
 		),
+		RedispatchMaxAge: time.Duration(configuredPositiveUint(
+			reconciliationRedispatchMaxMinutesEnv, defaultReconciliationRedispatchMaxMinutes,
+		)) * time.Minute,
 	}
 }
 

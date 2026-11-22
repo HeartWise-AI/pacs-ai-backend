@@ -35,9 +35,10 @@ type QueryModalitiesRequest struct {
 }
 
 type QueryLocalResourceRequest struct {
-	Level  string             `json:"Level"`
-	Query  QueryLocalResource `json:"Query"`
-	Expand bool               `json:"Expand,omitempty"`
+	Level         string             `json:"Level"`
+	Query         QueryLocalResource `json:"Query"`
+	Expand        bool               `json:"Expand,omitempty"`
+	RequestedTags []string           `json:"RequestedTags,omitempty"`
 }
 
 type RetrieveQueryModalityAnswerRequest struct {
@@ -88,8 +89,9 @@ type GetJobResponse struct {
 }
 
 type GetLocalResourceResponse struct {
-	ID            string `json:"ID"`
-	LastUpdate    string `json:"LastUpdate"` // in 20240627T182452 format
+	ID            string            `json:"ID"`
+	LastUpdate    string            `json:"LastUpdate"` // in 20240627T182452 format
+	RequestedTags map[string]string `json:"RequestedTags,omitempty"`
 	MainDICOMTags struct {
 		SeriesInstanceUID string `json:"SeriesInstanceUID"`
 		SeriesTime        string `json:"SeriesTime"`
@@ -114,6 +116,11 @@ type ListDICOMModalitiesResponse struct {
 type QueryModalityResponse struct {
 	ID   string `json:"ID"`
 	Path string `json:"Path"`
+	// Set on series moves: the series and its place in the retrieve order
+	// (0 = moved first, the series the viewer shows first).
+	SeriesInstanceUID string `json:"SeriesInstanceUID,omitempty"`
+	SeriesNumber      string `json:"SeriesNumber,omitempty"`
+	Order             int    `json:"Order"`
 }
 
 type QueryModalityStudyAnswersResponse struct {
@@ -122,7 +129,7 @@ type QueryModalityStudyAnswersResponse struct {
 	NumberOfStudyRelatedSeries    string `json:"NumberOfStudyRelatedSeries"`
 	NumberOfStudyRelatedInstances string `json:"NumberOfStudyRelatedInstances"`
 	PatientBirthDate              string `json:"PatientBirthDate"`
-	PatientID                  	  string `json:"PatientID"`
+	PatientID                     string `json:"PatientID"`
 	PatientName                   string `json:"PatientName"`
 	PatientSex                    string `json:"PatientSex"`
 	QueryRetrieveLevel            string `json:"QueryRetrieveLevel"`
@@ -144,6 +151,10 @@ type QueryModalitySeriesAnswersResponse struct {
 	SeriesInstanceUID    string `json:"SeriesInstanceUID"`
 	SpecificCharacterSet string `json:"SpecificCharacterSet"`
 	StudyInstanceUID     string `json:"StudyInstanceUID"`
+	// Asked for in the series query; empty when the PACS does not return them.
+	SeriesNumber                   string `json:"SeriesNumber,omitempty"`
+	Modality                       string `json:"Modality,omitempty"`
+	NumberOfSeriesRelatedInstances string `json:"NumberOfSeriesRelatedInstances,omitempty"`
 }
 
 type StraightDICOMStoreSCUResponse struct {

@@ -1043,6 +1043,52 @@ func (controller *UserCommandController) UpdateTenantUserPassword(w http.Respons
 	response.JSON(w)
 }
 
+// CompleteUserViewerTour records that the authenticated user completed or skipped the viewer tour.
+func (controller *UserCommandController) CompleteUserViewerTour(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	res, err := controller.UserCommandServiceInterface.CompleteUserViewerTour(r.Context(), userID)
+	if err != nil {
+		writeViewerTourError(w, err, "Error occurred while saving the viewer tour state.")
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully completed the viewer tour.",
+		Data: &types.UserViewerTourResponse{
+			UserID:                res.UserID,
+			ViewerTourCompletedAt: res.ViewerTourCompletedAt,
+		},
+	}
+
+	response.JSON(w)
+}
+
+// ResetUserViewerTour clears the authenticated user's viewer tour completion so it shows again.
+func (controller *UserCommandController) ResetUserViewerTour(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+
+	res, err := controller.UserCommandServiceInterface.ResetUserViewerTour(r.Context(), userID)
+	if err != nil {
+		writeViewerTourError(w, err, "Error occurred while resetting the viewer tour.")
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully reset the viewer tour.",
+		Data: &types.UserViewerTourResponse{
+			UserID:                res.UserID,
+			ViewerTourCompletedAt: res.ViewerTourCompletedAt,
+		},
+	}
+
+	response.JSON(w)
+}
+
 // UpdateUserMetadata updates user metadata
 func (controller *UserCommandController) UpdateUserMetadata(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -105,6 +106,7 @@ type ResolvedCandidateImage struct {
 // ValidatedCandidate contains the immutable image identity and live runtime
 // contract that passed validation. The candidate remains outside active routing.
 type ValidatedCandidate struct {
+	GPUUUID        string
 	ContainerID    string
 	ContainerName  string
 	ImageReference string
@@ -119,6 +121,11 @@ type ValidateCandidateContainer struct {
 	Image                ResolvedCandidateImage
 	ActiveModelInfo      api.ModelInfo
 	RegisteredOutputMode entity.OutputMode
+	// SameImageAsActive validates a container recreated from the image the
+	// active container runs (a GPU move). The image needs no registry digest
+	// and no release labels, but the candidate must report exactly the model
+	// the active container reports.
+	SameImageAsActive bool
 }
 
 // ValidateImageReference rejects mutable, unversioned, or out-of-namespace
@@ -176,7 +183,8 @@ func (validator *CandidateValidator) ValidateContainer(
 	if strings.TrimSpace(request.ContainerID) == "" {
 		return ValidatedCandidate{}, fmt.Errorf("%w: candidate container ID is required", ErrCandidateContract)
 	}
-	if request.Image.LocalImageID == "" || request.Image.Digest == "" || request.Image.Reference == "" {
+	if request.Image.LocalImageID == "" || request.Image.Reference == "" ||
+		(request.Image.Digest == "" && !request.SameImageAsActive) {
 		return ValidatedCandidate{}, fmt.Errorf("%w: resolved image identity is incomplete", ErrCandidateImageIdentity)
 	}
 
@@ -211,16 +219,22 @@ func (validator *CandidateValidator) ValidateContainer(
 	if err = validateCandidateRuntime(runtime); err != nil {
 		return ValidatedCandidate{}, fmt.Errorf("%w: %w", ErrCandidateContract, err)
 	}
-	if err = validateCandidateIdentity(
-		request.Image,
-		request.ActiveModelInfo,
-		modelInfo,
-		request.RegisteredOutputMode,
-	); err != nil {
+	if request.SameImageAsActive {
+		err = validateRelocatedIdentity(request.ActiveModelInfo, modelInfo, request.RegisteredOutputMode)
+	} else {
+		err = validateCandidateIdentity(
+			request.Image,
+			request.ActiveModelInfo,
+			modelInfo,
+			request.RegisteredOutputMode,
+		)
+	}
+	if err != nil {
 		return ValidatedCandidate{}, fmt.Errorf("%w: %w", ErrCandidateContract, err)
 	}
 
 	return ValidatedCandidate{
+		GPUUUID:        containerInfo.GPUUUID,
 		ContainerID:    request.ContainerID,
 		ContainerName:  name,
 		ImageReference: request.Image.Reference,
@@ -359,6 +373,37 @@ func validateCandidateIdentity(
 		if image.labels[label] != expected {
 			return fmt.Errorf("candidate OCI label %s does not match runtime metadata", label)
 		}
+	}
+	return nil
+}
+
+// validateRelocatedIdentity checks a container recreated from the active
+// container's own image: it must describe itself exactly as the active one.
+func validateRelocatedIdentity(
+	active api.ModelInfo,
+	candidate api.ModelInfo,
+	requiredOutputMode entity.OutputMode,
+) error {
+	if strings.TrimSpace(candidate.ModelID) == "" || candidate.ModelID != active.ModelID {
+		return fmt.Errorf("moved model identity does not match the active model")
+	}
+	if candidate.Version != active.Version {
+		return fmt.Errorf("moved model reports version %q, the active model %q", candidate.Version, active.Version)
+	}
+	if !reflect.DeepEqual(candidate.Provenance, active.Provenance) {
+		return fmt.Errorf("moved model provenance does not match the active model")
+	}
+	if err := candidate.Resources.Validate(); err != nil {
+		return fmt.Errorf("moved model resource contract is invalid: %w", err)
+	}
+	if candidate.Resources != active.Resources {
+		return fmt.Errorf("moved model resource contract does not match the active model")
+	}
+	if !reflect.DeepEqual(candidate.Capabilities, active.Capabilities) {
+		return fmt.Errorf("moved model capabilities do not match the active model")
+	}
+	if requiredOutputMode != "" && !slices.Contains(candidate.SupportedOutputModes, string(requiredOutputMode)) {
+		return fmt.Errorf("moved model does not support registered output mode %s", requiredOutputMode)
 	}
 	return nil
 }

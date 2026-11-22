@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -15,6 +17,14 @@ import (
 	"api-pacs/module/orchestrator/domain/entity"
 	"api-pacs/module/orchestrator/infrastructure/service/types"
 )
+
+// ErrChatProgressUnsupported is returned when the chat backend has no progress
+// endpoint (an older version): callers fall back to showing no live activity.
+var ErrChatProgressUnsupported = errors.New("chat_progress_unsupported")
+
+// chatProgressTimeout bounds one progress poll; the client's own timeout is
+// sized for a whole chat request.
+const chatProgressTimeout = 4 * time.Second
 
 // OrchestratorService implements the orchestrator service
 type OrchestratorService struct {
@@ -136,11 +146,14 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 		APIBaseURL        string `json:"api_base_url,omitempty"`
 		UserID            string `json:"user_id,omitempty"`
 		TenantID          string `json:"tenant_id,omitempty"`
+		// Viewer context (open study: studyInstanceUID, modality, selectedSeries).
+		Metadata map[string]interface{} `json:"metadata,omitempty"`
 	}{
 		Message:           request.Content,
 		ConversationID:    request.ThreadID,
 		ImageData:         request.ImageData,
 		ImageType:         request.ImageType,
+		Metadata:          request.Metadata,
 		BearerToken:       bearerToken,
 		APIBaseURL:        os.Getenv("API_BASE_URL"),
 		UserID:      	   userID,
@@ -242,6 +255,8 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 		Message:  pythonResponse.Message,
 		Status:   pythonResponse.Status,
 		Error:    pythonResponse.Error,
+		Activity: pythonResponse.Activity,
+		Citations: pythonResponse.Citations,
 		// Also maintain backward compatibility fields
 		MessageID:   messageID,
 		Content:     request.Content,
@@ -460,6 +475,62 @@ func (service *OrchestratorService) GetThread(ctx context.Context, threadID stri
 	}
 
 	return response, nil
+}
+
+// GetChatProgress returns the steps so far of the chat request in flight for a
+// thread. The chat backend only answers for the user and tenant that started
+// the request, so both are forwarded from the authenticated context.
+func (service *OrchestratorService) GetChatProgress(ctx context.Context, threadID string) (types.ChatProgressResponse, error) {
+	bearerToken := service.extractBearerTokenFromContext(ctx)
+	userID := service.extractUserIDFromContext(ctx)
+	tenantID := service.extractTenantIDFromContext(ctx)
+
+	ctx, cancel := context.WithTimeout(ctx, chatProgressTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("%s/chat/%s/progress", service.OrchestratorAPIURL, url.PathEscape(threadID)),
+		nil,
+	)
+	if err != nil {
+		return types.ChatProgressResponse{}, err
+	}
+	q := req.URL.Query()
+	q.Add("user_id", userID)
+	if tenantID != "" {
+		q.Add("tenant_id", tenantID)
+	}
+	req.URL.RawQuery = q.Encode()
+	// The session token travels in a header, not in the URL, so it stays out of access logs.
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
+
+	resp, err := service.OrchestratorClient.Do(req)
+	if err != nil {
+		return types.ChatProgressResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+		return types.ChatProgressResponse{}, ErrChatProgressUnsupported
+	}
+	if resp.StatusCode != http.StatusOK {
+		return types.ChatProgressResponse{}, fmt.Errorf("external API returned status: %d", resp.StatusCode)
+	}
+
+	var progress types.ChatProgressResponse
+	if err := json.NewDecoder(resp.Body).Decode(&progress); err != nil {
+		return types.ChatProgressResponse{}, err
+	}
+	progress.ThreadID = threadID
+	if progress.Status == "" {
+		progress.Status = "idle"
+	}
+	if progress.Steps == nil {
+		progress.Steps = []types.ChatActivityStep{}
+	}
+	return progress, nil
 }
 
 // generateID generates a unique ID

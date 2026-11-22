@@ -1,0 +1,799 @@
+"""One shared EchoJEPA encoder, a dense mask decoder, and study MIL heads.
+
+Deployment accepts raw grayscale clips. All full views are encoded in one batch
+(pass 1); the model's masks determine tracked native-resolution crops, which are
+encoded together with the *same* encoder (pass 2). No teacher, cached tokens,
+cached crops, or VasoVision outputs are used by ``forward_study``.
+
+The old MIL2 checkpoints are warm starts, not validated integrated checkpoints:
+their full-view tokens came from a different frozen encoder and teacher masks.
+Joint fine-tuning and a fresh validation are required before claiming any gate.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+import sys
+from typing import Sequence
+
+import numpy as np
+import torch
+from torch import Tensor, nn
+import torch.nn.functional as F
+
+N_CLASSES = 26
+PATCH = 16
+TUBELET = 2
+N_FRAMES = 16
+ALL_SEGMENTS = (
+    "prox_rca", "mid_rca", "dist_rca", "pda", "posterolateral", "left_main",
+    "prox_lad", "mid_lad", "dist_lad", "D1", "D2", "prox_lcx", "mid_lcx",
+    "dist_lcx", "om1", "om2", "bx", "lvp",
+)
+SEGMENT_CLASSES = {
+    "prox_rca": (1,), "mid_rca": (2,), "dist_rca": (3,), "pda": (4, 19),
+    "posterolateral": (20, 21, 22, 23), "left_main": (5,), "prox_lad": (6,),
+    "mid_lad": (7,), "dist_lad": (8,), "D1": (9, 10), "D2": (11, 12),
+    "prox_lcx": (13,), "mid_lcx": (13, 16), "dist_lcx": (16,),
+    "om1": (15,), "om2": (24,), "bx": (14,), "lvp": (17, 18, 25),
+}
+DISTAL_CLASSES = (4, 8, 16, 19, 20, 21, 22, 23)
+# v18 (v18_prep/v18_prereg.md section 2, default off). Run side: 0 Left Coronary, 1 Right Coronary, -1 unknown.
+# Right groups only use right runs; PDA / PL may use runs of either side (dominance is unknown at deployment); every other
+# group (including lvp, per the prereg's "everything else is left") only uses left runs. Unknown-side runs are always allowed.
+RIGHT_SIDE_GROUPS = ("prox_rca", "mid_rca", "dist_rca")
+EITHER_SIDE_GROUPS = ("pda", "posterolateral")
+VISIBILITY_STATS = ("log1p_right_runs", "log1p_left_runs", "log1p_unknown_runs", "log1p_mask_mass_right",
+                    "log1p_mask_mass_left", "log1p_mask_mass_unknown", "ungated_attention_on_allowed")
+
+
+# v19 (v19_prep/v19_prereg_DRAFT.md section 2A, default off). Fixed SYNTAX parent table, copied from
+# occlusion_template_v1/common.py BASE_PARENT / PDA_PL_PARENT (the run source snapshot only copies step3/*.py). PDA / PL:
+# parent dist_rca when right dominant, dist_lcx when left dominant; the model mixes the two by its own (detached) dominance
+# probability (right when the model has no dominance head). Roots (prox_rca, left_main) and lvp have no parent.
+OCCLUDED_PARENT = {"prox_rca": None, "mid_rca": "prox_rca", "dist_rca": "mid_rca", "left_main": None, "prox_lad": "left_main",
+                   "mid_lad": "prox_lad", "dist_lad": "mid_lad", "prox_lcx": "left_main", "mid_lcx": "prox_lcx",
+                   "dist_lcx": "mid_lcx", "D1": "prox_lad", "D2": "mid_lad", "om1": "prox_lcx", "om2": "mid_lcx", "bx": "left_main",
+                   "pda": ("dist_rca", "dist_lcx"), "posterolateral": ("dist_rca", "dist_lcx"), "lvp": None}
+OCCLUDED_SCALARS = ("log1p_own_mass_max", "log_own_over_tree_max", "parent_log1p_own_mass_max", "parent_log_own_over_tree_max",
+                    "has_own_crop", "has_parent", "visibility")
+
+
+def side_allowed(group: str, side: Tensor) -> Tensor:
+    """Bool mask: may an instance from a run of this side feed this group's gated attention?"""
+    if group in EITHER_SIDE_GROUPS:
+        return torch.ones_like(side, dtype=torch.bool)
+    return (side < 0) | (side == (1 if group in RIGHT_SIDE_GROUPS else 0))
+
+
+def load_encoder(checkpoint: str | Path | None, device: str | torch.device = "cpu"):
+    """Load exactly the released EJ-FT encoder, without segmentation imports."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "echojepa_src"))  # vendored EchoJEPA ViT code (MIT, see echojepa_src/LICENSE)
+    from src.models import vision_transformer as vit
+    enc = vit.vit_large(
+        patch_size=PATCH, img_size=(224, 224), num_frames=N_FRAMES,
+        tubelet_size=TUBELET, use_rope=True, uniform_power=True, use_sdpa=True,
+    )
+    if checkpoint is not None:
+        enc.load_state_dict(torch.load(checkpoint, map_location="cpu", weights_only=True), strict=True)
+    return enc.to(device)
+
+
+def enable_chunked_block_checkpointing(encoder: nn.Module, chunk: int):
+    """Checkpoint each trainable encoder block per chunk of clips instead of per call.
+
+    Memory only: every clip still passes exactly once through every block in the same encoder call; the backward
+    pass recomputes one chunk at a time instead of all clips of the call. Blocks are independent across clips.
+    """
+    from torch.utils.checkpoint import checkpoint
+    encoder.use_activation_checkpointing = False
+    for block in encoder.blocks:
+        if not any(p.requires_grad for p in block.parameters()):
+            continue
+        inner = block.forward
+
+        def forward(x, mask=None, *args, _inner=inner, **kwargs):
+            if not torch.is_grad_enabled():
+                return _inner(x, mask, *args, **kwargs)
+            if mask is not None:
+                raise ValueError("Chunked block checkpointing does not support token masks")
+            return torch.cat([checkpoint(_inner, part, None, *args, use_reentrant=False, **kwargs)
+                              for part in x.split(chunk)])
+        block.forward = forward
+
+
+def normalize_clip(frames: Tensor) -> Tensor:
+    """(B,T,H,W) grayscale [0,1] -> EchoJEPA (B,3,T,H,W)."""
+    x = frames[:, None].expand(-1, 3, -1, -1, -1)
+    mean = x.new_tensor((0.485, 0.456, 0.406)).view(1, 3, 1, 1, 1)
+    std = x.new_tensor((0.229, 0.224, 0.225)).view(1, 3, 1, 1, 1)
+    return (x - mean) / std
+
+
+def token_fractions(prob: Tensor, grid: tuple[int, int, int]) -> Tensor:
+    """(B,T,C,H,W) probabilities -> (B,t*h*w,C), token order t,h,w."""
+    b, t, c, h, w = prob.shape
+    tt, gh, gw = grid
+    if t % tt:
+        raise ValueError(f"Cannot pool {t} frames onto {tt} temporal tokens")
+    p = F.adaptive_avg_pool2d(prob.reshape(b * t, c, h, w), (gh, gw))
+    p = p.reshape(b, tt, t // tt, c, gh, gw).mean(2)
+    return p.permute(0, 1, 3, 4, 2).reshape(b, tt * gh * gw, c)
+
+
+class ConvBlock(nn.Sequential):
+    def __init__(self, c_in: int, c_out: int, stride: int = 1):
+        super().__init__(
+            nn.Conv2d(c_in, c_out, 3, stride=stride, padding=1, bias=False),
+            nn.GroupNorm(8, c_out), nn.GELU(),
+            nn.Conv2d(c_out, c_out, 3, padding=1, bias=False),
+            nn.GroupNorm(8, c_out), nn.GELU(),
+        )
+
+
+class TokenMaskDecoder(nn.Module):
+    """Token-conditioned dense decoder with grayscale detail skips.
+
+    The skips are layers of this model, not a separately pretrained network.
+    ARCADE still images use the average of repeated-image temporal tokens; video
+    inference uses each tubelet's tokens for its two constituent frames.
+    """
+    def __init__(self, embed_dim: int = 1024, width: int = 128):
+        super().__init__()
+        self.embed_dim, self.width = embed_dim, width
+        self.token_proj = nn.Sequential(nn.LayerNorm(embed_dim), nn.Linear(embed_dim, width), nn.GELU())
+        self.detail1 = ConvBlock(1, 32, stride=2)
+        self.detail2 = ConvBlock(32, 48, stride=2)
+        self.fuse2 = ConvBlock(width + 48, width)
+        self.fuse1 = ConvBlock(width + 32, 64)
+        self.out = nn.Conv2d(64, N_CLASSES, 1)
+
+    def forward(self, tokens: Tensor, frames: Tensor,
+                grid: tuple[int, int, int]) -> Tensor:
+        b, t, h, w = frames.shape
+        tt, gh, gw = grid
+        if tokens.shape != (b, tt * gh * gw, self.embed_dim):
+            raise ValueError(f"Token shape {tuple(tokens.shape)} disagrees with grid {grid}")
+        if t % tt:
+            raise ValueError("Frame count must be a multiple of the temporal token grid")
+        z = self.token_proj(tokens).reshape(b, tt, gh, gw, self.width)
+        z = z.permute(0, 1, 4, 2, 3).repeat_interleave(t // tt, dim=1)
+        z = z.reshape(b * t, self.width, gh, gw)
+        im = frames.reshape(b * t, 1, h, w)
+        d1 = self.detail1(im)
+        d2 = self.detail2(d1)
+        z = F.interpolate(z, d2.shape[-2:], mode="bilinear", align_corners=False)
+        z = self.fuse2(torch.cat((z, d2), dim=1))
+        z = F.interpolate(z, d1.shape[-2:], mode="bilinear", align_corners=False)
+        z = self.fuse1(torch.cat((z, d1), dim=1))
+        z = F.interpolate(self.out(z), (h, w), mode="bilinear", align_corners=False)
+        return z.reshape(b, t, N_CLASSES, h, w)
+
+
+@dataclass
+class CropSpec:
+    video: int
+    group: int
+    boxes: Tensor  # (T,4), native pixel y,x,height,width
+    mass: float
+
+
+def _tracked_boxes(mask: np.ndarray, native_hw: tuple[int, int], min_pixels: int,
+                   margin: float = 0.035, min_side: float = 0.19):
+    """Track a mask without depending on the external segmentation package."""
+    import cv2
+    t, rh, rw = mask.shape
+    h, w = native_hw
+    union = mask.any(0)
+    n, comp = cv2.connectedComponents(union.astype(np.uint8), connectivity=8)
+    keep = np.zeros_like(union)
+    for k in range(1, n):
+        part = comp == k
+        if mask[:, part].any(1).sum() < min(3, t):
+            continue
+        yy, xx = np.nonzero(part)
+        if len(yy) > 20:
+            ev = np.linalg.eigvalsh(np.cov(np.stack((yy, xx))))
+            if ev[-1] / max(ev.sum(), 1e-9) > 0.995 and 4 * np.sqrt(ev[-1]) > rh * 0.29:
+                continue
+        keep |= part
+    mask = mask & keep[None]
+    if mask.sum() * (h * w / (rh * rw)) < min_pixels:
+        return None
+    centre = np.full((t, 2), np.nan)
+    extents = []
+    for f in range(t):
+        yy, xx = np.nonzero(mask[f])
+        if len(yy):
+            centre[f] = (yy.mean() * h / rh, xx.mean() * w / rw)
+            extents.append(max(np.ptp(yy) * h / rh, np.ptp(xx) * w / rw))
+    valid = np.isfinite(centre[:, 0])
+    if not valid.any():
+        return None
+    for j in range(2):
+        centre[:, j] = np.interp(np.arange(t), np.flatnonzero(valid), centre[valid, j])
+        centre[:, j] = np.convolve(np.pad(centre[:, j], 1, mode="edge"), np.ones(3) / 3, mode="valid")
+    side = min(max(float(np.percentile(extents, 90)) + 2 * margin * min(h, w),
+                   min_side * min(h, w)), h, w)
+    top = np.clip(centre[:, 0] - side / 2, 0, h - side)
+    left = np.clip(centre[:, 1] - side / 2, 0, w - side)
+    boxes = np.stack((top, left, np.full(t, side), np.full(t, side)), axis=1)
+    return boxes.astype(np.float32)
+
+
+def crop_tensor(clip: Tensor, boxes: Tensor, output_res: int) -> Tensor:
+    """Sample tracked native boxes, (T,H,W) -> (T,R,R)."""
+    t, h, w = clip.shape
+    # align_corners=False maps pixel centres; boxes may be fractional.
+    v = (torch.arange(output_res, device=clip.device, dtype=torch.float32) + 0.5) / output_res
+    yy = boxes[:, 0, None, None] + boxes[:, 2, None, None] * v[None, :, None]
+    xx = boxes[:, 1, None, None] + boxes[:, 3, None, None] * v[None, None, :]
+    yy = (yy / h * 2 - 1).expand(t, output_res, output_res)
+    xx = (xx / w * 2 - 1).expand(t, output_res, output_res)
+    grid = torch.stack((xx, yy), dim=-1)
+    return F.grid_sample(clip[:, None].float(), grid, mode="bilinear",
+                         padding_mode="border", align_corners=False)[:, 0]
+
+
+PROCEDURE_OUTPUTS = ("stent", "timi", "failed")  # per segment: stent/PCI-treated visible; final TIMI < 3; PCI failed
+LESION_OUTPUTS = ("calcif", "thrombus", "cto")  # v11 per segment: moderate+ calcification (CLIP definition), thrombus, CTO
+
+
+class ProcedureHead(nn.Module):
+    """Per-segment procedure logits from each segment's pooled study feature (LayerNorm + per-segment linear)."""
+    def __init__(self, d: int, ng: int, n_out: int = len(PROCEDURE_OUTPUTS)):
+        super().__init__()
+        self.norm = nn.LayerNorm(d)
+        self.weight = nn.Parameter(torch.zeros(n_out, ng, d))
+        self.bias = nn.Parameter(torch.full((n_out, ng), -4.0))
+
+    def forward(self, features: Tensor) -> Tensor:
+        """(groups, d) -> (n_out, groups) logits."""
+        return (self.norm(features.to(self.weight.dtype))[None] * self.weight).sum(-1) + self.bias
+
+
+class DominanceHead(nn.Module):
+    """v15: one study logit for coronary dominance (1 = left dominant) from all pooled segment features
+    (LayerNorm + per-segment linear, summed); zero weights at start, bias at the ~7% left-dominant prior."""
+    def __init__(self, d: int, ng: int):
+        super().__init__()
+        self.norm = nn.LayerNorm(d)
+        self.weight = nn.Parameter(torch.zeros(ng, d))
+        self.bias = nn.Parameter(torch.tensor(-2.6))
+
+    def forward(self, features: Tensor) -> Tensor:
+        """(groups, d) -> () logit."""
+        return (self.norm(features.to(self.weight.dtype)) * self.weight).sum() + self.bias
+
+
+class StudyLesionPooler(nn.Module):
+    """Study-level lesion evidence (v14). Per finding, learned queries cross-attend over all pass-1 tokens of all
+    views; the study vector gives a per-segment logit offset (zero at start) and one "any segment" logit."""
+    def __init__(self, d: int, ng: int, n_out: int = len(LESION_OUTPUTS), width: int = 256, queries: int = 4, heads: int = 8):
+        super().__init__()
+        self.n_out = n_out
+        self.proj = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, width))
+        self.query = nn.Parameter(torch.randn(n_out * queries, width) * .02)
+        self.attn = nn.MultiheadAttention(width, heads, batch_first=True)
+        self.mlp = nn.Sequential(nn.LayerNorm(width), nn.Linear(width, width), nn.GELU())
+        self.norm = nn.LayerNorm(queries * width)
+        self.segment = nn.Parameter(torch.zeros(n_out, ng, queries * width))
+        self.any = nn.Parameter(torch.randn(n_out, queries * width) * .002)
+        self.any_bias = nn.Parameter(torch.full((n_out,), -2.0))
+
+    def forward(self, tokens: Tensor) -> tuple[Tensor, Tensor]:
+        """(views, tokens, d) -> ((n_out, groups) logit offsets, (n_out,) any-segment logits)."""
+        x = self.proj(tokens.reshape(1, -1, tokens.shape[-1]).to(self.query.dtype))
+        z = self.attn(self.query[None], x, x, need_weights=False)[0][0]
+        z = self.norm((z + self.mlp(z)).reshape(self.n_out, -1))
+        return (z[:, None] * self.segment).sum(-1), (z * self.any).sum(-1) + self.any_bias
+
+
+class CTOCollateralPath(nn.Module):
+    """v18 B: per segment, a separate small query attends over ALL of the segment's instances (every run's full view and the
+    segment's crops; NOT side-gated) so a CTO can be called from collaterals filled from the other side. Its output is
+    added to the CTO lesion logit only; it never feeds the stenosis head. Zero output weights at start (exact warm start)."""
+    def __init__(self, d: int, ng: int, width: int = 128):
+        super().__init__()
+        self.width = width
+        self.proj = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, width))
+        self.query = nn.Parameter(torch.randn(ng, width) * .02)
+        self.norm = nn.LayerNorm(width)
+        self.weight = nn.Parameter(torch.zeros(ng, width))
+        self.bias = nn.Parameter(torch.zeros(ng))
+
+    def forward(self, instances: Tensor, gi: int) -> tuple[Tensor, Tensor]:
+        """(instances, d) -> (() CTO logit offset, (instances,) attention)."""
+        k = self.proj(instances.to(self.query.dtype))
+        a = ((k * self.query[gi]).sum(-1) / self.width ** 0.5).float().softmax(0)
+        z = (a[:, None].to(k.dtype) * k).sum(0)
+        return (self.norm(z) * self.weight[gi]).sum() + self.bias[gi], a
+
+
+class VisibilityHead(nn.Module):
+    """v18 C: per-segment "imaged in this study" logit from detached bag statistics (VISIBILITY_STATS): run counts and
+    segment mask mass per side, and the share of the UNGATED attention that falls on allowed instances. Per-segment linear.
+    Start: logit 3*log1p(runs of the segment's default side) - 1 (right side for RCA / PDA / PL), i.e. ~.27 with no run."""
+    def __init__(self, groups: Sequence[str]):
+        super().__init__()
+        self.weight = nn.Parameter(torch.zeros(len(groups), len(VISIBILITY_STATS)))
+        self.bias = nn.Parameter(torch.full((len(groups),), -1.0))
+        with torch.no_grad():
+            for gi, g in enumerate(groups):
+                self.weight[gi, 0 if g in RIGHT_SIDE_GROUPS + EITHER_SIDE_GROUPS else 1] = 3.0
+
+    def forward(self, stats: Tensor) -> Tensor:
+        """(groups, stats) -> (groups,) logits."""
+        return (stats.to(self.weight.dtype) * self.weight).sum(-1) + self.bias
+
+
+class OccludedHead(nn.Module):
+    """v19 A: per-segment "100% occluded" hurdle logit. Inputs per segment: its pooled study vector (plus a learned NO_CROP
+    token when the segment has no own pass-2 crop), its parent's pooled vector (fixed SYNTAX table; a learned ROOT token for
+    segments without a parent), and detached scalars (OCCLUDED_SCALARS: own-mask mass and own / tree-fill mass, the same for
+    the parent, own-crop and has-parent flags, visibility). One MLP shared across segments with a one-hot segment input and a
+    per-segment bias. Output layer zero at start: logit = bias (-3, ~5%) for every study; no effect on any other output."""
+    def __init__(self, d: int, ng: int, width: int = 256, prior_logit: float = -3.0):
+        super().__init__()
+        self.ng = ng
+        self.no_crop = nn.Parameter(torch.zeros(d))
+        self.root = nn.Parameter(torch.zeros(d))
+        self.self_norm = nn.LayerNorm(d)
+        self.parent_norm = nn.LayerNorm(d)
+        self.mlp = nn.Sequential(nn.Linear(2 * d + len(OCCLUDED_SCALARS) + ng, width), nn.GELU(), nn.Linear(width, 1))
+        nn.init.zeros_(self.mlp[-1].weight)
+        nn.init.zeros_(self.mlp[-1].bias)
+        self.bias = nn.Parameter(torch.full((ng,), prior_logit))
+
+    def forward(self, features: Tensor, parent: Tensor, has_parent: Tensor, no_crop: Tensor, scalars: Tensor) -> Tensor:
+        """features, parent (groups, d); has_parent, no_crop (groups,) bool; scalars (groups, len(OCCLUDED_SCALARS))
+        -> (groups,) logits."""
+        dt = self.no_crop.dtype
+        x = features.to(dt) + no_crop.to(dt)[:, None] * self.no_crop
+        par = torch.where(has_parent[:, None], parent.to(dt), self.root.expand_as(parent).to(dt))
+        z = torch.cat((self.self_norm(x), self.parent_norm(par), scalars.to(dt),
+                       torch.eye(self.ng, device=x.device, dtype=dt)), dim=-1)
+        return self.mlp(z)[:, 0] + self.bias
+
+
+class IntegratedStudyModel(nn.Module):
+    def __init__(self, encoder: nn.Module, groups: Sequence[str] = ALL_SEGMENTS,
+                 train_blocks: int = 0, decoder_width: int = 128):
+        super().__init__()
+        self.enc = encoder
+        self.groups = tuple(groups)
+        if any(g not in SEGMENT_CLASSES for g in self.groups):
+            raise ValueError(f"Unknown segment groups {self.groups}")
+        d, ng = encoder.embed_dim, len(self.groups)
+        for p in encoder.parameters():
+            p.requires_grad_(False)
+        if train_blocks:
+            for block in encoder.blocks[-train_blocks:]:
+                block.requires_grad_(True)
+            if getattr(encoder, "norm", None) is not None:
+                encoder.norm.requires_grad_(True)
+        self.mask_decoder = TokenMaskDecoder(d, decoder_width)
+        self.q = nn.Parameter(torch.zeros(ng, d))
+        self.mask_w = nn.Parameter(torch.ones(ng))
+        self.head = nn.ModuleList([
+            nn.Sequential(nn.LayerNorm(d), nn.Linear(d, 256), nn.GELU(), nn.Dropout(0.2), nn.Linear(256, 2))
+            for _ in self.groups
+        ])
+        self.att_v = nn.Linear(d, 128)
+        self.att_u = nn.Linear(d, 128)
+        self.att_w = nn.Linear(128, 1)
+        self.view_proj = nn.Sequential(nn.LayerNorm(2 * d + 2), nn.Linear(2 * d + 2, d), nn.GELU(), nn.Linear(d, d))
+        self.type_emb = nn.Parameter(torch.zeros(2, d))
+        self.group_emb = nn.Parameter(torch.zeros(ng, d))
+        self.physiology_head = None
+        self.procedure_head = None  # optional (v10): per-segment stent / final TIMI<3 / PCI-failed logits
+        self.lesion_head = None  # optional (v11): per-segment calcification / thrombus / CTO logits
+        self.lesion_pooler = None  # optional (v14): study-level attentive pooler added to the lesion logits
+        self.dominance_head = None  # optional (v15): study coronary dominance logit
+        self.side_gating = False  # optional (v18 A): side-gated segment attention; enable_side_gating() adds not_imaged
+        self.cto_collateral = None  # optional (v18 B): ungated CTO collateral path
+        self.visibility_head = None  # optional (v18 C): per-segment visibility logit
+        self.occluded_head = None  # optional (v19 A): per-segment occluded hurdle logit
+
+    def enable_side_gating(self):
+        """v18 A. Segments only pool instances of runs of their side (unknown side allowed). A segment with no allowed
+        instance gets the learned not_imaged embedding as its pooled feature and is flagged in result["segment_imaged"]."""
+        if not hasattr(self, "not_imaged"):
+            self.not_imaged = nn.Parameter(torch.zeros_like(self.group_emb))
+        self.side_gating = True
+        return self.not_imaged
+
+    def enable_cto_collateral(self):
+        self.cto_collateral = CTOCollateralPath(self.q.shape[1], len(self.groups)).to(self.q.device)
+        return self.cto_collateral
+
+    def enable_visibility_head(self):
+        self.visibility_head = VisibilityHead(self.groups).to(self.q.device)
+        return self.visibility_head
+
+    def enable_occluded_head(self):
+        self.occluded_head = OccludedHead(self.q.shape[1], len(self.groups)).to(self.q.device)
+        return self.occluded_head
+
+    def v18_active(self) -> bool:
+        return bool(self.side_gating) or self.cto_collateral is not None or self.visibility_head is not None
+
+    def enable_procedure_head(self):
+        """Per-segment linear logits on the pooled segment feature; initialised to a ~2% prior."""
+        d, ng = self.q.shape[1], len(self.groups)
+        self.procedure_head = ProcedureHead(d, ng).to(self.q.device)
+        return self.procedure_head
+
+    def enable_lesion_head(self):
+        """Per-segment linear calcification / thrombus / CTO logits on the pooled segment feature (~2% prior)."""
+        d, ng = self.q.shape[1], len(self.groups)
+        self.lesion_head = ProcedureHead(d, ng, len(LESION_OUTPUTS)).to(self.q.device)
+        return self.lesion_head
+
+    def enable_dominance_head(self):
+        self.dominance_head = DominanceHead(self.q.shape[1], len(self.groups)).to(self.q.device)
+        return self.dominance_head
+
+    def enable_lesion_pooler(self):
+        """Study-level attentive lesion pooler over all pass-1 tokens; adds to the per-segment lesion logits."""
+        self.lesion_pooler = StudyLesionPooler(self.q.shape[1], len(self.groups)).to(self.q.device)
+        return self.lesion_pooler
+
+    def encode(self, frames: Tensor) -> Tensor:
+        return self.enc(normalize_clip(frames))
+
+    def decode(self, tokens: Tensor, frames: Tensor) -> Tensor:
+        return self.mask_decoder(tokens, frames,
+                                 (frames.shape[1] // TUBELET, frames.shape[-2] // PATCH, frames.shape[-1] // PATCH))
+
+    def warm_start_mil2(self, checkpoint: str | Path, old_groups: Sequence[str]):
+        """Copy compatible heads and trained encoder blocks by segment name."""
+        sd = torch.load(checkpoint, map_location="cpu", weights_only=True)
+        own = self.state_dict()
+        copied = []
+        for key, val in sd.items():
+            if key in ("q", "mask_w", "group_emb") or key.startswith("head."):
+                continue
+            if key in own and own[key].shape == val.shape:
+                own[key] = val
+                copied.append(key)
+        for ni, name in enumerate(self.groups):
+            if name not in old_groups:
+                continue
+            oi = list(old_groups).index(name)
+            for key in ("q", "mask_w", "group_emb"):
+                if key in sd:
+                    own[key][ni] = sd[key][oi]
+            for key, val in sd.items():
+                if key.startswith(f"head.{oi}."):
+                    own[f"head.{ni}." + key.split(".", 2)[2]] = val
+        self.load_state_dict(own, strict=True)
+        return copied
+
+    def _pool_study(self, tokens: Tensor, fractions: Tensor,
+                    crop_tokens: Tensor | None, crop_fractions: Tensor | None,
+                    specs: list[CropSpec]) -> tuple[Tensor, Tensor, list[Tensor]]:
+        """Pool one study's videos and optional crops for every report segment."""
+        vg = tokens.mean(1)
+        predictions, study_features, bag_attention = [], [], []
+        for gi, group in enumerate(self.groups):
+            fr = fractions[:, :, SEGMENT_CLASSES[group]].sum(-1)
+            mass = fr.sum(1)
+            pooled = (fr[:, :, None].to(tokens.dtype) * tokens).sum(1) / mass[:, None].clamp_min(1e-6)
+            view = torch.cat((pooled, vg, torch.log1p(mass)[:, None], torch.ones_like(mass[:, None])), dim=-1)
+            view = self.view_proj(view.to(self.q.dtype)) + self.group_emb[gi] + self.type_emb[1]
+            chosen = [i for i, s in enumerate(specs) if s.group == gi]
+            if chosen:
+                ct = crop_tokens[chosen]
+                cf = crop_fractions[chosen]
+                logits = (ct * self.q[gi][None, None]).sum(-1) / ct.shape[-1] ** 0.5
+                logits = logits + self.mask_w[gi] * (cf + 1e-3).log()
+                crop = (logits.softmax(-1)[:, :, None].to(ct.dtype) * ct).sum(1) + self.type_emb[0]
+                instances = torch.cat((crop.to(view.dtype), view), dim=0)
+            else:
+                instances = view
+            a = self.att_w(torch.tanh(self.att_v(instances)) * torch.sigmoid(self.att_u(instances)))[:, 0].float().softmax(0)
+            feat = (a[:, None].to(instances.dtype) * instances).sum(0)
+            predictions.append(self.head[gi](feat))
+            study_features.append(feat)
+            bag_attention.append(a)
+        return torch.stack(predictions), torch.stack(study_features), bag_attention
+
+    def _pool_study_v18(self, tokens: Tensor, fractions: Tensor,
+                        crop_tokens: Tensor | None, crop_fractions: Tensor | None,
+                        specs: list[CropSpec], sides: Tensor) -> tuple[Tensor, Tensor, list[Tensor], dict]:
+        """_pool_study with the v18 options (only called when v18_active()). Instance construction and the attention
+        scores are the same operations as _pool_study; with side gating, instances of runs of the other side get score
+        -inf before the softmax (attention exactly 0). Extra outputs are returned in a dict."""
+        vg = tokens.mean(1)
+        nv = tokens.shape[0]
+        predictions, study_features, bag_attention = [], [], []
+        imaged, allowed_masks, instance_sides, stats, cto_offsets, cto_attention = [], [], [], [], [], []
+        side_counts = [(sides == s).sum().float() for s in (1, 0, -1)]
+        for gi, group in enumerate(self.groups):
+            fr = fractions[:, :, SEGMENT_CLASSES[group]].sum(-1)
+            mass = fr.sum(1)
+            pooled = (fr[:, :, None].to(tokens.dtype) * tokens).sum(1) / mass[:, None].clamp_min(1e-6)
+            view = torch.cat((pooled, vg, torch.log1p(mass)[:, None], torch.ones_like(mass[:, None])), dim=-1)
+            view = self.view_proj(view.to(self.q.dtype)) + self.group_emb[gi] + self.type_emb[1]
+            chosen = [i for i, s in enumerate(specs) if s.group == gi]
+            if chosen:
+                ct = crop_tokens[chosen]
+                cf = crop_fractions[chosen]
+                logits = (ct * self.q[gi][None, None]).sum(-1) / ct.shape[-1] ** 0.5
+                logits = logits + self.mask_w[gi] * (cf + 1e-3).log()
+                crop = (logits.softmax(-1)[:, :, None].to(ct.dtype) * ct).sum(1) + self.type_emb[0]
+                instances = torch.cat((crop.to(view.dtype), view), dim=0)
+                inst_video = [specs[i].video for i in chosen] + list(range(nv))
+            else:
+                instances = view
+                inst_video = list(range(nv))
+            inst_side = sides[torch.as_tensor(inst_video, device=sides.device)]
+            allowed = side_allowed(group, inst_side) if self.side_gating else torch.ones_like(inst_side, dtype=torch.bool)
+            score = self.att_w(torch.tanh(self.att_v(instances)) * torch.sigmoid(self.att_u(instances)))[:, 0].float()
+            if bool(allowed.all()):
+                a = score.softmax(0)
+                feat = (a[:, None].to(instances.dtype) * instances).sum(0)
+            elif bool(allowed.any()):
+                a = score.masked_fill(~allowed, float("-inf")).softmax(0)  # wrong-side instances: exactly 0
+                feat = (a[:, None].to(instances.dtype) * instances).sum(0)
+            else:  # no run of this segment's side in the bag: defined prediction from the learned embedding, flagged
+                a = torch.zeros_like(score)
+                feat = self.not_imaged[gi].to(instances.dtype)
+            predictions.append(self.head[gi](feat))
+            study_features.append(feat)
+            bag_attention.append(a)
+            imaged.append(bool(allowed.any()))
+            allowed_masks.append(allowed)
+            instance_sides.append(inst_side)
+            if self.visibility_head is not None:
+                with torch.no_grad():
+                    view_side, m = sides, mass.float()
+                    allowed_score = score.softmax(0)[allowed].sum() if bool(allowed.any()) else score.new_zeros(())
+                    stats.append(torch.stack([torch.log1p(c) for c in side_counts]
+                                             + [torch.log1p(m[view_side == s].sum()) for s in (1, 0, -1)] + [allowed_score]))
+            if self.cto_collateral is not None:
+                offset, ca = self.cto_collateral(instances, gi)
+                cto_offsets.append(offset)
+                cto_attention.append(ca)
+        extras = {"segment_imaged": torch.tensor(imaged, device=tokens.device), "allowed_masks": allowed_masks,
+                  "instance_sides": instance_sides}
+        if stats:
+            extras["visibility_stats"] = torch.stack(stats).detach()
+        if cto_offsets:
+            extras["cto_collateral_offset"] = torch.stack(cto_offsets)
+            extras["cto_collateral_attention"] = cto_attention
+        return torch.stack(predictions), torch.stack(study_features), bag_attention, extras
+
+    def _occluded_inputs(self, features: Tensor, fractions: Tensor, specs: list[CropSpec], result: dict):
+        """v19 A inputs (see OccludedHead). Mass per view = sum over tokens of the segment's mask fractions; tree fill = the
+        same for every non-background class; per segment the max over views of log1p(own) and of log(own / (tree + 1) + 1e-3).
+        Scalars are detached (statistics, as the v18 visibility inputs); the pooled vectors keep their gradient."""
+        ng = len(self.groups)
+        with torch.no_grad():
+            fr = fractions.float()
+            tree = fr[:, :, 1:].sum(-1).sum(1)  # (views,)
+            own = torch.stack([fr[:, :, SEGMENT_CLASSES[g]].sum(-1).sum(1) for g in self.groups])  # (groups, views)
+            s_mass = torch.log1p(own.max(1).values)
+            s_ratio = torch.log(own / (tree[None] + 1) + 1e-3).max(1).values
+            has_crop = torch.zeros(ng, dtype=torch.bool, device=fr.device)
+            for c in specs:
+                has_crop[c.group] = True
+            p_left = (result["dominance_probability"].detach().float().reshape(()) if "dominance_probability" in result
+                      else fr.new_zeros(()))
+            if "visibility_probability" in result:
+                vis = result["visibility_probability"].detach().float()
+            elif "segment_imaged" in result:
+                vis = result["segment_imaged"].float()
+            else:
+                vis = fr.new_ones(ng)
+        index = {g: i for i, g in enumerate(self.groups)}
+        parents, p_mass, p_ratio, has_parent = [], [], [], []
+        for g in self.groups:
+            par = OCCLUDED_PARENT.get(g)
+            if isinstance(par, tuple) and all(x in index for x in par):  # PDA / PL: dominance mix of dist_rca / dist_lcx
+                r, l = index[par[0]], index[par[1]]
+                w = p_left.to(features.dtype)
+                parents.append((1 - w) * features[r] + w * features[l])
+                p_mass.append((1 - p_left) * s_mass[r] + p_left * s_mass[l]); p_ratio.append((1 - p_left) * s_ratio[r] + p_left * s_ratio[l])
+                has_parent.append(True)
+            elif isinstance(par, str) and par in index:
+                parents.append(features[index[par]]); p_mass.append(s_mass[index[par]]); p_ratio.append(s_ratio[index[par]])
+                has_parent.append(True)
+            else:
+                parents.append(torch.zeros_like(features[0])); p_mass.append(s_mass.new_zeros(())); p_ratio.append(s_mass.new_zeros(()))
+                has_parent.append(False)
+        has_parent = torch.tensor(has_parent, device=features.device)
+        scalars = torch.stack([s_mass, s_ratio, torch.stack(p_mass), torch.stack(p_ratio), has_crop.float(),
+                               has_parent.float(), vis.to(s_mass.device)], dim=-1)
+        return torch.stack(parents), has_parent, ~has_crop, scalars
+
+    def forward_study(self, clips: Sequence[Tensor], full_res: int = 224,
+                      crop_res: int = 224, crops_per_group: int = 1,
+                      max_full_views: int = 12, min_pixels: int = 200,
+                      measurements: Tensor | None = None,
+                      modality: Tensor | None = None, sides: Tensor | Sequence[int] | None = None) -> dict:
+        """Raw native clips (each 16,H,W in [0,1]) -> all study predictions.
+
+        sides (v18, per clip: 0 left, 1 right, -1 unknown) is read only when a v18 option is enabled; None = all unknown.
+
+        Study batching is intentionally explicit: one call holds one study, all
+        its full views in one encoder call and all its selected crops in a second
+        call. Reducing ``max_full_views``/``crops_per_group`` controls memory;
+        chunking the encoder would introduce additional network passes.
+        """
+        if not clips:
+            raise ValueError("A study must contain at least one diagnostic clip")
+        if full_res % PATCH or crop_res % PATCH:
+            raise ValueError("EchoJEPA resolutions must be multiples of 16")
+        if max_full_views < 1 or crops_per_group < 0:
+            raise ValueError("max_full_views must be positive; crops_per_group must be nonnegative")
+        clips = list(clips)[:max_full_views]
+        dev = self.q.device
+        v18 = self.v18_active()
+        if v18:
+            sides = (torch.full((len(clips),), -1, dtype=torch.long) if sides is None
+                     else torch.as_tensor(list(sides)[:max_full_views], dtype=torch.long)).to(dev)
+            if sides.shape != (len(clips),):
+                raise ValueError("sides must give one side per clip")
+        clips = [x.to(device=dev, dtype=torch.float32) for x in clips]
+        if any(x.ndim != 3 or x.shape[0] != N_FRAMES for x in clips):
+            raise ValueError("Each clip must have shape (16,H,W)")
+        full = torch.stack([F.interpolate(x[:, None], (full_res, full_res), mode="bilinear", align_corners=False)[:, 0]
+                            for x in clips])
+        tokens = self.encode(full)  # ENCODER PASS 1
+        mask_logits = self.decode(tokens, full)
+        prob = mask_logits.float().softmax(2)
+        fractions = token_fractions(prob, (N_FRAMES // 2, full_res // PATCH, full_res // PATCH))
+        labels = prob.argmax(2).detach().cpu().numpy()
+        specs = []
+        for gi, group in enumerate(self.groups):
+            candidates = []
+            for vi, raw in enumerate(clips):
+                if v18 and self.side_gating and not bool(side_allowed(group, sides[vi:vi+1])[0]):
+                    continue  # v18 A: pass-2 crops only on runs of the segment's side
+                m = np.isin(labels[vi], SEGMENT_CLASSES[group])
+                boxes = _tracked_boxes(m, tuple(raw.shape[-2:]), min_pixels)
+                if boxes is not None:
+                    candidates.append(CropSpec(vi, gi, torch.from_numpy(boxes).to(dev), float(m.sum())))
+            specs.extend(sorted(candidates, key=lambda s: -s.mass)[:crops_per_group])
+        crop_tokens = crop_fr = None
+        if specs:
+            crop = torch.stack([crop_tensor(clips[s.video], s.boxes, crop_res) for s in specs])
+            # Map native tracked boxes onto the full-view mask probability grid.
+            fr_list = []
+            for s in specs:
+                h, w = clips[s.video].shape[-2:]
+                scale = s.boxes.new_tensor((full_res / h, full_res / w, full_res / h, full_res / w))
+                p = prob[s.video, :, SEGMENT_CLASSES[self.groups[s.group]], :, :].sum(1)
+                cp = crop_tensor(p, s.boxes * scale, crop_res)
+                fr_list.append(token_fractions(cp[None, :, None], (N_FRAMES // 2, crop_res // PATCH, crop_res // PATCH))[0, :, 0])
+            crop_fr = torch.stack(fr_list)
+            crop_tokens = self.encode(crop)  # ENCODER PASS 2, the SAME encoder
+        extras = {}
+        if v18:
+            pred, features, attention, extras = self._pool_study_v18(tokens, fractions, crop_tokens, crop_fr, specs, sides)
+        else:
+            pred, features, attention = self._pool_study(tokens, fractions, crop_tokens, crop_fr, specs)
+        result = {
+            "groups": self.groups, "severity": pred[:, 0] * 100,
+            "binary_logits": pred[:, 1], "binary_probability": pred[:, 1].sigmoid(),
+            "study_features": features, "mask_logits": mask_logits,
+            "mask_fractions": fractions, "crop_specs": specs, "bag_attention": attention,
+            "encoder_passes": 2 if specs else 1,
+        }
+        if self.procedure_head is not None:
+            for name, logits in zip(PROCEDURE_OUTPUTS, self.procedure_head(features)):
+                result[f"{name}_logits"], result[f"{name}_probability"] = logits, logits.sigmoid()
+        if self.lesion_head is not None:
+            lesion_logits = self.lesion_head(features)
+            if self.lesion_pooler is not None:  # no extra encoder pass: reads the pass-1 tokens
+                offset, study_logits = self.lesion_pooler(tokens)
+                lesion_logits = lesion_logits + offset.to(lesion_logits.dtype)
+                for name, logit in zip(LESION_OUTPUTS, study_logits):
+                    result[f"lesion_{name}_study_logit"] = logit
+            if "cto_collateral_offset" in extras:  # v18 B: the collateral path feeds the CTO logit only
+                k = LESION_OUTPUTS.index("cto")
+                lesion_logits = torch.cat((lesion_logits[:k], (lesion_logits[k] + extras["cto_collateral_offset"].to(lesion_logits.dtype))[None],
+                                           lesion_logits[k+1:]))
+            for name, logits in zip(LESION_OUTPUTS, lesion_logits):
+                result[f"lesion_{name}_logits"], result[f"lesion_{name}_probability"] = logits, logits.sigmoid()
+        if v18:
+            result.update(extras)
+            result["sides"] = sides
+            if self.cto_collateral is not None and self.lesion_head is None:
+                raise ValueError("The CTO collateral path needs the lesion head")
+            if self.visibility_head is not None:
+                result["visibility_logits"] = self.visibility_head(extras["visibility_stats"])
+                result["visibility_probability"] = result["visibility_logits"].sigmoid()
+        if self.dominance_head is not None:
+            result["dominance_logit"] = self.dominance_head(features)
+            result["dominance_probability"] = result["dominance_logit"].sigmoid()
+        if self.occluded_head is not None:  # v19 A (after dominance / visibility, which it reads detached)
+            parent, has_parent, no_crop, scalars = self._occluded_inputs(features, fractions, specs, result)
+            result["occluded_logits"] = self.occluded_head(features, parent, has_parent, no_crop, scalars)
+            result["occluded_probability"] = result["occluded_logits"].sigmoid()
+            result["occluded_scalars"] = scalars
+        if self.physiology_head is not None:
+            geometry_audit = None
+            if self.physiology_head.geometry_dim and measurements is None:
+                from physiology_mask_geometry import mask_geometry_vector
+                measurements, geometry_audit = mask_geometry_vector(mask_logits, return_audit=True)
+            result["measurements"] = measurements
+            result["geometry_audit"] = geometry_audit
+            result["physiology"] = self.physiology_head(
+                features[None], geometry=measurements, modality=modality,
+            )
+        return result
+
+    def forward(self, clips: Sequence[Tensor], **kwargs):
+        return self.forward_study(clips, **kwargs)
+
+
+def segmentation_loss(logits: Tensor, target: Tensor, class_weights: Tensor,
+                      teacher_prob: Tensor | None = None, agreement: Tensor | None = None,
+                      distill_weight: float = 1.0, hard_weight: Tensor | None = None,
+                      cldice_weight: float = 0.1) -> tuple[Tensor, dict[str, float]]:
+    """Weighted CE + foreground Dice + optional agreement-weighted KL.
+
+    logits: B,T,C,H,W; hard targets B,T,H,W. Teacher probabilities have the
+    same shape as logits; agreement is B,T,H,W in [0,1]. Hard targets may be
+    -1 at pixels with no human annotation. Distillation never fabricates soft
+    probabilities from an argmax-only cache.
+    """
+    b, t, c, h, w = logits.shape
+    z = logits.float().reshape(b * t, c, h, w)
+    y = target.long().reshape(b * t, h, w)
+    valid = y >= 0
+    hw = valid.float() if hard_weight is None else hard_weight.float().reshape_as(y) * valid
+    if valid.any():
+        ce_pixel = F.cross_entropy(z, y, weight=class_weights, ignore_index=-1, reduction="none")
+        ce = (ce_pixel * hw).sum() / (class_weights[y.clamp_min(0)] * hw).sum().clamp_min(1e-6)
+    else:
+        ce = z.sum() * 0
+    p = z.softmax(1)
+    oh = F.one_hot(y.clamp_min(0), c).permute(0, 3, 1, 2).float() * valid[:, None]
+    inter = (p * oh * hw[:, None]).sum((0, 2, 3))
+    den = ((p * valid[:, None] + oh) * hw[:, None]).sum((0, 2, 3))
+    present = oh.sum((0, 2, 3)) > 0
+    present[0] = False
+    d = 1 - (2 * inter + 1) / (den + 1)
+    dice = (d[present] * class_weights[present]).sum() / class_weights[present].sum().clamp_min(1e-6)
+    kl = z.sum() * 0
+    if teacher_prob is not None:
+        q = teacher_prob.float().reshape_as(z).clamp_min(1e-7)
+        q = q / q.sum(1, keepdim=True).clamp_min(1e-7)
+        weight = torch.ones_like(y, dtype=torch.float32) if agreement is None else agreement.float().reshape_as(y)
+        # Suppress background domination while retaining reliable negatives.
+        anatomical_weight = (q * class_weights[None, :, None, None]).sum(1)
+        weight = weight * anatomical_weight
+        pixel_kl = (q * (q.log() - z.log_softmax(1))).sum(1)
+        kl = (pixel_kl * weight).sum() / weight.sum().clamp_min(1e-6)
+    cldice = z.sum() * 0
+    if cldice_weight and (y > 0).any():
+        # Vessel-tree connectivity is supervised jointly across anatomical
+        # classes; neighbouring SYNTAX segments share a physical centreline.
+        vessel = (1 - p[:, :1]) * valid[:, None]
+        truth = (y > 0).float()[:, None]
+        ps, ts = soft_skeleton(vessel), soft_skeleton(truth)
+        precision = (ps * truth).sum() / ps.sum().clamp_min(1e-6)
+        sensitivity = (ts * vessel).sum() / ts.sum().clamp_min(1e-6)
+        cldice = 1 - (2 * precision * sensitivity + 1e-6) / (precision + sensitivity + 1e-6)
+    loss = ce + dice + distill_weight * kl + cldice_weight * cldice
+    return loss, {"ce": float(ce.detach()), "dice_loss": float(dice.detach()),
+                  "kl": float(kl.detach()), "cldice_loss": float(cldice.detach())}
+
+
+def soft_skeleton(image: Tensor, iterations: int = 5) -> Tensor:
+    """Differentiable 2D morphological skeleton, evaluated on vessel probability."""
+    def erode(x):
+        return torch.minimum(-F.max_pool2d(-x, (3, 1), 1, (1, 0)),
+                             -F.max_pool2d(-x, (1, 3), 1, (0, 1)))
+    def opened(x):
+        return F.max_pool2d(erode(x), 3, 1, 1)
+    skel = F.relu(image - opened(image))
+    for _ in range(iterations):
+        image = erode(image)
+        delta = F.relu(image - opened(image))
+        skel = skel + F.relu(delta - skel * delta)
+    return skel

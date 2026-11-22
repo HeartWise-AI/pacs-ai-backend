@@ -20,7 +20,12 @@ import (
 type InferenceQueryController struct {
 	application.InferenceQueryServiceInterface
 	application.WorklistNotificationSubscriberInterface
+	// UserMetadataReader reads the connecting user's notification preference.
+	// Nil means no user has muted automatic-run notifications.
+	UserMetadataReader             WorklistUserMetadataReader
 	WorklistEventHeartbeatInterval time.Duration
+	// StudyMedia serves the media study-service saved per clip; nil answers 404.
+	StudyMedia StudyMediaProvider
 }
 
 // GetInferenceModelVersions lists every catalog version for one registered model.
@@ -431,6 +436,8 @@ func (controller *InferenceQueryController) GetInferenceIngestionJobs(w http.Res
 			LastExecutedAt:         lastExecutedAt,
 			CreatedAt:              uint64(job.CreatedAt.Unix()),
 			UpdatedAt:              uint64(job.UpdatedAt.Unix()),
+			CreatedByUserID:        job.CreatedByUserID,
+			NotificationsEnabled:   job.NotificationsEnabled,
 		})
 	}
 

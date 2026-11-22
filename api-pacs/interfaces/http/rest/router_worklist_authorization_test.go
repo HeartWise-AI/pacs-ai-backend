@@ -78,6 +78,14 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 			getRunDetail:       respond,
 			getExecutionResult: respond,
 			reprocessStudy:     respond,
+			reprocessStudies:   respond,
+			getLatestResults:   respond,
+			getExecutionReport: respond,
+			getStudyJobReport:  respond,
+			runStudyModel:      respond,
+			getStudyMedia:      respond,
+			getStudyMediaFile:  respond,
+			cancelRun:          respond,
 		},
 	)
 
@@ -107,6 +115,11 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 		"/worklist/studies/1.2.3/runs",
 		"/processing/runs/run-1",
 		"/processing/runs/run-1/executions/execution-1/result",
+		"/worklist/studies/1.2.3/latest-results",
+		"/processing/runs/run-1/executions/execution-1/report",
+		"/worklist/studies/1.2.3/jobs/job-1/report",
+		"/worklist/studies/1.2.3/media",
+		"/media/media-1",
 	} {
 		t.Run("regular user reads "+path, func(t *testing.T) {
 			request := authenticatedWorklistRequest(http.MethodGet, path)
@@ -118,8 +131,95 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 		})
 	}
 
+	for _, path := range []string{"/worklist/studies/1.2.3/media", "/media/media-1"} {
+		t.Run("media requires authentication "+path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, path, nil)
+			recorder := httptest.NewRecorder()
+
+			router.ServeHTTP(recorder, request)
+
+			require.Equal(t, http.StatusUnauthorized, recorder.Code)
+		})
+	}
+
+	t.Run("regular user can run one model from the viewer", func(t *testing.T) {
+		request := authenticatedWorklistRequest(http.MethodPost, "/worklist/studies/1.2.3/models/registration-1/run")
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		require.Equal(t, http.StatusNoContent, recorder.Code)
+	})
+
+	t.Run("viewer run requires authentication", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodPost, "/worklist/studies/1.2.3/models/registration-1/run", nil)
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	})
+
+	t.Run("viewer run requires accepted policy", func(t *testing.T) {
+		policyService.status.AcceptanceRequired = true
+		defer func() { policyService.status.AcceptanceRequired = false }()
+		request := authenticatedWorklistRequest(http.MethodPost, "/worklist/studies/1.2.3/models/registration-1/run")
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		require.Equal(t, http.StatusPreconditionRequired, recorder.Code)
+	})
+
+	t.Run("regular user can cancel the waiting models of a run", func(t *testing.T) {
+		request := authenticatedWorklistRequest(http.MethodPost, "/processing/runs/run-1/cancel")
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		require.Equal(t, http.StatusNoContent, recorder.Code)
+	})
+
+	t.Run("run cancellation requires authentication", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodPost, "/processing/runs/run-1/cancel", nil)
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	})
+
+	t.Run("run cancellation requires accepted policy", func(t *testing.T) {
+		policyService.status.AcceptanceRequired = true
+		defer func() { policyService.status.AcceptanceRequired = false }()
+		request := authenticatedWorklistRequest(http.MethodPost, "/processing/runs/run-1/cancel")
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		require.Equal(t, http.StatusPreconditionRequired, recorder.Code)
+	})
+
+	t.Run("run cancellation is not readable", func(t *testing.T) {
+		request := authenticatedWorklistRequest(http.MethodGet, "/processing/runs/run-1/cancel")
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+	})
+
 	t.Run("regular user cannot reprocess", func(t *testing.T) {
 		request := authenticatedWorklistRequest(http.MethodPost, "/worklist/studies/1.2.3/reprocess")
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		require.Equal(t, http.StatusForbidden, recorder.Code)
+	})
+
+	t.Run("regular user cannot bulk reprocess", func(t *testing.T) {
+		request := authenticatedWorklistRequest(http.MethodPost, "/worklist/studies/reprocess-batch")
 		recorder := httptest.NewRecorder()
 
 		router.ServeHTTP(recorder, request)
@@ -135,6 +235,17 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 			authService.role = role
 			defer func() { authService.role = iamEntity.UserRole }()
 			request := authenticatedWorklistRequest(http.MethodPost, "/worklist/studies/1.2.3/reprocess")
+			recorder := httptest.NewRecorder()
+
+			router.ServeHTTP(recorder, request)
+
+			require.Equal(t, http.StatusNoContent, recorder.Code)
+		})
+
+		t.Run(name+" can bulk reprocess", func(t *testing.T) {
+			authService.role = role
+			defer func() { authService.role = iamEntity.UserRole }()
+			request := authenticatedWorklistRequest(http.MethodPost, "/worklist/studies/reprocess-batch")
 			recorder := httptest.NewRecorder()
 
 			router.ServeHTTP(recorder, request)

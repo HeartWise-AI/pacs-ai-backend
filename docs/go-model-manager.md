@@ -1,7 +1,7 @@
 # Go Model Manager (Phases 3-5)
 
 This implements the scheduler and inference gateways in initiative #339. A
-single manager is constructed in the api-pacs dependency container and shared
+single host manager is constructed in the api-pacs dependency container and shared
 by user and internal inference paths. It is disabled by default, and the
 study-service gateway is independently opt-in. **Merging this code does not
 enable managed inference on a deployed host.**
@@ -13,7 +13,29 @@ enable managed inference on a deployed host.**
 | `MODEL_MANAGER_ENABLED` | `false` | Route api-pacs inference through the shared manager when enabled. |
 | `GPU_MEMORY_BUDGET_MIB` | required when enabled | Upper bound for managed GPU use, before subtracting the safety margin. |
 | `GPU_MEMORY_SAFETY_MARGIN_MIB` | `1024` | Headroom excluded from scheduling. |
+| `GPU_MEMORY_BUDGETS_MIB` | unset | Optional UUID-to-budget JSON object enabling separate GPU ledgers; replaces the scalar budget. |
+| `MODEL_IDLE_SWEEP_SECONDS` | `0` | Optional proactive idle offload interval; 0 disables the sweeper. |
+| `MODEL_RETAIN_PEAK_WHILE_LOADED` | `true` when enabled | Hold the GPU peak reservation until confirmed unload; set false only after validating post-inference allocator residency. |
+| `MODEL_GPU_MEMORY_RESERVATION_PERCENT` | `100` | Conservative scaling of GPU peak declarations, rounded up; integer 100–1000. Does not modify immutable image metadata. |
 | `MODEL_QUEUE_TIMEOUT_SECONDS` | `600` | Maximum time waiting for admission, including startup/readiness and eviction. |
+| `MODEL_EVICTION_POLICY` | `idle-timeout` | `lru-on-demand` lets a waiting request evict the least recently used idle model. |
+| `MODEL_MIN_RESIDENCY_SECONDS` | `30` | Minimum idle time before `lru-on-demand` (or an automatic move) may evict a model. |
+| `MODEL_GPU_MEASURE_INTERVAL_SECONDS` | `5` | Period of the per-process GPU memory sampler; `0` disables it. |
+| `MODEL_GPU_MEASURE_STATE_PATH` | unset | Store measurements in this JSON file instead of the Postgres table `model_gpu_measurements`. |
+| `MODEL_RESERVATION_SOURCE` | `declared` | `measured` reserves from observed peaks once enough predictions were seen. |
+| `MODEL_MEASURED_MIN_SAMPLES` | `10` | Observed completed predictions required before a measured reservation applies. |
+| `MODEL_MEASURED_MIN_BUSY_SECONDS` | `1` | How far into a prediction a sample must be taken to observe it (two samples also count). |
+| `MODEL_MEASURED_SAFETY_PERCENT` | `125` | Scaling of the measured peak (plus 256 MiB); integer 100-1000. |
+| `MODEL_GPU_PLACEMENT` | `pinned` | `propose` serves the placement plan; `auto` also applies one move per interval. |
+| `MODEL_GPU_PLACEMENT_INTERVAL_SECONDS` | `300` | Period of the automatic placement loop; 30-86400. |
+| `MODEL_GPU_PLACEMENT_MIN_IDLE_SECONDS` | `900` | Idle time required before `auto` may redeploy a loaded model. |
+| `MODEL_GPU_PLACEMENT_WINDOW` | unset | Daily local-time window for automatic moves, e.g. `22:00-06:00`; empty allows any time. |
+| `MODEL_GPU_ALLOWED_UUIDS` | all configured GPUs | Comma-separated GPUs a plan may move models to. |
+| `MODEL_GPU_PLACEMENT_TENANT_ID` | required for `auto` | Workspace whose models the automatic loop may move. |
+| `MODEL_GPU_PLACEMENT_ACTOR` | `system:gpu-auto-placement` | Actor recorded on automatic deployments. |
+
+Measured reservations and placement are described in
+[multi-gpu-model-placement.md](multi-gpu-model-placement.md).
 
 For example, a budget of 81920 MiB with a 4096 MiB margin gives 77824 MiB
 schedulable capacity. The operator must also exclude capacity assigned to other
@@ -32,14 +54,19 @@ an authorized model registration; they do not accept an arbitrary host.
    admission; a busy model does not block another model's queue.
 2. Inspect/start Docker and wait for model metadata, reusing the ingestion
    readiness helper. Read and validate the runtime and resource contract.
-3. Reserve the model's declared peak before loading or prediction. A resident
-   model only needs its resident-to-peak delta. Admission decisions are serialized;
+3. Reserve the model's conservative peak before loading or prediction. With the
+   safe default, a loaded model retains its entire peak reservation. Admission
+   decisions are serialized;
    admitted models can execute concurrently if their combined peaks fit.
 4. When capacity is insufficient, unload eligible idle models in LRU order.
    Never evict a model while its load, inference, cleanup or eviction is active.
    Idle eligibility timers wake waiting requests without another incoming request.
-5. Retain the resident reservation on success, release the active delta, update
-   last use and wake waiters. A CPU-only model still gets one active request.
+5. Retain the conservative GPU peak reservation on success until a confirmed
+   process-exit unload. READY does not prove CUDA allocator caches were returned
+   to the driver. Update last use and wake waiters. A CPU-only model still gets
+   one active request. Explicitly disabling retained peaks restores the older
+   resident-to-peak optimization and requires measured evidence that the declared
+   resident bound holds after every supported inference.
 
 Queue exhaustion returns `AdmissionTimeout`, wrapping `ErrQueueTimeout`. Its
 HTTP mapping is 503 with a one-second Retry-After. Both gateways apply that
@@ -90,8 +117,8 @@ production service. Predictions are rejected until this inventory succeeds.
 
 - Stopped containers remain stopped and are recorded as `UNLOADED` with no GPU
   reservation.
-- A confirmed idle `READY` runtime is reconstructed with its declared resident
-  reservation and last-use timestamp.
+- A confirmed idle `READY` runtime is reconstructed with its conservative peak
+  reservation by default and its last-use timestamp.
 - A running but busy, transitional, or otherwise ambiguous runtime is marked
   `ERROR` and conservatively reserves its declared peak. Its next request must
   confirm an unload before it can be admitted.
@@ -99,13 +126,46 @@ production service. Predictions are rejected until this inventory succeeds.
   with no reservation, because it cannot consume GPU memory. Requests for that
   registration fail until the container or registry is repaired, without
   preventing unrelated models from being managed.
-- A running container whose metadata cannot be trusted, or a reconstructed
-  reservation set that exceeds schedulable capacity, fails startup closed.
+- A running container whose metadata cannot be trusted fails startup closed.
+- A reconstructed reservation set that exceeds schedulable capacity does not:
+  idle loaded models are unloaded, least recently used first, until it fits. A
+  model whose unload cannot be confirmed stays reserved in `ERROR`; if a device
+  is still over its budget it admits nothing until that quarantine is released.
 - Duplicate registrations sharing one canonical container ID are counted once.
 
-Reconciliation never cold-loads a model or starts a stopped container. Only one
-manager process may own this GPU; replicas and multi-GPU placement remain
-outside V1.
+Reconciliation never cold-loads a model or starts a stopped container. Only one manager process may own the host GPU budgets. Replicas remain outside
+the supported scope. Explicit multi-GPU placement and per-device budgets are
+now available; see [per-GPU placement and idle offloading](multi-gpu-model-placement.md).
+
+## Reservations of containers replaced outside the gateway
+
+A model container can be replaced without the gateway, for example by a rollout
+script that stops and renames the old container and starts a new one under the
+same name. The manager would keep the old container's reservation until the next
+restart, and every attempt to release it would address the new container, which
+answers to the old name.
+
+Every 30 seconds, at each idle sweep, and before a request that is short of
+memory waits or evicts a neighbour (at most once every 5 seconds), the manager
+inspects the container of every reservation it holds:
+
+- a container that no longer exists, or exists but is stopped, has no process
+  and no GPU memory: its reservation is dropped
+  (`[model-manager] ghost reservation dropped ... reason=container_missing|container_stopped`);
+- if another container now holds exactly the name the manager knew, is not in
+  the inventory yet and is idle, it is adopted with the reservation its state
+  calls for: nothing when unloaded, the resident reservation when loaded
+  (`[model-manager] replacement adopted ...`). A replacement that is serving a
+  request is not adopted; it is accounted for at its first managed request;
+- a container that was renamed but still runs keeps its reservation and is
+  addressed by its new name;
+- when Docker does not answer, nothing changes.
+
+Reservations owned by an admitted request, a queue, a drain or a deployment are
+never examined. Events are counted in `model_manager_events_total` as
+`ghost_reservation` with outcome `dropped` or `adopted`. The registration must
+still be pointed at the new container ID by whoever replaced it: the manager
+only receives requests for registered container IDs.
 
 ## Operational metrics
 
@@ -176,3 +236,41 @@ with a dedicated regression test. Host GPU use returned from a 4413 MiB observed
 peak to its 4 MiB baseline. Production container IDs and start times were unchanged.
 This is isolated acceptance evidence; it does not activate production gateways or
 replace the host-wide startup reconciliation still required for rollout.
+
+## GPU overfill incident and deployment audit (2026-11-12)
+
+A deployed host ran the new backend image with admission and background gateway
+flags absent. Manual and automatic callers therefore loaded models directly.
+CUDA out-of-memory errors followed while system RAM remained abundant. Unloading
+idle models gave temporary relief but did not prevent background calls from
+loading them again. Enabling only the API manager is insufficient: enable the
+managed gateway on study-service and every Celery worker as well.
+
+JEPA also demonstrated retained CUDA allocation exceeding its published resident
+and peak declarations after failed inference. Default peak retention prevents
+reusing the resident-to-peak difference while its process still owns allocator
+caches. `MODEL_GPU_MEMORY_RESERVATION_PERCENT=150` provides conservative peak
+headroom for this host until model memory declarations are remeasured and
+released. A 24576 MiB budget with a 4096 MiB safety margin gives 20480 MiB
+schedulable capacity; JEPA's 11000 MiB declaration reserves 16500 MiB under this
+policy. Underestimates larger than the configured headroom can still cause OOM;
+observe actual maximum GPU use across supported inputs and failures. This is a
+reservation policy, not an instantaneous NVML allocator or a memory guarantee.
+
+Run the read-only routing check after deployment:
+
+```sh
+python scripts/check-gpu-admission.py
+```
+
+It fails if the API manager, peak retention or idle sweeper is disabled, or if
+any running study-service/Celery caller lacks managed routing. It prints no
+secrets. A pass checks configuration only: separately confirm startup
+reconciliation, accurate image memory contracts, isolated GPU placement or
+conservative scalar capacity, and confirmed offload/reload in runtime metrics.
+
+Drain automatic workers and active manual requests before changing ownership of
+the GPU ledger. Unload idle resident models and wait for their inference process
+exit before starting the manager with conservative reservations. Recreate every
+caller to apply gateway environment changes. Preserve model registration and
+processing history throughout; deleting registrations is not a memory fix.

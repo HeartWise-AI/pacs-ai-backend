@@ -15,6 +15,22 @@ import (
 var lifecycleClient = &http.Client{Timeout: 5 * time.Minute}
 var lifecycleHost = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*(?::[0-9]+)?$`)
 
+// LifecycleStatusError is a non-200 answer from a model lifecycle endpoint.
+type LifecycleStatusError struct {
+	Operation  string
+	StatusCode int
+}
+
+func (e *LifecycleStatusError) Error() string {
+	return fmt.Sprintf("model %s HTTP status %d", e.Operation, e.StatusCode)
+}
+
+// Restarting reports whether the answer came from the container's proxy while
+// its supervised inference process was down (between exit and respawn).
+func (e *LifecycleStatusError) Restarting() bool {
+	return e.StatusCode == http.StatusBadGateway || e.StatusCode == http.StatusServiceUnavailable || e.StatusCode == http.StatusGatewayTimeout
+}
+
 func (d *DockerInferenceAPI) GetModelRuntime(ctx context.Context, name string) (types.ModelRuntime, error) {
 	return d.lifecycle(ctx, name, "runtime", http.MethodGet, metadataClient)
 }
@@ -41,7 +57,7 @@ func (d *DockerInferenceAPI) lifecycle(ctx context.Context, name, operation, met
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return types.ModelRuntime{}, fmt.Errorf("model %s HTTP status %d", operation, resp.StatusCode)
+		return types.ModelRuntime{}, &LifecycleStatusError{Operation: operation, StatusCode: resp.StatusCode}
 	}
 	var body types.ModelRuntimeResponse
 	if err = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {

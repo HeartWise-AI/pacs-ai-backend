@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from logic import CustomPredictionService
 from utils.resource_config import create_inference_semaphore, load_model_info, model_info_payload
+from utils.diagnostic_contract import verified_preprocessing_contract
 from utils.model_lifecycle import (
     ModelLifecycle,
     install_model_lifecycle_routes,
@@ -36,6 +37,15 @@ model_info = load_model_info(os.path.join(root_path, "data", "model_info.json"))
 served_model_info = model_info_payload(
     model_info,
     source_revision=os.getenv("PACS_AI_SOURCE_REVISION") or None,
+    model_version=os.getenv("PACS_AI_MODEL_VERSION") or None,
+)
+with open(os.path.join(root_path, "data", "model_info.json")) as handle:
+    declared_contract = json.load(handle)["preprocessingContract"]
+if declared_contract.get("forwardBatchSize") != config.forward_batch_size:
+    raise RuntimeError("preprocessingContract.forwardBatchSize does not match the configured forward_batch_size")
+served_model_info["preprocessingContract"] = verified_preprocessing_contract(
+    root_path, declared_contract, config.model_path, config.class_mapping,
+    os.getenv("PACS_AI_SOURCE_REVISION"),
 )
 inference_lock = create_inference_semaphore(model_info)
 

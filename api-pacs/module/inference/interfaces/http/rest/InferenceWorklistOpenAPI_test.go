@@ -73,6 +73,42 @@ func TestWorklistOpenAPIDocumentsReadAndMutationAuthorization(t *testing.T) {
 
 	reprocess := openAPIMap(t, openAPIMap(t, paths["/inference/worklist/studies/{studyInstanceUID}/reprocess"])["post"])
 	require.Contains(t, reprocess["description"], "owner or administrator")
+
+	bulkReprocess := openAPIMap(t, openAPIMap(t, paths["/inference/worklist/studies/reprocess-batch"])["post"])
+	require.Contains(t, bulkReprocess["description"], "owner or administrator")
+}
+
+func TestWorklistOpenAPIDocumentsBoundedBulkReprocessingResults(t *testing.T) {
+	document := loadWorklistOpenAPI(t)
+	paths := openAPIMap(t, document["paths"])
+	operation := openAPIMap(t, openAPIMap(t, paths["/inference/worklist/studies/reprocess-batch"])["post"])
+
+	requestBody := openAPIMap(t, operation["requestBody"])
+	requestContent := openAPIMap(t, requestBody["content"])
+	requestSchema := openAPIMap(t, openAPIMap(t, requestContent["application/json"])["schema"])
+	require.Equal(t, "#/components/schemas/BulkReprocessStudiesRequest", requestSchema["$ref"])
+
+	responses := openAPIMap(t, operation["responses"])
+	for _, status := range []string{"200", "400", "401", "403"} {
+		require.Contains(t, responses, status)
+	}
+	ok := openAPIMap(t, responses["200"])
+	cacheControl := openAPIMap(t, openAPIMap(t, ok["headers"])["Cache-Control"])
+	require.Equal(t, []interface{}{"no-store"}, openAPIMap(t, cacheControl["schema"])["enum"])
+
+	schemas := openAPIMap(t, openAPIMap(t, document["components"])["schemas"])
+	request := openAPIMap(t, schemas["BulkReprocessStudiesRequest"])
+	studyUIDs := openAPIMap(t, openAPIMap(t, request["properties"])["studyInstanceUIDs"])
+	require.Equal(t, float64(1), studyUIDs["minItems"])
+	require.Equal(t, float64(10), studyUIDs["maxItems"])
+	require.Equal(t, true, studyUIDs["uniqueItems"])
+
+	result := openAPIMap(t, schemas["BulkReprocessStudyResult"])
+	properties := openAPIMap(t, result["properties"])
+	require.Contains(t, properties, "accepted")
+	require.Contains(t, properties, "run")
+	require.Contains(t, properties, "errorCode")
+	require.Contains(t, properties, "retryAfterSeconds")
 }
 
 func TestWorklistOpenAPIPublicSchemasExcludeTenantAndPythonInternals(t *testing.T) {
@@ -122,4 +158,25 @@ func TestExecutionResultOpenAPIDocumentsLazyNoStoreContractAndSafeErrors(t *test
 	resultProperties := openAPIMap(t, resultSchema["properties"])
 	opaqueResult := openAPIMap(t, resultProperties["result"])
 	require.Equal(t, false, opaqueResult["nullable"])
+}
+
+func TestWorklistOpenAPIDocumentsRunCancellationAndWaitingFields(t *testing.T) {
+	document := loadWorklistOpenAPI(t)
+	paths := openAPIMap(t, document["paths"])
+	cancel := openAPIMap(t, openAPIMap(t, paths["/inference/processing/runs/{runId}/cancel"])["post"])
+	require.Contains(t, cancel["description"], "authenticated tenant user")
+	require.Contains(t, cancel["description"], "Idempotent")
+	responses := openAPIMap(t, cancel["responses"])
+	for _, status := range []string{"200", "401", "403", "404", "409", "500", "503"} {
+		require.Contains(t, responses, status)
+	}
+
+	schemas := openAPIMap(t, openAPIMap(t, document["components"])["schemas"])
+	detail := openAPIMap(t, schemas["ProcessingRunDetail"])
+	extension := openAPIMap(t, detail["allOf"].([]interface{})[1])
+	properties := openAPIMap(t, extension["properties"])
+	for _, field := range []string{"executions", "cancellable", "cancelledAt", "waitingReason", "stableAfter"} {
+		require.Contains(t, properties, field)
+	}
+	require.Equal(t, []interface{}{"study_growing", "stale"}, openAPIMap(t, properties["waitingReason"])["enum"])
 }

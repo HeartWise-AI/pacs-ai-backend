@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	redisTypes "api-pacs/infrastructures/database/redis/types"
@@ -23,7 +24,58 @@ const (
 	defaultLoginIPMaxFailures            = 30
 	defaultLoginTenantChallengeFailures  = 50
 	defaultLoginTenantMaxFailures        = 500
+
+	// minimumLoginCooldown keeps a cooldown answer from inviting an immediate
+	// retry when the triggering counter is about to expire.
+	minimumLoginCooldown = 30 * time.Second
 )
+
+// LoginChallengeMode selects what the gateway does when the adaptive policy
+// would ask for a human-verification challenge.
+type LoginChallengeMode string
+
+const (
+	// LoginChallengeModeTurnstile requires a Cloudflare Turnstile token.
+	LoginChallengeModeTurnstile LoginChallengeMode = "turnstile"
+	// LoginChallengeModeCooldown answers with a temporary rate limit (429 and
+	// Retry-After) until the counter that triggered the challenge expires. It is
+	// meant for deployments where Turnstile cannot work (internal hostnames,
+	// workstations that cannot reach challenges.cloudflare.com).
+	LoginChallengeModeCooldown LoginChallengeMode = "cooldown"
+)
+
+var loginChallengeModeLogOnce sync.Once
+
+// LoginChallengeModeFromEnvironment resolves LOGIN_CHALLENGE_MODE and logs the
+// effective mode once per process.
+func LoginChallengeModeFromEnvironment() LoginChallengeMode {
+	mode, source := resolveLoginChallengeMode(os.Getenv)
+	loginChallengeModeLogOnce.Do(func() {
+		log.Printf("[security] event=login_challenge_mode mode=%s source=%s", mode, source)
+	})
+	return mode
+}
+
+// resolveLoginChallengeMode returns the explicit LOGIN_CHALLENGE_MODE when it is
+// valid; otherwise Turnstile when both its server secret and allowed hostnames
+// are configured, and cooldown when they are not.
+func resolveLoginChallengeMode(getenv func(string) string) (LoginChallengeMode, string) {
+	switch LoginChallengeMode(strings.ToLower(strings.TrimSpace(getenv("LOGIN_CHALLENGE_MODE")))) {
+	case LoginChallengeModeTurnstile:
+		return LoginChallengeModeTurnstile, "setting"
+	case LoginChallengeModeCooldown:
+		return LoginChallengeModeCooldown, "setting"
+	case "":
+	default:
+		log.Printf("[security] event=login_abuse_protection_config_invalid setting=LOGIN_CHALLENGE_MODE")
+	}
+	turnstileConfigured := strings.TrimSpace(getenv("CLOUDFLARE_SECRET_KEY")) != "" &&
+		len(LoginTurnstileAllowedHostnamesFromEnvironment(getenv("LOGIN_TURNSTILE_ALLOWED_HOSTNAMES"))) > 0
+	if turnstileConfigured {
+		return LoginChallengeModeTurnstile, "default"
+	}
+	return LoginChallengeModeCooldown, "default"
+}
 
 type LoginAbuseProtectionConfig struct {
 	Enabled                  bool
@@ -248,6 +300,9 @@ func applyLoginFailureScope(
 ) {
 	if count >= scope.ChallengeThreshold {
 		decision.ChallengeRequired = true
+		if cooldown := loginCooldownFromTTL(ttl, fallbackTTL); cooldown > decision.ChallengeRetryAfter {
+			decision.ChallengeRetryAfter = cooldown
+		}
 	}
 	if scope.MaximumFailures > 0 && count >= scope.MaximumFailures {
 		if ttl <= 0 {
@@ -257,6 +312,22 @@ func applyLoginFailureScope(
 			decision.RetryAfter = ttl
 		}
 	}
+}
+
+// loginCooldownFromTTL turns the remaining TTL of a counter that requires a
+// challenge into the wait advertised in cooldown mode: at least
+// minimumLoginCooldown and at most the failure window.
+func loginCooldownFromTTL(ttl, window time.Duration) time.Duration {
+	if ttl <= 0 || ttl > window {
+		ttl = window
+	}
+	if ttl < minimumLoginCooldown {
+		ttl = minimumLoginCooldown
+	}
+	if window > 0 && ttl > window {
+		ttl = window
+	}
+	return ttl
 }
 
 func loginFailureKey(scope, tenantID, value string) string {

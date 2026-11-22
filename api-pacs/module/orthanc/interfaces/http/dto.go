@@ -96,6 +96,11 @@ type ListDICOMModalitiesResponse struct {
 type RetrieveQueryModalityAnswerResponse struct {
 	ID   string `json:"id"`
 	Path string `json:"path"`
+	// The series this job moves and its place in the retrieve order
+	// (0 = first, the series the viewer shows first).
+	SeriesInstanceUID string `json:"seriesInstanceUID,omitempty"`
+	SeriesNumber      string `json:"seriesNumber,omitempty"`
+	Order             int    `json:"order"`
 }
 
 type ListDICOMModality struct {

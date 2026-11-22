@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "1.0.1"
+    "version": "1.0.3"
   },
   "servers": [
     {
@@ -91,6 +91,154 @@
         }
       }
     },
+    "/inference/render-report": {
+      "post": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Render report",
+        "description": "HTML report of a stored JSON-mode result, the same document HTML-mode predict returns for that prediction. CPU only: no model load, no forward pass, no GPU; does not count as model activity. Nothing stored is copied into the page: the numbers are checked and the report is rendered from them, and a result whose values or text are not what this model version writes for those numbers is refused. Body at most 64 KB.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenderReportRequest"
+              },
+              "example": {
+                "result": {
+                  "predictions": {
+                    "timeHorizon": "1 year",
+                    "primary": {
+                      "completeCoronaryOcclusion": {
+                        "name": "Complete coronary occlusion",
+                        "probability": 0.06,
+                        "threshold": 0.5,
+                        "aboveResearchThreshold": false
+                      },
+                      "nonFatalMyocardialInfarction": {
+                        "name": "Non-fatal myocardial infarction",
+                        "probability": 0.24,
+                        "threshold": 0.5,
+                        "aboveResearchThreshold": false
+                      },
+                      "urgentRevascularization": {
+                        "name": "Urgent revascularization",
+                        "probability": 0.42,
+                        "threshold": 0.5,
+                        "aboveResearchThreshold": false
+                      },
+                      "compositeMace": {
+                        "name": "Composite MACE",
+                        "probability": 0.78,
+                        "threshold": 0.5,
+                        "aboveResearchThreshold": true
+                      }
+                    },
+                    "exploratory": {
+                      "cardiovascularDeath": {
+                        "name": "Cardiovascular death",
+                        "probability": 0.15,
+                        "threshold": 0.5,
+                        "aboveResearchThreshold": false,
+                        "warning": "Only four cardiovascular deaths were available in the held-out cohort; this component is not reliable as a standalone estimate."
+                      },
+                      "nonFatalStroke": {
+                        "name": "Non-fatal stroke",
+                        "probability": 0.33,
+                        "threshold": 0.5,
+                        "aboveResearchThreshold": false
+                      },
+                      "heartFailureHospitalization": {
+                        "name": "Heart-failure hospitalization",
+                        "probability": 0.51,
+                        "threshold": 0.5,
+                        "aboveResearchThreshold": true
+                      },
+                      "lifeThreateningArrhythmia": {
+                        "name": "Life-threatening arrhythmia",
+                        "probability": 0.6,
+                        "threshold": 0.5,
+                        "aboveResearchThreshold": true
+                      },
+                      "cardiogenicShock": {
+                        "name": "Cardiogenic shock",
+                        "probability": 0.69,
+                        "threshold": 0.5,
+                        "aboveResearchThreshold": true
+                      }
+                    },
+                    "thresholdNote": "The 0.5 cutoffs are uncalibrated research thresholds. Probabilities and threshold flags are not validated clinical risk estimates or diagnoses."
+                  },
+                  "diagnosis": "DeepCORO-MACE: one-year composite MACE research score = 0.780 | not a clinical diagnosis",
+                  "modelRecommendations": {
+                    "en": "<strong>Composite one-year MACE research score: 0.780.</strong> Use for research demonstration only. This sigmoid output is not a calibrated clinical probability. It is derived from coronary angiography alone and must not change monitoring, treatment, or discharge decisions. Assess the patient with validated clinical tools and clinician review.",
+                    "fr": "<strong>Score de recherche du MACE composite à un an : 0.780.</strong> Utiliser uniquement à des fins de démonstration en recherche. Cette sortie sigmoïde n'est pas une probabilité clinique étalonnée. Elle est dérivée de la coronarographie seule et ne doit pas modifier la surveillance, le traitement ou le congé. Évaluer le patient avec des outils cliniques validés et une révision médicale.",
+                    "presentable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Report rendered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/RenderReportResponse"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body larger than 64 KB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Body larger than 65536 bytes",
+                  "data": {},
+                  "errorCode": "PAYLOAD_TOO_LARGE"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Body is not JSON, or the result is not a JSON-mode result of this model version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Cannot render this result: diagnosis: is not what this model writes for these predictions",
+                  "data": {},
+                  "errorCode": "INVALID_RESULT"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/inference/model-info": {
       "get": {
         "tags": [
@@ -127,7 +275,7 @@
                     "domainName": "Cardiology",
                     "stage": "ai_inference",
                     "modality": "Angiogram",
-                    "version": "1.0.1",
+                    "version": "1.0.3",
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
@@ -142,6 +290,9 @@
                       "peakMemoryMiB": 2844,
                       "maxConcurrentInferences": 1,
                       "idleTimeoutSeconds": 600
+                    },
+                    "capabilities": {
+                      "renderReport": true
                     },
                     "dicomTargetLevel": "STUDY",
                     "dicomUploadMin": 1,
@@ -763,6 +914,33 @@
           },
           "error": {
             "type": "string"
+          }
+        }
+      },
+      "RenderReportRequest": {
+        "type": "object",
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "type": "object",
+            "description": "The data object of a JSON-mode predict response ({diagnosis, predictions, modelRecommendations}) as stored by the caller; the whole response envelope is accepted too. The stored no-video answer (predictions {}) renders the no-video page."
+          }
+        }
+      },
+      "RenderReportResponse": {
+        "type": "object",
+        "properties": {
+          "htmlBase64": {
+            "type": "string",
+            "description": "Base64-encoded HTML report, identical to HTML-mode predict for the same prediction"
+          },
+          "modelVersion": {
+            "type": "string",
+            "description": "Container version that rendered the report",
+            "example": "1.0.3"
           }
         }
       }

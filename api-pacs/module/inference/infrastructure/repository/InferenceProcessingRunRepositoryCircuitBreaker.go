@@ -115,6 +115,24 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListProcessing
 	})
 }
 
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListNeverRanAutomaticProcessingRuns(
+	ctx context.Context,
+	data types.ListNeverRanAutomaticProcessingRuns,
+) ([]entity.InferenceIngestionProcessingRun, error) {
+	return withProcessingRunCircuit("list_never_ran_automatic_processing_runs", func() ([]entity.InferenceIngestionProcessingRun, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.ListNeverRanAutomaticProcessingRuns(ctx, data)
+	})
+}
+
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ExpireNeverRanProcessingRun(
+	ctx context.Context,
+	data types.ExpireNeverRanProcessingRun,
+) (types.ExpireNeverRanProcessingRunResult, error) {
+	return withProcessingRunCircuit("expire_never_ran_processing_run", func() (types.ExpireNeverRanProcessingRunResult, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.ExpireNeverRanProcessingRun(ctx, data)
+	})
+}
+
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) ListLegacyProcessingRunBackfillRows(ctx context.Context) ([]types.LegacyProcessingRunBackfillRow, error) {
 	return withProcessingRunCircuit("list_legacy_processing_run_backfill_rows", func() ([]types.LegacyProcessingRunBackfillRow, error) {
 		return repository.InferenceProcessingRunRepositoryInterface.ListLegacyProcessingRunBackfillRows(ctx)
@@ -175,5 +193,17 @@ func (repository *InferenceProcessingRunRepositoryCircuitBreaker) SelectProcessi
 func (repository *InferenceProcessingRunRepositoryCircuitBreaker) UpdateProcessingRunAggregate(ctx context.Context, data types.UpdateInferenceIngestionProcessingRunAggregate) (entity.InferenceIngestionProcessingRun, error) {
 	return withProcessingRunCircuit("update_processing_run_aggregate", func() (entity.InferenceIngestionProcessingRun, error) {
 		return repository.InferenceProcessingRunRepositoryInterface.UpdateProcessingRunAggregate(ctx, data)
+	})
+}
+
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) SelectLatestStudyWideProcessingRun(ctx context.Context, tenantID, studyInstanceUID string) (entity.InferenceIngestionProcessingRun, error) {
+	return withProcessingRunCircuit("select_latest_study_wide_processing_run", func() (entity.InferenceIngestionProcessingRun, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.SelectLatestStudyWideProcessingRun(ctx, tenantID, studyInstanceUID)
+	})
+}
+
+func (repository *InferenceProcessingRunRepositoryCircuitBreaker) MarkProcessingRunCancelled(ctx context.Context, data types.MarkInferenceIngestionProcessingRunCancelled) (entity.InferenceIngestionProcessingRun, error) {
+	return withProcessingRunCircuit("mark_processing_run_cancelled", func() (entity.InferenceIngestionProcessingRun, error) {
+		return repository.InferenceProcessingRunRepositoryInterface.MarkProcessingRunCancelled(ctx, data)
 	})
 }

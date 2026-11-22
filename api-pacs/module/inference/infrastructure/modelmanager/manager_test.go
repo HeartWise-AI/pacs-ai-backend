@@ -25,6 +25,24 @@ type fakeBackend struct {
 	inspect        func(context.Context, string) (Model, types.ModelRuntime, error)
 	unload         func(context.Context, Model) error
 	load           func(context.Context, Model) error
+	// presence overrides what Docker reports for a container; one that is not
+	// listed exists and runs under the name the manager knows.
+	presence  map[string]ContainerPresence
+	locateErr error
+	located   []string
+}
+
+func (b *fakeBackend) Locate(_ context.Context, id, knownName string) (ContainerPresence, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.located = append(b.located, id)
+	if b.locateErr != nil {
+		return ContainerPresence{}, b.locateErr
+	}
+	if presence, ok := b.presence[id]; ok {
+		return presence, nil
+	}
+	return ContainerPresence{Exists: true, Running: true, Name: knownName}, nil
 }
 
 func newFake() *fakeBackend {
@@ -649,11 +667,16 @@ func TestReconcileMissingContractAndOverCapacityFailClosed(t *testing.T) {
 	b.inspect = func(_ context.Context, containerID string) (Model, types.ModelRuntime, error) {
 		return b.models[containerID], types.ModelRuntime{State: types.RuntimeReady, Loaded: true}, nil
 	}
-	if err = m.Reconcile(context.Background(), []string{id(1)}); err == nil {
-		t.Fatal("over-capacity reconciliation succeeded")
+	// A loaded model above the budget is unloaded so that reconciliation
+	// succeeds; it can still never be admitted.
+	if err = m.Reconcile(context.Background(), []string{id(1)}); err != nil {
+		t.Fatal(err)
 	}
-	if _, err = m.Predict(context.Background(), id(1), types.PredictRequest{}); !errors.Is(err, ErrNotReconciled) {
-		t.Fatalf("failed reconciliation did not block admission: %v", err)
+	if snapshot := m.Snapshot(); !snapshot.Ready || snapshot.ReservedMiB != 0 || len(b.unloads) != 1 {
+		t.Fatalf("over-capacity model was not unloaded: %+v", snapshot)
+	}
+	if _, err = m.Predict(context.Background(), id(1), types.PredictRequest{}); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("a model above the budget was admitted: %v", err)
 	}
 }
 
@@ -971,5 +994,48 @@ func TestCandidateCannotBeUnblockedWhilePreparationIsRunning(t *testing.T) {
 	}
 	if err := m.Unblock(id(2)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestBlockAndDrainIdleNeverClosesAdmissionOnAModelInUse(t *testing.T) {
+	b := newFake()
+	b.add(1, 30, 80)
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	b.predict = func(ctx context.Context, _ Model, _ types.PredictRequest) (types.PredictResponse, error) {
+		started <- struct{}{}
+		select {
+		case <-ctx.Done():
+			return types.PredictResponse{}, ctx.Err()
+		case <-release:
+			return types.PredictResponse{Success: true}, nil
+		}
+	}
+	m := manager(t, b, 100)
+	prediction := request(m, 1)
+	<-started
+	if err := m.BlockAndDrainIdle(context.Background(), id(1)); !errors.Is(err, ErrModelBusy) {
+		t.Fatalf("a predicting model was drained: %v", err)
+	}
+	// A second request is only waiting: that is in use too.
+	queued := request(m, 1)
+	until(t, func() bool { return m.Snapshot().Models[id(1)].QueueDepth == 1 })
+	if err := m.BlockAndDrainIdle(context.Background(), id(1)); !errors.Is(err, ErrModelBusy) {
+		t.Fatalf("a model with a waiting request was drained: %v", err)
+	}
+	if snapshot := m.Snapshot().Models[id(1)]; snapshot.Blocked || snapshot.Draining {
+		t.Fatalf("a refused drain left admission closed: %+v", snapshot)
+	}
+	close(release)
+	receive(t, prediction)
+	receive(t, queued)
+
+	// Idle and loaded, the model is drained exactly like BlockAndDrain does.
+	if err := m.BlockAndDrainIdle(context.Background(), id(1)); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := m.Snapshot().Models[id(1)]
+	if !snapshot.Blocked || snapshot.Draining || snapshot.Loaded || snapshot.ReservedMiB != 0 {
+		t.Fatalf("unexpected drained state: %+v", snapshot)
 	}
 }

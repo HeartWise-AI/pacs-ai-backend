@@ -1,11 +1,15 @@
-torch==2.14.1
+# Pinned to the deployed 1.0.5 runtime. logic._videoShenanigans round-trips every video through an
+# OpenCV MJPG writer/reader, whose output changes across OpenCV releases: 4.13.0.92 moved head
+# probabilities by up to 0.11 against 4.10.0.84. Re-validate outputs before changing opencv or pydicom.
+torch==2.4.0
 torchvision==0.19.0
-fvcore
+fvcore==0.1.5.post20221221
 fastapi==0.115.6
 uvicorn==0.34.0
-pydicom==3.0.2
+pydicom==3.0.1
 nibabel==5.3.2
 pytorchvideo==0.1.5
-opencv-python-headless==4.13.0.92
-huggingface-hub
-pandas
+opencv-python-headless==4.10.0.84
+huggingface-hub==1.3.4
+pandas==3.0.0
+numpy==2.4.1

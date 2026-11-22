@@ -25,6 +25,7 @@ import (
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/domain/repository"
 	"api-pacs/module/inference/infrastructure/containerready"
+	"api-pacs/module/inference/infrastructure/modelmanager"
 	"api-pacs/module/inference/infrastructure/modelupgrade"
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
@@ -54,8 +55,14 @@ type InferenceCommandService struct {
 	inferenceApplication.ProcessingDispatcherInterface
 	inferenceApplication.InferenceQuotaManagerInterface
 	inferenceApplication.WorklistNotificationPublisherInterface
+	// WorklistNotificationAudienceRepository resolves who an automatic run
+	// notifies. Nil leaves automatic-run audiences unresolved (admins only).
+	WorklistNotificationAudienceRepository  repository.WorklistNotificationAudienceRepositoryInterface
 	StudyServiceDispatchSemaphore           chan struct{}
 	ProcessingReconciliationMetricsRecorder ProcessingReconciliationMetricsRecorder
+	// AutoRunExpireAfter expires, in each reconciliation cycle, the waiting
+	// executions of automatic runs older than this; zero disables it.
+	AutoRunExpireAfter                      time.Duration
 	RequireProcessingRunID                  bool
 	inferenceContainerReadinessTimeout      time.Duration
 	inferenceContainerReadinessPollInterval time.Duration
@@ -221,10 +228,30 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		return types.CreateStudyProcessingRunResult{}, activeErr
 	}
 
+	if trigger == entity.InferenceIngestionProcessingRunTriggerAuto {
+		// A user cancellation is respected: the study's remaining candidates
+		// still become stable and retrieved, but they must not start a new
+		// automatic run that would re-create the cancelled executions.
+		latestRun, latestErr := service.InferenceProcessingRunRepositoryInterface.SelectLatestStudyWideProcessingRun(ctx, tenantID, studyInstanceUID)
+		if latestErr == nil && latestRun.IsUserCancelled() {
+			return types.CreateStudyProcessingRunResult{}, errAutomaticProcessingSuppressedByCancellation
+		}
+		if latestErr != nil && latestErr.Error() != apiError.MissingRecord {
+			return types.CreateStudyProcessingRunResult{}, latestErr
+		}
+	}
+
 	candidates, err := service.InferenceQueryRepositoryInterface.ListInferenceIngestionCandidates(repositoryTypes.ListInferenceIngestionCandidates{
 		TenantID:         tenantID,
 		StudyInstanceUID: &studyInstanceUID,
 	})
+	if trigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess {
+		if err != nil && err.Error() == apiError.MissingRecord || err == nil && len(candidates) == 0 {
+			candidates, err = service.bootstrapManualStudyCandidates(ctx, tenantID, studyInstanceUID)
+		} else if err == nil {
+			candidates, err = service.reconcileExistingManualStudyCandidates(ctx, tenantID, studyInstanceUID, candidates)
+		}
+	}
 	if err != nil {
 		return types.CreateStudyProcessingRunResult{}, err
 	}
@@ -247,6 +274,17 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		if job.TenantID != tenantID {
 			return types.CreateStudyProcessingRunResult{}, errors.New(apiError.DatabaseError)
 		}
+		if trigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess &&
+			job.Status != entity.InferenceIngestionJobStatusRunning {
+			continue
+		}
+
+		if strings.TrimSpace(job.DICOMModality) == viewerIngestionJobSource {
+			// A model run once from the viewer is not part of the site's
+			// study-wide plan. Including it left automatic runs waiting forever
+			// on a model that no ingestion job dispatches.
+			continue
+		}
 
 		modelName := strings.TrimSpace(job.ModelName)
 		if modelName == "" {
@@ -259,12 +297,19 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		seen[key] = struct{}{}
 
 		executionID := generateID()
+		plannedModality := canonicalStudyServiceModality(job.DICOMModality)
+		if strings.EqualFold(strings.TrimSpace(job.DICOMModality), "PACS_QUERY") {
+			plannedModality, jobErr = resolveDispatchModality(job, candidate)
+			if jobErr != nil {
+				return types.CreateStudyProcessingRunResult{}, jobErr
+			}
+		}
 		expected = append(expected, repositoryTypes.CreateInferenceIngestionProcessingExecution{
 			ID:           executionID,
 			CandidateID:  candidate.ID,
 			ModelName:    modelName,
 			ModelVersion: nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
-			Modality:     nonEmptyStringPointer(canonicalStudyServiceModality(job.DICOMModality)),
+			Modality:     nonEmptyStringPointer(plannedModality),
 		})
 		dispatchTargets = append(dispatchTargets, processingRunDispatchTarget{
 			job: job, candidate: candidate, requestID: executionID,
@@ -300,8 +345,11 @@ func (service *InferenceCommandService) createStudyProcessingRun(ctx context.Con
 		}
 		userID := strings.TrimSpace(*data.UserID)
 		requestedByUserID = &userID
+		// Manual reprocess is queued work: study-service's per-model queues
+		// bound capacity, so it is not held to the interactive concurrency cap.
 		quotaReservation = &types.InferenceQuotaReservation{
 			TenantID: tenantID, UserID: userID, ReservationID: runID, Units: 1,
+			Kind: types.InferenceQuotaReservationQueued,
 		}
 		if _, err := service.InferenceQuotaManagerInterface.Reserve(ctx, *quotaReservation); err != nil {
 			return types.CreateStudyProcessingRunResult{}, err
@@ -372,13 +420,19 @@ func (service *InferenceCommandService) finalizeProcessingRunQuota(run entity.In
 	if userID == "" {
 		return
 	}
-	refund := run.StartedAt == nil && (hasProcessingRunAttentionReason(
+	// A run that never started computing is refunded when its dispatch or
+	// retrieval failed, or when the user cancelled it.
+	refund := run.StartedAt == nil && (run.IsUserCancelled() || hasProcessingRunAttentionReason(
 		run.AttentionReasons, entity.InferenceIngestionProcessingRunAttentionDispatchFailed,
 	) || hasProcessingRunAttentionReason(
 		run.AttentionReasons, entity.InferenceIngestionProcessingRunAttentionRetrievalFailed,
 	))
+	// Processing runs are only reserved as queued work (manual reprocess and
+	// viewer runs). Release/Refund locate the reservation by ID in either
+	// active set, so Kind here is informational.
 	service.finishInferenceQuotaReservation(&types.InferenceQuotaReservation{
 		TenantID: run.TenantID, UserID: userID, ReservationID: run.ID, Units: 1,
+		Kind: types.InferenceQuotaReservationQueued,
 	}, refund)
 }
 
@@ -446,7 +500,7 @@ func (service *InferenceCommandService) HandleStudyServiceProcessingCallback(ctx
 			strings.TrimSpace(run.StudyInstanceUID) != strings.TrimSpace(candidate.StudyInstanceUID) {
 			return types.HandleStudyServiceProcessingCallbackResult{}, errors.New(apiError.InvalidPayload)
 		}
-		manualProcessingRun = run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess
+		manualProcessingRun = run.RunTrigger.IsUserRequested()
 
 		existing, err = service.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(
 			ctx, candidate.TenantID, processingRunID, candidate.ID, modelName,
@@ -649,6 +703,10 @@ func (service *InferenceCommandService) publishCommittedWorklistNotification(
 		StartedAt:         transition.Run.StartedAt,
 		CompletedAt:       transition.Run.CompletedAt,
 		UpdatedAt:         transition.Run.UpdatedAt,
+		ExecutionID:       transition.Execution.ID,
+		ModelName:         transition.Execution.ModelName,
+		Status:            transition.Execution.Status,
+		Audience:          service.resolveWorklistNotificationAudience(ctx, transition.Run),
 	}
 	if err := service.PublishWorklistNotification(ctx, notification); err != nil {
 		log.Printf(
@@ -793,12 +851,18 @@ func (service *InferenceCommandService) DeployInferenceModelVersion(
 	if registered.TenantID != data.TenantID {
 		return types.DeployInferenceModelVersionResult{}, errors.New(apiError.MissingRecord)
 	}
+	if data.ExpectedContainerID != "" && registered.ContainerID != data.ExpectedContainerID {
+		return types.DeployInferenceModelVersionResult{}, errors.New(apiError.InferenceUpgradeConflict)
+	}
 	version, err := service.InferenceModelVersionRepositoryInterface.SelectInferenceModelVersion(ctx, data.VersionID)
 	if err != nil {
 		return types.DeployInferenceModelVersionResult{}, err
 	}
 	version.Normalize()
-	if err = version.Validate(); err != nil || version.ID != data.VersionID || version.Status != entity.InferenceModelVersionAvailable {
+	// A move does not deploy the catalog version, so a version that was
+	// withdrawn since must not keep the model from being moved.
+	if err = version.Validate(); err != nil || version.ID != data.VersionID ||
+		(version.Status != entity.InferenceModelVersionAvailable && !data.KeepRunningImage) {
 		return types.DeployInferenceModelVersionResult{}, errors.New(apiError.InvalidPayload)
 	}
 	source := entity.InferenceModelDeployment{}
@@ -813,7 +877,8 @@ func (service *InferenceCommandService) DeployInferenceModelVersion(
 	}
 	operation, err := service.ModelDeploymentOperations.Start(ctx, modelupgrade.StartDeploymentOperation{
 		TenantID: data.TenantID, ModelID: data.ModelID, ActorUserID: data.ActorUserID,
-		Source: source, Target: version,
+		Source: source, Target: version, TargetGPUUUID: data.TargetGPUUUID,
+		KeepRunningImage: data.KeepRunningImage, Automatic: data.Automatic,
 	})
 	if err != nil {
 		return types.DeployInferenceModelVersionResult{}, err
@@ -859,13 +924,22 @@ func (service *InferenceCommandService) CreateInferenceIngestionJob(ctx context.
 	if err != nil {
 		return err
 	}
+	registration, err := service.selectIngestionRegistration(ctx, entity.InferenceIngestionJob{
+		TenantID: data.TenantID, ModelID: data.ModelID, ContainerID: data.ContainerID, ModelVersion: data.ModelVersion,
+	})
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(registration.ID) == "" {
+		return errors.New(apiError.MissingRecord)
+	}
 
 	err = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(repositoryTypes.CreateInferenceIngestionJob{
 		ID:                     generateID(),
 		TenantID:               data.TenantID,
 		DICOMModality:          data.DICOMModality,
-		ContainerID:            data.ContainerID,
-		ModelID:                data.ModelID,
+		ContainerID:            registration.ContainerID,
+		ModelID:                registration.ID,
 		ModelName:              data.ModelName,
 		ModelVersion:           data.ModelVersion,
 		Modalities:             data.Modalities,
@@ -877,6 +951,8 @@ func (service *InferenceCommandService) CreateInferenceIngestionJob(ctx context.
 		ScheduleStartTimestamp: time.Unix(int64(data.ScheduleStartTimestamp), 0),
 		ScheduleEndTimestamp:   time.Unix(int64(data.ScheduleEndTimestamp), 0),
 		Status:                 entity.InferenceIngestionJobStatusRunning, // default: RUNNING
+		CreatedByUserID:        optionalTrimmedString(data.CreatedByUserID),
+		NotificationsEnabled:   data.NotificationsEnabled == nil || *data.NotificationsEnabled,
 	})
 	if err != nil {
 		return err
@@ -1221,6 +1297,9 @@ func (service *InferenceCommandService) executeInferenceIngestionJob(ctx context
 
 // ExecuteInferenceIngestionRetrievalWorker retrieves studies that were queued by the ingestion runner.
 func (service *InferenceCommandService) ExecuteInferenceIngestionRetrievalWorker(ctx context.Context) error {
+	if err := service.requireManagedIngestionReady(); err != nil {
+		return err
+	}
 	candidates, err := service.InferenceQueryRepositoryInterface.ListCandidatesQueuedForRetrieval()
 	if err != nil {
 		return err
@@ -1269,6 +1348,18 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionRetrievalWorker
 	return nil
 }
 
+// Leave scheduled work untouched while startup inventory is unaccounted for.
+// The next worker tick can resume it after successful reconciliation, without
+// converting an infrastructure outage into permanent clinical job failures.
+func (service *InferenceCommandService) requireManagedIngestionReady() error {
+	if manager, ok := service.ModelManager.(interface {
+		Snapshot() modelmanager.Snapshot
+	}); ok && !manager.Snapshot().Ready {
+		return modelmanager.ErrNotReconciled
+	}
+	return nil
+}
+
 const processingReconciliationBatchLimit = 100
 
 // ExecuteInferenceIngestionReconciliationWorker reconciles active processing runs against study-service job truth.
@@ -1281,6 +1372,12 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationW
 	}()
 
 	now := time.Now()
+	// Expire the old automatic runs that will never finish before
+	// reconciling, so they are not re-dispatched or flagged again.
+	metrics.Expired = service.expireNeverRanAutomaticRuns(ctx, now).Expired
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	config := configuredProcessingReconciliation()
 	activeStaleBefore := now.Add(-config.earliestStaleAfter())
 
@@ -1309,7 +1406,7 @@ func (service *InferenceCommandService) ExecuteInferenceIngestionReconciliationW
 		default:
 		}
 
-		attempted, repaired, reconcileErr := service.reconcileProcessingRun(ctx, run, now, config)
+		attempted, repaired, reconcileErr := service.reconcileProcessingRun(ctx, run, now, config, &metrics.Redispatched)
 		if !attempted {
 			continue
 		}
@@ -1361,6 +1458,7 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 	run entity.InferenceIngestionProcessingRun,
 	now time.Time,
 	config processingReconciliationConfig,
+	redispatched *int,
 ) (bool, bool, error) {
 	executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, run.TenantID, run.ID)
 	if err != nil {
@@ -1402,7 +1500,7 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 		if correlationErr := validateReconciledStudyServiceJob(run, target, job); correlationErr != nil {
 			return true, repaired, service.markProcessingRunStateConflict(ctx, run, correlationErr)
 		}
-		callbackResult, callbackErr := service.handleReconciledStudyServiceJob(ctx, run, target.CandidateID, job)
+		callbackResult, callbackErr := service.handleReconciledStudyServiceJob(ctx, run, target, job)
 		if callbackErr != nil {
 			return true, repaired, callbackErr
 		}
@@ -1425,7 +1523,7 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 			if correlationErr := validateReconciledStudyServiceJob(run, target, job); correlationErr != nil {
 				return true, repaired, service.markProcessingRunStateConflict(ctx, run, correlationErr)
 			}
-			callbackResult, callbackErr := service.handleReconciledStudyServiceJob(ctx, run, target.CandidateID, job)
+			callbackResult, callbackErr := service.handleReconciledStudyServiceJob(ctx, run, target, job)
 			if callbackErr != nil {
 				return true, repaired, callbackErr
 			}
@@ -1464,6 +1562,28 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 				continue
 			}
 			if strings.TrimSpace(trimmedPointerValue(target.StudyServiceJobID)) == "" {
+				// Study-service has no job for this execution. If its dispatch
+				// was lost (a gateway restart), start it again instead of
+				// leaving the study waiting for an operator.
+				recovery := service.redispatchOrphanedExecution(run, candidate, target, now, config)
+				if recovery.Started {
+					if redispatched != nil {
+						*redispatched++
+					}
+					continue
+				}
+				if recovery.ShouldClose {
+					closed, closeErr := service.closeUnrecoverableOrphanedExecution(ctx, run, target, now, recovery)
+					if closeErr != nil {
+						return true, repaired, closeErr
+					}
+					repaired = repaired || closed
+					continue
+				}
+				if target.Status == entity.InferenceIngestionProcessingJobStatusPending {
+					log.Printf("[Ingestion reconciliation worker] pending execution not re-dispatched processing_run_id=%s execution_id=%s candidate_id=%s reason=%q",
+						run.ID, target.ID, candidate.ID, recovery.Reason)
+				}
 				findings.ExpectedJobMissing = true
 			} else {
 				findings.StudyServiceJobMissing = true
@@ -1551,7 +1671,7 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 		}
 		matched[key] = struct{}{}
 
-		result, err := service.handleReconciledStudyServiceJob(ctx, run, candidate.ID, job)
+		result, err := service.handleReconciledStudyServiceJob(ctx, run, target, job)
 		if err != nil {
 			return matched, repaired, err
 		}
@@ -1567,6 +1687,45 @@ type processingReconciliationAttentionFindings struct {
 	ExpectedJobMissing     bool
 	StudyServiceJobMissing bool
 	CallbackDeadLettered   bool
+}
+
+func (service *InferenceCommandService) closeUnrecoverableOrphanedExecution(
+	ctx context.Context,
+	run entity.InferenceIngestionProcessingRun,
+	execution entity.InferenceIngestionProcessingJob,
+	now time.Time,
+	recovery orphanedExecutionRecoveryResult,
+) (bool, error) {
+	message := strings.TrimSpace(recovery.Reason)
+	skipReason := entity.InferenceIngestionProcessingJobSkipReason{
+		Code:    recovery.SkipReason,
+		Message: nonEmptyStringPointer(message),
+	}
+	completedAt := now.UTC()
+	transition, err := service.InferenceProcessingRunRepositoryInterface.ApplyProcessingRunExecutionTransition(
+		ctx,
+		repositoryTypes.ApplyInferenceIngestionProcessingTransition{
+			TenantID:                       run.TenantID,
+			ProcessingRunID:                run.ID,
+			ExecutionID:                    execution.ID,
+			CandidateID:                    execution.CandidateID,
+			ModelName:                      execution.ModelName,
+			Status:                         entity.InferenceIngestionProcessingJobStatusSkipped,
+			SkipReason:                     &skipReason,
+			CompletedAt:                    &completedAt,
+			OnlyIfCancellableBeforeCompute: true,
+		},
+	)
+	if err != nil {
+		return false, err
+	}
+	if !transition.Changed {
+		return false, nil
+	}
+	service.publishCommittedWorklistNotification(ctx, transition)
+	log.Printf("[Ingestion reconciliation worker] closed unrecoverable orphaned execution processing_run_id=%s execution_id=%s candidate_id=%s model_name=%s skip_reason=%s reason=%q",
+		run.ID, execution.ID, execution.CandidateID, execution.ModelName, recovery.SkipReason, message)
+	return true, nil
 }
 
 type processingReconciliationStateConflictError struct {
@@ -1622,11 +1781,14 @@ func validateReconciledStudyServiceJob(
 	execution entity.InferenceIngestionProcessingJob,
 	job types.StudyServiceJob,
 ) error {
+	if isReusedAutomaticStudyServiceJob(run, execution, job) {
+		return nil
+	}
 	if strings.TrimSpace(trimmedPointerValue(job.ProcessingRunID)) != strings.TrimSpace(run.ID) {
 		return fmt.Errorf("reconciliation job %s processing-run mismatch", strings.TrimSpace(job.JobID))
 	}
 	processingExecutionID := strings.TrimSpace(trimmedPointerValue(job.ProcessingExecutionID))
-	if run.RunTrigger == entity.InferenceIngestionProcessingRunTriggerManualReprocess {
+	if run.RunTrigger.IsUserRequested() {
 		if processingExecutionID != "" && processingExecutionID != strings.TrimSpace(execution.ID) {
 			return fmt.Errorf("reconciliation job %s processing-execution mismatch", strings.TrimSpace(job.JobID))
 		}
@@ -1648,17 +1810,39 @@ func validateReconciledStudyServiceJob(
 	return nil
 }
 
+func isReusedAutomaticStudyServiceJob(
+	run entity.InferenceIngestionProcessingRun,
+	execution entity.InferenceIngestionProcessingJob,
+	job types.StudyServiceJob,
+) bool {
+	if run.RunTrigger != entity.InferenceIngestionProcessingRunTriggerAuto ||
+		strings.TrimSpace(trimmedPointerValue(execution.StudyServiceJobID)) == "" ||
+		strings.TrimSpace(trimmedPointerValue(execution.StudyServiceJobID)) != strings.TrimSpace(job.JobID) ||
+		strings.TrimSpace(job.StudyInstanceUID) != strings.TrimSpace(run.StudyInstanceUID) ||
+		strings.TrimSpace(job.ModelName) != strings.TrimSpace(execution.ModelName) {
+		return false
+	}
+	jobTenantID := strings.TrimSpace(trimmedPointerValue(job.TenantID))
+	return jobTenantID == "" || jobTenantID == strings.TrimSpace(run.TenantID)
+}
+
 func (service *InferenceCommandService) handleReconciledStudyServiceJob(
 	ctx context.Context,
 	run entity.InferenceIngestionProcessingRun,
-	candidateID string,
+	execution entity.InferenceIngestionProcessingJob,
 	job types.StudyServiceJob,
 ) (types.HandleStudyServiceProcessingCallbackResult, error) {
+	processingRunID := trimmedPointerValue(job.ProcessingRunID)
+	processingExecutionID := trimmedPointerValue(job.ProcessingExecutionID)
+	if isReusedAutomaticStudyServiceJob(run, execution, job) {
+		processingRunID = run.ID
+		processingExecutionID = execution.ID
+	}
 	result, err := service.HandleStudyServiceProcessingCallback(ctx, types.HandleStudyServiceProcessingCallback{
-		CandidateID:           strings.TrimSpace(candidateID),
-		RequestID:             fmt.Sprintf("reconcile:%s:%s", strings.TrimSpace(candidateID), strings.TrimSpace(job.JobID)),
-		ProcessingRunID:       trimmedPointerValue(job.ProcessingRunID),
-		ProcessingExecutionID: trimmedPointerValue(job.ProcessingExecutionID),
+		CandidateID:           strings.TrimSpace(execution.CandidateID),
+		RequestID:             fmt.Sprintf("reconcile:%s:%s", strings.TrimSpace(execution.CandidateID), strings.TrimSpace(job.JobID)),
+		ProcessingRunID:       processingRunID,
+		ProcessingExecutionID: processingExecutionID,
 		StudyInstanceUID:      strings.TrimSpace(job.StudyInstanceUID),
 		ModelName:             strings.TrimSpace(job.ModelName),
 		ModelVersion:          trimmedPointerValue(job.ModelVersion),
@@ -1675,7 +1859,7 @@ func (service *InferenceCommandService) handleReconciledStudyServiceJob(
 
 	log.Printf("[Ingestion reconciliation worker] reconciled processing_run_id=%s candidate_id=%s tenant_id=%s study_service_job_id=%s model_name=%s outcome=%s status=%s",
 		run.ID,
-		candidateID,
+		execution.CandidateID,
 		run.TenantID,
 		job.JobID,
 		job.ModelName,
@@ -1930,6 +2114,11 @@ func (service *InferenceCommandService) persistCandidateRetrievalResult(ctx cont
 			TenantID:         candidate.TenantID,
 			StudyInstanceUID: candidate.StudyInstanceUID,
 		})
+		if errors.Is(err, errAutomaticProcessingSuppressedByCancellation) {
+			log.Printf("[Ingestion retrieval worker] automatic processing skipped candidate_id=%s reason=latest_run_cancelled_by_user",
+				candidate.ID)
+			return nil
+		}
 		if err != nil {
 			log.Printf("[Ingestion retrieval worker] cannot create automatic processing plan candidate_id=%s study_instance_uid=%s err=%v",
 				candidate.ID, candidate.StudyInstanceUID, err)
@@ -2055,6 +2244,7 @@ func (service *InferenceCommandService) scheduleStudyServiceDispatchWithRequestI
 	requestID string,
 	processingExecutionID string,
 	dispatchIntent types.DispatchStudyIntent,
+	seriesInstanceUIDs ...string,
 ) {
 	requestID = strings.TrimSpace(requestID)
 	if requestID == "" {
@@ -2064,25 +2254,11 @@ func (service *InferenceCommandService) scheduleStudyServiceDispatchWithRequestI
 		}
 	}
 
-	go func() {
-		if limiter := service.StudyServiceDispatchSemaphore; limiter != nil {
-			limiter <- struct{}{}
-			defer func() {
-				<-limiter
-			}()
-		}
-
-		if err := service.dispatchRetrievedCandidateToStudyServiceWithExecutionID(
-			context.Background(), job, candidate, processingRunID, requestID, processingExecutionID, dispatchIntent,
-		); err != nil {
-			log.Printf("[Ingestion dispatch] final dispatch failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
-				candidate.ID,
-				job.ID,
-				requestID,
-				err,
-			)
-		}
-	}()
+	key := studyServiceDispatchKey(candidate.TenantID, processingRunID, candidate.ID, job.ModelName)
+	liveStudyServiceDispatches.begin(key)
+	service.launchStudyServiceDispatch(
+		key, job, candidate, processingRunID, requestID, processingExecutionID, dispatchIntent, seriesInstanceUIDs...,
+	)
 }
 
 func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService(ctx context.Context, job entity.InferenceIngestionJob, candidate entity.InferenceIngestionCandidate, processingRunID, requestID string) error {
@@ -2099,6 +2275,7 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 	requestID string,
 	processingExecutionID string,
 	dispatchIntent types.DispatchStudyIntent,
+	seriesInstanceUIDs ...string,
 ) error {
 	if service.RequireProcessingRunID && strings.TrimSpace(processingRunID) == "" {
 		return errors.New(apiError.InvalidPayload)
@@ -2122,7 +2299,12 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 		return nil
 	}
 
-	if err := service.ensureInferenceContainerReady(ctx, job); err != nil {
+	resolvedJob, readinessErr := service.resolveCurrentIngestionModel(ctx, job)
+	if readinessErr == nil {
+		readinessErr = service.ensureResolvedInferenceContainerReady(ctx, resolvedJob)
+	}
+	if readinessErr != nil {
+		err := readinessErr
 		ObserveStudyServiceDispatchAttempt("permanent_error", 0)
 		if persistErr := service.persistDispatchFailure(candidate.ID, err); persistErr != nil {
 			log.Printf("[Ingestion dispatch] cannot persist model container readiness failure candidate_id=%s ingestion_job_id=%s request_id=%s err=%v",
@@ -2136,12 +2318,13 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 	}
 
 	dispatchRequest, err := service.BuildStudyServiceDispatchRequest(ctx, types.BuildStudyServiceDispatchRequestInput{
-		IngestionJob:          job,
+		IngestionJob:          resolvedJob,
 		Candidate:             candidate,
 		ProcessingRunID:       nonEmptyStringPointer(strings.TrimSpace(processingRunID)),
 		ProcessingExecutionID: nonEmptyStringPointer(strings.TrimSpace(processingExecutionID)),
 		DispatchIntent:        dispatchIntent,
 		RequestID:             &requestID,
+		SeriesInstanceUIDs:    seriesInstanceUIDs,
 	})
 	if err != nil {
 		ObserveStudyServiceDispatchAttempt("permanent_error", 0)
@@ -2276,7 +2459,38 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 	return nil
 }
 
+// resolveCurrentIngestionModel follows the tenant's current registration without
+// rewriting the stored ingestion job or any historical processing execution.
+func (service *InferenceCommandService) resolveCurrentIngestionModel(ctx context.Context, job entity.InferenceIngestionJob) (entity.InferenceIngestionJob, error) {
+	modelID := strings.TrimSpace(job.ModelID)
+	if modelID == "" {
+		return job, nil // Legacy jobs without a registration reference retain their explicit target.
+	}
+	if strings.TrimSpace(job.TenantID) == "" || service.InferenceQueryRepositoryInterface == nil {
+		return job, errors.New(apiError.MissingRecord)
+	}
+	model, err := service.selectIngestionRegistration(ctx, job)
+	if err != nil {
+		return job, err
+	}
+	if model.TenantID != job.TenantID || strings.TrimSpace(model.ContainerID) == "" {
+		return job, errors.New(apiError.MissingRecord)
+	}
+	currentContainer := strings.TrimSpace(model.ContainerID)
+
+	job.ContainerID = currentContainer
+	return job, nil
+}
+
 func (service *InferenceCommandService) ensureInferenceContainerReady(ctx context.Context, job entity.InferenceIngestionJob) error {
+	resolved, err := service.resolveCurrentIngestionModel(ctx, job)
+	if err != nil {
+		return err
+	}
+	return service.ensureResolvedInferenceContainerReady(ctx, resolved)
+}
+
+func (service *InferenceCommandService) ensureResolvedInferenceContainerReady(ctx context.Context, job entity.InferenceIngestionJob) error {
 	containerID := strings.TrimSpace(job.ContainerID)
 	if containerID == "" {
 		return fmt.Errorf("inference model %s has no registered container", strings.TrimSpace(job.ModelName))
@@ -3034,36 +3248,11 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 
 // ImportInferenceIngestionJobs imports inference ingestion jobs
 func (service *InferenceCommandService) ImportInferenceIngestionJobs(ctx context.Context, data []types.CreateInferenceIngestionJob) error {
-	// add inference ingestion jobs
 	for _, job := range data {
-		jobConfig, err := normalizeIngestionJobConfig(job.StabilityMinutes, job.RecentWindowMinutes, job.MissingPollsThreshold, job.StudyTimeStart, job.StudyTimeEnd)
-		if err != nil {
-			return err
-		}
-
-		err = service.InferenceCommandRepositoryInterface.InsertInferenceIngestionJob(repositoryTypes.CreateInferenceIngestionJob{
-			ID:                     generateID(),
-			TenantID:               job.TenantID,
-			DICOMModality:          job.DICOMModality,
-			ContainerID:            job.ContainerID,
-			ModelID:                job.ModelID,
-			ModelName:              job.ModelName,
-			ModelVersion:           job.ModelVersion,
-			Modalities:             job.Modalities,
-			RecentWindowMinutes:    jobConfig.RecentWindowMinutes,
-			StabilityMinutes:       jobConfig.StabilityMinutes,
-			MissingPollsThreshold:  jobConfig.MissingPollsThreshold,
-			StudyTimeStart:         jobConfig.StudyTimeStart,
-			StudyTimeEnd:           jobConfig.StudyTimeEnd,
-			ScheduleStartTimestamp: time.Unix(int64(job.ScheduleStartTimestamp), 0),
-			ScheduleEndTimestamp:   time.Unix(int64(job.ScheduleEndTimestamp), 0),
-			Status:                 entity.InferenceIngestionJobStatusRunning, // default: RUNNING,
-		})
-		if err != nil {
+		if err := service.CreateInferenceIngestionJob(ctx, job); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
@@ -3163,6 +3352,7 @@ func (service *InferenceCommandService) predictInferenceModelWithQuota(
 		}
 		quotaReservation = &types.InferenceQuotaReservation{
 			TenantID: tenantID, UserID: trimmedUserID, ReservationID: generateID(), Units: 1,
+			Kind: types.InferenceQuotaReservationInteractive,
 		}
 		if _, err := service.InferenceQuotaManagerInterface.Reserve(ctx, *quotaReservation); err != nil {
 			return dockerInferenceTypes.PredictResponse{}, err
@@ -3192,18 +3382,14 @@ func (service *InferenceCommandService) PredictPreparedInferenceModel(
 		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InvalidPayload)
 	}
 
-	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerRef)
+	containerInfo, err := service.resolvePreparedInferenceContainer(ctx, tenantID, containerRef)
 	if err != nil {
-		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
+		return dockerInferenceTypes.PredictResponse{}, err
 	}
 	containerID := strings.TrimSpace(containerInfo.ID)
 	containerName := strings.TrimPrefix(strings.TrimSpace(containerInfo.Name), "/")
 	if containerID == "" || containerName == "" {
 		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.DockerError)
-	}
-
-	if _, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID); err != nil {
-		return dockerInferenceTypes.PredictResponse{}, err
 	}
 
 	return service.predictPreparedInferenceModel(ctx, containerID, containerName, predictRequest)
@@ -3405,6 +3591,7 @@ func (service *InferenceCommandService) UpdateInferenceIngestionJob(ctx context.
 		StudyTimeEnd:           jobConfig.StudyTimeEnd,
 		ScheduleStartTimestamp: time.Unix(int64(data.ScheduleStartTimestamp), 0),
 		ScheduleEndTimestamp:   time.Unix(int64(data.ScheduleEndTimestamp), 0),
+		NotificationsEnabled:   data.NotificationsEnabled,
 	})
 	if err != nil {
 		return err

@@ -95,6 +95,10 @@ const (
 	InferenceIngestionProcessingJobSkipReasonModelNotApplicable    InferenceIngestionProcessingJobSkipReasonCode = "MODEL_NOT_APPLICABLE"
 	InferenceIngestionProcessingJobSkipReasonPrerequisiteNotMet    InferenceIngestionProcessingJobSkipReasonCode = "PREREQUISITE_NOT_MET"
 	InferenceIngestionProcessingJobSkipReasonModelDisabled         InferenceIngestionProcessingJobSkipReasonCode = "MODEL_DISABLED"
+	// InferenceIngestionProcessingJobSkipReasonExpiredNeverRan is set by the
+	// gateway, not by study-service: an automatic execution that was still
+	// pending or queued when the expiry of automatic runs closed it.
+	InferenceIngestionProcessingJobSkipReasonExpiredNeverRan InferenceIngestionProcessingJobSkipReasonCode = "EXPIRED_NEVER_RAN"
 )
 
 // InferenceIngestionProcessingJobSkipReason describes why an expected model did not run.
@@ -111,7 +115,8 @@ func (code InferenceIngestionProcessingJobSkipReasonCode) IsValid() bool {
 		InferenceIngestionProcessingJobSkipReasonRequiredSeriesMissing,
 		InferenceIngestionProcessingJobSkipReasonModelNotApplicable,
 		InferenceIngestionProcessingJobSkipReasonPrerequisiteNotMet,
-		InferenceIngestionProcessingJobSkipReasonModelDisabled:
+		InferenceIngestionProcessingJobSkipReasonModelDisabled,
+		InferenceIngestionProcessingJobSkipReasonExpiredNeverRan:
 		return true
 	default:
 		return false
@@ -161,6 +166,35 @@ type InferenceIngestionProcessingJob struct {
 	CompletedAt       *time.Time                                     `db:"completed_at"`
 	CreatedAt         time.Time                                      `db:"created_at"`
 	UpdatedAt         time.Time                                      `db:"updated_at"`
+}
+
+// HasStudyServiceJob reports whether the execution was handed to study-service.
+func (entity *InferenceIngestionProcessingJob) HasStudyServiceJob() bool {
+	return entity.StudyServiceJobID != nil && strings.TrimSpace(*entity.StudyServiceJobID) != ""
+}
+
+// IsExpiredNeverRan reports whether the expiry of automatic runs closed the execution.
+func (entity *InferenceIngestionProcessingJob) IsExpiredNeverRan() bool {
+	return entity.Status == InferenceIngestionProcessingJobStatusSkipped && entity.SkipReasonCode != nil &&
+		*entity.SkipReasonCode == InferenceIngestionProcessingJobSkipReasonExpiredNeverRan
+}
+
+// IsCancellableBeforeCompute reports whether a user cancellation may end the
+// execution: it must not have started computing. A pending execution, or a
+// queued one that was never handed to study-service, qualifies. There is no
+// way to withdraw a job study-service has accepted, so a dispatched execution
+// is left to finish and record its result; the exception is a dispatched
+// queued execution study-service no longer knows (studyServiceJobMissing),
+// which would otherwise wait forever.
+func (entity *InferenceIngestionProcessingJob) IsCancellableBeforeCompute(studyServiceJobMissing bool) bool {
+	switch entity.Status {
+	case InferenceIngestionProcessingJobStatusPending:
+		return true
+	case InferenceIngestionProcessingJobStatusQueued:
+		return !entity.HasStudyServiceJob() || studyServiceJobMissing
+	default:
+		return false
+	}
 }
 
 // GetSkipReason returns the job's structured skip reason when a valid code is present.

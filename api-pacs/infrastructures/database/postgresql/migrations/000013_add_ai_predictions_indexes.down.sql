@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS idx_ingestion_processing_jobs_tenant_activity;
+DROP INDEX IF EXISTS idx_ingestion_processing_runs_tenant_created;
+DROP INDEX IF EXISTS idx_ingestion_processing_runs_tenant_requester_study;

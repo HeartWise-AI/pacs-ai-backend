@@ -30,6 +30,10 @@ type coordinatorDocker struct {
 	candidateID  string
 	pullStarted  chan struct{}
 	continuePull chan struct{}
+	// images answers InspectImage by reference or ID; infos overrides
+	// GetContainerInfo for specific containers.
+	images map[string]docker.InspectImageResult
+	infos  map[string]docker.GetContainerInfoResult
 }
 
 func (fake *coordinatorDocker) PullImage(context.Context, string) error {
@@ -43,8 +47,14 @@ func (fake *coordinatorDocker) PullImage(context.Context, string) error {
 	return nil
 }
 
-func (fake *coordinatorDocker) InspectImage(context.Context, string) (docker.InspectImageResult, error) {
-	return docker.InspectImageResult{}, nil
+func (fake *coordinatorDocker) InspectImage(_ context.Context, reference string) (docker.InspectImageResult, error) {
+	if fake.images == nil {
+		return docker.InspectImageResult{}, nil
+	}
+	if image, ok := fake.images[reference]; ok {
+		return image, nil
+	}
+	return docker.InspectImageResult{}, errors.New("No such image: " + reference)
 }
 
 func (fake *coordinatorDocker) CreateCandidateContainer(
@@ -56,13 +66,19 @@ func (fake *coordinatorDocker) CreateCandidateContainer(
 	return fake.candidateID, fake.createErr
 }
 
-func (fake *coordinatorDocker) GetContainerInfo(context.Context, string) (docker.GetContainerInfoResult, error) {
+func (fake *coordinatorDocker) GetContainerInfo(_ context.Context, id string) (docker.GetContainerInfoResult, error) {
+	if info, ok := fake.infos[id]; ok {
+		return info, nil
+	}
 	fake.record("docker.active")
 	return fake.activeInfo, nil
 }
 
 func (fake *coordinatorDocker) StartContainer(context.Context, string) error { return nil }
 func (fake *coordinatorDocker) StopContainer(context.Context, string) error  { return nil }
+func (fake *coordinatorDocker) RenameContainer(context.Context, string, string) error {
+	return nil
+}
 
 func (fake *coordinatorDocker) RemoveContainer(_ context.Context, id string) error {
 	fake.record("docker.remove:" + id)
@@ -90,6 +106,7 @@ func (fake *coordinatorAPI) GetModelRuntime(context.Context, string) (api.ModelR
 }
 
 type coordinatorValidator struct {
+	gpuUUID     string
 	events      *[]string
 	validateErr error
 	modelInfo   api.ModelInfo
@@ -122,6 +139,7 @@ func (fake *coordinatorValidator) ValidateContainer(
 		modelInfo = validCandidateModelInfo()
 	}
 	return ValidatedCandidate{
+		GPUUUID:        fake.gpuUUID,
 		ContainerID:    request.ContainerID,
 		ContainerName:  "candidate-model",
 		ImageReference: request.Image.Reference,

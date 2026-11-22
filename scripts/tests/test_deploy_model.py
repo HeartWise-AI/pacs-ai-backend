@@ -234,7 +234,7 @@ class DeployModelAuthenticationTests(unittest.TestCase):
         self.assertIsNotNone(docker_args)
         self.assertEqual("build", docker_args[0])
         self.assertIn(f"id=hf_token,src={token_file}", docker_args)
-        self.assertIn("heartwisehub/pacs-ai-deeprv:1.0.0", docker_args)
+        self.assertIn("heartwisehub/pacs-ai-deeprv:1.0.1", docker_args)
         self.assertNotIn("heartwisehub/pacs-ai-deeprv:latest", docker_args)
         self.assertEqual(str(LEGACY_MODEL_PATH), docker_args[-1])
 

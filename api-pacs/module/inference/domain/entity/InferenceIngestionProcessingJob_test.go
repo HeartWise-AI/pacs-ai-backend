@@ -141,3 +141,25 @@ func TestInferenceIngestionProcessingJobGetSkipReason(t *testing.T) {
 	job.SkipReasonCode = nil
 	require.Nil(t, job.GetSkipReason())
 }
+
+func TestExpiredNeverRan(t *testing.T) {
+	expired := InferenceIngestionProcessingJobSkipReasonExpiredNeverRan
+	disabled := InferenceIngestionProcessingJobSkipReasonModelDisabled
+	cases := []struct {
+		job     InferenceIngestionProcessingJob
+		expired bool
+	}{
+		{InferenceIngestionProcessingJob{Status: InferenceIngestionProcessingJobStatusPending}, false},
+		{InferenceIngestionProcessingJob{Status: InferenceIngestionProcessingJobStatusSkipped, SkipReasonCode: &expired}, true},
+		{InferenceIngestionProcessingJob{Status: InferenceIngestionProcessingJobStatusSkipped, SkipReasonCode: &disabled}, false},
+		{InferenceIngestionProcessingJob{Status: InferenceIngestionProcessingJobStatusFailed, SkipReasonCode: &expired}, false},
+	}
+	for index, testCase := range cases {
+		if testCase.job.IsExpiredNeverRan() != testCase.expired {
+			t.Fatalf("case %d: expired=%v", index, testCase.job.IsExpiredNeverRan())
+		}
+	}
+	if code, ok := ParseInferenceIngestionProcessingJobSkipReasonCode("expired_never_ran"); !ok || code != expired {
+		t.Fatalf("EXPIRED_NEVER_RAN must be a valid skip reason")
+	}
+}

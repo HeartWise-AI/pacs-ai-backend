@@ -1,0 +1,46 @@
+{
+  "VideoEncoder": {
+    "backbone": "mvit",
+    "input_channels": 3,
+    "num_frames": 16,
+    "pretrained": false,
+    "output_dim": 512,
+    "freeze_ratio": 0.8,
+    "dropout": 0.2,
+    "num_heads": 16,
+    "aggregator_depth": 1,
+    "aggregate_videos_tokens": false,
+    "per_video_pool": false
+  },
+  "MultiInstanceLinearProbing": {
+    "embedding_dim": 512,
+    "pooling_mode": "mean",
+    "attention_hidden": 512,
+    "dropout": 0.17979981044550586,
+    "use_cls_token": false,
+    "num_attention_heads": 8,
+    "separate_video_attention": true,
+    "normalization_strategy": "post_norm",
+    "num_view_classes": 0,
+    "_constructor_note": "Values match the effective training constructor (DeepCORO_CLIP LinearProbingProject passes only embedding_dim, head_structure, pooling_mode, attention_hidden, dropout and num_view_classes; the remaining arguments take their defaults). The checkpoint is always loaded strictly."
+  },
+  "VideoMILWrapper": {
+    "num_videos": 4,
+    "stride": 1,
+    "resize": 224
+  },
+  "ModelStateDict": {
+    "model_path": "20261025-134722/models/best_model_epoch_7.pt",
+    "state_dict_key": "linear_probing"
+  },
+  "dataset_mean": [
+    98.33860778808594,
+    98.33860778808594,
+    98.33860778808594
+  ],
+  "dataset_std": [
+    33.891441345214844,
+    33.891441345214844,
+    33.891441345214844
+  ]
+}

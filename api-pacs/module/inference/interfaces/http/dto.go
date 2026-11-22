@@ -19,6 +19,9 @@ type InferenceQuotaResponse struct {
 	MaxConcurrentExecutions      int64   `json:"maxConcurrentExecutions"`
 	ActiveExecutions             int64   `json:"activeExecutions"`
 	ConcurrencyRetryAfterSeconds int64   `json:"concurrencyRetryAfterSeconds"`
+	MaxQueuedExecutions          int64   `json:"maxQueuedExecutions"`
+	QueuedExecutions             int64   `json:"queuedExecutions"`
+	QueuedRetryAfterSeconds      int64   `json:"queuedRetryAfterSeconds"`
 }
 
 var (
@@ -139,6 +142,8 @@ type CreateInferenceIngestionJobRequest struct {
 	StudyTimeEnd           string   `json:"studyTimeEnd,omitempty"`
 	ScheduleStartTimestamp uint64   `json:"scheduleStartTimestamp"`
 	ScheduleEndTimestamp   uint64   `json:"scheduleEndTimestamp"`
+	// NotificationsEnabled is optional; absent means on.
+	NotificationsEnabled *bool `json:"notificationsEnabled,omitempty"`
 }
 
 type CreateStudyProcessingRunResponse struct {
@@ -147,6 +152,25 @@ type CreateStudyProcessingRunResponse struct {
 	Trigger        entity.InferenceIngestionProcessingRunTrigger `json:"trigger"`
 	Phase          entity.InferenceIngestionProcessingRunPhase   `json:"phase"`
 	ExpectedModels int                                           `json:"expectedModels"`
+}
+
+type BulkReprocessStudiesRequest struct {
+	StudyInstanceUIDs []string `json:"studyInstanceUIDs"`
+}
+
+type BulkReprocessStudyResultResponse struct {
+	StudyInstanceUID  string                            `json:"studyInstanceUID"`
+	Accepted          bool                              `json:"accepted"`
+	Run               *CreateStudyProcessingRunResponse `json:"run,omitempty"`
+	ErrorCode         string                            `json:"errorCode,omitempty"`
+	Message           string                            `json:"message,omitempty"`
+	RetryAfterSeconds int64                             `json:"retryAfterSeconds,omitempty"`
+}
+
+type BulkReprocessStudiesResponse struct {
+	Results       []BulkReprocessStudyResultResponse `json:"results"`
+	AcceptedCount int                                `json:"acceptedCount"`
+	RejectedCount int                                `json:"rejectedCount"`
 }
 
 type PredictInferenceModelRequest struct {
@@ -182,6 +206,8 @@ type UpdateInferenceIngestionJobRequest struct {
 	StudyTimeEnd           string   `json:"studyTimeEnd,omitempty"`
 	ScheduleStartTimestamp uint64   `json:"scheduleStartTimestamp"`
 	ScheduleEndTimestamp   uint64   `json:"scheduleEndTimestamp"`
+	// NotificationsEnabled is optional; absent leaves the stored value unchanged.
+	NotificationsEnabled *bool `json:"notificationsEnabled,omitempty"`
 }
 
 type UpdateModelFeedbackRequest struct {
@@ -283,6 +309,9 @@ type GetInferenceIngestionJobResponse struct {
 	LastExecutedAt         uint64   `json:"lastExecutedAt"`
 	CreatedAt              uint64   `json:"createdAt"`
 	UpdatedAt              uint64   `json:"updatedAt"`
+	// CreatedByUserID is null for jobs created before the creator was recorded.
+	CreatedByUserID      *string `json:"createdByUserId"`
+	NotificationsEnabled bool    `json:"notificationsEnabled"`
 }
 
 type GetInferenceIngestionCandidateResponse struct {
@@ -381,4 +410,6 @@ type ImportInferenceIngestionJob struct {
 	StudyTimeEnd           string `csv:"study_time_end"`
 	ScheduleStartTimestamp string `csv:"schedule_start_timestamp"`
 	ScheduleEndTimestamp   string `csv:"schedule_end_timestamp"`
+	// NotificationsEnabled is an optional column: absent or empty means on.
+	NotificationsEnabled string `csv:"notifications_enabled"`
 }

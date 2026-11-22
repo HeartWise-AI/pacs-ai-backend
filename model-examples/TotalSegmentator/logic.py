@@ -34,9 +34,11 @@ class CustomPredictionService(BasePredictionService):
         # Make predictions on the first series (nifti)
         pred = CustomPredictionService.models['totalsegmentator'](series_list_nifti[0], device="gpu", fast=True, task="total") 
 
-        # Reorient Predictions for OHIF display (only accepts 1 pydicom series)
-        pred_np = pred.get_fdata()
-        labelmap_data = self.reorient_labelmap(pred_np, serie)
+        # Reorient Predictions for OHIF display (only accepts 1 pydicom series).
+        # reorient_labelmap takes the NIfTI image and reads its data itself;
+        # passing the numpy array failed with "'numpy.ndarray' object has no
+        # attribute 'get_fdata'", reported as a missing output handler (501).
+        labelmap_data = self.reorient_labelmap(pred, serie)
 
         encoded_data, segments = self.encode_labelmap_and_segments(labelmap_data, self.class_mapping)
         

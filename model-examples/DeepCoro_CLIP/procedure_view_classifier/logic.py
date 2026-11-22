@@ -4,9 +4,10 @@ import json
 import torch
 import base64
 import pydicom
+from concurrent.futures import ThreadPoolExecutor
 import cv2 as cv
 import numpy as np
-import pandas as pd
+import re
 
 from io import BytesIO
 from typing import List
@@ -15,12 +16,48 @@ from torchvision.transforms import v2
 
 from models.vaso_vision import VasoVision
 
+from utils.dicom_pixels import dicom_display_pixels
 from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
 
 
+UNDETERMINED_STATUS = "undetermined"
+AMBIGUOUS_TIMING_REASON = "ambiguous_acquisition_order"
+# additionalMetadata key a consumer sets to UNDETERMINED_STATUS to receive labels instead of an error
+# when the acquisition order cannot be established. Without it, tied PCI timing still fails the request.
+AMBIGUOUS_TIMING_REQUEST_KEY = "ambiguousTimingStatus"
+
+
+def chronology_times(entries: list[tuple[time, time | None, time | None]]) -> list[tuple[time, str]]:
+    """Effective acquisition time of each video and the tag it comes from.
+
+    ``entries`` holds (SeriesTime, AcquisitionTime, ContentTime) per video of the complete request.
+    A video's SeriesTime is used unless other videos share it: exported/converted runs can stamp
+    every video with one SeriesTime. The videos sharing one SeriesTime then take their
+    AcquisitionTime when every one of them has a complete, distinct value, else their ContentTime
+    under the same condition, else they keep the shared SeriesTime (tied PCI timing then still
+    fails closed). One tag is used for a whole tied group, never a mix.
+    """
+    groups: dict[time, list[int]] = {}
+    for index, (series_time, _, _) in enumerate(entries):
+        groups.setdefault(series_time, []).append(index)
+    result = [(series_time, "SeriesTime") for series_time, _, _ in entries]
+    for indices in groups.values():
+        if len(indices) < 2:
+            continue
+        for position, source in ((1, "AcquisitionTime"), (2, "ContentTime")):
+            values = [entries[i][position] for i in indices]
+            if None not in values and len(set(values)) == len(values):
+                for i, value in zip(indices, values):
+                    result[i] = (value, source)
+                break
+    return result
+
+
 class CustomPredictionService(BasePredictionService):
     def load_model(self, config: Config):
+        if CustomPredictionService.is_initialized:
+            return
         print('Loading model...')
         
         CustomPredictionService.config = config
@@ -77,120 +114,71 @@ class CustomPredictionService(BasePredictionService):
             return False
  
  
-    def _assign_procedure_status(self, predictions: list[dict[str, time | int | None]]) -> list[dict[str, time | int | None]]:
+    def _assign_procedure_status(self, predictions: list[dict], undetermined_on_ambiguity: bool = False) -> list[dict]:
+        """Apply the existing PCI chronology rule to the COMPLETE request.
+
+        Videos are ordered by ``chronology_time`` when the prediction carries one (SeriesTime shared by
+        several videos, resolved by their AcquisitionTime/ContentTime), otherwise by ``series_time``.
+        Missing/malformed time or tied PCI/non-PCI timing cannot safely establish
+        diagnostic status, so fail rather than assigning a reassuring default. When the
+        caller asked for it (``undetermined_on_ambiguity``), tied timing instead returns
+        every video's labels with ``status`` ``undetermined``: no video is called diagnostic.
         """
-        Assign procedure status based on PCI (stent) presence and timing.
-        
-        This function creates three mutually-exclusive status categories:
-        - "PCI": Current procedure has stent placement
-        - "POST_PCI": Current procedure is after a previous PCI in the same study/artery
-        - "diagnostic": Diagnostic procedure with no previous PCI
-        
-        Args:
-            predictions: Input list of predictions with series_time and dicom_name
-        
-        Returns:
-            DataFrame with added 'status' column
-        """
-        print("Assigning procedure status based on PCI timing...")
-        
-        if not predictions:
-            return []
-        
-        df = pd.DataFrame(predictions)
+        def timestamp(row):
+            value = row.get("chronology_time", row.get("series_time"))
+            if not isinstance(value, str) or not re.fullmatch(r"\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?", value):
+                raise ValueError("Complete SeriesTime is required for procedure classification")
+            return time.fromisoformat(value)
 
-        # 1. Parse and sort by time (safe)
-        df["series_time_dt"] = pd.to_datetime(
-            df["series_time"],
-            format="%H:%M:%S.%f",
-            errors="coerce"
-        )
-        df = df.sort_values("series_time_dt", kind="mergesort")
-                
-        # ── 1. Ensure the column exists up front ────────────────────────────────────────
-        df["status"] = "unknown"          # will be overwritten below
-        
-        # 2. PCI flag
-        df["is_pci"] = df["stent_presence"].eq('present')
+        ordered = sorted(predictions, key=lambda row: (timestamp(row), row["sop_instance_uid"]))
+        by_time = {}
+        for row in ordered:
+            if row.get("stent_presence") not in {"present", "absent"} or row.get("contrast_agent") not in {"yes", "no"} or not isinstance(row.get("main_structure"), str):
+                raise ValueError("Classifier cannot establish a complete procedure label")
+            key = (row.get("main_structure"), timestamp(row))
+            by_time.setdefault(key, set()).add(row.get("stent_presence"))
+        if any("present" in states and "absent" in states for states in by_time.values()):
+            if not undetermined_on_ambiguity:
+                raise ValueError("Ambiguous PCI timing cannot establish diagnostic status")
+            for row in ordered:
+                row["status"] = UNDETERMINED_STATUS
+                row["status_reason"] = AMBIGUOUS_TIMING_REASON
+            return ordered
 
-        # 3. PCI already been seen *earlier* for this artery?"
-        df["pci_seen_before"] = (
-            df.groupby("main_structure", sort=False)["is_pci"]
-            .transform(lambda x: x.shift(fill_value=0).cummax())
-            .astype(bool)
-        )
+        pci_seen = set()
+        for row in ordered:
+            main = row.get("main_structure")
+            if row.get("stent_presence") == "present":
+                row["status"] = "PCI"
+                pci_seen.add(main)
+            elif main in pci_seen and row.get("contrast_agent") == "yes":
+                row["status"] = "POST_PCI"
+            else:
+                row["status"] = "diagnostic"
+        return ordered
 
-        # 4. Assign status
-        df["status"] = "diagnostic"
-        df.loc[df["is_pci"], "status"] = "PCI"
-        df.loc[
-            (~df["is_pci"]) &
-            (df["pci_seen_before"]) &
-            (df["contrast_agent"].eq("yes")),
-            "status"
-        ] = "POST_PCI"
-        
-        return df.drop(
-                columns=["series_time_dt", "is_pci", "pci_seen_before"]
-        ).to_dict(orient="records")
-
-    async def _handle_json_output(self, request: PredictRequest)->dict[str, dict[str, str]]:
-        dicoms = []
-        dicom_names = []
-
-        try:
-            for series_number in request.seriesInstanceImages:
-                print(f"Processing series {series_number}")
-                for dicom_name in request.seriesInstanceImages[series_number]:
-                    try: 
-                        dicom_base64 = request.seriesInstanceImages[series_number][dicom_name]
-                        
-                        if not self._is_valid_base64(dicom_base64):
-                            print(f"Invalid base64 string for series {series_number} dicom {dicom_name}")
-                            continue
-                        
-                        dicom_data = base64.b64decode(dicom_base64)
-                        if not self._is_valid_dicom(dicom_data):
-                            print(f"Invalid DICOM data for series {series_number} dicom {dicom_name}")
-                            continue
-                                            
-                        dicom = pydicom.dcmread(BytesIO(dicom_data))
-                        dicoms.append(dicom)
-                        print(str(dicom.SeriesInstanceUID))
-                        dicom_names.append(str(dicom.SeriesInstanceUID))
-                        
-                    except Exception as e:
-                        error_msg = f"Error in processing series {series_number} dicom {dicom_name}: {e}"
-                        print(error_msg)
-                        continue
-                    
-        except Exception as e:
-            error_msg = f"Error in _handle_json_output: {e}"
-            print(error_msg)
-            return {
-                "predictions": []
-            }
-        
-        try:
-            print(f"len(dicoms): {len(dicoms)}, len(dicom_names): {len(dicom_names)}")
-            structured_predictions: dict[str, dict[str, np.ndarray]] = self._run_inference(dicoms, dicom_names)
-        except Exception as e:
-            print(f"Error in _run_inference: {e}")
-            return {
-                "predictions": []
-            }
-        print(f"structured_predictions: {structured_predictions}")
-        try:
-            structured_predictions = self._assign_procedure_status(predictions=structured_predictions)
-        except Exception as e:
-            print(f"Error in _process_predictions: {e}")
-            return {
-                "predictions": []
-            }
-            
-        return {
-            "predictions": structured_predictions,  # Use the dict, not the JSON string
-        }
+    async def _handle_json_output(self, request: PredictRequest) -> dict:
+        dicoms, identities = [], set()
+        for series in request.seriesInstanceImages.values():
+            for encoded in series.values():
+                try:
+                    raw = base64.b64decode(encoded, validate=True)
+                    if not self._is_valid_dicom(raw):
+                        raise ValueError("Invalid DICOM")
+                    dicom = pydicom.dcmread(BytesIO(raw))
+                    identity = (str(dicom.SeriesInstanceUID), str(dicom.SOPInstanceUID))
+                    if not all(identity) or identity[1] in identities:
+                        raise ValueError("Missing or duplicate SOP identity")
+                    identities.add(identity[1])
+                    dicoms.append(dicom)
+                except Exception as exc:
+                    raise ValueError("Classifier requires valid, uniquely identified DICOM inputs") from exc
+        if not dicoms:
+            raise ValueError("Classifier requires at least one video")
+        predictions = self._run_inference(dicoms, [str(d.SeriesInstanceUID) for d in dicoms])
+        metadata = getattr(request, "additionalMetadata", None) or {}
+        undetermined = metadata.get(AMBIGUOUS_TIMING_REQUEST_KEY) == UNDETERMINED_STATUS
+        return {"predictions": self._assign_procedure_status(predictions, undetermined_on_ambiguity=undetermined)}
 
     def _videoShenanigans(self, video)->np.ndarray:
         # Use uuid.uuid4() to create a unique file name
@@ -229,7 +217,7 @@ class CustomPredictionService(BasePredictionService):
         return np.asarray(compressedVideo).transpose(0, 3, 1, 2)
 
     def _process_dicom(self, dicom: pydicom.Dataset) -> np.ndarray:
-        pixel_array: np.ndarray = dicom.pixel_array
+        pixel_array: np.ndarray = dicom_display_pixels(dicom)
         if pixel_array.ndim == 1 or pixel_array.ndim == 2:
             return None
         
@@ -266,15 +254,23 @@ class CustomPredictionService(BasePredictionService):
         return torch.from_numpy(video)
 
     def _extract_series_time(self, dicom: pydicom.Dataset) -> time | None:
-        series_time_raw: str | None = dicom.get('SeriesTime')
-        if not series_time_raw:
+        return self._extract_dicom_time(dicom, 'SeriesTime')
+
+    @staticmethod
+    def _extract_dicom_time(dicom: pydicom.Dataset, keyword: str) -> time | None:
+        """A complete TM value (HHMMSS with optional fraction) of ``keyword``, else None."""
+        raw: str | None = dicom.get(keyword)
+        if not raw:
+            return None
+        raw = str(raw).strip()
+        if not re.fullmatch(r"\d{6}(?:\.\d{1,6})?", raw):
             return None
         try:
-            if '.' in series_time_raw:
-                main_part, frac = series_time_raw.split('.')
+            if '.' in raw:
+                main_part, frac = raw.split('.')
                 microseconds = int(frac.ljust(6, '0')[:6])
             else:
-                main_part = series_time_raw
+                main_part = raw
                 microseconds = 0
             hours = int(main_part[:2])
             minutes = int(main_part[2:4])
@@ -283,61 +279,87 @@ class CustomPredictionService(BasePredictionService):
         except (ValueError, IndexError):
             return None
 
-    def _run_inference(self, dicoms: List[pydicom.Dataset], dicom_names: List[str]) -> list[dict[str, str]]:
-        try:
-            video_stack: list[torch.Tensor] = []
-            dicom_metadata_stack: list[dict[str, time | str | None]] = []
-            for dicom, dicom_name in zip(dicoms, dicom_names):
-                series_time = self._extract_series_time(dicom)
-                
-                video = self._process_dicom(dicom)
-                if video is None:
-                    print(f"Skipping DICOM {dicom_name}: not a multi-frame video (ndim <= 2)")
-                    continue
-                
-                video_stack.append(video)
+    def _run_inference(self, dicoms: List[pydicom.Dataset], dicom_names: List[str]) -> list[dict]:
+        """Classify every video, `forward_batch_size` videos per GPU forward; keep every prediction for chronology.
 
-                dicom_metadata_stack.append({
-                    'series_time': series_time,
-                    'dicom_name': dicom_name
-                })           
-                                
-            if not video_stack:
-                return []
-            video_stack = torch.stack(video_stack).to('cuda' if torch.cuda.is_available() else 'cpu')
-            
-            with torch.no_grad():
-                output_stack: dict[str, torch.Tensor] = CustomPredictionService.models['vaso_vision'](video_stack)
-                
-                for head_name, head_output in output_stack.items():
-                    if getattr(CustomPredictionService.config.head_structure, head_name) == 1:
-                        output_stack[head_name] = torch.sigmoid(head_output).to('cpu').detach().numpy()
-                    else:
-                        output_stack[head_name] = torch.softmax(head_output, dim=1).to('cpu').detach().numpy()
-            
-            # Transpose {head : [B, P] -> [{head: [P]} for each B]}
-            results = []
-            class_mapping = CustomPredictionService.class_mapping
-            for i in range(video_stack.shape[0]):
-                result = {}
-                for head_name, head_output in output_stack.items():
-                    if getattr(CustomPredictionService.config.head_structure, head_name) == 1:
-                        predicted_class = 1 if head_output[i][0] >= 0.5 else 0
-                        result[head_name] = class_mapping[head_name][predicted_class]
-                    else:
-                        result[head_name] = class_mapping[head_name][np.argmax(head_output[i])]
-                
-                # Add metadata to result
-                result['series_time'] = dicom_metadata_stack[i]['series_time'].isoformat() if dicom_metadata_stack[i]['series_time'] is not None else None
-                result['dicom_name'] = dicom_metadata_stack[i]['dicom_name']
-                
-                results.append(result)
-                
-            return results
-
-        except Exception as e:
-            print(f"Error in handler: {e}")
-            # Make sure to clean GPU memory even if there's an error
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            raise e
+        Pixel conversion, temporal sampling, normalization, trained heads and the binary threshold are unchanged.
+        Videos are prepared on `preprocess_workers` CPU threads, a window of whole batches at a time,
+        and forwarded in request order, so at most one window of prepared videos is held in memory. No input is
+        silently dropped.
+        """
+        if len(dicoms) != len(dicom_names):
+            raise ValueError("Classifier identity count mismatch")
+        identities = []
+        for dicom, dicom_name in zip(dicoms, dicom_names):
+            series_time = self._extract_series_time(dicom)
+            if series_time is None:
+                raise ValueError("Complete SeriesTime is required for procedure classification")
+            series_uid = str(getattr(dicom, "SeriesInstanceUID", ""))
+            sop_uid = str(getattr(dicom, "SOPInstanceUID", ""))
+            if not series_uid or not sop_uid or series_uid != dicom_name:
+                raise ValueError("Classifier input identity mismatch")
+            identities.append((series_time, series_uid, sop_uid))
+        chronology = chronology_times([(series_time,
+                                        self._extract_dicom_time(dicom, 'AcquisitionTime'),
+                                        self._extract_dicom_time(dicom, 'ContentTime'))
+                                       for dicom, (series_time, _, _) in zip(dicoms, identities)])
+        config = CustomPredictionService.config
+        size = max(1, int(getattr(config, "forward_batch_size", 1)))
+        workers = max(1, int(getattr(config, "preprocess_workers", 1)))
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        results = []
+        with torch.no_grad(), ThreadPoolExecutor(max_workers=workers) as pool:
+            # Prepare a window of videos in parallel, then forward it `size` videos at a time.
+            # The window is a whole number of batches, so a batch is short only at the end of the request.
+            window = size * -(-workers // size)
+            prepared = []
+            for start in range(0, len(dicoms), size):
+                if not prepared:
+                    todo = dicoms[start:start + window]
+                    prepared = list(pool.map(self._process_dicom, todo)) if workers > 1 else [self._process_dicom(d) for d in todo]
+                    if any(video is None for video in prepared):
+                        raise ValueError("Classifier requires multi-frame video inputs")
+                videos, prepared = prepared[:size], prepared[size:]
+                chunk = videos
+                batch = torch.stack(videos).to(device)
+                output = CustomPredictionService.models['vaso_vision'](batch)
+                rows = len(chunk)
+                if rows != len(identities[start:start + size]):
+                    raise ValueError("Classifier batch does not match its identities")
+                probabilities = {}
+                for head_name, head_output in output.items():
+                    binary = getattr(config.head_structure, head_name) == 1
+                    values = (torch.sigmoid(head_output) if binary else torch.softmax(head_output, dim=1)).to('cpu').detach().numpy()
+                    if values.shape[0] != rows:
+                        raise ValueError("Classifier returned a different number of predictions than videos")
+                    if not np.isfinite(values).all():
+                        raise ValueError("Classifier returned non-finite probabilities")
+                    probabilities[head_name] = (binary, values)
+                for row, ((series_time, series_uid, sop_uid), (effective, source)) in enumerate(
+                        zip(identities[start:start + rows], chronology[start:start + rows])):
+                    result = {}
+                    for head_name, (binary, values) in probabilities.items():
+                        index = (1 if values[row][0] >= 0.5 else 0) if binary else int(np.argmax(values[row]))
+                        try:
+                            result[head_name] = CustomPredictionService.class_mapping[head_name][index]
+                        except KeyError as exc:
+                            raise ValueError("Classifier output does not match its label mapping") from exc
+                        if head_name == "dominance" and binary:
+                            # Sigmoid of the binary head is P(class 1); the call above stays at >= 0.5.
+                            if CustomPredictionService.class_mapping[head_name].get(1) != "left_dominant":
+                                raise ValueError("Dominance head does not match its label mapping")
+                            result["dominance_left_probability"] = round(float(values[row][0]), 6)
+                    if not {"main_structure", "contrast_agent", "stent_presence"}.issubset(result):
+                        raise ValueError("Classifier output is incomplete")
+                    result.update({
+                        "series_time": series_time.isoformat(),
+                        "dicom_name": series_uid,
+                        "series_instance_uid": series_uid,
+                        "sop_instance_uid": sop_uid,
+                    })
+                    if source != "SeriesTime":
+                        # Only for videos whose SeriesTime is shared: other predictions stay as before.
+                        result.update({"chronology_time": effective.isoformat(), "chronology_source": source})
+                    results.append(result)
+                del batch, output, videos
+        return results

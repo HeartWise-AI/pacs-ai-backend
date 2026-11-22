@@ -148,6 +148,7 @@ func modelUpgradeHTTPError(err error) (int, string, string) {
 
 // InferenceCommandController request controller for inference command
 type InferenceCommandController struct {
+	GPUAdministration GPUAdministration
 	application.InferenceCommandServiceInterface
 	application.ModelDeploymentOperationSubscriberInterface
 	ModelDeploymentEventHeartbeatInterval time.Duration

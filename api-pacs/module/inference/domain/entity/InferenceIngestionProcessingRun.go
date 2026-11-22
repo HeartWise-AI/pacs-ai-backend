@@ -15,7 +15,18 @@ const (
 	InferenceIngestionProcessingRunTriggerAuto            InferenceIngestionProcessingRunTrigger = "AUTO"
 	InferenceIngestionProcessingRunTriggerManualReprocess InferenceIngestionProcessingRunTrigger = "MANUAL_REPROCESS"
 	InferenceIngestionProcessingRunTriggerLegacyImport    InferenceIngestionProcessingRunTrigger = "LEGACY_IMPORT"
+	// InferenceIngestionProcessingRunTriggerViewerRequest is a single-model run
+	// requested from the image viewer. Unlike study-wide runs it may coexist with
+	// other active runs for the same study; uniqueness is per study and model.
+	InferenceIngestionProcessingRunTriggerViewerRequest InferenceIngestionProcessingRunTrigger = "VIEWER_REQUEST"
 )
+
+// IsUserRequested reports whether the run was explicitly requested by a user
+// and therefore uses strict execution correlation and user quota accounting.
+func (trigger InferenceIngestionProcessingRunTrigger) IsUserRequested() bool {
+	return trigger == InferenceIngestionProcessingRunTriggerManualReprocess ||
+		trigger == InferenceIngestionProcessingRunTriggerViewerRequest
+}
 
 const (
 	InferenceIngestionProcessingRunPhaseQueued     InferenceIngestionProcessingRunPhase = "QUEUED"
@@ -76,12 +87,17 @@ func (reasons InferenceIngestionProcessingRunAttentionReasons) Value() (driver.V
 
 // InferenceIngestionProcessingRun represents one distinct study-processing attempt.
 type InferenceIngestionProcessingRun struct {
-	ID                         string
-	TenantID                   string                                          `db:"tenant_id"`
-	StudyInstanceUID           string                                          `db:"study_instance_uid"`
-	RunNumber                  int                                             `db:"run_number"`
-	RunTrigger                 InferenceIngestionProcessingRunTrigger          `db:"run_trigger"`
-	RequestedByUserID          *string                                         `db:"requested_by_user_id"`
+	ID                string
+	TenantID          string                                 `db:"tenant_id"`
+	StudyInstanceUID  string                                 `db:"study_instance_uid"`
+	RunNumber         int                                    `db:"run_number"`
+	RunTrigger        InferenceIngestionProcessingRunTrigger `db:"run_trigger"`
+	RequestedByUserID *string                                `db:"requested_by_user_id"`
+	// CancelledByUserID and CancelledAt record a user cancellation of the
+	// executions that had not started computing. They stay set for the life
+	// of the run, whatever its final outcome.
+	CancelledByUserID          *string                                         `db:"cancelled_by_user_id"`
+	CancelledAt                *time.Time                                      `db:"cancelled_at"`
 	Phase                      InferenceIngestionProcessingRunPhase            `db:"phase"`
 	Outcome                    *InferenceIngestionProcessingRunOutcome         `db:"outcome"`
 	AttentionRequired          bool                                            `db:"attention_required"`
@@ -93,6 +109,11 @@ type InferenceIngestionProcessingRun struct {
 	CompletedAt                *time.Time                                      `db:"completed_at"`
 	CreatedAt                  time.Time                                       `db:"created_at"`
 	UpdatedAt                  time.Time                                       `db:"updated_at"`
+}
+
+// IsUserCancelled reports whether a user cancelled the run's waiting executions.
+func (entity *InferenceIngestionProcessingRun) IsUserCancelled() bool {
+	return entity.CancelledAt != nil
 }
 
 // GetModelName returns the PostgreSQL table name for processing runs.

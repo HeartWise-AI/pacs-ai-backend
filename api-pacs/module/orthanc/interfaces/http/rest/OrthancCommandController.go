@@ -164,8 +164,11 @@ func (controller *OrthancCommandController) RetrieveModalityStudy(w http.Respons
 
 	for _, job := range res {
 		jobs = append(jobs, types.RetrieveQueryModalityAnswerResponse{
-			ID:   job.ID,
-			Path: job.Path,
+			ID:                job.ID,
+			Path:              job.Path,
+			SeriesInstanceUID: job.SeriesInstanceUID,
+			SeriesNumber:      job.SeriesNumber,
+			Order:             job.Order,
 		})
 	}
 

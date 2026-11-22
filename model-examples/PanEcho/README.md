@@ -20,3 +20,26 @@ artifact; `latest` is optional and non-authoritative.
 The image does not package the optional EchoPrime view-classifier checkpoint. When that checkpoint
 is absent, the existing runtime falls back to request metadata or unfiltered PanEcho inference, which
 matches the behavior of the measured 1.0.0 deployment.
+
+## Request handling and performance (1.0.3)
+
+A heavy echo study reaches `POST /inference/predict` as about 2 GB of JSON. Since 1.0.3 the
+endpoint reads the body into one buffer, keeps the base64 payloads out of the JSON parser
+(`utils/fast_request.py`), decodes each instance once, and decodes only the 16 frames PanEcho
+samples from each 8-bit clip. Predictions are unchanged. Every request logs its stage timings:
+
+```text
+PanEcho request: 1835 MiB received in 3.9s, parsed in 0.3s
+PanEcho predict timings: base64=0.5s dicom_parse=0.5s pixel_decode=0.4s clip_transform=0.6s model_forward=0.9s total=3.0s
+```
+
+The model loads without network access: the released checkpoint supplies every backbone tensor,
+so the ImageNet initialisation is no longer downloaded and an incomplete checkpoint is rejected.
+
+JPEG-LS input (transfer syntaxes 1.2.840.10008.1.2.4.80/.81) is decoded with the CharLS plugin
+(`pyjpegls`) and gives the same pixels and predictions as uncompressed input. Decoding costs
+about 10 ms per frame, so a JPEG-LS study is smaller to transfer but slower for the model than
+the same study sent uncompressed.
+
+`nginx.conf` allows 1800 s for the upstream response; with the 60 s default nginx answered 504
+on long studies while the model was still computing.

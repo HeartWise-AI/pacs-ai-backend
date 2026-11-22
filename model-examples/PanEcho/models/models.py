@@ -23,40 +23,47 @@ class PositionalEncoding(torch.nn.Module):
         return self.dropout(x + self.pe[0, :x.size(1), :])
 
 class ImageEncoder(torch.nn.Module):
-    """2D image encoder."""
-    def __init__(self, arch):
+    """2D image encoder.
+
+    ``pretrained_backbone=False`` builds the architecture only. PanEcho passes it when the
+    released checkpoint is loaded afterwards: that checkpoint holds every backbone tensor, so
+    fetching ImageNet weights first is redundant and needs network access the inference
+    container does not have.
+    """
+    def __init__(self, arch, pretrained_backbone=True):
         super(ImageEncoder, self).__init__()
+        tv_weights = 'IMAGENET1K_V1' if pretrained_backbone else None
 
         if arch == 'resnet18':
-            self.model = torchvision.models.resnet18(weights='IMAGENET1K_V1')
+            self.model = torchvision.models.resnet18(weights=tv_weights)
             self.n_features = self.model.fc.in_features
             self.model.fc = torch.nn.Identity()
         elif arch == 'resnet50':
-            self.model = torchvision.models.resnet50(weights='IMAGENET1K_V1')
+            self.model = torchvision.models.resnet50(weights=tv_weights)
             self.n_features = self.model.fc.in_features
             self.model.fc = torch.nn.Identity()
         elif arch == 'convnext_tiny':
-            self.model = torchvision.models.convnext_tiny(weights='IMAGENET1K_V1')
+            self.model = torchvision.models.convnext_tiny(weights=tv_weights)
             self.n_features = self.model.classifier[-1].in_features
             self.model.classifier[-1] = torch.nn.Identity()
         elif arch == 'convnext_small':
-            self.model = torchvision.models.convnext_small(weights='IMAGENET1K_V1')
+            self.model = torchvision.models.convnext_small(weights=tv_weights)
             self.n_features = self.model.classifier[-1].in_features
             self.model.classifier[-1] = torch.nn.Identity()
         elif arch == 'convnext_base.fb_in22k_ft_in1k':
-            self.model = timm.create_model(arch, pretrained=True)
+            self.model = timm.create_model(arch, pretrained=pretrained_backbone)
             self.n_features = self.model.head.fc.in_features
             self.model.head.fc = torch.nn.Identity()
         elif arch == 'convnext_base.fb_in22k_ft_in1k_384':
-            self.model = timm.create_model(arch, pretrained=True)
+            self.model = timm.create_model(arch, pretrained=pretrained_backbone)
             self.n_features = self.model.head.fc.in_features
             self.model.head.fc = torch.nn.Identity()
         elif arch == 'swin_v2_s':
-            self.model = torchvision.models.swin_v2_s(weights='IMAGENET1K_V1')
+            self.model = torchvision.models.swin_v2_s(weights=tv_weights)
             self.n_features = self.model.head.in_features
             self.model.head = torch.nn.Identity()
         elif arch == 'swinv2_base_window12to16_192to256.ms_in22k_ft_in1k':
-            self.model = timm.create_model(arch, pretrained=True)
+            self.model = timm.create_model(arch, pretrained=pretrained_backbone)
             self.n_features = self.model.fc.in_features
             self.model.fc = torch.nn.Identity()
         elif arch == 'echo-clip':
@@ -67,11 +74,11 @@ class ImageEncoder(torch.nn.Module):
             self.model = self.model.visual
             self.n_features = self.model.head.proj.out_features  # 512
         elif arch == 'convnextv2_tiny.fcmae_ft_in22k_in1k':
-            self.model = timm.create_model('convnextv2_tiny.fcmae_ft_in22k_in1k', pretrained=True)
+            self.model = timm.create_model('convnextv2_tiny.fcmae_ft_in22k_in1k', pretrained=pretrained_backbone)
             self.n_features = self.model.head.fc.in_features
             self.model.head.fc = torch.nn.Identity()
         elif arch == 'convnextv2_tiny.fcmae':
-            self.model = timm.create_model('convnextv2_tiny.fcmae', pretrained=True)
+            self.model = timm.create_model('convnextv2_tiny.fcmae', pretrained=pretrained_backbone)
             self.n_features = 768
         else:
             import sys
@@ -82,10 +89,10 @@ class ImageEncoder(torch.nn.Module):
 
 class FrameTransformer(torch.nn.Module):
     """2+1D architecture with 2D image encoder and 1D temporal Transformer for echocardiogrpahy video modeling."""
-    def __init__(self, arch, n_heads, n_layers, transformer_dropout, pooling, clip_len=16):
+    def __init__(self, arch, n_heads, n_layers, transformer_dropout, pooling, clip_len=16, pretrained_backbone=True):
         super(FrameTransformer, self).__init__()
         self.pooling = pooling
-        self.encoder = ImageEncoder(arch)
+        self.encoder = ImageEncoder(arch, pretrained_backbone=pretrained_backbone)
 
         transformer_encoder = torch.nn.TransformerEncoderLayer(d_model=self.encoder.n_features, nhead=n_heads, dim_feedforward=self.encoder.n_features, dropout=transformer_dropout, activation='relu', batch_first=True)
         self.transformer = torch.nn.TransformerEncoder(transformer_encoder, num_layers=n_layers)

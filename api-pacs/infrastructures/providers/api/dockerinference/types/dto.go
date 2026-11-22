@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"path"
 	"regexp"
 	"strings"
@@ -32,6 +33,17 @@ type PredictRequest struct {
 	SeriesInstanceMetadata map[int]map[int]interface{} `json:"seriesInstanceMetadata,omitempty"`
 	AdditionalMetadata     map[string]interface{}      `json:"additionalMetadata,omitempty"`
 	OutputMode             OutputMode                  `json:"outputMode"`
+	// Raw, when set, is the already-encoded JSON request object and is sent to
+	// the model as is. A prepared study payload can be gigabytes of base64;
+	// decoding it into the fields above and encoding it again costs tens of
+	// seconds and several copies, and the gateway never reads its content.
+	Raw json.RawMessage `json:"-"`
+	// Stream, when set, is the encoded JSON request object read from its
+	// source as it is sent to the model, StreamLength bytes exactly. It is
+	// never held in memory and it can be sent only once: a caller that sets it
+	// accepts that the prediction is not retried.
+	Stream       io.Reader `json:"-"`
+	StreamLength int64     `json:"-"`
 }
 
 type ModelResources struct {
@@ -207,6 +219,35 @@ type ModelInfo struct {
 	OnboardingModelQuestionnaires []interface{}    `json:"onboardingModelQuestionnaires"`
 	Resources                     ModelResources   `json:"resources"`
 	Provenance                    *ModelProvenance `json:"provenance,omitempty"`
+	// Capabilities advertises optional model endpoints. Absent means none.
+	Capabilities *ModelCapabilities `json:"capabilities,omitempty"`
+}
+
+// ModelCapabilities lists optional endpoints a model container implements.
+type ModelCapabilities struct {
+	// RenderReport means POST /inference/render-report re-renders the HTML
+	// report from a stored JSON-mode result without a model forward pass.
+	RenderReport bool `json:"renderReport"`
+}
+
+// SupportsReportRendering reports whether the container advertises render-report.
+func (modelInfo ModelInfo) SupportsReportRendering() bool {
+	return modelInfo.Capabilities != nil && modelInfo.Capabilities.RenderReport
+}
+
+// RenderReportRequest carries the stored JSON-mode result data object.
+type RenderReportRequest struct {
+	Result json.RawMessage `json:"result"`
+}
+
+// RenderReportResponse is the model container render-report envelope.
+type RenderReportResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Data    struct {
+		HTMLBase64   string `json:"htmlBase64"`
+		ModelVersion string `json:"modelVersion"`
+	} `json:"data"`
 }
 
 func (modelInfo *ModelInfo) UnmarshalJSON(data []byte) error {

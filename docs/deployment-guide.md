@@ -769,6 +769,10 @@ WHERE id = '<candidate-id>' AND status = 'RETRIEVAL_QUEUED';
 
 The next retrieval-worker tick (≤ 1 min) will pick it up. Always copy the row to a one-off audit table before mutating production state.
 
+A `RETRIEVED` candidate whose automatic execution stays `pending` no longer needs this. The dispatch to study-service runs in memory in api-pacs, so an api-pacs restart used to lose it. The reconciliation worker (at startup and every `INFERENCE_INGESTION_RECONCILIATION_INTERVAL_MINUTES`, default 5) now dispatches such an execution again when all of this holds: study-service has no job for it (asked by processing run and by candidate), the run is automatic and not finished, the execution is pending without a study-service job and the candidate retrieved, both for longer than `INFERENCE_INGESTION_RECONCILIATION_PENDING_MINUTES` (default 2), no dispatch for it is under way in the process, and its ingestion job is running for that model. It logs `re-dispatching orphaned execution ...` and counts it as `redispatched=` in the cycle summary; an execution it leaves alone is logged with `pending execution not re-dispatched ... reason=`. The dispatch is the ordinary one: it does nothing unless the execution is still pending, and study-service answers a repeated automatic request with the job it already has. Manual and viewer runs, and executions that already carry a study-service job ID, are never dispatched again; they keep raising attention as before. Two limits keep this from repeating for ever: an execution pending for longer than `INFERENCE_INGESTION_RECONCILIATION_REDISPATCH_MAX_AGE_MINUTES` (default 360, six hours) is not dispatched again (`reason="execution has been pending longer than the re-dispatch age limit"`) and stays for an operator; and when a recovered dispatch ends with an error the next cycle cannot change (`MISSING_RECORD`, for example a model registration that no longer exists, or `INVALID_PAYLOAD`), the execution is marked failed with a message saying so (`failing execution that cannot be dispatched ...`), so the run reaches a terminal state. The AI Predictions page shows an execution that is still `pending` or `queued` without a study-service job once its run is older than `INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS` (default 24) as `stalled` ("never ran"): it needs attention, does not count as active, and an administrator can close it there (the run is cancelled).
+
+Automatic runs stop waiting after `INFERENCE_AUTO_RUN_EXPIRE_AFTER_HOURS` (default 720, 30 days). Each reconciliation cycle, before reconciling, looks for runs started automatically (`AUTO` or `LEGACY_IMPORT`) that are not finished, were created longer ago than that, have no `running` execution, and have at least one execution still `pending` or `queued` (with or without a study-service job ID) that has not changed for that long. At most 200 such runs are handled per cycle, oldest first. Under row locks each of those waiting executions becomes `skipped` with the skip reason `EXPIRED_NEVER_RAN` ("Expired: did not complete within 30 days (automatic)"); completed, failed, skipped and cancelled executions are untouched, and a waiting execution that changed more recently is left to wait. The run is then re-aggregated: when nothing waits any more it becomes terminal with the usual outcome (`SUCCESS_WITH_SKIPS` when some models completed, `PARTIAL_SUCCESS` when some also failed, `NO_RESULT` when none completed), and the waiting-execution attention reasons (`PENDING_STALE`, `QUEUE_STALE`, `EXPECTED_JOB_MISSING`, `STUDY_SERVICE_JOB_MISSING`) are cleared. Nothing is deleted, and the study-service job ID stays on the execution. Manual reprocess and viewer runs, and runs with a running execution, are never touched; repeating a cycle changes nothing. A run with no execution at all (`AUTO`, `LEGACY_IMPORT` or `MANUAL_REPROCESS`; never a viewer run) can never do anything: once it is older than the same limit it is closed as terminal with outcome `NO_RESULT` and its attention reasons cleared, logged as `[Automatic run expiry] expired_empty processing_run_id=...`. Each run is logged as `[Automatic run expiry] expired processing_run_id=... executions=... phase=... outcome=...`, each run left alone with the reason, and every cycle ends with `[Automatic run expiry] cycle selected= expired= expired_empty= executions= unchanged= failed=`; the reconciliation summary also reports `expired=`. The study images are removed from the local image store about 24 hours after they arrive, so an automatic execution that has not completed by then can never run: with that retention 48 is the meaningful value. The AI Predictions page shows these executions as `expired`; they are neither active nor in "needs attention".
+
 ### 12.2 Celery queue backed up
 ```bash
 docker compose exec redis redis-cli -n 2 LLEN celery     # cardio-agent uses Redis DB 2 in integrated mode
@@ -1027,19 +1031,22 @@ docker compose images > pacs-ai-versions.txt
 | `LOGIN_ACCOUNT_CHALLENGE_FAILURES` | optional | `3` | Normalized account failures before Turnstile is required; account scope has no hard lock |
 | `LOGIN_IP_CHALLENGE_FAILURES` / `LOGIN_IP_MAX_FAILURES` | optional | `5` / `30` | Trusted client-IP challenge and hard-limit thresholds |
 | `LOGIN_TENANT_CHALLENGE_FAILURES` / `LOGIN_TENANT_MAX_FAILURES` | optional | `50` / `500` | Tenant challenge and hard-limit thresholds |
-| `LOGIN_TURNSTILE_ALLOWED_HOSTNAMES` | yes when protection is enabled | — | Comma-separated exact frontend hostnames returned by Siteverify for the `login` action |
+| `LOGIN_TURNSTILE_ALLOWED_HOSTNAMES` | yes in `turnstile` mode | — | Comma-separated exact frontend hostnames returned by Siteverify for the `login` action |
+| `LOGIN_CHALLENGE_MODE` | optional | `turnstile` when `CLOUDFLARE_SECRET_KEY` and `LOGIN_TURNSTILE_ALLOWED_HOSTNAMES` are set, else `cooldown` | `cooldown` answers every would-be challenge with HTTP 429 and `Retry-After` (remaining TTL of the triggering counter, 30 s to the window); use it for internal hostnames or workstations that cannot reach Cloudflare |
 | `LOGIN_TRUSTED_PROXY_CIDRS` | required behind a reverse proxy | empty | Direct-proxy CIDRs allowed to supply login `X-Real-IP`; normally the same exact `pacs-net` subnet used for registration |
 | **Public-demo inference quotas** | | | |
 | `INFERENCE_USER_QUOTA_WINDOW_SECONDS` | optional | `86400` | Fixed usage-allowance window in seconds |
 | `INFERENCE_USER_QUOTA_ALLOWANCE` | optional | `50` | User-triggered inference units per tenant/user and window |
-| `INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS` | optional | `2` | Active direct predictions or manual reprocessing runs per tenant/user |
+| `INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS` | optional | `2` | Active synchronous (interactive) direct predictions per tenant/user |
+| `INFERENCE_USER_MAX_QUEUED_EXECUTIONS` | optional | `50` | Safety cap on active queued runs (viewer model runs, manual reprocessing) per tenant/user; independent of the interactive cap |
 | `INFERENCE_USER_RESERVATION_TTL_SECONDS` | optional | `7200` | Recovery TTL for an active reservation that never receives a terminal outcome |
-| `INFERENCE_USER_QUOTA_TENANT_OVERRIDES_JSON` | optional | empty | JSON object keyed by tenant ID; supports `windowSeconds`, `allowance`, `maxConcurrentExecutions`, and `reservationTtlSeconds` |
+| `INFERENCE_USER_QUOTA_TENANT_OVERRIDES_JSON` | optional | empty | JSON object keyed by tenant ID; supports `windowSeconds`, `allowance`, `maxConcurrentExecutions`, `maxQueuedExecutions`, and `reservationTtlSeconds` |
 | **Request and input safety** | | | |
 | `API_MAX_REQUEST_BODY_BYTES` | optional | `16777216` | Hard body limit for regular `/v1` API requests |
 | `INFERENCE_PREDICT_MAX_REQUEST_BODY_BYTES` | optional | `1048576` | Stricter JSON body limit for direct model predictions |
 | `INTERNAL_INFERENCE_PREDICT_MAX_REQUEST_BODY_BYTES` | optional | `2147483648` | Authenticated study-service inference-gateway body limit; keep above the largest prepared DICOM payload |
 | `INTERNAL_INFERENCE_READ_TIMEOUT_SECONDS` | optional | `7200` | Read deadline for the authenticated prepared-DICOM gateway |
+| `INTERNAL_INFERENCE_PREDICT_STREAMING` | optional | `true` | Forward a study-service request of 8 MiB or more to the model while it arrives instead of holding it in memory; `false` restores the buffered path. A streamed request is never replayed: a model lost while receiving is answered `502`, which study-service retries |
 | `DICOMWEB_MAX_REQUEST_BODY_BYTES` | optional | `6442450944` | Go-side ceiling for the authenticated DICOMweb large-upload exception; keep consistent with the Nginx 6g default |
 | `INFERENCE_MAX_SERIES_UIDS` | optional | `256` | Hard series-count ceiling before a model request is assembled |
 | `INFERENCE_MAX_METADATA_BYTES` | optional | `65536` | Maximum encoded prediction metadata size |
@@ -1090,6 +1097,19 @@ failure counters. Turnstile must return `action=login` and a hostname in
 `LOGIN_TURNSTILE_ALLOWED_HOSTNAMES`; missing, expired, replayed, or mismatched
 tokens fail closed.
 
+Deployments where Turnstile cannot work (internal hostname, no frontend
+`APP_PUBLIC_TURNSTILE_SITE_KEY`, workstations that cannot reach
+`challenges.cloudflare.com`) set `LOGIN_CHALLENGE_MODE=cooldown`. Wherever a
+challenge would be required, the gateway then answers `LOGIN_RATE_LIMITED`
+(429) with `Retry-After` set to the remaining TTL of the counter that triggered
+it (at least 30 s, at most `LOGIN_FAILURE_WINDOW_SECONDS`); tokens are ignored,
+hard limits are unchanged, and unknown e-mails receive the same answers. Note
+that the IP and tenant challenge thresholds become temporary lockouts for every
+user behind that IP or in that tenant, so check `LOGIN_TRUSTED_PROXY_CIDRS` and
+consider raising `LOGIN_IP_CHALLENGE_FAILURES` / `LOGIN_TENANT_CHALLENGE_FAILURES`
+where many users share one address. The effective mode is logged at startup as
+`[security] event=login_challenge_mode mode=…`.
+
 The login request contract changes incompatibly from `{tenantId,idToken}` to
 `{tenantId,email,password,turnstileToken?}`. Deploy the paired frontend and
 backend together (or during a maintenance window); do not retain the old ID-token
@@ -1116,18 +1136,26 @@ provider-specific requirement. See the official Identity Platform REST and
 Cloudflare Siteverify documentation before enabling that setting.
 
 Inference quotas use the same Redis deployment but separate hashed tenant/user
-keys. One direct model prediction and one manual study reprocessing run each
-consume one unit. Input/plan validation and dispatch failures are refunded;
-work accepted by a model remains charged even when the model later fails.
-Manual-run concurrency is held until the run reaches a terminal state, with
-the reservation TTL acting only as recovery for lost callbacks. Automated
+keys. One direct model prediction, one viewer model run and one manual study
+reprocessing run each consume one unit. Input/plan validation and dispatch
+failures are refunded; work accepted by a model remains charged even when the
+model later fails. Reservations come in two kinds. Synchronous direct
+predictions are *interactive* and count against
+`INFERENCE_USER_MAX_CONCURRENT_EXECUTIONS`. Viewer runs and manual reprocessing
+are *queued*: study-service's per-model queues and each model's
+`maxConcurrentInferences` bound real capacity, so they count only against the
+allowance and the much higher `INFERENCE_USER_MAX_QUEUED_EXECUTIONS` safety
+cap, and never block (or are blocked by) interactive predictions. A queued
+run's slot is held until the run reaches a terminal state, with the
+reservation TTL acting only as recovery for lost callbacks. Automated
 ingestion has no authenticated user and is explicitly exempt from these public
 user limits; it remains bounded by `STUDY_SERVICE_DISPATCH_CONCURRENCY`.
 All authenticated users, including tenant administrators and owners, use the
 same tenant/user quota unless their tenant receives an explicit override.
 Clients can read `GET /v1/inference/quota`. Limit rejections return HTTP 429,
-`Retry-After`, and either `INFERENCE_QUOTA_EXCEEDED` or
-`INFERENCE_CONCURRENCY_EXCEEDED`. Redis unavailability fails closed with HTTP
+`Retry-After`, and one of `INFERENCE_QUOTA_EXCEEDED`,
+`INFERENCE_CONCURRENCY_EXCEEDED` (interactive cap) or
+`INFERENCE_QUEUE_LIMIT_EXCEEDED` (queued-run safety cap). Redis unavailability fails closed with HTTP
 503 and `INFERENCE_QUOTA_UNAVAILABLE`.
 
 Regular JSON and multipart API requests are bounded both at Nginx and inside

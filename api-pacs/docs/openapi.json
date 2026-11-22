@@ -50,6 +50,10 @@
       "description": "Lead service"
     },
     {
+      "name": "orchestrator",
+      "description": "Chat assistant (orchestrator) service"
+    },
+    {
       "name": "orthanc",
       "description": "Orthanc service"
     },
@@ -2226,6 +2230,75 @@
         }
       }
     },
+    "/user/viewer-tour": {
+      "get": {
+        "tags": ["user"],
+        "summary": "Get Viewer Tour State",
+        "description": "Get the authenticated user's viewer onboarding tour state: { userId, viewerTourCompletedAt } where viewerTourCompletedAt is unix seconds, or null when the tour should be shown.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/viewer-tour/complete": {
+      "put": {
+        "tags": ["user"],
+        "summary": "Complete Viewer Tour",
+        "description": "Record that the authenticated user completed or skipped the viewer onboarding tour. Idempotent: an existing completion time is kept.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/viewer-tour/reset": {
+      "post": {
+        "tags": ["user"],
+        "summary": "Reset Viewer Tour",
+        "description": "Clear the authenticated user's viewer tour completion so the tour shows on the next viewer open.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "2xx": {
+            "description": "Success"
+          },
+          "4xx": {
+            "description": "Client side errors"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          }
+        }
+      }
+    },
     "/user/{id}/suspend": {
       "post": {
         "tags": ["user"],
@@ -2484,6 +2557,764 @@
         }
       }
     },
+    "/inference/predictions": {
+      "get": {
+        "tags": [
+          "inference"
+        ],
+        "summary": "AI Predictions: exams with their models' latest state",
+        "description": "One row per exam (study) of the authenticated tenant, most recent activity first, with the latest execution of each model, the counts of their states and who launched the exam's runs. Patient names are not stored: clients resolve them from the local DICOMweb store. The tenant, user and role come from the session, never from the query. Callable by any authenticated tenant user who accepted the current policies; view=all requires ADMIN or OWNER.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "description": "mine (default): exams where the authenticated user launched at least one run; automatic: exams with at least one automatic run; all: every exam, ADMIN and OWNER only (403 otherwise).",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "mine",
+                "automatic",
+                "all"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Patient ID (MRN) or accession number (contains, case-insensitive), or the exact Study Instance UID. Patient names are not stored by the gateway.",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "description": "Model name; the latest state, the activity time and the status filter then consider this model only.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "any (default); active: a model is waiting, queued or running (stalled models excluded); attention: a model failed, was skipped or stalled (expired models excluded); completed: every model completed. Reads the latest execution of each model.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "any",
+                "active",
+                "attention",
+                "completed"
+              ]
+            }
+          },
+          {
+            "name": "modality",
+            "in": "query",
+            "required": false,
+            "description": "DICOM modality matched against the exam modalities and the dispatch modality.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9]{1,16}$"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Last activity at or after (RFC 3339).",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Last activity before (RFC 3339).",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "launchedBy",
+            "in": "query",
+            "required": false,
+            "description": "view=all only (400 otherwise): any, automatic, people, or user:<user id>. In the CSV export it also keeps only the matching runs.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size, default 25, maximum 100.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "Exams to skip.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of exams",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "view": {
+                          "type": "string"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "offset": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        },
+                        "canViewAll": {
+                          "type": "boolean"
+                        },
+                        "exams": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "studyInstanceUID": {
+                                "type": "string"
+                              },
+                              "patientId": {
+                                "type": "string"
+                              },
+                              "accessionNumber": {
+                                "type": "string"
+                              },
+                              "modalitiesInStudy": {
+                                "type": "string"
+                              },
+                              "studyDate": {
+                                "type": "string"
+                              },
+                              "lastActivityAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "active": {
+                                "type": "boolean"
+                              },
+                              "counts": {
+                                "type": "object",
+                                "properties": {
+                                  "total": {
+                                    "type": "integer"
+                                  },
+                                  "waiting": {
+                                    "type": "integer"
+                                  },
+                                  "queued": {
+                                    "type": "integer"
+                                  },
+                                  "stalled": {
+                                    "type": "integer"
+                                  },
+                                  "running": {
+                                    "type": "integer"
+                                  },
+                                  "completed": {
+                                    "type": "integer"
+                                  },
+                                  "failed": {
+                                    "type": "integer"
+                                  },
+                                  "skipped": {
+                                    "type": "integer"
+                                  },
+                                  "cancelled": {
+                                    "type": "integer"
+                                  },
+                                  "expired": {
+                                    "type": "integer"
+                                  }
+                                }
+                              },
+                              "models": {
+                                "type": "array",
+                                "items": {
+                                  "allOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "runId": {
+                                          "type": "string"
+                                        },
+                                        "executionId": {
+                                          "type": "string"
+                                        },
+                                        "runNumber": {
+                                          "type": "integer"
+                                        },
+                                        "trigger": {
+                                          "type": "string"
+                                        },
+                                        "requestedByUserId": {
+                                          "type": "string"
+                                        },
+                                        "requestedByName": {
+                                          "type": "string"
+                                        },
+                                        "requestedByYou": {
+                                          "type": "boolean"
+                                        },
+                                        "modelName": {
+                                          "type": "string"
+                                        },
+                                        "modelVersion": {
+                                          "type": "string"
+                                        },
+                                        "modality": {
+                                          "type": "string"
+                                        },
+                                        "errorMessage": {
+                                          "type": "string"
+                                        },
+                                        "cancellable": {
+                                          "type": "boolean"
+                                        },
+                                        "cancelledAt": {
+                                          "type": "string"
+                                        },
+                                        "runCreatedAt": {
+                                          "type": "string"
+                                        },
+                                        "createdAt": {
+                                          "type": "string"
+                                        },
+                                        "updatedAt": {
+                                          "type": "string"
+                                        },
+                                        "startedAt": {
+                                          "type": "string"
+                                        },
+                                        "completedAt": {
+                                          "type": "string"
+                                        },
+                                        "durationSeconds": {
+                                          "type": "number"
+                                        },
+                                        "state": {
+                                          "type": "string",
+                                          "enum": [
+                                            "waiting",
+                                            "queued",
+                                            "stalled",
+                                            "running",
+                                            "completed",
+                                            "failed",
+                                            "skipped",
+                                            "cancelled",
+                                            "expired"
+                                          ],
+                                          "description": "waiting: not dispatched because the exam is still receiving images. stalled: never ran; still pending or queued without a study-service job more than INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS (default 24) after the run was created. expired: an automatic execution that did not complete and was closed by INFERENCE_AUTO_RUN_EXPIRE_AFTER_HOURS (skip reason EXPIRED_NEVER_RAN)."
+                                        },
+                                        "status": {
+                                          "type": "string",
+                                          "description": "Stored execution status."
+                                        },
+                                        "skipReason": {
+                                          "type": "object",
+                                          "properties": {
+                                            "code": {
+                                              "type": "string"
+                                            },
+                                            "message": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "earlierRuns": {
+                                          "type": "integer"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              "launchers": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "enum": [
+                                        "automatic",
+                                        "user"
+                                      ]
+                                    },
+                                    "trigger": {
+                                      "type": "string"
+                                    },
+                                    "userId": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "you": {
+                                      "type": "boolean"
+                                    },
+                                    "runs": {
+                                      "type": "integer"
+                                    },
+                                    "firstAt": {
+                                      "type": "string",
+                                      "format": "date-time"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WorklistBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/WorklistUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/WorklistForbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/WorklistServerError"
+          }
+        }
+      }
+    },
+    "/inference/predictions/export.csv": {
+      "get": {
+        "tags": [
+          "inference"
+        ],
+        "summary": "AI Predictions CSV export",
+        "description": "Streams one UTF-8 CSV line per model run of the exams of the view and filters (same parameters as GET /inference/predictions, without paging), most recent exam first, at most 5000 exams; X-Export-Truncated is true when more matched. Columns: Run time, Study Instance UID, Accession number, MRN, Patient name, Modality, Model, Model version, Trigger, Launched by, Status, Duration (s), Key result, Failure or skip reason, Run ID, Execution ID. Patient name and Key result are left empty by the gateway. Cells starting with = + - @, a tab or a carriage return are prefixed with a single quote.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "description": "mine (default): exams where the authenticated user launched at least one run; automatic: exams with at least one automatic run; all: every exam, ADMIN and OWNER only (403 otherwise).",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "mine",
+                "automatic",
+                "all"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Patient ID (MRN) or accession number (contains, case-insensitive), or the exact Study Instance UID. Patient names are not stored by the gateway.",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "description": "Model name; the latest state, the activity time and the status filter then consider this model only.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "any (default); active: a model is waiting, queued or running (stalled models excluded); attention: a model failed, was skipped or stalled (expired models excluded); completed: every model completed. Reads the latest execution of each model.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "any",
+                "active",
+                "attention",
+                "completed"
+              ]
+            }
+          },
+          {
+            "name": "modality",
+            "in": "query",
+            "required": false,
+            "description": "DICOM modality matched against the exam modalities and the dispatch modality.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9]{1,16}$"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Last activity at or after (RFC 3339).",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Last activity before (RFC 3339).",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "launchedBy",
+            "in": "query",
+            "required": false,
+            "description": "view=all only (400 otherwise): any, automatic, people, or user:<user id>. In the CSV export it also keeps only the matching runs.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV file",
+            "headers": {
+              "X-Export-Truncated": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "true",
+                    "false"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WorklistBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/WorklistUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/WorklistForbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/WorklistServerError"
+          }
+        }
+      }
+    },
+    "/inference/predictions/{studyInstanceUID}/history": {
+      "get": {
+        "tags": [
+          "inference"
+        ],
+        "summary": "AI Predictions: executions of one model on one exam",
+        "description": "Executions of one model on one exam of the authenticated tenant, newest first (the first one is the latest). Callable by any authenticated tenant user who accepted the current policies, like the study run history.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "studyInstanceUID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": true,
+            "description": "Model name.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Default and maximum 50.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "Executions to skip.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Executions, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "studyInstanceUID": {
+                          "type": "string"
+                        },
+                        "modelName": {
+                          "type": "string"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "offset": {
+                          "type": "integer"
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        },
+                        "executions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "runId": {
+                                "type": "string"
+                              },
+                              "executionId": {
+                                "type": "string"
+                              },
+                              "runNumber": {
+                                "type": "integer"
+                              },
+                              "trigger": {
+                                "type": "string"
+                              },
+                              "requestedByUserId": {
+                                "type": "string"
+                              },
+                              "requestedByName": {
+                                "type": "string"
+                              },
+                              "requestedByYou": {
+                                "type": "boolean"
+                              },
+                              "modelName": {
+                                "type": "string"
+                              },
+                              "modelVersion": {
+                                "type": "string"
+                              },
+                              "modality": {
+                                "type": "string"
+                              },
+                              "errorMessage": {
+                                "type": "string"
+                              },
+                              "cancellable": {
+                                "type": "boolean"
+                              },
+                              "cancelledAt": {
+                                "type": "string"
+                              },
+                              "runCreatedAt": {
+                                "type": "string"
+                              },
+                              "createdAt": {
+                                "type": "string"
+                              },
+                              "updatedAt": {
+                                "type": "string"
+                              },
+                              "startedAt": {
+                                "type": "string"
+                              },
+                              "completedAt": {
+                                "type": "string"
+                              },
+                              "durationSeconds": {
+                                "type": "number"
+                              },
+                              "state": {
+                                "type": "string",
+                                "enum": [
+                                  "waiting",
+                                  "queued",
+                                  "stalled",
+                                  "running",
+                                  "completed",
+                                  "failed",
+                                  "skipped",
+                                  "cancelled",
+                                  "expired"
+                                ],
+                                "description": "waiting: not dispatched because the exam is still receiving images. stalled: never ran; still pending or queued without a study-service job more than INFERENCE_PREDICTIONS_STALLED_AFTER_HOURS (default 24) after the run was created. expired: an automatic execution that did not complete and was closed by INFERENCE_AUTO_RUN_EXPIRE_AFTER_HOURS (skip reason EXPIRED_NEVER_RAN)."
+                              },
+                              "status": {
+                                "type": "string",
+                                "description": "Stored execution status."
+                              },
+                              "skipReason": {
+                                "type": "object",
+                                "properties": {
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/WorklistBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/WorklistUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/WorklistForbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/WorklistServerError"
+          }
+        }
+      }
+    },
+    "/inference/processing/runs/{runId}/cancel": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Cancel the waiting models of a processing run",
+        "description": "Cancels every model execution of the run that has not started computing (pending, or queued and never handed to study-service) and returns the run detail. Executions already handed to study-service are not interrupted: they finish and record their result, after which the run becomes terminal. The run ends CANCELLED when no model completed and PARTIAL_SUCCESS when at least one did. Idempotent: a run that already ended, or was already cancelled, returns 200 with its current state. After a cancellation, automatic ingestion does not start a new automatic run for the study; a manual reprocess or a viewer run still does. Takes no request body. Callable by any authenticated tenant user who accepted the current policies; the user and time are recorded on the run.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Processing-run detail after the cancellation",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProcessingRunDetailResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "404": { "$ref": "#/components/responses/ProcessingRunNotFound" },
+          "409": {
+            "description": "PROCESSING_RUN_NOT_CANCELLABLE: every remaining model of the run is already computing",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/WorklistUnavailable" }
+        }
+      }
+    },
     "/inference/processing/runs/{runId}/executions/{executionId}/result": {
       "get": {
         "tags": ["inference"],
@@ -2530,6 +3361,135 @@
         }
       }
     },
+    "/inference/worklist/studies/{studyInstanceUID}/latest-results": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Latest completed model results for a study (viewer)",
+        "description": "Returns the latest completed study-service result per (model, modality) for one study in the authenticated tenant user's tenant, joined with the tenant's model registrations (modelId, containerId, reportAvailable from model-info capabilities.renderReport) and processing runs (runId, executionId, trigger). Read-only: never enqueues processing and never starts model containers. modality uses study-service values such as angiogram. selectedViews is null when the run did not record its view selection. Available to every authenticated tenant user who accepted the current policies.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "studyInstanceUID", "in": "path", "required": true, "schema": { "type": "string", "maxLength": 255 } },
+          { "name": "modality", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Optional study-service modality filter, for example angiogram" }
+        ],
+        "responses": {
+          "200": { "description": "Latest results", "headers": { "Cache-Control": { "description": "Model results and reports are never cached", "schema": { "type": "string", "enum": ["no-store"] } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StudyLatestModelResultsResponse" } } } },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/ProcessingExecutionResultServiceUnavailable" }
+        }
+      }
+    },
+    "/inference/processing/runs/{runId}/executions/{executionId}/report": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Render the HTML report of a completed execution",
+        "description": "Loads the stored result of one completed execution owned by the authenticated tenant user's tenant and asks the model's current registered container to re-render its HTML report (POST /api/inference/render-report, no model forward pass). The user's credentials are never forwarded to the model. The call is bounded by VIEWER_REPORT_RENDER_TIMEOUT_SECONDS (default 60) and VIEWER_REPORT_MAX_BYTES (default 32 MiB).",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "runId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "executionId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Rendered report", "headers": { "Cache-Control": { "description": "Model results and reports are never cached", "schema": { "type": "string", "enum": ["no-store"] } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ModelReportResponse" } } } },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "404": { "description": "MISSING_RECORD (unknown run, execution or job) or REPORT_NOT_AVAILABLE (the model cannot render reports)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "409": { "$ref": "#/components/responses/ProcessingExecutionResultNotAvailable" },
+          "422": { "description": "INFERENCE_EXECUTION_RESULT_INVALID or REPORT_RENDER_REJECTED (the model refused the stored result)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "502": { "description": "REPORT_RENDER_FAILED: timeout, size limit or upstream failure", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "503": { "description": "INFERENCE_RESULT_SERVICE_UNAVAILABLE or INFERENCE_MODEL_UNAVAILABLE", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } }
+        }
+      }
+    },
+    "/inference/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/report": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Render the HTML report of a legacy study-service job",
+        "description": "Same as the execution report for latest results without runId/executionId. The study-service job must belong to the authenticated tenant user's tenant and to the study in the path.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "studyInstanceUID", "in": "path", "required": true, "schema": { "type": "string", "maxLength": 255 } },
+          { "name": "studyServiceJobId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Rendered report", "headers": { "Cache-Control": { "description": "Model results and reports are never cached", "schema": { "type": "string", "enum": ["no-store"] } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ModelReportResponse" } } } },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "404": { "description": "MISSING_RECORD (unknown run, execution or job) or REPORT_NOT_AVAILABLE (the model cannot render reports)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "409": { "$ref": "#/components/responses/ProcessingExecutionResultNotAvailable" },
+          "422": { "description": "INFERENCE_EXECUTION_RESULT_INVALID or REPORT_RENDER_REJECTED (the model refused the stored result)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "502": { "description": "REPORT_RENDER_FAILED: timeout, size limit or upstream failure", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "503": { "description": "INFERENCE_RESULT_SERVICE_UNAVAILABLE or INFERENCE_MODEL_UNAVAILABLE", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } }
+        }
+      }
+    },
+    "/inference/worklist/studies/{studyInstanceUID}/models/{modelId}/run": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Run one model on a study from the viewer",
+        "description": "Creates one VIEWER_REQUEST processing run with a single execution for one model and dispatches it through study-service like a manual reprocess, so it appears in run history and worklist events. Callable by any authenticated tenant user who accepted the current policies (same as interactive predict); reserves one unit of the user's inference quota, refunded if dispatch never starts. Works for studies never ingested by a job: the candidate (and, if the tenant has no ingestion job for the model version, a STOPPED viewer-owned ingestion job) is created. The study must be stored in the local Orthanc. modelId is the Firestore registration ID; the container ID or the model-info modelId are also accepted. seriesInstanceUIDs is accepted but study-service currently selects the series itself.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "studyInstanceUID", "in": "path", "required": true, "schema": { "type": "string", "maxLength": 255 } },
+          { "name": "modelId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ViewerModelRunRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Viewer run created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ViewerModelRunResponse" } } } },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "404": { "description": "MISSING_RECORD: unknown model for this tenant", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "409": { "description": "RUN_ALREADY_ACTIVE: this model already has a pending, queued or running execution for the study; STUDY_NOT_AVAILABLE_LOCALLY: the study is not stored in the local Orthanc", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "429": { "description": "Per-user inference allowance or concurrency limit exceeded", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InferenceQuotaLimitResponse" } } } },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "description": "INFERENCE_MODEL_UNAVAILABLE or INFERENCE_QUOTA_UNAVAILABLE", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } }
+        }
+      }
+    },
+    "/inference/worklist/studies/reprocess-batch": {
+      "post": {
+        "tags": ["inference"],
+        "summary": "Create manual processing runs for selected studies",
+        "description": "Submits between one and ten unique Study Instance UIDs in deterministic request order. Each accepted study creates an independent tenant-scoped manual processing run and reserves one inference quota unit. Per-study conflicts, missing candidates, quota limits, and service failures are returned inside the successful batch response without rolling back runs that were already accepted. Callable by an owner or administrator only.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BulkReprocessStudiesRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "All selected studies were evaluated; inspect each result for acceptance or rejection",
+            "headers": {
+              "Cache-Control": {
+                "schema": { "type": "string", "enum": ["no-store"] }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BulkReprocessStudiesResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" }
+        }
+      }
+    },
     "/inference/worklist/studies/{studyInstanceUID}/reprocess": {
       "post": {
         "tags": ["inference"],
@@ -2567,13 +3527,109 @@
           "503": { "$ref": "#/components/responses/InferenceQuotaUnavailable" }
         }
       }
+    },
+    "/orchestrator/threads/{threadID}/chat/progress": {
+      "get": {
+        "tags": ["orchestrator"],
+        "summary": "Get the live activity of the chat request in flight",
+        "description": "Returns the steps the chat assistant has taken so far for the chat request currently running on this thread (one step per tool call and per delegation to a specialist), in the order they started. Poll it about once a second while POST /orchestrator/threads/{threadID}/chat is pending. Step labels are built by the chat service from the tool and a validated model name only: they never contain tool arguments, patient or study identifiers, file paths or search queries. The chat service only answers for the user and tenant that started the request; otherwise, or when no request is running, the response is 200 with active false and no steps. A request that just finished stays readable for a few seconds with active false. Same authentication as the sibling thread routes. The response of POST /orchestrator/threads/{threadID}/chat carries the completed steps in an optional activity field with the ChatActivity shape.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "threadID",
+            "in": "path",
+            "required": true,
+            "description": "Thread ID returned by POST /orchestrator/threads.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Steps so far of the chat request in flight",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ChatProgressResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "The thread ID is invalid"
+          },
+          "401": {
+            "description": "Authentication is required"
+          },
+          "404": {
+            "description": "The chat service does not support progress (older version); errorCode chat_progress_unsupported. Clients fall back to a plain waiting indicator."
+          },
+          "502": {
+            "description": "The chat service could not be reached; errorCode chat_progress_unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ChatActivityStep": {
+        "type": "object",
+        "required": ["id", "key", "kind", "label", "status", "started_at"],
+        "properties": {
+          "id": { "type": "integer", "description": "Position of the step in the request, starting at 1." },
+          "key": { "type": "string", "description": "Stable machine key of the step, for translation: delegate_angiogram, delegate_echo, delegate_ecg, delegate_web, delegate, model_result, model_result_or_run, run_model, study_models, all_model_results, coronary_findings, verify_study, web_search, web_read, read_reference, plan, tool." },
+          "kind": { "type": "string", "enum": ["tool", "delegation"] },
+          "label": { "type": "string", "description": "English, clinician-readable label. Never contains tool arguments or identifiers." },
+          "model": { "type": "string", "nullable": true, "description": "Validated model name the step concerns, when any." },
+          "status": { "type": "string", "enum": ["running", "done", "failed"] },
+          "started_at": { "type": "string", "format": "date-time" },
+          "ended_at": { "type": "string", "format": "date-time", "nullable": true },
+          "duration_ms": { "type": "integer", "nullable": true }
+        }
+      },
+      "ChatActivity": {
+        "type": "object",
+        "required": ["status", "elapsed_ms", "steps"],
+        "properties": {
+          "status": { "type": "string", "enum": ["idle", "running", "done", "failed"] },
+          "started_at": { "type": "string", "format": "date-time", "nullable": true },
+          "ended_at": { "type": "string", "format": "date-time", "nullable": true },
+          "elapsed_ms": { "type": "integer" },
+          "steps": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ChatActivityStep" }
+          }
+        }
+      },
+      "ChatProgressResponse": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" },
+          "data": {
+            "allOf": [
+              { "$ref": "#/components/schemas/ChatActivity" },
+              {
+                "type": "object",
+                "required": ["thread_id", "active"],
+                "properties": {
+                  "thread_id": { "type": "string" },
+                  "active": { "type": "boolean", "description": "True only while a chat request is running on the thread." }
+                }
+              }
+            ]
+          }
+        }
+      },
       "InferenceQuotaData": {
         "type": "object",
-        "required": ["allowance", "used", "remaining", "windowSeconds", "resetAfterSeconds", "maxConcurrentExecutions", "activeExecutions", "concurrencyRetryAfterSeconds"],
+        "required": ["allowance", "used", "remaining", "windowSeconds", "resetAfterSeconds", "maxConcurrentExecutions", "activeExecutions", "concurrencyRetryAfterSeconds", "maxQueuedExecutions", "queuedExecutions", "queuedRetryAfterSeconds"],
         "properties": {
           "allowance": { "type": "integer", "format": "int64", "minimum": 1 },
           "used": { "type": "integer", "format": "int64", "minimum": 0 },
@@ -2583,7 +3639,10 @@
           "resetAt": { "type": "integer", "format": "int64", "nullable": true },
           "maxConcurrentExecutions": { "type": "integer", "format": "int64", "minimum": 1 },
           "activeExecutions": { "type": "integer", "format": "int64", "minimum": 0 },
-          "concurrencyRetryAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 }
+          "concurrencyRetryAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 },
+          "maxQueuedExecutions": { "type": "integer", "format": "int64", "minimum": 1 },
+          "queuedExecutions": { "type": "integer", "format": "int64", "minimum": 0 },
+          "queuedRetryAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 }
         }
       },
       "InferenceQuotaResponse": {
@@ -2603,7 +3662,7 @@
           "message": { "type": "string" },
           "errorCode": {
             "type": "string",
-            "enum": ["INFERENCE_QUOTA_EXCEEDED", "INFERENCE_CONCURRENCY_EXCEEDED"]
+            "enum": ["INFERENCE_QUOTA_EXCEEDED", "INFERENCE_CONCURRENCY_EXCEEDED", "INFERENCE_QUEUE_LIMIT_EXCEEDED"]
           },
           "data": {
             "type": "object",
@@ -2615,7 +3674,9 @@
               "resetAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 },
               "maxConcurrentExecutions": { "type": "integer", "format": "int64", "minimum": 1 },
               "activeExecutions": { "type": "integer", "format": "int64", "minimum": 0 },
-              "retryAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 }
+              "retryAfterSeconds": { "type": "integer", "format": "int64", "minimum": 0 },
+              "maxQueuedExecutions": { "type": "integer", "format": "int64", "minimum": 0 },
+              "queuedExecutions": { "type": "integer", "format": "int64", "minimum": 0 }
             }
           }
         }
@@ -2671,7 +3732,7 @@
               "trigger": {
                 "type": "string",
                 "nullable": true,
-                "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT"]
+                "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT", "VIEWER_REQUEST"]
               },
               "phase": {
                 "type": "string",
@@ -2707,7 +3768,7 @@
               "studyInstanceUID": { "type": "string" },
               "runId": { "type": "string" },
               "runNumber": { "type": "integer", "minimum": 1 },
-              "trigger": { "type": "string", "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT"] },
+              "trigger": { "type": "string", "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT", "VIEWER_REQUEST"] },
               "phase": { "type": "string", "enum": ["QUEUED", "PROCESSING", "TERMINAL"] },
               "outcome": {
                 "type": "string",
@@ -2722,7 +3783,19 @@
               "version": { "type": "integer", "format": "int64", "minimum": 1 },
               "startedAt": { "type": "string", "format": "date-time", "nullable": true },
               "completedAt": { "type": "string", "format": "date-time", "nullable": true },
-              "updatedAt": { "type": "string", "format": "date-time" }
+              "updatedAt": { "type": "string", "format": "date-time" },
+              "executionId": { "type": "string", "description": "Optional: execution whose change produced this event" },
+              "modelName": { "type": "string", "description": "Optional: model of that execution" },
+              "status": {
+                "type": "string",
+                "description": "Optional: execution status after the change",
+                "enum": ["pending", "queued", "running", "completed", "failed", "skipped", "cancelled"]
+              },
+              "notify": {
+                "type": "boolean",
+                "description": "Whether the connected user should get a notification (bell entry / toast) for this event. Automatic runs notify the creators of their ingestion jobs that have notifications on, plus ADMIN/OWNER users, unless the user muted automatic runs (user metadata notifyAutomaticRuns=false, read when the stream opens); other runs notify only the user who launched them. Status updates must be applied whatever its value."
+              },
+              "cancelledByYou": { "type": "boolean", "description": "True when the connected user cancelled this run." }
             }
           }
         ]
@@ -2755,7 +3828,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "enum": ["NO_USABLE_DICOM", "UNSUPPORTED_MODALITY", "REQUIRED_SERIES_MISSING", "MODEL_NOT_APPLICABLE", "PREREQUISITE_NOT_MET", "MODEL_DISABLED"]
+            "enum": ["NO_USABLE_DICOM", "UNSUPPORTED_MODALITY", "REQUIRED_SERIES_MISSING", "MODEL_NOT_APPLICABLE", "PREREQUISITE_NOT_MET", "MODEL_DISABLED", "EXPIRED_NEVER_RAN"]
           },
           "message": { "type": "string", "nullable": true }
         }
@@ -2770,7 +3843,7 @@
               "runId": { "type": "string" },
               "studyInstanceUID": { "type": "string" },
               "runNumber": { "type": "integer", "minimum": 1 },
-              "trigger": { "type": "string", "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT"] },
+              "trigger": { "type": "string", "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT", "VIEWER_REQUEST"] },
               "phase": { "type": "string", "enum": ["QUEUED", "PROCESSING", "TERMINAL"] },
               "outcome": {
                 "type": "string",
@@ -2796,15 +3869,206 @@
           { "$ref": "#/components/schemas/ProcessingRunSummary" },
           {
             "type": "object",
-            "required": ["executions"],
+            "required": ["executions", "cancellable"],
             "properties": {
               "executions": {
                 "type": "array",
                 "items": { "$ref": "#/components/schemas/ProcessingRunExecutionSummary" }
+              },
+              "cancellable": {
+                "type": "boolean",
+                "description": "True while the run is active and at least one model has not started computing, so POST .../cancel would cancel something."
+              },
+              "cancelledAt": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When a user cancelled the run's waiting models. Absent otherwise."
+              },
+              "waitingReason": {
+                "type": "string",
+                "enum": ["study_growing", "stale"],
+                "description": "Why an active run is not computing. study_growing: the remaining models wait for the study to stop receiving images (reported by the run-detail endpoint only). stale: the remaining models were never started and the run carries PENDING_STALE or EXPECTED_JOB_MISSING. Absent while a model is running, or when the run is merely queued."
+              },
+              "stableAfter": {
+                "type": "string",
+                "format": "date-time",
+                "description": "With waitingReason study_growing: the earliest time the study is considered stable if no further image arrives."
               }
             }
           }
         ]
+      },
+      "SelectedView": {
+        "type": "object",
+        "required": ["sopInstanceUID"],
+        "properties": {
+          "sopInstanceUID": { "type": "string" },
+          "seriesInstanceUID": { "type": "string", "nullable": true },
+          "viewLabel": { "type": "string", "nullable": true },
+          "order": { "type": "integer" },
+          "role": { "type": "string" },
+          "extra": { "type": "object" }
+        }
+      },
+      "SelectedViews": {
+        "type": "array",
+        "nullable": true,
+        "description": "Views the model actually used. null means the run did not record its selection.",
+        "items": { "$ref": "#/components/schemas/SelectedView" }
+      },
+      "StudyLatestModelResult": {
+        "type": "object",
+        "required": ["modelName", "modelVersion", "modality", "modelId", "artifactModelId", "containerId", "runId", "executionId", "studyServiceJobId", "completedAt", "trigger", "selectedViews", "reportAvailable"],
+        "properties": {
+          "modelName": { "type": "string" },
+          "modelVersion": { "type": "string", "nullable": true },
+          "modality": { "type": "string", "description": "study-service modality, for example angiogram" },
+          "modelId": { "type": "string", "nullable": true, "description": "Firestore registration ID of the matching tenant model" },
+          "artifactModelId": { "type": "string", "nullable": true, "description": "model-info modelId (ModelID in /model/proxy/available)" },
+          "containerId": { "type": "string", "nullable": true },
+          "runId": { "type": "string", "nullable": true },
+          "executionId": { "type": "string", "nullable": true, "description": "null means use the legacy job report route" },
+          "studyServiceJobId": { "type": "string" },
+          "completedAt": { "type": "string", "nullable": true },
+          "trigger": { "type": "string", "nullable": true, "enum": ["AUTO", "MANUAL_REPROCESS", "LEGACY_IMPORT", "VIEWER_REQUEST"] },
+          "selectedViews": { "$ref": "#/components/schemas/SelectedViews" },
+          "reportAvailable": { "type": "boolean" },
+          "dispatchSeriesInstanceUIDs": {
+            "type": "array",
+            "nullable": true,
+            "items": { "type": "string" },
+            "description": "Optional. Series Instance UIDs the run was dispatched with, passed through from study-service. A run requested from the viewer records its list whether or not the user picked series; null means no list was recorded and the run used every series of the modality. Omitted when study-service does not report the field."
+          }
+        }
+      },
+      "StudyLatestModelResultsResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "required": ["studyInstanceUID", "results"],
+            "properties": {
+              "studyInstanceUID": { "type": "string" },
+              "results": { "type": "array", "items": { "$ref": "#/components/schemas/StudyLatestModelResult" } }
+            }
+          }
+        }
+      },
+      "ModelReportResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "required": ["htmlBase64", "contentType"],
+            "properties": {
+              "htmlBase64": { "type": "string", "format": "byte" },
+              "contentType": { "type": "string", "enum": ["text/html"] },
+              "modelVersion": { "type": "string", "description": "Version of the container that rendered the report" }
+            }
+          }
+        }
+      },
+      "ViewerModelRunRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "seriesInstanceUIDs": { "type": "array", "maxItems": 1000, "items": { "type": "string", "maxLength": 64 } },
+          "modality": { "type": "string", "description": "DICOM modality, required only for models supporting several modalities" }
+        }
+      },
+      "ViewerModelRunResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "required": ["runId", "runNumber", "trigger", "phase", "executionId", "modelId", "modelName", "modelVersion"],
+            "properties": {
+              "runId": { "type": "string" },
+              "runNumber": { "type": "integer", "minimum": 1 },
+              "trigger": { "type": "string", "enum": ["VIEWER_REQUEST"] },
+              "phase": { "type": "string", "enum": ["QUEUED"] },
+              "executionId": { "type": "string" },
+              "modelId": { "type": "string" },
+              "modelName": { "type": "string" },
+              "modelVersion": { "type": "string" }
+            }
+          }
+        }
+      },
+      "CreatedStudyProcessingRun": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["runId", "runNumber", "trigger", "phase", "expectedModels"],
+        "properties": {
+          "runId": { "type": "string" },
+          "runNumber": { "type": "integer", "minimum": 1 },
+          "trigger": { "type": "string", "enum": ["MANUAL_REPROCESS"] },
+          "phase": { "type": "string", "enum": ["QUEUED"] },
+          "expectedModels": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "BulkReprocessStudiesRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["studyInstanceUIDs"],
+        "properties": {
+          "studyInstanceUIDs": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1, "maxLength": 255 }
+          }
+        }
+      },
+      "BulkReprocessStudyResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["studyInstanceUID", "accepted"],
+        "properties": {
+          "studyInstanceUID": { "type": "string" },
+          "accepted": { "type": "boolean" },
+          "run": { "$ref": "#/components/schemas/CreatedStudyProcessingRun" },
+          "errorCode": {
+            "type": "string",
+            "enum": ["INVALID_PAYLOAD", "MISSING_RECORD", "DUPLICATE_RECORD", "INFERENCE_QUOTA_EXCEEDED", "INFERENCE_CONCURRENCY_EXCEEDED", "INFERENCE_QUEUE_LIMIT_EXCEEDED", "INFERENCE_QUOTA_UNAVAILABLE", "SERVER_ERROR"]
+          },
+          "message": { "type": "string" },
+          "retryAfterSeconds": { "type": "integer", "format": "int64", "minimum": 1 }
+        }
+      },
+      "BulkReprocessStudiesResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["results", "acceptedCount", "rejectedCount"],
+            "properties": {
+              "results": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 10,
+                "items": { "$ref": "#/components/schemas/BulkReprocessStudyResult" }
+              },
+              "acceptedCount": { "type": "integer", "minimum": 0, "maximum": 10 },
+              "rejectedCount": { "type": "integer", "minimum": 0, "maximum": 10 }
+            }
+          }
+        }
       },
       "ProcessingRunExecutionResult": {
         "type": "object",
@@ -2820,7 +4084,8 @@
           "result": {
             "description": "Opaque model-specific JSON. Consumers must not assume one shared model schema.",
             "nullable": false
-          }
+          },
+          "selectedViews": { "$ref": "#/components/schemas/SelectedViews" }
         },
         "additionalProperties": false
       },
@@ -3110,6 +4375,10 @@
           },
           "scheduleEndTimestamp": {
             "type": "integer"
+          },
+          "notificationsEnabled": {
+            "type": "boolean",
+            "description": "Optional. Whether runs started by this job notify its creator and workspace admins. Defaults to true."
           }
         }
       },
@@ -3578,6 +4847,10 @@
           },
           "scheduleEndTimestamp": {
             "type": "integer"
+          },
+          "notificationsEnabled": {
+            "type": "boolean",
+            "description": "Optional. Omit to keep the current value."
           }
         }
       },

@@ -1,0 +1,24 @@
+{
+  "source": "thresholds.json of heartwise/DeepCORO_JEPA@6e192ebdee3b968ad29cb45332fd7eabac7689ba (tag v19.2), balanced point per segment",
+  "weights_sha256": "8af2e27adb0978b5e610d21dc838d1fc34f23b22f740d9f06e47205010767eed",
+  "prob_significant": {
+    "prox_rca": 0.1714,
+    "mid_rca": 0.1382,
+    "dist_rca": 0.0393,
+    "pda": 0.0349,
+    "posterolateral": 0.025,
+    "left_main": 0.0624,
+    "prox_lad": 0.1343,
+    "mid_lad": 0.2026,
+    "dist_lad": 0.0411,
+    "D1": 0.1106,
+    "D2": 0.0786,
+    "prox_lcx": 0.1238,
+    "mid_lcx": 0.045,
+    "dist_lcx": 0.0187,
+    "om1": 0.0579,
+    "om2": 0.0522,
+    "bx": 0.0282,
+    "lvp": 0.0004
+  }
+}

@@ -46,6 +46,18 @@ type inferenceWorklistHandlers struct {
 	getRunDetail       http.HandlerFunc
 	getExecutionResult http.HandlerFunc
 	reprocessStudy     http.HandlerFunc
+	reprocessStudies   http.HandlerFunc
+	// Viewer previous results: reads and single-model runs are available to
+	// every authenticated tenant user who accepted the policy, like predict.
+	getLatestResults   http.HandlerFunc
+	getExecutionReport http.HandlerFunc
+	getStudyJobReport  http.HandlerFunc
+	runStudyModel      http.HandlerFunc
+	getStudyMedia      http.HandlerFunc
+	getStudyMediaFile  http.HandlerFunc
+	// Cancelling the waiting models of a run is open to the same users as
+	// the run detail and the viewer run.
+	cancelRun http.HandlerFunc
 }
 
 type inferenceFeedbackHandlers struct {
@@ -61,6 +73,34 @@ func mountInferenceFeedbackRoutes(r chi.Router, handlers inferenceFeedbackHandle
 	r.Get("/{modelID}/feedback", handlers.get)
 	r.Put("/feedback/update", handlers.update)
 	r.Delete("/{modelID}/feedback/remove", handlers.remove)
+}
+
+type iamHandoffHandlers struct {
+	exchange http.HandlerFunc
+	link     http.HandlerFunc
+}
+
+// mountIAMHandoffRoutes exposes the sign-in handoff (CA-268): exchanging a
+// one-time code is public, linking an account needs a PACS-AI session.
+func mountIAMHandoffRoutes(r chi.Router, authenticate func(http.Handler) http.Handler, handlers iamHandoffHandlers) {
+	r.Post("/handoff/exchange", handlers.exchange)
+	r.With(authenticate).Post("/handoff/link", handlers.link)
+}
+
+type userViewerTourHandlers struct {
+	get      http.HandlerFunc
+	complete http.HandlerFunc
+	reset    http.HandlerFunc
+}
+
+// mountUserViewerTourRoutes exposes the viewer onboarding tour state. The
+// routes carry no user id: handlers act on the user stored in the
+// authenticated request context, so callers must mount them behind
+// TokenSessionAuthGuard.
+func mountUserViewerTourRoutes(r chi.Router, handlers userViewerTourHandlers) {
+	r.Get("/viewer-tour", handlers.get)
+	r.Put("/viewer-tour/complete", handlers.complete)
+	r.Post("/viewer-tour/reset", handlers.reset)
 }
 
 // mountInferenceWorklistRoutes keeps authentication and policy acceptance
@@ -81,11 +121,44 @@ func mountInferenceWorklistRoutes(
 		r.Get("/worklist/studies/{studyInstanceUID}/runs", handlers.getRunHistory)
 		r.Get("/processing/runs/{runId}", handlers.getRunDetail)
 		r.Get("/processing/runs/{runId}/executions/{executionId}/result", handlers.getExecutionResult)
+		r.Get("/worklist/studies/{studyInstanceUID}/latest-results", handlers.getLatestResults)
+		r.Get("/processing/runs/{runId}/executions/{executionId}/report", handlers.getExecutionReport)
+		r.Get("/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/report", handlers.getStudyJobReport)
+		r.Post("/worklist/studies/{studyInstanceUID}/models/{modelId}/run", handlers.runStudyModel)
+		r.Get("/worklist/studies/{studyInstanceUID}/media", handlers.getStudyMedia)
+		r.Get("/media/{mediaId}", handlers.getStudyMediaFile)
+		r.Post("/processing/runs/{runId}/cancel", handlers.cancelRun)
 
 		r.Group(func(r chi.Router) {
 			r.Use(ownerOrAdmin)
+			r.Post("/worklist/studies/reprocess-batch", handlers.reprocessStudies)
 			r.Post("/worklist/studies/{studyInstanceUID}/reprocess", handlers.reprocessStudy)
 		})
+	})
+}
+
+type inferencePredictionsHandlers struct {
+	list    http.HandlerFunc
+	history http.HandlerFunc
+	export  http.HandlerFunc
+}
+
+// mountInferencePredictionsRoutes exposes the AI Predictions page to every
+// authenticated tenant user who accepted the policies. The "all" view is
+// limited to workspace administrators by the service, which reads the role
+// from the authenticated request context; "mine" always means that user.
+func mountInferencePredictionsRoutes(
+	r chi.Router,
+	authenticate func(http.Handler) http.Handler,
+	acceptPolicy func(http.Handler) http.Handler,
+	handlers inferencePredictionsHandlers,
+) {
+	r.Group(func(r chi.Router) {
+		r.Use(authenticate)
+		r.Use(acceptPolicy)
+		r.Get("/predictions", handlers.list)
+		r.Get("/predictions/export.csv", handlers.export)
+		r.Get("/predictions/{studyInstanceUID}/history", handlers.history)
 	})
 }
 
@@ -102,8 +175,10 @@ func (router *router) InitRouter() *chi.Mux {
 	elasticsearchQueryController := interfaces.ServiceContainer().RegisterElasticsearchRESTQueryController()
 	iamMiddleware := interfaces.ServiceContainer().RegisterIAMRESTMiddleware()
 	iamCommandController := interfaces.ServiceContainer().RegisterIAMRESTCommandController()
+	iamHandoffController := interfaces.ServiceContainer().RegisterIAMHandoffController()
 	inferenceCommandController := interfaces.ServiceContainer().RegisterInferenceRESTCommandController()
 	inferenceQueryController := interfaces.ServiceContainer().RegisterInferenceRESTQueryController()
+	inferencePredictionsController := interfaces.ServiceContainer().RegisterInferenceRESTPredictionsController()
 	leadCommandController := interfaces.ServiceContainer().RegisterLeadRESTCommandController()
 	orchestratorController := interfaces.ServiceContainer().RegisterOrchestratorRESTController()
 	orthancProxy := interfaces.ServiceContainer().RegisterOrthancProxy()
@@ -198,6 +273,10 @@ func (router *router) InitRouter() *chi.Mux {
 				r.Post("/login", iamCommandController.LoginTenantUser)
 				r.Post("/forgot-password", iamCommandController.ForgotTenantUserPassword)
 				r.Post("/verify-email", iamCommandController.VerifyTenantUserEmail)
+				mountIAMHandoffRoutes(r, iamMiddleware.TokenSessionAuthGuard, iamHandoffHandlers{
+					exchange: iamHandoffController.ExchangeHandoff,
+					link:     iamHandoffController.CompleteHandoffLink,
+				})
 			})
 
 			// inference module
@@ -210,6 +289,8 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 					r.Use(iamMiddleware.PolicyAcceptanceGuard)
 					r.Get("/quota", inferenceQueryController.GetInferenceQuota)
+					r.With(iamMiddleware.RBACOwnerOrAdminGuard).Get("/gpus", inferenceCommandController.GetGPUs)
+					r.With(iamMiddleware.RBACOwnerOrAdminGuard).Get("/gpus/placement-plan", inferenceCommandController.GetGPUPlacementPlan)
 
 					r.Post("/onboarding-model-questionnaire-answers/add", inferenceCommandController.AddOnboardingModelQuestionnaireAnswers)
 					r.Get("/onboarding-model-questionnaire-answers", inferenceQueryController.GetOnboardingModelQuestionnaireAnswers)
@@ -229,6 +310,7 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Get("/list", inferenceQueryController.GetInferenceModels)
 							r.Get("/{ID}/versions", inferenceQueryController.GetInferenceModelVersions)
 							r.Post("/{ID}/versions/{versionID}/deploy", inferenceCommandController.DeployInferenceModelVersion)
+							r.Post("/{ID}/gpu-placement", inferenceCommandController.MoveInferenceModelGPU)
 							r.Get("/{ID}/deployments/{deploymentID}", inferenceCommandController.GetInferenceModelDeploymentOperation)
 							r.Get("/{ID}/deployments/{deploymentID}/events", inferenceCommandController.StreamInferenceModelDeploymentEvents)
 							r.Delete("/{ID}/remove", inferenceCommandController.RemoveInferenceModel)
@@ -285,11 +367,33 @@ func (router *router) InitRouter() *chi.Mux {
 						getRunDetail:       inferenceQueryController.GetProcessingRunDetail,
 						getExecutionResult: inferenceQueryController.GetProcessingRunExecutionResult,
 						reprocessStudy:     inferenceCommandController.ReprocessStudy,
+						reprocessStudies:   inferenceCommandController.ReprocessStudies,
+						getLatestResults:   inferenceQueryController.GetStudyLatestModelResults,
+						getExecutionReport: inferenceQueryController.GetProcessingRunExecutionReport,
+						getStudyJobReport:  inferenceQueryController.GetStudyJobReport,
+						runStudyModel:      inferenceCommandController.RunStudyModel,
+						getStudyMedia:      inferenceQueryController.GetStudyMedia,
+						getStudyMediaFile:  inferenceQueryController.GetStudyMediaFile,
+						cancelRun:          inferenceCommandController.CancelProcessingRun,
+					},
+				)
+
+				mountInferencePredictionsRoutes(
+					r,
+					iamMiddleware.TokenSessionAuthGuard,
+					iamMiddleware.PolicyAcceptanceGuard,
+					inferencePredictionsHandlers{
+						list:    inferencePredictionsController.ListPredictions,
+						history: inferencePredictionsController.GetPredictionModelHistory,
+						export:  inferencePredictionsController.ExportPredictions,
 					},
 				)
 			})
 
 			r.Route("/internal", func(r chi.Router) {
+				// Sign-in handoff minted by CardioAgent's backend (service token,
+				// internal network only).
+				r.Post("/auth/handoff", iamHandoffController.MintHandoff)
 				r.Route("/inference", func(r chi.Router) {
 					r.Post("/ingestion/candidates/{candidate_id}/processing", inferenceCommandController.StudyServiceProcessingCallback)
 				})
@@ -313,6 +417,7 @@ func (router *router) InitRouter() *chi.Mux {
 
 					// Message and payload management
 					r.Post("/threads/{threadID}/chat", orchestratorController.CreateMessage)
+					r.Get("/threads/{threadID}/chat/progress", orchestratorController.GetChatProgress)
 					r.Post("/threads/{threadID}/dicom", orchestratorController.UploadDicomPayload)
 				})
 			})
@@ -380,6 +485,11 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Get("/metadata", userQueryController.GetUserMetadata)
 					r.Put("/password/update", userCommandController.UpdateTenantUserPassword)
 					r.Put("/metadata/update", userCommandController.UpdateUserMetadata)
+					mountUserViewerTourRoutes(r, userViewerTourHandlers{
+						get:      userQueryController.GetUserViewerTour,
+						complete: userCommandController.CompleteUserViewerTour,
+						reset:    userCommandController.ResetUserViewerTour,
+					})
 
 					// admin or owner only
 					r.Group(func(r chi.Router) {

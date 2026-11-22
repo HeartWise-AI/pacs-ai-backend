@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -40,35 +41,27 @@ func (service *OrthancQueryService) FindLocalSOPInstance(ctx context.Context, so
 }
 
 // FindModalityStudies get modality studies
+//
+// A search without a study date and without a patient, accession or study
+// identifier returns the most recent studies first: DICOM C-FIND has no sort
+// order, and asked without dates the hospital PACS answers with its oldest
+// studies up to its own cap (5,000 studies from 2006-2020 on MHI). See
+// findRecentModalityStudies.
 func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, data types.FindModalityStudies) ([]orthancAPITypes.QueryModalityStudyAnswersResponse, string, error) {
-	res, queryID, err := service.OrthancAPIInterface.FindModalityStudies(ctx, data.ModalityID, orthancAPITypes.QueryModalitiesRequest{
-		Level:     "Study",
-		LocalAET:  os.Getenv("ORTHANC_AET"),
-		Normalize: true,
-		Query: orthancAPITypes.QueryStudy{
-			AccessionNumber:               data.AccessionNumber,
-			InstitutionName:               data.InstitutionName,
-			ModalitiesInStudy:             data.ModalitiesInStudy,
-			NumberOfStudyRelatedSeries:    data.NumberOfStudyRelatedSeries,
-			NumberOfStudyRelatedInstances: data.NumberOfStudyRelatedInstances,
-			PatientBirthDate:              data.PatientBirthDate,
-			PatientID:                     data.PatientID,
-			PatientName:                   data.PatientName,
-			PatientSex:                    data.PatientSex,
-			ReferringPhysicianName:        data.ReferringPhysicianName,
-			RequestingPhysician:           data.RequestingPhysician,
-			StudyDate:                     data.StudyDate,
-			StudyDescription:              data.StudyDescription,
-			StudyID:                       data.StudyID,
-			StudyInstanceUID:              data.StudyInstanceUID,
-			StudyTime:                     data.StudyTime,
-		},
-		Timeout: 0,
-	})
-	if err != nil && err.Error() != apiError.MissingRecord {
-		log.Println(err)
+	var (
+		res     []orthancAPITypes.QueryModalityStudyAnswersResponse
+		queryID string
+		err     error
+	)
+	if wantsRecentStudies(data) {
+		res, queryID, err = service.findRecentModalityStudies(ctx, data, time.Now())
+	} else {
+		res, queryID, err = service.queryModalityStudies(ctx, data, data.StudyDate)
+	}
+	if err != nil {
 		return nil, "", err
 	}
+	res = sortStudiesNewestFirst(res)
 
 	// logs to elasticsearch
 	if data.UserID != nil {
@@ -216,4 +209,38 @@ func (service *OrthancQueryService) ListDICOMModalities(ctx context.Context, ten
 	}
 
 	return results, nil
+}
+
+// queryModalityStudies runs one study-level C-FIND on the modality with the
+// given study date (DICOM date or range; empty for any date).
+func (service *OrthancQueryService) queryModalityStudies(ctx context.Context, data types.FindModalityStudies, studyDate string) ([]orthancAPITypes.QueryModalityStudyAnswersResponse, string, error) {
+	res, queryID, err := service.OrthancAPIInterface.FindModalityStudies(ctx, data.ModalityID, orthancAPITypes.QueryModalitiesRequest{
+		Level:     "Study",
+		LocalAET:  os.Getenv("ORTHANC_AET"),
+		Normalize: true,
+		Query: orthancAPITypes.QueryStudy{
+			AccessionNumber:               data.AccessionNumber,
+			InstitutionName:               data.InstitutionName,
+			ModalitiesInStudy:             data.ModalitiesInStudy,
+			NumberOfStudyRelatedSeries:    data.NumberOfStudyRelatedSeries,
+			NumberOfStudyRelatedInstances: data.NumberOfStudyRelatedInstances,
+			PatientBirthDate:              data.PatientBirthDate,
+			PatientID:                     data.PatientID,
+			PatientName:                   data.PatientName,
+			PatientSex:                    data.PatientSex,
+			ReferringPhysicianName:        data.ReferringPhysicianName,
+			RequestingPhysician:           data.RequestingPhysician,
+			StudyDate:                     studyDate,
+			StudyDescription:              data.StudyDescription,
+			StudyID:                       data.StudyID,
+			StudyInstanceUID:              data.StudyInstanceUID,
+			StudyTime:                     data.StudyTime,
+		},
+		Timeout: 0,
+	})
+	if err != nil && err.Error() != apiError.MissingRecord {
+		log.Println(err)
+		return nil, "", err
+	}
+	return res, queryID, nil
 }

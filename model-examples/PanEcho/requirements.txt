@@ -1,4 +1,4 @@
-torch==2.13.0
+torch==2.8.0
 torchvision==0.23.0
 pandas
 pillow
@@ -15,3 +15,5 @@ pytorchvideo==0.1.5
 opencv-python-headless==4.13.0.92
 scikit-image
 huggingface-hub
+pybase64==1.5.2
+pyjpegls==1.5.1

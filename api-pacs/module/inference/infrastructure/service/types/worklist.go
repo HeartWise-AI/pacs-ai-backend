@@ -127,10 +127,40 @@ type ProcessingRunExecutionSummary struct {
 	UpdatedAt    time.Time                                         `json:"updatedAt"`
 }
 
+// ProcessingRunWaitingReason tells a client why an active run is not computing.
+type ProcessingRunWaitingReason string
+
+const (
+	// ProcessingRunWaitingReasonStudyGrowing: the remaining models wait for
+	// the study to stop receiving images (the exam is still in progress).
+	ProcessingRunWaitingReasonStudyGrowing ProcessingRunWaitingReason = "study_growing"
+	// ProcessingRunWaitingReasonStale: the remaining models were never started
+	// and the reconciler flagged the run (PENDING_STALE, EXPECTED_JOB_MISSING).
+	ProcessingRunWaitingReasonStale ProcessingRunWaitingReason = "stale"
+)
+
 // ProcessingRunDetail contains one run aggregate and its frozen model plan.
 type ProcessingRunDetail struct {
 	ProcessingRunSummary
 	Executions []ProcessingRunExecutionSummary `json:"executions"`
+	// Cancellable is true while the run is active and has at least one model
+	// that has not started computing.
+	Cancellable bool `json:"cancellable"`
+	// CancelledAt is when a user cancelled the run's waiting models.
+	CancelledAt *time.Time `json:"cancelledAt,omitempty"`
+	// WaitingReason is absent while the run is computing, or when it is merely
+	// queued. "study_growing" is reported by the run-detail endpoint only.
+	WaitingReason ProcessingRunWaitingReason `json:"waitingReason,omitempty"`
+	// StableAfter is the earliest time the study is considered stable if no
+	// further image arrives; set only with WaitingReason "study_growing".
+	StableAfter *time.Time `json:"stableAfter,omitempty"`
+}
+
+// CancelProcessingRun scopes a user cancellation to the authenticated tenant.
+type CancelProcessingRun struct {
+	TenantID string
+	RunID    string
+	UserID   string
 }
 
 // ProcessingRunExecutionResult is the stable public envelope for one completed
@@ -144,6 +174,8 @@ type ProcessingRunExecutionResult struct {
 	Status           entity.InferenceIngestionProcessingJobStatus `json:"status"`
 	CompletedAt      time.Time                                    `json:"completedAt"`
 	Result           json.RawMessage                              `json:"result"`
+	// SelectedViews is null when the run did not record its view selection.
+	SelectedViews json.RawMessage `json:"selectedViews"`
 }
 
 // StudyProcessingRunHistoryPage returns complete runs newest first.

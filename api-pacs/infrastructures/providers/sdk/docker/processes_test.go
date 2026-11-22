@@ -27,4 +27,8 @@ func TestInferenceProcessIDsIdentifiesSupervisedWorker(t *testing.T) {
 	if err != nil || len(pids) != 1 || pids[0] != "30" {
 		t.Fatalf("pids=%v err=%v", pids, err)
 	}
+	all, err := (&DockerSDK{Client: c}).ContainerProcessIDs(context.Background(), "test")
+	if err != nil || len(all) != 4 || all[3] != "40" {
+		t.Fatalf("all pids=%v err=%v", all, err)
+	}
 }

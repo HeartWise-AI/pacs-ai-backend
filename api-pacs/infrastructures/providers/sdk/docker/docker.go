@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 
@@ -25,9 +26,11 @@ import (
 
 // DockerSDK docker sdk
 type DockerSDK struct {
-	Client  *client.Client
-	AuthStr string
-	Network string
+	Client         *client.Client
+	AuthStr        string
+	Network        string
+	GPUDefaultUUID string
+	GPUAssignments map[string]string
 }
 
 // NewClient creates a new docker client instance
@@ -37,6 +40,10 @@ func NewClient(config types.Config) (*DockerSDK, error) {
 		return nil, err
 	}
 
+	assignments, err := parseGPUAssignments(config.GPUDefaultUUID, config.GPUAssignmentsJSON)
+	if err != nil {
+		return nil, err
+	}
 	// docker registry credentials
 	authConfig := registry.AuthConfig{
 		Username: config.Username,
@@ -50,18 +57,22 @@ func NewClient(config types.Config) (*DockerSDK, error) {
 	authStr := base64.URLEncoding.EncodeToString(encodedJSON)
 
 	return &DockerSDK{
-		Client:  client,
-		AuthStr: authStr,
-		Network: config.Network,
+		Client:         client,
+		AuthStr:        authStr,
+		Network:        config.Network,
+		GPUDefaultUUID: config.GPUDefaultUUID,
+		GPUAssignments: assignments,
 	}, nil
 }
 
 // CreateContainer creates a new container
 func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateContainer) (string, error) {
+	gpuUUID := d.gpuForContainer(config.Name)
 	// define container config
 	containerConfig := &container.Config{
-		Image: config.Image,
-		Env:   config.Envs,
+		Image:  config.Image,
+		Env:    config.Envs,
+		Labels: map[string]string{gpuPlacementNameLabel: config.Name},
 		ExposedPorts: nat.PortSet{
 			"80/tcp": struct{}{}, // expose port 80 (nginx)
 		},
@@ -78,18 +89,13 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 		return "", err
 	}
 
+	if gpuUUID != "" && !isNvidiaSupported {
+		return "", fmt.Errorf("configured GPU placement requires NVIDIA runtime")
+	}
 	if isNvidiaSupported {
 		hostConfig.Runtime = "nvidia"
-		// use all GPUs
-		hostConfig.Resources = container.Resources{
-			DeviceRequests: []container.DeviceRequest{
-				{
-					Driver:       "nvidia",
-					Count:        -1, // Use all available GPUs
-					Capabilities: [][]string{{"gpu"}},
-				},
-			},
-		}
+		hostConfig.DeviceRequests = gpuDeviceRequests(gpuUUID)
+
 	} else {
 		log.Println("[docker] NVIDIA runtime not available")
 	}
@@ -120,6 +126,9 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 // could claim the active container's identity or host ports.
 func (d *DockerSDK) CreateCandidateContainer(ctx context.Context, config types.CreateCandidateContainer) (string, error) {
 	config.Name = strings.TrimSpace(config.Name)
+	if config.GPUUUID != "" && !gpuUUIDPattern.MatchString(config.GPUUUID) {
+		return "", fmt.Errorf("candidate GPU must be a physical UUID")
+	}
 	config.Image = strings.TrimSpace(config.Image)
 	config.ActiveContainerID = strings.TrimSpace(config.ActiveContainerID)
 	if config.Name == "" || config.Image == "" || config.ActiveContainerID == "" {
@@ -136,6 +145,15 @@ func (d *DockerSDK) CreateCandidateContainer(ctx context.Context, config types.C
 	}
 	if strings.TrimPrefix(active.Name, "/") == config.Name {
 		return "", fmt.Errorf("candidate container name must differ from the active container name")
+	}
+
+	if config.KeepActiveConfiguration {
+		if expected := strings.TrimSpace(config.ExpectedImageID); expected != "" && active.Image != expected {
+			return "", fmt.Errorf("active container no longer runs the expected image")
+		}
+		if dropped := len(active.HostConfig.PortBindings); dropped > 0 {
+			log.Printf("[docker] candidate %s does not keep %d published host port(s) of %s: the active container still holds them", config.Name, dropped, strings.TrimPrefix(active.Name, "/"))
+		}
 	}
 
 	containerConfig, hostConfig, networkConfig := d.candidateContainerConfigs(config, active)
@@ -155,6 +173,31 @@ func (d *DockerSDK) candidateContainerConfigs(
 	containerConfig := &container.Config{
 		Image: config.Image,
 		Env:   append([]string(nil), config.Envs...),
+	}
+	keep := config.KeepActiveConfiguration && active.Config != nil
+	if keep {
+		// A move keeps the container as it runs: same environment, labels,
+		// command and entrypoint. Only the image field is set by the caller,
+		// and it names the very image the active container uses.
+		copied := *active.Config
+		copied.Image = config.Image
+		copied.Env = append([]string(nil), active.Config.Env...)
+		copied.Cmd = append([]string(nil), active.Config.Cmd...)
+		copied.Entrypoint = append([]string(nil), active.Config.Entrypoint...)
+		copied.Labels = make(map[string]string, len(active.Config.Labels)+1)
+		for key, value := range active.Config.Labels {
+			copied.Labels[key] = value
+		}
+		copied.Volumes = make(map[string]struct{}, len(active.Config.Volumes))
+		for volume := range active.Config.Volumes {
+			copied.Volumes[volume] = struct{}{}
+		}
+		// Docker names a container's host after its own ID unless told otherwise.
+		if active.ContainerJSONBase != nil && len(copied.Hostname) >= 12 && strings.HasPrefix(active.ID, copied.Hostname) {
+			copied.Hostname = ""
+		}
+		copied.MacAddress = "" //nolint:staticcheck // an address cannot be shared with the running container
+		containerConfig = &copied
 	}
 	if active.Config != nil {
 		containerConfig.ExposedPorts = clonePortSet(active.Config.ExposedPorts)
@@ -177,14 +220,42 @@ func (d *DockerSDK) candidateContainerConfigs(
 		copied.Links = nil
 		copied.AutoRemove = false
 		copied.ContainerIDFile = ""
-		copied.RestartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
+		if !keep {
+			copied.RestartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
+		}
 		hostConfig = &copied
+	}
+
+	// Apply the registration's stable placement policy across repeated upgrades.
+	// With no configured policy, preserve its existing devices.
+	activeName := ""
+	if active.ContainerJSONBase != nil {
+		activeName = strings.TrimPrefix(active.Name, "/")
+	}
+	if active.Config != nil && active.Config.Labels[gpuPlacementNameLabel] != "" {
+		activeName = active.Config.Labels[gpuPlacementNameLabel]
+	}
+	if !keep {
+		containerConfig.Labels = map[string]string{}
+	}
+	containerConfig.Labels[gpuPlacementNameLabel] = activeName
+	uuid := config.GPUUUID
+	if uuid == "" {
+		uuid = d.gpuForContainer(activeName)
+	}
+	if uuid != "" {
+		hostConfig.Runtime = "nvidia"
+		hostConfig.DeviceRequests = gpuDeviceRequests(uuid)
 	}
 
 	networkConfig := &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{}}
 	if active.NetworkSettings != nil {
-		for networkName := range active.NetworkSettings.Networks {
-			networkConfig.EndpointsConfig[networkName] = &network.EndpointSettings{}
+		for networkName, endpoint := range active.NetworkSettings.Networks {
+			settings := &network.EndpointSettings{}
+			if keep && endpoint != nil {
+				settings.Aliases = extraNetworkAliases(active, endpoint.Aliases)
+			}
+			networkConfig.EndpointsConfig[networkName] = settings
 		}
 	}
 	if len(networkConfig.EndpointsConfig) == 0 && strings.TrimSpace(d.Network) != "" {
@@ -192,6 +263,25 @@ func (d *DockerSDK) candidateContainerConfigs(
 	}
 
 	return containerConfig, hostConfig, networkConfig
+}
+
+// extraNetworkAliases returns the aliases an operator gave the active
+// container. Its name and ID are left out: Docker resolves those to the active
+// container, which keeps running beside the candidate, and a candidate that
+// answered to them would receive requests meant for the other one.
+func extraNetworkAliases(active engine.ContainerJSON, aliases []string) []string {
+	name, id := "", ""
+	if active.ContainerJSONBase != nil {
+		name, id = strings.TrimPrefix(active.Name, "/"), active.ID
+	}
+	var kept []string
+	for _, alias := range aliases {
+		if alias == "" || alias == name || (len(alias) >= 12 && strings.HasPrefix(id, alias)) {
+			continue
+		}
+		kept = append(kept, alias)
+	}
+	return kept
 }
 
 func clonePortSet(source nat.PortSet) nat.PortSet {
@@ -205,11 +295,39 @@ func clonePortSet(source nat.PortSet) nat.PortSet {
 	return cloned
 }
 
+var containerNameReferencePattern = regexp.MustCompile(`^/?[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
+var containerIDReferencePattern = regexp.MustCompile(`^[a-fA-F0-9]{12,64}$`)
+
 // GetContainerInfo gets the container info
 func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error) {
 
 	// inspect the container for basic info
 	containerJSON, err := d.Client.ContainerInspect(ctx, containerID)
+	// URL parsers lowercase hostnames, whereas Docker container names are case
+	// sensitive. Resolve only an unambiguous name after an exact lookup misses;
+	// callers still authorize the inspected canonical container ID.
+	if errdefs.IsNotFound(err) && containerNameReferencePattern.MatchString(containerID) && !containerIDReferencePattern.MatchString(containerID) {
+		originalErr := err
+		listed, listErr := d.Client.ContainerList(ctx, container.ListOptions{All: true})
+		if listErr != nil {
+			return types.GetContainerInfoResult{}, listErr
+		}
+		matches := make(map[string]struct{})
+		for _, candidate := range listed {
+			for _, name := range candidate.Names {
+				if strings.EqualFold(strings.TrimPrefix(name, "/"), strings.TrimPrefix(containerID, "/")) {
+					matches[candidate.ID] = struct{}{}
+				}
+			}
+		}
+		if len(matches) > 1 {
+			return types.GetContainerInfoResult{}, fmt.Errorf("ambiguous case-insensitive Docker container name %q", containerID)
+		}
+		err = originalErr
+		for canonicalID := range matches {
+			containerJSON, err = d.Client.ContainerInspect(ctx, canonicalID)
+		}
+	}
 	if err != nil {
 		log.Println("[docker] error:", err)
 		return types.GetContainerInfoResult{}, err
@@ -228,13 +346,21 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 		return types.GetContainerInfoResult{}, err
 	}
 
+	placementName, imageReference := "", ""
+	if containerJSON.Config != nil {
+		placementName = containerJSON.Config.Labels[gpuPlacementNameLabel]
+		imageReference = containerJSON.Config.Image
+	}
 	return types.GetContainerInfoResult{
-		ID:         containerJSON.ID,
-		ImageID:    containerJSON.Image,
-		Name:       containerJSON.Name,
-		Lifecycle:  types.LifecycleFromStatus(types.Status(containerJSON.State.Status)),
-		StartedAt:  startedAtTime,
-		FinishedAt: finishedAtTime,
+		PlacementName:  placementName,
+		GPUUUID:        singleGPUUUID(containerJSON.HostConfig),
+		ID:             containerJSON.ID,
+		ImageID:        containerJSON.Image,
+		ImageReference: imageReference,
+		Name:           containerJSON.Name,
+		Lifecycle:      types.LifecycleFromStatus(types.Status(containerJSON.State.Status)),
+		StartedAt:      startedAtTime,
+		FinishedAt:     finishedAtTime,
 	}, nil
 }
 
@@ -301,6 +427,7 @@ func (d *DockerSDK) InspectImage(ctx context.Context, imageName string) (types.I
 	return types.InspectImageResult{
 		ID:          inspection.ID,
 		RepoDigests: append([]string(nil), inspection.RepoDigests...),
+		RepoTags:    append([]string(nil), inspection.RepoTags...),
 		Labels:      labels,
 	}, nil
 }
@@ -363,6 +490,22 @@ func (d *DockerSDK) StartContainer(ctx context.Context, containerID string) erro
 func (d *DockerSDK) StopContainer(ctx context.Context, containerID string) error {
 	err := d.Client.ContainerStop(ctx, containerID, container.StopOptions{})
 	if err != nil {
+		log.Println("[docker] error:", err)
+		return err
+	}
+
+	return nil
+}
+
+// RenameContainer gives a container another Docker name. Docker refuses a name
+// another container holds; on a running container the name it answers to on
+// its networks changes with it.
+func (d *DockerSDK) RenameContainer(ctx context.Context, containerID, newName string) error {
+	containerID, newName = strings.TrimSpace(containerID), strings.TrimPrefix(strings.TrimSpace(newName), "/")
+	if containerID == "" || !containerNameReferencePattern.MatchString(newName) || len(newName) < 2 {
+		return fmt.Errorf("a container and a valid new container name are required")
+	}
+	if err := d.Client.ContainerRename(ctx, containerID, newName); err != nil {
 		log.Println("[docker] error:", err)
 		return err
 	}

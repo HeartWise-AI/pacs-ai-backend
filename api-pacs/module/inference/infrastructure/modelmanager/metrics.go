@@ -5,7 +5,9 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"math"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,7 +22,33 @@ var (
 	modelManagerDurationCount        = expvar.NewMap("model_manager_duration_seconds_count")
 	modelManagerDurationSumMillis    = expvar.NewMap("model_manager_duration_milliseconds_sum")
 	modelManagerDurationBucket       = expvar.NewMap("model_manager_duration_seconds_bucket")
+	modelManagerGPUProcessMemoryMiB  = expvar.NewMap("model_manager_gpu_process_memory_mib")
+	modelManagerReservationMiB       = expvar.NewMap("model_manager_reservation_mib")
+	modelManagerMeasuredModels       = expvar.NewMap("model_manager_measured_models")
+	modelManagerOvershootsTotal      = expvar.NewInt("model_manager_reservation_overshoots_total")
 )
+
+// gpuLastSampled holds, per GPU, when its processes were last read. The age
+// gauge is computed when /debug/vars is read, so it keeps growing if the
+// sampler stops; -1 means the GPU has never been sampled.
+var gpuLastSampled sync.Map
+
+func gpuSampleAges() map[string]float64 {
+	ages := map[string]float64{}
+	gpuLastSampled.Range(func(key, value any) bool {
+		age := -1.0
+		if at := value.(time.Time); !at.IsZero() {
+			age = math.Round(time.Since(at).Seconds()*10) / 10
+		}
+		ages["gpu="+key.(string)] = age
+		return true
+	})
+	return ages
+}
+
+func init() {
+	expvar.Publish("model_manager_gpu_sample_age_seconds", expvar.Func(func() any { return gpuSampleAges() }))
+}
 
 var modelManagerDurationBuckets = []time.Duration{
 	10 * time.Millisecond, 50 * time.Millisecond, 100 * time.Millisecond,
@@ -36,7 +64,56 @@ type Metrics interface {
 	ObserveEvent(string, string)
 }
 
+// measurementMetrics is implemented by metric sinks that also publish the
+// measured-memory gauges. It is optional so existing sinks keep working.
+type measurementMetrics interface {
+	SetMeasurements(MeasurementReport)
+}
+
 type expvarMetrics struct{}
+
+// SetMeasurements publishes sampled process memory per device and the total
+// reservation under each source. Like the other gauges it carries no model or
+// container identifier; per-model values are served by the GPU status endpoint.
+func (expvarMetrics) SetMeasurements(report MeasurementReport) {
+	for uuid, usage := range report.GPUs {
+		gpuLastSampled.Store(uuid, usage.SampledAt)
+		if usage.SampledAt.IsZero() {
+			continue
+		}
+		setMapInt(modelManagerGPUProcessMemoryMiB, "gpu="+uuid+",kind=managed", int64(usage.ManagedMiB))
+		setMapInt(modelManagerGPUProcessMemoryMiB, "gpu="+uuid+",kind=foreign", int64(usage.ForeignMiB))
+		setMapInt(modelManagerGPUProcessMemoryMiB, "gpu="+uuid+",kind=unattributed", int64(usage.UnattributedMiB))
+	}
+	var declared, effective, measured, observedPeak, sampled, eligible, overshoots int64
+	for _, model := range report.Models {
+		overshoots += int64(model.Overshoots)
+		if !model.ResourcesKnown || !model.GPURequired {
+			continue
+		}
+		declared += int64(model.DeclaredReservationMiB)
+		effective += int64(model.ReservationMiB)
+		observedPeak += int64(model.MeasuredPeakMiB)
+		if model.Sampled {
+			sampled++
+		}
+		// "measured" is what MODEL_RESERVATION_SOURCE=measured would reserve
+		// today: models without enough samples still count at their declaration.
+		if model.MeasuredReservationMiB > 0 {
+			eligible++
+			measured += int64(model.MeasuredReservationMiB)
+		} else {
+			measured += int64(model.DeclaredReservationMiB)
+		}
+	}
+	setMapInt(modelManagerReservationMiB, "kind=declared", declared)
+	setMapInt(modelManagerReservationMiB, "kind=effective", effective)
+	setMapInt(modelManagerReservationMiB, "kind=measured", measured)
+	setMapInt(modelManagerReservationMiB, "kind=observed_peak", observedPeak)
+	setMapInt(modelManagerMeasuredModels, "kind=sampled", sampled)
+	setMapInt(modelManagerMeasuredModels, "kind=eligible", eligible)
+	modelManagerOvershootsTotal.Set(overshoots)
+}
 
 var defaultMetrics Metrics = expvarMetrics{}
 
@@ -66,6 +143,11 @@ func (expvarMetrics) SetSnapshot(snapshot Snapshot) {
 	setMapInt(modelManagerGPUMemoryMiB, "kind=active", int64(snapshot.ActiveMiB))
 	setMapInt(modelManagerGPUMemoryMiB, "kind=reserved", int64(snapshot.ReservedMiB))
 	setMapInt(modelManagerGPUMemoryMiB, "kind=available", int64(snapshot.AvailableMiB))
+	for uuid, gpu := range snapshot.GPUs {
+		for kind, value := range map[string]int{"capacity": gpu.CapacityMiB, "resident": gpu.ResidentMiB, "active": gpu.ActiveMiB, "reserved": gpu.ReservedMiB, "available": gpu.AvailableMiB} {
+			setMapInt(modelManagerGPUMemoryMiB, "gpu="+uuid+",kind="+kind, int64(value))
+		}
+	}
 	modelManagerQueueDepth.Set(int64(snapshot.QueueDepth))
 }
 

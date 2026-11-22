@@ -1,0 +1,33 @@
+{
+  "scad": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Spontaneous coronary artery dissection (SCAD)",
+    "nameFr": "Dissection coronarienne spontanée (DCS)",
+    "threshold": 0.0524009,
+    "category": "primary"
+  },
+  "cad": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Atherosclerotic coronary artery disease (training auxiliary, not reported)",
+    "nameFr": "Maladie coronarienne athérosclérotique (auxiliaire d'entraînement, non rapportée)",
+    "category": "auxiliary"
+  },
+  "other": {
+    "head_dim": 1,
+    "task": "binary_classification",
+    "name": "Other angiographic finding (training auxiliary, not reported)",
+    "nameFr": "Autre constatation angiographique (auxiliaire d'entraînement, non rapportée)",
+    "category": "auxiliary"
+  },
+  "stenosis": {
+    "head_dim": 1,
+    "task": "regression",
+    "name": "Maximum stenosis fraction (training auxiliary, not reported)",
+    "nameFr": "Fraction de sténose maximale (auxiliaire d'entraînement, non rapportée)",
+    "min": 0,
+    "max": 1,
+    "category": "auxiliary"
+  }
+}
