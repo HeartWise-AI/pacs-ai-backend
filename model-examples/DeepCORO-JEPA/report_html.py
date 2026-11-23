@@ -20,6 +20,7 @@ import json
 import math
 import sys
 from html import escape
+from typing import Optional
 
 from display_calibration import (CATEGORY_LABELS, LEGACY_MODEL_VERSION, calibration, category, display_pct,
                                  result_model_version, with_display)
@@ -696,10 +697,30 @@ def pressure_auroc_text(model_version: str) -> str:
     return f"Test AUROC about {auroc}; " if auroc else ""
 
 
-def addendum(model_version: str) -> str:
+# The CTO threshold the printed CTO figures were measured at, per model version, and what is known at other thresholds
+# a result may carry (2.1.0 served v15 with a fixed CTO threshold of 0.70, evaluated on the validation split only).
+CTO_MEASURED_THRESHOLD = {"v15": 0.2134, "v19": 0.1343}
+CTO_OTHER_THRESHOLD_FIGURES = {("v15", 0.7): "validation set only (not evaluated on the test set): sensitivity 0.10, PPV 0.33"}
+
+
+def cto_threshold_note(model_version: str, cuts: Optional[dict]) -> str:
+    """A line qualifying the CTO figures when the result's CTO threshold is not the one they were measured at."""
+    measured, used = CTO_MEASURED_THRESHOLD.get(model_version), (cuts or {}).get("cto")
+    if measured is None or not isinstance(used, (int, float)) or abs(used - measured) < 1e-6:
+        return ""
+    known = CTO_OTHER_THRESHOLD_FIGURES.get((model_version, round(float(used), 4)), "not evaluated")
+    return (f"<dt>CTO flag of this result (above {used:.2f}, not the {measured:g} the CTO figures above were measured "
+            f"at)</dt><dd>{escape(known)}</dd>\n")
+
+
+def addendum(model_version: str, cuts: Optional[dict] = None) -> str:
     facts = MODEL_REPORT_FACTS[model_version]
+    performance = facts["performance"]
+    note = cto_threshold_note(model_version, cuts)
+    if note:
+        performance = performance.replace("</dl>", note + "</dl>", 1)
     return (ADDENDUM_TEMPLATE.replace("@@READOUT@@", facts["readout"]).replace("@@NOT_IN_REPORT@@", facts["not_in_report"])
-            .replace("@@PERFORMANCE@@", facts["performance"]).replace("@@SOURCES@@", facts["sources"]))
+            .replace("@@PERFORMANCE@@", performance).replace("@@SOURCES@@", facts["sources"]))
 
 
 
@@ -873,7 +894,7 @@ def render_report(preds: dict, model_version: str, recommendation: str) -> str:
   <p class="muted small" style="margin-bottom:10px">{calibration_note(version)}</p>
   <div class="details">{detail_rows(segs, cuts, region, off)}</div></section>
 <p class="disclaimer">{escape(recommendation)}</p>
-{addendum(version)}
+{addendum(version, cuts)}
 </div></body></html>"""
 
 

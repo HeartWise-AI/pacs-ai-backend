@@ -276,3 +276,14 @@ def test_the_real_1_4_1_example_renders_byte_for_byte_as_1_4_1_drew_it(client, m
         del v["display_pct"], v["display_category"]
     data = client.post("/inference/render-report", json={"result": stored["data"]}).json()["data"]
     assert base64.b64decode(data["htmlBase64"]).decode("utf-8") == report
+
+
+def test_cto_figures_are_qualified_only_when_the_result_threshold_differs():
+    from report_html import addendum, cto_threshold_note
+    assert cto_threshold_note("v15", {"cto": 0.2134}) == ""  # 2.0.0 results: the figures apply
+    assert "sensitivity 0.10, PPV 0.33" in cto_threshold_note("v15", {"cto": 0.7})  # 2.1.0 results
+    assert cto_threshold_note("v19", {"cto": 0.1343}) == ""
+    assert "not evaluated" in cto_threshold_note("v19", {"cto": 0.5})
+    assert cto_threshold_note("v13", {"cto": 0.7}) == "" and cto_threshold_note("v15", None) == ""
+    assert addendum("v15", {"cto": 0.7}).count("CTO flag of this result") == 1
+    assert "CTO flag of this result" not in addendum("v15", {"cto": 0.2134})

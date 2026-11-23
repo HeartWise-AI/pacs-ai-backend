@@ -170,6 +170,16 @@ def test_left_dominant_pda_stays_with_the_left_runs_and_no_left_run_drops_the_pr
     assert "LAD physiology: not assessed (no left coronary run)." in SERVICE.diagnosis_text(preds)
 
 
+def test_no_left_run_also_clears_the_copied_region_flags():
+    preds = _preds(severity={"prox_lad": 80.0}, prob={"prox_lad": 0.95})
+    assert preds["segments"]["prox_lad"]["significant"] and preds["lad_physiology"]["region_segments"]["prox_lad"]["significant"]
+    CustomPredictionService.apply_side_check(preds, {"a": "Right Coronary"}, ["a"], dominance=None)
+    public = json.loads(json.dumps(SERVICE.public(preds)))
+    for g, reading in public["lad_physiology"]["region_segments"].items():
+        assert reading["significant"] is False and reading["significant"] == public["segments"][g]["significant"]
+        assert reading["stenosis_pct"] == public["segments"][g]["stenosis_pct"]  # the numbers stay as written
+
+
 def test_side_check_is_off_without_labels_for_every_run_read_and_with_both_sides():
     for views, used, reason in ((None, ["a"], "view labels not provided"),
                                 ({"a": "Left Coronary"}, ["a", "b"], "a run read has no left/right coronary view label"),

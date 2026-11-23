@@ -76,9 +76,10 @@ def test_predict_examples_are_the_documented_container_response():
     assert all(isinstance(p, float) and 0 <= p <= 1 for p in predictions["study_lesions"].values())  # no yes/no call
 
 
-def test_a_v15_result_stored_by_2_1_0_is_drawn_byte_for_byte_as_2_1_0_drew_it():
+def test_a_v15_result_stored_by_2_1_0_is_drawn_with_the_v15_mapping_and_a_qualified_cto_line():
     """The predict example of 2.1.0 (model v15), kept as a stored result: 2.2.0 draws it with the v15 mapping,
-    thresholds, figures and text, exactly as 2.1.0 did."""
+    thresholds, figures and text as 2.1.0 did, plus one line saying its CTO flag (above 0.70) is not the threshold
+    the printed CTO figures were measured at."""
     import display_calibration
     from logic import CustomPredictionService
     from report_input import predictions_of
@@ -99,6 +100,7 @@ def test_a_v15_result_stored_by_2_1_0_is_drawn_byte_for_byte_as_2_1_0_drew_it():
     report = (fixtures / "stored_v15_2.1.0_report.html").read_text(encoding="utf-8")
     assert CustomPredictionService.report_html(stored) == report.rstrip("\n")
     assert "DeepCORO-JEPA v15-cal1</h1>" in report
+    assert "CTO flag of this result (above 0.70, not the 0.2134" in report and "sensitivity 0.10, PPV 0.33" in report
     service = CustomPredictionService.__new__(CustomPredictionService)
     assert response["data"]["diagnosis"] == service.diagnosis_text(predictions)
     assert response["data"]["modelRecommendations"] == CustomPredictionService.recommendations(predictions)
