@@ -108,3 +108,40 @@ func TestUpdateTenantUserByUserActorKeepsRolesUnchanged(t *testing.T) {
 		})
 	}
 }
+
+type inviteQueryRepository struct {
+	accountAccessQueryRepository
+	invites map[string]entity.UserEmailInvite
+}
+
+func (repository *inviteQueryRepository) SelectTenantUserEmailInviteByID(_ context.Context, tenantID, id string) (entity.UserEmailInvite, error) {
+	invite, ok := repository.invites[id]
+	if !ok || invite.TenantID != tenantID {
+		return entity.UserEmailInvite{}, errors.New(apiError.MissingRecord)
+	}
+	return invite, nil
+}
+
+type inviteDeletingRepository struct {
+	accountAccessCommandRepository
+	deletedInvites []string
+}
+
+func (repository *inviteDeletingRepository) DeleteTenantUserEmailInvite(_ context.Context, id string) error {
+	repository.deletedInvites = append(repository.deletedInvites, id)
+	return nil
+}
+
+func TestDeleteEmailInviteIsTenantScoped(t *testing.T) {
+	command := &inviteDeletingRepository{}
+	service := &UserCommandService{
+		UserCommandRepositoryInterface: command,
+		UserQueryRepositoryInterface: &inviteQueryRepository{invites: map[string]entity.UserEmailInvite{
+			"inv-a": {ID: "inv-a", TenantID: "tenant-a"}, "inv-b": {ID: "inv-b", TenantID: "tenant-b"},
+		}},
+	}
+	require.EqualError(t, service.DeleteTenantUserEmailInvite(context.Background(), "tenant-a", "inv-b"), apiError.MissingRecord)
+	require.Empty(t, command.deletedInvites)
+	require.NoError(t, service.DeleteTenantUserEmailInvite(context.Background(), "tenant-a", "inv-a"))
+	require.Equal(t, []string{"inv-a"}, command.deletedInvites)
+}

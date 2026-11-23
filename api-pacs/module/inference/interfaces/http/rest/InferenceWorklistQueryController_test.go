@@ -59,6 +59,7 @@ func worklistQueryRequest(method, target, tenantID string, params map[string]str
 	ctx := context.WithValue(request.Context(), chi.RouteCtxKey, routeContext)
 	if tenantID != "" {
 		ctx = context.WithValue(ctx, iamTypes.TenantIDCtx, tenantID)
+		ctx = context.WithValue(ctx, iamTypes.RoleCtx, "USER")
 	}
 	return request.WithContext(ctx)
 }

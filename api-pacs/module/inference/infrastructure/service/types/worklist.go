@@ -39,6 +39,9 @@ type GetProcessingRunExecutionResult struct {
 	TenantID    string
 	RunID       string
 	ExecutionID string
+	// AllowModel, when set, must accept the result's model-info modelId
+	// (custom-role model access); otherwise the call is ForbiddenAccess.
+	AllowModel func(modelID string) bool
 }
 
 // WorklistPage describes bounded list results without requiring a separate

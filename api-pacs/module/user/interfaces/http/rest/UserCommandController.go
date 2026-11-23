@@ -659,12 +659,16 @@ func (controller *UserCommandController) RemoveTenantUserEmailInvite(w http.Resp
 		return
 	}
 
-	err := controller.UserCommandServiceInterface.DeleteTenantUserEmailInvite(context.TODO(), emailInviteID)
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	err := controller.UserCommandServiceInterface.DeleteTenantUserEmailInvite(r.Context(), tenantID, emailInviteID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
+		case errors.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "Email invite not found."
 		case errors.FirestoreError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Error occurred while removing tenant user email invite."

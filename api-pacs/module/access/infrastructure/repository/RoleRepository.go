@@ -99,8 +99,8 @@ func (repository *RoleRepository) GetRole(ctx context.Context, tenantID, roleID 
 	return role, nil
 }
 
-// SaveRole creates or replaces a custom role document.
-func (repository *RoleRepository) SaveRole(ctx context.Context, role entity.CustomRole) error {
+// CreateRole stores a new custom role document.
+func (repository *RoleRepository) CreateRole(ctx context.Context, role entity.CustomRole) error {
 	if role.ID == "" || role.TenantID == "" {
 		return errors.New(apiError.InvalidPayload)
 	}
@@ -108,27 +108,97 @@ func (repository *RoleRepository) SaveRole(ctx context.Context, role entity.Cust
 	if err != nil {
 		return err
 	}
-	if _, err := client.Collection(role.GetModelName()).Doc(role.ID).Set(ctx, role); err != nil {
+	if _, err := client.Collection(role.GetModelName()).Doc(role.ID).Create(ctx, role); err != nil {
+		if status.Code(err) == codes.AlreadyExists {
+			return errors.New(apiError.DuplicateRecord)
+		}
 		log.Println(err)
 		return errors.New(apiError.FirestoreError)
 	}
 	return nil
 }
 
-// DeleteRole removes a custom role of the tenant.
-func (repository *RoleRepository) DeleteRole(ctx context.Context, tenantID, roleID string) error {
-	if _, err := repository.GetRole(ctx, tenantID, roleID); err != nil {
+// readRoleInTransaction loads a role of the tenant inside a transaction.
+func readRoleInTransaction(transaction *firestore.Transaction, ref *firestore.DocumentRef, tenantID string) (entity.CustomRole, error) {
+	snapshot, err := transaction.Get(ref)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return entity.CustomRole{}, errors.New(apiError.MissingRecord)
+		}
+		return entity.CustomRole{}, err
+	}
+	var role entity.CustomRole
+	if err := snapshot.DataTo(&role); err != nil {
+		return entity.CustomRole{}, err
+	}
+	if role.TenantID != tenantID {
+		return entity.CustomRole{}, errors.New(apiError.MissingRecord)
+	}
+	role.ID = snapshot.Ref.ID
+	return role, nil
+}
+
+// runTransaction maps transaction errors: business codes pass through,
+// anything else becomes FirestoreError.
+func runTransaction(ctx context.Context, client *firestore.Client, body func(*firestore.Transaction) error) error {
+	err := client.RunTransaction(ctx, func(_ context.Context, transaction *firestore.Transaction) error { return body(transaction) })
+	if err == nil {
+		return nil
+	}
+	switch err.Error() {
+	case apiError.MissingRecord, apiError.InvalidPayload, apiError.RoleInUse:
 		return err
+	}
+	log.Println(err)
+	return errors.New(apiError.FirestoreError)
+}
+
+// UpdateRole replaces an existing custom role of the tenant. It never
+// recreates a role deleted meanwhile.
+func (repository *RoleRepository) UpdateRole(ctx context.Context, role entity.CustomRole) error {
+	if role.ID == "" || role.TenantID == "" {
+		return errors.New(apiError.InvalidPayload)
 	}
 	client, err := repository.client(ctx)
 	if err != nil {
 		return err
 	}
-	if _, err := client.Collection(entity.CustomRole{}.GetModelName()).Doc(roleID).Delete(ctx); err != nil {
-		log.Println(err)
-		return errors.New(apiError.FirestoreError)
+	ref := client.Collection(role.GetModelName()).Doc(role.ID)
+	return runTransaction(ctx, client, func(transaction *firestore.Transaction) error {
+		if _, err := readRoleInTransaction(transaction, ref, role.TenantID); err != nil {
+			return err
+		}
+		return transaction.Set(ref, role)
+	})
+}
+
+// DeleteRole removes a custom role of the tenant that no user holds. The
+// membership check and the delete run in one transaction that writes the
+// role document; SetUserCustomRole writes it too, so a concurrent
+// assignment and deletion cannot both succeed.
+func (repository *RoleRepository) DeleteRole(ctx context.Context, tenantID, roleID string) error {
+	if roleID == "" {
+		return errors.New(apiError.MissingRecord)
 	}
-	return nil
+	client, err := repository.client(ctx)
+	if err != nil {
+		return err
+	}
+	ref := client.Collection(entity.CustomRole{}.GetModelName()).Doc(roleID)
+	members := client.Collection(usersCollection).Where("tenant_id", "==", tenantID).Where("custom_role_id", "==", roleID).Limit(1)
+	return runTransaction(ctx, client, func(transaction *firestore.Transaction) error {
+		if _, err := readRoleInTransaction(transaction, ref, tenantID); err != nil {
+			return err
+		}
+		held, err := transaction.Documents(members).GetAll()
+		if err != nil {
+			return err
+		}
+		if len(held) > 0 {
+			return errors.New(apiError.RoleInUse)
+		}
+		return transaction.Delete(ref)
+	})
 }
 
 // GetUserAssignment reads the role fields of one tenant user.
@@ -190,40 +260,51 @@ func (repository *RoleRepository) ListUserAssignments(ctx context.Context, tenan
 }
 
 // SetUserCustomRole stores the custom role of a tenant user ("" clears it).
-// The write is conditioned on the document read, so a concurrent change of
-// the user (for example a role change) makes it fail instead of racing.
+// Assigning reads and touches the role document in the same transaction as
+// the user write, so it cannot interleave with DeleteRole: one of the two
+// fails (MissingRecord or ROLE_IN_USE) instead of leaving a dangling role.
 func (repository *RoleRepository) SetUserCustomRole(ctx context.Context, tenantID, userID, roleID string) error {
+	if userID == "" {
+		return errors.New(apiError.MissingRecord)
+	}
 	client, err := repository.client(ctx)
 	if err != nil {
 		return err
 	}
-	ref := client.Collection(usersCollection).Doc(userID)
-	snapshot, err := ref.Get(ctx)
-	if err != nil {
-		if status.Code(err) == codes.NotFound {
+	userRef := client.Collection(usersCollection).Doc(userID)
+	roleRef := client.Collection(entity.CustomRole{}.GetModelName()).Doc(roleID)
+	return runTransaction(ctx, client, func(transaction *firestore.Transaction) error {
+		if roleID != "" {
+			if _, err := readRoleInTransaction(transaction, roleRef, tenantID); err != nil {
+				return err
+			}
+		}
+		snapshot, err := transaction.Get(userRef)
+		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				return errors.New(apiError.MissingRecord)
+			}
+			return err
+		}
+		var document userRoleDocument
+		if err := snapshot.DataTo(&document); err != nil {
+			return err
+		}
+		if document.TenantID != tenantID {
 			return errors.New(apiError.MissingRecord)
 		}
-		log.Println(err)
-		return errors.New(apiError.FirestoreError)
-	}
-	var document userRoleDocument
-	if err := snapshot.DataTo(&document); err != nil {
-		log.Println(err)
-		return errors.New(apiError.FirestoreError)
-	}
-	if document.TenantID != tenantID {
-		return errors.New(apiError.MissingRecord)
-	}
-	if roleID != "" && document.Role != iamEntity.UserRole {
-		return errors.New(apiError.InvalidPayload)
-	}
-	_, err = ref.Update(ctx, []firestore.Update{
-		{Path: "custom_role_id", Value: roleID},
-		{Path: "updated_at", Value: int(time.Now().Unix())},
-	}, firestore.LastUpdateTime(snapshot.UpdateTime))
-	if err != nil {
-		log.Println(err)
-		return errors.New(apiError.FirestoreError)
-	}
-	return nil
+		if roleID != "" && document.Role != iamEntity.UserRole {
+			return errors.New(apiError.InvalidPayload)
+		}
+		now := time.Now().Unix()
+		if roleID != "" {
+			if err := transaction.Update(roleRef, []firestore.Update{{Path: "last_assigned_at", Value: now}}); err != nil {
+				return err
+			}
+		}
+		return transaction.Update(userRef, []firestore.Update{
+			{Path: "custom_role_id", Value: roleID},
+			{Path: "updated_at", Value: int(now)},
+		})
+	})
 }

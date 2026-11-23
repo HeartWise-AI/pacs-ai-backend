@@ -47,3 +47,28 @@ func TestResolveModelArtifactIDs(t *testing.T) {
 	_, err = failing.ResolveModelArtifactIDs(ctx, "t1", "reg-echo")
 	require.EqualError(t, err, apiError.AccessUnavailable)
 }
+
+type resultModelsRepository struct {
+	inferenceModelsQueryRepository
+}
+
+func (*resultModelsRepository) SelectInferenceIngestionJobs(*string) ([]entity.InferenceIngestionJob, error) {
+	return nil, nil
+}
+
+func TestAuthorizeResultModel(t *testing.T) {
+	service := &InferenceQueryService{InferenceQueryRepositoryInterface: &resultModelsRepository{inferenceModelsQueryRepository{models: []entity.InferenceModel{
+		{ID: "reg-echo", TenantID: "t1", Name: "PanEcho", ContainerID: "c-echo", DockerImage: "img",
+			Deployment: &entity.InferenceModelDeployment{ContainerID: "c-echo", ImageReference: "img", ArtifactModelID: "PanEcho"}},
+		{ID: "reg-legacy", TenantID: "t1", Name: "Legacy", ContainerID: "c-legacy"},
+	}}}}
+	ctx := context.Background()
+	onlyEcho := func(id string) bool { return id == "PanEcho" }
+	onlyRV := func(id string) bool { return id == "DeepRV_CLIP" }
+
+	require.NoError(t, service.authorizeResultModel(ctx, "t1", "PanEcho", "", nil), "nil allow accepts everything")
+	require.NoError(t, service.authorizeResultModel(ctx, "t1", "PanEcho", "1.0.3", onlyEcho))
+	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "PanEcho", "", onlyRV), apiError.ForbiddenAccess)
+	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "Legacy", "", onlyEcho), apiError.ForbiddenAccess, "unknown modelId is refused")
+	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "Unregistered", "", onlyEcho), apiError.ForbiddenAccess)
+}

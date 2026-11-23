@@ -101,12 +101,18 @@ func (service *AccessService) Resolve(ctx context.Context, tenantID, userID, rol
 		case err == nil:
 			custom = &found
 		case err.Error() == apiError.MissingRecord:
-			// Dangling assignment: the role was deleted. Baseline only.
+			// Dangling assignment (the role is gone): keep the baseline
+			// permissions but no model, so a lost allowlist never widens
+			// into every model.
+			custom = &entity.CustomRole{ID: roleID}
 		default:
 			return entity.Access{}, errors.New(apiError.AccessUnavailable)
 		}
 	}
 	access := entity.ForRole(role, custom)
+	if custom != nil && custom.Name == "" && custom.TenantID == "" {
+		access.CustomRole = nil
+	}
 
 	service.mu.Lock()
 	if service.cache == nil {
@@ -258,7 +264,7 @@ func (service *AccessService) CreateRole(ctx context.Context, tenantID, actorID 
 		Permissions: input.Permissions, AllModels: input.AllModels, ModelIDs: input.ModelIDs,
 		CreatedBy: actorID, CreatedAt: now, UpdatedAt: now,
 	}
-	if err := service.Repository.SaveRole(ctx, role); err != nil {
+	if err := service.Repository.CreateRole(ctx, role); err != nil {
 		return RoleView{}, err
 	}
 	return RoleView{CustomRole: role}, nil
@@ -284,7 +290,7 @@ func (service *AccessService) UpdateRole(ctx context.Context, tenantID, roleID s
 	existing.Name, existing.Description = input.Name, input.Description
 	existing.Permissions, existing.AllModels, existing.ModelIDs = input.Permissions, input.AllModels, input.ModelIDs
 	existing.UpdatedAt = service.now().Unix()
-	if err := service.Repository.SaveRole(ctx, existing); err != nil {
+	if err := service.Repository.UpdateRole(ctx, existing); err != nil {
 		return RoleView{}, err
 	}
 	service.InvalidateTenant(tenantID)

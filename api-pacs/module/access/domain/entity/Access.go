@@ -88,6 +88,9 @@ type CustomRole struct {
 	CreatedBy   string   `firestore:"created_by"`
 	CreatedAt   int64    `firestore:"created_at"`
 	UpdatedAt   int64    `firestore:"updated_at"`
+	// LastAssignedAt is written by every assignment so that assignment and
+	// deletion of the same role serialize in Firestore transactions.
+	LastAssignedAt int64 `firestore:"last_assigned_at,omitempty"`
 }
 
 // GetModelName returns the Firestore collection of custom roles.

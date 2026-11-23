@@ -51,12 +51,30 @@ func (repository *fakeRoleRepository) GetRole(_ context.Context, tenantID, roleI
 	return role, nil
 }
 
-func (repository *fakeRoleRepository) SaveRole(_ context.Context, role entity.CustomRole) error {
+func (repository *fakeRoleRepository) CreateRole(_ context.Context, role entity.CustomRole) error {
+	if _, exists := repository.roles[role.ID]; exists {
+		return errors.New(apiError.DuplicateRecord)
+	}
 	repository.roles[role.ID] = role
 	return nil
 }
 
-func (repository *fakeRoleRepository) DeleteRole(_ context.Context, _ string, roleID string) error {
+func (repository *fakeRoleRepository) UpdateRole(_ context.Context, role entity.CustomRole) error {
+	if existing, ok := repository.roles[role.ID]; !ok || existing.TenantID != role.TenantID {
+		return errors.New(apiError.MissingRecord)
+	}
+	repository.roles[role.ID] = role
+	return nil
+}
+
+// DeleteRole mirrors the transactional repository: it refuses while any user
+// of the tenant still points at the role.
+func (repository *fakeRoleRepository) DeleteRole(_ context.Context, tenantID string, roleID string) error {
+	for _, user := range repository.users {
+		if user.TenantID == tenantID && user.CustomRoleID == roleID {
+			return errors.New(apiError.RoleInUse)
+		}
+	}
 	delete(repository.roles, roleID)
 	return nil
 }
@@ -134,7 +152,7 @@ func TestResolveUserWithoutRoleIsBaseline(t *testing.T) {
 	require.True(t, access.AllModels)
 }
 
-func TestResolveDanglingOrForeignRoleFallsBackToBaseline(t *testing.T) {
+func TestResolveDanglingOrForeignRoleKeepsBaselineWithoutModels(t *testing.T) {
 	service, repository, _ := seeded()
 	for _, roleID := range []string{"deleted", "other"} {
 		repository.users["u3"] = domainRepository.UserRoleAssignment{UserID: "u3", TenantID: "t1", Role: iamEntity.UserRole, CustomRoleID: roleID}
@@ -142,8 +160,20 @@ func TestResolveDanglingOrForeignRoleFallsBackToBaseline(t *testing.T) {
 		access, err := service.Resolve(context.Background(), "t1", "u3", iamEntity.UserRole)
 		require.NoError(t, err, roleID)
 		require.Equal(t, entity.BaselinePermissions, access.PermissionList(), roleID)
+		require.False(t, access.AllModels, "a lost allowlist must not widen to every model (%s)", roleID)
+		require.False(t, access.AllowsModel("PanEcho"), roleID)
 		require.Nil(t, access.CustomRole, roleID)
 	}
+}
+
+func TestUpdateRoleNeverRecreatesADeletedRole(t *testing.T) {
+	service, repository, _ := seeded()
+	repository.users["u1"] = domainRepository.UserRoleAssignment{UserID: "u1", TenantID: "t1", Role: iamEntity.UserRole}
+	require.NoError(t, service.DeleteRole(context.Background(), "t1", "r1"))
+	_, err := service.UpdateRole(context.Background(), "t1", "r1", RoleInput{Name: "Readers"})
+	require.EqualError(t, err, apiError.MissingRecord)
+	_, ok := repository.roles["r1"]
+	require.False(t, ok)
 }
 
 func TestResolveFailsClosedOnStorageErrors(t *testing.T) {

@@ -323,7 +323,7 @@ func passThroughDispatchSeries(raw json.RawMessage) json.RawMessage {
 // tenant-owned completed execution through its model container.
 func (service *InferenceQueryService) GetProcessingRunExecutionReport(ctx context.Context, data types.GetProcessingRunExecutionReport) (types.ModelReport, error) {
 	result, err := service.GetProcessingRunExecutionResult(ctx, types.GetProcessingRunExecutionResult{
-		TenantID: data.TenantID, RunID: data.RunID, ExecutionID: data.ExecutionID,
+		TenantID: data.TenantID, RunID: data.RunID, ExecutionID: data.ExecutionID, AllowModel: data.AllowModel,
 	})
 	if err != nil {
 		return types.ModelReport{}, err
@@ -351,6 +351,9 @@ func (service *InferenceQueryService) GetStudyJobReport(ctx context.Context, dat
 		strings.TrimSpace(job.StudyInstanceUID) != studyInstanceUID ||
 		trimmedPointerValue(job.TenantID) != tenantID {
 		return types.ModelReport{}, errors.New(apiError.MissingRecord)
+	}
+	if err := service.authorizeResultModel(ctx, tenantID, job.ModelName, trimmedPointerValue(job.ModelVersion), data.AllowModel); err != nil {
+		return types.ModelReport{}, err
 	}
 	if !strings.EqualFold(strings.TrimSpace(job.Status), studyServiceStatusCompleted) {
 		return types.ModelReport{}, errors.New(apiError.InferenceExecutionResultNotAvailable)

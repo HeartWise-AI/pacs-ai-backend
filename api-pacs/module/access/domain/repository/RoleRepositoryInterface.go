@@ -19,9 +19,16 @@ type UserRoleAssignment struct {
 type RoleRepositoryInterface interface {
 	ListRoles(ctx context.Context, tenantID string) ([]entity.CustomRole, error)
 	GetRole(ctx context.Context, tenantID, roleID string) (entity.CustomRole, error)
-	SaveRole(ctx context.Context, role entity.CustomRole) error
+	CreateRole(ctx context.Context, role entity.CustomRole) error
+	// UpdateRole fails with MissingRecord when the role no longer exists.
+	UpdateRole(ctx context.Context, role entity.CustomRole) error
+	// DeleteRole fails with ROLE_IN_USE while a user holds the role; it is
+	// atomic with SetUserCustomRole.
 	DeleteRole(ctx context.Context, tenantID, roleID string) error
 	GetUserAssignment(ctx context.Context, tenantID, userID string) (UserRoleAssignment, error)
 	ListUserAssignments(ctx context.Context, tenantID string) ([]UserRoleAssignment, error)
+	// SetUserCustomRole assigns ("" clears) a role of the tenant to a USER
+	// account: MissingRecord for an unknown user or role, InvalidPayload for
+	// a non-USER account.
 	SetUserCustomRole(ctx context.Context, tenantID, userID, roleID string) error
 }

@@ -71,8 +71,14 @@ func (controller *InferenceQueryController) GetProcessingRunExecutionReport(w ht
 		writeViewerResultsError(w, apiError.UnauthorizedAccess)
 		return
 	}
+	allowModel, accessErr := resultModelFilter(r)
+	if accessErr != "" {
+		writeModelAccessError(w, accessErr)
+		return
+	}
 	report, err := controller.InferenceQueryServiceInterface.GetProcessingRunExecutionReport(r.Context(), serviceTypes.GetProcessingRunExecutionReport{
 		TenantID: tenantID, RunID: chi.URLParam(r, "runId"), ExecutionID: chi.URLParam(r, "executionId"),
+		AllowModel: allowModel,
 	})
 	if err != nil {
 		writeViewerResultsError(w, err.Error())
@@ -90,10 +96,16 @@ func (controller *InferenceQueryController) GetStudyJobReport(w http.ResponseWri
 		writeViewerResultsError(w, apiError.UnauthorizedAccess)
 		return
 	}
+	allowModel, accessErr := resultModelFilter(r)
+	if accessErr != "" {
+		writeModelAccessError(w, accessErr)
+		return
+	}
 	report, err := controller.InferenceQueryServiceInterface.GetStudyJobReport(r.Context(), serviceTypes.GetStudyJobReport{
 		TenantID:          tenantID,
 		StudyInstanceUID:  chi.URLParam(r, "studyInstanceUID"),
 		StudyServiceJobID: chi.URLParam(r, "studyServiceJobId"),
+		AllowModel:        allowModel,
 	})
 	if err != nil {
 		writeViewerResultsError(w, err.Error())

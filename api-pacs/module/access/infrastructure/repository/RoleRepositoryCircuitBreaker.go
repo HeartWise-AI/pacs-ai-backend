@@ -55,10 +55,18 @@ func (repository *RoleRepositoryCircuitBreaker) GetRole(ctx context.Context, ten
 	})
 }
 
-// SaveRole is a decorator for SaveRole.
-func (repository *RoleRepositoryCircuitBreaker) SaveRole(ctx context.Context, role entity.CustomRole) error {
-	_, err := guarded("access_save_role", func() (struct{}, error) {
-		return struct{}{}, repository.RoleRepositoryInterface.SaveRole(ctx, role)
+// CreateRole is a decorator for CreateRole.
+func (repository *RoleRepositoryCircuitBreaker) CreateRole(ctx context.Context, role entity.CustomRole) error {
+	_, err := guarded("access_create_role", func() (struct{}, error) {
+		return struct{}{}, repository.RoleRepositoryInterface.CreateRole(ctx, role)
+	})
+	return err
+}
+
+// UpdateRole is a decorator for UpdateRole.
+func (repository *RoleRepositoryCircuitBreaker) UpdateRole(ctx context.Context, role entity.CustomRole) error {
+	_, err := guarded("access_update_role", func() (struct{}, error) {
+		return struct{}{}, repository.RoleRepositoryInterface.UpdateRole(ctx, role)
 	})
 	return err
 }

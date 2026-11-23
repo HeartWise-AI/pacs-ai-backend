@@ -359,6 +359,9 @@ func (repository *UserQueryRepository) SelectTenantUserEmailInviteByID(ctx conte
 
 	firestoreRes, err := firestoreClient.Collection(userEmailInvite.GetModelName()).Doc(ID).Get(ctx)
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return entity.UserEmailInvite{}, errors.New(apiError.MissingRecord)
+		}
 		log.Println(err)
 		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
 	}
@@ -371,6 +374,10 @@ func (repository *UserQueryRepository) SelectTenantUserEmailInviteByID(ctx conte
 	if err != nil {
 		log.Println(err)
 		return entity.UserEmailInvite{}, errors.New(apiError.FirestoreError)
+	}
+	// Invites of another tenant read as missing.
+	if userEmailInvite.TenantID != tenantID {
+		return entity.UserEmailInvite{}, errors.New(apiError.MissingRecord)
 	}
 
 	return userEmailInvite, nil

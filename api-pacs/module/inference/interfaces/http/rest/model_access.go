@@ -94,3 +94,16 @@ func writeModelAccessError(w http.ResponseWriter, code string) {
 	response := viewmodels.HTTPResponseVM{Status: status, Success: false, Message: message, ErrorCode: code}
 	response.JSON(w)
 }
+
+// resultModelFilter returns the allow-check for stored results: nil for users
+// with every model, or an error code when access cannot be read.
+func resultModelFilter(r *http.Request) (func(string) bool, string) {
+	access, code := modelAccessFilter(r)
+	if code != "" {
+		return nil, code
+	}
+	if access.AllModels {
+		return nil, ""
+	}
+	return access.AllowsModel, ""
+}

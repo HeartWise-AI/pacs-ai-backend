@@ -411,8 +411,12 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, data ty
 	return nil
 }
 
-// DeleteTenantUserEmailInvite delete tenant user email invite by id
-func (service *UserCommandService) DeleteTenantUserEmailInvite(ctx context.Context, ID string) error {
+// DeleteTenantUserEmailInvite deletes an email invite of the tenant. An
+// invite of another tenant reads as missing.
+func (service *UserCommandService) DeleteTenantUserEmailInvite(ctx context.Context, tenantID, ID string) error {
+	if _, err := service.UserQueryRepositoryInterface.SelectTenantUserEmailInviteByID(ctx, tenantID, ID); err != nil {
+		return err
+	}
 	err := service.UserCommandRepositoryInterface.DeleteTenantUserEmailInvite(ctx, ID)
 	if err != nil {
 		log.Println(err)

@@ -52,6 +52,9 @@ type GetProcessingRunExecutionReport struct {
 	TenantID    string
 	RunID       string
 	ExecutionID string
+	// AllowModel, when set, must accept the result's model-info modelId
+	// (custom-role model access); otherwise the call is ForbiddenAccess.
+	AllowModel func(modelID string) bool
 }
 
 // GetStudyJobReport scopes a legacy report render (no run/execution IDs) to
@@ -60,6 +63,9 @@ type GetStudyJobReport struct {
 	TenantID          string
 	StudyInstanceUID  string
 	StudyServiceJobID string
+	// AllowModel, when set, must accept the result's model-info modelId
+	// (custom-role model access); otherwise the call is ForbiddenAccess.
+	AllowModel func(modelID string) bool
 }
 
 // ModelReport is a re-rendered HTML report.

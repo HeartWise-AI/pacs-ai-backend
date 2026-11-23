@@ -57,3 +57,21 @@ func (service *InferenceQueryService) ResolveModelArtifactIDs(ctx context.Contex
 	}
 	return matched, nil
 }
+
+// authorizeResultModel applies custom-role model access to a stored result,
+// identified by model name and version as recorded with the execution. A nil
+// allow accepts everything; a model that cannot be matched to a registration
+// with a known modelId is refused.
+func (service *InferenceQueryService) authorizeResultModel(ctx context.Context, tenantID, modelName, modelVersion string, allow func(string) bool) error {
+	if allow == nil {
+		return nil
+	}
+	entry := service.loadViewerModelDirectory(ctx, tenantID).match(modelName, modelVersion)
+	if entry == nil {
+		return errors.New(apiError.ForbiddenAccess)
+	}
+	if modelID := strings.TrimSpace(entry.artifactModelID()); modelID == "" || !allow(modelID) {
+		return errors.New(apiError.ForbiddenAccess)
+	}
+	return nil
+}
