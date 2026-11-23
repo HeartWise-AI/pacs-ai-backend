@@ -64,6 +64,71 @@ func (tracker *studyServiceDispatchTracker) isLive(key string) bool {
 	return tracker.live[key] > 0
 }
 
+// studyServiceDispatchHandoffs makes the handoff of an execution to
+// study-service and its cancellation by a user mutually exclusive. A dispatch
+// holds the execution's key from the moment it checks that the execution is
+// still pending until it has recorded the job study-service accepted (or
+// given up); a cancellation only cancels an execution whose key it can take
+// without waiting. So an execution is never cancelled while study-service may
+// already be computing it, and a dispatch that starts after a cancellation
+// finds the execution cancelled and sends nothing.
+var studyServiceDispatchHandoffs = &dispatchHandoffLock{held: map[string]*dispatchHandoff{}}
+
+type dispatchHandoffLock struct {
+	mu   sync.Mutex
+	held map[string]*dispatchHandoff
+}
+
+type dispatchHandoff struct {
+	slot chan struct{}
+	refs int
+}
+
+func (lock *dispatchHandoffLock) entry(key string) *dispatchHandoff {
+	lock.mu.Lock()
+	defer lock.mu.Unlock()
+	handoff, ok := lock.held[key]
+	if !ok {
+		handoff = &dispatchHandoff{slot: make(chan struct{}, 1)}
+		lock.held[key] = handoff
+	}
+	handoff.refs++
+	return handoff
+}
+
+func (lock *dispatchHandoffLock) drop(key string, handoff *dispatchHandoff) {
+	lock.mu.Lock()
+	defer lock.mu.Unlock()
+	if handoff.refs--; handoff.refs <= 0 {
+		delete(lock.held, key)
+	}
+}
+
+// acquire waits for the key and returns the function that releases it.
+func (lock *dispatchHandoffLock) acquire(key string) func() {
+	handoff := lock.entry(key)
+	handoff.slot <- struct{}{}
+	return func() {
+		<-handoff.slot
+		lock.drop(key, handoff)
+	}
+}
+
+// tryAcquire takes the key only when nobody holds it.
+func (lock *dispatchHandoffLock) tryAcquire(key string) (func(), bool) {
+	handoff := lock.entry(key)
+	select {
+	case handoff.slot <- struct{}{}:
+		return func() {
+			<-handoff.slot
+			lock.drop(key, handoff)
+		}, true
+	default:
+		lock.drop(key, handoff)
+		return nil, false
+	}
+}
+
 // redispatchOrphanedExecution dispatches again an automatic execution whose
 // dispatch was lost, typically by a gateway restart. The caller has already
 // asked study-service, by processing run and by candidate, and found no job
@@ -100,6 +165,9 @@ func (service *InferenceCommandService) redispatchOrphanedExecution(
 	now time.Time,
 	config processingReconciliationConfig,
 ) orphanedExecutionRecoveryResult {
+	// The key is the one the ordinary dispatch registers itself under, from
+	// the moment it is scheduled, including while it waits for a dispatch slot.
+	key := studyServiceDispatchKey(candidate.TenantID, run.ID, execution.CandidateID, execution.ModelName)
 	switch {
 	case run.RunTrigger != entity.InferenceIngestionProcessingRunTriggerAuto:
 		return orphanedExecutionRecoveryResult{Reason: "run was not started automatically"}
@@ -107,6 +175,12 @@ func (service *InferenceCommandService) redispatchOrphanedExecution(
 		return orphanedExecutionRecoveryResult{Reason: "run is finished"}
 	case execution.Status != entity.InferenceIngestionProcessingJobStatusPending || execution.HasStudyServiceJob():
 		return orphanedExecutionRecoveryResult{Reason: "execution was already dispatched"}
+	case liveStudyServiceDispatches.isLive(key):
+		// A dispatch still under way (for example waiting a long time for a
+		// dispatch slot during a backlog) is neither an orphan to dispatch
+		// again nor one to close: closing it would make that dispatch find
+		// the execution skipped and drop the work.
+		return orphanedExecutionRecoveryResult{Reason: "a dispatch is under way"}
 	case candidate.Status == entity.InferenceIngestionCandidateStatusDisappeared ||
 		candidate.Status == entity.InferenceIngestionCandidateStatusFailed:
 		return orphanedExecutionRecoveryResult{
@@ -155,8 +229,6 @@ func (service *InferenceCommandService) redispatchOrphanedExecution(
 	case strings.TrimSpace(job.ModelName) != strings.TrimSpace(execution.ModelName):
 		return orphanedExecutionRecoveryResult{Reason: "ingestion job names another model"}
 	}
-	// The key is the one the ordinary dispatch registers itself under.
-	key := studyServiceDispatchKey(candidate.TenantID, run.ID, candidate.ID, job.ModelName)
 	if !liveStudyServiceDispatches.beginIfIdle(key) {
 		return orphanedExecutionRecoveryResult{Reason: "a dispatch is under way"}
 	}

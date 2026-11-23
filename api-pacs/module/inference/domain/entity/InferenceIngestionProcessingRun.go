@@ -47,6 +47,10 @@ const (
 type InferenceIngestionProcessingRunAttentionReason struct {
 	Code    string  `json:"code"`
 	Message *string `json:"message,omitempty"`
+	// StudyServiceJobIDs names, for STUDY_SERVICE_JOB_MISSING, the
+	// study-service jobs found missing, so only those executions are treated
+	// as lost; other queued executions of the run are still waiting normally.
+	StudyServiceJobIDs []string `json:"studyServiceJobIds,omitempty"`
 }
 
 // InferenceIngestionProcessingRunAttentionReasons maps the run attention JSONB column.

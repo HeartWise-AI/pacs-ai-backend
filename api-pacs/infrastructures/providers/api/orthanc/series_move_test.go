@@ -66,6 +66,7 @@ type fakeOrthanc struct {
 	moves       []map[string]interface{}
 	localImages int
 	failMoves   bool // answer every move with an error
+	failFinds   bool // answer every local find with an error
 }
 
 func (f *fakeOrthanc) handler(t *testing.T) http.Handler {
@@ -95,6 +96,10 @@ func (f *fakeOrthanc) handler(t *testing.T) http.Handler {
 		case r.Method == http.MethodGet && r.URL.Path == "/jobs":
 			_ = json.NewEncoder(w).Encode([]types.GetJobResponse{})
 		case r.Method == http.MethodPost && r.URL.Path == "/tools/find":
+			if f.failFinds {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
 			instances := make([]string, f.localImages)
 			_ = json.NewEncoder(w).Encode([]map[string]interface{}{{"Instances": instances}})
 		default:
@@ -636,5 +641,34 @@ func TestInstancesBatchMoveRequestMovesImagesOfSeveralSeriesInOneJob(t *testing.
 	}
 	if strings.Join(got, ",") != "a/a1,a/a2,b/b1" {
 		t.Fatalf("resources = %v", got)
+	}
+}
+
+// Orthanc's success is not reported while the local copy cannot be counted:
+// the move stays pending and is checked again, so a transient /tools/find
+// error never lets a partly retrieved study pass as complete.
+func TestSuccessIsNotReportedWhileTheLocalCopyCannotBeChecked(t *testing.T) {
+	now := time.Unix(1000, 0)
+	withTracker(t, &now)
+	fake := &fakeOrthanc{states: []string{"Success"}, localImages: 4, failFinds: true}
+	server := httptest.NewServer(fake.handler(t))
+	defer server.Close()
+	api := Init(server.URL)
+	trackMove("job-1", series("s1", "1", "4"))
+
+	job, err := api.GetJobInfo(context.Background(), "job-1")
+	if err != nil || job.State != "Pending" {
+		t.Fatalf("unverified success reported as %s (err %v); want Pending", job.State, err)
+	}
+	if len(fake.moves) != 0 {
+		t.Fatalf("a failed check moved the series again: %d moves", len(fake.moves))
+	}
+
+	fake.mu.Lock()
+	fake.failFinds = false
+	fake.mu.Unlock()
+	job, _ = api.GetJobInfo(context.Background(), "job-1")
+	if job.State != "Success" {
+		t.Fatalf("checked complete series reported as %s; want Success", job.State)
 	}
 }

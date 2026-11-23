@@ -2,6 +2,7 @@ package entity
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -34,6 +35,33 @@ func ProcessingRunHasAttentionReason(reasons InferenceIngestionProcessingRunAtte
 	return false
 }
 
+// ProcessingRunExecutionStudyServiceJobMissing reports whether the run's
+// STUDY_SERVICE_JOB_MISSING reason names this execution's study-service job.
+// The reason is recorded per job: a run with one lost job may also hold
+// queued executions study-service still knows, and those are not lost. A
+// reason without job IDs (written by an earlier release) names no execution;
+// the reconciler rewrites it with the IDs on its next pass.
+func ProcessingRunExecutionStudyServiceJobMissing(
+	reasons InferenceIngestionProcessingRunAttentionReasons,
+	execution InferenceIngestionProcessingJob,
+) bool {
+	if !execution.HasStudyServiceJob() {
+		return false
+	}
+	jobID := strings.TrimSpace(*execution.StudyServiceJobID)
+	for _, reason := range reasons {
+		if reason.Code != InferenceIngestionProcessingRunAttentionStudyServiceJobMissing {
+			continue
+		}
+		for _, missing := range reason.StudyServiceJobIDs {
+			if strings.TrimSpace(missing) == jobID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // CancellableProcessingRunExecutions returns the executions of an active run a
 // user cancellation would end; none for a terminal run.
 func CancellableProcessingRunExecutions(run InferenceIngestionProcessingRun, executions []InferenceIngestionProcessingJob) []InferenceIngestionProcessingJob {
@@ -41,10 +69,8 @@ func CancellableProcessingRunExecutions(run InferenceIngestionProcessingRun, exe
 	if run.Phase == InferenceIngestionProcessingRunPhaseTerminal {
 		return cancellable
 	}
-	studyServiceJobMissing := ProcessingRunHasAttentionReason(
-		run.AttentionReasons, InferenceIngestionProcessingRunAttentionStudyServiceJobMissing,
-	)
 	for index := range executions {
+		studyServiceJobMissing := ProcessingRunExecutionStudyServiceJobMissing(run.AttentionReasons, executions[index])
 		if executions[index].IsCancellableBeforeCompute(studyServiceJobMissing) {
 			cancellable = append(cancellable, executions[index])
 		}

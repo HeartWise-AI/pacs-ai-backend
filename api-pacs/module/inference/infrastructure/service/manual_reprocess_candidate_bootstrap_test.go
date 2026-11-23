@@ -399,3 +399,91 @@ func TestCreateManualStudyProcessingRunBootstrapsHistoricalLocalStudy(t *testing
 	}
 	require.Len(t, state.candidates, 1)
 }
+
+// Candidates the viewer created carry no ModalitiesInStudy. For a mixed US/XA
+// study, the first candidate's job used to stand for the whole study, so the
+// other modality's existing model was dropped from the manual reprocess.
+func TestManualReconcileKeepsEveryExistingModelWhenCandidatesLackModalities(t *testing.T) {
+	newState := func() *realtimeWorklistE2EState {
+		state := manualBootstrapState()
+		now := time.Now().UTC()
+		state.candidates["xa-candidate"] = entity.InferenceIngestionCandidate{
+			ID: "xa-candidate", TenantID: "tenant-a", IngestionJobID: "xa-new", StudyInstanceUID: "1.2.3",
+			Status: entity.InferenceIngestionCandidateStatusRetrieved, LastSeenAt: now,
+		}
+		state.candidates["us-candidate"] = entity.InferenceIngestionCandidate{
+			ID: "us-candidate", TenantID: "tenant-a", IngestionJobID: "us-model", StudyInstanceUID: "1.2.3",
+			Status: entity.InferenceIngestionCandidateStatusRetrieved, LastSeenAt: now.Add(-time.Minute),
+		}
+		return state
+	}
+	selectedJobs := func(candidates []entity.InferenceIngestionCandidate) map[string]bool {
+		jobs := map[string]bool{}
+		for _, candidate := range candidates {
+			jobs[candidate.IngestionJobID] = true
+		}
+		return jobs
+	}
+	existing := func(state *realtimeWorklistE2EState) []entity.InferenceIngestionCandidate {
+		return []entity.InferenceIngestionCandidate{state.candidates["xa-candidate"], state.candidates["us-candidate"]}
+	}
+
+	t.Run("study modalities read from the local store", func(t *testing.T) {
+		state := newState()
+		resource := localXAStudyResource()
+		resource.RequestedTags["ModalitiesInStudy"] = "US\\XA"
+		service := &InferenceCommandService{
+			InferenceQueryRepositoryInterface: state, InferenceCommandRepositoryInterface: state,
+			OrthancAPIInterface: &manualBootstrapOrthancAPI{resources: []orthancAPITypes.GetLocalResourceResponse{resource}},
+		}
+
+		candidates, err := service.reconcileExistingManualStudyCandidates(context.Background(), "tenant-a", "1.2.3", existing(state))
+
+		require.NoError(t, err)
+		require.Equal(t, map[string]bool{"xa-new": true, "xa-second": true, "us-model": true}, selectedJobs(candidates))
+	})
+
+	t.Run("local store unavailable", func(t *testing.T) {
+		state := newState()
+		service := &InferenceCommandService{
+			InferenceQueryRepositoryInterface: state, InferenceCommandRepositoryInterface: state,
+			OrthancAPIInterface: &manualBootstrapOrthancAPI{err: errors.New(apiError.MissingRecord)},
+		}
+
+		candidates, err := service.reconcileExistingManualStudyCandidates(context.Background(), "tenant-a", "1.2.3", existing(state))
+
+		require.NoError(t, err)
+		require.True(t, selectedJobs(candidates)["us-model"], "the US model of the study was dropped")
+		require.True(t, selectedJobs(candidates)["xa-new"])
+	})
+}
+
+// A remote bootstrap whose planning failed leaves DISCOVERED candidates that
+// the poller later marks DISAPPEARED. A later manual request bootstraps again
+// and the upsert brings the same candidates back (fixed in #483).
+func TestManualReprocessRebootstrapsWhenEveryCandidateDisappeared(t *testing.T) {
+	state := manualBootstrapState()
+	state.candidates["gone"] = entity.InferenceIngestionCandidate{
+		ID: "gone", TenantID: "tenant-a", IngestionJobID: "xa-new", StudyInstanceUID: "1.2.3",
+		Status: entity.InferenceIngestionCandidateStatusDisappeared,
+	}
+	query := &manualBootstrapOrthancQuery{studies: map[string][]orthancAPITypes.QueryModalityStudyAnswersResponse{
+		"PACS_QUERY": {remoteXAStudy()},
+	}}
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface: state, InferenceCommandRepositoryInterface: state,
+		OrthancAPIInterface:          &manualBootstrapOrthancAPI{err: errors.New(apiError.MissingRecord)},
+		OrthancQueryServiceInterface: query,
+	}
+
+	candidates, err := service.reconcileExistingManualStudyCandidates(
+		context.Background(), "tenant-a", "1.2.3", []entity.InferenceIngestionCandidate{state.candidates["gone"]},
+	)
+
+	require.NoError(t, err)
+	require.Len(t, candidates, 2)
+	for _, candidate := range candidates {
+		require.NotEqual(t, entity.InferenceIngestionCandidateStatusDisappeared, candidate.Status)
+	}
+	require.Len(t, query.requests, 1)
+}
