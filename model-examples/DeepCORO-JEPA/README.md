@@ -66,7 +66,8 @@ v16 CTO probability). Every key of the 2.1.0 JSON is still there with the same m
   0.44, PPV 0.49; re-derived on v19 by the DeepCoro session, `stent_guard_v19.json`). Text and report add "possible
   stent: grade may be unreliable after PCI"; no flag, threshold or shown % changes.
 - **FFR/iFR region.** `lad_physiology.region` (`["prox_lad", "mid_lad"]`), `.region_label`, `.region_segments` (the
-  two segments' stenosis readings). When FFR or iFR is predicted abnormal, the diagnosis names the proximal-mid LAD and
+  two segments' stenosis readings; when the side check finds no left run, their `significant` is false like the
+  segments'). When FFR or iFR is predicted abnormal, the diagnosis names the proximal-mid LAD and
   the report marks the two rows ("FFR/iFR region"). The region is where pressure was measured in the training labels,
   not a localisation of the culprit lesion. No culprit-segment rule (declined by the PI).
 - **Side check.** Optional `additionalMetadata.coronaryViews` = `[{"sopInstanceUID", "viewLabel"}, …]` (the angiogram
@@ -87,7 +88,9 @@ v16 CTO probability). Every key of the 2.1.0 JSON is still there with the same m
   thrombus differences are the 0.40 override (the dossier uses `specificity_99` 0.0609). The image build and the
   cu128 runtime are not tested here (no Docker on the host).
 - `docs/examples` is one parity study's output of this code (no identifiers); the 2.1.0 example is kept as
-  `tests/fixtures/stored_v15_2.1.0_*` and is drawn byte for byte as 2.1.0 drew it.
+  `tests/fixtures/stored_v15_2.1.0_*` and is drawn as 2.1.0 drew it, plus one line in the performance section: its
+  CTO flag (above 0.70) is not the 0.2134 the printed v15 CTO figures were measured at (validation only at 0.70:
+  sensitivity 0.10, PPV 0.33).
 
 **What 2.1.0 changes against 2.0.0:** same weights and probabilities. The CTO flag needs `cto_prob` above **0.70**
 instead of 0.2134 (`lesion_threshold_overrides` now `{"thrombus": 0.4, "cto": 0.7}`; `operating_point` reads

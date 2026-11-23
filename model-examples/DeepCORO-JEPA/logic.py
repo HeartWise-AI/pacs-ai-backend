@@ -511,6 +511,9 @@ class CustomPredictionService(BasePredictionService):
             if ph is not None and missing == "left":
                 ph.update({"ffr_abnormal": False, "ifr_abnormal": False, "assessed": False,
                            "not_assessed_reason": NOT_ASSESSED_REASON["left"]})
+            for g, reading in ((ph or {}).get("region_segments") or {}).items():
+                if g in off:  # the copied region readings follow their segment: no contradictory stenosis call
+                    reading["significant"] = False
             preds["explainability"] = [it for it in preds.get("explainability") or [] if it.get("segment") not in off]
         preds["side_check"] = check
 
