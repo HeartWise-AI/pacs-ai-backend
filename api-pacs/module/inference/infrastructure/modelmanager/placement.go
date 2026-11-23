@@ -18,6 +18,10 @@ type PlacementGPU struct {
 	// Allowed devices may receive a model; a model already on a device that is
 	// not allowed may stay there.
 	Allowed bool
+	// BudgetMiB is the device's whole managed budget, which a deployment onto
+	// it is validated against (see PlacementModel.DeployMiB). Zero means
+	// CapacityMiB.
+	BudgetMiB int
 }
 
 // PlacementModel is one model pinned to a GPU. ReservationMiB is what the
@@ -27,6 +31,26 @@ type PlacementModel struct {
 	GPUUUID        string
 	ReservationMiB int
 	Movable        bool
+	// DeployMiB is the reservation a move's deployment validates against the
+	// destination budget before the new container exists: the declared
+	// reservation, which a measured ReservationMiB can be below. A device
+	// whose budget is smaller is never proposed, because the move would always
+	// be refused there. Zero means ReservationMiB.
+	DeployMiB int
+}
+
+// fitsDestination reports whether a move of model to gpu can both hold its
+// reservation next to the other planned models and pass deployment
+// validation on that device.
+func fitsDestination(model PlacementModel, gpu PlacementGPU) bool {
+	deploy, budget := model.DeployMiB, gpu.BudgetMiB
+	if deploy <= 0 {
+		deploy = model.ReservationMiB
+	}
+	if budget <= 0 {
+		budget = gpu.CapacityMiB
+	}
+	return model.ReservationMiB <= gpu.CapacityMiB && deploy <= budget
 }
 
 type PlacementMove struct {
@@ -111,7 +135,7 @@ func PlanPlacement(gpus []PlacementGPU, models []PlacementModel, maxExhaustive i
 			continue
 		}
 		for g, gpu := range gpus {
-			if g != current[i] && gpu.Allowed && model.ReservationMiB <= gpu.CapacityMiB {
+			if g != current[i] && gpu.Allowed && fitsDestination(model, gpu) {
 				options[i] = append(options[i], g)
 			}
 		}

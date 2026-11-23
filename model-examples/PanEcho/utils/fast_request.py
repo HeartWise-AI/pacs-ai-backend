@@ -36,6 +36,10 @@ except ImportError:  # pragma: no cover - exercised only without the wheel
 # String literals at least this long are kept out of the JSON parser.
 LARGE_STRING_BYTES = 4096
 
+# Upper bound on the body buffer allocated from the declared Content-Length before any data
+# arrives; beyond it the buffer grows with the bytes received.
+PREALLOCATE_MAX_BYTES = 64 * 1024 * 1024
+
 Payload = Union[str, bytes, bytearray, memoryview]
 
 
@@ -152,8 +156,10 @@ def parse_predict_request(body: Union[bytes, bytearray]) -> PredictRequestWithPa
 async def read_body(request: Request) -> Union[bytes, bytearray]:
     """Read the request body into one buffer.
 
-    With a ``Content-Length`` the buffer is allocated once and filled in place, so the body is
-    never held as both a list of chunks and their concatenation.
+    With a ``Content-Length`` the buffer is filled in place, so the body is never held as both a
+    list of chunks and their concatenation. The declared length is not trusted for allocation:
+    at most ``PREALLOCATE_MAX_BYTES`` is allocated up front and the buffer grows only as bytes
+    actually arrive, so an oversized ``Content-Length`` cannot reserve memory by itself.
     """
     try:
         expected = int(request.headers.get("content-length", ""))
@@ -162,20 +168,15 @@ async def read_body(request: Request) -> Union[bytes, bytearray]:
     if expected <= 0:
         return await request.body()
 
-    buffer = bytearray(expected)
-    view = memoryview(buffer)
+    buffer = bytearray(min(expected, PREALLOCATE_MAX_BYTES))
     filled = 0
-    overflow = bytearray()
     async for chunk in request.stream():
-        size = len(chunk)
-        if not overflow and filled + size <= expected:
-            view[filled:filled + size] = chunk
-            filled += size
-        else:  # more data than declared; not produced by an HTTP server, kept for safety
-            overflow += chunk
-    view.release()
-    if filled < expected:
-        del buffer[filled:]
-    if overflow:
-        buffer += overflow
+        end = filled + len(chunk)
+        if end <= len(buffer):
+            buffer[filled:end] = chunk  # same length: written in place
+        else:
+            del buffer[filled:]
+            buffer += chunk  # grows with the bytes received (amortised by CPython)
+        filled = end
+    del buffer[filled:]
     return buffer

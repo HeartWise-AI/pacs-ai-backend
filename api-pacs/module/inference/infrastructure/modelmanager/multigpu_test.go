@@ -216,3 +216,31 @@ func TestPressureEvictionDoesNotUnloadAnotherGPU(t *testing.T) {
 		t.Fatal("evicted a model on the wrong GPU", b.unloads)
 	}
 }
+
+// With per-GPU budgets a resident growing to peak owns its device's resident
+// admission slot, so a request queued for a neighbouring resident on that
+// device cannot be admitted. Under lru-on-demand that neighbour must stay
+// evictable, or neither request can progress.
+func TestOnDemandEvictsQueuedNeighbourBlockedByResidentAdmission(t *testing.T) {
+	b := newFake()
+	b.add(1, 40, 80)
+	assign(b, 1, gpuA)
+	b.add(2, 40, 80)
+	assign(b, 2, gpuA)
+	m := multiManager(t, b)
+	m.config.EvictionPolicy = EvictionLRUOnDemand
+	target := &entry{model: b.models[id(1)], reserved: 40, state: api.RuntimeReady, loaded: true, active: true}
+	m.models[id(1)] = target
+	m.models[id(2)] = &entry{model: b.models[id(2)], reserved: 40, state: api.RuntimeReady, loaded: true, lastUsed: time.Now().Add(-time.Hour)}
+	owner := &waiter{id: id(1)}
+	m.residentAdmission[gpuA] = owner
+	m.queue = append(m.queue, &waiter{id: id(2)})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := m.reserve(ctx, target); err != nil {
+		t.Fatal("resident admission stalled behind a queued neighbour it blocks:", err)
+	}
+	if len(b.unloads) != 1 || b.unloads[0] != id(2) {
+		t.Fatal(b.unloads)
+	}
+}

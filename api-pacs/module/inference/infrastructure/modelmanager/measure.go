@@ -678,8 +678,12 @@ func (m *Manager) recordLocked(e *entry, was, is observation, usedMiB int, compl
 	// working memory: one taken at least MeasuredMinBusy after inference
 	// began, or two during the same prediction. A sample at the instant the
 	// model turns busy, or while it loads, shows little more than the idle
-	// footprint and must not lower the reservation to it.
-	if was.predicting && is.predicting && was.busySince.Equal(is.busySince) && usedMiB > 0 {
+	// footprint and must not lower the reservation to it. Like the idle
+	// footprint, the sample must also be completely attributed: memory of an
+	// unattributed process (say a GPU subprocess whose PID lookup failed) may
+	// belong to this prediction, and counting the sample would let the
+	// measured reservation shrink to a peak that excludes it.
+	if complete && was.predicting && is.predicting && was.busySince.Equal(is.busySince) && usedMiB > 0 {
 		e.busySamples++
 		if was.at.Sub(was.busySince) >= m.config.MeasuredMinBusy || e.busySamples >= 2 {
 			e.sampledActive = true

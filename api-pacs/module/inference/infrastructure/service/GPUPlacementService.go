@@ -291,7 +291,7 @@ func (service *GPUAdministrationService) PlacementPlan(ctx context.Context, tena
 	}
 	gpus := make([]modelmanager.PlacementGPU, 0, len(status.Devices))
 	for _, device := range status.Devices {
-		gpus = append(gpus, modelmanager.PlacementGPU{UUID: device.UUID, CapacityMiB: max(0, device.ManagerCapacityMiB-other[device.UUID]), Allowed: len(allowed) == 0 || allowed[device.UUID]})
+		gpus = append(gpus, modelmanager.PlacementGPU{UUID: device.UUID, CapacityMiB: max(0, device.ManagerCapacityMiB-other[device.UUID]), BudgetMiB: device.ManagerCapacityMiB, Allowed: len(allowed) == 0 || allowed[device.UUID]})
 	}
 
 	views := map[string]GPUPlacementModelView{}
@@ -335,7 +335,14 @@ func (service *GPUAdministrationService) PlacementPlan(ctx context.Context, tena
 			plan.ImageDrift = true
 			plan.ImageDriftModels = append(plan.ImageDriftModels, model.ModelID)
 		}
-		models = append(models, modelmanager.PlacementModel{ID: model.ModelID, GPUUUID: *model.GPUUUID, ReservationMiB: reservation, Movable: model.PlacementSupported})
+		// A move is validated against the destination with the declared
+		// reservation (the new container has no measurements yet), so the
+		// planner must not propose a device only the measured one fits.
+		deploy := reservation
+		if model.DeclaredReservationMiB != nil {
+			deploy = max(deploy, *model.DeclaredReservationMiB)
+		}
+		models = append(models, modelmanager.PlacementModel{ID: model.ModelID, GPUUUID: *model.GPUUUID, ReservationMiB: reservation, Movable: model.PlacementSupported, DeployMiB: deploy})
 	}
 	sort.Strings(plan.IncompleteReasons)
 	sort.Strings(plan.ImageDriftModels)
