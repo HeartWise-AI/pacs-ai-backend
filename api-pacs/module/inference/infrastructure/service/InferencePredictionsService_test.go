@@ -20,15 +20,17 @@ import (
 )
 
 type predictionsRepositoryFake struct {
-	examQueries      []repositoryTypes.ListPredictionExams
-	executionQueries []repositoryTypes.ListPredictionExecutions
-	historyQueries   []repositoryTypes.ListPredictionModelHistory
-	launcherTenants  []string
-	pages            []repositoryTypes.PredictionExamPage
-	executions       []repositoryTypes.PredictionExecutionRow
-	history          []repositoryTypes.PredictionExecutionRow
-	launchers        []repositoryTypes.PredictionLauncherRow
-	err              error
+	examQueries        []repositoryTypes.ListPredictionExams
+	executionQueries   []repositoryTypes.ListPredictionExecutions
+	historyQueries     []repositoryTypes.ListPredictionModelHistory
+	launcherTenants    []string
+	pages              []repositoryTypes.PredictionExamPage
+	executions         []repositoryTypes.PredictionExecutionRow
+	history            []repositoryTypes.PredictionExecutionRow
+	launchers          []repositoryTypes.PredictionLauncherRow
+	reportCounts       []repositoryTypes.ReturnedReportCountRow
+	reportCountQueries []repositoryTypes.CountReturnedReports
+	err                error
 }
 
 func (fake *predictionsRepositoryFake) ListPredictionExams(_ context.Context, data repositoryTypes.ListPredictionExams) (repositoryTypes.PredictionExamPage, error) {
@@ -67,6 +69,14 @@ func (fake *predictionsRepositoryFake) ListPredictionModelHistory(_ context.Cont
 func (fake *predictionsRepositoryFake) ListPredictionLaunchers(_ context.Context, tenantID string, _ []string) ([]repositoryTypes.PredictionLauncherRow, error) {
 	fake.launcherTenants = append(fake.launcherTenants, tenantID)
 	return fake.launchers, nil
+}
+
+func (fake *predictionsRepositoryFake) CountReturnedReports(_ context.Context, data repositoryTypes.CountReturnedReports) ([]repositoryTypes.ReturnedReportCountRow, error) {
+	fake.reportCountQueries = append(fake.reportCountQueries, data)
+	if fake.err != nil {
+		return nil, fake.err
+	}
+	return fake.reportCounts, nil
 }
 
 type predictionsUsersFake struct {

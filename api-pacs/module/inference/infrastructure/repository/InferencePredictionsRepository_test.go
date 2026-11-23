@@ -123,3 +123,51 @@ func TestPredictionExecutionsAreTenantScoped(t *testing.T) {
 	_, err = repository.ListPredictionExecutions(context.Background(), types.ListPredictionExecutions{StudyInstanceUIDs: []string{"1.2"}})
 	require.EqualError(t, err, apiError.InvalidPayload)
 }
+
+func TestCountReturnedReportsQueryUsesTheActivityIndexExpression(t *testing.T) {
+	from := time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC)
+	query, args := buildCountReturnedReportsQuery(types.CountReturnedReports{TenantID: "x' OR '1'='1", From: from, To: to})
+
+	require.NotContains(t, query, "x' OR")
+	require.Contains(t, query, "FROM ingestion_processing_jobs j")
+	require.Contains(t, query, "WHERE j.tenant_id = :tenant_id")
+	require.Contains(t, query, "CAST(j.status AS text) = 'completed'")
+	// Exactly the expression of idx_ingestion_processing_jobs_tenant_activity.
+	require.Contains(t, query, "AND COALESCE(j.completed_at, j.started_at) >= :from")
+	require.Contains(t, query, "AND COALESCE(j.completed_at, j.started_at) < :to")
+	require.Contains(t, query, "COALESCE(j.model_version, '') AS model_version")
+	require.Contains(t, query, "COALESCE(j.modality, '') AS modality")
+	require.Contains(t, query, "COUNT(*) AS completed_count")
+	require.Contains(t, query, "GROUP BY 1, 2, 3")
+	require.NotContains(t, query, "updated_at")
+	require.Equal(t, map[string]interface{}{"tenant_id": "x' OR '1'='1", "from": from, "to": to}, args)
+}
+
+func TestCountReturnedReportsValidatesAndScansRows(t *testing.T) {
+	from := time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC)
+	to := from.Add(30 * 24 * time.Hour)
+	handler := &processingRunTestHandler{}
+	handler.query = func(query string, model interface{}, target interface{}) error {
+		require.Equal(t, "tenant-a", model.(map[string]interface{})["tenant_id"])
+		rows := target.(*[]types.ReturnedReportCountRow)
+		*rows = append(*rows, types.ReturnedReportCountRow{ModelName: "PanEcho", ModelVersion: "1.0.3", Modality: "echocardiogram", CompletedCount: 789})
+		return nil
+	}
+	repository := InferencePredictionsRepository{PostgresSQLDBHandlerInterface: handler}
+
+	rows, err := repository.CountReturnedReports(context.Background(), types.CountReturnedReports{TenantID: "tenant-a", From: from, To: to})
+	require.NoError(t, err)
+	require.Equal(t, []types.ReturnedReportCountRow{{ModelName: "PanEcho", ModelVersion: "1.0.3", Modality: "echocardiogram", CompletedCount: 789}}, rows)
+
+	for _, data := range []types.CountReturnedReports{
+		{From: from, To: to},
+		{TenantID: "tenant-a", To: to},
+		{TenantID: "tenant-a", From: from},
+		{TenantID: "tenant-a", From: to, To: from},
+		{TenantID: "tenant-a", From: from, To: from},
+	} {
+		_, err := repository.CountReturnedReports(context.Background(), data)
+		require.EqualError(t, err, apiError.InvalidPayload)
+	}
+}

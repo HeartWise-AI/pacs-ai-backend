@@ -310,6 +310,9 @@ type GetModelFeedbackByUserModelID struct {
 	TenantID string
 	UserID   string
 	ModelID  string
+	// ExecutionID scopes the vote to one report. Empty matches only the votes
+	// stored without an execution id (legacy and output-mode-modal votes).
+	ExecutionID string
 }
 
 type ListInferenceIngestionCandidates struct {

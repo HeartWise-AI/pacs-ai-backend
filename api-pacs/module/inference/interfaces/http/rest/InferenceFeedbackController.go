@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -113,7 +114,23 @@ func (controller *InferenceCommandController) AddOnboardingModelQuestionnaireAns
 	response.JSON(w)
 }
 
-// RemoveModelFeedback removes model feedback
+// maximumFeedbackExecutionIDLength bounds the optional executionId query
+// parameter, like the executionId of the update payload.
+const maximumFeedbackExecutionIDLength = 128
+
+// feedbackExecutionID reads the optional ?executionId= that scopes a vote to
+// one report. It is trimmed; ok is false when it is too long.
+func feedbackExecutionID(r *http.Request) (string, bool) {
+	executionID := strings.TrimSpace(r.URL.Query().Get("executionId"))
+	if utf8.RuneCountInString(executionID) > maximumFeedbackExecutionIDLength {
+		return "", false
+	}
+	return executionID, true
+}
+
+// RemoveModelFeedback removes the vote of the user on a model version. The
+// optional ?executionId= scopes it to one report; without it only the vote
+// stored without a report is removed.
 func (controller *InferenceCommandController) RemoveModelFeedback(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
@@ -131,10 +148,24 @@ func (controller *InferenceCommandController) RemoveModelFeedback(w http.Respons
 		return
 	}
 
+	executionID, ok := feedbackExecutionID(r)
+	if !ok {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Execution ID must be at most 128 characters.",
+			ErrorCode: apiError.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
 	err := controller.InferenceCommandServiceInterface.RemoveModelFeedback(context.TODO(), serviceTypes.RemoveModelFeedback{
-		TenantID: tenantID,
-		UserID:   userID,
-		ModelID:  modelID,
+		TenantID:    tenantID,
+		UserID:      userID,
+		ModelID:     modelID,
+		ExecutionID: executionID,
 	})
 	if err != nil {
 		var httpCode int

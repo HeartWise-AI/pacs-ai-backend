@@ -909,9 +909,10 @@ func buildProcessingRunDetail(run entity.InferenceIngestionProcessingRun, execut
 // GetModelFeedBackByUser gets the model feedback by user
 func (service *InferenceQueryService) GetModelFeedBackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (types.GetModelFeedbackResult, error) {
 	modelFeedback, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackByUserModelID(ctx, repositoryTypes.GetModelFeedbackByUserModelID{
-		TenantID: data.TenantID,
-		UserID:   data.UserID,
-		ModelID:  data.ModelID,
+		TenantID:    data.TenantID,
+		UserID:      data.UserID,
+		ModelID:     data.ModelID,
+		ExecutionID: data.ExecutionID,
 	})
 	if err != nil {
 		return types.GetModelFeedbackResult{}, err

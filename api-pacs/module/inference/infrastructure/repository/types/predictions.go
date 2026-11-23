@@ -144,3 +144,20 @@ type PredictionLauncherRow struct {
 	Runs              int                                           `db:"runs"`
 	FirstAt           time.Time                                     `db:"first_at"`
 }
+
+// CountReturnedReports counts the completed executions of a tenant whose last
+// event (COALESCE(completed_at, started_at)) is in [From, To).
+type CountReturnedReports struct {
+	TenantID string
+	From     time.Time
+	To       time.Time
+}
+
+// ReturnedReportCountRow is the number of completed executions of one model
+// version and modality. Missing versions and modalities are empty strings.
+type ReturnedReportCountRow struct {
+	ModelName      string `db:"model_name"`
+	ModelVersion   string `db:"model_version"`
+	Modality       string `db:"modality"`
+	CompletedCount int    `db:"completed_count"`
+}

@@ -818,6 +818,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "executionId",
+            "in": "query",
+            "description": "Optional execution (report) the vote belongs to, at most 128 characters. Without it only the vote stored without a report matches.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
           }
         ],
         "responses": {
@@ -1045,6 +1055,78 @@
         }
       }
     },
+    "/inference/model/feedback/report-counts": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "List Feedback Report Counts",
+        "description": "Workspace owners and administrators only. Counts the reports returned (completed executions, dated by completed_at, else started_at) per model version and modality of the session tenant in [from, to). Response data: {from, to, models: [{modelName, modelVersion, modality, completedCount}]}.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Start of the range (RFC3339, inclusive).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "End of the range (RFC3339, exclusive); after from and at most 800 days later.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Completed executions per model version and modality",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "from": { "type": "string", "format": "date-time" },
+                        "to": { "type": "string", "format": "date-time" },
+                        "models": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "modelName": { "type": "string" },
+                              "modelVersion": { "type": "string" },
+                              "modality": { "type": "string" },
+                              "completedCount": { "type": "integer" }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing or invalid from/to, from not before to, or a span over 800 days" },
+          "401": { "description": "Authentication is required" },
+          "403": { "description": "Not a workspace owner or administrator" },
+          "5xx": { "description": "Server side errors" }
+        }
+      }
+    },
     "/inference/model/{modelId}/feedback/remove": {
       "delete": {
         "tags": ["inference"],
@@ -1063,6 +1145,16 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "query",
+            "description": "Optional execution (report) the vote belongs to, at most 128 characters. Without it only the vote stored without a report matches.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
             }
           }
         ],

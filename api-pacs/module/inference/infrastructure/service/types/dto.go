@@ -369,6 +369,9 @@ type GetModelFeedbackByUser struct {
 	TenantID string
 	UserID   string
 	ModelID  string
+	// ExecutionID scopes the vote to one report; empty keeps the votes
+	// stored without a report.
+	ExecutionID string
 }
 
 type GetOnboardingModelQuestionnaireAnswer struct {
@@ -398,6 +401,9 @@ type RemoveModelFeedback struct {
 	TenantID string
 	UserID   string
 	ModelID  string
+	// ExecutionID scopes the vote to one report; empty keeps the votes
+	// stored without a report.
+	ExecutionID string
 }
 
 type UpdateInferenceModel struct {

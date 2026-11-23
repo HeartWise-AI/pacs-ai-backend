@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/lib/pq"
@@ -468,7 +469,10 @@ ORDER BY processing_status_at ASC, updated_at ASC`, candidate.GetModelName())
 	return candidates, nil
 }
 
-// SelectModelFeedbackByUserModelID get model feedback by model and user ID
+// SelectModelFeedbackByUserModelID gets the vote of a user on one model
+// version for one report (data.ExecutionID). Votes are kept per report: the
+// query keeps its three equalities (no composite index needed) and the report
+// is picked in Go. An empty ExecutionID matches only votes stored without one.
 func (repository *InferenceQueryRepository) SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
 	// firestore client
 	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
@@ -486,17 +490,46 @@ func (repository *InferenceQueryRepository) SelectModelFeedbackByUserModelID(ctx
 		return entity.ModelFeedback{}, errors.New(apiError.FirestoreError)
 	}
 
-	if len(firestoreRes) == 0 {
+	candidates := make([]entity.ModelFeedback, 0, len(firestoreRes))
+	for _, doc := range firestoreRes {
+		var item entity.ModelFeedback
+		if err := doc.DataTo(&item); err != nil {
+			log.Println(err)
+			return entity.ModelFeedback{}, errors.New(apiError.FirestoreError)
+		}
+		if item.ID == "" {
+			item.ID = doc.Ref.ID
+		}
+		candidates = append(candidates, item)
+	}
+
+	selected, ok := selectModelFeedbackForExecution(candidates, data.ExecutionID)
+	if !ok {
 		return entity.ModelFeedback{}, errors.New(apiError.MissingRecord)
 	}
 
-	err = firestoreRes[0].DataTo(&modelFeedback)
-	if err != nil {
-		log.Println(err)
-		return entity.ModelFeedback{}, errors.New(apiError.FirestoreError)
-	}
+	return selected, nil
+}
 
-	return modelFeedback, nil
+// selectModelFeedbackForExecution picks the vote of one report among the
+// votes of a user on a model version: the one whose execution id equals
+// executionID (empty matches only votes without one). Should duplicates
+// exist, the most recently updated wins, then the smallest id.
+func selectModelFeedbackForExecution(feedbacks []entity.ModelFeedback, executionID string) (entity.ModelFeedback, bool) {
+	executionID = strings.TrimSpace(executionID)
+	var selected entity.ModelFeedback
+	found := false
+	for _, feedback := range feedbacks {
+		if strings.TrimSpace(feedback.ExecutionID) != executionID {
+			continue
+		}
+		if !found || feedback.UpdatedAt > selected.UpdatedAt ||
+			(feedback.UpdatedAt == selected.UpdatedAt && feedback.ID < selected.ID) {
+			selected = feedback
+			found = true
+		}
+	}
+	return selected, found
 }
 
 // SelectModelFeedbackAnswersByFeedbackID get model feedback answers by feedback ID

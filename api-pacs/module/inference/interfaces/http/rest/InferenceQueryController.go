@@ -662,7 +662,9 @@ func scheduleTimestampUnix(value time.Time) uint64 {
 	return uint64(value.Unix())
 }
 
-// GetModelFeedbackByModelID gets the model feedback by model ID
+// GetModelFeedbackByModelID gets the vote of the user on a model version. The
+// optional ?executionId= scopes it to one report; without it only the vote
+// stored without a report matches.
 func (controller *InferenceQueryController) GetModelFeedbackByModelID(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
@@ -680,10 +682,24 @@ func (controller *InferenceQueryController) GetModelFeedbackByModelID(w http.Res
 		return
 	}
 
+	executionID, ok := feedbackExecutionID(r)
+	if !ok {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadRequest,
+			Success:   false,
+			Message:   "Execution ID must be at most 128 characters.",
+			ErrorCode: apiError.InvalidPayload,
+		}
+
+		response.JSON(w)
+		return
+	}
+
 	res, err := controller.InferenceQueryServiceInterface.GetModelFeedBackByUser(r.Context(), serviceTypes.GetModelFeedbackByUser{
-		TenantID: tenantID,
-		UserID:   userID,
-		ModelID:  modelID,
+		TenantID:    tenantID,
+		UserID:      userID,
+		ModelID:     modelID,
+		ExecutionID: executionID,
 	})
 	if err != nil {
 		var httpCode int
