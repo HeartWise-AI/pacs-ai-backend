@@ -1030,7 +1030,20 @@ func TestBlockAndDrainIdleNeverClosesAdmissionOnAModelInUse(t *testing.T) {
 	receive(t, prediction)
 	receive(t, queued)
 
-	// Idle and loaded, the model is drained exactly like BlockAndDrain does.
+	// Requests that came and went while a move was being prepared leave the
+	// model idle but just used: the placement idle period is checked again
+	// when admission would close.
+	if err := m.BlockAndDrainIdle(context.Background(), id(1)); !errors.Is(err, ErrModelBusy) {
+		t.Fatalf("a model used moments ago was drained: %v", err)
+	}
+	if snapshot := m.Snapshot().Models[id(1)]; snapshot.Blocked || snapshot.Draining {
+		t.Fatalf("a refused drain left admission closed: %+v", snapshot)
+	}
+	m.mu.Lock()
+	m.models[id(1)].lastUsed = time.Now().Add(-m.config.PlacementMinIdle - time.Second)
+	m.mu.Unlock()
+
+	// Idle long enough and loaded, the model is drained exactly like BlockAndDrain does.
 	if err := m.BlockAndDrainIdle(context.Background(), id(1)); err != nil {
 		t.Fatal(err)
 	}

@@ -211,3 +211,26 @@ func TestPlanReportsHowManyModelsFitAfterEachMoveAlone(t *testing.T) {
 		t.Fatalf("order: %v", got)
 	}
 }
+
+// A measured reservation can be below the declared one, but a move's
+// deployment is validated with the declared reservation against the whole
+// destination budget. The planner must not propose a device that only the
+// measured reservation fits: that move would always be refused.
+func TestPlanNeverProposesADestinationTheDeploymentWouldReject(t *testing.T) {
+	gpus := []PlacementGPU{{UUID: gpuA, CapacityMiB: 3000, BudgetMiB: 3000, Allowed: true}, {UUID: gpuB, CapacityMiB: 6000, BudgetMiB: 8000, Allowed: true}}
+	measured := planModel("measured", gpuB, 2500)
+	measured.DeployMiB = 6000
+	models := []PlacementModel{measured, planModel("big", gpuB, 5000)}
+	plan := PlanPlacement(gpus, models, 0)
+	for _, move := range plan.Moves {
+		if move.ModelID == "measured" && move.To == gpuA {
+			t.Fatalf("proposed a move the deployment validation rejects: %+v", plan.Moves)
+		}
+	}
+	// Without the declared ceiling the same model would have been moved there.
+	measured.DeployMiB = 0
+	plan = PlanPlacement(gpus, []PlacementModel{measured, planModel("big", gpuB, 5000)}, 0)
+	if got := moved(plan); len(got) != 1 || got[0] != "measured>"+gpuA {
+		t.Fatalf("control case: %v", got)
+	}
+}

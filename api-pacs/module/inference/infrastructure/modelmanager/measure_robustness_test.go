@@ -442,3 +442,49 @@ func TestSampleAgeGaugeGrowsWhenAGPUIsNoLongerSampled(t *testing.T) {
 		t.Fatal("a GPU that was never sampled reports process memory")
 	}
 }
+
+// A prediction whose sample left memory unattributed (here a new GPU
+// subprocess while the container's process listing fails) is not counted as
+// observed: the unattributed memory may be its own, so counting it could let
+// the measured reservation shrink below the real peak.
+func TestPredictionWithUnattributedMemoryIsNotObserved(t *testing.T) {
+	m, b, probe := loadedOn(t, ReservationMeasured, func(c *Config) { c.MeasuredMinBusy = 0 }, gpuA)
+	started, release := make(chan struct{}), make(chan struct{})
+	b.predict = func(context.Context, Model, api.PredictRequest) (api.PredictResponse, error) {
+		started <- struct{}{}
+		<-release
+		return api.PredictResponse{Success: true}, nil
+	}
+	probe.pids[id(1)] = []string{"10"}
+	probe.use(gpuA, process("10", 2050))
+	sampler := newGPUSampler(m, probe, nil)
+	sampler.sample(context.Background(), nil) // learn that PID 10 belongs to the model
+	samples := func() int { return m.Measurements().Models[id(1)].Samples }
+
+	probe.set(func() { probe.topErr[id(1)] = errors.New("docker daemon is busy") })
+	probe.use(gpuA, process("10", 2050), process("31", 4000))
+	done := request(m, 1)
+	<-started
+	sampler.sample(context.Background(), nil)
+	sampler.sample(context.Background(), nil)
+	release <- struct{}{}
+	receive(t, done)
+	if usage := m.Measurements().GPUs[gpuA]; usage.UnattributedMiB != 4000 {
+		t.Fatalf("setup: the subprocess should be unattributed: %+v", usage)
+	}
+	if samples() != 0 {
+		t.Fatal("a prediction sampled with unattributed memory was counted as observed")
+	}
+
+	// Once attribution is complete again, the prediction counts.
+	probe.set(func() { delete(probe.topErr, id(1)); probe.pids[id(1)] = []string{"10", "31"} })
+	done = request(m, 1)
+	<-started
+	sampler.sample(context.Background(), nil)
+	sampler.sample(context.Background(), nil)
+	release <- struct{}{}
+	receive(t, done)
+	if samples() != 1 {
+		t.Fatal("a completely attributed prediction was not counted:", samples())
+	}
+}

@@ -716,10 +716,19 @@ func (m *Manager) BlockAndDrain(ctx context.Context, id string) (err error) {
 
 // BlockAndDrainIdle is BlockAndDrain for automatic placement: it refuses with
 // ErrModelBusy, leaving admission open, when the model has an admitted request
-// or one waiting. The check and the gate are taken under one lock, so a request
-// cannot slip in between them.
+// or one waiting, or is loaded and was used within the placement idle period
+// (a request may have come and gone while the move was being prepared). The
+// check and the gate are taken under one lock, so a request cannot slip in
+// between them.
 func (m *Manager) BlockAndDrainIdle(ctx context.Context, id string) error {
 	return m.blockAndDrain(ctx, id, true)
+}
+
+// usedRecentlyLocked applies the automatic placement idle rule at the moment
+// admission closes: a loaded model must have been idle for
+// max(PlacementMinIdle, MinResidency). Callers hold mu.
+func (m *Manager) usedRecentlyLocked(e *entry) bool {
+	return e.loaded && !e.lastUsed.IsZero() && time.Since(e.lastUsed) < max(m.config.PlacementMinIdle, m.config.MinResidency)
 }
 
 func (m *Manager) blockAndDrain(ctx context.Context, id string, requireIdle bool) (err error) {
@@ -744,7 +753,7 @@ func (m *Manager) blockAndDrain(ctx context.Context, id string, requireIdle bool
 		m.mu.Unlock()
 		return errors.New("model drain is already in progress")
 	}
-	if requireIdle && (e.active || e.leased || m.hasQueuedLocked(id)) {
+	if requireIdle && (e.active || e.leased || m.hasQueuedLocked(id) || m.usedRecentlyLocked(e)) {
 		m.mu.Unlock()
 		m.metrics.ObserveEvent("drain", "refused_busy")
 		return ErrModelBusy
@@ -1079,6 +1088,21 @@ func (m *Manager) removeLocked(w *waiter) {
 	}
 }
 
+// queuedAdmissibleLocked reports whether a request queued for this idle
+// resident could be admitted while the caller waits for memory. Only then is it
+// worth keeping the model loaded for that request. When the request is held
+// back by an admission the caller owns (the global admission slot, or the
+// per-GPU resident slot of the model's device), it cannot run until the caller
+// gets its memory, so protecting the model would stall both requests until the
+// queue timeout.
+func (m *Manager) queuedAdmissibleLocked(id string, e *entry) bool {
+	if !m.hasQueuedLocked(id) || m.admitting != nil {
+		return false
+	}
+	deviceBusy := len(m.config.GPUBudgetsMiB) > 0 && e.reserved > 0 && m.residentAdmission[e.model.GPUUUID] != nil
+	return !deviceBusy
+}
+
 func (m *Manager) releaseResidentAdmissionLocked(w *waiter) {
 	for uuid, owner := range m.residentAdmission {
 		if owner == w {
@@ -1130,7 +1154,7 @@ func (m *Manager) reserve(ctx context.Context, target *entry) error {
 			// different models is not held up by ones that already answered.
 			keep := time.Duration(e.model.Resources.IdleTimeoutSeconds) * time.Second
 			if m.config.EvictionPolicy == EvictionLRUOnDemand {
-				if m.hasQueuedLocked(id) {
+				if m.queuedAdmissibleLocked(id, e) {
 					continue
 				}
 				keep = m.config.MinResidency

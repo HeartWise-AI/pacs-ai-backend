@@ -232,3 +232,34 @@ def test_large_string_threshold_keeps_small_documents_whole():
     body = make_body({"0": {"0": "A" * (LARGE_STRING_BYTES - 1)}})
     document, payloads = split_large_strings(body)
     assert document == body and payloads == {}
+
+
+def test_read_body_does_not_preallocate_an_oversized_declared_length(monkeypatch):
+    monkeypatch.setattr(fast_request, "PREALLOCATE_MAX_BYTES", 1024)
+    allocations = []
+    real_bytearray = bytearray
+
+    class _TrackingBytearray(real_bytearray):
+        def __init__(self, *args):
+            if args and isinstance(args[0], int):
+                allocations.append(args[0])
+            super().__init__(*args)
+
+    monkeypatch.setattr(fast_request, "bytearray", _TrackingBytearray, raising=False)
+    chunks = [BLOBS[0][:3000], BLOBS[0][3000:]]
+    sent = b"".join(chunks)
+
+    received = asyncio.run(read_body(_FakeRequest(chunks, 50 * 1024 * 1024 * 1024)))
+
+    assert bytes(received) == sent
+    assert allocations and max(allocations) <= 1024
+
+
+def test_read_body_grows_past_the_preallocation_cap(monkeypatch):
+    monkeypatch.setattr(fast_request, "PREALLOCATE_MAX_BYTES", 100)
+    chunks = [BLOBS[0][:70], BLOBS[0][70:150], BLOBS[2]]
+    sent = b"".join(chunks)
+
+    received = asyncio.run(read_body(_FakeRequest(chunks, len(sent))))
+
+    assert bytes(received) == sent
