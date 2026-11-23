@@ -1587,6 +1587,9 @@ func (service *InferenceCommandService) reconcileProcessingRun(
 				findings.ExpectedJobMissing = true
 			} else {
 				findings.StudyServiceJobMissing = true
+				findings.MissingStudyServiceJobIDs = append(
+					findings.MissingStudyServiceJobIDs, strings.TrimSpace(trimmedPointerValue(target.StudyServiceJobID)),
+				)
 			}
 		}
 	}
@@ -1686,7 +1689,10 @@ func (service *InferenceCommandService) reconcileProcessingRunCandidate(
 type processingReconciliationAttentionFindings struct {
 	ExpectedJobMissing     bool
 	StudyServiceJobMissing bool
-	CallbackDeadLettered   bool
+	// MissingStudyServiceJobIDs are the jobs study-service no longer knows;
+	// only their executions may be cancelled as lost.
+	MissingStudyServiceJobIDs []string
+	CallbackDeadLettered      bool
 }
 
 func (service *InferenceCommandService) closeUnrecoverableOrphanedExecution(
@@ -1913,7 +1919,12 @@ func (service *InferenceCommandService) syncProcessingRunReconciliationAttention
 		reasons = appendReconciliationReason(reasons, entity.InferenceIngestionProcessingRunAttentionExpectedJobMissing)
 	}
 	if findings.StudyServiceJobMissing {
-		reasons = appendReconciliationReason(reasons, entity.InferenceIngestionProcessingRunAttentionStudyServiceJobMissing)
+		missing := slices.Clone(findings.MissingStudyServiceJobIDs)
+		slices.Sort(missing)
+		reasons = append(reasons, entity.InferenceIngestionProcessingRunAttentionReason{
+			Code:               entity.InferenceIngestionProcessingRunAttentionStudyServiceJobMissing,
+			StudyServiceJobIDs: slices.Compact(missing),
+		})
 	}
 	if findings.CallbackDeadLettered && currentRun.Phase != entity.InferenceIngestionProcessingRunPhaseTerminal {
 		reasons = appendReconciliationReason(reasons, entity.InferenceIngestionProcessingRunAttentionCallbackDeadLettered)
@@ -2279,6 +2290,14 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 ) error {
 	if service.RequireProcessingRunID && strings.TrimSpace(processingRunID) == "" {
 		return errors.New(apiError.InvalidPayload)
+	}
+	if strings.TrimSpace(processingRunID) != "" {
+		// Hold the execution from the pending check until the accepted job is
+		// recorded, so a user cancellation cannot end it in between.
+		release := studyServiceDispatchHandoffs.acquire(
+			studyServiceDispatchKey(candidate.TenantID, processingRunID, candidate.ID, job.ModelName),
+		)
+		defer release()
 	}
 	shouldDispatch, committedExecutionID, err := service.shouldDispatchCommittedProcessingExecution(
 		ctx, candidate, job, processingRunID, processingExecutionID, dispatchIntent,

@@ -259,8 +259,11 @@ func (o *OrthancAPI) moveView(jobID string, job types.GetJobResponse) types.GetJ
 			}
 			count, err := o.countLocalSeriesInstances(part.studyInstanceUID, part.seriesInstanceUID)
 			if err != nil {
+				// The images are not checked: report the move as still
+				// pending, not Orthanc's success, so the reader asks again and
+				// the check is retried instead of an incomplete study passing.
 				log.Printf("[retrieve] cannot count local images of move job %s: %v", jobID, err)
-				return job
+				return pendingView(job)
 			}
 			local += min(count, part.expected)
 		}

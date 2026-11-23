@@ -67,12 +67,20 @@ func (service *InferenceCommandService) CancelProcessingRun(ctx context.Context,
 
 	service.clearAttentionResolvedByCancellation(ctx, run, executions, targets)
 
-	studyServiceJobMissing := entity.ProcessingRunHasAttentionReason(
-		run.AttentionReasons, entity.InferenceIngestionProcessingRunAttentionStudyServiceJobMissing,
-	)
 	cancelled := 0
 	message := processingRunCancelledByUserMessage
 	for _, target := range targets {
+		// A dispatch that is handing this execution to study-service right now
+		// owns it: study-service may already be computing, and the dispatch
+		// records the accepted job. Leave it to finish instead of cancelling.
+		release, claimed := studyServiceDispatchHandoffs.tryAcquire(
+			studyServiceDispatchKey(tenantID, runID, target.CandidateID, target.ModelName),
+		)
+		if !claimed {
+			log.Printf("[Processing run cancel] execution left to finish: dispatch under way run_id=%s execution_id=%s model_name=%s",
+				runID, target.ID, target.ModelName)
+			continue
+		}
 		transition, transitionErr := service.InferenceProcessingRunRepositoryInterface.ApplyProcessingRunExecutionTransition(
 			ctx,
 			repositoryTypes.ApplyInferenceIngestionProcessingTransition{
@@ -85,9 +93,10 @@ func (service *InferenceCommandService) CancelProcessingRun(ctx context.Context,
 				ErrorMessage:                   &message,
 				CompletedAt:                    &now,
 				OnlyIfCancellableBeforeCompute: true,
-				StudyServiceJobMissing:         studyServiceJobMissing,
+				StudyServiceJobMissing:         entity.ProcessingRunExecutionStudyServiceJobMissing(run.AttentionReasons, target),
 			},
 		)
+		release()
 		if transitionErr != nil {
 			// Executions cancelled so far stay cancelled; repeating the request resumes.
 			return types.ProcessingRunDetail{}, transitionErr

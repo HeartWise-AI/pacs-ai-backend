@@ -406,9 +406,7 @@ func buildPredictionExecution(
 		Status: row.Status, StudyServiceJobID: row.StudyServiceJobID,
 		SkipReasonCode: row.SkipReasonCode, SkipReasonMessage: row.SkipReasonMessage,
 	}
-	studyServiceJobMissing := entity.ProcessingRunHasAttentionReason(
-		row.RunAttentionReasons, entity.InferenceIngestionProcessingRunAttentionStudyServiceJobMissing,
-	)
+	studyServiceJobMissing := entity.ProcessingRunExecutionStudyServiceJobMissing(row.RunAttentionReasons, execution)
 	result := types.PredictionExecution{
 		RunID: row.RunID, ExecutionID: row.ExecutionID, RunNumber: row.RunNumber, Trigger: row.RunTrigger,
 		ModelName: row.ModelName, ModelVersion: row.ModelVersion, Modality: row.Modality,

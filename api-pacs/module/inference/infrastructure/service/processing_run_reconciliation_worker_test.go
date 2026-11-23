@@ -283,6 +283,8 @@ func TestReconciliationWorkerQueriesOnlyPreciselyEligibleCandidates(t *testing.T
 		runRepository.aggregateUpdates[0].AttentionReasons[0].Code,
 		runRepository.aggregateUpdates[0].AttentionReasons[1].Code,
 	})
+	// The reason names the lost job, so only its execution counts as lost.
+	require.Equal(t, []string{"python-job-missing"}, runRepository.aggregateUpdates[0].AttentionReasons[1].StudyServiceJobIDs)
 	require.Equal(t, []ProcessingReconciliationCycleMetrics{{Checked: 2, Unresolved: 1}}, metricsRecorder.cycles)
 }
 

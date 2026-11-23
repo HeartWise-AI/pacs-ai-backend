@@ -51,6 +51,11 @@ func (service *InferenceCommandService) reconcileExistingManualStudyCandidates(
 	}
 
 	studyModalitySet := make(map[string]struct{})
+	// fallbackModalitySet gathers the modalities of every existing candidate's
+	// job, for studies whose candidates carry no ModalitiesInStudy (those the
+	// viewer created). Each existing model then stays eligible, instead of
+	// the first candidate's job standing for the whole study.
+	fallbackModalitySet := make(map[string]struct{})
 	sourceSet := make(map[string]struct{})
 	var metadata *entity.InferenceIngestionCandidate
 	for index := range existing {
@@ -75,13 +80,13 @@ func (service *InferenceCommandService) reconcileExistingManualStudyCandidates(
 		if source != "" && !strings.EqualFold(source, viewerIngestionJobSource) {
 			sourceSet[source] = struct{}{}
 		}
-		if len(studyModalitySet) == 0 {
-			for _, modality := range normalizeDispatchModalities([]string(job.Modalities)) {
-				studyModalitySet[modality] = struct{}{}
-			}
-			if len(studyModalitySet) == 0 && source != "" && !strings.EqualFold(source, "PACS_QUERY") {
-				studyModalitySet[canonicalStudyServiceModality(source)] = struct{}{}
-			}
+		jobModalities := normalizeDispatchModalities([]string(job.Modalities))
+		for _, modality := range jobModalities {
+			fallbackModalitySet[modality] = struct{}{}
+		}
+		if len(jobModalities) == 0 && source != "" && !strings.EqualFold(source, "PACS_QUERY") &&
+			!strings.EqualFold(source, viewerIngestionJobSource) {
+			fallbackModalitySet[canonicalStudyServiceModality(source)] = struct{}{}
 		}
 		if metadata == nil || manualCandidateMetadataIsNewer(candidate, *metadata) {
 			metadata = &existing[index]
@@ -89,6 +94,18 @@ func (service *InferenceCommandService) reconcileExistingManualStudyCandidates(
 	}
 	if metadata == nil {
 		return service.bootstrapManualStudyCandidates(ctx, tenantID, studyInstanceUID)
+	}
+	if len(studyModalitySet) == 0 {
+		// Prefer the study's real modalities from the local store; otherwise
+		// keep every existing model eligible.
+		for _, modality := range service.localStudyModalities(ctx, studyInstanceUID) {
+			studyModalitySet[modality] = struct{}{}
+		}
+		if len(studyModalitySet) == 0 {
+			for modality := range fallbackModalitySet {
+				studyModalitySet[modality] = struct{}{}
+			}
+		}
 	}
 	// Legacy candidates without modality metadata cannot be safely expanded to
 	// new models. Preserve their prior behavior instead of guessing.
@@ -200,6 +217,24 @@ func (service *InferenceCommandService) reconcileExistingManualStudyCandidates(
 	log.Printf("[Manual reprocess] reconciled current study candidates tenant_id=%s study_instance_uid=%s candidates=%d",
 		tenantID, studyInstanceUID, len(ready))
 	return ready, nil
+}
+
+// localStudyModalities reads ModalitiesInStudy of a study in the local store.
+// It returns nothing when the study is not local or cannot be read.
+func (service *InferenceCommandService) localStudyModalities(ctx context.Context, studyInstanceUID string) []string {
+	if service.OrthancAPIInterface == nil {
+		return nil
+	}
+	resources, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
+		Level:         "Study",
+		Query:         orthancAPITypes.QueryLocalResource{StudyInstanceUID: studyInstanceUID},
+		Expand:        true,
+		RequestedTags: []string{"ModalitiesInStudy"},
+	})
+	if err != nil || len(resources) != 1 {
+		return nil
+	}
+	return parseCandidateModalities(nonEmptyStringPointer(strings.TrimSpace(resources[0].RequestedTags["ModalitiesInStudy"])))
 }
 
 func manualCandidateMetadataIsNewer(candidate, current entity.InferenceIngestionCandidate) bool {

@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"time"
 
 	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
+	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/internal/inputlimits"
 	"api-pacs/module/inference/domain/entity"
@@ -81,6 +83,12 @@ func (service *InferenceCommandService) CreateViewerModelRun(ctx context.Context
 		return types.CreateViewerModelRunResult{}, err
 	}
 
+	if requested := strings.ToUpper(strings.TrimSpace(data.Modality)); requested != "" &&
+		len(parseCandidateModalities(candidate.ModalitiesInStudy)) == 0 {
+		// A candidate created for the viewer carries no study modalities; the
+		// requested one tells a multi-modality job which modality to dispatch.
+		candidate.ModalitiesInStudy = &requested
+	}
 	var executionModality *string
 	if modality, modalityErr := resolveDispatchModality(job, candidate); modalityErr == nil {
 		executionModality = nonEmptyStringPointer(modality)
@@ -179,7 +187,51 @@ func (service *InferenceCommandService) resolveViewerModelRegistration(ctx conte
 			return entity.InferenceModel{}, errors.New(apiError.InvalidPayload)
 		}
 	}
-	return entity.InferenceModel{}, errors.New(apiError.MissingRecord)
+	return service.resolveViewerModelByLiveModelID(ctx, tenantID, ref, models)
+}
+
+// resolveViewerModelByLiveModelID matches the model-info modelId that
+// /model/proxy/available lists for registrations made without a deployment
+// snapshot (AddInferenceModel), which record no artifact model ID. Only
+// running containers are asked: the available-models list shows no other.
+func (service *InferenceCommandService) resolveViewerModelByLiveModelID(
+	ctx context.Context,
+	tenantID, ref string,
+	models []entity.InferenceModel,
+) (entity.InferenceModel, error) {
+	if service.DockerSDKInterface == nil || service.DockerInferenceAPIInterface == nil {
+		return entity.InferenceModel{}, errors.New(apiError.MissingRecord)
+	}
+	var matches []entity.InferenceModel
+	for _, model := range models {
+		if model.TenantID != tenantID || strings.TrimSpace(model.ContainerID) == "" {
+			continue
+		}
+		if deployment := currentIngestionDeployment(model); deployment != nil && strings.TrimSpace(deployment.ArtifactModelID) != "" {
+			continue // already compared by its recorded artifact model ID
+		}
+		info, err := service.DockerSDKInterface.GetContainerInfo(ctx, model.ContainerID)
+		if err != nil || info.Lifecycle != dockerTypes.LifecycleRunning {
+			continue
+		}
+		name := strings.TrimPrefix(strings.TrimSpace(info.Name), "/")
+		if name == "" {
+			continue
+		}
+		response, err := service.DockerInferenceAPIInterface.GetModelInfo(ctx, name)
+		if err != nil || !response.Success || strings.TrimSpace(response.Data.ModelID) != ref {
+			continue
+		}
+		matches = append(matches, model)
+	}
+	switch len(matches) {
+	case 0:
+		return entity.InferenceModel{}, errors.New(apiError.MissingRecord)
+	case 1:
+		return matches[0], nil
+	default:
+		return entity.InferenceModel{}, errors.New(apiError.InvalidPayload)
+	}
 }
 
 func (service *InferenceCommandService) viewerModelInfo(ctx context.Context, model entity.InferenceModel) (dockerInferenceTypes.ModelInfo, error) {
@@ -222,6 +274,12 @@ func (service *InferenceCommandService) ensureViewerCandidate(
 	for index := range jobs {
 		job := jobs[index]
 		if job.TenantID != tenantID || strings.TrimSpace(job.ModelName) != modelName || strings.TrimSpace(job.ModelVersion) != modelVersion {
+			continue
+		}
+		if !viewerJobAcceptsModality(job, requestedModality) {
+			// A job for another modality of a multi-modality model would
+			// dispatch that modality: the candidate it gives has no study
+			// modalities, so dispatch falls back to the job's own.
 			continue
 		}
 		matching[job.ID] = job
@@ -347,6 +405,18 @@ func (service *InferenceCommandService) createViewerIngestionJob(
 	}
 	log.Printf("[Viewer run] created stopped viewer ingestion job job_id=%s model_name=%s model_version=%s", job.ID, modelName, modelVersion)
 	return job, nil
+}
+
+// viewerJobAcceptsModality reports whether a job can serve a viewer request
+// for this modality. No requested modality (a single-modality model) and a
+// job without configured modalities keep the earlier behavior.
+func viewerJobAcceptsModality(job entity.InferenceIngestionJob, requestedModality string) bool {
+	requested := strings.ToUpper(strings.TrimSpace(requestedModality))
+	if requested == "" {
+		return true
+	}
+	modalities := normalizeDispatchModalities([]string(job.Modalities))
+	return len(modalities) == 0 || slices.Contains(modalities, requested)
 }
 
 // viewerJobModality picks the DICOM modality the dispatch will use. A model

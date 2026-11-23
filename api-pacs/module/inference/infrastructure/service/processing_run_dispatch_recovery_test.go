@@ -447,3 +447,28 @@ func TestDispatchTrackerCountsConcurrentDispatchesOfOneExecution(t *testing.T) {
 	require.False(t, tracker.isLive("k"))
 	require.True(t, tracker.beginIfIdle("k"))
 }
+
+// A dispatch that waited for a dispatch slot longer than the re-dispatch age
+// limit is still under way: the worker must not close its execution, or the
+// dispatch would find it skipped once it gets a slot and drop the work.
+func TestExecutionWhoseDispatchIsStillUnderWayIsNotClosedByTheAgeLimit(t *testing.T) {
+	fixture := newRecoveryFixture(t)
+	since := time.Now().Add(-72 * time.Hour)
+	fixture.runs.executions[fixture.runID][0].CreatedAt = since
+	fixture.runs.executions[fixture.runID][0].UpdatedAt = since
+	candidate := fixture.queries.candidates["candidate-"+t.Name()]
+	candidate.RetrievedAt = &since
+	fixture.queries.candidates[candidate.ID] = candidate
+
+	liveStudyServiceDispatches.begin(fixture.key)
+	require.Zero(t, fixture.cycle(t))
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusPending, fixture.runs.execution(fixture.runID).Status)
+	require.NotEqual(t, entity.InferenceIngestionProcessingRunPhaseTerminal, fixture.runs.run().Phase)
+	require.Zero(t, fixture.dispatcher.buildCalls)
+
+	// Once that dispatch has ended without dispatching, the execution is an
+	// orphan past the limit and is closed as before.
+	liveStudyServiceDispatches.end(fixture.key)
+	require.Zero(t, fixture.cycle(t))
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusSkipped, fixture.runs.execution(fixture.runID).Status)
+}

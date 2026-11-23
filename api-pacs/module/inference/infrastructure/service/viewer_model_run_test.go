@@ -365,3 +365,111 @@ func TestViewerJobModalityRequiresHintForMultiModalityModels(t *testing.T) {
 	_, err = viewerJobModality([]string{"XA"}, "CT")
 	require.EqualError(t, err, apiError.InvalidPayload)
 }
+
+// Registrations made without a deployment snapshot record no artifact model
+// ID, but /model/proxy/available lists their model-info modelId, which the
+// viewer may send. It resolves through the running container's model info.
+func TestCreateViewerModelRunResolvesModelInfoIDOfRegistrationWithoutDeployment(t *testing.T) {
+	fixture := newViewerRunFixture(t)
+	input := viewerRunInput()
+	input.ModelRef = "deepcoro-jepa"
+
+	result, err := fixture.service.CreateViewerModelRun(context.Background(), input)
+
+	require.NoError(t, err)
+	require.Equal(t, "registration-1", result.ModelID)
+	<-fixture.dispatchCalls
+}
+
+func TestCreateViewerModelRunRejectsAmbiguousModelInfoID(t *testing.T) {
+	fixture := newViewerRunFixture(t)
+	fixture.query.models = append(fixture.query.models, entity.InferenceModel{
+		ID: "registration-2", TenantID: "tenant-a", ContainerID: "container-3", Name: "DeepCORO JEPA copy",
+	})
+	input := viewerRunInput()
+	input.ModelRef = "deepcoro-jepa"
+
+	_, err := fixture.service.CreateViewerModelRun(context.Background(), input)
+
+	require.EqualError(t, err, apiError.InvalidPayload)
+	require.Empty(t, fixture.quota.reserved)
+}
+
+func TestCreateViewerModelRunUnknownModelInfoIDIsMissing(t *testing.T) {
+	fixture := newViewerRunFixture(t)
+	input := viewerRunInput()
+	input.ModelRef = "some-other-model"
+
+	_, err := fixture.service.CreateViewerModelRun(context.Background(), input)
+
+	require.EqualError(t, err, apiError.MissingRecord)
+}
+
+// A multi-modality model's viewer job made for one modality must not serve a
+// request for another: the reused job would dispatch its own modality.
+func TestCreateViewerModelRunHonorsRequestedModalityWhenAJobExists(t *testing.T) {
+	multiModality := func(fixture *viewerRunFixture) {
+		fixture.service.DockerInferenceAPIInterface = &viewerModelInfoAPI{info: dockerInferenceTypes.ModelInfo{
+			ModelID: "cied-ai", ModelName: "CIED-AI", Version: "1.0.0", SupportedDicomModalities: []string{"DX", "CR"},
+		}}
+		fixture.service.ProcessingDispatcherInterface = &modalityResolvingDispatcher{
+			guardedProcessingDispatcher: fixture.service.ProcessingDispatcherInterface.(*guardedProcessingDispatcher),
+		}
+	}
+
+	t.Run("job for another modality is not reused", func(t *testing.T) {
+		fixture := newViewerRunFixture(t)
+		multiModality(fixture)
+		fixture.query.jobs = []entity.InferenceIngestionJob{{
+			ID: "viewer-dx", TenantID: "tenant-a", ModelID: "registration-1", ContainerID: "container-1",
+			ModelName: "CIED-AI", ModelVersion: "1.0.0", Modalities: []string{"DX"},
+			DICOMModality: viewerIngestionJobSource, Status: entity.InferenceIngestionJobStatusStopped,
+		}}
+		input := viewerRunInput()
+		input.Modality = "cr"
+
+		_, err := fixture.service.CreateViewerModelRun(context.Background(), input)
+
+		require.NoError(t, err)
+		require.Len(t, fixture.command.insertedJob, 1)
+		require.Equal(t, []string{"CR"}, fixture.command.insertedJob[0].Modalities)
+		require.Equal(t, canonicalStudyServiceModality("CR"), *fixture.plans[0].Executions[0].Modality)
+		dispatched := <-fixture.dispatchCalls
+		require.Equal(t, canonicalStudyServiceModality("CR"), dispatched.Modality)
+	})
+
+	t.Run("job covering the modality is reused and dispatches it", func(t *testing.T) {
+		fixture := newViewerRunFixture(t)
+		multiModality(fixture)
+		fixture.query.jobs = []entity.InferenceIngestionJob{{
+			ID: "both", TenantID: "tenant-a", ModelID: "registration-1", ContainerID: "container-1",
+			ModelName: "CIED-AI", ModelVersion: "1.0.0", Modalities: []string{"DX", "CR"},
+			DICOMModality: "PACS_QUERY", Status: entity.InferenceIngestionJobStatusRunning,
+		}}
+		input := viewerRunInput()
+		input.Modality = "CR"
+
+		_, err := fixture.service.CreateViewerModelRun(context.Background(), input)
+
+		require.NoError(t, err)
+		require.Empty(t, fixture.command.insertedJob)
+		require.Equal(t, canonicalStudyServiceModality("CR"), *fixture.plans[0].Executions[0].Modality)
+		dispatched := <-fixture.dispatchCalls
+		require.Equal(t, canonicalStudyServiceModality("CR"), dispatched.Modality)
+	})
+}
+
+// modalityResolvingDispatcher builds the request's modality the way the real
+// dispatcher does, from the job and candidate it is given.
+type modalityResolvingDispatcher struct {
+	*guardedProcessingDispatcher
+}
+
+func (dispatcher *modalityResolvingDispatcher) BuildDispatchStudyRequest(ctx context.Context, data serviceTypes.BuildStudyServiceDispatchRequestInput) (serviceTypes.DispatchStudyRequest, error) {
+	request, err := dispatcher.guardedProcessingDispatcher.BuildDispatchStudyRequest(ctx, data)
+	if err != nil {
+		return request, err
+	}
+	request.Modality, err = resolveDispatchModality(data.IngestionJob, data.Candidate)
+	return request, err
+}

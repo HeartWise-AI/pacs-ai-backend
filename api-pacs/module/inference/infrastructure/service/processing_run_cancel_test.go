@@ -369,7 +369,7 @@ func TestCancelProcessingRunCancelsAQueuedModelStudyServiceLost(t *testing.T) {
 	repository.run.AttentionRequired = true
 	repository.run.AttentionReasons = entity.InferenceIngestionProcessingRunAttentionReasons{
 		{Code: entity.InferenceIngestionProcessingRunAttentionQueueStale},
-		{Code: entity.InferenceIngestionProcessingRunAttentionStudyServiceJobMissing},
+		{Code: entity.InferenceIngestionProcessingRunAttentionStudyServiceJobMissing, StudyServiceJobIDs: []string{"job-lost"}},
 	}
 
 	detail, err := cancelRun(service)
@@ -635,4 +635,101 @@ func TestUserCancelledRunOutcome(t *testing.T) {
 			require.Equal(t, test.outcome, *aggregate.Outcome)
 		})
 	}
+}
+
+// STUDY_SERVICE_JOB_MISSING is recorded for the jobs study-service lost. A
+// queued execution whose job study-service still has is waiting normally and
+// is not cancelled with the lost one: its result would be ignored.
+func TestCancelProcessingRunCancelsOnlyTheQueuedModelWhoseJobIsMissing(t *testing.T) {
+	service, repository, _ := cancelFixture(
+		entity.InferenceIngestionProcessingRunTriggerAuto,
+		cancelExecution("lost", entity.InferenceIngestionProcessingJobStatusQueued, "job-lost"),
+		cancelExecution("valid", entity.InferenceIngestionProcessingJobStatusQueued, "job-valid"),
+	)
+	repository.run.AttentionRequired = true
+	repository.run.AttentionReasons = entity.InferenceIngestionProcessingRunAttentionReasons{
+		{Code: entity.InferenceIngestionProcessingRunAttentionStudyServiceJobMissing, StudyServiceJobIDs: []string{"job-lost"}},
+	}
+
+	detail, err := cancelRun(service)
+
+	require.NoError(t, err)
+	require.Equal(t, map[string]entity.InferenceIngestionProcessingJobStatus{
+		"lost":  entity.InferenceIngestionProcessingJobStatusCancelled,
+		"valid": entity.InferenceIngestionProcessingJobStatusQueued,
+	}, executionStatuses(repository.executions))
+	require.Len(t, repository.transitions, 1)
+	require.True(t, repository.transitions[0].StudyServiceJobMissing)
+	require.Equal(t, 1, detail.Active)
+}
+
+// A reason written before job IDs were recorded names no execution: a queued
+// execution already handed to study-service is left to finish.
+func TestCancelProcessingRunLeavesDispatchedModelsWhenTheMissingReasonNamesNoJob(t *testing.T) {
+	service, repository, _ := cancelFixture(
+		entity.InferenceIngestionProcessingRunTriggerAuto,
+		cancelExecution("queued", entity.InferenceIngestionProcessingJobStatusQueued, "job-queued"),
+	)
+	repository.run.AttentionReasons = entity.InferenceIngestionProcessingRunAttentionReasons{
+		{Code: entity.InferenceIngestionProcessingRunAttentionStudyServiceJobMissing},
+	}
+
+	_, err := cancelRun(service)
+
+	require.EqualError(t, err, apiError.ProcessingRunNotCancellable)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusQueued, repository.executions[0].Status)
+}
+
+// A dispatch that holds the execution is handing it to study-service: the
+// cancellation leaves it to finish. Once no dispatch holds it, it is cancelled.
+func TestCancelProcessingRunLeavesAModelWhoseDispatchIsUnderWay(t *testing.T) {
+	service, repository, _ := cancelFixture(
+		entity.InferenceIngestionProcessingRunTriggerAuto,
+		cancelExecution("handoff", entity.InferenceIngestionProcessingJobStatusPending, ""),
+	)
+	key := studyServiceDispatchKey("tenant-a", "run-1", "candidate-handoff", "model-handoff")
+	release := studyServiceDispatchHandoffs.acquire(key)
+
+	detail, err := cancelRun(service)
+
+	require.NoError(t, err)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusPending, repository.executions[0].Status)
+	require.Empty(t, repository.transitions)
+	require.Equal(t, 1, detail.Active)
+
+	release()
+	_, err = cancelRun(service)
+	require.NoError(t, err)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusCancelled, repository.executions[0].Status)
+}
+
+// The dispatch takes the execution before checking it is still pending, so a
+// dispatch that starts while a cancellation holds it sends nothing.
+func TestDispatchHandoffLockSerializesDispatchAndCancellation(t *testing.T) {
+	lock := &dispatchHandoffLock{held: map[string]*dispatchHandoff{}}
+	release, ok := lock.tryAcquire("k")
+	require.True(t, ok)
+	_, ok = lock.tryAcquire("k")
+	require.False(t, ok)
+
+	acquired := make(chan struct{})
+	go func() {
+		releaseDispatch := lock.acquire("k")
+		close(acquired)
+		releaseDispatch()
+	}()
+	select {
+	case <-acquired:
+		t.Fatal("dispatch took the execution while the cancellation held it")
+	case <-time.After(20 * time.Millisecond):
+	}
+	release()
+	<-acquired
+	require.Eventually(t, func() bool {
+		lock.mu.Lock()
+		defer lock.mu.Unlock()
+		return len(lock.held) == 0
+	}, time.Second, time.Millisecond)
+	_, ok = lock.tryAcquire("k")
+	require.True(t, ok)
 }
