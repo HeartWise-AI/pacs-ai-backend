@@ -10,6 +10,7 @@ type User struct {
 	ID                string `firestore:"id,omitempty"` // firebase auth
 	TenantID          string `firestore:"tenant_id"`
 	Role              string `firestore:"role"`
+	CustomRoleID      string `firestore:"custom_role_id"`
 	AccessState       string `firestore:"access_state"`
 	Name              string `firestore:"name,omitempty"`     // firebase auth (DisplayName)
 	Email             string `firestore:"email,omitempty"`    // firebase auth

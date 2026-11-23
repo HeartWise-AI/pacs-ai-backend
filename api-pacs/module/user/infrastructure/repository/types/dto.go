@@ -26,6 +26,7 @@ type GetTenantUser struct {
 	ID                string
 	TenantID          string
 	Role              string
+	CustomRoleID      string
 	AccessState       string
 	Name              string
 	Email             string

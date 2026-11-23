@@ -162,6 +162,7 @@ type GetTenantUserResponse struct {
 	ID                string `json:"id"`
 	TenantID          string `json:"tenantId"`
 	Role              string `json:"role"`
+	CustomRoleID      string `json:"customRoleId"`
 	AccessState       string `json:"accessState"`
 	Name              string `json:"name"`
 	Email             string `json:"email"`

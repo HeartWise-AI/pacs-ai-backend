@@ -149,6 +149,9 @@ func modelUpgradeHTTPError(err error) (int, string, string) {
 // InferenceCommandController request controller for inference command
 type InferenceCommandController struct {
 	GPUAdministration GPUAdministration
+	// ModelArtifacts maps model references to model-info modelIds for
+	// custom-role model access. Nil denies users restricted to some models.
+	ModelArtifacts ModelArtifactResolver
 	application.InferenceCommandServiceInterface
 	application.ModelDeploymentOperationSubscriberInterface
 	ModelDeploymentEventHeartbeatInterval time.Duration
@@ -267,6 +270,11 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 		}
 
 		response.JSON(w)
+		return
+	}
+
+	if code := authorizeModelRef(r, controller.ModelArtifacts, tenantID, containerID); code != "" {
+		writeModelAccessError(w, code)
 		return
 	}
 

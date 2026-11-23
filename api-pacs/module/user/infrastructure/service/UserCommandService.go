@@ -114,7 +114,7 @@ func (service *UserCommandService) ChangeTenantUserAccess(ctx context.Context, d
 		service.logAccountAccessAudit(transitionContext, data, target, "REJECTED", err.Error())
 		return err
 	}
-	if err := authorizeAccountManagement(data.ActorUserID, data.ActorRole, target.ID, target.Role); err != nil {
+	if err := authorizeAccountManagement(data.ActorUserID, data.ActorRole, target.ID, target.Role, data.ActorCanManageMembers); err != nil {
 		service.logAccountAccessAudit(transitionContext, data, target, "REJECTED", err.Error())
 		return err
 	}
@@ -193,8 +193,17 @@ func (service *UserCommandService) clearSuspensionMarkerAfterFailure(ctx context
 	}
 }
 
-func authorizeAccountManagement(actorID, actorRole, targetID, targetRole string) error {
+// authorizeAccountManagement allows OWNER over everyone else and ADMIN over
+// USER. A USER whose custom role grants members.manage may act on other USER
+// accounts only.
+func authorizeAccountManagement(actorID, actorRole, targetID, targetRole string, actorCanManageMembers bool) error {
 	if actorID == targetID {
+		return errors.New(apiError.ForbiddenAccess)
+	}
+	if actorRole == iamEntity.UserRole {
+		if actorCanManageMembers && targetRole == iamEntity.UserRole {
+			return nil
+		}
 		return errors.New(apiError.ForbiddenAccess)
 	}
 	rank := map[string]int{iamEntity.UserRole: 1, iamEntity.AdminRole: 2, iamEntity.OwnerRole: 3}
@@ -343,7 +352,7 @@ func (service *UserCommandService) DeleteTenantUser(ctx context.Context, data ty
 	if userEntity.ResolveAccountAccessState(actor.AccessState, actor.IsAccountDisabled) != userEntity.AccountAccessActive {
 		return errors.New(apiError.ForbiddenAccess)
 	}
-	if err := authorizeAccountManagement(data.ActorUserID, data.ActorRole, user.ID, user.Role); err != nil {
+	if err := authorizeAccountManagement(data.ActorUserID, data.ActorRole, user.ID, user.Role, data.ActorCanManageMembers); err != nil {
 		return err
 	}
 	previousState := userEntity.ResolveAccountAccessState(user.AccessState, user.IsAccountDisabled)
@@ -742,6 +751,15 @@ func (service *UserCommandService) SendTenantUserEmailInvite(ctx context.Context
 
 // UpdateTenantUser update tenant user
 func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data types.UpdateTenantUser) error {
+	if data.ActorRole == iamEntity.UserRole {
+		target, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, data.TenantID, data.ID)
+		if err != nil {
+			return err
+		}
+		if target.ID == data.ActorUserID || target.Role != iamEntity.UserRole || data.Role != iamEntity.UserRole {
+			return errors.New(apiError.ForbiddenAccess)
+		}
+	}
 	err := service.UserCommandRepositoryInterface.UpdateTenantUser(ctx, repositoryTypes.UpdateTenantUser{
 		ID:        data.ID,
 		TenantID:  data.TenantID,

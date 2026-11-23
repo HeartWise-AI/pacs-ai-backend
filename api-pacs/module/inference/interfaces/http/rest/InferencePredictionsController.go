@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"api-pacs/module/access/accessctx"
+	accessEntity "api-pacs/module/access/domain/entity"
 	"errors"
 	"io"
 	"log"
@@ -77,8 +79,9 @@ func parsePredictionsRequest(r *http.Request, identity predictionsIdentity) (ser
 	}
 	return serviceTypes.ListPredictions{
 		TenantID: identity.tenantID, UserID: identity.userID, Role: identity.role,
-		View:   serviceTypes.PredictionsView(values.Get("view")),
-		Search: values.Get("q"), Model: values.Get("model"), Status: values.Get("status"),
+		CanViewAll: accessctx.Has(r.Context(), accessEntity.PermResultsViewAll),
+		View:       serviceTypes.PredictionsView(values.Get("view")),
+		Search:     values.Get("q"), Model: values.Get("model"), Status: values.Get("status"),
 		Modality: values.Get("modality"), From: from, To: to, LaunchedBy: values.Get("launchedBy"),
 		Limit: limit, Offset: offset,
 	}, nil
@@ -240,6 +243,7 @@ func (controller *InferencePredictionsController) ListFeedbackReportCounts(w htt
 	}
 	counts, err := controller.InferencePredictionsServiceInterface.ListFeedbackReportCounts(r.Context(), serviceTypes.ListFeedbackReportCounts{
 		TenantID: identity.tenantID, Role: identity.role, From: from, To: to,
+		CanView: accessctx.Has(r.Context(), accessEntity.PermFeedbackView),
 	})
 	if err != nil {
 		writeFeedbackReportCountsError(w, err.Error())

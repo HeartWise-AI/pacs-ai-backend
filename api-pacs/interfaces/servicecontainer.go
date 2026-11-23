@@ -43,6 +43,9 @@ import (
 	iamMiddleware "api-pacs/interfaces/http/rest/middlewares/iam"
 	dockerInferenceProxy "api-pacs/interfaces/http/rest/proxies/dockerinference"
 	orthancProxy "api-pacs/interfaces/http/rest/proxies/orthanc"
+	accessRepository "api-pacs/module/access/infrastructure/repository"
+	accessService "api-pacs/module/access/infrastructure/service"
+	accessREST "api-pacs/module/access/interfaces/http/rest"
 	elasticsearchRepository "api-pacs/module/elasticsearch/infrastructure/repository"
 	elasticsearchService "api-pacs/module/elasticsearch/infrastructure/service"
 	elasticsearchREST "api-pacs/module/elasticsearch/interfaces/http/rest"
@@ -93,6 +96,7 @@ type ServiceContainerInterface interface {
 	RegisterTenantRESTQueryController() tenantREST.TenantQueryController
 	RegisterUserRESTCommandController() userREST.UserCommandController
 	RegisterUserRESTQueryController() userREST.UserQueryController
+	RegisterAccessRESTController() accessREST.AccessController
 }
 
 type kernel struct{}
@@ -121,7 +125,29 @@ var (
 	worklistNotificationBroker *inferenceService.RedisWorklistNotificationBroker
 	modelDeploymentEventBroker *inferenceService.RedisModelDeploymentOperationBroker
 	inferenceQuotaManager      *inferenceService.RedisInferenceQuotaManager
+	accessServiceOnce          sync.Once
+	accessServiceInstance      *accessService.AccessService
 )
+
+// accessServiceContainer returns the process-wide access service, so the
+// middleware and the role endpoints share one cache (role changes invalidate
+// it immediately).
+func (k *kernel) accessServiceContainer() *accessService.AccessService {
+	accessServiceOnce.Do(func() {
+		accessServiceInstance = &accessService.AccessService{
+			Repository: &accessRepository.RoleRepositoryCircuitBreaker{
+				RoleRepositoryInterface: &accessRepository.RoleRepository{FirebaseAdminSDK: firebaseAdminSDK},
+			},
+			TTL: accessService.DefaultAccessCacheTTL,
+		}
+	})
+	return accessServiceInstance
+}
+
+// RegisterAccessRESTController wires /user/me/access and the role endpoints.
+func (k *kernel) RegisterAccessRESTController() accessREST.AccessController {
+	return accessREST.AccessController{Roles: k.accessServiceContainer()}
+}
 
 // ================================= REST ===================================
 // Middlewares
@@ -131,6 +157,7 @@ func (k *kernel) RegisterIAMRESTMiddleware() iamMiddleware.IAMMiddleware {
 		IAMCommandServiceInterface: k.iamCommandServiceContainer(),
 		IAMQueryServiceInterface:   k.iamQueryServiceContainer(),
 		UserQueryServiceInterface:  k.userQueryServiceContainer(),
+		AccessResolver:             k.accessServiceContainer(),
 	}
 
 	return middleware
@@ -242,6 +269,7 @@ func (k *kernel) RegisterInferenceRESTCommandController() inferenceREST.Inferenc
 	// Returns at once unless MODEL_GPU_PLACEMENT=auto.
 	autoGPUPlacementOnce.Do(func() { go gpuAdministration.RunAutoPlacement(context.Background()) })
 	controller := inferenceREST.InferenceCommandController{
+		ModelArtifacts:                              k.inferenceQueryServiceContainer(),
 		GPUAdministration:                           gpuAdministration,
 		InferenceCommandServiceInterface:            service,
 		ModelDeploymentOperationSubscriberInterface: modelDeploymentEventBroker,

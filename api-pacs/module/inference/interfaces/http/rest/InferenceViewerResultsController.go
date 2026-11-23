@@ -54,7 +54,12 @@ func (controller *InferenceQueryController) GetStudyLatestModelResults(w http.Re
 		writeViewerResultsError(w, err.Error())
 		return
 	}
-	writeWorklistQuerySuccess(w, "Successfully retrieved latest study model results.", results)
+	access, accessErr := modelAccessFilter(r)
+	if accessErr != "" {
+		writeModelAccessError(w, accessErr)
+		return
+	}
+	writeWorklistQuerySuccess(w, "Successfully retrieved latest study model results.", filterLatestResults(access, results))
 }
 
 // GetProcessingRunExecutionReport re-renders the HTML report of one completed
@@ -112,6 +117,11 @@ func (controller *InferenceCommandController) RunStudyModel(w http.ResponseWrite
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil && !errors.Is(err, io.EOF) {
 		writeViewerResultsError(w, apiError.InvalidPayload)
+		return
+	}
+
+	if code := authorizeModelRef(r, controller.ModelArtifacts, tenantID, chi.URLParam(r, "modelId")); code != "" {
+		writeModelAccessError(w, code)
 		return
 	}
 

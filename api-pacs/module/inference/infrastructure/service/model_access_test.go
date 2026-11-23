@@ -1,0 +1,49 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	apiError "api-pacs/internal/errors"
+	"api-pacs/module/inference/domain/entity"
+	"api-pacs/module/inference/infrastructure/service/types"
+)
+
+func TestResolveModelArtifactIDs(t *testing.T) {
+	models := []entity.InferenceModel{
+		{ID: "reg-echo", TenantID: "t1", ContainerID: "c-echo", DockerImage: "img-echo",
+			Deployment: &entity.InferenceModelDeployment{ContainerID: "c-echo", ImageReference: "img-echo", ArtifactModelID: "PanEcho"}},
+		{ID: "reg-rv", TenantID: "t1", ContainerID: "c-rv"},
+		{ID: "reg-old", TenantID: "t1", ContainerID: "c-old"},
+		{ID: "reg-foreign", TenantID: "t2", ContainerID: "c-foreign"},
+		{ID: "reg-stopped", TenantID: "t1"},
+	}
+	service := &InferenceQueryService{InferenceQueryRepositoryInterface: &inferenceModelsQueryRepository{models: models}}
+	service.rememberModelInfo(context.Background(), types.GetInferenceAvailableModelResult{ContainerID: "c-rv", ModelID: "DeepRV_CLIP"})
+	ctx := context.Background()
+
+	for ref, want := range map[string]string{
+		"reg-echo": "PanEcho", "c-echo": "PanEcho", "PanEcho": "PanEcho",
+		"reg-rv": "DeepRV_CLIP", "c-rv": "DeepRV_CLIP", "DeepRV_CLIP": "DeepRV_CLIP",
+	} {
+		ids, err := service.ResolveModelArtifactIDs(ctx, "t1", ref)
+		require.NoError(t, err, ref)
+		require.Equal(t, []string{want}, ids, ref)
+	}
+
+	_, err := service.ResolveModelArtifactIDs(ctx, "t1", "reg-old")
+	require.EqualError(t, err, apiError.AccessUnavailable, "a model whose modelId is unknown is never allowed by guess")
+	_, err = service.ResolveModelArtifactIDs(ctx, "t1", "reg-foreign")
+	require.EqualError(t, err, apiError.MissingRecord)
+	_, err = service.ResolveModelArtifactIDs(ctx, "t1", "reg-stopped")
+	require.EqualError(t, err, apiError.MissingRecord)
+	_, err = service.ResolveModelArtifactIDs(ctx, "t1", " ")
+	require.EqualError(t, err, apiError.InvalidPayload)
+
+	failing := &InferenceQueryService{InferenceQueryRepositoryInterface: &inferenceModelsQueryRepository{err: errors.New(apiError.FirestoreError)}}
+	_, err = failing.ResolveModelArtifactIDs(ctx, "t1", "reg-echo")
+	require.EqualError(t, err, apiError.AccessUnavailable)
+}

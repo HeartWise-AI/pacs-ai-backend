@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"api-pacs/module/access/accessctx"
+	accessEntity "api-pacs/module/access/domain/entity"
 	"context"
 	"encoding/json"
 	stderrors "errors"
@@ -268,6 +270,18 @@ func (controller *UserCommandController) CreateTenantUser(w http.ResponseWriter,
 		response.JSON(w)
 		return
 	}
+	// A USER with members.invite (custom role) may only add USER accounts.
+	if userRole != entity.OwnerRole && userRole != entity.AdminRole && request.Role != entity.UserRole {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusForbidden,
+			Success:   false,
+			Message:   "Forbidden access.",
+			ErrorCode: apiError.ForbiddenAccess,
+		}
+
+		response.JSON(w)
+		return
+	}
 
 	generatedPassword, err := controller.UserCommandServiceInterface.CreateTenantUser(context.TODO(), serviceTypes.CreateTenantUser{
 		TenantID:  tenantID,
@@ -337,6 +351,7 @@ func (controller *UserCommandController) DeleteTenantUser(w http.ResponseWriter,
 
 	err := controller.UserCommandServiceInterface.DeleteTenantUser(r.Context(), serviceTypes.DeleteTenantUser{
 		TenantID: tenantID, ActorUserID: actorUserID, ActorRole: actorRole, TargetUserID: userID,
+		ActorCanManageMembers: accessctx.Has(r.Context(), accessEntity.PermMembersManage),
 	})
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -404,6 +419,8 @@ func (controller *UserCommandController) changeTenantUserAccess(w http.ResponseW
 		TargetUserID: targetUserID,
 		AccessState:  accessState,
 		Reason:       request.Reason,
+
+		ActorCanManageMembers: accessctx.Has(r.Context(), accessEntity.PermMembersManage),
 	})
 	if err != nil {
 		switch err.Error() {
@@ -918,19 +935,29 @@ func (controller *UserCommandController) UpdateTenantUser(w http.ResponseWriter,
 		return
 	}
 
+	actorUserID, _ := r.Context().Value(iamTypes.UserIDCtx).(string)
+	actorRole, _ := r.Context().Value(iamTypes.RoleCtx).(string)
 	err = controller.UserCommandServiceInterface.UpdateTenantUser(context.TODO(), serviceTypes.UpdateTenantUser{
-		ID:        request.ID,
-		TenantID:  tenantID,
-		Role:      request.Role,
-		Name:      request.Name,
-		LicenseNo: request.LicenseNo,
-		Specialty: request.Specialty,
+		ID:          request.ID,
+		TenantID:    tenantID,
+		Role:        request.Role,
+		Name:        request.Name,
+		LicenseNo:   request.LicenseNo,
+		Specialty:   request.Specialty,
+		ActorUserID: actorUserID,
+		ActorRole:   actorRole,
 	})
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.ForbiddenAccess:
+			httpCode = http.StatusForbidden
+			errorMsg = "Forbidden access."
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "User not found."
 		case errors.DatabaseError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Error occurred while updating user."

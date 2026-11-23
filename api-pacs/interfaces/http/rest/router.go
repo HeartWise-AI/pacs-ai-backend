@@ -29,6 +29,7 @@ import (
 	"api-pacs/interfaces/http/rest/middlewares/peeraddr"
 	"api-pacs/interfaces/http/rest/middlewares/requestbody"
 	"api-pacs/interfaces/http/rest/viewmodels"
+	accessEntity "api-pacs/module/access/domain/entity"
 )
 
 // ChiRouterInterface declares methods for the chi router
@@ -69,10 +70,10 @@ type inferenceFeedbackHandlers struct {
 // mountInferenceFeedbackRoutes keeps user-owned feedback available to every
 // authenticated user. Ownership is enforced by the feedback services using the
 // tenant and user stored in the authenticated request context.
-func mountInferenceFeedbackRoutes(r chi.Router, handlers inferenceFeedbackHandlers) {
+func mountInferenceFeedbackRoutes(r chi.Router, vote func(http.Handler) http.Handler, handlers inferenceFeedbackHandlers) {
 	r.Get("/{modelID}/feedback", handlers.get)
-	r.Put("/feedback/update", handlers.update)
-	r.Delete("/{modelID}/feedback/remove", handlers.remove)
+	r.With(vote).Put("/feedback/update", handlers.update)
+	r.With(vote).Delete("/{modelID}/feedback/remove", handlers.remove)
 }
 
 type inferenceFeedbackAdminHandlers struct {
@@ -81,11 +82,11 @@ type inferenceFeedbackAdminHandlers struct {
 }
 
 // mountInferenceFeedbackAdminRoutes exposes the tenant-wide feedback list and
-// the reports-returned counts to workspace owners and administrators only.
-// The services check the role again.
-func mountInferenceFeedbackAdminRoutes(r chi.Router, ownerOrAdmin func(http.Handler) http.Handler, handlers inferenceFeedbackAdminHandlers) {
-	r.With(ownerOrAdmin).Get("/feedback/list", handlers.list)
-	r.With(ownerOrAdmin).Get("/feedback/report-counts", handlers.reportCounts)
+// the reports-returned counts to users holding feedback.view (every OWNER and
+// ADMIN). The services check the permission again.
+func mountInferenceFeedbackAdminRoutes(r chi.Router, canView func(http.Handler) http.Handler, handlers inferenceFeedbackAdminHandlers) {
+	r.With(canView).Get("/feedback/list", handlers.list)
+	r.With(canView).Get("/feedback/report-counts", handlers.reportCounts)
 }
 
 type iamHandoffHandlers struct {
@@ -117,13 +118,14 @@ func mountUserViewerTourRoutes(r chi.Router, handlers userViewerTourHandlers) {
 }
 
 // mountInferenceWorklistRoutes keeps authentication and policy acceptance
-// structurally attached to every tenant-scoped route while applying the
-// owner/admin guard only to mutations.
+// structurally attached to every tenant-scoped route; running a model needs
+// models.use and reprocessing needs processing.manage.
 func mountInferenceWorklistRoutes(
 	r chi.Router,
 	authenticate func(http.Handler) http.Handler,
 	acceptPolicy func(http.Handler) http.Handler,
-	ownerOrAdmin func(http.Handler) http.Handler,
+	useModels func(http.Handler) http.Handler,
+	manageProcessing func(http.Handler) http.Handler,
 	handlers inferenceWorklistHandlers,
 ) {
 	r.Group(func(r chi.Router) {
@@ -137,13 +139,13 @@ func mountInferenceWorklistRoutes(
 		r.Get("/worklist/studies/{studyInstanceUID}/latest-results", handlers.getLatestResults)
 		r.Get("/processing/runs/{runId}/executions/{executionId}/report", handlers.getExecutionReport)
 		r.Get("/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/report", handlers.getStudyJobReport)
-		r.Post("/worklist/studies/{studyInstanceUID}/models/{modelId}/run", handlers.runStudyModel)
+		r.With(useModels).Post("/worklist/studies/{studyInstanceUID}/models/{modelId}/run", handlers.runStudyModel)
 		r.Get("/worklist/studies/{studyInstanceUID}/media", handlers.getStudyMedia)
 		r.Get("/media/{mediaId}", handlers.getStudyMediaFile)
 		r.Post("/processing/runs/{runId}/cancel", handlers.cancelRun)
 
 		r.Group(func(r chi.Router) {
-			r.Use(ownerOrAdmin)
+			r.Use(manageProcessing)
 			r.Post("/worklist/studies/reprocess-batch", handlers.reprocessStudies)
 			r.Post("/worklist/studies/{studyInstanceUID}/reprocess", handlers.reprocessStudy)
 		})
@@ -175,6 +177,56 @@ func mountInferencePredictionsRoutes(
 	})
 }
 
+type userMemberGuards struct {
+	invite       func(http.Handler) http.Handler
+	manage       func(http.Handler) http.Handler
+	ownerOrAdmin func(http.Handler) http.Handler
+}
+
+type userMemberHandlers struct {
+	add, invite, resendInvite, listInvites, removeInvite http.HandlerFunc
+	listUsers, policyStatus, update, suspend, reactivate http.HandlerFunc
+	remove                                               http.HandlerFunc
+	myAccess, listRoles, createRole, updateRole          http.HandlerFunc
+	deleteRole, assignRole                               http.HandlerFunc
+}
+
+// mountUserMemberRoutes exposes member and role management. Invitations need
+// members.invite, member administration needs members.manage, and custom
+// roles can be created, changed or assigned only by OWNER and ADMIN. Mount
+// behind TokenSessionAuthGuard.
+func mountUserMemberRoutes(r chi.Router, guards userMemberGuards, handlers userMemberHandlers) {
+	r.Get("/me/access", handlers.myAccess)
+
+	r.Group(func(r chi.Router) {
+		r.Use(guards.invite)
+		r.Post("/add", handlers.add)
+		r.Post("/invite", handlers.invite)
+		r.Post("/invite/resend", handlers.resendInvite)
+		r.Get("/invites", handlers.listInvites)
+		r.Delete("/invite/{ID}/remove", handlers.removeInvite)
+	})
+
+	r.Group(func(r chi.Router) {
+		r.Use(guards.manage)
+		r.Get("/all", handlers.listUsers)
+		r.Get("/roles", handlers.listRoles)
+		r.Get("/{ID}/policies/status", handlers.policyStatus)
+		r.Put("/update", handlers.update)
+		r.Post("/{ID}/suspend", handlers.suspend)
+		r.Post("/{ID}/reactivate", handlers.reactivate)
+		r.Delete("/{ID}/remove", handlers.remove)
+	})
+
+	r.Group(func(r chi.Router) {
+		r.Use(guards.ownerOrAdmin)
+		r.Post("/roles", handlers.createRole)
+		r.Put("/roles/{roleID}", handlers.updateRole)
+		r.Delete("/roles/{roleID}", handlers.deleteRole)
+		r.Put("/{ID}/custom-role", handlers.assignRole)
+	})
+}
+
 var (
 	m          *router
 	routerOnce sync.Once
@@ -201,6 +253,7 @@ func (router *router) InitRouter() *chi.Mux {
 	tenantQueryController := interfaces.ServiceContainer().RegisterTenantRESTQueryController()
 	userCommandController := interfaces.ServiceContainer().RegisterUserRESTCommandController()
 	userQueryController := interfaces.ServiceContainer().RegisterUserRESTQueryController()
+	accessController := interfaces.ServiceContainer().RegisterAccessRESTController()
 
 	// create router
 	r := chi.NewRouter()
@@ -275,7 +328,7 @@ func (router *router) InitRouter() *chi.Mux {
 
 				r.Group(func(r chi.Router) {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
-					r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+					r.Use(iamMiddleware.RequirePermission(accessEntity.PermLogsView))
 
 					r.Get("/logs", elasticsearchQueryController.SearchDocumentLogs)
 				})
@@ -302,25 +355,25 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Use(iamMiddleware.TokenSessionAuthGuard)
 					r.Use(iamMiddleware.PolicyAcceptanceGuard)
 					r.Get("/quota", inferenceQueryController.GetInferenceQuota)
-					r.With(iamMiddleware.RBACOwnerOrAdminGuard).Get("/gpus", inferenceCommandController.GetGPUs)
-					r.With(iamMiddleware.RBACOwnerOrAdminGuard).Get("/gpus/placement-plan", inferenceCommandController.GetGPUPlacementPlan)
+					r.With(iamMiddleware.RequirePermission(accessEntity.PermModelsManage)).Get("/gpus", inferenceCommandController.GetGPUs)
+					r.With(iamMiddleware.RequirePermission(accessEntity.PermModelsManage)).Get("/gpus/placement-plan", inferenceCommandController.GetGPUPlacementPlan)
 
 					r.Post("/onboarding-model-questionnaire-answers/add", inferenceCommandController.AddOnboardingModelQuestionnaireAnswers)
 					r.Get("/onboarding-model-questionnaire-answers", inferenceQueryController.GetOnboardingModelQuestionnaireAnswers)
 
 					r.Route("/model", func(r chi.Router) {
-						mountInferenceFeedbackRoutes(r, inferenceFeedbackHandlers{
+						mountInferenceFeedbackRoutes(r, iamMiddleware.RequirePermission(accessEntity.PermFeedbackVote), inferenceFeedbackHandlers{
 							get:    inferenceQueryController.GetModelFeedbackByModelID,
 							update: inferenceCommandController.UpdateModelFeedback,
 							remove: inferenceCommandController.RemoveModelFeedback,
 						})
-						mountInferenceFeedbackAdminRoutes(r, iamMiddleware.RBACOwnerOrAdminGuard, inferenceFeedbackAdminHandlers{
+						mountInferenceFeedbackAdminRoutes(r, iamMiddleware.RequirePermission(accessEntity.PermFeedbackView), inferenceFeedbackAdminHandlers{
 							list:         inferenceQueryController.ListModelFeedback,
 							reportCounts: inferencePredictionsController.ListFeedbackReportCounts,
 						})
 
 						r.Group(func(r chi.Router) {
-							r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+							r.Use(iamMiddleware.RequirePermission(accessEntity.PermModelsManage))
 
 							// inference model routes
 							r.Post("/add", inferenceCommandController.AddInferenceModel)
@@ -344,7 +397,7 @@ func (router *router) InitRouter() *chi.Mux {
 
 						// proxy routes
 						r.Route("/proxy", func(r chi.Router) {
-							r.Post("/container/{containerID}/predict", inferenceCommandController.PredictInferenceModel)
+							r.With(iamMiddleware.RequirePermission(accessEntity.PermModelsUse)).Post("/container/{containerID}/predict", inferenceCommandController.PredictInferenceModel)
 							r.Get("/container/{containerID}/info", inferenceQueryController.GetInferenceModelInfo)
 							r.Get("/container/{containerID}/facts", inferenceQueryController.GetInferenceModelFacts)
 							r.Get("/available", inferenceQueryController.GetInferenceAvailableModels)
@@ -354,7 +407,7 @@ func (router *router) InitRouter() *chi.Mux {
 					// inference ingestion jobs
 					r.Route("/ingestion", func(r chi.Router) {
 						r.Group(func(r chi.Router) {
-							r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+							r.Use(iamMiddleware.RequirePermission(accessEntity.PermProcessingManage))
 
 							r.Post("/job/create", inferenceCommandController.CreateInferenceIngestionJob)
 							r.Post("/job/{ID}/start", inferenceCommandController.StartInferenceIngestionJob)
@@ -376,7 +429,8 @@ func (router *router) InitRouter() *chi.Mux {
 					r,
 					iamMiddleware.TokenSessionAuthGuard,
 					iamMiddleware.PolicyAcceptanceGuard,
-					iamMiddleware.RBACOwnerOrAdminGuard,
+					iamMiddleware.RequirePermission(accessEntity.PermModelsUse),
+					iamMiddleware.RequirePermission(accessEntity.PermProcessingManage),
 					inferenceWorklistHandlers{
 						getStatuses:        inferenceQueryController.GetWorklistStudyStatuses,
 						streamEvents:       inferenceQueryController.StreamWorklistEvents,
@@ -455,7 +509,7 @@ func (router *router) InitRouter() *chi.Mux {
 
 					// admin or owner only
 					r.Group(func(r chi.Router) {
-						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
+						r.Use(iamMiddleware.RequirePermission(accessEntity.PermDicomManage))
 
 						r.Post("/modality/{modalityID}/echo", orthancCommandController.TriggerDICOMEchoSCU)
 						r.Put("/modality/{modalityID}/update", orthancCommandController.UpdateDICOMModality)
@@ -474,8 +528,8 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Post("/onboarding-questionnaire-answers/add", tenantCommandController.AddOnboardingQuestionnaireAnswers)
 					r.Get("/onboarding-questionnaire-answers", tenantQueryController.GetOnboardingQuestionnaireAnswers)
 					r.Get("/", tenantQueryController.GetTenantByID)
-					r.Put("/onboarding-consent/config/update", tenantCommandController.UpdateOnboardingConsentConfig)
-					r.Put("/onboarding-registration/config/update", tenantCommandController.UpdateOnboardingRegistrationConfig)
+					r.With(iamMiddleware.RequirePermission(accessEntity.PermWorkspaceManage)).Put("/onboarding-consent/config/update", tenantCommandController.UpdateOnboardingConsentConfig)
+					r.With(iamMiddleware.RequirePermission(accessEntity.PermWorkspaceManage)).Put("/onboarding-registration/config/update", tenantCommandController.UpdateOnboardingRegistrationConfig)
 				})
 			})
 
@@ -508,21 +562,28 @@ func (router *router) InitRouter() *chi.Mux {
 						reset:    userCommandController.ResetUserViewerTour,
 					})
 
-					// admin or owner only
-					r.Group(func(r chi.Router) {
-						r.Use(iamMiddleware.RBACOwnerOrAdminGuard)
-
-						r.Post("/add", userCommandController.CreateTenantUser)
-						r.Post("/invite", userCommandController.SendTenantEmailInvite)
-						r.Post("/invite/resend", userCommandController.ResendTenantEmailInvite)
-						r.Get("/all", userQueryController.GetTenantUsers)
-						r.Get("/invites", userQueryController.GetTenantUserEmailInvites)
-						r.Get("/{ID}/policies/status", userQueryController.GetTenantUserPolicyStatus)
-						r.Put("/update", userCommandController.UpdateTenantUser)
-						r.Post("/{ID}/suspend", userCommandController.SuspendTenantUser)
-						r.Post("/{ID}/reactivate", userCommandController.ReactivateTenantUser)
-						r.Delete("/{ID}/remove", userCommandController.DeleteTenantUser)
-						r.Delete("/invite/{ID}/remove", userCommandController.RemoveTenantUserEmailInvite)
+					mountUserMemberRoutes(r, userMemberGuards{
+						invite:       iamMiddleware.RequirePermission(accessEntity.PermMembersInvite),
+						manage:       iamMiddleware.RequirePermission(accessEntity.PermMembersManage),
+						ownerOrAdmin: iamMiddleware.RBACOwnerOrAdminGuard,
+					}, userMemberHandlers{
+						add:          userCommandController.CreateTenantUser,
+						invite:       userCommandController.SendTenantEmailInvite,
+						resendInvite: userCommandController.ResendTenantEmailInvite,
+						listInvites:  userQueryController.GetTenantUserEmailInvites,
+						removeInvite: userCommandController.RemoveTenantUserEmailInvite,
+						listUsers:    userQueryController.GetTenantUsers,
+						policyStatus: userQueryController.GetTenantUserPolicyStatus,
+						update:       userCommandController.UpdateTenantUser,
+						suspend:      userCommandController.SuspendTenantUser,
+						reactivate:   userCommandController.ReactivateTenantUser,
+						remove:       userCommandController.DeleteTenantUser,
+						myAccess:     accessController.GetMyAccess,
+						listRoles:    accessController.ListRoles,
+						createRole:   accessController.CreateRole,
+						updateRole:   accessController.UpdateRole,
+						deleteRole:   accessController.DeleteRole,
+						assignRole:   accessController.AssignCustomRole,
 					})
 				})
 			})

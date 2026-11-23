@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"api-pacs/module/access/accessctx"
+	accessEntity "api-pacs/module/access/domain/entity"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -137,7 +139,7 @@ func (controller *InferenceQueryController) worklistNotificationViewer(r *http.R
 	role, _ := r.Context().Value(iamTypes.RoleCtx).(string)
 	viewer := serviceTypes.WorklistNotificationViewer{
 		UserID:  strings.TrimSpace(userID),
-		IsAdmin: role == iamEntity.AdminRole || role == iamEntity.OwnerRole,
+		IsAdmin: role == iamEntity.AdminRole || role == iamEntity.OwnerRole || accessctx.Has(r.Context(), accessEntity.PermProcessingManage),
 	}
 	if controller.UserMetadataReader != nil && viewer.UserID != "" {
 		metadata, err := controller.UserMetadataReader.GetUserMetadata(r.Context(), viewer.UserID)
