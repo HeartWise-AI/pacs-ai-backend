@@ -213,3 +213,60 @@ func (controller *InferencePredictionsController) ExportPredictions(w http.Respo
 		}
 	}
 }
+
+// ListFeedbackReportCounts handles GET /v1/inference/model/feedback/report-counts?from=&to=
+// for workspace administrators: the denominator of "Reports rated" on the
+// Model Feedback page. "Reports returned" means completed executions, dated by
+// their last event (completed_at, else started_at), counted per model version
+// and modality. from and to are RFC3339 and required, with from < to and a
+// span of at most 800 days. The tenant and role come from the session only.
+func (controller *InferencePredictionsController) ListFeedbackReportCounts(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	identity, ok := predictionsRequestIdentity(r)
+	if !ok {
+		writeFeedbackReportCountsError(w, apiError.UnauthorizedAccess)
+		return
+	}
+	values := r.URL.Query()
+	from, err := parsePredictionsTime(values.Get("from"))
+	if err != nil || from == nil {
+		writeFeedbackReportCountsError(w, apiError.InvalidPayload)
+		return
+	}
+	to, err := parsePredictionsTime(values.Get("to"))
+	if err != nil || to == nil {
+		writeFeedbackReportCountsError(w, apiError.InvalidPayload)
+		return
+	}
+	counts, err := controller.InferencePredictionsServiceInterface.ListFeedbackReportCounts(r.Context(), serviceTypes.ListFeedbackReportCounts{
+		TenantID: identity.tenantID, Role: identity.role, From: from, To: to,
+	})
+	if err != nil {
+		writeFeedbackReportCountsError(w, err.Error())
+		return
+	}
+	response := viewmodels.HTTPResponseVM{
+		Status: http.StatusOK, Success: true, Message: "Successfully retrieved the report counts.", Data: counts,
+	}
+	response.JSON(w)
+}
+
+func writeFeedbackReportCountsError(w http.ResponseWriter, errorCode string) {
+	status, message := http.StatusInternalServerError, "Please contact technical support."
+	switch errorCode {
+	case apiError.InvalidPayload, apiError.InvalidRequestPayload:
+		status, message = http.StatusBadRequest, "Invalid report counts query."
+	case apiError.UnauthorizedAccess:
+		status, message = http.StatusUnauthorized, "Authentication is required."
+	case apiError.ForbiddenAccess:
+		status, message = http.StatusForbidden, "Only workspace administrators can see report counts."
+	case apiError.DatabaseError:
+		message = "Database error."
+	case apiError.HystrixTimeout:
+		status, message = http.StatusServiceUnavailable, "Report counts are temporarily unavailable."
+	default:
+		errorCode = apiError.ServerError
+	}
+	response := viewmodels.HTTPResponseVM{Status: status, Success: false, Message: message, ErrorCode: errorCode}
+	response.JSON(w)
+}

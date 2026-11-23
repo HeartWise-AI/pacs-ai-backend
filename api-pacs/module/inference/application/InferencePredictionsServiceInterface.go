@@ -15,4 +15,7 @@ type InferencePredictionsServiceInterface interface {
 	GetPredictionModelHistory(ctx context.Context, data serviceTypes.GetPredictionModelHistory) (serviceTypes.PredictionHistoryPage, error)
 	// ExportPredictions writes the CSV export; start is called once the request is accepted.
 	ExportPredictions(ctx context.Context, data serviceTypes.ListPredictions, start func(truncated bool) io.Writer) (serviceTypes.PredictionsExportSummary, error)
+	// ListFeedbackReportCounts counts the reports returned per model in a
+	// range; it needs ADMIN or OWNER.
+	ListFeedbackReportCounts(ctx context.Context, data serviceTypes.ListFeedbackReportCounts) (serviceTypes.FeedbackReportCounts, error)
 }

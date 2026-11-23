@@ -90,7 +90,10 @@ func feedbackListRouter(role string) http.Handler {
 				update: respond,
 				remove: respond,
 			})
-			mountInferenceFeedbackAdminRoutes(r, middleware.RBACOwnerOrAdminGuard, respond)
+			mountInferenceFeedbackAdminRoutes(r, middleware.RBACOwnerOrAdminGuard, inferenceFeedbackAdminHandlers{
+				list:         respond,
+				reportCounts: respond,
+			})
 		})
 	})
 	return router
@@ -117,6 +120,33 @@ func TestFeedbackListRouteRequiresOwnerOrAdmin(t *testing.T) {
 			require.Equal(t, testCase.want, recorder.Code)
 		})
 	}
+
+	t.Run("unauthenticated report counts are rejected", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		feedbackListRouter(iamEntity.AdminRole).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/model/feedback/report-counts", nil))
+		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	})
+
+	for _, testCase := range []struct {
+		role string
+		want int
+	}{
+		{role: iamEntity.UserRole, want: http.StatusForbidden},
+		{role: iamEntity.AdminRole, want: http.StatusNoContent},
+		{role: iamEntity.OwnerRole, want: http.StatusNoContent},
+	} {
+		t.Run("report counts role "+testCase.role, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			feedbackListRouter(testCase.role).ServeHTTP(recorder, authenticatedWorklistRequest(http.MethodGet, "/model/feedback/report-counts?from=2026-10-24T00:00:00Z&to=2026-11-23T00:00:00Z"))
+			require.Equal(t, testCase.want, recorder.Code)
+		})
+	}
+
+	t.Run("report counts do not shadow the per-model feedback route", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		feedbackListRouter(iamEntity.UserRole).ServeHTTP(recorder, authenticatedWorklistRequest(http.MethodGet, "/model/report-counts/feedback?executionId=execution-1"))
+		require.Equal(t, http.StatusNoContent, recorder.Code)
+	})
 
 	t.Run("regular user keeps reading their own feedback", func(t *testing.T) {
 		recorder := httptest.NewRecorder()

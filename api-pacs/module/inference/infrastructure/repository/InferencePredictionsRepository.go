@@ -347,3 +347,41 @@ func (repository *InferencePredictionsRepository) ListPredictionLaunchers(_ cont
 	}
 	return rows, nil
 }
+
+// buildCountReturnedReportsQuery returns the report-counts statement and its
+// arguments. The time expression is exactly the one of the
+// idx_ingestion_processing_jobs_tenant_activity index (migration 000013) so
+// the range is served by (tenant_id, COALESCE(completed_at, started_at)).
+func buildCountReturnedReportsQuery(data types.CountReturnedReports) (string, map[string]interface{}) {
+	query := `
+		SELECT j.model_name,
+			COALESCE(j.model_version, '') AS model_version,
+			COALESCE(j.modality, '') AS modality,
+			COUNT(*) AS completed_count
+		FROM ingestion_processing_jobs j
+		WHERE j.tenant_id = :tenant_id
+		  AND CAST(j.status AS text) = 'completed'
+		  AND COALESCE(j.completed_at, j.started_at) >= :from
+		  AND COALESCE(j.completed_at, j.started_at) < :to
+		GROUP BY 1, 2, 3
+		ORDER BY 1, 2, 3`
+	return query, map[string]interface{}{
+		"tenant_id": data.TenantID,
+		"from":      data.From,
+		"to":        data.To,
+	}
+}
+
+// CountReturnedReports counts the completed executions ("reports returned")
+// of each model version and modality of a tenant in [From, To).
+func (repository *InferencePredictionsRepository) CountReturnedReports(_ context.Context, data types.CountReturnedReports) ([]types.ReturnedReportCountRow, error) {
+	if strings.TrimSpace(data.TenantID) == "" || data.From.IsZero() || data.To.IsZero() || !data.From.Before(data.To) {
+		return nil, errors.New(apiError.InvalidPayload)
+	}
+	query, args := buildCountReturnedReportsQuery(data)
+	rows := make([]types.ReturnedReportCountRow, 0)
+	if err := repository.PostgresSQLDBHandlerInterface.Query(query, args, &rows); err != nil {
+		return nil, processingRunError(err)
+	}
+	return rows, nil
+}

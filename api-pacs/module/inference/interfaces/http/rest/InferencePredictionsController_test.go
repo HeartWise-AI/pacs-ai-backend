@@ -29,6 +29,13 @@ type predictionsServiceFake struct {
 	exportBody    string
 	exportErr     error
 	truncated     bool
+	countInputs   []serviceTypes.ListFeedbackReportCounts
+	counts        serviceTypes.FeedbackReportCounts
+}
+
+func (fake *predictionsServiceFake) ListFeedbackReportCounts(_ context.Context, data serviceTypes.ListFeedbackReportCounts) (serviceTypes.FeedbackReportCounts, error) {
+	fake.countInputs = append(fake.countInputs, data)
+	return fake.counts, fake.err
 }
 
 func (fake *predictionsServiceFake) ListPredictions(_ context.Context, data serviceTypes.ListPredictions) (serviceTypes.PredictionsPage, error) {

@@ -75,10 +75,17 @@ func mountInferenceFeedbackRoutes(r chi.Router, handlers inferenceFeedbackHandle
 	r.Delete("/{modelID}/feedback/remove", handlers.remove)
 }
 
-// mountInferenceFeedbackAdminRoutes exposes the tenant-wide feedback list to
-// workspace owners and administrators only. The service checks the role again.
-func mountInferenceFeedbackAdminRoutes(r chi.Router, ownerOrAdmin func(http.Handler) http.Handler, list http.HandlerFunc) {
-	r.With(ownerOrAdmin).Get("/feedback/list", list)
+type inferenceFeedbackAdminHandlers struct {
+	list         http.HandlerFunc
+	reportCounts http.HandlerFunc
+}
+
+// mountInferenceFeedbackAdminRoutes exposes the tenant-wide feedback list and
+// the reports-returned counts to workspace owners and administrators only.
+// The services check the role again.
+func mountInferenceFeedbackAdminRoutes(r chi.Router, ownerOrAdmin func(http.Handler) http.Handler, handlers inferenceFeedbackAdminHandlers) {
+	r.With(ownerOrAdmin).Get("/feedback/list", handlers.list)
+	r.With(ownerOrAdmin).Get("/feedback/report-counts", handlers.reportCounts)
 }
 
 type iamHandoffHandlers struct {
@@ -307,7 +314,10 @@ func (router *router) InitRouter() *chi.Mux {
 							update: inferenceCommandController.UpdateModelFeedback,
 							remove: inferenceCommandController.RemoveModelFeedback,
 						})
-						mountInferenceFeedbackAdminRoutes(r, iamMiddleware.RBACOwnerOrAdminGuard, inferenceQueryController.ListModelFeedback)
+						mountInferenceFeedbackAdminRoutes(r, iamMiddleware.RBACOwnerOrAdminGuard, inferenceFeedbackAdminHandlers{
+							list:         inferenceQueryController.ListModelFeedback,
+							reportCounts: inferencePredictionsController.ListFeedbackReportCounts,
+						})
 
 						r.Group(func(r chi.Router) {
 							r.Use(iamMiddleware.RBACOwnerOrAdminGuard)

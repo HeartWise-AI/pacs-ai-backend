@@ -17,4 +17,7 @@ type InferencePredictionsRepositoryInterface interface {
 	ListPredictionModelHistory(ctx context.Context, data types.ListPredictionModelHistory) ([]types.PredictionExecutionRow, error)
 	// ListPredictionLaunchers counts the runs of each exam by trigger and requester.
 	ListPredictionLaunchers(ctx context.Context, tenantID string, studyInstanceUIDs []string) ([]types.PredictionLauncherRow, error)
+	// CountReturnedReports counts the completed executions of each model
+	// version and modality in a time range (Model Feedback denominator).
+	CountReturnedReports(ctx context.Context, data types.CountReturnedReports) ([]types.ReturnedReportCountRow, error)
 }

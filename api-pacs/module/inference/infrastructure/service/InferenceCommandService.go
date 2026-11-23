@@ -3477,9 +3477,10 @@ func (service *InferenceCommandService) RemoveOnboardingModelQuestionnaireAnswer
 func (service *InferenceCommandService) RemoveModelFeedback(ctx context.Context, data types.RemoveModelFeedback) error {
 	// get model feedback
 	modelFeedback, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackByUserModelID(ctx, repositoryTypes.GetModelFeedbackByUserModelID{
-		TenantID: data.TenantID,
-		UserID:   data.UserID,
-		ModelID:  data.ModelID,
+		TenantID:    data.TenantID,
+		UserID:      data.UserID,
+		ModelID:     data.ModelID,
+		ExecutionID: data.ExecutionID,
 	})
 	if err != nil {
 		return err
@@ -3604,29 +3605,38 @@ func (service *InferenceCommandService) UpdateInferenceIngestionJob(ctx context.
 func (service *InferenceCommandService) UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error {
 	modelFeedbackID := data.ID
 
+	// Votes are kept per report: the key is (tenant, user, model version,
+	// execution). An empty execution id is the legacy, report-less vote.
+	existing, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackByUserModelID(ctx, repositoryTypes.GetModelFeedbackByUserModelID{
+		TenantID:    data.TenantID,
+		UserID:      data.UserID,
+		ModelID:     data.ModelID,
+		ExecutionID: data.ExecutionID,
+	})
+	missing := err != nil && err.Error() == apiError.MissingRecord
+	if err != nil && !missing {
+		return err
+	}
+
 	if modelFeedbackID != nil {
-		modelFeedback, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackByUserModelID(ctx, repositoryTypes.GetModelFeedbackByUserModelID{
-			TenantID: data.TenantID,
-			UserID:   data.UserID,
-			ModelID:  data.ModelID,
-		})
-		if err != nil {
-			if err.Error() == apiError.MissingRecord {
-				return errors.New(apiError.ForbiddenAccess)
-			}
-
-			return err
-		}
-
-		if modelFeedback.ID != *modelFeedbackID || modelFeedback.InferenceModelID != data.InferenceModelID {
+		if missing {
 			return errors.New(apiError.ForbiddenAccess)
 		}
+
+		if existing.ID != *modelFeedbackID || existing.InferenceModelID != data.InferenceModelID {
+			return errors.New(apiError.ForbiddenAccess)
+		}
+	} else if !missing && existing.InferenceModelID == data.InferenceModelID {
+		// A vote already exists for this report: update it instead of
+		// creating a duplicate.
+		existingID := existing.ID
+		modelFeedbackID = &existingID
 	} else {
 		modelFeedbackIDStr := generateID()
 		modelFeedbackID = &modelFeedbackIDStr
 	}
 
-	err := service.InferenceCommandRepositoryInterface.UpsertModelFeedback(ctx, repositoryTypes.UpsertModelFeedback{
+	err = service.InferenceCommandRepositoryInterface.UpsertModelFeedback(ctx, repositoryTypes.UpsertModelFeedback{
 		ID:                *modelFeedbackID,
 		TenantID:          data.TenantID,
 		InferenceModelID:  data.InferenceModelID,

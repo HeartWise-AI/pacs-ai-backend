@@ -64,3 +64,30 @@ type ModelFeedbackListAnswer struct {
 	QuestionnaireAnswerIDs []string `json:"questionnaireAnswerIds"`
 	QuestionnaireAnswers   []string `json:"questionnaireAnswers"`
 }
+
+// ListFeedbackReportCounts is an authorized admin request for the number of
+// reports returned per model in [From, To). TenantID and Role always come
+// from the authenticated session.
+type ListFeedbackReportCounts struct {
+	TenantID string
+	Role     string
+	From     *time.Time
+	To       *time.Time
+}
+
+// FeedbackReportCounts is the denominator of "Reports rated" on the Model
+// Feedback page: completed executions per model version and modality.
+type FeedbackReportCounts struct {
+	From   time.Time                  `json:"from"`
+	To     time.Time                  `json:"to"`
+	Models []FeedbackReportCountModel `json:"models"`
+}
+
+// FeedbackReportCountModel counts the completed executions of one model
+// version and modality.
+type FeedbackReportCountModel struct {
+	ModelName      string `json:"modelName"`
+	ModelVersion   string `json:"modelVersion"`
+	Modality       string `json:"modality"`
+	CompletedCount int    `json:"completedCount"`
+}
