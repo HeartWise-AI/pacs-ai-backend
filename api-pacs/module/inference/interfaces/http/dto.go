@@ -42,6 +42,9 @@ var (
 		"UpdateModelFeedbackRequest.InferenceModelID":                                                           "Inference Model ID is required.",
 		"UpdateModelFeedbackRequest.ModelID":                                                                    "Model ID is required.",
 		"UpdateModelFeedbackRequest.FeedbackType":                                                               "Feedback type is required.",
+		"UpdateModelFeedbackRequest.RunID":                                                                      "Run ID must be at most 128 characters.",
+		"UpdateModelFeedbackRequest.ExecutionID":                                                                "Execution ID must be at most 128 characters.",
+		"UpdateModelFeedbackRequest.StudyServiceJobID":                                                          "Study service job ID must be at most 128 characters.",
 		"ImportInferenceIngestionJob.DICOMModality":                                                             "DICOM modality is required.",
 		"ImportInferenceIngestionJob.ContainerID":                                                               "Container ID is required.",
 		"ImportInferenceIngestionJob.ModelID":                                                                   "Model ID is required.",
@@ -216,6 +219,10 @@ type UpdateModelFeedbackRequest struct {
 	ModelID              string                `json:"modelId" validate:"required"`
 	FeedbackType         entity.FeedbackType   `json:"feedbackType" validate:"required"`
 	ModelFeedbackAnswers []ModelFeedbackAnswer `json:"modelFeedbackAnswers"`
+	// Optional reference to the report the vote was cast from.
+	RunID             string `json:"runId,omitempty" validate:"omitempty,max=128"`
+	ExecutionID       string `json:"executionId,omitempty" validate:"omitempty,max=128"`
+	StudyServiceJobID string `json:"studyServiceJobId,omitempty" validate:"omitempty,max=128"`
 }
 
 type StudyServiceProcessingCallbackRequest struct {

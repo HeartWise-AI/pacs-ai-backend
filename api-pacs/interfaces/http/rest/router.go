@@ -75,6 +75,12 @@ func mountInferenceFeedbackRoutes(r chi.Router, handlers inferenceFeedbackHandle
 	r.Delete("/{modelID}/feedback/remove", handlers.remove)
 }
 
+// mountInferenceFeedbackAdminRoutes exposes the tenant-wide feedback list to
+// workspace owners and administrators only. The service checks the role again.
+func mountInferenceFeedbackAdminRoutes(r chi.Router, ownerOrAdmin func(http.Handler) http.Handler, list http.HandlerFunc) {
+	r.With(ownerOrAdmin).Get("/feedback/list", list)
+}
+
 type iamHandoffHandlers struct {
 	exchange http.HandlerFunc
 	link     http.HandlerFunc
@@ -301,6 +307,7 @@ func (router *router) InitRouter() *chi.Mux {
 							update: inferenceCommandController.UpdateModelFeedback,
 							remove: inferenceCommandController.RemoveModelFeedback,
 						})
+						mountInferenceFeedbackAdminRoutes(r, iamMiddleware.RBACOwnerOrAdminGuard, inferenceQueryController.ListModelFeedback)
 
 						r.Group(func(r chi.Router) {
 							r.Use(iamMiddleware.RBACOwnerOrAdminGuard)

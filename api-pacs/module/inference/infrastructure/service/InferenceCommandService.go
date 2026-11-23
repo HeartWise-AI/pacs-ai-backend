@@ -3627,12 +3627,15 @@ func (service *InferenceCommandService) UpdateModelFeedback(ctx context.Context,
 	}
 
 	err := service.InferenceCommandRepositoryInterface.UpsertModelFeedback(ctx, repositoryTypes.UpsertModelFeedback{
-		ID:               *modelFeedbackID,
-		TenantID:         data.TenantID,
-		InferenceModelID: data.InferenceModelID,
-		UserID:           data.UserID,
-		ModelID:          data.ModelID,
-		FeedbackType:     data.FeedbackType,
+		ID:                *modelFeedbackID,
+		TenantID:          data.TenantID,
+		InferenceModelID:  data.InferenceModelID,
+		UserID:            data.UserID,
+		ModelID:           data.ModelID,
+		FeedbackType:      data.FeedbackType,
+		RunID:             data.RunID,
+		ExecutionID:       data.ExecutionID,
+		StudyServiceJobID: data.StudyServiceJobID,
 	})
 	if err != nil {
 		return err

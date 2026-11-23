@@ -67,3 +67,60 @@ func TestFeedbackRoutesAllowAuthenticatedRegularUsers(t *testing.T) {
 		})
 	}
 }
+
+func feedbackListRouter(role string) http.Handler {
+	router := chi.NewRouter()
+	respond := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}
+	middleware := &iamMiddleware.IAMMiddleware{
+		IAMCommandServiceInterface: &worklistAuthCommandService{},
+		IAMQueryServiceInterface:   &worklistAuthQueryService{role: role},
+		UserQueryServiceInterface: &worklistPolicyQueryService{
+			status: userServiceTypes.PolicyStatus{EnforcementActive: true},
+		},
+	}
+
+	router.Group(func(r chi.Router) {
+		r.Use(middleware.TokenSessionAuthGuard)
+		r.Use(middleware.PolicyAcceptanceGuard)
+		r.Route("/model", func(r chi.Router) {
+			mountInferenceFeedbackRoutes(r, inferenceFeedbackHandlers{
+				get:    respond,
+				update: respond,
+				remove: respond,
+			})
+			mountInferenceFeedbackAdminRoutes(r, middleware.RBACOwnerOrAdminGuard, respond)
+		})
+	})
+	return router
+}
+
+func TestFeedbackListRouteRequiresOwnerOrAdmin(t *testing.T) {
+	t.Run("unauthenticated list is rejected", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		feedbackListRouter(iamEntity.AdminRole).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/model/feedback/list", nil))
+		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	})
+
+	for _, testCase := range []struct {
+		role string
+		want int
+	}{
+		{role: iamEntity.UserRole, want: http.StatusForbidden},
+		{role: iamEntity.AdminRole, want: http.StatusNoContent},
+		{role: iamEntity.OwnerRole, want: http.StatusNoContent},
+	} {
+		t.Run("role "+testCase.role, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			feedbackListRouter(testCase.role).ServeHTTP(recorder, authenticatedWorklistRequest(http.MethodGet, "/model/feedback/list"))
+			require.Equal(t, testCase.want, recorder.Code)
+		})
+	}
+
+	t.Run("regular user keeps reading their own feedback", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		feedbackListRouter(iamEntity.UserRole).ServeHTTP(recorder, authenticatedWorklistRequest(http.MethodGet, "/model/model-1/feedback"))
+		require.Equal(t, http.StatusNoContent, recorder.Code)
+	})
+}

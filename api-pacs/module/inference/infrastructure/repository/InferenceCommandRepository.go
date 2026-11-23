@@ -1119,14 +1119,17 @@ func (repository *InferenceCommandRepository) UpsertModelFeedback(ctx context.Co
 
 	// try to insert model feedback
 	_, err = docRef.Create(ctx, entity.ModelFeedback{
-		ID:               data.ID,
-		TenantID:         data.TenantID,
-		UserID:           data.UserID,
-		InferenceModelID: data.InferenceModelID,
-		ModelID:          data.ModelID,
-		FeedbackType:     data.FeedbackType,
-		CreatedAt:        int(time.Now().Unix()),
-		UpdatedAt:        int(time.Now().Unix()),
+		ID:                data.ID,
+		TenantID:          data.TenantID,
+		UserID:            data.UserID,
+		InferenceModelID:  data.InferenceModelID,
+		ModelID:           data.ModelID,
+		FeedbackType:      data.FeedbackType,
+		CreatedAt:         int(time.Now().Unix()),
+		UpdatedAt:         int(time.Now().Unix()),
+		RunID:             data.RunID,
+		ExecutionID:       data.ExecutionID,
+		StudyServiceJobID: data.StudyServiceJobID,
 	})
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
@@ -1139,6 +1142,21 @@ func (repository *InferenceCommandRepository) UpsertModelFeedback(ctx context.Co
 				{
 					Path:  "updated_at",
 					Value: int(time.Now().Unix()),
+				},
+				// Always overwrite the report reference so a stale one never
+				// survives a vote change (empty when the vote came from a
+				// surface without a report).
+				{
+					Path:  "run_id",
+					Value: data.RunID,
+				},
+				{
+					Path:  "execution_id",
+					Value: data.ExecutionID,
+				},
+				{
+					Path:  "study_service_job_id",
+					Value: data.StudyServiceJobID,
 				},
 			}
 

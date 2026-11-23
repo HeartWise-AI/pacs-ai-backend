@@ -421,6 +421,60 @@ func (repository *InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbackAns
 	}
 }
 
+// SelectModelFeedbacksByTenantID get every model feedback of a tenant
+func (repository *InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbacksByTenantID(ctx context.Context, tenantID string) ([]entity.ModelFeedback, error) {
+	output := make(chan []entity.ModelFeedback, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_model_feedbacks_by_tenant_id", config.Settings())
+	errors := hystrix.Go("select_model_feedbacks_by_tenant_id", func() error {
+		modelFeedbacks, err := repository.InferenceQueryRepositoryInterface.SelectModelFeedbacksByTenantID(ctx, tenantID)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- modelFeedbacks
+		return nil
+	}, nil)
+
+	select {
+	case modelFeedbacks := <-output:
+		return modelFeedbacks, nil
+	case err := <-errChan:
+		return nil, err
+	case err := <-errors:
+		return nil, err
+	}
+}
+
+// SelectModelFeedbackAnswersByFeedbackIDs get model feedback answers by feedback IDs
+func (repository *InferenceQueryRepositoryCircuitBreaker) SelectModelFeedbackAnswersByFeedbackIDs(ctx context.Context, feedbackIDs []string) ([]entity.ModelFeedbackAnswer, error) {
+	output := make(chan []entity.ModelFeedbackAnswer, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("select_model_feedback_answers_by_feedback_ids", config.Settings())
+	errors := hystrix.Go("select_model_feedback_answers_by_feedback_ids", func() error {
+		modelFeedbackAnswers, err := repository.InferenceQueryRepositoryInterface.SelectModelFeedbackAnswersByFeedbackIDs(ctx, feedbackIDs)
+		if err != nil {
+			errChan <- err
+			return nil
+		}
+
+		output <- modelFeedbackAnswers
+		return nil
+	}, nil)
+
+	select {
+	case modelFeedbackAnswers := <-output:
+		return modelFeedbackAnswers, nil
+	case err := <-errChan:
+		return nil, err
+	case err := <-errors:
+		return nil, err
+	}
+}
+
 // SelectOnboardingModelQuestionnaireAnswers select onboarding model questionnaire answers
 func (repository *InferenceQueryRepositoryCircuitBreaker) SelectOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingModelQuestionnaireAnswer) ([]entity.OnboardingModelQuestionnaireAnswer, error) {
 	output := make(chan []entity.OnboardingModelQuestionnaireAnswer, 1)

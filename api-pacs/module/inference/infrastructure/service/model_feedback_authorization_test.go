@@ -150,3 +150,50 @@ func TestUpdateModelFeedbackUpdatesOwnedFeedback(t *testing.T) {
 	require.Len(t, commandRepository.inserts, 1)
 	require.Equal(t, requestedID, commandRepository.inserts[0].ModelFeedbackID)
 }
+
+func TestUpdateModelFeedbackForwardsReportReference(t *testing.T) {
+	commandRepository := &feedbackUpdateCommandRepository{}
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface:   &feedbackUpdateQueryRepository{},
+		InferenceCommandRepositoryInterface: commandRepository,
+	}
+
+	err := service.UpdateModelFeedback(context.Background(), serviceTypes.UpdateModelFeedback{
+		TenantID:          "tenant-a",
+		UserID:            "user-a",
+		InferenceModelID:  "inference-model-a",
+		ModelID:           "inference-model-a-1.0.0",
+		FeedbackType:      entity.ApproveFeedbackType,
+		RunID:             "run-1",
+		ExecutionID:       "execution-1",
+		StudyServiceJobID: "job-1",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, commandRepository.upserts, 1)
+	require.Equal(t, "run-1", commandRepository.upserts[0].RunID)
+	require.Equal(t, "execution-1", commandRepository.upserts[0].ExecutionID)
+	require.Equal(t, "job-1", commandRepository.upserts[0].StudyServiceJobID)
+}
+
+func TestUpdateModelFeedbackWithoutReportReference(t *testing.T) {
+	commandRepository := &feedbackUpdateCommandRepository{}
+	service := &InferenceCommandService{
+		InferenceQueryRepositoryInterface:   &feedbackUpdateQueryRepository{},
+		InferenceCommandRepositoryInterface: commandRepository,
+	}
+
+	err := service.UpdateModelFeedback(context.Background(), serviceTypes.UpdateModelFeedback{
+		TenantID:         "tenant-a",
+		UserID:           "user-a",
+		InferenceModelID: "inference-model-a",
+		ModelID:          "inference-model-a-1.0.0",
+		FeedbackType:     entity.RejectFeedbackType,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, commandRepository.upserts, 1)
+	require.Empty(t, commandRepository.upserts[0].RunID)
+	require.Empty(t, commandRepository.upserts[0].ExecutionID)
+	require.Empty(t, commandRepository.upserts[0].StudyServiceJobID)
+}

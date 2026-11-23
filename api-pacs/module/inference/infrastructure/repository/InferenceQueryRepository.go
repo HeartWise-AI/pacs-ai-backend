@@ -538,6 +538,88 @@ func (repository *InferenceQueryRepository) SelectModelFeedbackAnswersByFeedback
 	return modelFeedbackAnswers, nil
 }
 
+// SelectModelFeedbacksByTenantID selects every model feedback of a tenant.
+// It uses a single-field equality query so no composite index is required.
+func (repository *InferenceQueryRepository) SelectModelFeedbacksByTenantID(ctx context.Context, tenantID string) ([]entity.ModelFeedback, error) {
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	var modelFeedback entity.ModelFeedback
+
+	docs, err := firestoreClient.Collection(modelFeedback.GetModelName()).Where("tenant_id", "==", tenantID).Documents(ctx).GetAll()
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	modelFeedbacks := make([]entity.ModelFeedback, 0, len(docs))
+	for _, doc := range docs {
+		var item entity.ModelFeedback
+		if err := doc.DataTo(&item); err != nil {
+			log.Println(err)
+			continue
+		}
+
+		if item.ID == "" {
+			item.ID = doc.Ref.ID
+		}
+
+		modelFeedbacks = append(modelFeedbacks, item)
+	}
+
+	return modelFeedbacks, nil
+}
+
+// modelFeedbackAnswersInChunkSize is the Firestore limit for "in" filters.
+const modelFeedbackAnswersInChunkSize = 30
+
+// SelectModelFeedbackAnswersByFeedbackIDs selects the answers of the given model feedbacks
+func (repository *InferenceQueryRepository) SelectModelFeedbackAnswersByFeedbackIDs(ctx context.Context, feedbackIDs []string) ([]entity.ModelFeedbackAnswer, error) {
+	modelFeedbackAnswers := []entity.ModelFeedbackAnswer{}
+	if len(feedbackIDs) == 0 {
+		return modelFeedbackAnswers, nil
+	}
+
+	firestoreClient, err := repository.FirebaseAdminSDK.App.Firestore(ctx)
+	if err != nil {
+		log.Println(err)
+		return nil, errors.New(apiError.FirestoreError)
+	}
+
+	var modelFeedbackAnswer entity.ModelFeedbackAnswer
+
+	for start := 0; start < len(feedbackIDs); start += modelFeedbackAnswersInChunkSize {
+		end := min(start+modelFeedbackAnswersInChunkSize, len(feedbackIDs))
+
+		chunk := make([]interface{}, 0, end-start)
+		for _, id := range feedbackIDs[start:end] {
+			chunk = append(chunk, id)
+		}
+
+		docs, err := firestoreClient.Collection(modelFeedbackAnswer.GetModelName()).Where("model_feedback_id", "in", chunk).Documents(ctx).GetAll()
+		if err != nil {
+			log.Println(err)
+			return nil, errors.New(apiError.FirestoreError)
+		}
+
+		for _, doc := range docs {
+			var item entity.ModelFeedbackAnswer
+			if err := doc.DataTo(&item); err != nil {
+				log.Println(err)
+				continue
+			}
+
+			item.ID = doc.Ref.ID
+			modelFeedbackAnswers = append(modelFeedbackAnswers, item)
+		}
+	}
+
+	return modelFeedbackAnswers, nil
+}
+
 // SelectOnboardingModelQuestionnaireAnswers selects onboarding model questionnaire answers
 func (repository *InferenceQueryRepository) SelectOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingModelQuestionnaireAnswer) ([]entity.OnboardingModelQuestionnaireAnswer, error) {
 	// firestore client
