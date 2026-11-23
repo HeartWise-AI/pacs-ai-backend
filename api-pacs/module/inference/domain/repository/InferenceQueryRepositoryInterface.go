@@ -39,6 +39,11 @@ type InferenceQueryRepositoryInterface interface {
 	SelectModelFeedbackByUserModelID(ctx context.Context, data types.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error)
 	// SelectModelFeedbackAnswersByFeedbackID get model feedback answers by feedback ID
 	SelectModelFeedbackAnswersByFeedbackID(ctx context.Context, feedbackID string) ([]entity.ModelFeedbackAnswer, error)
+	// SelectModelFeedbacksByTenantID gets every model feedback of a tenant; an empty result is an empty slice
+	SelectModelFeedbacksByTenantID(ctx context.Context, tenantID string) ([]entity.ModelFeedback, error)
+	// SelectModelFeedbackAnswersByFeedbackIDs gets the answers of the given feedback ids; an empty result is an empty slice.
+	// Answers carry no tenant field, so callers must only pass ids of tenant-scoped feedbacks.
+	SelectModelFeedbackAnswersByFeedbackIDs(ctx context.Context, feedbackIDs []string) ([]entity.ModelFeedbackAnswer, error)
 	// SelectOnboardingModelQuestionnaireAnswers select onboarding model questionnaire answers
 	SelectOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingModelQuestionnaireAnswer) ([]entity.OnboardingModelQuestionnaireAnswer, error)
 }

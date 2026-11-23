@@ -424,12 +424,15 @@ type ProcessingRunNotificationJob struct {
 }
 
 type UpsertModelFeedback struct {
-	ID               string
-	TenantID         string
-	UserID           string
-	InferenceModelID string
-	ModelID          string
-	FeedbackType     entity.FeedbackType
+	ID                string
+	TenantID          string
+	UserID            string
+	InferenceModelID  string
+	ModelID           string
+	FeedbackType      entity.FeedbackType
+	RunID             string
+	ExecutionID       string
+	StudyServiceJobID string
 }
 
 type UpsertIngestionCandidate struct {

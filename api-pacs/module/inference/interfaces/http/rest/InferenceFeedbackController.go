@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -237,6 +238,9 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 		ModelID:              request.ModelID,
 		FeedbackType:         request.FeedbackType,
 		ModelFeedbackAnswers: modelFeedbackAnswers,
+		RunID:                strings.TrimSpace(request.RunID),
+		ExecutionID:          strings.TrimSpace(request.ExecutionID),
+		StudyServiceJobID:    strings.TrimSpace(request.StudyServiceJobID),
 	})
 	if err != nil {
 		var httpCode int
@@ -271,5 +275,72 @@ func (controller *InferenceCommandController) UpdateModelFeedback(w http.Respons
 		Message: "Successfully updated model feedback.",
 	}
 
+	response.JSON(w)
+}
+
+// ListModelFeedback handles GET /v1/inference/model/feedback/list for
+// workspace administrators. The tenant and role always come from the
+// authenticated request context, never from the query.
+func (controller *InferenceQueryController) ListModelFeedback(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+
+	tenantID, ok := worklistTenantID(r)
+	if !ok {
+		writeModelFeedbackListError(w, apiError.UnauthorizedAccess)
+		return
+	}
+	role, _ := r.Context().Value(iamTypes.RoleCtx).(string)
+
+	values := r.URL.Query()
+	from, err := parsePredictionsTime(values.Get("from"))
+	if err != nil {
+		writeModelFeedbackListError(w, apiError.InvalidPayload)
+		return
+	}
+	to, err := parsePredictionsTime(values.Get("to"))
+	if err != nil {
+		writeModelFeedbackListError(w, apiError.InvalidPayload)
+		return
+	}
+
+	list, err := controller.InferenceQueryServiceInterface.ListModelFeedback(r.Context(), serviceTypes.ListModelFeedback{
+		TenantID:     tenantID,
+		Role:         strings.TrimSpace(role),
+		Model:        values.Get("model"),
+		FeedbackType: values.Get("feedbackType"),
+		From:         from,
+		To:           to,
+	})
+	if err != nil {
+		writeModelFeedbackListError(w, err.Error())
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Successfully retrieved model feedback.",
+		Data:    list,
+	}
+	response.JSON(w)
+}
+
+func writeModelFeedbackListError(w http.ResponseWriter, errorCode string) {
+	status, message := http.StatusInternalServerError, "Please contact technical support."
+	switch errorCode {
+	case apiError.InvalidPayload, apiError.InvalidRequestPayload:
+		status, message = http.StatusBadRequest, "Invalid model feedback query."
+	case apiError.UnauthorizedAccess:
+		status, message = http.StatusUnauthorized, "Authentication is required."
+	case apiError.ForbiddenAccess:
+		status, message = http.StatusForbidden, "Only workspace administrators can see model feedback."
+	case apiError.FirestoreError:
+		message = "Error occurred while retrieving model feedback."
+	case apiError.HystrixTimeout:
+		status, message = http.StatusServiceUnavailable, "Model feedback is temporarily unavailable."
+	default:
+		errorCode = apiError.ServerError
+	}
+	response := viewmodels.HTTPResponseVM{Status: status, Success: false, Message: message, ErrorCode: errorCode}
 	response.JSON(w)
 }

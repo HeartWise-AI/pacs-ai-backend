@@ -428,6 +428,9 @@ type UpdateModelFeedback struct {
 	ModelID              string
 	FeedbackType         entity.FeedbackType
 	ModelFeedbackAnswers []ModelFeedbackAnswer
+	RunID                string
+	ExecutionID          string
+	StudyServiceJobID    string
 }
 
 type ModelFacts struct {

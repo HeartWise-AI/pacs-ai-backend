@@ -589,6 +589,7 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		ModelReportRenderer:               dockerInferenceAPI,
 		ReportRenderTimeout:               reportRenderTimeout,
 		ReportMaxBytes:                    reportMaxBytes,
+		FeedbackUsers:                     k.userQueryServiceContainer(),
 	}
 	// Last good model info survives restarts (migration 000014); without the
 	// table it is kept in memory only.

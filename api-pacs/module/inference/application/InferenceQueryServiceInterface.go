@@ -44,6 +44,8 @@ type InferenceQueryServiceInterface interface {
 	GetStudyJobReport(ctx context.Context, data types.GetStudyJobReport) (types.ModelReport, error)
 	// GetModelFeedBackByUser gets the model feedback by user
 	GetModelFeedBackByUser(ctx context.Context, data types.GetModelFeedbackByUser) (types.GetModelFeedbackResult, error)
+	// ListModelFeedback lists the model feedback of the session tenant for workspace administrators.
+	ListModelFeedback(ctx context.Context, data types.ListModelFeedback) (types.ModelFeedbackList, error)
 	// GetOnboardingModelQuestionnaireAnswers gets the onboarding model questionnaire answers
 	GetOnboardingModelQuestionnaireAnswers(ctx context.Context, data types.GetOnboardingModelQuestionnaireAnswer) ([]entity.OnboardingModelQuestionnaireAnswer, error)
 }

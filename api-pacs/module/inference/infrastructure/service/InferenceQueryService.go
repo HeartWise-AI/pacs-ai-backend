@@ -47,6 +47,9 @@ type InferenceQueryService struct {
 	// AvailableModelStore keeps that last good model info across api-pacs
 	// restarts. Nil keeps it in memory only.
 	AvailableModelStore AvailableModelInfoStore
+	// FeedbackUsers resolves voter names for the admin feedback list. Nil (or
+	// a failed lookup) leaves names and emails null.
+	FeedbackUsers PredictionsUserDirectory
 }
 
 // AvailableModelInfoStore persists the last good model info per container
