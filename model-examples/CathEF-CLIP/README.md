@@ -72,6 +72,8 @@ is refused with 422 (`INVALID_RESULT`); a body over 64 KB is refused with 413.
 
 ## Changelog
 
+- 1.0.3: model-info reports the runtime `PACS_AI_MODEL_VERSION` (PR #526). No change to the model,
+  weights, preprocessing, predictions or report.
 - 1.0.2: includes `POST /inference/render-report` and `capabilities.renderReport` in model-info
   (no image of 1.0.2 was published before this was added). The endpoint does not change the
   model, weights, preprocessing, predictions or live report.

@@ -21,6 +21,10 @@ The image does not package the optional EchoPrime view-classifier checkpoint. Wh
 is absent, the existing runtime falls back to request metadata or unfiltered PanEcho inference, which
 matches the behavior of the measured 1.0.0 deployment.
 
+## Changelog
+
+- 1.0.4: `read_body` reserves at most 64 MiB from `Content-Length` and grows as bytes arrive (PR #520); model-info reports the runtime `PACS_AI_MODEL_VERSION` (PR #526). Predictions unchanged.
+
 ## Request handling and performance (1.0.3)
 
 A heavy echo study reaches `POST /inference/predict` as about 2 GB of JSON. Since 1.0.3 the

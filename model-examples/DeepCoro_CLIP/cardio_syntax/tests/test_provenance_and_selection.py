@@ -1,4 +1,4 @@
-"""CardioSyntax 1.1.0 (v6 checkpoint): pinned artifact identity, build metadata, run selection and normalisation."""
+"""CardioSyntax 1.1.1 (v6 checkpoint): pinned artifact identity, build metadata, run selection and normalisation."""
 
 import hashlib
 import json
