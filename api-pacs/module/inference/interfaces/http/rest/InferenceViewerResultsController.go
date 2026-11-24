@@ -54,7 +54,12 @@ func (controller *InferenceQueryController) GetStudyLatestModelResults(w http.Re
 		writeViewerResultsError(w, err.Error())
 		return
 	}
-	writeWorklistQuerySuccess(w, "Successfully retrieved latest study model results.", results)
+	access, accessErr := modelAccessFilter(r)
+	if accessErr != "" {
+		writeModelAccessError(w, accessErr)
+		return
+	}
+	writeWorklistQuerySuccess(w, "Successfully retrieved latest study model results.", filterLatestResults(access, results))
 }
 
 // GetProcessingRunExecutionReport re-renders the HTML report of one completed
@@ -66,8 +71,14 @@ func (controller *InferenceQueryController) GetProcessingRunExecutionReport(w ht
 		writeViewerResultsError(w, apiError.UnauthorizedAccess)
 		return
 	}
+	allowModel, accessErr := resultModelFilter(r)
+	if accessErr != "" {
+		writeModelAccessError(w, accessErr)
+		return
+	}
 	report, err := controller.InferenceQueryServiceInterface.GetProcessingRunExecutionReport(r.Context(), serviceTypes.GetProcessingRunExecutionReport{
 		TenantID: tenantID, RunID: chi.URLParam(r, "runId"), ExecutionID: chi.URLParam(r, "executionId"),
+		AllowModel: allowModel,
 	})
 	if err != nil {
 		writeViewerResultsError(w, err.Error())
@@ -85,10 +96,16 @@ func (controller *InferenceQueryController) GetStudyJobReport(w http.ResponseWri
 		writeViewerResultsError(w, apiError.UnauthorizedAccess)
 		return
 	}
+	allowModel, accessErr := resultModelFilter(r)
+	if accessErr != "" {
+		writeModelAccessError(w, accessErr)
+		return
+	}
 	report, err := controller.InferenceQueryServiceInterface.GetStudyJobReport(r.Context(), serviceTypes.GetStudyJobReport{
 		TenantID:          tenantID,
 		StudyInstanceUID:  chi.URLParam(r, "studyInstanceUID"),
 		StudyServiceJobID: chi.URLParam(r, "studyServiceJobId"),
+		AllowModel:        allowModel,
 	})
 	if err != nil {
 		writeViewerResultsError(w, err.Error())
@@ -112,6 +129,11 @@ func (controller *InferenceCommandController) RunStudyModel(w http.ResponseWrite
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil && !errors.Is(err, io.EOF) {
 		writeViewerResultsError(w, apiError.InvalidPayload)
+		return
+	}
+
+	if code := authorizeModelRef(r, controller.ModelArtifacts, tenantID, chi.URLParam(r, "modelId")); code != "" {
+		writeModelAccessError(w, code)
 		return
 	}
 

@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "0.27.0-beta"
+    "version": "0.28.0-beta"
   },
   "servers": [
     {
@@ -1059,7 +1059,7 @@
       "get": {
         "tags": ["inference"],
         "summary": "List Feedback Report Counts",
-        "description": "Workspace owners and administrators only. Counts the reports returned (completed executions, dated by completed_at, else started_at) per model version and modality of the session tenant in [from, to). Response data: {from, to, models: [{modelName, modelVersion, modality, completedCount}]}.",
+        "description": "Requires feedback.view (every owner and administrator). Counts the reports returned (completed executions, dated by completed_at, else started_at) per model version and modality of the session tenant in [from, to). Response data: {from, to, models: [{modelName, modelVersion, modality, completedCount}]}.",
         "security": [
           {
             "bearerAuth": []
@@ -1122,7 +1122,8 @@
           },
           "400": { "description": "Missing or invalid from/to, from not before to, or a span over 800 days" },
           "401": { "description": "Authentication is required" },
-          "403": { "description": "Not a workspace owner or administrator" },
+          "403": { "description": "The session lacks feedback.view" },
+          "503": { "description": "Access could not be verified (fails closed)" },
           "5xx": { "description": "Server side errors" }
         }
       }
@@ -2114,7 +2115,7 @@
       "get": {
         "tags": ["user"],
         "summary": "Get Tenant Users",
-        "description": "Get tenant users.",
+        "description": "Requires members.manage. Get tenant users, each with customRoleId (empty when none).",
         "security": [
           {
             "bearerAuth": []
@@ -2178,7 +2179,7 @@
       "get": {
         "tags": ["user"],
         "summary": "Get Current Tenant User",
-        "description": "Get current tenant user.",
+        "description": "Get current tenant user. Includes customRoleId (empty when none).",
         "security": [
           {
             "bearerAuth": []
@@ -2193,6 +2194,619 @@
           },
           "5xx": {
             "description": "Server side errors"
+          }
+        }
+      }
+    },
+    "/user/me/access": {
+      "get": {
+        "tags": [
+          "user"
+        ],
+        "summary": "Get My Access",
+        "description": "Effective access of the signed-in user. OWNER and ADMIN hold every permission and every model. USER holds models.use and feedback.vote plus the permissions and model access of its custom role, if any.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Effective access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "OWNER",
+                            "ADMIN",
+                            "USER"
+                          ]
+                        },
+                        "permissions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "allModels": {
+                          "type": "boolean"
+                        },
+                        "modelIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "customRole": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          },
+          "503": {
+            "description": "Access could not be verified"
+          }
+        }
+      }
+    },
+    "/user/roles": {
+      "get": {
+        "tags": [
+          "user"
+        ],
+        "summary": "List Custom Roles",
+        "description": "Requires members.manage. Custom roles of the workspace with member counts, and the permission catalog.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Roles and catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "roles": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string",
+                                "maxLength": 64
+                              },
+                              "description": {
+                                "type": "string",
+                                "maxLength": 280
+                              },
+                              "permissions": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "description": "Grantable permissions only, sorted."
+                              },
+                              "allModels": {
+                                "type": "boolean"
+                              },
+                              "modelIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "description": "Model-info modelIds (as /inference/model/proxy/available returns); empty when allModels."
+                              },
+                              "memberCount": {
+                                "type": "integer",
+                                "description": "USER accounts holding the role."
+                              },
+                              "createdAt": {
+                                "type": "integer",
+                                "description": "Unix seconds."
+                              },
+                              "updatedAt": {
+                                "type": "integer",
+                                "description": "Unix seconds."
+                              }
+                            }
+                          }
+                        },
+                        "permissions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "baseline": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          },
+          "403": {
+            "description": "The session lacks members.manage"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "user"
+        ],
+        "summary": "Create Custom Role",
+        "description": "Workspace owners and administrators only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "description": "Unique per workspace, ignoring case."
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 280
+                  },
+                  "permissions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "results.view_all",
+                        "feedback.view",
+                        "members.invite",
+                        "members.manage",
+                        "processing.manage",
+                        "models.manage",
+                        "dicom.manage",
+                        "logs.view",
+                        "workspace.manage"
+                      ]
+                    },
+                    "description": "Baseline permissions (models.use, feedback.vote) are accepted and ignored; unknown ones are rejected."
+                  },
+                  "allModels": {
+                    "type": "boolean"
+                  },
+                  "modelIds": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 128
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string",
+                          "maxLength": 64
+                        },
+                        "description": {
+                          "type": "string",
+                          "maxLength": 280
+                        },
+                        "permissions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Grantable permissions only, sorted."
+                        },
+                        "allModels": {
+                          "type": "boolean"
+                        },
+                        "modelIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Model-info modelIds (as /inference/model/proxy/available returns); empty when allModels."
+                        },
+                        "memberCount": {
+                          "type": "integer",
+                          "description": "USER accounts holding the role."
+                        },
+                        "createdAt": {
+                          "type": "integer",
+                          "description": "Unix seconds."
+                        },
+                        "updatedAt": {
+                          "type": "integer",
+                          "description": "Unix seconds."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid name, description, permission or model id"
+          },
+          "401": {
+            "description": "Authentication is required"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          },
+          "403": {
+            "description": "Not a workspace owner or administrator"
+          },
+          "409": {
+            "description": "DUPLICATE_RECORD: name already used"
+          }
+        }
+      }
+    },
+    "/user/roles/{roleID}": {
+      "put": {
+        "tags": [
+          "user"
+        ],
+        "summary": "Update Custom Role",
+        "description": "Workspace owners and administrators only. Replaces name, description, permissions and model access; members see the change at once.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "roleID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "description": "Unique per workspace, ignoring case."
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 280
+                  },
+                  "permissions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "results.view_all",
+                        "feedback.view",
+                        "members.invite",
+                        "members.manage",
+                        "processing.manage",
+                        "models.manage",
+                        "dicom.manage",
+                        "logs.view",
+                        "workspace.manage"
+                      ]
+                    },
+                    "description": "Baseline permissions (models.use, feedback.vote) are accepted and ignored; unknown ones are rejected."
+                  },
+                  "allModels": {
+                    "type": "boolean"
+                  },
+                  "modelIds": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 128
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string",
+                          "maxLength": 64
+                        },
+                        "description": {
+                          "type": "string",
+                          "maxLength": 280
+                        },
+                        "permissions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Grantable permissions only, sorted."
+                        },
+                        "allModels": {
+                          "type": "boolean"
+                        },
+                        "modelIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Model-info modelIds (as /inference/model/proxy/available returns); empty when allModels."
+                        },
+                        "memberCount": {
+                          "type": "integer",
+                          "description": "USER accounts holding the role."
+                        },
+                        "createdAt": {
+                          "type": "integer",
+                          "description": "Unix seconds."
+                        },
+                        "updatedAt": {
+                          "type": "integer",
+                          "description": "Unix seconds."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body"
+          },
+          "401": {
+            "description": "Authentication is required"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          },
+          "403": {
+            "description": "Not a workspace owner or administrator"
+          },
+          "404": {
+            "description": "No such role in this workspace"
+          },
+          "409": {
+            "description": "DUPLICATE_RECORD: name already used"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "user"
+        ],
+        "summary": "Delete Custom Role",
+        "description": "Workspace owners and administrators only. Refused while members hold the role.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "roleID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "Authentication is required"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          },
+          "403": {
+            "description": "Not a workspace owner or administrator"
+          },
+          "404": {
+            "description": "No such role in this workspace"
+          },
+          "409": {
+            "description": "ROLE_IN_USE: members still hold the role"
+          }
+        }
+      }
+    },
+    "/user/{ID}/custom-role": {
+      "put": {
+        "tags": [
+          "user"
+        ],
+        "summary": "Assign Custom Role",
+        "description": "Workspace owners and administrators only. Sets the custom role of a USER account; an empty customRoleId clears it. Promoting a member to ADMIN clears it too.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "customRoleId"
+                ],
+                "properties": {
+                  "customRoleId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Assigned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "userId": {
+                          "type": "string"
+                        },
+                        "customRoleId": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing customRoleId, or the member is not a USER account"
+          },
+          "401": {
+            "description": "Authentication is required"
+          },
+          "5xx": {
+            "description": "Server side errors"
+          },
+          "403": {
+            "description": "Not a workspace owner or administrator"
+          },
+          "404": {
+            "description": "No such member or role in this workspace"
           }
         }
       }

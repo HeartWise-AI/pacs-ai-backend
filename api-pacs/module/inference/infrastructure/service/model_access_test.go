@@ -1,0 +1,119 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
+	apiError "api-pacs/internal/errors"
+	"api-pacs/module/inference/domain/entity"
+	"api-pacs/module/inference/infrastructure/service/types"
+)
+
+func TestResolveModelArtifactIDs(t *testing.T) {
+	models := []entity.InferenceModel{
+		{ID: "reg-echo", TenantID: "t1", ContainerID: "c-echo", DockerImage: "img-echo",
+			Deployment: &entity.InferenceModelDeployment{ContainerID: "c-echo", ImageReference: "img-echo", ArtifactModelID: "PanEcho"}},
+		{ID: "reg-rv", TenantID: "t1", ContainerID: "c-rv"},
+		{ID: "reg-old", TenantID: "t1", ContainerID: "c-old"},
+		{ID: "reg-foreign", TenantID: "t2", ContainerID: "c-foreign"},
+		{ID: "reg-stopped", TenantID: "t1"},
+	}
+	service := &InferenceQueryService{InferenceQueryRepositoryInterface: &inferenceModelsQueryRepository{models: models}}
+	service.rememberModelInfo(context.Background(), types.GetInferenceAvailableModelResult{ContainerID: "c-rv", ModelID: "DeepRV_CLIP"})
+	ctx := context.Background()
+
+	for ref, want := range map[string]string{
+		"reg-echo": "PanEcho", "c-echo": "PanEcho", "PanEcho": "PanEcho",
+		"reg-rv": "DeepRV_CLIP", "c-rv": "DeepRV_CLIP", "DeepRV_CLIP": "DeepRV_CLIP",
+	} {
+		ids, err := service.ResolveModelArtifactIDs(ctx, "t1", ref)
+		require.NoError(t, err, ref)
+		require.Equal(t, []string{want}, ids, ref)
+	}
+
+	_, err := service.ResolveModelArtifactIDs(ctx, "t1", "reg-old")
+	require.EqualError(t, err, apiError.AccessUnavailable, "a model whose modelId is unknown is never allowed by guess")
+	_, err = service.ResolveModelArtifactIDs(ctx, "t1", "reg-foreign")
+	require.EqualError(t, err, apiError.MissingRecord)
+	_, err = service.ResolveModelArtifactIDs(ctx, "t1", "reg-stopped")
+	require.EqualError(t, err, apiError.MissingRecord)
+	_, err = service.ResolveModelArtifactIDs(ctx, "t1", " ")
+	require.EqualError(t, err, apiError.InvalidPayload)
+
+	failing := &InferenceQueryService{InferenceQueryRepositoryInterface: &inferenceModelsQueryRepository{err: errors.New(apiError.FirestoreError)}}
+	_, err = failing.ResolveModelArtifactIDs(ctx, "t1", "reg-echo")
+	require.EqualError(t, err, apiError.AccessUnavailable)
+}
+
+type resultModelsRepository struct {
+	inferenceModelsQueryRepository
+}
+
+func (*resultModelsRepository) SelectInferenceIngestionJobs(*string) ([]entity.InferenceIngestionJob, error) {
+	return nil, nil
+}
+
+func TestAuthorizeResultModel(t *testing.T) {
+	service := &InferenceQueryService{InferenceQueryRepositoryInterface: &resultModelsRepository{inferenceModelsQueryRepository{models: []entity.InferenceModel{
+		{ID: "reg-echo", TenantID: "t1", Name: "PanEcho", ContainerID: "c-echo", DockerImage: "img",
+			Deployment: &entity.InferenceModelDeployment{ContainerID: "c-echo", ImageReference: "img", ArtifactModelID: "PanEcho"}},
+		{ID: "reg-legacy", TenantID: "t1", Name: "Legacy", ContainerID: "c-legacy"},
+	}}}}
+	ctx := context.Background()
+	onlyEcho := func(id string) bool { return id == "PanEcho" }
+	onlyRV := func(id string) bool { return id == "DeepRV_CLIP" }
+
+	require.NoError(t, service.authorizeResultModel(ctx, "t1", "PanEcho", "", nil), "nil allow accepts everything")
+	require.NoError(t, service.authorizeResultModel(ctx, "t1", "PanEcho", "1.0.3", onlyEcho))
+	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "PanEcho", "", onlyRV), apiError.ForbiddenAccess)
+	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "Legacy", "", onlyEcho), apiError.ForbiddenAccess, "unknown modelId is refused")
+	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "Unregistered", "", onlyEcho), apiError.ForbiddenAccess)
+}
+
+func TestAuthorizeResultModelUsesCachedIdentityWhenContainerIsDown(t *testing.T) {
+	service := &InferenceQueryService{InferenceQueryRepositoryInterface: &resultModelsRepository{inferenceModelsQueryRepository{models: []entity.InferenceModel{
+		// Registered without a deployment snapshot; display name differs from the model-info name.
+		{ID: "reg-rv", TenantID: "t1", Name: "RV model", ContainerID: "c-rv"},
+	}}}}
+	ctx := context.Background()
+	onlyRV := func(id string) bool { return id == "DeepRV_CLIP" }
+	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "DeepRV-CLIP", "1.0.1", onlyRV), apiError.ForbiddenAccess, "no identity known yet")
+
+	service.rememberModelInfo(ctx, types.GetInferenceAvailableModelResult{ContainerID: "c-rv", ModelID: "DeepRV_CLIP", ModelName: "DeepRV-CLIP", Version: "1.0.1"})
+	require.NoError(t, service.authorizeResultModel(ctx, "t1", "DeepRV-CLIP", "1.0.1", onlyRV))
+	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "DeepRV-CLIP", "1.0.1", func(string) bool { return false }), apiError.ForbiddenAccess)
+}
+
+func TestResolveModelArtifactIDsProbesRunningContainerWhenCacheIsCold(t *testing.T) {
+	models := []entity.InferenceModel{{ID: "reg-jepa", TenantID: "t1", ContainerID: "c-jepa"}}
+	ctx := context.Background()
+
+	live := &InferenceQueryService{
+		InferenceQueryRepositoryInterface: &inferenceModelsQueryRepository{models: models},
+		DockerSDKInterface:                &viewerResultsDocker{},
+		DockerInferenceAPIInterface:       &viewerModelInfoAPI{info: renderingModelInfo(false)},
+	}
+	ids, err := live.ResolveModelArtifactIDs(ctx, "t1", "reg-jepa")
+	require.NoError(t, err)
+	require.Equal(t, []string{"deepcoro-jepa"}, ids)
+
+	stopped := &InferenceQueryService{
+		InferenceQueryRepositoryInterface: &inferenceModelsQueryRepository{models: models},
+		DockerSDKInterface:                &viewerResultsDocker{lifecycle: dockerTypes.LifecycleStopped},
+		DockerInferenceAPIInterface:       &viewerModelInfoAPI{info: renderingModelInfo(false)},
+	}
+	_, err = stopped.ResolveModelArtifactIDs(ctx, "t1", "reg-jepa")
+	require.EqualError(t, err, apiError.AccessUnavailable, "still fails closed when nothing answers")
+
+	failing := &InferenceQueryService{
+		InferenceQueryRepositoryInterface: &inferenceModelsQueryRepository{models: models},
+		DockerSDKInterface:                &viewerResultsDocker{},
+		DockerInferenceAPIInterface:       &viewerModelInfoAPI{err: errors.New("timeout")},
+	}
+	_, err = failing.ResolveModelArtifactIDs(ctx, "t1", "c-jepa")
+	require.EqualError(t, err, apiError.AccessUnavailable)
+}

@@ -127,7 +127,7 @@ func buildPredictionsQuery(data types.ListPredictions, maximumLimit int, stalled
 	if tenantID == "" || userID == "" {
 		return predictionsQuery{}, errors.New(apiError.UnauthorizedAccess)
 	}
-	query := predictionsQuery{userID: userID, canViewAll: IsWorkspaceAdministrator(data.Role), stalledBefore: stalledBefore}
+	query := predictionsQuery{userID: userID, canViewAll: data.CanViewAll || IsWorkspaceAdministrator(data.Role), stalledBefore: stalledBefore}
 
 	view := types.PredictionsView(strings.TrimSpace(string(data.View)))
 	if view == "" {

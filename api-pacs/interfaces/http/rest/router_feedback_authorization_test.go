@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	iamMiddleware "api-pacs/interfaces/http/rest/middlewares/iam"
+	accessEntity "api-pacs/module/access/domain/entity"
 	iamEntity "api-pacs/module/iam/domain/entity"
 	userServiceTypes "api-pacs/module/user/infrastructure/service/types"
 )
@@ -32,7 +33,7 @@ func TestFeedbackRoutesAllowAuthenticatedRegularUsers(t *testing.T) {
 		r.Use(middleware.TokenSessionAuthGuard)
 		r.Use(middleware.PolicyAcceptanceGuard)
 		r.Route("/model", func(r chi.Router) {
-			mountInferenceFeedbackRoutes(r, inferenceFeedbackHandlers{
+			mountInferenceFeedbackRoutes(r, middleware.RequirePermission(accessEntity.PermFeedbackVote), inferenceFeedbackHandlers{
 				get:    respond,
 				update: respond,
 				remove: respond,
@@ -85,12 +86,12 @@ func feedbackListRouter(role string) http.Handler {
 		r.Use(middleware.TokenSessionAuthGuard)
 		r.Use(middleware.PolicyAcceptanceGuard)
 		r.Route("/model", func(r chi.Router) {
-			mountInferenceFeedbackRoutes(r, inferenceFeedbackHandlers{
+			mountInferenceFeedbackRoutes(r, middleware.RequirePermission(accessEntity.PermFeedbackVote), inferenceFeedbackHandlers{
 				get:    respond,
 				update: respond,
 				remove: respond,
 			})
-			mountInferenceFeedbackAdminRoutes(r, middleware.RBACOwnerOrAdminGuard, inferenceFeedbackAdminHandlers{
+			mountInferenceFeedbackAdminRoutes(r, middleware.RequirePermission(accessEntity.PermFeedbackView), inferenceFeedbackAdminHandlers{
 				list:         respond,
 				reportCounts: respond,
 			})

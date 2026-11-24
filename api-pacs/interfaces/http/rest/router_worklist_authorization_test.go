@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	iamMiddleware "api-pacs/interfaces/http/rest/middlewares/iam"
+	accessEntity "api-pacs/module/access/domain/entity"
 	iamApplication "api-pacs/module/iam/application"
 	iamEntity "api-pacs/module/iam/domain/entity"
 	iamServiceTypes "api-pacs/module/iam/infrastructure/service/types"
@@ -70,7 +71,9 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 		router,
 		middleware.TokenSessionAuthGuard,
 		middleware.PolicyAcceptanceGuard,
-		middleware.RBACOwnerOrAdminGuard,
+		middleware.RequirePermission(accessEntity.PermModelsUse),
+		middleware.RequirePermission(accessEntity.PermProcessingManage),
+		middleware.RequireAllModels,
 		inferenceWorklistHandlers{
 			getStatuses:        respond,
 			streamEvents:       respond,

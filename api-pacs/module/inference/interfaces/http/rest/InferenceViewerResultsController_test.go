@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"api-pacs/module/access/accessctx"
 	"context"
 	"encoding/json"
 	"errors"
@@ -65,6 +66,7 @@ func viewerRequest(method, target, body string, params map[string]string) *http.
 	ctx := context.WithValue(request.Context(), chi.RouteCtxKey, routeContext)
 	ctx = context.WithValue(ctx, iamTypes.TenantIDCtx, "tenant-a")
 	ctx = context.WithValue(ctx, iamTypes.UserIDCtx, "user-a")
+	ctx = context.WithValue(ctx, iamTypes.RoleCtx, "USER")
 	return request.WithContext(ctx)
 }
 
@@ -196,4 +198,20 @@ func decodeViewerData(t *testing.T, recorder *httptest.ResponseRecorder) json.Ra
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &envelope))
 	return envelope.Data
+}
+
+func TestRunStudyModelDeniesModelsOutsideTheCustomRole(t *testing.T) {
+	service := &viewerRunCommandService{}
+	controller := InferenceCommandController{
+		InferenceCommandServiceInterface: service,
+		ModelArtifacts:                   &stubArtifactResolver{ids: map[string][]string{"registration-1": {"DeepCORO_JEPA"}}},
+	}
+	request := viewerRequest(http.MethodPost, "/run", `{}`, map[string]string{"studyInstanceUID": "1.2.3", "modelId": "registration-1"})
+	request = request.WithContext(accessctx.WithAccess(request.Context(), restrictedAccess("PanEcho")))
+	recorder := httptest.NewRecorder()
+
+	controller.RunStudyModel(recorder, request)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Equal(t, serviceTypes.CreateViewerModelRun{}, service.input, "no run is created")
 }

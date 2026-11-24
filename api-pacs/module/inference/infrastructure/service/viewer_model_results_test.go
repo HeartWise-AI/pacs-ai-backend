@@ -382,3 +382,24 @@ func TestNormalizeSelectedViewsKeepsArraysOnly(t *testing.T) {
 	require.Nil(t, normalizeSelectedViews(json.RawMessage(`{"a":1}`)))
 	require.JSONEq(t, `[]`, string(normalizeSelectedViews(json.RawMessage(` [] `))))
 }
+
+func TestGetStudyLatestModelResultsUsesCachedIdentityWhenContainerIsDown(t *testing.T) {
+	service, provider, _ := viewerResultsService()
+	service.DockerSDKInterface, service.DockerInferenceAPIInterface = nil, nil // no live model info
+	service.rememberModelInfo(context.Background(), serviceTypes.GetInferenceAvailableModelResult{
+		ContainerID: "container-1", ModelID: "deepcoro-jepa", ModelName: "DeepCORO-JEPA", Version: "1.3.0",
+	})
+	provider.results = serviceTypes.StudyServiceLatestResults{StudyInstanceUID: "1.2.3", Results: []serviceTypes.StudyServiceLatestResult{{
+		JobID: "job-1", ModelName: "DeepCORO-JEPA", Modality: "angiogram", Status: "completed",
+	}}}
+
+	response, err := service.GetStudyLatestModelResults(context.Background(), serviceTypes.GetStudyLatestModelResults{
+		TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "registration-1", *response.Results[0].ModelID)
+	require.Equal(t, "deepcoro-jepa", *response.Results[0].ArtifactModelID, "custom-role filtering keys on this")
+	require.False(t, response.Results[0].ReportAvailable, "report capability still needs a live container")
+}

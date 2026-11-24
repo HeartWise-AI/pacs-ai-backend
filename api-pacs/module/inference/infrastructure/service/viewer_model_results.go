@@ -135,6 +135,18 @@ func (service *InferenceQueryService) loadViewerModelDirectory(ctx context.Conte
 		}
 		_ = group.Wait()
 	}
+	// A stopped or busy container has no live model info: keep its last good
+	// identity (as /model/proxy/available does) so name matching and
+	// custom-role model access still know which model it is. Capabilities are
+	// not carried over, so report availability still needs a live answer.
+	for index := range entries {
+		if entries[index].info != nil {
+			continue
+		}
+		if cached, ok := service.lastModelInfo(ctx, strings.TrimSpace(entries[index].model.ContainerID)); ok && strings.TrimSpace(cached.ModelID) != "" {
+			entries[index].info = &dockerInferenceTypes.ModelInfo{ModelID: cached.ModelID, ModelName: cached.ModelName, Version: cached.Version}
+		}
+	}
 	sort.SliceStable(entries, func(left, right int) bool { return entries[left].model.ID < entries[right].model.ID })
 	directory.entries = entries
 	return directory
@@ -323,7 +335,7 @@ func passThroughDispatchSeries(raw json.RawMessage) json.RawMessage {
 // tenant-owned completed execution through its model container.
 func (service *InferenceQueryService) GetProcessingRunExecutionReport(ctx context.Context, data types.GetProcessingRunExecutionReport) (types.ModelReport, error) {
 	result, err := service.GetProcessingRunExecutionResult(ctx, types.GetProcessingRunExecutionResult{
-		TenantID: data.TenantID, RunID: data.RunID, ExecutionID: data.ExecutionID,
+		TenantID: data.TenantID, RunID: data.RunID, ExecutionID: data.ExecutionID, AllowModel: data.AllowModel,
 	})
 	if err != nil {
 		return types.ModelReport{}, err
@@ -351,6 +363,9 @@ func (service *InferenceQueryService) GetStudyJobReport(ctx context.Context, dat
 		strings.TrimSpace(job.StudyInstanceUID) != studyInstanceUID ||
 		trimmedPointerValue(job.TenantID) != tenantID {
 		return types.ModelReport{}, errors.New(apiError.MissingRecord)
+	}
+	if err := service.authorizeResultModel(ctx, tenantID, job.ModelName, trimmedPointerValue(job.ModelVersion), data.AllowModel); err != nil {
+		return types.ModelReport{}, err
 	}
 	if !strings.EqualFold(strings.TrimSpace(job.Status), studyServiceStatusCompleted) {
 		return types.ModelReport{}, errors.New(apiError.InferenceExecutionResultNotAvailable)

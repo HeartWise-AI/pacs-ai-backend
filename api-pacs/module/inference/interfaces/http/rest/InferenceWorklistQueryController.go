@@ -98,8 +98,14 @@ func (controller *InferenceQueryController) GetProcessingRunExecutionResult(w ht
 		return
 	}
 
+	allowModel, accessErr := resultModelFilter(r)
+	if accessErr != "" {
+		writeModelAccessError(w, accessErr)
+		return
+	}
 	result, err := controller.InferenceQueryServiceInterface.GetProcessingRunExecutionResult(r.Context(), serviceTypes.GetProcessingRunExecutionResult{
 		TenantID: tenantID, RunID: chi.URLParam(r, "runId"), ExecutionID: chi.URLParam(r, "executionId"),
+		AllowModel: allowModel,
 	})
 	if err != nil {
 		writeExecutionResultError(w, err.Error())

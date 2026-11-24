@@ -13,6 +13,7 @@ type GetTenantUser struct {
 	ID                string
 	TenantID          string
 	Role              string
+	CustomRoleID      string
 	AccessState       string
 	Name              string
 	Email             string
@@ -33,6 +34,10 @@ type ChangeTenantUserAccess struct {
 	TargetUserID string
 	AccessState  string
 	Reason       string
+	// ActorCanManageMembers is true when the session holds members.manage;
+	// it lets a USER account with that custom-role permission act on USER
+	// accounts only.
+	ActorCanManageMembers bool
 }
 
 type DeleteTenantUser struct {
@@ -41,6 +46,8 @@ type DeleteTenantUser struct {
 	ActorRole    string
 	TargetUserID string
 	Reason       string
+	// ActorCanManageMembers: see ChangeTenantUserAccess.
+	ActorCanManageMembers bool
 }
 
 type RegisterTenantUser struct {
@@ -118,6 +125,11 @@ type UpdateTenantUser struct {
 	Name      string
 	LicenseNo string
 	Specialty string
+	// ActorUserID and ActorRole identify the session. A USER actor (custom
+	// role with members.manage) may only edit other USER accounts and
+	// cannot change their role.
+	ActorUserID string
+	ActorRole   string
 }
 
 type UpdateTenantUserPassword struct {

@@ -346,6 +346,13 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 		return
 	}
 
+	access, accessErr := modelAccessFilter(r)
+	if accessErr != "" {
+		writeModelAccessError(w, accessErr)
+		return
+	}
+	inferenceAvailableModels = filterAvailableModels(access, inferenceAvailableModels)
+
 	inferenceAvailableModelsResponse := []types.GetInferenceAvailableModelResponse{}
 	for _, inferenceAvailableModel := range inferenceAvailableModels {
 		inferenceAvailableModelsResponse = append(inferenceAvailableModelsResponse, types.GetInferenceAvailableModelResponse{

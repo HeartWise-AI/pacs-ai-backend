@@ -100,7 +100,7 @@ func TestListPredictionsPassesTheSessionIdentityAndTheFilters(t *testing.T) {
 	from := time.Date(2026, 11, 8, 23, 0, 0, 0, time.UTC)
 	to := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)
 	require.Equal(t, []serviceTypes.ListPredictions{{
-		TenantID: "tenant-a", UserID: "user-a", Role: "ADMIN", View: serviceTypes.PredictionsViewAll,
+		TenantID: "tenant-a", UserID: "user-a", Role: "ADMIN", CanViewAll: true, View: serviceTypes.PredictionsViewAll,
 		Search: "ACC", Model: "PanEcho", Status: "active", Modality: "US", From: &from, To: &to,
 		LaunchedBy: "user:user-b", Limit: 10, Offset: 20,
 	}}, service.listInputs)

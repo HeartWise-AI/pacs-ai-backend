@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"api-pacs/module/access/accessctx"
+	accessEntity "api-pacs/module/access/domain/entity"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -337,6 +339,7 @@ func (controller *InferenceQueryController) ListModelFeedback(w http.ResponseWri
 	list, err := controller.InferenceQueryServiceInterface.ListModelFeedback(r.Context(), serviceTypes.ListModelFeedback{
 		TenantID:     tenantID,
 		Role:         strings.TrimSpace(role),
+		CanView:      accessctx.Has(r.Context(), accessEntity.PermFeedbackView),
 		Model:        values.Get("model"),
 		FeedbackType: values.Get("feedbackType"),
 		From:         from,

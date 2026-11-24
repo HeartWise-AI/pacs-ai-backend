@@ -1,6 +1,7 @@
 package repository
 
 import (
+	iamEntity "api-pacs/module/iam/domain/entity"
 	"context"
 	"errors"
 	"fmt"
@@ -402,6 +403,10 @@ func (repository *UserCommandRepository) UpdateTenantUser(ctx context.Context, d
 		{Path: "license_no", Value: data.LicenseNo},
 		{Path: "specialty", Value: data.Specialty},
 		{Path: "updated_at", Value: int(time.Now().Unix())},
+	}
+	// Custom roles apply to USER accounts only; promoting a member drops it.
+	if data.Role != iamEntity.UserRole {
+		updateTenantUser = append(updateTenantUser, firestore.Update{Path: "custom_role_id", Value: ""})
 	}
 
 	collectionPath := fmt.Sprintf("%s/%s", user.GetModelName(), data.ID)

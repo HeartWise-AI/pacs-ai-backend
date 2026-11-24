@@ -24,7 +24,7 @@ func (service *InferencePredictionsService) ListFeedbackReportCounts(ctx context
 	if tenantID == "" {
 		return types.FeedbackReportCounts{}, errors.New(apiError.UnauthorizedAccess)
 	}
-	if !IsWorkspaceAdministrator(data.Role) {
+	if !data.CanView && !IsWorkspaceAdministrator(data.Role) {
 		return types.FeedbackReportCounts{}, errors.New(apiError.ForbiddenAccess)
 	}
 	if data.From == nil || data.To == nil {

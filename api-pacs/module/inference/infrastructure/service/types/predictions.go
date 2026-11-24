@@ -45,13 +45,15 @@ type ListPredictions struct {
 	TenantID string
 	UserID   string
 	Role     string
-	View     PredictionsView
-	Search   string
-	Model    string
-	Status   string
-	Modality string
-	From     *time.Time
-	To       *time.Time
+	// CanViewAll is true when the session holds results.view_all.
+	CanViewAll bool
+	View       PredictionsView
+	Search     string
+	Model      string
+	Status     string
+	Modality   string
+	From       *time.Time
+	To         *time.Time
 	// LaunchedBy is accepted in the "all" view only: "" or "any",
 	// "automatic", "people", or "user:<user id>".
 	LaunchedBy string

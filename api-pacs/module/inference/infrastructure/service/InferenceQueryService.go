@@ -763,6 +763,9 @@ func (service *InferenceQueryService) GetProcessingRunExecutionResult(ctx contex
 	if err != nil {
 		return types.ProcessingRunExecutionResult{}, err
 	}
+	if err := service.authorizeResultModel(ctx, tenantID, execution.ModelName, trimmedPointerValue(execution.ModelVersion), data.AllowModel); err != nil {
+		return types.ProcessingRunExecutionResult{}, err
+	}
 	if execution.Status != entity.InferenceIngestionProcessingJobStatusCompleted {
 		return types.ProcessingRunExecutionResult{}, errors.New(apiError.InferenceExecutionResultNotAvailable)
 	}

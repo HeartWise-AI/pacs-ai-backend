@@ -20,7 +20,7 @@ const maximumModelFeedbackItems = 2000
 // workspace administrators: counts per model version and the latest votes
 // with their answers.
 func (service *InferenceQueryService) ListModelFeedback(ctx context.Context, data types.ListModelFeedback) (types.ModelFeedbackList, error) {
-	if !IsWorkspaceAdministrator(data.Role) {
+	if !data.CanView && !IsWorkspaceAdministrator(data.Role) {
 		return types.ModelFeedbackList{}, errors.New(apiError.ForbiddenAccess)
 	}
 

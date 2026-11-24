@@ -11,6 +11,8 @@ import (
 type ListModelFeedback struct {
 	TenantID string
 	Role     string
+	// CanView is true when the session holds feedback.view (custom roles).
+	CanView bool
 	// Model matches either the versioned model id or the inference model id.
 	Model string
 	// FeedbackType is empty, APPROVE or REJECT.
@@ -71,8 +73,10 @@ type ModelFeedbackListAnswer struct {
 type ListFeedbackReportCounts struct {
 	TenantID string
 	Role     string
-	From     *time.Time
-	To       *time.Time
+	// CanView is true when the session holds feedback.view (custom roles).
+	CanView bool
+	From    *time.Time
+	To      *time.Time
 }
 
 // FeedbackReportCounts is the denominator of "Reports rated" on the Model

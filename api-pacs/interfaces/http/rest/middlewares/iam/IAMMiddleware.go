@@ -10,6 +10,8 @@ import (
 	"api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/module/access/accessctx"
+	accessEntity "api-pacs/module/access/domain/entity"
 	"api-pacs/module/iam/application"
 	"api-pacs/module/iam/domain/entity"
 	serviceTypes "api-pacs/module/iam/infrastructure/service/types"
@@ -20,6 +22,57 @@ type IAMMiddleware struct {
 	application.IAMCommandServiceInterface
 	application.IAMQueryServiceInterface
 	userApplication.UserQueryServiceInterface
+	// AccessResolver resolves custom-role permissions and model access. When
+	// nil, access falls back to the session role alone (no custom roles).
+	AccessResolver AccessResolver
+}
+
+// AccessResolver resolves the effective access of a signed-in user.
+type AccessResolver interface {
+	Resolve(ctx context.Context, tenantID, userID, role string) (accessEntity.Access, error)
+}
+
+// withAccess attaches a lazy access resolver for the authenticated session.
+func (middleware *IAMMiddleware) withAccess(ctx context.Context, tenantID, userID, role string) context.Context {
+	if middleware.AccessResolver == nil {
+		return ctx
+	}
+	resolver := middleware.AccessResolver
+	return accessctx.WithResolver(ctx, func() (accessEntity.Access, error) {
+		return resolver.Resolve(ctx, tenantID, userID, role)
+	})
+}
+
+// RequirePermission allows the request only when the authenticated user holds
+// permission. OWNER and ADMIN hold every permission. Access that cannot be
+// resolved is denied with 503 (fail closed). Mount after a token-session guard.
+func (middleware *IAMMiddleware) RequirePermission(permission string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			access, err := accessctx.Get(r.Context())
+			if err != nil {
+				response := viewmodels.HTTPResponseVM{
+					Status:    http.StatusServiceUnavailable,
+					Success:   false,
+					Message:   "Access verification is temporarily unavailable.",
+					ErrorCode: apiError.AccessUnavailable,
+				}
+				response.JSON(w)
+				return
+			}
+			if !access.Has(permission) {
+				response := viewmodels.HTTPResponseVM{
+					Status:    http.StatusForbidden,
+					Success:   false,
+					Message:   "Forbidden access.",
+					ErrorCode: apiError.ForbiddenAccess,
+				}
+				response.JSON(w)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // PolicyAcceptanceGuard blocks protected demo functionality until the signed-in
@@ -120,6 +173,33 @@ func (middleware *IAMMiddleware) RBACOwnerOrAdminGuard(next http.Handler) http.H
 	})
 }
 
+// RequireAllModels allows the request only when the authenticated user may
+// use every model. Workspace-wide processing (reprocessing, ingestion jobs)
+// dispatches every ingestion model, so a role restricted to some models
+// cannot use it. Fails closed with 503 when access cannot be read.
+func (middleware *IAMMiddleware) RequireAllModels(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		access, err := accessctx.Get(r.Context())
+		if err != nil {
+			response := viewmodels.HTTPResponseVM{
+				Status: http.StatusServiceUnavailable, Success: false,
+				Message: "Access verification is temporarily unavailable.", ErrorCode: apiError.AccessUnavailable,
+			}
+			response.JSON(w)
+			return
+		}
+		if !access.AllModels {
+			response := viewmodels.HTTPResponseVM{
+				Status: http.StatusForbidden, Success: false,
+				Message: "This action runs every model and needs a role with access to all models.", ErrorCode: apiError.ForbiddenAccess,
+			}
+			response.JSON(w)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // TokenSessionAuthGuard token session authenticator guard
 func (middleware *IAMMiddleware) TokenSessionAuthGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -171,6 +251,7 @@ func (middleware *IAMMiddleware) TokenSessionAuthGuard(next http.Handler) http.H
 		ctx = context.WithValue(ctx, types.UserIDCtx, tokenSession.UserID)
 		ctx = context.WithValue(ctx, types.RoleCtx, tokenSession.Role)
 		ctx = context.WithValue(ctx, types.BearerTokenCtx, sessionToken)
+		ctx = middleware.withAccess(ctx, tokenSession.TenantID, tokenSession.UserID, tokenSession.Role)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -205,6 +286,7 @@ func (middleware *IAMMiddleware) TokenSessionOrthancProxyAuthGuard(next http.Han
 		ctx := context.WithValue(r.Context(), types.TenantIDCtx, tokenSession.TenantID)
 		ctx = context.WithValue(ctx, types.UserIDCtx, tokenSession.UserID)
 		ctx = context.WithValue(ctx, types.RoleCtx, tokenSession.Role)
+		ctx = middleware.withAccess(ctx, tokenSession.TenantID, tokenSession.UserID, tokenSession.Role)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
