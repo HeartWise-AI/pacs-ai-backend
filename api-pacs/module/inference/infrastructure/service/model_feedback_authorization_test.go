@@ -140,9 +140,10 @@ func TestUpdateModelFeedbackUpdatesOwnedFeedback(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, repositoryTypes.GetModelFeedbackByUserModelID{
-		TenantID: "tenant-a",
-		UserID:   "user-a",
-		ModelID:  "model-a",
+		TenantID:    "tenant-a",
+		UserID:      "user-a",
+		ModelID:     "model-a",
+		PreferredID: requestedID,
 	}, queryRepository.selectionData)
 	require.Len(t, commandRepository.upserts, 1)
 	require.Equal(t, requestedID, commandRepository.upserts[0].ID)

@@ -13,6 +13,9 @@ import (
 )
 
 type operationTestRepository struct {
+	// failUpdates makes the next n updates fail as a transient Firestore error.
+	failUpdates int
+
 	mu     sync.Mutex
 	items  map[string]entity.InferenceModelDeploymentOperation
 	active map[string]string
@@ -48,6 +51,10 @@ func (repository *operationTestRepository) UpdateInferenceModelDeploymentOperati
 ) error {
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
+	if repository.failUpdates > 0 && operation.Terminal() {
+		repository.failUpdates--
+		return errors.New(apiError.FirestoreError)
+	}
 	current, exists := repository.items[operation.ID]
 	if !exists {
 		return errors.New(apiError.MissingRecord)
@@ -146,6 +153,7 @@ func newControlledOperationManagerWithPublisher(
 	}
 	manager.now = func() time.Time { return time.UnixMilli(1000) }
 	manager.newID = func() string { return "operation-1" }
+	manager.sleep = func(time.Duration) {}
 	var queued func()
 	manager.launch = func(run func()) { queued = run }
 	return manager, &queued
@@ -217,6 +225,7 @@ func TestOperationManagerDetachesFromRequestAndPersistsEveryStage(t *testing.T) 
 		t.Fatalf("completed operation = %+v", completed)
 	}
 	expectedSequences := []int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	manager.waitForPublications()
 	actualSequences := publisher.sequences()
 	if len(actualSequences) != len(expectedSequences) {
 		t.Fatalf("published sequences = %v", actualSequences)
@@ -309,5 +318,106 @@ func TestOperationManagerGetEnforcesTenantAndModelScope(t *testing.T) {
 		if _, err = manager.Get(context.Background(), scope[0], scope[1], operation.ID); err == nil || err.Error() != apiError.MissingRecord {
 			t.Fatalf("cross-scope lookup returned %v", err)
 		}
+	}
+}
+
+// A transient failure of the terminal write must be retried: that write also
+// releases the per-model lock (Codex review on #386).
+func TestOperationManagerRetriesTheTerminalWrite(t *testing.T) {
+	repository := newOperationTestRepository()
+	repository.failUpdates = 2
+	manager, queued := newControlledOperationManager(t, repository, operationTestExecutor(func(context.Context, UpgradeRequest) (UpgradeResult, error) {
+		return UpgradeResult{Active: entity.InferenceModelDeployment{ContainerID: "new-container"}}, nil
+	}))
+	var waits []time.Duration
+	manager.sleep = func(delay time.Duration) { waits = append(waits, delay) }
+
+	operation, err := manager.Start(context.Background(), operationTestRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	(*queued)()
+
+	completed := repository.snapshot(operation.ID)
+	if completed.Status != entity.InferenceModelDeploymentOperationCompleted {
+		t.Fatalf("operation after transient terminal failures = %+v", completed)
+	}
+	if len(waits) != 2 {
+		t.Fatalf("retry waits = %v, want 2", waits)
+	}
+	if active, err := manager.HasActiveDeployment(context.Background()); err != nil || active {
+		t.Fatalf("HasActiveDeployment = %v, %v after completion", active, err)
+	}
+}
+
+type blockingDeploymentOperationPublisher struct {
+	release chan struct{}
+	calls   chan int64
+}
+
+func (publisher *blockingDeploymentOperationPublisher) PublishModelDeploymentOperation(
+	ctx context.Context,
+	operation entity.InferenceModelDeploymentOperation,
+) error {
+	publisher.calls <- operation.Sequence
+	select {
+	case <-publisher.release:
+	case <-ctx.Done():
+	}
+	return nil
+}
+
+// A stuck SSE transport must not slow the deployment itself (Codex review on
+// #387): publication happens off the deployment's path.
+func TestOperationManagerDoesNotWaitForAStuckPublisher(t *testing.T) {
+	repository := newOperationTestRepository()
+	publisher := &blockingDeploymentOperationPublisher{release: make(chan struct{}), calls: make(chan int64, 64)}
+	manager, queued := newControlledOperationManagerWithPublisher(t, repository, operationTestExecutor(func(ctx context.Context, request UpgradeRequest) (UpgradeResult, error) {
+		for _, stage := range []UpgradeStage{UpgradeStageActivate} {
+			if err := request.OnStage(ctx, stage); err != nil {
+				return UpgradeResult{}, err
+			}
+		}
+		return UpgradeResult{Active: entity.InferenceModelDeployment{ContainerID: "new-container"}}, nil
+	}), publisher)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		operation, err := manager.Start(context.Background(), operationTestRequest())
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		(*queued)()
+		if status := repository.snapshot(operation.ID).Status; status != entity.InferenceModelDeploymentOperationCompleted {
+			t.Errorf("status = %s", status)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("deployment waited for the stuck publisher")
+	}
+	close(publisher.release)
+	manager.waitForPublications()
+	if got := len(publisher.calls); got != 3 {
+		t.Fatalf("publications = %d, want 3 (accepted, stage, completed)", got)
+	}
+}
+
+func TestOperationManagerReportsActiveDeployment(t *testing.T) {
+	repository := newOperationTestRepository()
+	manager, _ := newControlledOperationManager(t, repository, operationTestExecutor(func(context.Context, UpgradeRequest) (UpgradeResult, error) {
+		return UpgradeResult{}, nil
+	}))
+	if active, err := manager.HasActiveDeployment(context.Background()); err != nil || active {
+		t.Fatalf("before start: %v, %v", active, err)
+	}
+	if _, err := manager.Start(context.Background(), operationTestRequest()); err != nil {
+		t.Fatal(err)
+	}
+	if active, err := manager.HasActiveDeployment(context.Background()); err != nil || !active {
+		t.Fatalf("after start: %v, %v", active, err)
 	}
 }

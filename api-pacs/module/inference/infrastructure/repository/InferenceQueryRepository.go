@@ -503,7 +503,7 @@ func (repository *InferenceQueryRepository) SelectModelFeedbackByUserModelID(ctx
 		candidates = append(candidates, item)
 	}
 
-	selected, ok := selectModelFeedbackForExecution(candidates, data.ExecutionID)
+	selected, ok := selectModelFeedbackForExecution(candidates, data.ExecutionID, data.PreferredID)
 	if !ok {
 		return entity.ModelFeedback{}, errors.New(apiError.MissingRecord)
 	}
@@ -513,15 +513,20 @@ func (repository *InferenceQueryRepository) SelectModelFeedbackByUserModelID(ctx
 
 // selectModelFeedbackForExecution picks the vote of one report among the
 // votes of a user on a model version: the one whose execution id equals
-// executionID (empty matches only votes without one). Should duplicates
+// executionID (empty matches only votes without one). A matching vote whose
+// id equals preferredID is returned as is; otherwise, should duplicates
 // exist, the most recently updated wins, then the smallest id.
-func selectModelFeedbackForExecution(feedbacks []entity.ModelFeedback, executionID string) (entity.ModelFeedback, bool) {
+func selectModelFeedbackForExecution(feedbacks []entity.ModelFeedback, executionID, preferredID string) (entity.ModelFeedback, bool) {
 	executionID = strings.TrimSpace(executionID)
+	preferredID = strings.TrimSpace(preferredID)
 	var selected entity.ModelFeedback
 	found := false
 	for _, feedback := range feedbacks {
 		if strings.TrimSpace(feedback.ExecutionID) != executionID {
 			continue
+		}
+		if preferredID != "" && feedback.ID == preferredID {
+			return feedback, true
 		}
 		if !found || feedback.UpdatedAt > selected.UpdatedAt ||
 			(feedback.UpdatedAt == selected.UpdatedAt && feedback.ID < selected.ID) {

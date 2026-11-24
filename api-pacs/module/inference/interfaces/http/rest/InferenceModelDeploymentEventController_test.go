@@ -14,6 +14,7 @@ import (
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
+	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 )
 
 type modelDeploymentEventSubscriber struct {
@@ -226,3 +227,57 @@ func TestStreamInferenceModelDeploymentEventsSanitizesLookupFailure(t *testing.T
 type contextError string
 
 func (err contextError) Error() string { return string(err) }
+
+type changingDeploymentControllerService struct {
+	deploymentControllerService
+	mutex   sync.Mutex
+	current entity.InferenceModelDeploymentOperation
+}
+
+func (service *changingDeploymentControllerService) set(operation entity.InferenceModelDeploymentOperation) {
+	service.mutex.Lock()
+	defer service.mutex.Unlock()
+	service.current = operation
+}
+
+func (service *changingDeploymentControllerService) GetInferenceModelDeploymentOperation(
+	context.Context,
+	serviceTypes.GetInferenceModelDeploymentOperation,
+) (entity.InferenceModelDeploymentOperation, error) {
+	service.mutex.Lock()
+	defer service.mutex.Unlock()
+	return service.current, nil
+}
+
+// A terminal update whose live event was lost must still reach the client:
+// heartbeats re-read the durable operation (Codex review on #391).
+func TestStreamInferenceModelDeploymentEventsRecoversAMissedTerminalUpdate(t *testing.T) {
+	subscriber := newModelDeploymentEventSubscriber()
+	service := &changingDeploymentControllerService{}
+	service.set(deploymentEventOperation(1, entity.InferenceModelDeploymentOperationRunning))
+	controller := InferenceCommandController{
+		InferenceCommandServiceInterface:            service,
+		ModelDeploymentOperationSubscriberInterface: subscriber,
+		ModelDeploymentEventHeartbeatInterval:       5 * time.Millisecond,
+	}
+	request := deploymentControllerRequest(
+		http.MethodGet, "/models/registration-1/deployments/operation-1/events",
+		map[string]string{"ID": "registration-1", "deploymentID": "operation-1"},
+	)
+	recorder := newSynchronizedResponseRecorder()
+	done := make(chan struct{})
+	go func() {
+		controller.StreamInferenceModelDeploymentEvents(recorder, request)
+		close(done)
+	}()
+	<-subscriber.subscribed
+	// No live event is published: only the durable state moves on.
+	service.set(deploymentEventOperation(3, entity.InferenceModelDeploymentOperationCompleted))
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stream kept waiting after the durable operation finished")
+	}
+	require.Contains(t, recorder.BodyString(), "id: 3\n")
+}

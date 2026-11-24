@@ -7,6 +7,7 @@ import (
 	"log"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/segmentio/ksuid"
@@ -39,7 +40,20 @@ type StartDeploymentOperation struct {
 type OperationManagerConfig struct {
 	OperationTimeout   time.Duration
 	PersistenceTimeout time.Duration
+	// PublishTimeout bounds one progress publication. Publications run off
+	// the deployment's critical path, in order, on their own goroutine.
+	PublishTimeout time.Duration
+	// TerminalRetryDelays are the waits between attempts to persist the
+	// terminal state. The terminal write also releases the per-model lock,
+	// so a transient failure must not leave the operation RUNNING.
+	TerminalRetryDelays []time.Duration
 }
+
+// publicationQueueSize bounds the progress events waiting for the auxiliary
+// SSE transport. Events are full snapshots and the durable state stays in
+// Firestore, so dropping one when the transport is stuck loses nothing that
+// a reconnect or the stream's periodic re-read cannot recover.
+const publicationQueueSize = 256
 
 type OperationManager struct {
 	repository repository.InferenceModelDeploymentOperationRepositoryInterface
@@ -49,6 +63,10 @@ type OperationManager struct {
 	now        func() time.Time
 	newID      func() string
 	launch     func(func())
+	sleep      func(time.Duration)
+
+	publications        chan entity.InferenceModelDeploymentOperation
+	pendingPublications sync.WaitGroup
 }
 
 func NewOperationManager(
@@ -66,7 +84,15 @@ func NewOperationManager(
 	if config.PersistenceTimeout <= 0 {
 		config.PersistenceTimeout = 15 * time.Second
 	}
-	return &OperationManager{
+	if config.PublishTimeout <= 0 {
+		config.PublishTimeout = 5 * time.Second
+	}
+	if config.TerminalRetryDelays == nil {
+		config.TerminalRetryDelays = []time.Duration{
+			time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 15 * time.Second,
+		}
+	}
+	manager := &OperationManager{
 		repository: repository,
 		executor:   executor,
 		publisher:  publisher,
@@ -74,7 +100,24 @@ func NewOperationManager(
 		now:        time.Now,
 		newID:      func() string { return ksuid.New().String() },
 		launch:     func(run func()) { go run() },
-	}, nil
+		sleep:      time.Sleep,
+	}
+	if publisher != nil {
+		manager.publications = make(chan entity.InferenceModelDeploymentOperation, publicationQueueSize)
+		go manager.publishLoop()
+	}
+	return manager, nil
+}
+
+// HasActiveDeployment reports whether any deployment is still pending or
+// running on this host. Manual container lifecycle controls use it to stay
+// out of an upgrade's way: the Docker host and its GPUs are shared.
+func (manager *OperationManager) HasActiveDeployment(ctx context.Context) (bool, error) {
+	operations, err := manager.repository.ListNonTerminalInferenceModelDeploymentOperations(ctx)
+	if err != nil {
+		return false, err
+	}
+	return len(operations) > 0, nil
 }
 
 func (manager *OperationManager) Start(
@@ -210,7 +253,7 @@ func (manager *OperationManager) run(operation entity.InferenceModelDeploymentOp
 	operation.Sequence++
 	operation.UpdatedAt = now
 	operation.FinishedAt = now
-	if err = manager.persist(operation); err != nil {
+	if err = manager.persistTerminal(operation); err != nil {
 		log.Printf("[model-deployment] event=completion_persist_failed deployment_id=%s err=%v", operation.ID, err)
 		return
 	}
@@ -242,7 +285,7 @@ func (manager *OperationManager) finishFailure(operation *entity.InferenceModelD
 	operation.Sequence++
 	operation.UpdatedAt = now
 	operation.FinishedAt = now
-	if persistErr := manager.persist(*operation); persistErr != nil {
+	if persistErr := manager.persistTerminal(*operation); persistErr != nil {
 		log.Printf("[model-deployment] event=failure_persist_failed deployment_id=%s err=%v", operation.ID, persistErr)
 		return
 	}
@@ -263,11 +306,54 @@ func (manager *OperationManager) persist(operation entity.InferenceModelDeployme
 	return nil
 }
 
+// persistTerminal retries the terminal write. That write also deletes the
+// per-model lock, so giving up after one transient Firestore error would
+// leave the operation RUNNING and refuse every later deployment of the model
+// until the API restarts.
+func (manager *OperationManager) persistTerminal(operation entity.InferenceModelDeploymentOperation) error {
+	err := manager.persist(operation)
+	for attempt, delay := range manager.config.TerminalRetryDelays {
+		if err == nil {
+			return nil
+		}
+		log.Printf(
+			"[model-deployment] event=terminal_persist_retry deployment_id=%s attempt=%d err=%v",
+			operation.ID, attempt+1, err,
+		)
+		manager.sleep(delay)
+		err = manager.persist(operation)
+	}
+	return err
+}
+
+// publish queues a progress event for the SSE transport. It never blocks the
+// deployment: the queue is drained in order by publishLoop, each publication
+// bounded by PublishTimeout.
 func (manager *OperationManager) publish(operation entity.InferenceModelDeploymentOperation) {
-	if manager.publisher == nil {
+	if manager.publisher == nil || manager.publications == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), manager.config.PersistenceTimeout)
+	manager.pendingPublications.Add(1)
+	select {
+	case manager.publications <- operation:
+	default:
+		manager.pendingPublications.Done()
+		log.Printf(
+			"[model-deployment] event=progress_publish_dropped deployment_id=%s sequence=%d",
+			operation.ID, operation.Sequence,
+		)
+	}
+}
+
+func (manager *OperationManager) publishLoop() {
+	for operation := range manager.publications {
+		manager.publishNow(operation)
+		manager.pendingPublications.Done()
+	}
+}
+
+func (manager *OperationManager) publishNow(operation entity.InferenceModelDeploymentOperation) {
+	ctx, cancel := context.WithTimeout(context.Background(), manager.config.PublishTimeout)
 	defer cancel()
 	if err := manager.publisher.PublishModelDeploymentOperation(ctx, operation); err != nil {
 		log.Printf(
@@ -275,6 +361,11 @@ func (manager *OperationManager) publish(operation entity.InferenceModelDeployme
 			operation.ID, operation.Sequence, err,
 		)
 	}
+}
+
+// waitForPublications blocks until every queued publication was attempted.
+func (manager *OperationManager) waitForPublications() {
+	manager.pendingPublications.Wait()
 }
 
 func deploymentPublicErrorCode(err error) string {

@@ -462,7 +462,7 @@ func (controller *InferenceCommandController) RestartInferenceModelContainer(w h
 		return
 	}
 
-	err := controller.InferenceCommandServiceInterface.RestartInferenceModelContainer(context.TODO(), containerID)
+	err := controller.InferenceCommandServiceInterface.RestartInferenceModelContainer(r.Context(), containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -471,6 +471,12 @@ func (controller *InferenceCommandController) RestartInferenceModelContainer(w h
 		case apiError.DockerError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker service encountered an error."
+		case apiError.InferenceUpgradeConflict:
+			httpCode = http.StatusConflict
+			errorMsg = "A model deployment is in progress. Try again when it has finished."
+		case apiError.InferenceUpgradeUnavailable:
+			httpCode = http.StatusServiceUnavailable
+			errorMsg = "Model deployment state is unavailable. Try again later."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Please contact technical support."
@@ -511,7 +517,7 @@ func (controller *InferenceCommandController) StartInferenceModelContainer(w htt
 		return
 	}
 
-	err := controller.InferenceCommandServiceInterface.StartInferenceModelContainer(context.TODO(), containerID)
+	err := controller.InferenceCommandServiceInterface.StartInferenceModelContainer(r.Context(), containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -520,6 +526,12 @@ func (controller *InferenceCommandController) StartInferenceModelContainer(w htt
 		case apiError.DockerError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker service encountered an error."
+		case apiError.InferenceUpgradeConflict:
+			httpCode = http.StatusConflict
+			errorMsg = "A model deployment is in progress. Try again when it has finished."
+		case apiError.InferenceUpgradeUnavailable:
+			httpCode = http.StatusServiceUnavailable
+			errorMsg = "Model deployment state is unavailable. Try again later."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Please contact technical support."
@@ -560,7 +572,7 @@ func (controller *InferenceCommandController) StopInferenceModelContainer(w http
 		return
 	}
 
-	err := controller.InferenceCommandServiceInterface.StopInferenceModelContainer(context.TODO(), containerID)
+	err := controller.InferenceCommandServiceInterface.StopInferenceModelContainer(r.Context(), containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
@@ -569,6 +581,12 @@ func (controller *InferenceCommandController) StopInferenceModelContainer(w http
 		case apiError.DockerError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker service encountered an error."
+		case apiError.InferenceUpgradeConflict:
+			httpCode = http.StatusConflict
+			errorMsg = "A model deployment is in progress. Try again when it has finished."
+		case apiError.InferenceUpgradeUnavailable:
+			httpCode = http.StatusServiceUnavailable
+			errorMsg = "Model deployment state is unavailable. Try again later."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Please contact technical support."

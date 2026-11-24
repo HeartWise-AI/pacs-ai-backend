@@ -66,22 +66,28 @@ func (broker *RedisModelDeploymentOperationBroker) PublishModelDeploymentOperati
 	ctx context.Context,
 	operation entity.InferenceModelDeploymentOperation,
 ) error {
-	if broker.transport == nil {
-		return errors.New("redis model deployment operation transport is not configured")
-	}
 	tenantID := strings.TrimSpace(operation.TenantID)
 	modelID := strings.TrimSpace(operation.ModelID)
 	deploymentID := strings.TrimSpace(operation.ID)
 	if tenantID == "" || modelID == "" || deploymentID == "" {
 		return ErrInvalidModelDeploymentOperationEvent
 	}
+	// Streams on this instance get the event even when Redis is down. The
+	// same event coming back from Redis is dropped by the stream, which
+	// skips sequences it has already sent.
+	operation.TenantID = tenantID
+	operation.ModelID = modelID
+	localErr := broker.local.PublishModelDeploymentOperation(ctx, operation)
+	if broker.transport == nil {
+		return errors.Join(localErr, errors.New("redis model deployment operation transport is not configured"))
+	}
 	payload, err := json.Marshal(redisModelDeploymentOperationEnvelope{
 		TenantID: tenantID, ModelID: modelID, Event: operation,
 	})
 	if err != nil {
-		return err
+		return errors.Join(localErr, err)
 	}
-	return broker.transport.Publish(ctx, payload)
+	return errors.Join(localErr, broker.transport.Publish(ctx, payload))
 }
 
 func (broker *RedisModelDeploymentOperationBroker) SubscribeModelDeploymentOperation(

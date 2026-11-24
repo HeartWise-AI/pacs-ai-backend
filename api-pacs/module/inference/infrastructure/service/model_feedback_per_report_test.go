@@ -34,13 +34,26 @@ func newFeedbackStore() *feedbackStore {
 
 func (store *feedbackStore) SelectModelFeedbackByUserModelID(_ context.Context, data repositoryTypes.GetModelFeedbackByUserModelID) (entity.ModelFeedback, error) {
 	store.selections = append(store.selections, data)
+	// Mirrors the repository: the named vote among the report's votes wins,
+	// otherwise a deterministic pick (here the largest id stands in for the
+	// most recently updated one).
+	var selected entity.ModelFeedback
+	found := false
 	for _, feedback := range store.feedbacks {
 		if feedback.TenantID == data.TenantID && feedback.UserID == data.UserID && feedback.ModelID == data.ModelID &&
 			feedback.ExecutionID == strings.TrimSpace(data.ExecutionID) {
-			return feedback, nil
+			if data.PreferredID != "" && feedback.ID == data.PreferredID {
+				return feedback, nil
+			}
+			if !found || feedback.ID > selected.ID {
+				selected, found = feedback, true
+			}
 		}
 	}
-	return entity.ModelFeedback{}, errors.New(apiError.MissingRecord)
+	if !found {
+		return entity.ModelFeedback{}, errors.New(apiError.MissingRecord)
+	}
+	return selected, nil
 }
 
 func (store *feedbackStore) SelectModelFeedbackAnswersByFeedbackID(_ context.Context, feedbackID string) ([]entity.ModelFeedbackAnswer, error) {
@@ -227,4 +240,27 @@ func TestVotesWithoutExecutionBehaveAsBefore(t *testing.T) {
 		TenantID: "tenant-a", UserID: "user-a", ModelID: "inference-model-a-1.0.0",
 	}))
 	require.Empty(t, store.feedbacks)
+}
+
+// Older duplicate votes for one report (created before updates reused the
+// existing vote) must stay updatable by their own id (Codex review on #370).
+func TestUpdateNamingAnOlderDuplicateVoteSucceeds(t *testing.T) {
+	store := newFeedbackStore()
+	command, _ := feedbackStoreServices(store)
+	for _, id := range []string{"vote-a", "vote-b"} {
+		store.feedbacks[id] = entity.ModelFeedback{
+			ID: id, TenantID: "tenant-a", UserID: "user-a", InferenceModelID: "inference-model-a",
+			ModelID: "inference-model-a-1.0.0", FeedbackType: entity.ApproveFeedbackType, ExecutionID: "execution-1",
+		}
+	}
+
+	update := reportVote("execution-1", entity.RejectFeedbackType)
+	older := "vote-a"
+	update.ID = &older
+	require.NoError(t, command.UpdateModelFeedback(context.Background(), update))
+
+	require.Equal(t, "vote-a", store.selections[0].PreferredID)
+	require.Equal(t, entity.RejectFeedbackType, store.feedbacks["vote-a"].FeedbackType)
+	require.Equal(t, entity.ApproveFeedbackType, store.feedbacks["vote-b"].FeedbackType)
+	require.Len(t, store.feedbacks, 2)
 }
