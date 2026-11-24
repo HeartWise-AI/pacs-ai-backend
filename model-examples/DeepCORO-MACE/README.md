@@ -36,13 +36,19 @@ partially initialized model.
 
 ## Build
 
-The repository is gated. Build with an approved Hugging Face token supplied as a BuildKit secret:
+The repository is gated. Official images are built after merge by the protected release workflow (see
+`docs/model-image-release.md`). For a local candidate build, which supplies the release build arguments
+from `data/model_info.json`:
 
 ```bash
-docker build \
-  --secret id=hf_token,src=../../hf_token.txt \
-  -t heartwisehub/pacs-ai-deepcoro-mace:1.0.0 .
+python3 scripts/release-model.py model-examples/DeepCORO-MACE \
+  --image-repository heartwisehub/pacs-ai-deepcoro-mace \
+  --hf-token-file /secure/path/hf_token
 ```
+
+A plain `docker build` without the `PACS_AI_MODEL_*` / `PACS_AI_WEIGHTS_*` build arguments fails at the
+weights download by design. `Dockerfile.local` builds from a checkpoint already on disk, verifies its
+SHA-256 and carries the `local` release-channel label. It is for development only.
 
 From the backend root, the standard deployment helper can build, push, and register the model:
 

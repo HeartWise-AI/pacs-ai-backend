@@ -41,3 +41,21 @@ def test_run_filter_is_pinned():
     assert len(spec["revision"]) == 40 and len(spec["weightsSha256"]) == 64
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert "python download_run_filter.py --token-file /run/secrets/hf_token" in dockerfile
+
+
+def test_an_undecodable_run_is_dropped_without_failing_the_study():
+    from models.run_filter import RunFilter
+
+    class Broken:
+        @property
+        def pixel_array(self):
+            raise ValueError("unsupported transfer syntax")
+
+    flt = RunFilter.__new__(RunFilter)  # no weights needed: the broken run never reaches the model
+    assert flt.classify([Broken()]) == [None]
+
+
+def test_run_filter_decodes_through_the_shared_pixel_helper():
+    source = (ROOT / "models/run_filter.py").read_text(encoding="utf-8")
+    assert "from utils.dicom_pixels import dicom_display_pixels" in source
+    assert "dicom.pixel_array" not in source

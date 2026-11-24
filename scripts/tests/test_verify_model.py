@@ -113,6 +113,37 @@ class VerifyModelTests(unittest.TestCase):
             )
         self.assertEqual(model.resolve(), resolved)
 
+    def test_deleted_contract_file_still_selects_its_model(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            model = root / "model-examples" / "Deleted"
+            (model / "data").mkdir(parents=True)
+            (model / "data" / "model_info.json").write_text("{}\n", encoding="utf-8")
+            # Dockerfile and logic.py were deleted by the change under review.
+            for deleted in ("Dockerfile", "logic.py"):
+                resolved = VERIFY.model_directory_for_changed_path(
+                    f"model-examples/Deleted/{deleted}", root
+                )
+                self.assertEqual(model.resolve(), resolved)
+
+    def test_changed_model_selection_includes_deletions(self):
+        completed = mock.Mock(stdout="")
+        with mock.patch.object(VERIFY, "run_command", return_value=completed) as run:
+            VERIFY.changed_model_directories("base")
+        self.assertIn("--diff-filter=ACMRD", run.call_args.args[0])
+
+    def test_empty_changed_selection_is_a_successful_no_op(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence_path = Path(directory) / "evidence.json"
+            with mock.patch.object(VERIFY, "changed_model_directories", return_value=[]):
+                status = VERIFY.main(
+                    ["source", "--changed-since", "base", "--json", str(evidence_path)]
+                )
+            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        self.assertEqual(0, status)
+        self.assertEqual("PASS", evidence["overall"])
+        self.assertEqual([], evidence["models"])
+
     def test_overall_status_preserves_skips_and_failures(self):
         self.assertEqual("PASS", VERIFY.overall_status([{"status": "PASS"}]))
         self.assertEqual("PASS_WITH_SKIPS", VERIFY.overall_status([{"status": "SKIP"}]))

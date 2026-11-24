@@ -21,6 +21,8 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torchvision.transforms import v2
 
+from utils.dicom_pixels import dicom_display_pixels
+
 KEEP_STRUCTURES = ("Left Coronary", "Right Coronary")
 
 
@@ -61,7 +63,7 @@ class RunFilter:
 
     def _video(self, dicom: pydicom.Dataset) -> torch.Tensor | None:
         """procedure_view_classifier preprocessing: MJPG round trip at 15 fps, resize, normalise, 72 frames, stride 2."""
-        px = dicom.pixel_array
+        px = dicom_display_pixels(dicom)
         if px.ndim != 3:
             return None
         rgb = np.repeat(px[..., None], 3, axis=-1)
@@ -96,7 +98,10 @@ class RunFilter:
     def classify(self, dicoms: list[pydicom.Dataset]) -> list[dict | None]:
         out: list[dict | None] = []
         for dicom in dicoms:
-            video = self._video(dicom)
+            try:
+                video = self._video(dicom)
+            except Exception:  # an undecodable run is dropped, not the whole study
+                video = None
             if video is None:
                 out.append(None)
                 continue
