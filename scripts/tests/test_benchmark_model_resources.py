@@ -88,3 +88,30 @@ class BenchmarkDicomOrderingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BenchmarkVramDeltaTests(unittest.TestCase):
+    def test_ready_baseline_is_labelled_and_warns_about_startup_allocations(self):
+        result = BENCHMARK.vram_deltas(ready_baseline_mib=1748, resident_mib=3000, peak_mib=5000)
+
+        self.assertEqual("service_ready", result["baseline_source"])
+        self.assertEqual(1252, result["resident_delta_vram_mib"])
+        self.assertEqual(3252, result["peak_delta_vram_mib"])
+        self.assertIn("startup allocations", result["baseline_warning"])
+
+    def test_idle_baseline_includes_startup_allocations_in_deltas(self):
+        result = BENCHMARK.vram_deltas(
+            ready_baseline_mib=1748, resident_mib=3000, peak_mib=5000, idle_baseline_mib=1000
+        )
+
+        self.assertEqual("container_stopped", result["baseline_source"])
+        self.assertEqual(748, result["startup_delta_vram_mib"])
+        self.assertEqual(2000, result["resident_delta_vram_mib"])
+        self.assertEqual(4000, result["peak_delta_vram_mib"])
+        self.assertNotIn("baseline_warning", result)
+
+    def test_rejects_idle_baseline_above_ready_usage(self):
+        with self.assertRaises(ValueError):
+            BENCHMARK.vram_deltas(
+                ready_baseline_mib=1000, resident_mib=3000, peak_mib=5000, idle_baseline_mib=1200
+            )
