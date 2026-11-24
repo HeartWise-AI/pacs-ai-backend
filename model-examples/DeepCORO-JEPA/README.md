@@ -28,7 +28,8 @@ The encoder runs **at most twice per study**:
 
 | Container version | Model | Hugging Face revision | Training run (Weights & Biases, `mhi_ai/deepcoro-segmentation`) |
 |---|---|---|---|
-| **2.2.0** (this one) | **v19** (point release v19.2) | `heartwise/DeepCORO_JEPA@6e192eb` (branch `v19`, tag `v19.2`) | [`78768630`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/78768630) |
+| **2.2.1** (this one) | **v19** (point release v19.2) | same revision as 2.2.0 | [`78768630`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/78768630) |
+| 2.2.0 | v19 (point release v19.2) | `heartwise/DeepCORO_JEPA@6e192eb` (branch `v19`, tag `v19.2`) | [`78768630`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/78768630) |
 | 2.1.0 | v15 | `heartwise/DeepCORO_JEPA@ab6d12f` (branch `v15`, tag `v15.1`) | [`2563ce01`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/2563ce01) |
 | 2.0.0 | v15 | same revision | same run |
 | 1.4.1 | v13 | `heartwise/DeepCORO_JEPA@8144d01` (branch `v13`, tag `v13.1`) | [`400d0a77`](https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/400d0a77) |

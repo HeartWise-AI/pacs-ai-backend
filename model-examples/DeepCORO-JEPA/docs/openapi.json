@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "2.2.0"
+    "version": "2.2.1"
   },
   "servers": [
     {
@@ -872,7 +872,7 @@
                   "message": "Report rendered",
                   "data": {
                     "htmlBase64": "PCFkb2N0eXBlIGh0bWw+...",
-                    "modelVersion": "2.2.0",
+                    "modelVersion": "2.2.1",
                     "reportModelVersion": "v13-cal1"
                   }
                 }
@@ -944,7 +944,7 @@
                     "domainName": "Cardiology",
                     "stage": "ai_inference",
                     "modality": "Angiogram",
-                    "version": "2.2.0",
+                    "version": "2.2.1",
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
@@ -1154,7 +1154,7 @@
                         "Description": "One EchoJEPA video encoder (ViT-L) that segments the coronary tree into 26 SYNTAX classes itself and, from up to 12 diagnostic coronary angiography runs per study, predicts for each coronary segment the % diameter stenosis, the probability of a significant lesion, the probabilities of calcification, thrombus and chronic total occlusion (CTO) and, from model v19, the probability that the segment is 100% occluded (shown as \"100% (occluded)\" on the 12 epicardial segments above a validation threshold) and the probability that a stent is visible (annotation only); plus LAD FFR and iFR (proximal and mid LAD, value and probability of an abnormal result), study-level lesion probabilities and the coronary dominance. 17 segments are supported: the posterior left ventricular branch (lvp) has no training target, so its values are returned for compatibility but are not meaningful, never raise a flag and are never displayed. When the caller sends the view label of each run, the segments of a coronary side with no run are returned as not assessed. The encoder runs at most twice per study: full views at 224 px, then up to 4 tracked 320 px crops per segment. Version 2.2.0 serves model v19 (point release v19.2), released by the principal investigator's decision although its pre-registered release rule was not met. Earlier working name: DeepCORO-Integrated.",
                         "Developed_by": "HeartWise.AI / MHI",
                         "Development_period": "2025-2026",
-                        "Version": "2.2.0",
+                        "Version": "2.2.1",
                         "Model_version": "v19",
                         "Training_run": "Weights & Biases run 78768630 of project mhi_ai/deepcoro-segmentation: https://wandb.ai/mhi_ai/deepcoro-segmentation/runs/78768630 (test inference run mrs2l28c)"
                       },
@@ -1196,6 +1196,7 @@
                         "Comparison_with_v15": "Model v19 replaces v15 (v16 was never deployed). Against v16, its parent, on the same test studies: stenosis is unchanged (mean r -0.000 [-0.004, 0.004]; macro AUROC -0.001), the pressure output is not distinguishable (-0.018 [-0.038, 0.002]) and occlusion detection is better (AUPRC +0.077). Against v15: macro AUROC 0.879 against 0.877, mean r 0.519 against 0.507, pressure AUROC 0.705 against 0.674."
                       },
                       "Changelogs": {
+                        "2.2.1": "2026-11-23: Same model (v19.2), weights, thresholds and probabilities as 2.2.0. Report fixes only: the CTO performance line states the threshold it was measured at, and region flags agree with their segments when the left side is not assessed (PR #519).",
                         "2.2.0": "2026-11-21: serves model v19 (point release v19.2; Hugging Face heartwise/DeepCORO_JEPA@6e192eb, branch v19, tag v19.2; weights 8af2e27a...7eed; W&B run 78768630), released by the principal investigator's decision although the pre-registered release rule was not met (post-hoc endpoint: occlusion AUPRC). New per segment: occluded_prob / occluded / occlusion_tag (\"100% (occluded) - CTO / acute/other\" above 0.50 on the 12 epicardial segments), stent_prob / possible_stent (annotation only, threshold 0.0891 re-derived on v19 validation post-PCI rows), and assessed / not_assessed_reason from the side check (additionalMetadata.coronaryViews). lad_physiology names its measurement region (proximal and mid LAD), shown in the report when FFR or iFR is abnormal. The CTO flag uses v19's specificity_99 threshold 0.1343 (the v15 override 0.70 is dropped) and no longer shows 100% by itself. Display calibration cal1 refitted on v19 (10.5 / 23.5 / 33.5 / 42.5). Results stored by 2.0.0 and 2.1.0 (v15) and by 1.x (v13) render as their containers drew them.",
                         "2.1.0": "2026-11-15: Same model (v15), weights and probabilities as 2.0.0. The CTO flag now needs a probability above 0.70 instead of 0.2134 (Thresholds.lesion_threshold_overrides; returned operating point: specificity_99 (thrombus: fixed 0.40, cto: fixed 0.70)), the model owner's choice for a higher positive predictive value. On the v15 validation split (78,999 segment readings of the 17 shown segments, 551 with a chronic total occlusion in the report): at 0.70, 172 segments are flagged, 57 with a CTO in the report (PPV 0.33, sensitivity 0.10) and 107 with a CTO or a 100% stenosis in the report (0.62); at 0.2134, 1,017 are flagged (PPV 0.18; 0.40 counting any reported occlusion; sensitivity 0.34). The PPV does not rise above about 0.33 at any threshold. Not evaluated on the test set. A CTO flag draws the segment as occluded and shows 100%, so fewer segments are shown occluded; cto_prob is unchanged and results stored by 2.0.0 keep their flags.",
                         "2.0.0": "2026-11-15: Numbered 2.0.0 because new weights are a major version under the release policy. The PyTorch build of this image is not the one the test metrics were computed with: it is numerically close to the evaluated model, not identical. On 300 validation studies accuracy is equal (17-segment mean correlation 0.4933 against 0.4932); an individual stenosis estimate differs by 0.25 points in median, 2.9 at the 95th percentile and rarely much more (49 at most), and some yes/no calls differ. The test-set metrics were not recomputed with this build. The image installs PyTorch 2.11.0 built for CUDA 12.8 instead of 2.14.1 built for CUDA 13.0, which could not use the GPUs of a server with an NVIDIA 570 driver. Serves model v15 (Weights & Biases run 2563ce01, Hugging Face revision ab6d12f, tag v15.1) with its own thresholds. New in the JSON, no existing key changed: model_version, study_lesions (study_calcif_prob, study_thrombus_prob, study_cto_prob; probability only), model_dominance (dominance_left_prob, dominance_left_threshold 0.0383, dominance_left_pred), unsupported_segments. The posterior LV branch (lvp) has no training target in v15: its keys stay, its flags are always false, it has unsupported = true and no display fields. Display calibration cal1 refitted on the v15 validation split (below 9.5 -> normal; 9.5->20, 21.5->30, 34.5->50, 49.5->70, 100->100; rounded down); the report header reads v15-cal1. /inference/render-report draws a stored result with the display values, calibration note, performance figures and header of its own model version: a v13 result (1.1.0 to 1.4.1) is never given the v15 mapping. The thrombus flag keeps the fixed threshold 0.40 (v15 validation: 166 segments flagged, 43 with thrombus, PPV 0.26, sensitivity 0.215; not evaluated on the test set). The caller-supplied coronaryDominance is unchanged and still decides the schema; the model's own dominance is shown as text. Test set against v13: stenosis slightly lower (mean r 0.508 against 0.521), pressure not distinguishable (0.674 against 0.689), lesion detection better (thrombus AUPRC 0.402 against 0.304).",

@@ -23,7 +23,7 @@ def float32(value: float) -> float:
 
 import re
 
-VERSION = "2.0.3"
+VERSION = "2.0.4"
 MAIN = ("predictions", "jctoScore", "predicted")  # the stored number the hostile-input tests alter
 MAIN_BAD = {"too_low": -0.01, "too_high": 4.01, "too_many_decimals": 0.723, "other": 3.33}
 ARTERIES = ("lad", "rca", "lcx")

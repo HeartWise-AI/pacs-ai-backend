@@ -129,6 +129,8 @@ another model version with other thresholds) is refused with 422 (`INVALID_RESUL
 
 ## Changelog
 
+- 2.0.4: accepts multiframe RGB DICOM (`[frames, rows, cols, 3]`) and no longer swaps Rows/Columns when
+  converting to video (PR #526). No change to the model, weights or thresholds.
 - 2.0.3: adds `POST /inference/render-report` and `capabilities.renderReport` in model-info.
   No change to the model, weights, preprocessing, predictions or live report; the version is
   bumped because an image of 2.0.2 is already published.
