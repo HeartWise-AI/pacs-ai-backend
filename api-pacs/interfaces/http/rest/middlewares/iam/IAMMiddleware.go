@@ -173,6 +173,33 @@ func (middleware *IAMMiddleware) RBACOwnerOrAdminGuard(next http.Handler) http.H
 	})
 }
 
+// RequireAllModels allows the request only when the authenticated user may
+// use every model. Workspace-wide processing (reprocessing, ingestion jobs)
+// dispatches every ingestion model, so a role restricted to some models
+// cannot use it. Fails closed with 503 when access cannot be read.
+func (middleware *IAMMiddleware) RequireAllModels(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		access, err := accessctx.Get(r.Context())
+		if err != nil {
+			response := viewmodels.HTTPResponseVM{
+				Status: http.StatusServiceUnavailable, Success: false,
+				Message: "Access verification is temporarily unavailable.", ErrorCode: apiError.AccessUnavailable,
+			}
+			response.JSON(w)
+			return
+		}
+		if !access.AllModels {
+			response := viewmodels.HTTPResponseVM{
+				Status: http.StatusForbidden, Success: false,
+				Message: "This action runs every model and needs a role with access to all models.", ErrorCode: apiError.ForbiddenAccess,
+			}
+			response.JSON(w)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // TokenSessionAuthGuard token session authenticator guard
 func (middleware *IAMMiddleware) TokenSessionAuthGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

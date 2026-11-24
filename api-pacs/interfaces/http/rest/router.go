@@ -119,13 +119,15 @@ func mountUserViewerTourRoutes(r chi.Router, handlers userViewerTourHandlers) {
 
 // mountInferenceWorklistRoutes keeps authentication and policy acceptance
 // structurally attached to every tenant-scoped route; running a model needs
-// models.use and reprocessing needs processing.manage.
+// models.use and reprocessing needs processing.manage plus access to every
+// model, since a reprocess dispatches all of the study's ingestion models.
 func mountInferenceWorklistRoutes(
 	r chi.Router,
 	authenticate func(http.Handler) http.Handler,
 	acceptPolicy func(http.Handler) http.Handler,
 	useModels func(http.Handler) http.Handler,
 	manageProcessing func(http.Handler) http.Handler,
+	allModels func(http.Handler) http.Handler,
 	handlers inferenceWorklistHandlers,
 ) {
 	r.Group(func(r chi.Router) {
@@ -146,6 +148,7 @@ func mountInferenceWorklistRoutes(
 
 		r.Group(func(r chi.Router) {
 			r.Use(manageProcessing)
+			r.Use(allModels)
 			r.Post("/worklist/studies/reprocess-batch", handlers.reprocessStudies)
 			r.Post("/worklist/studies/{studyInstanceUID}/reprocess", handlers.reprocessStudy)
 		})
@@ -408,6 +411,8 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Route("/ingestion", func(r chi.Router) {
 						r.Group(func(r chi.Router) {
 							r.Use(iamMiddleware.RequirePermission(accessEntity.PermProcessingManage))
+							// Ingestion jobs dispatch every ingestion model.
+							r.Use(iamMiddleware.RequireAllModels)
 
 							r.Post("/job/create", inferenceCommandController.CreateInferenceIngestionJob)
 							r.Post("/job/{ID}/start", inferenceCommandController.StartInferenceIngestionJob)
@@ -431,6 +436,7 @@ func (router *router) InitRouter() *chi.Mux {
 					iamMiddleware.PolicyAcceptanceGuard,
 					iamMiddleware.RequirePermission(accessEntity.PermModelsUse),
 					iamMiddleware.RequirePermission(accessEntity.PermProcessingManage),
+					iamMiddleware.RequireAllModels,
 					inferenceWorklistHandlers{
 						getStatuses:        inferenceQueryController.GetWorklistStudyStatuses,
 						streamEvents:       inferenceQueryController.StreamWorklistEvents,

@@ -175,3 +175,40 @@ func TestFeedbackDashboardRoutesFollowFeedbackViewPermission(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, serve(viewer, http.MethodGet, "/model/feedback/list"))
 	require.Equal(t, http.StatusNoContent, serve(viewer, http.MethodGet, "/model/feedback/report-counts"))
 }
+
+func TestReprocessingNeedsProcessingManageAndEveryModel(t *testing.T) {
+	respond := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }
+	build := func(role string, custom *accessEntity.CustomRole) http.Handler {
+		middleware := &iamMiddleware.IAMMiddleware{
+			IAMCommandServiceInterface: &worklistAuthCommandService{},
+			IAMQueryServiceInterface:   &worklistAuthQueryService{role: role},
+			UserQueryServiceInterface: &worklistPolicyQueryService{
+				status: userServiceTypes.PolicyStatus{EnforcementActive: true},
+			},
+			AccessResolver: &stubAccessResolver{custom: custom},
+		}
+		router := chi.NewRouter()
+		mountInferenceWorklistRoutes(router, middleware.TokenSessionAuthGuard, middleware.PolicyAcceptanceGuard,
+			middleware.RequirePermission(accessEntity.PermModelsUse),
+			middleware.RequirePermission(accessEntity.PermProcessingManage),
+			middleware.RequireAllModels,
+			inferenceWorklistHandlers{
+				getStatuses: respond, streamEvents: respond, getRunHistory: respond, getRunDetail: respond,
+				getExecutionResult: respond, reprocessStudy: respond, reprocessStudies: respond, getLatestResults: respond,
+				getExecutionReport: respond, getStudyJobReport: respond, runStudyModel: respond, getStudyMedia: respond,
+				getStudyMediaFile: respond, cancelRun: respond,
+			})
+		return router
+	}
+	paths := []string{"/worklist/studies/1.2.3/reprocess", "/worklist/studies/reprocess-batch"}
+	for _, path := range paths {
+		require.Equal(t, http.StatusNoContent, serve(build(iamEntity.AdminRole, nil), http.MethodPost, path))
+		require.Equal(t, http.StatusForbidden, serve(build(iamEntity.UserRole, nil), http.MethodPost, path), "no processing.manage")
+		require.Equal(t, http.StatusNoContent, serve(build(iamEntity.UserRole, &accessEntity.CustomRole{
+			Permissions: []string{accessEntity.PermProcessingManage}, AllModels: true,
+		}), http.MethodPost, path))
+		require.Equal(t, http.StatusForbidden, serve(build(iamEntity.UserRole, &accessEntity.CustomRole{
+			Permissions: []string{accessEntity.PermProcessingManage}, ModelIDs: []string{"PanEcho"},
+		}), http.MethodPost, path), "a model-restricted role cannot reprocess every model")
+	}
+}

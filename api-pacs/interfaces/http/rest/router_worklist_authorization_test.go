@@ -73,6 +73,7 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 		middleware.PolicyAcceptanceGuard,
 		middleware.RequirePermission(accessEntity.PermModelsUse),
 		middleware.RequirePermission(accessEntity.PermProcessingManage),
+		middleware.RequireAllModels,
 		inferenceWorklistHandlers{
 			getStatuses:        respond,
 			streamEvents:       respond,
