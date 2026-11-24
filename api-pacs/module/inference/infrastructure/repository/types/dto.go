@@ -313,6 +313,9 @@ type GetModelFeedbackByUserModelID struct {
 	// ExecutionID scopes the vote to one report. Empty matches only the votes
 	// stored without an execution id (legacy and output-mode-modal votes).
 	ExecutionID string
+	// PreferredID, when set, selects that vote among the matching ones, so an
+	// update addressed to one of several duplicate votes reaches it.
+	PreferredID string
 }
 
 type ListInferenceIngestionCandidates struct {

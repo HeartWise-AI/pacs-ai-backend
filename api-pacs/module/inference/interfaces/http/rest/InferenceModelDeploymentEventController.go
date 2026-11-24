@@ -122,6 +122,27 @@ func (controller *InferenceCommandController) StreamInferenceModelDeploymentEven
 				return
 			}
 		case <-heartbeat.C:
+			// Live events are ephemeral: a failed publication or a gap in the
+			// Redis subscription would otherwise leave the stream waiting
+			// forever. Each heartbeat re-reads the durable operation and sends
+			// it when it moved on.
+			current, readErr := controller.InferenceCommandServiceInterface.GetInferenceModelDeploymentOperation(
+				r.Context(),
+				serviceTypes.GetInferenceModelDeploymentOperation{
+					TenantID: tenantID, ModelID: modelID, DeploymentID: deploymentID,
+				},
+			)
+			if readErr == nil && current.Sequence > lastSent {
+				if err = writeModelDeploymentServerSentEvent(w, current); err != nil {
+					return
+				}
+				lastSent = current.Sequence
+				flusher.Flush()
+				if current.Terminal() {
+					return
+				}
+				continue
+			}
 			if _, err = fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
 				return
 			}

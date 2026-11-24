@@ -782,8 +782,9 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 		return errors.New(apiError.DockerError)
 	}
 
-	// start container
-	err = service.StartInferenceModelContainer(ctx, containerID)
+	// start the new container (not a manual lifecycle control, so it does
+	// not wait for running deployments)
+	err = service.DockerSDKInterface.StartContainer(ctx, containerID)
 	if err != nil {
 		return errors.New(apiError.DockerError)
 	}
@@ -3530,6 +3531,9 @@ func (service *InferenceCommandService) RemoveModelFeedback(ctx context.Context,
 
 // RestartInferenceModelContainer restarts an inference model container
 func (service *InferenceCommandService) RestartInferenceModelContainer(ctx context.Context, containerID string) error {
+	if err := service.refuseLifecycleDuringDeployment(ctx); err != nil {
+		return err
+	}
 	err := service.DockerSDKInterface.RestartContainer(ctx, containerID)
 	if err != nil {
 		return errors.New(apiError.DockerError)
@@ -3538,8 +3542,37 @@ func (service *InferenceCommandService) RestartInferenceModelContainer(ctx conte
 	return nil
 }
 
+// activeDeploymentChecker is implemented by the deployment operation manager.
+type activeDeploymentChecker interface {
+	HasActiveDeployment(ctx context.Context) (bool, error)
+}
+
+// refuseLifecycleDuringDeployment keeps manual start, stop and restart out of
+// a running deployment's way. An upgrade drains, smoke-tests and swaps
+// containers on the shared Docker host; stopping its candidate or restarting
+// the old container meanwhile could finalize an upgrade onto a stopped
+// container or leave GPU residency the model manager does not know about.
+// Fails closed when the deployment state cannot be read.
+func (service *InferenceCommandService) refuseLifecycleDuringDeployment(ctx context.Context) error {
+	checker, ok := service.ModelDeploymentOperations.(activeDeploymentChecker)
+	if !ok || checker == nil {
+		return nil
+	}
+	active, err := checker.HasActiveDeployment(ctx)
+	if err != nil {
+		return errors.New(apiError.InferenceUpgradeUnavailable)
+	}
+	if active {
+		return errors.New(apiError.InferenceUpgradeConflict)
+	}
+	return nil
+}
+
 // StartInferenceModelContainer starts an inference model container
 func (service *InferenceCommandService) StartInferenceModelContainer(ctx context.Context, containerID string) error {
+	if err := service.refuseLifecycleDuringDeployment(ctx); err != nil {
+		return err
+	}
 	err := service.DockerSDKInterface.StartContainer(ctx, containerID)
 	if err != nil {
 		return errors.New(apiError.DockerError)
@@ -3560,6 +3593,9 @@ func (service *InferenceCommandService) StartInferenceIngestionJob(ctx context.C
 
 // StopInferenceModelContainer stops an inference model container
 func (service *InferenceCommandService) StopInferenceModelContainer(ctx context.Context, containerID string) error {
+	if err := service.refuseLifecycleDuringDeployment(ctx); err != nil {
+		return err
+	}
 	err := service.DockerSDKInterface.StopContainer(ctx, containerID)
 	if err != nil {
 		return errors.New(apiError.DockerError)
@@ -3623,14 +3659,21 @@ func (service *InferenceCommandService) UpdateInferenceIngestionJob(ctx context.
 // UpdateModelFeedback updates model feedback
 func (service *InferenceCommandService) UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error {
 	modelFeedbackID := data.ID
+	preferredID := ""
+	if modelFeedbackID != nil {
+		preferredID = *modelFeedbackID
+	}
 
 	// Votes are kept per report: the key is (tenant, user, model version,
 	// execution). An empty execution id is the legacy, report-less vote.
+	// The supplied id is preferred so that, should older duplicates exist,
+	// the vote the caller owns and named is the one checked and updated.
 	existing, err := service.InferenceQueryRepositoryInterface.SelectModelFeedbackByUserModelID(ctx, repositoryTypes.GetModelFeedbackByUserModelID{
 		TenantID:    data.TenantID,
 		UserID:      data.UserID,
 		ModelID:     data.ModelID,
 		ExecutionID: data.ExecutionID,
+		PreferredID: preferredID,
 	})
 	missing := err != nil && err.Error() == apiError.MissingRecord
 	if err != nil && !missing {
