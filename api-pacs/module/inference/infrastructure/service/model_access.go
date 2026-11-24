@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	dockerInferenceTypes "api-pacs/infrastructures/providers/api/dockerinference/types"
 	apiError "api-pacs/internal/errors"
 )
 
@@ -68,17 +67,6 @@ func (service *InferenceQueryService) authorizeResultModel(ctx context.Context, 
 		return nil
 	}
 	directory := service.loadViewerModelDirectory(ctx, tenantID)
-	// A stopped or busy container has no live model info: use the last good
-	// identity (as /model/proxy/available does) before calling it unknown.
-	for index := range directory.entries {
-		entry := &directory.entries[index]
-		if entry.info != nil {
-			continue
-		}
-		if cached, ok := service.lastModelInfo(ctx, strings.TrimSpace(entry.model.ContainerID)); ok && strings.TrimSpace(cached.ModelID) != "" {
-			entry.info = &dockerInferenceTypes.ModelInfo{ModelID: cached.ModelID, ModelName: cached.ModelName, Version: cached.Version}
-		}
-	}
 	entry := directory.match(modelName, modelVersion)
 	if entry == nil {
 		return errors.New(apiError.ForbiddenAccess)

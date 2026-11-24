@@ -135,6 +135,18 @@ func (service *InferenceQueryService) loadViewerModelDirectory(ctx context.Conte
 		}
 		_ = group.Wait()
 	}
+	// A stopped or busy container has no live model info: keep its last good
+	// identity (as /model/proxy/available does) so name matching and
+	// custom-role model access still know which model it is. Capabilities are
+	// not carried over, so report availability still needs a live answer.
+	for index := range entries {
+		if entries[index].info != nil {
+			continue
+		}
+		if cached, ok := service.lastModelInfo(ctx, strings.TrimSpace(entries[index].model.ContainerID)); ok && strings.TrimSpace(cached.ModelID) != "" {
+			entries[index].info = &dockerInferenceTypes.ModelInfo{ModelID: cached.ModelID, ModelName: cached.ModelName, Version: cached.Version}
+		}
+	}
 	sort.SliceStable(entries, func(left, right int) bool { return entries[left].model.ID < entries[right].model.ID })
 	directory.entries = entries
 	return directory
