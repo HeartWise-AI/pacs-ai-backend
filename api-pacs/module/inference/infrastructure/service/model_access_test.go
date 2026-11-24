@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
 	"api-pacs/module/inference/infrastructure/service/types"
@@ -85,4 +86,34 @@ func TestAuthorizeResultModelUsesCachedIdentityWhenContainerIsDown(t *testing.T)
 	service.rememberModelInfo(ctx, types.GetInferenceAvailableModelResult{ContainerID: "c-rv", ModelID: "DeepRV_CLIP", ModelName: "DeepRV-CLIP", Version: "1.0.1"})
 	require.NoError(t, service.authorizeResultModel(ctx, "t1", "DeepRV-CLIP", "1.0.1", onlyRV))
 	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "DeepRV-CLIP", "1.0.1", func(string) bool { return false }), apiError.ForbiddenAccess)
+}
+
+func TestResolveModelArtifactIDsProbesRunningContainerWhenCacheIsCold(t *testing.T) {
+	models := []entity.InferenceModel{{ID: "reg-jepa", TenantID: "t1", ContainerID: "c-jepa"}}
+	ctx := context.Background()
+
+	live := &InferenceQueryService{
+		InferenceQueryRepositoryInterface: &inferenceModelsQueryRepository{models: models},
+		DockerSDKInterface:                &viewerResultsDocker{},
+		DockerInferenceAPIInterface:       &viewerModelInfoAPI{info: renderingModelInfo(false)},
+	}
+	ids, err := live.ResolveModelArtifactIDs(ctx, "t1", "reg-jepa")
+	require.NoError(t, err)
+	require.Equal(t, []string{"deepcoro-jepa"}, ids)
+
+	stopped := &InferenceQueryService{
+		InferenceQueryRepositoryInterface: &inferenceModelsQueryRepository{models: models},
+		DockerSDKInterface:                &viewerResultsDocker{lifecycle: dockerTypes.LifecycleStopped},
+		DockerInferenceAPIInterface:       &viewerModelInfoAPI{info: renderingModelInfo(false)},
+	}
+	_, err = stopped.ResolveModelArtifactIDs(ctx, "t1", "reg-jepa")
+	require.EqualError(t, err, apiError.AccessUnavailable, "still fails closed when nothing answers")
+
+	failing := &InferenceQueryService{
+		InferenceQueryRepositoryInterface: &inferenceModelsQueryRepository{models: models},
+		DockerSDKInterface:                &viewerResultsDocker{},
+		DockerInferenceAPIInterface:       &viewerModelInfoAPI{err: errors.New("timeout")},
+	}
+	_, err = failing.ResolveModelArtifactIDs(ctx, "t1", "c-jepa")
+	require.EqualError(t, err, apiError.AccessUnavailable)
 }

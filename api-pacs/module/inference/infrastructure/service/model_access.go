@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	apiError "api-pacs/internal/errors"
 )
 
@@ -39,6 +40,9 @@ func (service *InferenceQueryService) ResolveModelArtifactIDs(ctx context.Contex
 			if cached, ok := service.lastModelInfo(ctx, model.ContainerID); ok {
 				artifactID = strings.TrimSpace(cached.ModelID)
 			}
+		}
+		if artifactID == "" && (model.ID == ref || model.ContainerID == ref) {
+			artifactID = service.probeModelArtifactID(ctx, model.ContainerID)
 		}
 		if model.ID != ref && model.ContainerID != ref && (artifactID == "" || artifactID != ref) {
 			continue
@@ -75,4 +79,29 @@ func (service *InferenceQueryService) authorizeResultModel(ctx context.Context, 
 		return errors.New(apiError.ForbiddenAccess)
 	}
 	return nil
+}
+
+// probeModelArtifactID asks a running container for its model-info modelId,
+// bounded by the viewer probe timeout. It returns "" when the container is
+// not running or does not answer, so callers keep failing closed.
+func (service *InferenceQueryService) probeModelArtifactID(ctx context.Context, containerID string) string {
+	containerID = strings.TrimSpace(containerID)
+	if containerID == "" || service.DockerSDKInterface == nil || service.DockerInferenceAPIInterface == nil {
+		return ""
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, viewerModelInfoProbeTimeout)
+	defer cancel()
+	info, err := service.DockerSDKInterface.GetContainerInfo(probeCtx, containerID)
+	if err != nil || info.Lifecycle != dockerTypes.LifecycleRunning {
+		return ""
+	}
+	name := strings.TrimPrefix(strings.TrimSpace(info.Name), "/")
+	if name == "" {
+		return ""
+	}
+	response, err := service.DockerInferenceAPIInterface.GetModelInfo(probeCtx, name)
+	if err != nil || !response.Success {
+		return ""
+	}
+	return strings.TrimSpace(response.Data.ModelID)
 }
