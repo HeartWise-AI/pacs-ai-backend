@@ -87,3 +87,14 @@ def test_cuda_torch_and_torchvision_pins_match_the_validated_runtime():
     assert "--extra-index-url https://download.pytorch.org/whl/cu124" in requirements
     assert "torch==2.6.0+cu124" in requirements
     assert "torchvision==0.21.0+cu124" in requirements
+
+
+def test_local_dockerfile_verifies_the_preloaded_checkpoint_and_is_marked_local():
+    dockerfile = (ROOT / "Dockerfile.local").read_text(encoding="utf-8")
+    provenance = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))["provenance"]
+
+    assert "--verify-only" in dockerfile
+    assert 'ai.heartwise.release.channel="local"' in dockerfile
+    assert f'ARG PACS_AI_WEIGHTS_PATH="{provenance["weightsPath"]}"' in dockerfile
+    assert f'ARG PACS_AI_WEIGHTS_SHA256="{provenance["weightsSha256"]}"' in dockerfile
+    assert f'ARG PACS_AI_MODEL_REVISION="{provenance["modelRevision"]}"' in dockerfile

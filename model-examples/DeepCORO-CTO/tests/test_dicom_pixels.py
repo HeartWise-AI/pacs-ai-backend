@@ -89,3 +89,40 @@ def test_eight_bit_monochrome2_is_byte_identical_to_previous_conversion(monkeypa
     logic._dicom_to_avi(dicom, "synthetic.avi")
     previous = [logic.cv.cvtColor(frame, logic.cv.COLOR_GRAY2BGR) for frame in dicom.pixel_array]
     assert b"".join(f.tobytes() for f in writer.frames) == b"".join(f.tobytes() for f in previous)
+
+
+def make_rgb_dicom(pixels: np.ndarray) -> Dataset:
+    ds = make_dicom(pixels[..., 0], "MONOCHROME2")
+    ds.SamplesPerPixel = 3
+    ds.PlanarConfiguration = 0
+    ds.PhotometricInterpretation = "RGB"
+    ds.BitsAllocated = ds.BitsStored = 8
+    ds.HighBit = 7
+    ds.PixelData = pixels.tobytes()
+    return ds
+
+
+def test_multiframe_rgb_is_converted_not_rejected(monkeypatch):
+    rgb = RNG.integers(0, 256, (3, 16, 24, 3), dtype=np.uint8)  # frames, rows, cols, samples
+    writer = _Writer()
+    sizes = []
+
+    def video_writer(path, fourcc, fps, size):
+        sizes.append(size)
+        return writer
+
+    monkeypatch.setattr(logic.cv, "VideoWriter", video_writer)
+    dicom = make_rgb_dicom(rgb)
+    assert dicom.pixel_array.shape == (3, 16, 24, 3)
+    assert logic._dicom_to_avi(dicom, "synthetic.avi") == "synthetic.avi"
+    assert sizes == [(24, 16)]  # OpenCV takes (width, height) = (Columns, Rows)
+    expected = [logic.cv.cvtColor(frame, logic.cv.COLOR_RGB2BGR) for frame in rgb]
+    assert np.array_equal(np.stack(writer.frames), np.stack(expected))
+
+
+def test_non_square_grayscale_uses_rows_as_height(monkeypatch):
+    gray = RNG.integers(0, 256, (3, 16, 24), dtype=np.uint8)
+    sizes = []
+    monkeypatch.setattr(logic.cv, "VideoWriter", lambda path, fourcc, fps, size: sizes.append(size) or _Writer())
+    assert logic._dicom_to_avi(make_dicom(gray, "MONOCHROME2"), "synthetic.avi") == "synthetic.avi"
+    assert sizes == [(24, 16)]

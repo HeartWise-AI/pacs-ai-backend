@@ -10,8 +10,9 @@ inferred at inference time from the DICOM positioner primary/secondary angles
 (same rule as `DeepCORO_CLIP_DATASET/classify_angles.py`) and fed to a view embedding.
 
 Model weights are hosted on HuggingFace at [heartwise/DeepCORO_CTO](https://huggingface.co/heartwise/DeepCORO_CTO)
-and fetched at Docker build time via `--mount=type=secret,id=hf_token`. `download_model.py` pins
-the HF revision (`v2.0` by default; override with `DEEPCORO_CTO_HF_REVISION` or `--revision`).
+and fetched at Docker build time via `--mount=type=secret,id=hf_token`. The exact HF revision,
+checkpoint path and SHA-256 are pinned in `data/model_info.json` (`provenance`) and passed to
+`download_model.py` as required build arguments; the build fails if the downloaded bytes differ.
 
 | Version | HF tag | Checkpoint | Heads | Videos |
 | --- | --- | --- | --- | --- |
@@ -23,15 +24,20 @@ predicted J-CTO score and aliases its heads onto the generic names; with overall
 them through unchanged. Two alternative overall checkpoints live under `alt_models/` on HF
 (excluded from the image) — see `docs/RESULTS.md`.
 
-## Build & push
+## Build
 
-Put your HuggingFace read token in `hf_token.txt` (gitignored via `*.txt`):
+The repository is gated. Official images are built after merge by the protected release workflow (see
+`docs/model-image-release.md`); do not push hand-built images. For a local candidate build, which supplies
+the release build arguments from `data/model_info.json`:
 
+```bash
+python3 scripts/release-model.py model-examples/DeepCORO-CTO \
+  --image-repository heartwisehub/deepcoro-cto \
+  --hf-token-file /secure/path/hf_token
 ```
-echo "<your_hf_token>" > hf_token.txt
-docker build --secret id=hf_token,src=./hf_token.txt -t heartwisehub/deepcoro-cto:2.0.0 .
-docker push heartwisehub/deepcoro-cto:2.0.0
-```
+
+A plain `docker build` without the `PACS_AI_MODEL_*` / `PACS_AI_WEIGHTS_*` build arguments fails at
+the weights download by design.
 
 ## Run
 

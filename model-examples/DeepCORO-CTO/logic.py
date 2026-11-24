@@ -823,19 +823,22 @@ class CustomPredictionService(BasePredictionService):
 def _dicom_to_avi(dicom: pydicom.Dataset, output_path: str) -> Optional[str]:
     try:
         video = dicom.pixel_array
-        if video.ndim != 3:
+        photometrics = dicom.PhotometricInterpretation
+        if photometrics not in ("MONOCHROME1", "MONOCHROME2", "RGB"):
+            return None
+        # Multiframe grayscale is [frames, rows, cols]; multiframe RGB is
+        # [frames, rows, cols, 3]. Anything else (e.g. a single frame) is rejected.
+        expected_ndim = 4 if photometrics == "RGB" else 3
+        if video.ndim != expected_ndim or (photometrics == "RGB" and video.shape[-1] != 3):
             print(f"Unexpected pixel_array shape: {video.shape}")
             return None
-        frame_height = dicom[(0x028, 0x0011)].value
-        frame_width = dicom[(0x028, 0x0010)].value
+        frame_height = dicom[(0x028, 0x0010)].value  # Rows
+        frame_width = dicom[(0x028, 0x0011)].value  # Columns
         if frame_height != video.shape[1] or frame_width != video.shape[2]:
             return None
         fps = 30.0
         if (0x08, 0x2144) in dicom:
             fps = float(dicom[(0x08, 0x2144)].value)
-        photometrics = dicom.PhotometricInterpretation
-        if photometrics not in ("MONOCHROME1", "MONOCHROME2", "RGB"):
-            return None
         video = to_display_uint8(video, photometrics)
         fourcc = cv.VideoWriter_fourcc("M", "J", "P", "G")
         out = cv.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))

@@ -84,6 +84,7 @@ jobs:
           scripts.tests.test_register_model_release
           scripts.tests.test_validate_catalog_recovery
           scripts.tests.test_dicom_pixels
+          scripts.tests.test_runtime_model_version
           scripts.tests.test_ensure_release_disk_space
           -v
       - run: bash -n scripts/deploy-model.sh

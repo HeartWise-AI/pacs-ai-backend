@@ -105,3 +105,30 @@ def test_runtime_selects_the_verified_fold_zero_checkpoint():
     assert "use_folds = 0," in logic
     assert "checkpoint_name='checkpoint_final.pth'" in logic
 
+
+
+def test_token_is_not_forwarded_to_the_redirected_download_host(tmp_path, monkeypatch):
+    import urllib.request
+
+    captured = {}
+
+    def fake_urlopen(request):
+        captured["request"] = request
+        raise RuntimeError("stop after capturing the request")
+
+    monkeypatch.setattr(download_model.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(RuntimeError):
+        download_model.download_model(
+            "secret-token",
+            download_model.EXPECTED_REPOSITORY,
+            download_model.EXPECTED_REVISION,
+            download_model.EXPECTED_WEIGHTS_PATH,
+            "0" * 64,
+            tmp_path,
+        )
+    request = captured["request"]
+    assert request.get_header("Authorization") == "Bearer secret-token"
+    redirected = urllib.request.HTTPRedirectHandler().redirect_request(
+        request, None, 302, "Found", {}, "https://cas-bridge.xethub.hf.co/signed"
+    )
+    assert redirected.get_header("Authorization") is None

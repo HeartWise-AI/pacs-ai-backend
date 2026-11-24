@@ -76,9 +76,12 @@ def download_model(
     archive = output_dir / weights_path
     temporary = archive.with_suffix(archive.suffix + ".part")
     request = urllib.request.Request(
-        f"https://huggingface.co/{repository}/resolve/{revision}/{weights_path}",
-        headers={"Authorization": f"Bearer {token}"},
+        f"https://huggingface.co/{repository}/resolve/{revision}/{weights_path}"
     )
+    # An unredirected header is sent to huggingface.co only. The /resolve URL
+    # redirects to a signed LFS/Xet download host that must not receive the token;
+    # urllib copies ordinary request headers onto redirects.
+    request.add_unredirected_header("Authorization", f"Bearer {token}")
 
     try:
         with urllib.request.urlopen(request) as response, temporary.open("wb") as destination:

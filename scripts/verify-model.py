@@ -159,18 +159,25 @@ def model_directory_for_changed_path(path: str, root: Path = REPOSITORY_ROOT) ->
     except ValueError:
         return None
     current = candidate if candidate.is_dir() else candidate.parent
+    # Prefer the nearest directory that still has the full contract. When a
+    # change deletes Dockerfile or data/model_info.json themselves, fall back
+    # to the nearest existing directory that keeps either file so that the
+    # deletion is still verified (required-files then reports what is missing).
+    partial: Path | None = None
     while current != model_root:
-        if (current / "Dockerfile").is_file() and (
-            current / "data" / "model_info.json"
-        ).is_file():
+        has_dockerfile = (current / "Dockerfile").is_file()
+        has_manifest = (current / "data" / "model_info.json").is_file()
+        if has_dockerfile and has_manifest:
             return current
+        if partial is None and (has_dockerfile or has_manifest):
+            partial = current
         current = current.parent
-    return None
+    return partial
 
 
 def changed_model_directories(base_revision: str) -> list[Path]:
     result = run_command(
-        ("git", "diff", "--name-only", "--diff-filter=ACMR", f"{base_revision}...HEAD")
+        ("git", "diff", "--name-only", "--diff-filter=ACMRD", f"{base_revision}...HEAD")
     )
     changed_paths = [line for line in result.stdout.splitlines() if line]
     shared_changed = any(
@@ -555,7 +562,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             directories = {model_directory(path) for path in args.model_directories}
             if args.changed_since:
                 directories.update(changed_model_directories(args.changed_since))
-            require(bool(directories), "No model directories were selected for verification")
+            # Explicit model directories must exist (checked above). A
+            # --changed-since selection may legitimately be empty, e.g. a
+            # documentation-only change under model-examples/: that is a
+            # successful no-op, recorded as such in the evidence.
+            require(
+                bool(directories) or not args.model_directories,
+                "No model directories were selected for verification",
+            )
+            if not directories:
+                print(
+                    "[verify-model] No changed model directories since "
+                    f"{args.changed_since}; nothing to verify",
+                    file=sys.stderr,
+                )
             evidence = source_evidence(
                 sorted(directories), args.changed_since, args.run_model_tests
             )

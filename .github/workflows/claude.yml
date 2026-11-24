@@ -66,10 +66,21 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
+            First run `gh pr checkout ${{ github.event.pull_request.number }}` so that you
+            edit and push the pull request branch, not the base branch.
             Review the changes-requested review and all currently unresolved review threads
             on this pull request. Address each actionable finding with the smallest safe change.
             Run relevant tests and report their actual result. Commit and push fixes to this
             same PR branch. For any finding you disagree with or cannot safely fix, explain
             why in a PR comment. Post a concise per-comment summary with links to changes.
             Do not merge, deploy, expose secrets, or include private data in comments/logs.
-          claude_args: --max-turns 40
+          # Agent mode (a custom prompt) does not add tag mode's tool permissions, so the
+          # tools needed to edit, test, commit, push and comment are granted explicitly.
+          claude_args: >-
+            --max-turns 40
+            --allowedTools "Read,Edit,MultiEdit,Write,Glob,Grep,LS,
+            Bash(gh pr checkout:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),
+            Bash(gh api:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git add:*),
+            Bash(git commit:*),Bash(git push:*),Bash(go build:*),Bash(go vet:*),Bash(go test:*),
+            Bash(gofmt:*),Bash(python -m unittest:*),Bash(python3 -m unittest:*),
+            Bash(python -m pytest:*),Bash(python3 -m pytest:*)"
