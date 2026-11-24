@@ -72,3 +72,17 @@ func TestAuthorizeResultModel(t *testing.T) {
 	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "Legacy", "", onlyEcho), apiError.ForbiddenAccess, "unknown modelId is refused")
 	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "Unregistered", "", onlyEcho), apiError.ForbiddenAccess)
 }
+
+func TestAuthorizeResultModelUsesCachedIdentityWhenContainerIsDown(t *testing.T) {
+	service := &InferenceQueryService{InferenceQueryRepositoryInterface: &resultModelsRepository{inferenceModelsQueryRepository{models: []entity.InferenceModel{
+		// Registered without a deployment snapshot; display name differs from the model-info name.
+		{ID: "reg-rv", TenantID: "t1", Name: "RV model", ContainerID: "c-rv"},
+	}}}}
+	ctx := context.Background()
+	onlyRV := func(id string) bool { return id == "DeepRV_CLIP" }
+	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "DeepRV-CLIP", "1.0.1", onlyRV), apiError.ForbiddenAccess, "no identity known yet")
+
+	service.rememberModelInfo(ctx, types.GetInferenceAvailableModelResult{ContainerID: "c-rv", ModelID: "DeepRV_CLIP", ModelName: "DeepRV-CLIP", Version: "1.0.1"})
+	require.NoError(t, service.authorizeResultModel(ctx, "t1", "DeepRV-CLIP", "1.0.1", onlyRV))
+	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "DeepRV-CLIP", "1.0.1", func(string) bool { return false }), apiError.ForbiddenAccess)
+}
