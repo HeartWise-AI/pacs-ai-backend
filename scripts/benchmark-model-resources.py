@@ -175,6 +175,43 @@ class VramSampler:
         return max(self.samples_mib)
 
 
+def vram_deltas(
+    ready_baseline_mib: float,
+    resident_mib: float,
+    peak_mib: float,
+    idle_baseline_mib: float | None = None,
+) -> dict[str, Any]:
+    """Return VRAM deltas against the most complete baseline available.
+
+    A baseline sampled once the model API is ready already holds whatever the
+    container allocated at startup (CUDA context, eagerly loaded weights), so
+    deltas against it understate what the scheduler must reserve. When the
+    caller measured the device before the container started, that idle value is
+    used instead and the startup share is reported separately.
+    """
+    if idle_baseline_mib is not None and idle_baseline_mib > ready_baseline_mib:
+        raise ValueError(
+            "--idle-baseline-mib is higher than the device usage with the model ready; "
+            "measure it with the target container stopped on the same GPU"
+        )
+    baseline = ready_baseline_mib if idle_baseline_mib is None else idle_baseline_mib
+    result: dict[str, Any] = {
+        "baseline_source": "service_ready" if idle_baseline_mib is None else "container_stopped",
+        "resident_delta_vram_mib": resident_mib - baseline,
+        "peak_delta_vram_mib": peak_mib - baseline,
+    }
+    if idle_baseline_mib is None:
+        result["baseline_warning"] = (
+            "Baseline sampled after the service started; startup allocations are not "
+            "included in the deltas. Pass --idle-baseline-mib measured with the "
+            "container stopped to include them."
+        )
+    else:
+        result["idle_baseline_used_vram_mib"] = idle_baseline_mib
+        result["startup_delta_vram_mib"] = ready_baseline_mib - idle_baseline_mib
+    return result
+
+
 def make_request(
     url: str, payload: bytes, timeout: float, sampler: VramSampler
 ) -> dict[str, Any]:
@@ -234,6 +271,14 @@ def main() -> None:
     parser.add_argument("--gpu-index", type=int, default=0)
     parser.add_argument("--settle-seconds", type=float, default=2.0)
     parser.add_argument(
+        "--idle-baseline-mib",
+        type=float,
+        help=(
+            "Device VRAM in use (MiB) measured with the target container stopped. "
+            "When given, deltas include the container's startup allocations."
+        ),
+    )
+    parser.add_argument(
         "--omit-pixel-metadata",
         action="store_true",
         help="Send full DICOM files without duplicating decoded pixels in metadata.",
@@ -268,6 +313,9 @@ def main() -> None:
         ]
         time.sleep(args.settle_seconds)
         resident_mib = sampler.used_mib()
+        peak_mib = max(
+            [cold["peak_used_vram_mib"]] + [run["peak_used_vram_mib"] for run in warm]
+        )
         result = {
             "model": args.model,
             "selected_files": [str(path) for path in selected_files],
@@ -275,16 +323,8 @@ def main() -> None:
             "payload_build_seconds": payload_seconds,
             "baseline_used_vram_mib": baseline_mib,
             "resident_used_vram_mib": resident_mib,
-            "resident_delta_vram_mib": resident_mib - baseline_mib,
-            "peak_used_vram_mib": max(
-                [cold["peak_used_vram_mib"]]
-                + [run["peak_used_vram_mib"] for run in warm]
-            ),
-            "peak_delta_vram_mib": max(
-                [cold["peak_used_vram_mib"]]
-                + [run["peak_used_vram_mib"] for run in warm]
-            )
-            - baseline_mib,
+            "peak_used_vram_mib": peak_mib,
+            **vram_deltas(baseline_mib, resident_mib, peak_mib, args.idle_baseline_mib),
             "cold": cold,
             "warm": warm,
             "warm_median_seconds": statistics.median(
