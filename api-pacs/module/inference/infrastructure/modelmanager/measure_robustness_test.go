@@ -222,9 +222,11 @@ func TestPredictionsKickOnlyTheirOwnGPUAndAtMostOncePerGap(t *testing.T) {
 	if readsOf(id(1)) != 1 {
 		t.Fatalf("a prediction on GPU B sampled GPU A: %v", probe.reads)
 	}
-	if m.Measurements().Models[id(1)].LastMiB != 2100 || m.Measurements().Models[id(2)].LastMiB != 2200 {
-		t.Fatal("kicked samples were not recorded")
-	}
+	// The probe read is seen before the sample is recorded: wait for both.
+	until(t, func() bool {
+		models := m.Measurements().Models
+		return models[id(1)].LastMiB == 2100 && models[id(2)].LastMiB == 2200
+	})
 }
 
 func TestPredictionIsObservedOnlyBySamplesThatCanSeeItsWorkingMemory(t *testing.T) {
