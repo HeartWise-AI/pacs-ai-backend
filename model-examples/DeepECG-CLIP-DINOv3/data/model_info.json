@@ -4,7 +4,7 @@
   "domainName": "Cardiology",
   "stage": "ai_inference",
   "modality": "ECG",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "provenance": {
     "sourceRepository": "HeartWise-AI/pacs-ai-backend",
     "sourceRevision": null,
@@ -15,7 +15,7 @@
   },
   "resources": {
     "gpuRequired": true,
-    "residentMemoryMiB": 1400,
+    "residentMemoryMiB": 1600,
     "peakMemoryMiB": 2000,
     "maxConcurrentInferences": 1,
     "idleTimeoutSeconds": 600
