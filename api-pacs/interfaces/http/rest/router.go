@@ -59,6 +59,12 @@ type inferenceWorklistHandlers struct {
 	// Cancelling the waiting models of a run is open to the same users as
 	// the run detail and the viewer run.
 	cancelRun http.HandlerFunc
+	// Run labels (PACS-447): read like results; adding and removing need
+	// models.use (and access to the run's model, checked by the handler).
+	getRunLabels       http.HandlerFunc
+	addRunLabel        http.HandlerFunc
+	removeRunLabel     http.HandlerFunc
+	getRunLabelCatalog http.HandlerFunc
 }
 
 type inferenceFeedbackHandlers struct {
@@ -145,6 +151,10 @@ func mountInferenceWorklistRoutes(
 		r.Get("/worklist/studies/{studyInstanceUID}/media", handlers.getStudyMedia)
 		r.Get("/media/{mediaId}", handlers.getStudyMediaFile)
 		r.Post("/processing/runs/{runId}/cancel", handlers.cancelRun)
+		r.Get("/worklist/run-labels", handlers.getRunLabelCatalog)
+		r.Get("/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/labels", handlers.getRunLabels)
+		r.With(useModels).Post("/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/labels", handlers.addRunLabel)
+		r.With(useModels).Delete("/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/labels", handlers.removeRunLabel)
 
 		r.Group(func(r chi.Router) {
 			r.Use(manageProcessing)
@@ -452,6 +462,10 @@ func (router *router) InitRouter() *chi.Mux {
 						getStudyMedia:      inferenceQueryController.GetStudyMedia,
 						getStudyMediaFile:  inferenceQueryController.GetStudyMediaFile,
 						cancelRun:          inferenceCommandController.CancelProcessingRun,
+						getRunLabels:       inferenceQueryController.GetStudyRunLabels,
+						addRunLabel:        inferenceQueryController.AddStudyRunLabel,
+						removeRunLabel:     inferenceQueryController.RemoveStudyRunLabel,
+						getRunLabelCatalog: inferenceQueryController.GetRunLabelCatalog,
 					},
 				)
 

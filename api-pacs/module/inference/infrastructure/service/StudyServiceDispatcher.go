@@ -225,7 +225,7 @@ func getStudyServiceJobByID[T any](
 // only tenant-less jobs. The operator token is used, never a user credential.
 func (service *StudyServiceDispatcher) GetLatestStudyResults(
 	ctx context.Context,
-	tenantID, studyInstanceUID, modality string,
+	tenantID, studyInstanceUID, modality, label string,
 ) (serviceTypes.StudyServiceLatestResults, bool, error) {
 	baseURL := strings.TrimRight(strings.TrimSpace(service.StudyServiceBaseURL), "/")
 	if baseURL == "" {
@@ -237,8 +237,15 @@ func (service *StudyServiceDispatcher) GetLatestStudyResults(
 	}
 
 	endpoint := fmt.Sprintf("%s/jobs/by-study/%s/latest-results", baseURL, url.PathEscape(strings.TrimSpace(studyInstanceUID)))
+	query := url.Values{}
 	if modality = strings.TrimSpace(modality); modality != "" {
-		endpoint += "?" + url.Values{"modality": []string{modality}}.Encode()
+		query.Set("modality", modality)
+	}
+	if label = strings.TrimSpace(label); label != "" {
+		query.Set("label", label)
+	}
+	if len(query) > 0 {
+		endpoint += "?" + query.Encode()
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {

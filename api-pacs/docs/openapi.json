@@ -4075,7 +4075,8 @@
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "studyInstanceUID", "in": "path", "required": true, "schema": { "type": "string", "maxLength": 255 } },
-          { "name": "modality", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Optional study-service modality filter, for example angiogram" }
+          { "name": "modality", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Optional study-service modality filter, for example angiogram" },
+          { "name": "label", "in": "query", "required": false, "schema": { "type": "string", "maxLength": 40 }, "description": "Optional run label (free text, matched without case, for example DIAGNOSTIC). Only runs carrying it count: per model, the result is the best run among the labelled runs (most eligible videos; newest on a tie) and runs lists only labelled runs; models without a labelled run are left out. 400 INVALID_PAYLOAD for an empty label or one longer than 40 characters." }
         ],
         "responses": {
           "200": { "description": "Latest results", "headers": { "Cache-Control": { "description": "Model results and reports are never cached", "schema": { "type": "string", "enum": ["no-store"] } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StudyLatestModelResultsResponse" } } } },
@@ -4132,6 +4133,86 @@
           "500": { "$ref": "#/components/responses/WorklistServerError" },
           "502": { "description": "REPORT_RENDER_FAILED: timeout, size limit or upstream failure", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
           "503": { "description": "INFERENCE_RESULT_SERVICE_UNAVAILABLE or INFERENCE_MODEL_UNAVAILABLE", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } }
+        }
+      }
+    },
+    "/inference/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/labels": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Labels of one model run (PACS-447)",
+        "description": "Free-text labels on one run (a study-service job) of the study. Readable by every authenticated tenant user who accepted the current policies and whose role allows the run's model.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "studyInstanceUID", "in": "path", "required": true, "schema": { "type": "string", "maxLength": 255 } },
+          { "name": "studyServiceJobId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "The run's labels", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RunLabelsResponse" } } } },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "404": { "description": "MISSING_RECORD: the job is not a run of this study in the tenant, or (DELETE) the run does not carry the label", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/ProcessingExecutionResultServiceUnavailable" }
+        }
+      },
+      "post": {
+        "tags": ["inference"],
+        "summary": "Add a label to a model run (PACS-447)",
+        "description": "Adds a free-text label (trimmed, inner whitespace collapsed, 1-40 characters, stored as typed and matched without case) to one run. Needs models.use and access to the run's model, like a viewer rerun. 201 when added, 200 when the run already carried it in any case.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "studyInstanceUID", "in": "path", "required": true, "schema": { "type": "string", "maxLength": 255 } },
+          { "name": "studyServiceJobId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["label"], "properties": { "label": { "type": "string", "maxLength": 40 } }, "additionalProperties": false } } }
+        },
+        "responses": {
+          "200": { "description": "The run already carried the label", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RunLabelsResponse" } } } },
+          "201": { "description": "Label added", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RunLabelsResponse" } } } },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "404": { "description": "MISSING_RECORD: the job is not a run of this study in the tenant, or (DELETE) the run does not carry the label", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/ProcessingExecutionResultServiceUnavailable" }
+        }
+      },
+      "delete": {
+        "tags": ["inference"],
+        "summary": "Remove a label from a model run (PACS-447)",
+        "description": "Removes the label given in the label query parameter (matched without case), including a default label such as DIAGNOSTIC. Needs models.use and access to the run's model.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "studyInstanceUID", "in": "path", "required": true, "schema": { "type": "string", "maxLength": 255 } },
+          { "name": "studyServiceJobId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "label", "in": "query", "required": true, "schema": { "type": "string", "maxLength": 40 } }
+        ],
+        "responses": {
+          "200": { "description": "The run's remaining labels", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RunLabelsResponse" } } } },
+          "400": { "$ref": "#/components/responses/WorklistBadRequest" },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "404": { "description": "MISSING_RECORD: the job is not a run of this study in the tenant, or (DELETE) the run does not carry the label", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorklistErrorResponse" } } } },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/ProcessingExecutionResultServiceUnavailable" }
+        }
+      }
+    },
+    "/inference/worklist/run-labels": {
+      "get": {
+        "tags": ["inference"],
+        "summary": "Labels used in the workspace (PACS-447)",
+        "description": "Labels the tenant has used, most recently used first, with the number of runs carrying each now. Suggestions only: any text can be a label.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Label catalog", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RunLabelCatalogResponse" } } } },
+          "401": { "$ref": "#/components/responses/WorklistUnauthorized" },
+          "403": { "$ref": "#/components/responses/WorklistForbidden" },
+          "500": { "$ref": "#/components/responses/WorklistServerError" },
+          "503": { "$ref": "#/components/responses/ProcessingExecutionResultServiceUnavailable" }
         }
       }
     },
@@ -4663,6 +4744,68 @@
           "bestRun": {
             "type": "boolean",
             "description": "Set on listed runs only: true for the run reported as the result."
+          },
+          "labels": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Labels of the run as typed, oldest first (PACS-447); empty when it has none. Automatic angiogram runs carry DIAGNOSTIC by default."
+          }
+        }
+      },
+      "RunLabel": {
+        "type": "object",
+        "required": ["label", "key", "source"],
+        "properties": {
+          "label": { "type": "string", "description": "The label as typed" },
+          "key": { "type": "string", "description": "Case-insensitive form used for matching" },
+          "source": { "type": "string", "enum": ["automatic", "user"] },
+          "createdBy": { "type": "string", "nullable": true },
+          "createdAt": { "type": "string", "nullable": true }
+        }
+      },
+      "RunLabelsResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "required": ["studyInstanceUID", "studyServiceJobId", "modelName", "modality", "labels"],
+            "properties": {
+              "studyInstanceUID": { "type": "string" },
+              "studyServiceJobId": { "type": "string" },
+              "modelName": { "type": "string" },
+              "modality": { "type": "string" },
+              "labels": { "type": "array", "items": { "$ref": "#/components/schemas/RunLabel" } }
+            }
+          }
+        }
+      },
+      "RunLabelCatalogResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "required": ["labels"],
+            "properties": {
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["label", "key", "runCount"],
+                  "properties": {
+                    "label": { "type": "string" },
+                    "key": { "type": "string" },
+                    "runCount": { "type": "integer", "minimum": 0 },
+                    "lastUsedAt": { "type": "string", "nullable": true }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -4677,7 +4820,8 @@
             "required": ["studyInstanceUID", "results"],
             "properties": {
               "studyInstanceUID": { "type": "string" },
-              "results": { "type": "array", "items": { "$ref": "#/components/schemas/StudyLatestModelResult" } }
+              "results": { "type": "array", "items": { "$ref": "#/components/schemas/StudyLatestModelResult" } },
+              "label": { "type": "string", "description": "The label filter, as asked; omitted without one." }
             }
           }
         }

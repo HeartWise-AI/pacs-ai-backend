@@ -1209,7 +1209,10 @@
                         "1.1.0": "2026-11-12: Serves model v13 (Weights & Biases run 400d0a77): adds calcification, thrombus and CTO probabilities and flags per segment and the Thresholds key lesion_operating_point. Stenosis is unchanged on test (macro AUROC 0.885 against 0.884); pressure AUROC is 0.69 against 0.72 for v12.",
                         "1.0.0": "2026-11-12: Serves model v12: 18-segment stenosis and LAD FFR/iFR with validation-derived thresholds."
                       }
-                    }
+                    },
+                    "automaticRunLabels": [
+                      "DIAGNOSTIC"
+                    ]
                   }
                 }
               }

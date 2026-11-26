@@ -35,6 +35,13 @@ training — CathEF≈96.6/44.8, DeepRV≈134.0/27.3, DeepCoro stenosis≈122.1/
 where `task` is `regression` (clamp using mapping bounds) or `binary_classification` (sigmoid). Head names
 must match the checkpoint keys `mil_model.module.heads.<name>.*`.
 
+**`data/model_facts.json`** — the model facts card (`en`, optionally `fr`) plus optional top-level keys
+read by study-service. `automaticRunLabels` (PACS-447) lists the run labels put on every automatic
+(ingestion) run of the model, for example `["DIAGNOSTIC"]` for the angiogram models; `[]` means none.
+Labels are free text, 1–40 characters. A model image released before this key existed gets
+`DIAGNOSTIC` for angiogram models and no label otherwise, so the key takes effect only once the image
+is rebuilt and released (`scripts/verify-model.py` checks the key).
+
 **`data/model_info.json`** — `modelId/modelName/modality`, upload bounds, `supportedOutputModes`, feedback
 questionnaires, **`supportedAdditionalMetadata`**, and immutable model provenance when the artifact has
 been pinned. See the [model provenance contract](../docs/model-provenance-contract.md); omit provenance for

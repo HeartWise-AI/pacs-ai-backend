@@ -33,5 +33,6 @@
       "Confidence_Scores": "Current threshold applied on probability output for classification is defined in class_mapping.json",
       "Score_definition": "Modified SYNTAX score (16 segments): tortuosity and most total-occlusion sub-modifiers are not scored, so the score is biased downward, most in complex anatomy (v6 mean bias -10 points for SYNTAX >= 33). Untested after CABG. Under peer review; not for clinical use."
     }
-  }
+  },
+  "automaticRunLabels": ["DIAGNOSTIC"]
 }

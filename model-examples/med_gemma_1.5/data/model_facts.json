@@ -32,5 +32,6 @@
       "Multiple_Devices": "The model is designed to perform medical text and image comprehension.",
       "Confidence_Scores": "Current threshold applied on probability output for classification is 0.1"
     }
-  }
+  },
+  "automaticRunLabels": ["DIAGNOSTIC"]
 }

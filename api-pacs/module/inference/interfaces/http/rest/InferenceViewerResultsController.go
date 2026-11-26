@@ -49,6 +49,7 @@ func (controller *InferenceQueryController) GetStudyLatestModelResults(w http.Re
 		TenantID:         tenantID,
 		StudyInstanceUID: chi.URLParam(r, "studyInstanceUID"),
 		Modality:         r.URL.Query().Get("modality"),
+		Label:            r.URL.Query().Get("label"),
 	})
 	if err != nil {
 		writeViewerResultsError(w, err.Error())

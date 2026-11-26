@@ -11,5 +11,6 @@ import (
 type StudyResultsProviderInterface interface {
 	// GetLatestStudyResults returns found=false when study-service does not
 	// expose the endpoint (HTTP 404) so mixed-version deployments degrade.
-	GetLatestStudyResults(ctx context.Context, tenantID, studyInstanceUID, modality string) (serviceTypes.StudyServiceLatestResults, bool, error)
+	// A non-empty label keeps only runs carrying it (case-insensitive).
+	GetLatestStudyResults(ctx context.Context, tenantID, studyInstanceUID, modality, label string) (serviceTypes.StudyServiceLatestResults, bool, error)
 }

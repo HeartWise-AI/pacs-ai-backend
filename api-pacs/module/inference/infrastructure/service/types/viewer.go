@@ -13,6 +13,9 @@ type GetStudyLatestModelResults struct {
 	StudyInstanceUID string
 	// Modality optionally filters by study-service modality (e.g. "angiogram").
 	Modality string
+	// Label optionally keeps only runs carrying it (case-insensitive): per
+	// model, the best labelled run and the labelled runs.
+	Label string
 }
 
 // StudyLatestModelResult joins one study-service latest result with the
@@ -51,12 +54,16 @@ type StudyLatestModelResult struct {
 	// BestRun is set on listed runs only: true for the run reported as the
 	// result (most eligible videos; the newest on a tie or unknown count).
 	BestRun *bool `json:"bestRun,omitempty"`
+	// Labels are the run's labels as typed, oldest first (PACS-447).
+	Labels []string `json:"labels"`
 }
 
 // StudyLatestModelResults is the viewer latest-results response.
 type StudyLatestModelResults struct {
 	StudyInstanceUID string                   `json:"studyInstanceUID"`
 	Results          []StudyLatestModelResult `json:"results"`
+	// Label is the label the results were restricted to; omitted without one.
+	Label *string `json:"label,omitempty"`
 }
 
 // GetProcessingRunExecutionReport scopes a report render to one tenant execution.

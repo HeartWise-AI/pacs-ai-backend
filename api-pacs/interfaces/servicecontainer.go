@@ -614,6 +614,7 @@ func (k *kernel) inferenceQueryServiceContainer() *inferenceService.InferenceQue
 		InferenceQuotaManagerInterface:    inferenceQuotaManager,
 		ProcessingResultProviderInterface: studyResults,
 		StudyResultsProvider:              studyResults,
+		RunLabelProvider:                  studyResults,
 		ModelReportRenderer:               dockerInferenceAPI,
 		ReportRenderTimeout:               reportRenderTimeout,
 		ReportMaxBytes:                    reportMaxBytes,

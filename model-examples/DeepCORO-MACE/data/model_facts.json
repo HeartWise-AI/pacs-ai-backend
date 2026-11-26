@@ -46,5 +46,6 @@
       "Interprétation": "Les valeurs sigmoid affichées ne sont pas des risques absolus étalonnés. Elles ne doivent pas modifier la surveillance, le traitement, la revascularisation ou le congé.",
       "Sorties_exploratoires": "Le décès cardiovasculaire ne comptait que quatre événements dans la cohorte de test. Cette sortie et les autres composantes à faible nombre d'événements doivent être considérées comme exploratoires."
     }
-  }
+  },
+  "automaticRunLabels": ["DIAGNOSTIC"]
 }

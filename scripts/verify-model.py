@@ -317,6 +317,37 @@ def validate_shared_helpers(directory: Path) -> str:
     return "Lifecycle and resource helpers match the model template"
 
 
+AUTOMATIC_RUN_LABELS_FACT = "automaticRunLabels"
+RUN_LABEL_MAX_LENGTH = 40
+
+
+def validate_model_facts(directory: Path) -> str:
+    """Optional top-level facts read by study-service (PACS-447).
+
+    ``automaticRunLabels`` names the labels study-service puts on every automatic
+    (ingestion) run of the model, for example ["DIAGNOSTIC"]; [] means none. A
+    model without the field gets DIAGNOSTIC when it reads angiograms and no
+    label otherwise.
+    """
+    facts = load_json_object(directory / "data" / "model_facts.json")
+    if AUTOMATIC_RUN_LABELS_FACT not in facts:
+        raise SkipCheck(f"No {AUTOMATIC_RUN_LABELS_FACT}: study-service applies its modality default")
+    labels = facts[AUTOMATIC_RUN_LABELS_FACT]
+    require(isinstance(labels, list), f"{AUTOMATIC_RUN_LABELS_FACT} must be a list of labels")
+    keys = set()
+    for label in labels:
+        require(isinstance(label, str), f"{AUTOMATIC_RUN_LABELS_FACT} entries must be text")
+        normalized = " ".join(label.split())
+        require(
+            0 < len(normalized) <= RUN_LABEL_MAX_LENGTH and normalized == label,
+            f"{AUTOMATIC_RUN_LABELS_FACT} entry {label!r} must be 1-{RUN_LABEL_MAX_LENGTH} "
+            "characters without surrounding or repeated whitespace",
+        )
+        require(label.casefold() not in keys, f"{AUTOMATIC_RUN_LABELS_FACT} repeats {label!r}")
+        keys.add(label.casefold())
+    return f"Automatic runs are labelled {labels or 'with nothing'}"
+
+
 def validate_openapi(directory: Path) -> str:
     openapi = load_json_object(directory / "docs" / "openapi.json")
     paths = openapi.get("paths")
@@ -375,6 +406,7 @@ def source_model_result(directory: Path, source_revision: str, run_tests: bool) 
             "release-contract", lambda: validate_release_contract(directory, source_revision)
         ),
         check_result("shared-helpers", lambda: validate_shared_helpers(directory)),
+        check_result("model-facts", lambda: validate_model_facts(directory)),
         check_result("openapi", lambda: validate_openapi(directory)),
         check_result("source-artifacts", lambda: validate_model_artifacts(directory)),
         check_result("model-tests", lambda: validate_model_tests(directory, run_tests)),
