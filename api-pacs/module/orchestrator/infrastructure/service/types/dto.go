@@ -41,6 +41,9 @@ type CreateMessageResponse struct {
 	// Citations says what each numeric marker "[n]" of the answer refers to;
 	// absent with an older chat backend or when the answer has no marker.
 	Citations []ChatCitation `json:"citations,omitempty"`
+	// AssistantMessageID is the chat backend's stored id of the answer; thumbs
+	// up/down on the answer are sent for it. Absent with an older chat backend.
+	AssistantMessageID string `json:"assistant_message_id,omitempty"`
 }
 
 // ChatCitation is the target of one "[index]" marker of a chat answer: a
@@ -131,6 +134,8 @@ type ChatResponse struct {
 	Activity *ChatActivity    `json:"activity,omitempty"`
 	// Citations is returned by the chat backend next to activity.
 	Citations []ChatCitation `json:"citations,omitempty"`
+	// MessageID is the chat backend's stored id of the answer (feedback targets it).
+	MessageID string `json:"message_id,omitempty"`
 }
 
 // MessageRequest represents a request to send a message

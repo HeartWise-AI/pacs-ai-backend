@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"encoding/json"
+	"net/url"
 
 	"api-pacs/module/orchestrator/infrastructure/service/types"
 )
@@ -22,4 +24,16 @@ type OrchestratorServiceInterface interface {
 
 	// GetChatProgress gets the steps so far of the chat request in flight for a thread
 	GetChatProgress(ctx context.Context, threadID string) (types.ChatProgressResponse, error)
+
+	// SubmitChatFeedback creates or replaces the caller's thumbs up/down on one chat answer
+	SubmitChatFeedback(ctx context.Context, threadID, messageID string, vote types.ChatFeedbackVote) (map[string]interface{}, error)
+
+	// RemoveChatFeedback removes the caller's vote on one chat answer
+	RemoveChatFeedback(ctx context.Context, threadID, messageID string) error
+
+	// ListChatFeedback lists the workspace's votes on chat answers (admin panel, feedback.view)
+	ListChatFeedback(ctx context.Context, query url.Values) (json.RawMessage, error)
+
+	// CountChatFeedback counts the workspace's votes on chat answers (admin panel, feedback.view)
+	CountChatFeedback(ctx context.Context, query url.Values) (json.RawMessage, error)
 }

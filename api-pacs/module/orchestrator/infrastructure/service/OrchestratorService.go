@@ -31,6 +31,9 @@ type OrchestratorService struct {
 	OrchestratorAPIURL     string
 	OrchestratorClient     *http.Client
 	ThreadsByID            map[string]*entity.Thread
+	// ChatFeedbackServiceToken authenticates the admin panel's reads of chat
+	// feedback (CHAT_FEEDBACK_SERVICE_TOKEN, shared with the chat backend).
+	ChatFeedbackServiceToken string
 }
 
 // extractBearerTokenFromContext extracts the bearer token from context
@@ -257,6 +260,8 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 		Error:    pythonResponse.Error,
 		Activity: pythonResponse.Activity,
 		Citations: pythonResponse.Citations,
+		// The stored id of the answer: chat feedback targets it.
+		AssistantMessageID: pythonResponse.MessageID,
 		// Also maintain backward compatibility fields
 		MessageID:   messageID,
 		Content:     request.Content,
