@@ -15,7 +15,7 @@ import download_model  # noqa: E402
 import probe_fixtures as pf  # noqa: E402
 from utils.resource_config import load_model_info, model_info_payload  # noqa: E402
 
-REVISION = "badd718a6e26be24c9ad2dd3c911160a7d4fbe06"
+REVISION = "7d35c2e75b8013097c9bb4a578750434e9e10be2"
 # /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/SHA256SUMS
 NAS_SHA256SUMS = {
     "aco/best_model.pth": "49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026",
@@ -27,7 +27,7 @@ NAS_SHA256SUMS = {
 def test_manifest_and_runtime_configuration_identify_the_same_checkpoints():
     config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
-    assert manifest["version"] == "1.2.1"
+    assert manifest["version"] == "1.3.0"
     assert manifest["provenance"] == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,
@@ -58,8 +58,12 @@ def _fake_release(tmp_path: Path, probes: bool) -> tuple[str, str]:
     frozen.write_bytes(b"frozen")
     config["FrozenEncoder"]["sha256"] = hashlib.sha256(b"frozen").hexdigest()
     if probes:
-        pf.write_head(tmp_path / config["ProbeDirectory"], "shd", ["SHD"], {"SHD": 0.1},
+        pf.write_head(tmp_path / config["ProbeDirectory"], "shd_clean", ["SHD"], {"SHD": 0.1},
                       encoder_sha256=config["FrozenEncoder"]["sha256"])
+        probe_dir = tmp_path / config["ProbeDirectory"]
+        files = sorted(p for p in probe_dir.rglob("*") if p.is_file())
+        (probe_dir / "SHA256SUMS").write_text("".join(
+            f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(probe_dir).as_posix()}\n" for p in files))
     (tmp_path / "config.json").write_text(json.dumps(config))
     (tmp_path / "encoder_config.json").write_text((ROOT / "models/encoder_config.json").read_text())
     aco = config["Checkpoints"]["aco"]
@@ -67,13 +71,17 @@ def _fake_release(tmp_path: Path, probes: bool) -> tuple[str, str]:
 
 
 @pytest.mark.parametrize("probes", [False, True])
-def test_every_pinned_file_is_verified(tmp_path, probes):
+def test_every_pinned_file_is_verified(tmp_path, probes, monkeypatch):
     path, sha = _fake_release(tmp_path, probes)
+    from models import dinov3_bank
+    # the fake release's frozen encoder stands in for base/epoch_030.pt, which the bank pins by hash
+    monkeypatch.setattr(dinov3_bank, "ENCODER_SHA256", hashlib.sha256(b"frozen").hexdigest())
     verified = download_model.verify_all(tmp_path, path, sha)
     names = {p.relative_to(tmp_path).as_posix() for p in verified}
     assert any(n.endswith("acco_vs_aico/best_model.pth") for n in names)
     assert any(n.endswith("base/epoch_030.pt") for n in names) is probes
-    assert any(n.endswith("shd/head.json") for n in names) is probes
+    assert any(n.endswith("shd_clean/head.json") for n in names) is probes
+    assert any(n.endswith("probes/SHA256SUMS") for n in names) is probes
 
     (tmp_path / "acs_ft20_dinov3_siglip2_epoch030/acco_vs_aico/best_model.pth").write_bytes(b"other")
     with pytest.raises(ValueError, match="SHA-256 mismatch"):

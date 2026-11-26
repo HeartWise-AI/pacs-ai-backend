@@ -59,7 +59,7 @@ class FakeClassifiers(torch.nn.Module):
 def served(monkeypatch, tmp_path):
     """A loaded service with the two fine-tuned heads and three synthetic probe heads."""
     pf.standard_heads(tmp_path)
-    probes = discover_probes(tmp_path, pf.ENCODER_CONFIG, pf.FROZEN_SHA256)
+    probes = discover_probes(tmp_path, pf.FROZEN_SHA256)
     fake = FakeClassifiers({"aco": 0.0, "acco_vs_aico": 0.0})
     monkeypatch.setattr(CustomPredictionService, "is_initialized", True)
     monkeypatch.setattr(CustomPredictionService, "load_model", lambda self, config: None)
@@ -87,12 +87,13 @@ def test_one_ecg_returns_every_head_self_described(client, served):
     data = body["data"]
     heads = data["predictions"]["heads"]
     ids = [h["id"] for h in heads]
-    assert ids == ["aco", "acco_vs_aico", "LVEF_le40", "Sinusal", "Afib", "Left bundle branch block", "SHD"]
+    assert ids == ["aco", "acco_vs_aico", *pf.PATTERNS, "LVEF<=40", "SHD"]
     assert all(set(h) == FIELDS for h in heads)
     aco, acco = heads[0], heads[1]
     assert aco["probability"] == 0.4 and aco["threshold"] == ACO_T and aco["positive"] is True
     assert acco["applicable"] is True and acco["positive"] is True and acco["applicableWhen"] == "aco"
-    patterns = [h for h in heads if h["head"] == "patterns"]
+    patterns = [h for h in heads if h["head"] == "ecg77_clean"]
+    assert len(patterns) == 77
     assert all(h["threshold"] is None and h["positive"] is None and h["task"] == "multilabel" for h in patterns)
     assert next(h for h in heads if h["id"] == "SHD")["kind"] == "linear-probe"
     assert data["predictions"]["input"]["source"] == "waveform"
@@ -108,9 +109,9 @@ def test_acco_vs_aico_is_not_interpreted_when_aco_is_negative(client, served):
 
 
 def test_heads_filter_returns_only_the_named_heads_and_their_parents(client, served):
-    request = _waveform_request("JSON", additionalMetadata={"heads": ["acco_vs_aico", "patterns"]})
+    request = _waveform_request("JSON", additionalMetadata={"heads": ["acco_vs_aico", "ecg77_clean"]})
     heads = client.post("/inference/predict", json=request).json()["data"]["predictions"]["heads"]
-    assert [h["id"] for h in heads] == ["aco", "acco_vs_aico", "Sinusal", "Afib", "Left bundle branch block"]
+    assert [h["id"] for h in heads] == ["aco", "acco_vs_aico", *pf.PATTERNS]
     bad = client.post("/inference/predict", json=_waveform_request("JSON", additionalMetadata={"heads": ["nope"]}))
     assert bad.status_code == 500 and "Unknown head" in bad.json()["message"]
 
@@ -130,7 +131,7 @@ def test_no_readable_ecg_gives_the_no_ecg_answer(client, served):
                                       (0.050649, 0.61555), (0.99999, 0.00001)])
 def test_render_report_equals_html_mode_predict(client, served, aco, acco):
     served.logits.update(aco=_logit(aco), acco_vs_aico=_logit(acco))
-    for extra in ({}, {"additionalMetadata": {"heads": ["aco", "LVEF_le40", "patterns"]}}):
+    for extra in ({}, {"additionalMetadata": {"heads": ["aco", "LVEF<=40", "ecg77_clean"]}}):
         stored = client.post("/inference/predict", json=_waveform_request("JSON", **extra)).json()["data"]
         html = client.post("/inference/predict", json=_waveform_request("HTML", **extra)).json()["data"]["htmlBase64"]
         rendered = client.post("/inference/render-report", json={"result": json.loads(json.dumps(stored))})
@@ -187,7 +188,7 @@ def test_model_info_advertises_render_report(client):
     assert data["modelId"] == "DeepECG_CLIP_DINOv3"
 
 
-HCM_T = 0.0027414804009191847   # hcm_clean cutoff at model revision badd718
+HCM_T = 0.0027414804009191847   # hcm_clean cutoff (model revisions badd718 and 7d35c2e)
 
 
 @pytest.mark.parametrize("p,positive", [(0.0027420, True), (0.0027449, True), (0.0027410, False),

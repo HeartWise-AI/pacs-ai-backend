@@ -4,12 +4,12 @@
   "domainName": "Cardiology",
   "stage": "ai_inference",
   "modality": "ECG",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "provenance": {
     "sourceRepository": "HeartWise-AI/pacs-ai-backend",
     "sourceRevision": null,
     "modelRepository": "heartwise/deepecg_clip_dinov3_acs",
-    "modelRevision": "badd718a6e26be24c9ad2dd3c911160a7d4fbe06",
+    "modelRevision": "7d35c2e75b8013097c9bb4a578750434e9e10be2",
     "weightsPath": "acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth",
     "weightsSha256": "49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026"
   },
