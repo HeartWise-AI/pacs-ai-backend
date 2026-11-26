@@ -1,0 +1,8 @@
+__pycache__
+.env
+
+# Locally downloaded model checkpoints (including nested version directories).
+*.pt
+hf_token.txt
+*.pth
+models/acs_ft20_dinov3_siglip2_epoch030/

@@ -1,0 +1,940 @@
+{
+  "openapi": "3.0.2",
+  "info": {
+    "title": "DeepECG-CLIP-DINOv3 Inference API",
+    "description": "Research-only 12-lead ECG model (DINOv3 ViT-B/16, DeepECG-CLIP pretraining): acute coronary occlusion and complete vs incomplete occlusion, plus any frozen linear-probe heads shipped with the weights. One ECG per request; every head is returned unless additionalMetadata.heads names a subset. Not for clinical use.",
+    "termsOfService": "https://github.com/HeartWise-AI",
+    "contact": {
+      "name": "HeartWise AI",
+      "email": "hello@heartwise.ai"
+    },
+    "version": "1.1.0"
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "Container reverse proxy"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Direct local API"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Inference",
+      "description": "Inference service"
+    }
+  ],
+  "paths": {
+    "/inference/predict": {
+      "post": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Predict",
+        "description": "Creates a prediction request",
+        "requestBody": {
+          "description": "Prediction request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/PredictResponse"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/render-report": {
+      "post": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Render report",
+        "description": "HTML report of a stored JSON-mode result, the same document HTML-mode predict returns for that prediction. CPU only: no model load, no forward pass, no GPU; does not count as model activity. Nothing stored is copied into the page: the numbers are checked and the report is rendered from them, and a result whose values or text are not what this model version writes for those numbers is refused. Body at most 64 KB.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenderReportRequest"
+              },
+              "example": {
+                "result": {
+                  "diagnosis": "DeepECG-CLIP-DINOv3: occlusion suspected (ACO probability 0.421, threshold 0.0506); complete (ACCO) more likely (ACCO probability 0.703); input: waveform | research use only, not a clinical diagnosis",
+                  "predictions": {
+                    "heads": [
+                      {
+                        "id": "aco",
+                        "head": "aco",
+                        "label": "Acute coronary occlusion (ACO)",
+                        "description": "Acute coronary occlusion (complete or incomplete) vs no occlusion on the catheterization that followed the ECG (ACS cohort v6). Fine-tuned DINOv3, top 2 blocks.",
+                        "task": "binary",
+                        "kind": "fine-tuned",
+                        "probability": 0.4213,
+                        "threshold": 0.05062838,
+                        "positive": true,
+                        "applicable": true,
+                        "applicableWhen": null
+                      },
+                      {
+                        "id": "acco_vs_aico",
+                        "head": "acco_vs_aico",
+                        "label": "Complete (ACCO) vs incomplete (AICO) occlusion",
+                        "description": "Probability that an acute coronary occlusion is complete (ACCO) rather than incomplete (AICO). Trained on occlusion ECGs only; interpreted only when the aco output is positive.",
+                        "task": "binary",
+                        "kind": "fine-tuned",
+                        "probability": 0.7032,
+                        "threshold": 0.6155858,
+                        "positive": true,
+                        "applicable": true,
+                        "applicableWhen": "aco"
+                      }
+                    ],
+                    "input": {
+                      "source": "waveform",
+                      "description": "DICOM 12-lead waveform, drawn with the training renderer"
+                    },
+                    "notes": "Probabilities are model outputs, not calibrated risks. Each threshold is the Youden point of its validation set; an output without a threshold gives a probability only (positive is null). An output with applicableWhen is only interpreted when that output is positive."
+                  },
+                  "modelRecommendations": {
+                    "en": "<strong>Acute coronary occlusion suspected (probability 0.421).</strong> The model output is above the research threshold; complete occlusion (ACCO) more likely (probability 0.703). Correlate with symptoms, serial ECGs and troponin. Research use only: do not change management on the basis of this output.",
+                    "fr": "<strong>Occlusion coronarienne aiguë suspectée (probabilité 0.421).</strong> La sortie du modèle dépasse le seuil de recherche ; occlusion complète (ACCO) plus probable (probabilité 0.703). Corréler avec les symptômes, les ECG sériés et la troponine. Usage en recherche seulement : ne pas modifier la prise en charge sur la base de ce résultat.",
+                    "presentable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Report rendered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/RenderReportResponse"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body larger than 64 KB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Body larger than 65536 bytes",
+                  "data": {},
+                  "errorCode": "PAYLOAD_TOO_LARGE"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Body is not JSON, or the result is not a JSON-mode result of this model version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Cannot render this result: diagnosis: is not what this model writes for these predictions",
+                  "data": {},
+                  "errorCode": "INVALID_RESULT"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-info": {
+      "get": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Get Model Info",
+        "description": "Get model info",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GetModelInfoResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Model info retrieved successfully",
+                  "data": {
+                    "modelId": "DeepECG_CLIP_DINOv3",
+                    "modelName": "DeepECG-CLIP-DINOv3",
+                    "domainName": "Cardiology",
+                    "stage": "ai_inference",
+                    "modality": "ECG",
+                    "version": "1.1.0",
+                    "provenance": {
+                      "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+                      "sourceRevision": null,
+                      "modelRepository": "heartwise/deepecg_clip_dinov3_acs",
+                      "modelRevision": "badd718a6e26be24c9ad2dd3c911160a7d4fbe06",
+                      "weightsPath": "acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth",
+                      "weightsSha256": "49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026"
+                    },
+                    "resources": {
+                      "gpuRequired": true,
+                      "residentMemoryMiB": 1400,
+                      "peakMemoryMiB": 2000,
+                      "maxConcurrentInferences": 1,
+                      "idleTimeoutSeconds": 600
+                    },
+                    "capabilities": {
+                      "renderReport": true
+                    },
+                    "dicomTargetLevel": "STUDY",
+                    "dicomUploadMin": 1,
+                    "dicomUploadMax": 4,
+                    "supportedDicomModalities": [
+                      "ECG",
+                      "DOC",
+                      "OT"
+                    ],
+                    "supportedDicomTags": [
+                      "*"
+                    ],
+                    "supportedAdditionalMetadata": [],
+                    "supportedOutputModes": [
+                      "HTML",
+                      "JSON"
+                    ],
+                    "approveFeedbackQuestionnaires": [
+                      {
+                        "id": "confidence",
+                        "type": "RADIO",
+                        "questionEn": "How confident are you that the ECG result is consistent with the clinical picture?",
+                        "questionFr": "À quel point êtes-vous confiant que le résultat de l'ECG concorde avec le tableau clinique ?",
+                        "answerOptionsEn": [
+                          {
+                            "id": "very",
+                            "answer": "Very confident"
+                          },
+                          {
+                            "id": "somewhat",
+                            "answer": "Somewhat confident"
+                          },
+                          {
+                            "id": "neutral",
+                            "answer": "Neutral"
+                          }
+                        ],
+                        "answerOptionsFr": [
+                          {
+                            "id": "very",
+                            "answer": "Très confiant"
+                          },
+                          {
+                            "id": "somewhat",
+                            "answer": "Assez confiant"
+                          },
+                          {
+                            "id": "neutral",
+                            "answer": "Neutre"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "comments",
+                        "type": "TEXT",
+                        "questionEn": "Any additional comments?",
+                        "questionFr": "Des commentaires supplémentaires ?",
+                        "answerOptionsEn": null,
+                        "answerOptionsFr": null
+                      }
+                    ],
+                    "rejectFeedbackQuestionnaires": [
+                      {
+                        "id": "reason",
+                        "type": "CHECKBOX",
+                        "questionEn": "Why do you disagree with the output?",
+                        "questionFr": "Pourquoi êtes-vous en désaccord avec le résultat ?",
+                        "answerOptionsEn": [
+                          {
+                            "id": "false_positive",
+                            "answer": "Occlusion flagged but not present"
+                          },
+                          {
+                            "id": "false_negative",
+                            "answer": "Occlusion present but not flagged"
+                          },
+                          {
+                            "id": "wrong_type",
+                            "answer": "Wrong occlusion type (complete vs incomplete)"
+                          },
+                          {
+                            "id": "quality",
+                            "answer": "ECG not read correctly (wrong page, poor quality)"
+                          },
+                          {
+                            "id": "other",
+                            "answer": "Other"
+                          }
+                        ],
+                        "answerOptionsFr": [
+                          {
+                            "id": "false_positive",
+                            "answer": "Occlusion signalée mais absente"
+                          },
+                          {
+                            "id": "false_negative",
+                            "answer": "Occlusion présente mais non signalée"
+                          },
+                          {
+                            "id": "wrong_type",
+                            "answer": "Mauvais type d'occlusion (complète ou incomplète)"
+                          },
+                          {
+                            "id": "quality",
+                            "answer": "ECG mal lu (mauvaise page, mauvaise qualité)"
+                          },
+                          {
+                            "id": "other",
+                            "answer": "Autre"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model-facts": {
+      "get": {
+        "tags": [
+          "Inference"
+        ],
+        "summary": "Get Model Facts",
+        "description": "Get model facts",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GetModelFactsResponse"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Model facts retrieved successfully",
+                  "data": {
+                    "en": {
+                      "Summary": {
+                        "Name": "DeepECG-CLIP-DINOv3",
+                        "Description": "Research ECG model from one 12-lead ECG: acute coronary occlusion (ACO) and complete (ACCO) vs incomplete (AICO) occlusion, from a DINOv3 ViT-B/16 encoder pretrained contrastively on MHI ECG images and reports. Frozen linear-probe heads on the same encoder are added from files when released.",
+                        "Developed_by": "HeartWise.AI / Montreal Heart Institute",
+                        "Version": "1.1.0"
+                      },
+                      "Mechanism": {
+                        "Outcome": "aco: acute coronary occlusion on the catheterization following the ECG (ACS cohort v6). acco_vs_aico: complete vs incomplete occlusion, among occlusions.",
+                        "Output": "One entry per head: probability (sigmoid), validation Youden threshold, positive flag. acco_vs_aico is interpreted only when aco is positive. Every available head is returned by default; additionalMetadata.heads selects a subset.",
+                        "Target_population": "Adults with a 12-lead resting ECG in the MHI acute coronary syndrome cohort (development population).",
+                        "Input_data_source": "One ECG per request, chosen from the study: DICOM 12-lead or general ECG waveform first, then an Encapsulated PDF holding a vector ECG (standard 3x4 + lead II rhythm layout), then a single-frame ECG image; earliest acquisition first.",
+                        "Input_data_type": "dicom",
+                        "Model_type": "Deep learning: DINOv3 ViT-B/16 (448x896 grayscale page, ImageNet normalisation); fine-tuned heads share the frozen first 10 blocks and run their own top 2 blocks and linear head.",
+                        "Supported_DICOM_modalities": "ECG (waveform), DOC (Encapsulated PDF), OT (secondary capture)"
+                      },
+                      "Performance": {
+                        "Test_set": "MHI ACS v6 held-out test split: 9,021 ECGs of 4,371 patients, 589 occlusions (327 ACCO, 262 AICO).",
+                        "aco": "AUROC 0.92 (95% CI 0.89-0.93), AUPRC 0.64, sensitivity 0.83, specificity 0.87, PPV 0.31, NPV 0.99 at threshold 0.0506 (clean renders); AUROC 0.90 on augmented renders.",
+                        "acco_vs_aico": "Among the 589 occlusions: AUROC 0.69 (0.62-0.76), sensitivity 0.56, specificity 0.72 at threshold 0.6156.",
+                        "Smartphone_photos": "300 photographs of test ECGs: any occlusion AUROC 0.89 (photo) vs 0.91 (native)."
+                      },
+                      "Uses_and_directions": {
+                        "General_use": "Research on ECG-based detection of acute coronary occlusion.",
+                        "Directions": "Send the ECG study (waveform preferred). Read each output as a model score against its threshold.",
+                        "Not_intended_use": "Diagnosis, triage or catheterization decisions; ruling out an acute coronary syndrome."
+                      },
+                      "Warnings_and_limitations": {
+                        "Research_only": "No regulatory clearance, no calibration analysis, no external validation.",
+                        "Input_fidelity": "Waveforms sampled at a multiple of 250 Hz give the training pixels exactly (training renderer, MUSE-era style); about 30% of training pages came from a later render style, on which outputs differ slightly. PDFs are redrawn from their vector traces (close, not identical). Images are used as they are and were only seen through training augmentation.",
+                        "Pretraining_overlap": "311 of 4,371 test patients have another ECG in the encoder's pretraining corpus; without them the aco AUROC is 0.90.",
+                        "Thresholds": "Youden points on the augmented validation split; no clinical operating point chosen.",
+                        "License": "Weights derive from Meta DINOv3 and are subject to the DINOv3 license."
+                      },
+                      "Artifact_provenance": {
+                        "Repository": "heartwise/deepecg_clip_dinov3_acs (NAS: /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030)",
+                        "Pinned_revision": "badd718a6e26be24c9ad2dd3c911160a7d4fbe06 (tag v1.1.0)",
+                        "Checkpoints": "aco/best_model.pth (sha256 49db22c3...9026), acco_vs_aico/best_model.pth (sha256 55091186...ba29); pretraining base/epoch_030.pt used only by frozen probes",
+                        "Training": "DeepECG-PNG commit 1f6fb84 (PR #224); pretraining W&B mhi_ai run zo59vdxk epoch 30; fine-tunes W&B project deepecg_dinov3_siglip2_finetune"
+                      }
+                    },
+                    "fr": {
+                      "Résumé": {
+                        "Nom": "DeepECG-CLIP-DINOv3",
+                        "Description": "Modèle ECG de recherche : occlusion coronarienne aiguë (OCA) et occlusion complète (ACCO) ou incomplète (AICO), à partir d'un ECG 12 dérivations.",
+                        "Version": "1.1.0"
+                      },
+                      "Performance": {
+                        "OCA": "ASC 0,92 (IC 95 % 0,89-0,93), sensibilité 0,83, spécificité 0,87 au seuil 0,0506 (test ICM, 9 021 ECG).",
+                        "ACCO_vs_AICO": "ASC 0,69 (0,62-0,76) parmi les 589 occlusions."
+                      },
+                      "Avertissements": {
+                        "Recherche": "Usage en recherche seulement ; aucune autorisation réglementaire, aucune validation externe.",
+                        "Entrées": "Le tracé DICOM est l'entrée la plus fidèle ; le PDF vectoriel est redessiné ; l'image est utilisée telle quelle et est la moins validée."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4xx": {
+            "description": "Client side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          },
+          "5xx": {
+            "description": "Server side errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model/runtime": {
+      "get": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Get model runtime",
+        "description": "Return the current model residency and activity state without loading the model.",
+        "responses": {
+          "200": {
+            "description": "Current runtime state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model/load": {
+      "post": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Load model",
+        "description": "Load model weights into memory. Repeated calls are idempotent.",
+        "responses": {
+          "200": {
+            "description": "Model is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Model failed to load",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inference/model/unload": {
+      "post": {
+        "tags": [
+          "Model lifecycle"
+        ],
+        "summary": "Unload model",
+        "description": "Wait for active inference to finish, release model resources, and restart the supervised API process when needed.",
+        "responses": {
+          "200": {
+            "description": "Model is unloaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ModelRuntime"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PredictRequest": {
+        "required": [
+          "outputMode"
+        ],
+        "type": "object",
+        "properties": {
+          "seriesInstanceMetadata": {
+            "type": "object"
+          },
+          "additionalMetadata": {
+            "type": "object",
+            "nullable": true,
+            "description": "Optional. {\"heads\": [ids]} returns only these outputs: output ids (\"aco\", a probe head's output name) or head keys (a probe head folder, selecting all its outputs); an output with applicableWhen brings its parent along. Omitted: every output of the model."
+          },
+          "outputMode": {
+            "type": "string",
+            "enum": [
+              "HTML",
+              "JSON"
+            ],
+            "description": "Output mode"
+          },
+          "seriesInstanceImages": {
+            "type": "object",
+            "nullable": true,
+            "description": "Series and instance indices mapped to base64-encoded DICOM files of one ECG study: 12-lead/general ECG waveform (preferred), Encapsulated PDF with a vector ECG, or a single-frame ECG image.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "APIResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Operation successful"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "APIErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "Bad Request"
+          },
+          "errorCode": {
+            "type": "string",
+            "example": "BAD_REQUEST"
+          },
+          "data": {
+            "type": "object",
+            "example": {}
+          }
+        }
+      },
+      "GetModelInfoResponse": {
+        "type": "object",
+        "properties": {
+          "modelName": {
+            "type": "string",
+            "description": "Model display name",
+            "example": "DeepECG-CLIP-DINOv3"
+          },
+          "version": {
+            "type": "string",
+            "description": "Model version",
+            "example": "1.0.1"
+          },
+          "dicomTargetLevel": {
+            "type": "string",
+            "enum": [
+              "PATIENT",
+              "STUDY",
+              "SERIES",
+              "INSTANCE"
+            ],
+            "description": "DICOM target level",
+            "example": "STUDY"
+          },
+          "dicomUploadMin": {
+            "type": "integer",
+            "description": "Minimum number of DICOM instances to upload for inference",
+            "example": 1
+          },
+          "dicomUploadMax": {
+            "type": "integer",
+            "description": "Maximum number of DICOM instances to upload for inference",
+            "example": 10
+          },
+          "supportedDicomModalities": {
+            "type": "array",
+            "description": "Supported DICOM modalities",
+            "items": {
+              "type": "string",
+              "example": "ECG"
+            },
+            "example": [
+              "ECG"
+            ]
+          },
+          "supportedDicomTags": {
+            "type": "array",
+            "description": "Supported DICOM tags",
+            "items": {
+              "type": "string",
+              "example": "00200011"
+            },
+            "example": [
+              "*"
+            ]
+          },
+          "supportedAdditionalMetadata": {
+            "type": "array",
+            "description": "Supported additional metadata",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "example": "smoking"
+                },
+                "name": {
+                  "type": "string",
+                  "example": "Smoking"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "boolean",
+                    "number",
+                    "string"
+                  ],
+                  "example": "boolean"
+                },
+                "required": {
+                  "type": "boolean",
+                  "example": true
+                }
+              }
+            },
+            "example": []
+          },
+          "supportedOutputModes": {
+            "type": "array",
+            "description": "Supported output modes",
+            "items": {
+              "type": "string",
+              "enum": [
+                "HTML",
+                "JSON"
+              ],
+              "example": "JSON"
+            },
+            "example": [
+              "HTML",
+              "JSON"
+            ]
+          }
+        }
+      },
+      "GetModelFactsResponse": {
+        "type": "object",
+        "properties": {
+          "en": {
+            "type": "object",
+            "description": "Model facts in English. See example for more details."
+          }
+        }
+      },
+      "PredictResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "htmlBase64"
+            ],
+            "properties": {
+              "htmlBase64": {
+                "type": "string",
+                "description": "Base64-encoded DeepECG-CLIP-DINOv3 HTML research report."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "predictions",
+              "modelRecommendations"
+            ],
+            "properties": {
+              "predictions": {
+                "type": "object",
+                "description": "predictions.heads: one entry per output (id, head, label, description, task, kind, probability, threshold, positive, applicable, applicableWhen); predictions.input: which DICOM object was read."
+              },
+              "diagnosis": {
+                "type": "string",
+                "nullable": true
+              },
+              "modelRecommendations": {
+                "type": "object",
+                "nullable": true,
+                "properties": {
+                  "en": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "fr": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "presentable": {
+                    "type": "boolean",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ModelRuntime": {
+        "type": "object",
+        "required": [
+          "state",
+          "loaded",
+          "activeRequests",
+          "lastUsedAt"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "UNLOADED",
+              "LOADING",
+              "READY",
+              "BUSY",
+              "EVICTING",
+              "ERROR"
+            ]
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "activeRequests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lastUsedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "RenderReportRequest": {
+        "type": "object",
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "type": "object",
+            "description": "The data object of a JSON-mode predict response ({diagnosis, predictions, modelRecommendations}) as stored by the caller; the whole response envelope is accepted too. The stored no-ECG answer (predictions {}) renders the no-ECG page."
+          }
+        }
+      },
+      "RenderReportResponse": {
+        "type": "object",
+        "properties": {
+          "htmlBase64": {
+            "type": "string",
+            "description": "Base64-encoded HTML report, identical to HTML-mode predict for the same prediction"
+          },
+          "modelVersion": {
+            "type": "string",
+            "description": "Container version that rendered the report",
+            "example": "1.0.1"
+          }
+        }
+      }
+    }
+  }
+}

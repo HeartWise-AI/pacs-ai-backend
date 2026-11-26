@@ -18,6 +18,7 @@ CONVERTING_MODELS = [
     "DeepCORO-MACE",
     "DeepCORO-SCAD",
     "DeepCORO-SYNTAX",
+    "DeepECG-CLIP-DINOv3",
     "DeepCoro_CLIP/cardio_syntax",
     "DeepCoro_CLIP/generic",
     "DeepCoro_CLIP/procedure_view_classifier",
