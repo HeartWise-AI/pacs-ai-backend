@@ -19,7 +19,6 @@ REVISION = "7d35c2e75b8013097c9bb4a578750434e9e10be2"
 # /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/SHA256SUMS
 NAS_SHA256SUMS = {
     "aco/best_model.pth": "49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026",
-    "acco_vs_aico/best_model.pth": "55091186aaf36d66eab1fb048a1c4177fa1534bd25cc84ac4a0e4e413f74ba29",
     "base/epoch_030.pt": "335aaec39064d009c31710a96fe17d98450d85611c5bb0271ce3aad118149ae6",
 }
 
@@ -27,7 +26,7 @@ NAS_SHA256SUMS = {
 def test_manifest_and_runtime_configuration_identify_the_same_checkpoints():
     config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
-    assert manifest["version"] == "1.3.0"
+    assert manifest["version"] == "1.4.0"
     assert manifest["provenance"] == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,
@@ -42,6 +41,8 @@ def test_manifest_and_runtime_configuration_identify_the_same_checkpoints():
     assert pinned == {release + name: sha for name, sha in NAS_SHA256SUMS.items()}
     assert config["ProbeDirectory"] == release + "probes"
     assert list(config["Checkpoints"]) == list(json.loads((ROOT / "models/class_mapping.json").read_text()))
+    # acco_vs_aico (ACCO vs AICO) is not served since 1.4.0: not loaded, not downloaded, not reported
+    assert list(config["Checkpoints"]) == ["aco"]
     assert f'PACS_AI_MODEL_REVISION="{REVISION}"' in (ROOT / "Dockerfile.local").read_text()
 
 
@@ -78,12 +79,13 @@ def test_every_pinned_file_is_verified(tmp_path, probes, monkeypatch):
     monkeypatch.setattr(dinov3_bank, "ENCODER_SHA256", hashlib.sha256(b"frozen").hexdigest())
     verified = download_model.verify_all(tmp_path, path, sha)
     names = {p.relative_to(tmp_path).as_posix() for p in verified}
-    assert any(n.endswith("acco_vs_aico/best_model.pth") for n in names)
+    assert any(n.endswith("aco/best_model.pth") for n in names)
+    assert not any("acco_vs_aico" in n for n in names)
     assert any(n.endswith("base/epoch_030.pt") for n in names) is probes
     assert any(n.endswith("shd_clean/head.json") for n in names) is probes
     assert any(n.endswith("probes/SHA256SUMS") for n in names) is probes
 
-    (tmp_path / "acs_ft20_dinov3_siglip2_epoch030/acco_vs_aico/best_model.pth").write_bytes(b"other")
+    (tmp_path / "acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth").write_bytes(b"other")
     with pytest.raises(ValueError, match="SHA-256 mismatch"):
         download_model.verify_all(tmp_path, path, sha)
 

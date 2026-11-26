@@ -19,7 +19,6 @@ from utils.image_preprocessing import preprocess_ecg_image
 
 MODEL_DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 PRIMARY_HEAD = "aco"
-SECONDARY_HEAD = "acco_vs_aico"
 DECIMALS = 6          # stored precision; flags are read from the stored value (see _postprocess)
 LOW_THRESHOLD = 0.01  # below this cutoff a 3-decimal display cannot show which side of it a probability is
 SOURCE_LABELS = {
@@ -281,13 +280,9 @@ class CustomPredictionService(BasePredictionService):
         if PRIMARY_HEAD in ids:
             aco = preds[PRIMARY_HEAD]
             positive = self._positive(self._spec(PRIMARY_HEAD), preds)
-            text = (f"{'occlusion suspected' if positive else 'occlusion not suspected'} (ACO probability "
-                    f"{aco:.3f}, threshold {self._spec(PRIMARY_HEAD).threshold:.4f})")
-            if positive and SECONDARY_HEAD in ids:
-                kind = "complete (ACCO)" if self._positive(self._spec(SECONDARY_HEAD), preds) else "incomplete (AICO)"
-                text += f"; {kind} more likely (ACCO probability {preds[SECONDARY_HEAD]:.3f})"
-            parts.append(text)
-        others = [s for s in heads if s.id not in (PRIMARY_HEAD, SECONDARY_HEAD)]
+            parts.append(f"{'occlusion suspected' if positive else 'occlusion not suspected'} (ACO probability "
+                         f"{aco:.3f}, threshold {self._spec(PRIMARY_HEAD).threshold:.4f})")
+        others = [s for s in heads if s.id != PRIMARY_HEAD]
         flagged = [s for s in others if self._positive(s, preds)]
         if others:
             parts.append("other positive outputs: " + (", ".join(
@@ -300,21 +295,12 @@ class CustomPredictionService(BasePredictionService):
         if PRIMARY_HEAD in ids:
             aco = preds[PRIMARY_HEAD]
             if self._positive(self._spec(PRIMARY_HEAD), preds):
-                kind_en = kind_fr = ""
-                if SECONDARY_HEAD in ids:
-                    acco = preds[SECONDARY_HEAD]
-                    if self._positive(self._spec(SECONDARY_HEAD), preds):
-                        kind_en = f"; complete occlusion (ACCO) more likely (probability {acco:.3f})"
-                        kind_fr = f" ; occlusion complète (ACCO) plus probable (probabilité {acco:.3f})"
-                    else:
-                        kind_en = f"; incomplete occlusion (AICO) more likely (probability {acco:.3f})"
-                        kind_fr = f" ; occlusion incomplète (AICO) plus probable (probabilité {acco:.3f})"
                 en = (f"<strong>Acute coronary occlusion suspected (probability {aco:.3f}).</strong> "
-                      f"The model output is above the research threshold{kind_en}. Correlate with symptoms, "
+                      "The model output is above the research threshold. Correlate with symptoms, "
                       "serial ECGs and troponin. Research use only: do not change management on the basis "
                       "of this output.")
                 fr = (f"<strong>Occlusion coronarienne aiguë suspectée (probabilité {aco:.3f}).</strong> "
-                      f"La sortie du modèle dépasse le seuil de recherche{kind_fr}. Corréler avec les symptômes, "
+                      "La sortie du modèle dépasse le seuil de recherche. Corréler avec les symptômes, "
                       "les ECG sériés et la troponine. Usage en recherche seulement : ne pas modifier la prise "
                       "en charge sur la base de ce résultat.")
             else:
@@ -402,15 +388,13 @@ class CustomPredictionService(BasePredictionService):
  <div class=\"warn\"><p lang=\"en\"><strong>Research use only — not for clinical decision-making.</strong>
  The probabilities are model outputs, not calibrated risks; thresholds are validation Youden points. On the
  held-out Montreal Heart Institute ACS test set (9,021 ECGs, 589 occlusions) the ACO output reached an AUROC of
- 0.92 with a sensitivity of 0.83 and a specificity of 0.87 at its threshold; the ACCO vs AICO output reached an
- AUROC of 0.69 among occlusions only. No external validation and no calibration analysis yet. No regulatory
- clearance.</p>
+ 0.92 with a sensitivity of 0.83 and a specificity of 0.87 at its threshold. No external validation and no
+ calibration analysis yet. No regulatory clearance.</p>
  <p lang=\"fr\"><strong>Usage en recherche seulement — non destiné à la prise de décision clinique.</strong>
  Les probabilités sont des sorties du modèle et non des risques étalonnés ; les seuils sont des points de Youden de
  validation. Sur l'ensemble de test SCA de l'Institut de Cardiologie de Montréal (9 021 ECG, 589 occlusions), la
- sortie OCA a obtenu une ASC de 0,92, une sensibilité de 0,83 et une spécificité de 0,87 à son seuil ; la sortie
- ACCO/AICO a obtenu une ASC de 0,69 parmi les occlusions seulement. Pas encore de validation externe ni d'analyse
- d'étalonnage. Aucune autorisation réglementaire.</p></div>
+ sortie OCA a obtenu une ASC de 0,92, une sensibilité de 0,83 et une spécificité de 0,87 à son seuil. Pas encore
+ de validation externe ni d'analyse d'étalonnage. Aucune autorisation réglementaire.</p></div>
 </div></body></html>"""
 
     # -- report of a stored result ---------------------------------------------
