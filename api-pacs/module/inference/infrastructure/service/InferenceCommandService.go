@@ -2790,6 +2790,8 @@ func (service *InferenceCommandService) recordSkippedProcessingDispatch(
 	if !transition.Changed {
 		return false
 	}
+	// Before the usual finalization, which releases the reservation.
+	service.refundQuotaWhenNothingWasDispatched(ctx, transition.Run)
 	service.publishCommittedWorklistNotification(ctx, transition)
 	// The candidate was handled: an earlier dispatch error no longer applies.
 	if service.InferenceCommandRepositoryInterface != nil {
@@ -2800,6 +2802,33 @@ func (service *InferenceCommandService) recordSkippedProcessingDispatch(
 		}
 	}
 	return true
+}
+
+// refundQuotaWhenNothingWasDispatched gives a user's allowance back when the
+// run they requested ended with every execution skipped before any reached
+// study-service: no inference was accepted, as when the dispatch failed. The
+// later release of the same reservation then finds nothing to release.
+func (service *InferenceCommandService) refundQuotaWhenNothingWasDispatched(ctx context.Context, run entity.InferenceIngestionProcessingRun) {
+	if run.Phase != entity.InferenceIngestionProcessingRunPhaseTerminal || run.StartedAt != nil || run.RequestedByUserID == nil {
+		return
+	}
+	userID := strings.TrimSpace(*run.RequestedByUserID)
+	if userID == "" {
+		return
+	}
+	executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, run.TenantID, run.ID)
+	if err != nil || len(executions) == 0 {
+		return
+	}
+	for index := range executions {
+		if executions[index].Status != entity.InferenceIngestionProcessingJobStatusSkipped || executions[index].HasStudyServiceJob() {
+			return
+		}
+	}
+	service.finishInferenceQuotaReservation(&types.InferenceQuotaReservation{
+		TenantID: run.TenantID, UserID: userID, ReservationID: run.ID, Units: 1,
+		Kind: types.InferenceQuotaReservationQueued,
+	}, true)
 }
 
 func (service *InferenceCommandService) recordFailedProcessingDispatch(ctx context.Context, candidate entity.InferenceIngestionCandidate, job entity.InferenceIngestionJob, dispatchRequest types.DispatchStudyRequest, dispatchErr error) {

@@ -494,3 +494,29 @@ func TestGetStudyLatestModelResultsOmitsRunsWhenStudyServiceListsNone(t *testing
 		require.NotContains(t, string(payload), field)
 	}
 }
+
+func TestBoundedListedRunsNeverCutsTheBestRun(t *testing.T) {
+	runs := func(jobIDs ...string) []serviceTypes.StudyServiceLatestResult {
+		listed := make([]serviceTypes.StudyServiceLatestResult, 0, len(jobIDs))
+		for _, jobID := range jobIDs {
+			listed = append(listed, serviceTypes.StudyServiceLatestResult{JobID: jobID})
+		}
+		return listed
+	}
+	jobIDs := func(listed []serviceTypes.StudyServiceLatestResult) []string {
+		ids := make([]string, 0, len(listed))
+		for _, run := range listed {
+			ids = append(ids, run.JobID)
+		}
+		return ids
+	}
+
+	// The best run is older than the newest runs that fit: it takes the last place.
+	require.Equal(t, []string{"new-1", "new-2", "best"},
+		jobIDs(boundedListedRuns(runs("new-1", "new-2", "new-3", " ", "best", "old"), "best", 3)))
+	// Within the limit nothing moves, and runs without a job ID are dropped.
+	require.Equal(t, []string{"new-1", "best", "new-3"},
+		jobIDs(boundedListedRuns(runs("new-1", "", "best", "new-3", "old"), "best", 3)))
+	require.Equal(t, []string{"a", "b"}, jobIDs(boundedListedRuns(runs("a", "b"), "missing", 20)))
+	require.Empty(t, boundedListedRuns(nil, "best", 20))
+}

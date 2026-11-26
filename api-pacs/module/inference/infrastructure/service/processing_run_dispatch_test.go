@@ -939,3 +939,87 @@ func TestOtherBadRequestsStillFailTheDispatch(t *testing.T) {
 	require.Contains(t, noSeriesForModalitySkipMessage("angiogram"), "angiogram")
 	require.NotEmpty(t, noSeriesForModalitySkipMessage(" "))
 }
+
+// A user who requested a run on a study with nothing to analyze gets the
+// allowance back, as when the dispatch failed: no inference was accepted.
+func TestSkippedDispatchRefundsQuotaOnlyWhenNothingWasDispatched(t *testing.T) {
+	userID := "user-a"
+	jobID := "study-job-1"
+	tests := []struct {
+		name       string
+		executions []entity.InferenceIngestionProcessingJob
+		refunded   int
+	}{
+		{
+			name: "every execution skipped before dispatch",
+			executions: []entity.InferenceIngestionProcessingJob{
+				{ID: "execution-1", Status: entity.InferenceIngestionProcessingJobStatusSkipped},
+			},
+			refunded: 1,
+		},
+		{
+			name: "another execution reached study-service",
+			executions: []entity.InferenceIngestionProcessingJob{
+				{ID: "execution-1", Status: entity.InferenceIngestionProcessingJobStatusSkipped},
+				{ID: "execution-2", Status: entity.InferenceIngestionProcessingJobStatusSkipped, StudyServiceJobID: &jobID},
+			},
+		},
+		{
+			name: "another execution failed",
+			executions: []entity.InferenceIngestionProcessingJob{
+				{ID: "execution-1", Status: entity.InferenceIngestionProcessingJobStatusSkipped},
+				{ID: "execution-2", Status: entity.InferenceIngestionProcessingJobStatusFailed},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			processingRunID := "run-1"
+			runRepository := &processingRunCallbackRunRepository{
+				selectedExecution: entity.InferenceIngestionProcessingJob{
+					ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusPending,
+				},
+				transitionResult: &repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult{
+					Outcome: "applied", Changed: true,
+					Run: entity.InferenceIngestionProcessingRun{
+						ID: processingRunID, TenantID: "tenant-a", RequestedByUserID: &userID,
+						Phase: entity.InferenceIngestionProcessingRunPhaseTerminal,
+					},
+				},
+				processingRunAggregationRepository: &processingRunAggregationRepository{executions: test.executions},
+			}
+			quotaManager := &recordingInferenceQuotaManager{}
+			service := &InferenceCommandService{
+				InferenceCommandRepositoryInterface:       &guardedDispatchCommandRepository{},
+				InferenceProcessingRunRepositoryInterface: runRepository,
+				InferenceQuotaManagerInterface:            quotaManager,
+			}
+
+			skipped := service.recordSkippedProcessingDispatch(
+				context.Background(),
+				entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+				entity.InferenceIngestionJob{ModelName: "model-one"},
+				serviceTypes.DispatchStudyRequest{ProcessingRunID: &processingRunID, Modality: "angiogram"},
+				noSeriesForModalitySkipMessage("angiogram"),
+			)
+
+			require.True(t, skipped)
+			require.Len(t, quotaManager.refunded, test.refunded)
+			if test.refunded > 0 {
+				require.Equal(t, processingRunID, quotaManager.refunded[0].ReservationID)
+				require.Equal(t, userID, quotaManager.refunded[0].UserID)
+			}
+			// The usual finalization still releases the reservation; after a
+			// refund the quota manager finds nothing left to release.
+			require.Len(t, quotaManager.released, 1)
+		})
+	}
+
+	// An automatic run has no requester and no reservation.
+	quotaManager := &recordingInferenceQuotaManager{}
+	service := &InferenceCommandService{InferenceQuotaManagerInterface: quotaManager}
+	service.refundQuotaWhenNothingWasDispatched(context.Background(), entity.InferenceIngestionProcessingRun{
+		ID: "run-auto", TenantID: "tenant-a", Phase: entity.InferenceIngestionProcessingRunPhaseTerminal,
+	})
+	require.Empty(t, quotaManager.refunded)
+}

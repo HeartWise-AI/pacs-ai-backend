@@ -78,9 +78,21 @@ func filterLatestResults(access accessEntity.Access, results types.StudyLatestMo
 	}
 	kept := make([]types.StudyLatestModelResult, 0, len(results.Results))
 	for _, result := range results.Results {
-		if result.ArtifactModelID != nil && access.AllowsModel(*result.ArtifactModelID) {
-			kept = append(kept, result)
+		if result.ArtifactModelID == nil || !access.AllowsModel(*result.ArtifactModelID) {
+			continue
 		}
+		// The listed runs are runs of the same model; one that resolves to
+		// another, disallowed registration is left out all the same.
+		if len(result.Runs) > 0 {
+			runs := make([]types.StudyLatestModelResult, 0, len(result.Runs))
+			for _, run := range result.Runs {
+				if run.ArtifactModelID != nil && access.AllowsModel(*run.ArtifactModelID) {
+					runs = append(runs, run)
+				}
+			}
+			result.Runs = runs
+		}
+		kept = append(kept, result)
 	}
 	results.Results = kept
 	return results

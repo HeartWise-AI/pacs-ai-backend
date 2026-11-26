@@ -290,10 +290,7 @@ func (service *InferenceQueryService) GetStudyLatestModelResults(ctx context.Con
 			continue
 		}
 		item := join(result)
-		for _, listed := range result.Runs {
-			if strings.TrimSpace(listed.JobID) == "" || len(item.Runs) >= maximumViewerResultRuns {
-				continue
-			}
+		for _, listed := range boundedListedRuns(result.Runs, item.StudyServiceJobID, maximumViewerResultRuns) {
 			// A listed run is a completed run of the same model and modality.
 			listed.ModelName, listed.Modality, listed.Status = result.ModelName, result.Modality, result.Status
 			run := join(listed)
@@ -304,6 +301,31 @@ func (service *InferenceQueryService) GetStudyLatestModelResults(ctx context.Con
 		response.Results = append(response.Results, item)
 	}
 	return response, nil
+}
+
+// boundedListedRuns keeps the listed runs that have a job ID, in order, cut to
+// limit. The reported (best) run is never cut: when it lies beyond the limit
+// it takes the last place.
+func boundedListedRuns(listed []types.StudyServiceLatestResult, bestJobID string, limit int) []types.StudyServiceLatestResult {
+	kept := make([]types.StudyServiceLatestResult, 0, len(listed))
+	bestKept := false
+	for _, run := range listed {
+		jobID := strings.TrimSpace(run.JobID)
+		if jobID == "" {
+			continue
+		}
+		isBest := jobID == bestJobID
+		switch {
+		case len(kept) < limit:
+			kept = append(kept, run)
+		case isBest && !bestKept && limit > 0:
+			kept[limit-1] = run
+		default:
+			continue
+		}
+		bestKept = bestKept || isBest
+	}
+	return kept
 }
 
 // nonNegativeIntPointer copies a recorded count; a missing or negative one is nil.
