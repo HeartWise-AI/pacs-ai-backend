@@ -66,6 +66,10 @@ func TestChatHistoryRefusesWithoutTokenOrSession(t *testing.T) {
 	if _, err := chatFeedbackService(server, "").ListChatThreads(orchestratorTestContext(), "1.2.3", 0); !errors.Is(err, ErrChatHistoryNotConfigured) {
 		t.Fatalf("want not configured, got %v", err)
 	}
+	// Without a session the answer is 401 even when the token is missing too.
+	if _, err := chatFeedbackService(server, "").ListChatThreads(context.Background(), "1.2.3", 0); !errors.Is(err, ErrChatHistoryNoSession) {
+		t.Fatalf("want no session, got %v", err)
+	}
 	noTenant := context.WithValue(context.Background(), iamTypes.UserIDCtx, "user-123")
 	if _, err := chatFeedbackService(server, "svc-token").ListChatThreads(noTenant, "1.2.3", 0); !errors.Is(err, ErrChatHistoryNoSession) {
 		t.Fatalf("want no session, got %v", err)
@@ -98,5 +102,24 @@ func TestChatHistoryMapsBackendStatuses(t *testing.T) {
 	status = http.StatusUnauthorized
 	if _, err := service.GetChatThreadHistory(orchestratorTestContext(), "t-1"); !errors.Is(err, ErrChatHistoryNotConfigured) {
 		t.Fatalf("want not configured, got %v", err)
+	}
+}
+
+func TestChatHistoryDoesNotFollowRedirects(t *testing.T) {
+	elsewhere := false
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		elsewhere = true
+	}))
+	defer other.Close()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/steal", http.StatusFound)
+	}))
+	defer server.Close()
+
+	if _, err := chatFeedbackService(server, "svc-token").ListChatThreads(orchestratorTestContext(), "1.2.3", 0); err == nil {
+		t.Fatal("a redirect must not be treated as a history response")
+	}
+	if elsewhere {
+		t.Fatal("the service token must not follow a redirect")
 	}
 }

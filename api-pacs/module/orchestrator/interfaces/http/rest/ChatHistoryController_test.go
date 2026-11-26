@@ -89,6 +89,7 @@ func TestGetChatThreadMessagesMapsErrors(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		controller.GetChatThreadMessages(recorder, chatHistoryThreadRequest("thread-1"))
 		require.Equal(t, status, recorder.Code, err.Error())
+		require.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
 	}
 }
 

@@ -44,13 +44,13 @@ func (service *OrchestratorService) GetChatThreadHistory(ctx context.Context, th
 }
 
 func (service *OrchestratorService) chatHistory(ctx context.Context, path string, query url.Values) (json.RawMessage, error) {
-	if service.ChatFeedbackServiceToken == "" {
-		return nil, ErrChatHistoryNotConfigured
-	}
 	userID := service.extractUserIDFromContext(ctx)
 	tenantID := service.extractTenantIDFromContext(ctx)
 	if userID == "" || tenantID == "" {
 		return nil, ErrChatHistoryNoSession
+	}
+	if service.ChatFeedbackServiceToken == "" {
+		return nil, ErrChatHistoryNotConfigured
 	}
 	ctx, cancel := context.WithTimeout(ctx, chatFeedbackTimeout)
 	defer cancel()
@@ -64,7 +64,10 @@ func (service *OrchestratorService) chatHistory(ctx context.Context, path string
 	req.Header.Set("X-Service-Token", service.ChatFeedbackServiceToken)
 	req.Header.Set("X-Pacs-User-Id", userID)
 	req.Header.Set("X-Pacs-Tenant-Id", tenantID)
-	resp, err := service.OrchestratorClient.Do(req)
+	// Never follow a redirect: it would carry the service token and identity headers elsewhere.
+	client := *service.OrchestratorClient
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

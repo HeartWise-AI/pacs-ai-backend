@@ -24,6 +24,8 @@ const (
 )
 
 func writeChatHistoryError(w http.ResponseWriter, err error) {
+	// Answers depend on the session: never cache them, errors included.
+	w.Header().Set("Cache-Control", "no-store")
 	switch {
 	case errors.Is(err, orchestratorService.ErrChatHistoryNotFound):
 		writeChatFeedback(w, http.StatusNotFound, "Conversation not found.", err.Error(), nil)
