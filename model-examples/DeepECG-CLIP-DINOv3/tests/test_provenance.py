@@ -15,7 +15,7 @@ import download_model  # noqa: E402
 import probe_fixtures as pf  # noqa: E402
 from utils.resource_config import load_model_info, model_info_payload  # noqa: E402
 
-REVISION = "5002fe0589debf8e8be7b43e79cafa5eaba49d9c"
+REVISION = "badd718a6e26be24c9ad2dd3c911160a7d4fbe06"
 # /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/SHA256SUMS
 NAS_SHA256SUMS = {
     "aco/best_model.pth": "49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026",
@@ -27,7 +27,7 @@ NAS_SHA256SUMS = {
 def test_manifest_and_runtime_configuration_identify_the_same_checkpoints():
     config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
-    assert manifest["version"] == "1.0.0"
+    assert manifest["version"] == "1.1.0"
     assert manifest["provenance"] == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,

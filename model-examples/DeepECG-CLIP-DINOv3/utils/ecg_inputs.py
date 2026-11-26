@@ -230,23 +230,24 @@ def _pdf_page(dicom: pydicom.Dataset) -> Image.Image:
 
 
 def _image_page(dicom: pydicom.Dataset) -> Image.Image:
+    """The page of a single-frame image object, decoded with the shared helper
+    (utils.dicom_pixels: high-bit data windowed to 8 bit, MONOCHROME1 inverted; 8-bit data unchanged)."""
+    from utils.dicom_pixels import dicom_display_pixels
+
     try:
-        pixels = np.asarray(dicom.pixel_array)
+        pixels = np.asarray(dicom_display_pixels(dicom))
     except Exception as e:
         raise EcgInputError(f"cannot decode the image ({type(e).__name__})") from None
-    photometric = str(getattr(dicom, "PhotometricInterpretation", "MONOCHROME2"))
+    photometric = str(getattr(dicom, "PhotometricInterpretation", "MONOCHROME2")).strip().upper()
+    if pixels.dtype != np.uint8:
+        raise EcgInputError(f"unsupported {photometric} image of {pixels.dtype} values")
     if pixels.ndim == 2:
-        pixels = pixels.astype(np.float64)
-        low, high = float(pixels.min()), float(pixels.max())
-        scaled = np.zeros_like(pixels) if high <= low else (pixels - low) / (high - low) * 255.0
-        if photometric == "MONOCHROME1":
-            scaled = 255.0 - scaled
-        return Image.fromarray(np.round(scaled).astype(np.uint8), mode="L")
+        return Image.fromarray(pixels, mode="L")
     if pixels.ndim == 3 and pixels.shape[-1] == 3:
         if photometric.startswith("YBR"):
             from pydicom.pixels import convert_color_space
             pixels = convert_color_space(pixels, photometric, "RGB")
-        return Image.fromarray(pixels.astype(np.uint8), mode="RGB")
+        return Image.fromarray(np.asarray(pixels, dtype=np.uint8), mode="RGB")
     raise EcgInputError("the image is not a single grayscale or RGB frame")
 
 

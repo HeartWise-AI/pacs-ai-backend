@@ -22,9 +22,24 @@ blocks are bit-identical, so the service runs those once per ECG and then each h
 
 ### Frozen linear probes (77 patterns, SHD, LVEF, AFib 5 y, HCM, ...)
 
-Not in this release: the fitted probes on the zo59vdxk encoder were not on the reachable disks
-(`/mnt/data1`, `/mnt/data2`); they are being copied to
-`/mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/probes/`.
+Since 1.1.0 the release serves six clean probes from `acs_ft20_dinov3_siglip2_epoch030/probes/`
+(fitted on frozen features of clean rendered pages, scored on clean MHI test pages; threshold = validation
+Youden; 95% CI = 1,000 resamples of 80% of the patients):
+
+| folder | outputs | test AUROC [95% CI] | threshold |
+|---|---|---|---|
+| `ecg77_clean` | 77 ECG patterns | 0.97 [0.97, 0.97] (macro) | probabilities only |
+| `shd_clean` | `SHD` | 0.77 [0.76, 0.78] | 0.5374 |
+| `lvef_le40_clean` | `LVEF<=40` | 0.89 [0.88, 0.90] | 0.1695 |
+| `lvef_lt50_clean` | `LVEF<50` | 0.87 [0.86, 0.88] | 0.2696 |
+| `afib_5y_clean` | `iAFib5` | 0.68 [0.65, 0.70] | 0.1113 |
+| `hcm_clean` | `confirmed HCM (vs rest)` | 0.71 [0.66, 0.75] | 0.0027 |
+
+Not served: the ACO and ACCO-vs-AICO probes (the fine-tunes above are better on the same task), the
+probes fitted on augmented pages (same output ids as the clean ones), and the 3-class HCM head (softmax).
+All 18 probe heads (clean and augmented, float64 copies, full provenance) are in the private Hugging Face
+repository `heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030`. Each served head reproduces its saved
+validation scores from the cached features within 3e-6.
 
 A probe head uses **the DeepECG_Docker head format, unchanged**: one folder per head with
 `config.json`, `head.json`, `thresholds.json` and `classifier.safetensors`, exactly the files of a
@@ -133,7 +148,7 @@ report of a stored result without loading the model (422 for a result this versi
 ## Weights
 
 Hugging Face `heartwise/deepecg_clip_dinov3_acs` (private), revision
-`5002fe0589debf8e8be7b43e79cafa5eaba49d9c` (tag `v1.0.0`), uploaded from the NAS release folder
+`badd718a6e26be24c9ad2dd3c911160a7d4fbe06` (tag `v1.1.0`), uploaded from the NAS release folder
 `/mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/` (same bytes; `SHA256SUMS` there):
 
 | file | SHA-256 |
@@ -172,5 +187,7 @@ copy instead (instructions at its top) and is for development only.
 
 ## Changelog
 
+- 1.1.0: six frozen linear-probe heads (77 patterns, SHD, LVEF<=40, LVEF<50, AFib 5 y, HCM) at
+  model revision `badd718`; image inputs decoded with the shared `utils/dicom_pixels.py` helper.
 - 1.0.0: first release: `aco` and `acco_vs_aico` fine-tunes, waveform / PDF / image inputs, probe
   heads in the DeepECG_Docker head format.
