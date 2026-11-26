@@ -58,9 +58,10 @@ def _fake_release(tmp_path: Path, probes: bool) -> tuple[str, str]:
     frozen.write_bytes(b"frozen")
     config["FrozenEncoder"]["sha256"] = hashlib.sha256(b"frozen").hexdigest()
     if probes:
-        pf.write_probe(tmp_path / config["ProbeDirectory"], "shd", "binary", ["SHD"], [0.1])
-        pf.write_sums(tmp_path / config["ProbeDirectory"])
+        pf.write_head(tmp_path / config["ProbeDirectory"], "shd", ["SHD"], {"SHD": 0.1},
+                      encoder_sha256=config["FrozenEncoder"]["sha256"])
     (tmp_path / "config.json").write_text(json.dumps(config))
+    (tmp_path / "encoder_config.json").write_text((ROOT / "models/encoder_config.json").read_text())
     aco = config["Checkpoints"]["aco"]
     return aco["path"], aco["sha256"]
 
@@ -72,6 +73,7 @@ def test_every_pinned_file_is_verified(tmp_path, probes):
     names = {p.relative_to(tmp_path).as_posix() for p in verified}
     assert any(n.endswith("acco_vs_aico/best_model.pth") for n in names)
     assert any(n.endswith("base/epoch_030.pt") for n in names) is probes
+    assert any(n.endswith("shd/head.json") for n in names) is probes
 
     (tmp_path / "acs_ft20_dinov3_siglip2_epoch030/acco_vs_aico/best_model.pth").write_bytes(b"other")
     with pytest.raises(ValueError, match="SHA-256 mismatch"):

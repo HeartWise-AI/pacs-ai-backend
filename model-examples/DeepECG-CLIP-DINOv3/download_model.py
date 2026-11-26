@@ -3,10 +3,10 @@
 The release manifest (data/model_info.json provenance) names one checkpoint, the ACO head
 (``--weights-path``/``--weights-sha256``). The other fine-tuned heads are pinned in
 models/config.json ("Checkpoints": path + SHA-256) and come from the same immutable model
-revision. Frozen linear probes, when the revision has any under "ProbeDirectory", are
-verified against that directory's SHA256SUMS, and then the frozen pretraining encoder they
-read ("FrozenEncoder", pinned by SHA-256) is downloaded too. Every file is verified; a missing
-file or a different byte fails the build.
+revision. Frozen linear-probe heads (DeepECG_Docker head folders under "ProbeDirectory") come
+from the same pinned revision and are validated as the service loads them; when there are any,
+the frozen pretraining encoder they read ("FrozenEncoder", pinned by SHA-256) is downloaded too.
+A missing file, an invalid head or a different checkpoint byte fails the build.
 
 Source of the files: Hugging Face ``heartwise/deepecg_clip_dinov3_acs`` (private), uploaded
 from the NAS release folder /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/
@@ -59,10 +59,13 @@ def _config(output_dir: Path) -> dict:
 
 
 def probe_files(output_dir: Path) -> list[Path]:
-    """The verified probe files of the download (none when the revision has no probes)."""
-    from models.probes import verify_probe_files
+    """The files of every valid probe head of the download (none when the revision has none)."""
+    from models.probes import REQUIRED_FILES, discover_probes
 
-    return verify_probe_files(output_dir / _config(output_dir)["ProbeDirectory"])
+    directory = output_dir / _config(output_dir)["ProbeDirectory"]
+    encoder_config = json.loads((output_dir / "encoder_config.json").read_text(encoding="utf-8"))
+    probes = discover_probes(directory, encoder_config, frozen_encoder(output_dir)[1])
+    return [directory / probe.key / name for probe in probes for name in REQUIRED_FILES]
 
 
 def frozen_encoder(output_dir: Path) -> tuple[str, str]:

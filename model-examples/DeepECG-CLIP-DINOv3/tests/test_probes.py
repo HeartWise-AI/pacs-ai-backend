@@ -1,6 +1,7 @@
-"""Frozen linear probes are discovered from files, verified, and computed like StandardScaler + LogisticRegression."""
+"""Frozen linear-probe heads load from DeepECG_Docker head folders and compute its probabilities."""
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -15,59 +16,57 @@ import probe_fixtures as pf  # noqa: E402
 from models.probes import discover_probes  # noqa: E402
 
 
-def test_probes_are_discovered_and_compute_scaled_logistic_outputs(tmp_path):
-    pf.standard_probes(tmp_path)
-    probes = {p.id: p for p in discover_probes(tmp_path)}
-    assert sorted(probes) == ["hcm3", "lvef_le_40", "patterns"]
-    assert [o.id for o in probes["patterns"].outputs] == ["patterns.sinus", "patterns.afib", "patterns.lbbb"]
-    assert [o.id for o in probes["hcm3"].outputs] == ["hcm3.0", "hcm3.1", "hcm3.2"]
+def _discover(root):
+    return discover_probes(root, pf.ENCODER_CONFIG, pf.FROZEN_SHA256)
 
-    from safetensors.torch import load_file
-    t = load_file(str(tmp_path / "patterns" / "classifier.safetensors"))
-    x = torch.randn(2, 1536, dtype=torch.float64)
-    expected = torch.sigmoid(((x - t["scaler_mean"]) / t["scaler_scale"]) @ t["weight"].T + t["bias"])
-    torch.testing.assert_close(probes["patterns"](x), expected)
-    multiclass = probes["hcm3"](x)
-    torch.testing.assert_close(multiclass.sum(dim=1), torch.ones(2, dtype=torch.float64))
+
+def test_heads_are_discovered_and_compute_deepecg_docker_probabilities(tmp_path):
+    pf.standard_heads(tmp_path)
+    probes = {p.key: p for p in _discover(tmp_path)}
+    assert sorted(probes) == ["lvef_le_40", "patterns", "shd"]
+    assert probes["patterns"].thresholds == {} and probes["shd"].thresholds == {"SHD": 0.5}
+    x = torch.randn(2, 1536)
+    t = probes["lvef_le_40"].tensors
+    # DeepECG_Docker models/siglip2_wrapper.py _DeepECG_SigLIP2_Bank.probabilities
+    expected = torch.sigmoid(((x - t["mean"]) / t["scale"]) @ t["weight"].T + t["bias"])
+    torch.testing.assert_close(probes["lvef_le_40"](x), expected)
+    t = probes["patterns"].tensors
+    torch.testing.assert_close(probes["patterns"](x), torch.sigmoid(x @ t["weight"].T + t["bias"]))
 
 
 def test_no_probe_directory_means_no_probes(tmp_path):
-    assert discover_probes(tmp_path / "absent") == []
+    assert _discover(tmp_path / "absent") == []
 
 
-def test_a_changed_or_unlisted_file_fails_verification(tmp_path):
-    pf.standard_probes(tmp_path)
-    (tmp_path / "lvef_le_40" / "head.json").write_text('{"id": "lvef_le_40"}')
-    with pytest.raises(ValueError, match="SHA-256 mismatch"):
-        discover_probes(tmp_path)
-    pf.write_sums(tmp_path)
-    (tmp_path / "extra.txt").write_text("x")
-    with pytest.raises(ValueError, match="does not list exactly"):
-        discover_probes(tmp_path)
+def _edit(folder: Path, name: str, change) -> None:
+    document = json.loads((folder / name).read_text())
+    change(document)
+    (folder / name).write_text(json.dumps(document))
 
 
-@pytest.mark.parametrize("change,message", [
-    ({"id": "other"}, "folder name"),
-    ({"task": "regression"}, "task"),
-    ({"thresholds": [1.5]}, "probabilities"),
-    ({"thresholds": None}, "one entry per label"),
-    ({"labels": ["a", "b"]}, "binary probe has one label"),
+@pytest.mark.parametrize("name,change,message", [
+    ("head.json", lambda d: d["encoder"].update(sha256="0" * 64), "pinned frozen encoder"),
+    ("head.json", lambda d: d["classifier"].update(activation="softmax"), "classifier metadata"),
+    ("head.json", lambda d: d["classifier"].update(input_dim=768), "classifier metadata"),
+    ("head.json", lambda d: d.update(outputs=[]), "outputs"),
+    ("thresholds.json", lambda d: d.update(thresholds={"SHD": 1.5}), "cutoff"),
+    ("thresholds.json", lambda d: d.update(thresholds={"other": 0.5}), "cutoff"),
+    ("config.json", lambda d: d["preprocessing"].update(resize=[224, 224]), "differs"),
 ])
-def test_invalid_manifests_are_refused(tmp_path, change, message):
-    pf.write_probe(tmp_path, "shd", "binary", ["SHD"], [0.1], **{})
-    import json
-    manifest = json.loads((tmp_path / "shd" / "head.json").read_text())
-    manifest.update(change)
-    (tmp_path / "shd" / "head.json").write_text(json.dumps(manifest))
-    pf.write_sums(tmp_path)
-    with pytest.raises(ValueError, match=message):
-        discover_probes(tmp_path)
+def test_invalid_heads_are_refused(tmp_path, name, change, message):
+    pf.write_head(tmp_path, "shd", ["SHD"], {"SHD": 0.5})
+    _edit(tmp_path / "shd", name, change)
+    with pytest.raises(RuntimeError, match=message):
+        _discover(tmp_path)
 
 
-def test_wrong_weight_shape_is_refused(tmp_path):
+def test_missing_file_or_wrong_tensors_are_refused(tmp_path):
     from safetensors.torch import save_file
-    pf.write_probe(tmp_path, "shd", "binary", ["SHD"], [0.1])
-    save_file({"weight": torch.zeros(1, 512), "bias": torch.zeros(1)}, str(tmp_path / "shd" / "classifier.safetensors"))
-    pf.write_sums(tmp_path)
-    with pytest.raises(ValueError, match="weight must be"):
-        discover_probes(tmp_path)
+    pf.write_head(tmp_path, "shd", ["SHD"], {"SHD": 0.5})
+    save_file({"weight": torch.zeros(1, 768), "bias": torch.zeros(1), "mean": torch.zeros(1536),
+               "scale": torch.ones(1536)}, str(tmp_path / "shd" / "classifier.safetensors"))
+    with pytest.raises(RuntimeError, match="tensor shapes"):
+        _discover(tmp_path)
+    (tmp_path / "shd" / "thresholds.json").unlink()
+    with pytest.raises(RuntimeError, match="missing thresholds.json"):
+        _discover(tmp_path)

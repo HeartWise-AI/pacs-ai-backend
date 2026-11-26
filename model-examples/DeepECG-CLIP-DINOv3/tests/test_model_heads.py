@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 
 from models.dinov3_heads import SharedTrunkClassifiers, backbone_config, load_state_dict  # noqa: E402
 
-TINY = {**json.loads((ROOT / "models/config.json").read_text())["Backbone"],
+TINY = {**json.loads((ROOT / "models/encoder_config.json").read_text())["vision_config"],
         "hidden_size": 32, "intermediate_size": 64, "num_hidden_layers": 4, "num_attention_heads": 2}
 HEADS = ["aco", "acco_vs_aico"]
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -14,12 +15,11 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ecg_fixtures as fx  # noqa: E402
-from logic import preprocess_page  # noqa: E402
 from utils.ecg_inputs import EcgInputError, ecg_page, order_candidates, waveform_counts  # noqa: E402
 from utils.ecg_page_renderer import LEAD_ORDER, render_training_page  # noqa: E402
+from utils.image_preprocessing import preprocess_ecg_image as preprocess_page  # noqa: E402
 
-PREPROCESSING = {"color_mode": "grayscale", "resize": [448, 896], "resize_mode": "stretch",
-                 "mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]}
+PREPROCESSING = json.loads((ROOT / "models/encoder_config.json").read_text())["preprocessing"]
 # DeepECG_Docker tests/test_pdf_inputs.py: the training renderer's page of a fixed signal, verified
 # pixel-identical to the training PNGs with matplotlib 3.10.9 and Pillow 12.3.0.
 RENDERER_GOLDEN_PIXELS_SHA256 = "c4fba3cc04ec22c3d577dc9c8c883e3f1a3f3e6bd41e4474cba235afbd8aefc7"
@@ -117,9 +117,9 @@ def test_waveforms_are_preferred_then_pdfs_then_images_then_the_earliest():
     assert ordered[0][1].SOPInstanceUID == early.SOPInstanceUID
 
 
-def test_preprocessing_matches_the_training_pipeline():
-    """utils/image.process_image of DeepECG-PNG, written out: L, antialiased stretch resize,
-    3 channels, [0, 1], ImageNet normalisation."""
+def test_deepecg_docker_preprocessing_matches_the_training_pipeline():
+    """DeepECG_Docker preprocess_ecg_image (used here) equals DeepECG-PNG utils/image.process_image,
+    written out with torchvision: L, stretch resize, 3 channels, [0, 1], ImageNet normalisation."""
     from PIL import Image
     from torchvision.transforms import v2
 

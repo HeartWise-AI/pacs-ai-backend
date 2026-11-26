@@ -10,12 +10,11 @@ import pydicom
 import torch
 from models.dinov3_heads import SharedTrunkClassifiers, load_state_dict
 from models.probes import Probe, discover_probes
-from PIL import Image
 from report_input import NO_ECG_HTML, NO_ECG_RESULT, difference, fail, member, number, unwrap
-from torchvision.transforms import v2
 from utils.ecg_inputs import EcgInputError, EcgPage, ecg_page, order_candidates
 from utils.genericLogic import BasePredictionService
 from utils.http_utils import Config, JsonPredictionResponse, PredictRequest
+from utils.image_preprocessing import preprocess_ecg_image
 
 MODEL_DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 PRIMARY_HEAD = "aco"
@@ -37,38 +36,22 @@ SOURCE_LABELS = {
 }
 THRESHOLD_NOTE = (
     "Probabilities are model outputs, not calibrated risks. Each threshold is the Youden point of its "
-    "validation set. A head with applicableWhen is only interpreted when that head is positive. "
-    "Multiclass heads flag their most probable class."
+    "validation set; an output without a threshold gives a probability only (positive is null). An output "
+    "with applicableWhen is only interpreted when that output is positive."
 )
 
 
 @dataclass(frozen=True)
 class HeadSpec:
-    """One reported output: a fine-tuned head or one row of a frozen linear probe."""
-    id: str
+    """One reported output: a fine-tuned head, or one output of a frozen linear-probe head."""
+    id: str                    # output name (DeepECG_Docker head.json "outputs"; class_mapping key)
+    head: str                  # head key: class_mapping key or probe folder name
     label: str
     description: str
-    task: str                  # binary | multilabel | multiclass
+    task: str                  # binary | multilabel
     kind: str                  # fine-tuned | linear-probe
-    group: Optional[str]
     threshold: Optional[float]
     applies_when: Optional[str] = None
-    probe: Optional[str] = None
-
-
-def preprocess_page(image: Image.Image, settings: dict) -> torch.Tensor:
-    """[3, H, W] float tensor, exactly as DeepECG-PNG utils/image.process_image prepared the
-    training pages (color_mode grayscale, stretch resize, no augmentation)."""
-    if settings["color_mode"] != "grayscale" or settings["resize_mode"] != "stretch":
-        raise ValueError("Only the grayscale, stretch-resize preprocessing of training is implemented")
-    pipeline = v2.Compose([
-        v2.Resize(tuple(settings["resize"]), antialias=True),
-        v2.Grayscale(num_output_channels=3),
-        v2.ToImage(),
-        v2.ToDtype(torch.float32, scale=True),
-    ])
-    tensor = pipeline(image.convert("L"))
-    return v2.Normalize(mean=list(settings["mean"]), std=list(settings["std"]))(tensor)
 
 
 def _read_json(name: str) -> dict:
@@ -78,28 +61,33 @@ def _read_json(name: str) -> dict:
 
 def head_registry(probes: list[Probe]) -> list[HeadSpec]:
     """Every output of the service, in report order: the fine-tuned heads of class_mapping.json,
-    then the rows of each probe (sorted by probe id)."""
+    then the outputs of each probe head (folders sorted by name)."""
     specs = [
-        HeadSpec(head, spec["name"], spec.get("description", ""), "binary", "fine-tuned", spec.get("group"),
+        HeadSpec(head, head, spec["name"], spec.get("description", ""), "binary", "fine-tuned",
                  float(spec["threshold"]), spec.get("applies_when"))
         for head, spec in _read_json("class_mapping.json").items()
     ]
     for probe in probes:
+        task = "binary" if len(probe.outputs) == 1 else "multilabel"
         for output in probe.outputs:
-            specs.append(HeadSpec(output.id, output.label, probe.description, probe.task, "linear-probe",
-                                  probe.group or probe.id, output.threshold, None, probe.id))
+            specs.append(HeadSpec(output, probe.key, output, probe.task, task, "linear-probe",
+                                  probe.thresholds.get(output)))
     ids = [s.id for s in specs]
     if len(set(ids)) != len(ids):
-        raise ValueError("Two heads share an id")
+        raise ValueError("Two outputs share an id")
+    if {p.key for p in probes} & {s.head for s in specs if s.kind == "fine-tuned"}:
+        raise ValueError("A probe head folder has the name of a fine-tuned head")
     known = set(ids)
     for s in specs:
         if s.applies_when is not None and s.applies_when not in known:
-            raise ValueError(f"{s.id} applies when the unknown head {s.applies_when} is positive")
+            raise ValueError(f"{s.id} applies when the unknown output {s.applies_when} is positive")
     return specs
 
 
-def probe_directory() -> Path:
-    return Path(MODEL_DIRECTORY) / _read_json("config.json")["ProbeDirectory"]
+def discover_heads(with_weights: bool = True) -> list[Probe]:
+    cfg = _read_json("config.json")
+    return discover_probes(Path(MODEL_DIRECTORY) / cfg["ProbeDirectory"], _read_json("encoder_config.json"),
+                           cfg["FrozenEncoder"]["sha256"], with_weights)
 
 
 class CustomPredictionService(BasePredictionService):
@@ -110,13 +98,15 @@ class CustomPredictionService(BasePredictionService):
         if CustomPredictionService.is_initialized:
             return
         cfg = _read_json("config.json")
+        encoder = _read_json("encoder_config.json")
         CustomPredictionService.model_config = cfg
+        CustomPredictionService.preprocessing = encoder["preprocessing"]
         heads = list(_read_json("class_mapping.json"))
         if heads != list(cfg["Checkpoints"]):
             raise ValueError("class_mapping.json and config.json name different heads")
-        probes = discover_probes(probe_directory())
+        probes = discover_heads()
         model = SharedTrunkClassifiers(
-            cfg["Backbone"], heads,
+            encoder["vision_config"], heads,
             shared_layers=cfg["SharedTrunk"]["shared_layers"],
             dropout=cfg["SharedTrunk"]["dropout_rate"],
             with_frozen_encoder=bool(probes),
@@ -135,7 +125,7 @@ class CustomPredictionService(BasePredictionService):
         CustomPredictionService._registry = head_registry(probes)
         CustomPredictionService.models["classifiers"] = model
         CustomPredictionService.is_initialized = True
-        print(f"DeepECG-CLIP-DINOv3 loaded: {len(heads)} fine-tuned heads, {len(probes)} probes, "
+        print(f"DeepECG-CLIP-DINOv3 loaded: {len(heads)} fine-tuned heads, {len(probes)} probe heads, "
               f"{len(CustomPredictionService._registry)} outputs. CUDA: {torch.cuda.is_available()}")
 
     def stop_model(self):
@@ -147,9 +137,9 @@ class CustomPredictionService(BasePredictionService):
 
     @classmethod
     def registry(cls) -> list[HeadSpec]:
-        """The outputs; without a loaded model (render-report) the probe manifests are read from disk."""
+        """The outputs; without a loaded model (render-report) the head metadata is read from disk."""
         if not hasattr(cls, "_registry"):
-            cls._registry = head_registry(discover_probes(probe_directory(), with_weights=False))
+            cls._registry = head_registry(discover_heads(with_weights=False))
         return cls._registry
 
     # -- inputs ------------------------------------------------------------
@@ -180,19 +170,19 @@ class CustomPredictionService(BasePredictionService):
         return None
 
     def _selected_heads(self, request: PredictRequest) -> list[HeadSpec]:
-        """All outputs, or those named in additionalMetadata.heads (head ids or probe ids). A head
-        that applies only when another is positive brings that head along."""
+        """All outputs, or those named in additionalMetadata.heads (output ids or head keys). An
+        output that applies only when another is positive brings that output along."""
         registry = self.registry()
         wanted = (request.additionalMetadata or {}).get("heads")
         if wanted is None:
             return list(registry)
         if not isinstance(wanted, list) or not all(isinstance(w, str) for w in wanted):
-            raise ValueError("additionalMetadata.heads must be a list of head ids")
-        known = {s.id for s in registry} | {s.probe for s in registry if s.probe}
+            raise ValueError("additionalMetadata.heads must be a list of output ids or head keys")
+        known = {s.id for s in registry} | {s.head for s in registry}
         unknown = sorted(set(wanted) - known)
         if unknown:
             raise ValueError(f"Unknown head(s): {', '.join(unknown)}")
-        chosen = {s.id for s in registry if s.id in wanted or (s.probe and s.probe in wanted)}
+        chosen = {s.id for s in registry if s.id in wanted or s.head in wanted}
         chosen |= {s.applies_when for s in registry if s.id in chosen and s.applies_when}
         return [s for s in registry if s.id in chosen]
 
@@ -200,15 +190,15 @@ class CustomPredictionService(BasePredictionService):
         page = self._select_page(dicoms)
         if page is None:
             return None
-        tensor = preprocess_page(page.image, CustomPredictionService.model_config["Preprocessing"])
+        tensor = preprocess_ecg_image(page.image, CustomPredictionService.preprocessing)
         model = CustomPredictionService.models["classifiers"]
         device = next(model.parameters()).device
-        probes = [p for p in CustomPredictionService.probes if any(h.probe == p.id for h in heads)]
+        probes = [p for p in CustomPredictionService.probes if any(h.head == p.key for h in heads)]
         with torch.no_grad():
             logits, features = model(tensor.unsqueeze(0).to(device), frozen_features=bool(probes))
             outputs = {head: value.detach().cpu() for head, value in logits.items()}
             for probe in probes:
-                outputs[probe.id] = probe(features.detach().cpu())
+                outputs[probe.key] = probe(features)
         return outputs, page.source
 
     # -- post-processing -------------------------------------------------------
@@ -218,12 +208,12 @@ class CustomPredictionService(BasePredictionService):
         computed. Flags, text and the report all read the rounded value the JSON stores, so a stored result
         holds everything needed to draw its report again."""
         result: dict[str, float] = {}
-        probes = {p.id: p for p in CustomPredictionService.probes}
+        probes = {p.key: p for p in CustomPredictionService.probes}
         for key, value in outputs.items():
             if key in probes:
-                row = value.detach().to(torch.float64).reshape(-1)
+                row = value.detach().reshape(-1)
                 for output, probability in zip(probes[key].outputs, row.tolist()):
-                    result[output.id] = round(float(probability), DECIMALS)
+                    result[output] = round(float(probability), DECIMALS)
                 continue
             logit = value.detach().float().reshape(-1)
             if logit.numel() != 1:
@@ -234,9 +224,8 @@ class CustomPredictionService(BasePredictionService):
     def _positive(self, spec: HeadSpec, preds: dict[str, float]) -> Optional[bool]:
         if spec.applies_when and not self._positive(self._spec(spec.applies_when), preds):
             return None
-        if spec.task == "multiclass":
-            siblings = [s.id for s in self.registry() if s.probe == spec.probe]
-            return bool(max(siblings, key=lambda i: preds[i]) == spec.id)
+        if spec.threshold is None:
+            return None   # a probability-only output (DeepECG_Docker thresholds.json without cutoffs)
         return bool(preds[spec.id] >= spec.threshold)
 
     def _spec(self, head_id: str) -> HeadSpec:
@@ -246,11 +235,11 @@ class CustomPredictionService(BasePredictionService):
         applicable = spec.applies_when is None or bool(self._positive(self._spec(spec.applies_when), preds))
         return {
             "id": spec.id,
+            "head": spec.head,
             "label": spec.label,
             "description": spec.description,
             "task": spec.task,
             "kind": spec.kind,
-            "group": spec.group,
             "probability": preds[spec.id],
             "threshold": spec.threshold,
             "positive": self._positive(spec, preds),
@@ -344,10 +333,10 @@ class CustomPredictionService(BasePredictionService):
         rows = []
         for spec in heads:
             positive = self._positive(spec, preds)
-            if positive is None:
+            if positive is None and spec.threshold is None:
+                result = "Probability only / Probabilité seulement"
+            elif positive is None:
                 result = "Not applicable / Sans objet"
-            elif spec.task == "multiclass":
-                result = "Most probable / Plus probable" if positive else "&mdash;"
             else:
                 result = "Positive / Positif" if positive else "Negative / Négatif"
             css = "flag-pos" if positive else "flag-neg"

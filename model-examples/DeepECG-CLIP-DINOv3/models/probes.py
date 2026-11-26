@@ -1,38 +1,29 @@
-"""Frozen linear probes on the DeepECG-CLIP DINOv3 encoder, discovered from files.
+"""Frozen linear-probe heads on the DeepECG-CLIP DINOv3 encoder, in the DeepECG_Docker head format.
 
-A probe reads the 1536-d pooled features (concat[CLS, mean(patch tokens)]) of the frozen
-pretraining encoder (base/epoch_030.pt, run zo59vdxk), the same features
-DeepECG-PNG scripts/probe_report.py fitted its StandardScaler + LogisticRegression heads on.
+Each head is one folder with exactly the files of a DeepECG_Docker classifier repository
+(HeartWise-AI/DeepECG_Docker models/siglip2_wrapper.py, ``_DeepECG_SigLIP2_Bank.load_head``;
+e.g. heartwise/SigLIP2_SHD), so the same folder serves both pipelines:
 
-Adding a probe needs no code change: put a folder under the release's ``probes/`` directory
-(next to aco/ and acco_vs_aico/ on the NAS and in the Hugging Face repository), list its files
-in ``probes/SHA256SUMS``, and bump the pinned model revision in data/model_info.json:
+    <ProbeDirectory>/<head key>/
+      config.json              identical to models/encoder_config.json (encoder + preprocessing)
+      head.json                name, task, outputs, label, encoder {repo, run, file, sha256, feature},
+                               classifier {file, type "linear", tensors, dtype "float32",
+                               input_dim 1536, standardize, activation "sigmoid"}, decision, source
+      thresholds.json          {"thresholds": {output: cutoff}}; {} for a probability-only head
+      classifier.safetensors   weight [k, 1536], bias [k] (+ mean [1536], scale [1536] when
+                               standardize is true), float32
 
-    probes/
-      SHA256SUMS                      sha256sum of every file below, paths relative to probes/
-      <probe_id>/head.json            the manifest below
-      <probe_id>/classifier.safetensors
+p = sigmoid(((feature - mean) / scale) @ weight.T + bias), one per output, where feature is the
+1536-d concat[CLS, mean(patch tokens)] of the frozen pretraining encoder (base/epoch_030.pt),
+whose SHA-256 head.json must name. The checks below are DeepECG_Docker's, with the encoder and
+its feature size of this model. A scripts/probe_report.py probe (StandardScaler +
+LogisticRegression) maps directly: weight = coef_, bias = intercept_, mean = mean_, scale = scale_.
 
-head.json:
-    {
-      "id": "lvef_le_40",                       unique, [a-z0-9_]+
-      "task": "binary" | "multilabel" | "multiclass",
-      "description": "LVEF <= 40% on the echocardiogram within 30 days",
-      "labels": ["LVEF <= 40%"],                one per output row
-      "label_ids": ["lvef_le_40"],              optional; default <id> (one row) or <id>.<k>
-      "thresholds": [0.123],                    validation Youden per row; null for multiclass
-      "group": "lvef",                          optional, for display
-      "source": {...}, "metrics": {...}         free-form provenance, returned by model-facts only
-    }
-
-classifier.safetensors: ``weight`` [K, 1536] and ``bias`` [K] of the classifier, and the
-StandardScaler as ``scaler_mean`` [1536] / ``scaler_scale`` [1536] (omit both when the probe
-was fitted on raw features). Output: sigmoid per row (binary, multilabel) or softmax over the
-rows (multiclass). convert_probe.py writes this layout from a scripts/probe_report.py joblib.
+Adding a head needs no code change: upload its folder under ``probes/`` in the Hugging Face
+repository and bump the pinned model revision (data/model_info.json).
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from dataclasses import dataclass, field
@@ -40,128 +31,113 @@ from pathlib import Path
 
 import torch
 
-FEATURE_DIM = 1536
-TASKS = ("binary", "multilabel", "multiclass")
-_ID = re.compile(r"^[a-z0-9_]+$")
-
-
-@dataclass
-class ProbeOutput:
-    id: str
-    label: str
-    threshold: float | None
+_KEY = re.compile(r"^[A-Za-z0-9_.-]+$")
+REQUIRED_FILES = ("config.json", "head.json", "thresholds.json", "classifier.safetensors")
 
 
 @dataclass
 class Probe:
-    id: str
+    key: str                      # folder name
+    name: str                     # head.json name (the repository of the DeepECG_Docker twin)
     task: str
-    description: str
-    group: str | None
-    outputs: list[ProbeOutput]
-    weight: torch.Tensor
-    bias: torch.Tensor
-    mean: torch.Tensor | None = None
-    scale: torch.Tensor | None = None
+    outputs: list[str]
+    thresholds: dict[str, float]  # empty: probabilities only
+    tensors: dict[str, torch.Tensor] = field(default_factory=dict)
+    standardize: bool = False
     facts: dict = field(default_factory=dict)
 
     def __call__(self, features: torch.Tensor) -> torch.Tensor:
-        """[B, 1536] -> [B, K] probabilities."""
-        x = features.to(torch.float64)
-        if self.mean is not None:
-            x = (x - self.mean) / self.scale
-        logits = x @ self.weight.T + self.bias
-        return torch.softmax(logits, dim=-1) if self.task == "multiclass" else torch.sigmoid(logits)
+        """[B, 1536] -> [B, k] probabilities, as DeepECG_Docker ``probabilities``."""
+        x = features.detach().to("cpu", torch.float32)
+        t = self.tensors
+        if self.standardize:
+            x = (x - t["mean"]) / t["scale"]
+        return torch.sigmoid(x @ t["weight"].T + t["bias"])
 
 
-def read_sha256sums(path: Path) -> dict[str, str]:
-    sums = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            digest, name = line.split(maxsplit=1)
-            sums[name.lstrip("*").strip()] = digest.lower()
-    return sums
+def _read_json(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise RuntimeError(f"cannot read {path}: {type(e).__name__}: {e}") from e
+    if not isinstance(value, dict):
+        raise RuntimeError(f"{path}: expected a JSON object")
+    return value
 
 
-def verify_probe_files(directory: Path) -> list[Path]:
-    """Every file under ``directory`` must be listed in its SHA256SUMS with a matching hash,
-    and every listed file must exist. An absent directory holds no probes."""
-    if not directory.is_dir():
-        return []
-    sums_path = directory / "SHA256SUMS"
-    if not sums_path.is_file():
-        raise ValueError(f"{directory} has no SHA256SUMS")
-    sums = read_sha256sums(sums_path)
-    present = sorted(p.relative_to(directory).as_posix() for p in directory.rglob("*")
-                     if p.is_file() and p.name != "SHA256SUMS" and ".cache" not in p.parts)
-    if sorted(sums) != present:
-        raise ValueError(f"{sums_path} does not list exactly the files of {directory}")
-    for name, expected in sums.items():
-        actual = hashlib.sha256((directory / name).read_bytes()).hexdigest()
-        if actual != expected:
-            raise ValueError(f"SHA-256 mismatch for probes/{name}")
-    return [directory / name for name in sums]
+def load_probe(folder: Path, encoder_config: dict, encoder_sha256: str, with_weights: bool = True) -> Probe:
+    """Load and validate one head folder (DeepECG_Docker ``load_head`` checks)."""
+    missing = [name for name in REQUIRED_FILES if not (folder / name).is_file()]
+    if missing:
+        raise RuntimeError(f"{folder.name}: missing {', '.join(missing)}")
+    if not _KEY.fullmatch(folder.name):
+        raise RuntimeError(f"{folder.name}: head folder names use letters, digits, '_', '-' and '.'")
+    if _read_json(folder / "config.json") != encoder_config:
+        raise RuntimeError(f"{folder.name}/config.json: head configuration differs from models/encoder_config.json")
+    metadata = _read_json(folder / "head.json")
+    outputs = metadata.get("outputs")
+    if not isinstance(outputs, list) or not outputs or not all(isinstance(v, str) and v for v in outputs):
+        raise RuntimeError(f"{folder.name}/head.json: outputs must be a non-empty string list")
+    if len(set(outputs)) != len(outputs):
+        raise RuntimeError(f"{folder.name}/head.json: outputs must be unique")
+    if not isinstance(metadata.get("name"), str) or not metadata["name"]:
+        raise RuntimeError(f"{folder.name}/head.json: name must be a non-empty string")
+    encoder = metadata.get("encoder", {})
+    if encoder.get("sha256") != encoder_sha256:
+        raise RuntimeError(f"{folder.name}/head.json: classifier does not match the pinned frozen encoder")
 
+    classifier = metadata.get("classifier", {})
+    dim = 2 * int(encoder_config["vision_config"]["hidden_size"])
+    standardize = classifier.get("standardize") is True
+    expected = {"weight": (len(outputs), dim), "bias": (len(outputs),)}
+    if standardize:
+        expected.update({"mean": (dim,), "scale": (dim,)})
+    declared = {name: tuple(shape) for name, shape in classifier.get("tensors", {}).items() if isinstance(shape, list)}
+    if (classifier.get("file") != "classifier.safetensors"
+            or classifier.get("type") != "linear"
+            or classifier.get("input_dim") != dim
+            or classifier.get("dtype") != "float32"
+            or classifier.get("activation") != "sigmoid"
+            or declared != expected):
+        raise RuntimeError(f"{folder.name}/head.json: unsupported or inconsistent classifier metadata")
 
-def read_manifest(path: Path) -> dict:
-    manifest = json.loads(path.read_text(encoding="utf-8"))
-    probe_id = manifest.get("id")
-    if not isinstance(probe_id, str) or not _ID.fullmatch(probe_id) or probe_id != path.parent.name:
-        raise ValueError(f"{path}: id must be [a-z0-9_]+ and equal its folder name")
-    if manifest.get("task") not in TASKS:
-        raise ValueError(f"{path}: task must be one of {TASKS}")
-    labels = manifest.get("labels")
-    if not isinstance(labels, list) or not labels or not all(isinstance(x, str) and x for x in labels):
-        raise ValueError(f"{path}: labels must be a non-empty list of strings")
-    if manifest["task"] == "binary" and len(labels) != 1:
-        raise ValueError(f"{path}: a binary probe has one label")
-    thresholds = manifest.get("thresholds")
-    if manifest["task"] == "multiclass":
-        thresholds = thresholds or [None] * len(labels)
-    if not isinstance(thresholds, list) or len(thresholds) != len(labels):
-        raise ValueError(f"{path}: thresholds must have one entry per label")
-    for t in thresholds:
-        if t is not None and not (isinstance(t, (int, float)) and 0.0 <= float(t) <= 1.0):
-            raise ValueError(f"{path}: thresholds must be probabilities")
-        if t is None and manifest["task"] != "multiclass":
-            raise ValueError(f"{path}: binary and multilabel probes need a threshold per label")
-    label_ids = manifest.get("label_ids") or (
-        [probe_id] if len(labels) == 1 else [f"{probe_id}.{k}" for k in range(len(labels))])
-    if len(label_ids) != len(labels) or len(set(label_ids)) != len(label_ids):
-        raise ValueError(f"{path}: label_ids must be unique, one per label")
-    manifest["thresholds"], manifest["label_ids"] = thresholds, label_ids
-    return manifest
+    document = _read_json(folder / "thresholds.json")
+    raw = document.get("thresholds")
+    if not isinstance(raw, dict):
+        raise RuntimeError(f"{folder.name}/thresholds.json: thresholds must be an object")
+    try:
+        thresholds = {name: float(value) for name, value in raw.items()}
+    except (TypeError, ValueError) as e:
+        raise RuntimeError(f"{folder.name}/thresholds.json: thresholds must be numeric") from e
+    if thresholds and (set(thresholds) != set(outputs) or any(not 0 <= v <= 1 for v in thresholds.values())):
+        raise RuntimeError(f"{folder.name}/thresholds.json: expected one [0, 1] cutoff per output, or none")
 
-
-def load_probe(directory: Path, with_weights: bool = True) -> Probe:
-    manifest = read_manifest(directory / "head.json")
-    outputs = [ProbeOutput(i, label, None if t is None else float(t))
-               for i, label, t in zip(manifest["label_ids"], manifest["labels"], manifest["thresholds"])]
-    weight = bias = mean = scale = None
+    tensors: dict[str, torch.Tensor] = {}
     if with_weights:
         from safetensors.torch import load_file
 
-        tensors = load_file(str(directory / "classifier.safetensors"))
-        weight = tensors["weight"].to(torch.float64)
-        bias = tensors["bias"].to(torch.float64)
-        if tuple(weight.shape) != (len(outputs), FEATURE_DIM) or tuple(bias.shape) != (len(outputs),):
-            raise ValueError(f"{directory.name}: weight must be [{len(outputs)}, {FEATURE_DIM}] and bias [{len(outputs)}]")
-        if ("scaler_mean" in tensors) != ("scaler_scale" in tensors):
-            raise ValueError(f"{directory.name}: scaler_mean and scaler_scale go together")
-        if "scaler_mean" in tensors:
-            mean = tensors["scaler_mean"].to(torch.float64)
-            scale = tensors["scaler_scale"].to(torch.float64)
-            if mean.shape != (FEATURE_DIM,) or scale.shape != (FEATURE_DIM,) or not bool((scale > 0).all()):
-                raise ValueError(f"{directory.name}: the scaler must be two positive-scale [{FEATURE_DIM}] vectors")
-    return Probe(manifest["id"], manifest["task"], str(manifest.get("description") or ""),
-                 manifest.get("group"), outputs, weight, bias, mean, scale,
-                 {k: manifest[k] for k in ("source", "metrics") if k in manifest})
+        try:
+            tensors = load_file(str(folder / "classifier.safetensors"))
+        except Exception as e:
+            raise RuntimeError(f"{folder.name}/classifier.safetensors: {type(e).__name__}: {e}") from e
+        if set(tensors) != set(expected):
+            raise RuntimeError(f"{folder.name}/classifier.safetensors: tensors {sorted(tensors)}, expected {sorted(expected)}")
+        wrong = {n: tuple(tensors[n].shape) for n, s in expected.items() if tuple(tensors[n].shape) != s}
+        if wrong:
+            raise RuntimeError(f"{folder.name}/classifier.safetensors: tensor shapes {wrong}, expected {expected}")
+        if any(t.dtype != torch.float32 for t in tensors.values()):
+            raise RuntimeError(f"{folder.name}/classifier.safetensors: tensors must be float32")
+        if standardize and not bool((tensors["scale"] > 0).all()):
+            raise RuntimeError(f"{folder.name}/classifier.safetensors: scale must be positive")
+    facts = {k: metadata[k] for k in ("label", "decision", "source") if k in metadata}
+    return Probe(folder.name, metadata["name"], str(metadata.get("task") or ""), outputs, thresholds,
+                 tensors, standardize, facts)
 
 
-def discover_probes(directory: Path, with_weights: bool = True) -> list[Probe]:
-    """The probes of ``directory``, sorted by id. Every file is checked against SHA256SUMS."""
-    if with_weights:
-        verify_probe_files(directory)
+def discover_probes(directory: Path, encoder_config: dict, encoder_sha256: str,
+                    with_weights: bool = True) -> list[Probe]:
+    """Every head folder of ``directory`` (none when it is absent), sorted by folder name."""
     if not directory.is_dir():
         return []
-    return [load_probe(path.parent, with_weights) for path in sorted(directory.glob("*/head.json"))]
+    folders = sorted(p for p in directory.iterdir() if p.is_dir() and not p.name.startswith("."))
+    return [load_probe(folder, encoder_config, encoder_sha256, with_weights) for folder in folders]

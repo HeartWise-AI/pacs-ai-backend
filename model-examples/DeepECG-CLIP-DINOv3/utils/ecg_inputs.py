@@ -9,8 +9,9 @@ Three DICOM inputs are accepted, in this order of preference:
    aVF are derived from I and II with the formulas of the training converter, and the page is
    drawn with the training renderer (utils/ecg_page_renderer.py). Same pixels as training.
 2. ``pdf``: an Encapsulated PDF (1.2.840.10008.5.1.4.1.1.104.1) holding a vector ECG in the
-   standard 3x4 + lead II rhythm layout. The traces are read from the vector paths
-   (utils/ecg_pdf.py, from DeepECG_Docker) and redrawn with the training renderer. The leads
+   standard 3x4 + lead II rhythm layout, read exactly as DeepECG_Docker reads a PDF file
+   (utils/ecg_pdf.py and utils/image_preprocessing.py, vendored unchanged): the traces are read
+   from the vector paths and redrawn with the training renderer. The leads
    are interpolated from the drawing, so the page is close to, not identical with, a render
    of the original signal. Scanned (raster) PDFs and other layouts are refused.
 3. ``image``: any other single-frame DICOM image of an ECG page (e.g. secondary capture).
@@ -200,13 +201,16 @@ def waveform_counts(dicom: pydicom.Dataset) -> tuple[np.ndarray, dict]:
 # -- PDF and image ----------------------------------------------------------------
 
 def _pdf_page(dicom: pydicom.Dataset) -> Image.Image:
-    from utils.ecg_pdf import EcgPdfError, extract_png_from_pdf  # imports pypdf only when needed
+    """The page of an Encapsulated PDF, exactly as DeepECG_Docker utils/image_preprocessing.load_ecg_pdf
+    makes it (extract_png_from_pdf, then open_png_bytes and the page-size check)."""
+    from utils.ecg_pdf import PAGE_SIZE, EcgPdfError, extract_png_from_pdf   # pypdf: PDF inputs only
+    from utils.image_preprocessing import open_png_bytes
 
     document = bytes(dicom.EncapsulatedDocument)
     length = getattr(dicom, "EncapsulatedDocumentLength", None)
     if length:
         document = document[: int(length)]
-    handle, path = tempfile.mkstemp(suffix=".pdf")
+    handle, path = tempfile.mkstemp(suffix=".pdf")   # ecg_pdf reads a path; removed at once
     try:
         with os.fdopen(handle, "wb") as out:
             out.write(document)
@@ -218,8 +222,11 @@ def _pdf_page(dicom: pydicom.Dataset) -> Image.Image:
             os.remove(path)
         except OSError:
             pass
-    import io
-    return Image.open(io.BytesIO(png)).copy()
+    with open_png_bytes(png) as image:
+        if image.size != PAGE_SIZE:
+            raise EcgInputError(f"extracted page is {image.size[0]}x{image.size[1]}, expected {PAGE_SIZE}")
+        image.load()
+        return image.copy()
 
 
 def _image_page(dicom: pydicom.Dataset) -> Image.Image:

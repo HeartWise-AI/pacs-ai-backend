@@ -112,11 +112,11 @@
                     "heads": [
                       {
                         "id": "aco",
+                        "head": "aco",
                         "label": "Acute coronary occlusion (ACO)",
                         "description": "Acute coronary occlusion (complete or incomplete) vs no occlusion on the catheterization that followed the ECG (ACS cohort v6). Fine-tuned DINOv3, top 2 blocks.",
                         "task": "binary",
                         "kind": "fine-tuned",
-                        "group": "acs",
                         "probability": 0.4213,
                         "threshold": 0.05062838,
                         "positive": true,
@@ -125,11 +125,11 @@
                       },
                       {
                         "id": "acco_vs_aico",
+                        "head": "acco_vs_aico",
                         "label": "Complete (ACCO) vs incomplete (AICO) occlusion",
                         "description": "Probability that an acute coronary occlusion is complete (ACCO) rather than incomplete (AICO). Trained on occlusion ECGs only; interpreted only when the aco output is positive.",
                         "task": "binary",
                         "kind": "fine-tuned",
-                        "group": "acs",
                         "probability": 0.7032,
                         "threshold": 0.6155858,
                         "positive": true,
@@ -141,7 +141,7 @@
                       "source": "waveform",
                       "description": "DICOM 12-lead waveform, drawn with the training renderer"
                     },
-                    "notes": "Probabilities are model outputs, not calibrated risks. Each threshold is the Youden point of its validation set. A head with applicableWhen is only interpreted when that head is positive. Multiclass heads flag their most probable class."
+                    "notes": "Probabilities are model outputs, not calibrated risks. Each threshold is the Youden point of its validation set; an output without a threshold gives a probability only (positive is null). An output with applicableWhen is only interpreted when that output is positive."
                   },
                   "modelRecommendations": {
                     "en": "<strong>Acute coronary occlusion suspected (probability 0.421).</strong> The model output is above the research threshold; complete occlusion (ACCO) more likely (probability 0.703). Correlate with symptoms, serial ECGs and troponin. Research use only: do not change management on the basis of this output.",
@@ -645,7 +645,7 @@
           "additionalMetadata": {
             "type": "object",
             "nullable": true,
-            "description": "Optional. {\"heads\": [ids]} returns only these heads (head ids such as \"aco\", or probe ids, which select every row of that probe); a head with applicableWhen brings its parent along. Omitted: every head of the model."
+            "description": "Optional. {\"heads\": [ids]} returns only these outputs: output ids (\"aco\", a probe head's output name) or head keys (a probe head folder, selecting all its outputs); an output with applicableWhen brings its parent along. Omitted: every output of the model."
           },
           "outputMode": {
             "type": "string",
@@ -843,7 +843,7 @@
             "properties": {
               "predictions": {
                 "type": "object",
-                "description": "predictions.heads: one entry per head (id, label, description, task, kind, group, probability, threshold, positive, applicable, applicableWhen); predictions.input: which DICOM object was read."
+                "description": "predictions.heads: one entry per output (id, head, label, description, task, kind, probability, threshold, positive, applicable, applicableWhen); predictions.input: which DICOM object was read."
               },
               "diagnosis": {
                 "type": "string",
