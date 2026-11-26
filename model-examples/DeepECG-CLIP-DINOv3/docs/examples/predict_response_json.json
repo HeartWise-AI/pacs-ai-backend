@@ -1,0 +1,43 @@
+{
+  "diagnosis": "DeepECG-CLIP-DINOv3: occlusion suspected (ACO probability 0.421, threshold 0.0506); complete (ACCO) more likely (ACCO probability 0.703); input: waveform | research use only, not a clinical diagnosis",
+  "predictions": {
+    "heads": [
+      {
+        "id": "aco",
+        "label": "Acute coronary occlusion (ACO)",
+        "description": "Acute coronary occlusion (complete or incomplete) vs no occlusion on the catheterization that followed the ECG (ACS cohort v6). Fine-tuned DINOv3, top 2 blocks.",
+        "task": "binary",
+        "kind": "fine-tuned",
+        "group": "acs",
+        "probability": 0.4213,
+        "threshold": 0.05062838,
+        "positive": true,
+        "applicable": true,
+        "applicableWhen": null
+      },
+      {
+        "id": "acco_vs_aico",
+        "label": "Complete (ACCO) vs incomplete (AICO) occlusion",
+        "description": "Probability that an acute coronary occlusion is complete (ACCO) rather than incomplete (AICO). Trained on occlusion ECGs only; interpreted only when the aco output is positive.",
+        "task": "binary",
+        "kind": "fine-tuned",
+        "group": "acs",
+        "probability": 0.7032,
+        "threshold": 0.6155858,
+        "positive": true,
+        "applicable": true,
+        "applicableWhen": "aco"
+      }
+    ],
+    "input": {
+      "source": "waveform",
+      "description": "DICOM 12-lead waveform, drawn with the training renderer"
+    },
+    "notes": "Probabilities are model outputs, not calibrated risks. Each threshold is the Youden point of its validation set. A head with applicableWhen is only interpreted when that head is positive. Multiclass heads flag their most probable class."
+  },
+  "modelRecommendations": {
+    "en": "<strong>Acute coronary occlusion suspected (probability 0.421).</strong> The model output is above the research threshold; complete occlusion (ACCO) more likely (probability 0.703). Correlate with symptoms, serial ECGs and troponin. Research use only: do not change management on the basis of this output.",
+    "fr": "<strong>Occlusion coronarienne aiguë suspectée (probabilité 0.421).</strong> La sortie du modèle dépasse le seuil de recherche ; occlusion complète (ACCO) plus probable (probabilité 0.703). Corréler avec les symptômes, les ECG sériés et la troponine. Usage en recherche seulement : ne pas modifier la prise en charge sur la base de ce résultat.",
+    "presentable": true
+  }
+}

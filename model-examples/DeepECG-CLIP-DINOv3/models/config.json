@@ -1,0 +1,66 @@
+{
+  "_comment": "DeepECG-CLIP DINOv3 (DINOv3-SigLIP2 pretrain, W&B mhi_ai run zo59vdxk, epoch 30) with the two ACS fine-tunes of 2026-11-12. Architecture values are the Hugging Face config of facebook/dinov3-vitb16-pretrain-lvd1689m; every weight comes from the checkpoints below. FrozenEncoder (the pretraining checkpoint) is downloaded and loaded only when ProbeDirectory holds frozen linear probes (models/probes.py).",
+  "Backbone": {
+    "hidden_size": 768,
+    "intermediate_size": 3072,
+    "num_hidden_layers": 12,
+    "num_attention_heads": 12,
+    "hidden_act": "gelu",
+    "attention_dropout": 0.0,
+    "drop_path_rate": 0.0,
+    "layer_norm_eps": 1e-05,
+    "layerscale_value": 1.0,
+    "image_size": 224,
+    "patch_size": 16,
+    "num_channels": 3,
+    "num_register_tokens": 4,
+    "rope_theta": 100.0,
+    "pos_embed_shift": null,
+    "pos_embed_jitter": null,
+    "pos_embed_rescale": null,
+    "query_bias": true,
+    "key_bias": false,
+    "value_bias": true,
+    "proj_bias": true,
+    "mlp_bias": true,
+    "use_gated_mlp": false
+  },
+  "SharedTrunk": {
+    "shared_layers": 10,
+    "dropout_rate": 0.1
+  },
+  "Preprocessing": {
+    "color_mode": "grayscale",
+    "resize": [
+      448,
+      896
+    ],
+    "resize_mode": "stretch",
+    "mean": [
+      0.485,
+      0.456,
+      0.406
+    ],
+    "std": [
+      0.229,
+      0.224,
+      0.225
+    ]
+  },
+  "Checkpoints": {
+    "aco": {
+      "path": "acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth",
+      "sha256": "49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026"
+    },
+    "acco_vs_aico": {
+      "path": "acs_ft20_dinov3_siglip2_epoch030/acco_vs_aico/best_model.pth",
+      "sha256": "55091186aaf36d66eab1fb048a1c4177fa1534bd25cc84ac4a0e4e413f74ba29"
+    }
+  },
+  "FrozenEncoder": {
+    "path": "acs_ft20_dinov3_siglip2_epoch030/base/epoch_030.pt",
+    "sha256": "335aaec39064d009c31710a96fe17d98450d85611c5bb0271ce3aad118149ae6",
+    "state_dict_key": "image_encoder"
+  },
+  "ProbeDirectory": "acs_ft20_dinov3_siglip2_epoch030/probes"
+}

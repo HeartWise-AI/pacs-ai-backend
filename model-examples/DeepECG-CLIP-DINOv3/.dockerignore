@@ -1,0 +1,12 @@
+# Keep credentials and development artifacts out of build contexts.
+.env
+.env.*
+hf_token.txt
+**/hf_token.txt
+**/__pycache__
+**/*.pyc
+.pytest_cache
+# Production downloads its configured checkpoints from Hugging Face.
+**/*.pt
+**/*.pth
+models/acs_ft20_dinov3_siglip2_epoch030/

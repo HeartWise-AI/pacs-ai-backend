@@ -1,0 +1,138 @@
+{
+  "modelId": "DeepECG_CLIP_DINOv3",
+  "modelName": "DeepECG-CLIP-DINOv3",
+  "domainName": "Cardiology",
+  "stage": "ai_inference",
+  "modality": "ECG",
+  "version": "1.0.0",
+  "provenance": {
+    "sourceRepository": "HeartWise-AI/pacs-ai-backend",
+    "sourceRevision": null,
+    "modelRepository": "heartwise/deepecg_clip_dinov3_acs",
+    "modelRevision": "5002fe0589debf8e8be7b43e79cafa5eaba49d9c",
+    "weightsPath": "acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth",
+    "weightsSha256": "49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026"
+  },
+  "resources": {
+    "gpuRequired": true,
+    "residentMemoryMiB": 1400,
+    "peakMemoryMiB": 2000,
+    "maxConcurrentInferences": 1,
+    "idleTimeoutSeconds": 600
+  },
+  "capabilities": {
+    "renderReport": true
+  },
+  "dicomTargetLevel": "STUDY",
+  "dicomUploadMin": 1,
+  "dicomUploadMax": 4,
+  "supportedDicomModalities": [
+    "ECG",
+    "DOC",
+    "OT"
+  ],
+  "supportedDicomTags": [
+    "*"
+  ],
+  "supportedAdditionalMetadata": [],
+  "supportedOutputModes": [
+    "HTML",
+    "JSON"
+  ],
+  "approveFeedbackQuestionnaires": [
+    {
+      "id": "confidence",
+      "type": "RADIO",
+      "questionEn": "How confident are you that the ECG result is consistent with the clinical picture?",
+      "questionFr": "À quel point êtes-vous confiant que le résultat de l'ECG concorde avec le tableau clinique ?",
+      "answerOptionsEn": [
+        {
+          "id": "very",
+          "answer": "Very confident"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Somewhat confident"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutral"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "very",
+          "answer": "Très confiant"
+        },
+        {
+          "id": "somewhat",
+          "answer": "Assez confiant"
+        },
+        {
+          "id": "neutral",
+          "answer": "Neutre"
+        }
+      ]
+    },
+    {
+      "id": "comments",
+      "type": "TEXT",
+      "questionEn": "Any additional comments?",
+      "questionFr": "Des commentaires supplémentaires ?",
+      "answerOptionsEn": null,
+      "answerOptionsFr": null
+    }
+  ],
+  "rejectFeedbackQuestionnaires": [
+    {
+      "id": "reason",
+      "type": "CHECKBOX",
+      "questionEn": "Why do you disagree with the output?",
+      "questionFr": "Pourquoi êtes-vous en désaccord avec le résultat ?",
+      "answerOptionsEn": [
+        {
+          "id": "false_positive",
+          "answer": "Occlusion flagged but not present"
+        },
+        {
+          "id": "false_negative",
+          "answer": "Occlusion present but not flagged"
+        },
+        {
+          "id": "wrong_type",
+          "answer": "Wrong occlusion type (complete vs incomplete)"
+        },
+        {
+          "id": "quality",
+          "answer": "ECG not read correctly (wrong page, poor quality)"
+        },
+        {
+          "id": "other",
+          "answer": "Other"
+        }
+      ],
+      "answerOptionsFr": [
+        {
+          "id": "false_positive",
+          "answer": "Occlusion signalée mais absente"
+        },
+        {
+          "id": "false_negative",
+          "answer": "Occlusion présente mais non signalée"
+        },
+        {
+          "id": "wrong_type",
+          "answer": "Mauvais type d'occlusion (complète ou incomplète)"
+        },
+        {
+          "id": "quality",
+          "answer": "ECG mal lu (mauvaise page, mauvaise qualité)"
+        },
+        {
+          "id": "other",
+          "answer": "Autre"
+        }
+      ]
+    }
+  ]
+}

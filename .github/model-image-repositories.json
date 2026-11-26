@@ -12,6 +12,7 @@
     "model-examples/DeepCoro_CLIP/cardio_syntax": "heartwisehub/pacs-ai-deepcoro-clip_cardiosyntax",
     "model-examples/DeepCoro_CLIP/generic": "heartwisehub/pacs-ai-deepcoro-clip-generic",
     "model-examples/DeepCoro_CLIP/procedure_view_classifier": "heartwisehub/pacs-ai-procedure_view-classifier",
+    "model-examples/DeepECG-CLIP-DINOv3": "heartwisehub/pacs-ai-deepecg-clip-dinov3",
     "model-examples/DeepRV": "heartwisehub/pacs-ai-deeprv",
     "model-examples/DeepRV-CLIP": "heartwisehub/deeprv-clip",
     "model-examples/ECHO-PRIME/generic": "heartwisehub/echo-prime-generic",
