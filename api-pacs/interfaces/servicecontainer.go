@@ -674,6 +674,8 @@ func (k *kernel) orchestratorServiceContainer() *orchestratorService.Orchestrato
 		OrchestratorAPIURL: orchestratorAPIURL,
 		OrchestratorClient: &http.Client{Timeout: 5 * time.Minute},
 		ThreadsByID:        make(map[string]*entity.Thread),
+		// Shared with the chat backend; unset leaves the Chat Feedback tab empty (503).
+		ChatFeedbackServiceToken: strings.TrimSpace(os.Getenv("CHAT_FEEDBACK_SERVICE_TOKEN")),
 	}
 
 	return service

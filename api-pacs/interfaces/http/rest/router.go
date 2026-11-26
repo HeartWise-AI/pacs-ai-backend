@@ -89,6 +89,30 @@ func mountInferenceFeedbackAdminRoutes(r chi.Router, canView func(http.Handler) 
 	r.With(canView).Get("/feedback/report-counts", handlers.reportCounts)
 }
 
+type chatFeedbackHandlers struct {
+	submit http.HandlerFunc
+	remove http.HandlerFunc
+}
+
+// mountChatFeedbackRoutes lets a clinician rate a chat answer (PACS-448); the
+// chat backend checks the conversation is theirs.
+func mountChatFeedbackRoutes(r chi.Router, vote func(http.Handler) http.Handler, handlers chatFeedbackHandlers) {
+	r.With(vote).Put("/threads/{threadID}/messages/{messageID}/feedback", handlers.submit)
+	r.With(vote).Delete("/threads/{threadID}/messages/{messageID}/feedback", handlers.remove)
+}
+
+type chatFeedbackAdminHandlers struct {
+	list   http.HandlerFunc
+	counts http.HandlerFunc
+}
+
+// mountChatFeedbackAdminRoutes exposes the workspace's chat answer votes to
+// users holding feedback.view, apart from the model-prediction feedback.
+func mountChatFeedbackAdminRoutes(r chi.Router, canView func(http.Handler) http.Handler, handlers chatFeedbackAdminHandlers) {
+	r.With(canView).Get("/feedback/list", handlers.list)
+	r.With(canView).Get("/feedback/counts", handlers.counts)
+}
+
 type iamHandoffHandlers struct {
 	exchange http.HandlerFunc
 	link     http.HandlerFunc
@@ -364,6 +388,14 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Post("/onboarding-model-questionnaire-answers/add", inferenceCommandController.AddOnboardingModelQuestionnaireAnswers)
 					r.Get("/onboarding-model-questionnaire-answers", inferenceQueryController.GetOnboardingModelQuestionnaireAnswers)
 
+					// Chat answer feedback for the admin panel (PACS-448)
+					r.Route("/chat", func(r chi.Router) {
+						mountChatFeedbackAdminRoutes(r, iamMiddleware.RequirePermission(accessEntity.PermFeedbackView), chatFeedbackAdminHandlers{
+							list:   orchestratorController.ListChatFeedback,
+							counts: orchestratorController.CountChatFeedback,
+						})
+					})
+
 					r.Route("/model", func(r chi.Router) {
 						mountInferenceFeedbackRoutes(r, iamMiddleware.RequirePermission(accessEntity.PermFeedbackVote), inferenceFeedbackHandlers{
 							get:    inferenceQueryController.GetModelFeedbackByModelID,
@@ -496,6 +528,12 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Post("/threads/{threadID}/chat", orchestratorController.CreateMessage)
 					r.Get("/threads/{threadID}/chat/progress", orchestratorController.GetChatProgress)
 					r.Post("/threads/{threadID}/dicom", orchestratorController.UploadDicomPayload)
+
+					// Thumbs up/down on chat answers
+					mountChatFeedbackRoutes(r, iamMiddleware.RequirePermission(accessEntity.PermFeedbackVote), chatFeedbackHandlers{
+						submit: orchestratorController.SubmitChatFeedback,
+						remove: orchestratorController.RemoveChatFeedback,
+					})
 				})
 			})
 
