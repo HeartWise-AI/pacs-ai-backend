@@ -34,6 +34,12 @@ type OrchestratorServiceInterface interface {
 	// ListChatFeedback lists the workspace's votes on chat answers (admin panel, feedback.view)
 	ListChatFeedback(ctx context.Context, query url.Values) (json.RawMessage, error)
 
+	// ListChatThreads lists the signed-in user's chat threads about one study (chat history)
+	ListChatThreads(ctx context.Context, studyInstanceUID string, limit int) (json.RawMessage, error)
+
+	// GetChatThreadHistory returns one of the signed-in user's threads with its messages and votes
+	GetChatThreadHistory(ctx context.Context, threadID string) (json.RawMessage, error)
+
 	// CountChatFeedback counts the workspace's votes on chat answers (admin panel, feedback.view)
 	CountChatFeedback(ctx context.Context, query url.Values) (json.RawMessage, error)
 }

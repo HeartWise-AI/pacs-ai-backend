@@ -4315,6 +4315,106 @@
         }
       }
     },
+    "/orchestrator/threads": {
+      "get": {
+        "tags": [
+          "orchestrator"
+        ],
+        "summary": "List the signed-in user's chat threads about one study",
+        "description": "Chat history per study. Returns the signed-in user's own chat threads that have at least one message for this StudyInstanceUID in the session's workspace, most recent first, so the viewer chat box can restore and continue them. The user and workspace come from the session (a user id in the query is ignored); threads of other users or workspaces are never listed. Same authentication as the sibling thread routes.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "studyInstanceUID",
+            "in": "query",
+            "required": true,
+            "description": "StudyInstanceUID of the study open in the viewer.",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Most threads returned (1-50, default 20).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "data.threads: [{thread_id, title, created_at, updated_at, last_message_at, message_count}] (times are naive local times of the chat service)"
+          },
+          "400": {
+            "description": "studyInstanceUID or limit is missing or invalid"
+          },
+          "401": {
+            "description": "Authentication is required"
+          },
+          "502": {
+            "description": "The chat service could not be reached; errorCode chat_history_unavailable"
+          },
+          "503": {
+            "description": "Chat history is not configured (no chat service token) or the chat service is older; errorCode chat_history_not_configured"
+          }
+        }
+      }
+    },
+    "/orchestrator/threads/{threadID}/messages": {
+      "get": {
+        "tags": [
+          "orchestrator"
+        ],
+        "summary": "Messages of one of the signed-in user's chat threads",
+        "description": "Chat history per study. Returns the thread's messages in order (data.messages: message_id, role user|assistant, content as stored, including cardio-card blocks, created_at, citations) and the signed-in user's votes on its answers (data.feedback: message_id, vote, category, has_comment; comments are not returned). A thread of another user or workspace answers 404, like a missing one. Continue the thread with POST /orchestrator/threads/{threadID}/chat.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "threadID",
+            "in": "path",
+            "required": true,
+            "description": "Thread ID returned by POST /orchestrator/threads or listed by GET /orchestrator/threads.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The thread's messages and the caller's votes"
+          },
+          "400": {
+            "description": "The thread ID is invalid"
+          },
+          "401": {
+            "description": "Authentication is required"
+          },
+          "404": {
+            "description": "No such thread for the signed-in user and workspace; errorCode chat_history_not_found"
+          },
+          "502": {
+            "description": "The chat service could not be reached; errorCode chat_history_unavailable"
+          },
+          "503": {
+            "description": "Chat history is not configured; errorCode chat_history_not_configured"
+          }
+        }
+      }
+    },
     "/orchestrator/threads/{threadID}/chat/progress": {
       "get": {
         "tags": ["orchestrator"],
