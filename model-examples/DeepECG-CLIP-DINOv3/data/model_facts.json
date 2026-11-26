@@ -4,7 +4,7 @@
       "Name": "DeepECG-CLIP-DINOv3",
       "Description": "Research ECG model from one 12-lead ECG: acute coronary occlusion (ACO) and complete (ACCO) vs incomplete (AICO) occlusion, from a DINOv3 ViT-B/16 encoder pretrained contrastively on MHI ECG images and reports. Frozen linear-probe heads on the same encoder are added from files when released.",
       "Developed_by": "HeartWise.AI / Montreal Heart Institute",
-      "Version": "1.1.0"
+      "Version": "1.2.0"
     },
     "Mechanism": {
       "Outcome": "aco: acute coronary occlusion on the catheterization following the ECG (ACS cohort v6). acco_vs_aico: complete vs incomplete occlusion, among occlusions.",
@@ -44,7 +44,7 @@
     "Résumé": {
       "Nom": "DeepECG-CLIP-DINOv3",
       "Description": "Modèle ECG de recherche : occlusion coronarienne aiguë (OCA) et occlusion complète (ACCO) ou incomplète (AICO), à partir d'un ECG 12 dérivations.",
-      "Version": "1.1.0"
+      "Version": "1.2.0"
     },
     "Performance": {
       "OCA": "ASC 0,92 (IC 95 % 0,89-0,93), sensibilité 0,83, spécificité 0,87 au seuil 0,0506 (test ICM, 9 021 ECG).",

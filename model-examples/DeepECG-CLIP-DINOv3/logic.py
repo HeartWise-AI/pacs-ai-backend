@@ -19,7 +19,8 @@ from utils.image_preprocessing import preprocess_ecg_image
 MODEL_DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 PRIMARY_HEAD = "aco"
 SECONDARY_HEAD = "acco_vs_aico"
-DECIMALS = 4
+DECIMALS = 6          # stored precision; flags are read from the stored value (see _postprocess)
+LOW_THRESHOLD = 0.01  # below this cutoff a 3-decimal display cannot show which side of it a probability is
 SOURCE_LABELS = {
     "waveform": {
         "en": "DICOM 12-lead waveform, drawn with the training renderer",
@@ -206,7 +207,9 @@ class CustomPredictionService(BasePredictionService):
     def _postprocess(self, outputs: dict[str, torch.Tensor]) -> dict[str, float]:
         """{output id: probability rounded to DECIMALS}: sigmoid of each fine-tuned logit; probe rows as
         computed. Flags, text and the report all read the rounded value the JSON stores, so a stored result
-        holds everything needed to draw its report again."""
+        holds everything needed to draw its report again. At 6 decimals a flag can differ from the unrounded
+        rule only for a probability within 5e-7 of its cutoff; at 4 decimals (1.1.0) the HCM cutoff, 0.0027,
+        sat 27 grid steps above 0 and every probability in [0.0027415, 0.00275) was reported negative."""
         result: dict[str, float] = {}
         probes = {p.key: p for p in CustomPredictionService.probes}
         for key, value in outputs.items():
@@ -227,6 +230,20 @@ class CustomPredictionService(BasePredictionService):
         if spec.threshold is None:
             return None   # a probability-only output (DeepECG_Docker thresholds.json without cutoffs)
         return bool(preds[spec.id] >= spec.threshold)
+
+    @staticmethod
+    def _show_probability(spec: HeadSpec, value: float) -> str:
+        """A probability as the report shows it: 3 decimals, or every stored decimal when the output's cutoff
+        is below LOW_THRESHOLD (HCM: 0.0027), so a reader can see which side of the cutoff it lies."""
+        low = spec.threshold is not None and spec.threshold < LOW_THRESHOLD
+        return f"{value:.{DECIMALS if low else 3}f}"
+
+    @staticmethod
+    def _show_threshold(spec: HeadSpec) -> str:
+        """A cutoff as the report shows it; a low one gets one decimal more than a probability, so a shown
+        probability never equals a shown cutoff it lies below."""
+        low = spec.threshold < LOW_THRESHOLD
+        return f"{spec.threshold:.{DECIMALS + 1 if low else 4}f}"
 
     def _spec(self, head_id: str) -> HeadSpec:
         return next(s for s in self.registry() if s.id == head_id)
@@ -270,7 +287,7 @@ class CustomPredictionService(BasePredictionService):
         flagged = [s for s in others if self._positive(s, preds)]
         if others:
             parts.append("other positive outputs: " + (", ".join(
-                f"{s.label} ({preds[s.id]:.3f})" for s in flagged) if flagged else "none")
+                f"{s.label} ({self._show_probability(s, preds[s.id])})" for s in flagged) if flagged else "none")
                 + f" of {len(others)}")
         return f"DeepECG-CLIP-DINOv3: {'; '.join(parts)}; input: {source} | research use only, not a clinical diagnosis"
 
@@ -340,8 +357,8 @@ class CustomPredictionService(BasePredictionService):
             else:
                 result = "Positive / Positif" if positive else "Negative / Négatif"
             css = "flag-pos" if positive else "flag-neg"
-            threshold = "&mdash;" if spec.threshold is None else f"{spec.threshold:.4f}"
-            rows.append(f'<tr><td>{self._escape(spec.label)}</td><td>{preds[spec.id]:.3f}</td>'
+            threshold = "&mdash;" if spec.threshold is None else self._show_threshold(spec)
+            rows.append(f'<tr><td>{self._escape(spec.label)}</td><td>{self._show_probability(spec, preds[spec.id])}</td>'
                         f'<td>{threshold}</td><td class="{css}">{result}</td></tr>')
         headline = ""
         if PRIMARY_HEAD in {s.id for s in heads}:

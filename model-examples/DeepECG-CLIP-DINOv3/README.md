@@ -118,7 +118,9 @@ but has no ECG model in its registry, and drops DOC and OT series. Registering t
 `id` is the output name (a probe head's `head.json` `outputs`, the column names DeepECG_Docker writes);
 `head` is the head it comes from (a probe folder name). `positive` is null when the output is not
 applicable (`acco_vs_aico` with a negative `aco`) or has no threshold (probability-only head). `predictions.input` names the object that was read. Probabilities
-are rounded to 4 decimals before anything reads them. Example: `docs/examples/predict_response_json.json`.
+are rounded to 6 decimals before anything reads them (flags included), so a flag differs from the unrounded
+rule only within 5e-7 of its cutoff. The report shows 3 decimals, or all 6 for an output whose cutoff is below
+0.01 (HCM, cutoff 0.0027), with that cutoff to 7 decimals. Example: `docs/examples/predict_response_json.json`.
 
 Select outputs with `additionalMetadata: {"heads": ["aco", "<head key>", "<output id>", ...]}`; a head key
 selects all its outputs, and an output with `applicableWhen` brings its parent. Without it, every head is returned.
@@ -187,6 +189,11 @@ copy instead (instructions at its top) and is for development only.
 
 ## Changelog
 
+- 1.2.0: probabilities stored and compared at 6 decimals instead of 4. At 4 decimals the HCM flag
+  (cutoff 0.0027415) was effectively `p >= 0.00275`, and the report showed HCM probabilities and cutoff
+  with too few decimals to tell them apart; outputs with a cutoff below 0.01 are now shown with all stored
+  decimals. Same weights and heads; flags can change only for HCM probabilities in [0.0027415, 0.00275)
+  or other outputs within 5e-5 of their cutoff. Minor bump (prediction output changes, `docs/model-image-release.md`).
 - 1.1.0: six frozen linear-probe heads (77 patterns, SHD, LVEF<=40, LVEF<50, AFib 5 y, HCM) at
   model revision `badd718`; image inputs decoded with the shared `utils/dicom_pixels.py` helper.
 - 1.0.0: first release: `aco` and `acco_vs_aico` fine-tunes, waveform / PDF / image inputs, probe

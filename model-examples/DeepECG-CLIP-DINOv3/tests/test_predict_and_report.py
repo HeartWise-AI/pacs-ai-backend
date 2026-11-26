@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ecg_fixtures as fx  # noqa: E402
 import probe_fixtures as pf  # noqa: E402
-from logic import CustomPredictionService, head_registry  # noqa: E402
+from logic import CustomPredictionService, HeadSpec, head_registry  # noqa: E402
 from models.probes import discover_probes  # noqa: E402
 from report_input import NO_ECG_HTML, NO_ECG_RESULT  # noqa: E402
 
@@ -149,7 +149,7 @@ def test_random_outputs_render_the_live_html(client, served):
 
 @pytest.mark.parametrize("mutate", [
     lambda r: r["predictions"]["heads"][0].update(positive=not r["predictions"]["heads"][0]["positive"]),
-    lambda r: r["predictions"]["heads"][0].update(probability=0.12345),
+    lambda r: r["predictions"]["heads"][0].update(probability=0.1234567),
     lambda r: r["predictions"]["heads"][0].update(label="<script>alert(1)</script>"),
     lambda r: r["predictions"]["heads"].reverse(),
     lambda r: r["predictions"]["heads"].append(dict(r["predictions"]["heads"][0])),
@@ -185,3 +185,41 @@ def test_model_info_advertises_render_report(client):
     data = client.get("/inference/model-info").json()["data"]
     assert data["capabilities"] == {"renderReport": True}
     assert data["modelId"] == "DeepECG_CLIP_DINOv3"
+
+
+HCM_T = 0.0027414804009191847   # hcm_clean cutoff at model revision badd718
+
+
+@pytest.mark.parametrize("p,positive", [(0.0027420, True), (0.0027449, True), (0.0027410, False),
+                                         (0.0026, False), (0.0031, True)])
+def test_low_cutoff_flag_follows_the_unrounded_rule(monkeypatch, p, positive):
+    """1.1.0 rounded to 4 decimals before the flag, so HCM was effectively p >= 0.00275 and
+    p in [0.0027415, 0.00275) came out negative. At 6 decimals the flag is p >= cutoff."""
+    monkeypatch.setattr(CustomPredictionService, "probes", [])
+    service = CustomPredictionService()
+    spec = HeadSpec("hcm", "hcm", "HCM", "", "binary", "linear-probe", HCM_T)
+    preds = service._postprocess({"hcm": torch.tensor([[_logit(p)]])})
+    assert preds["hcm"] == round(p, 6)
+    assert service._positive(spec, preds) is positive is (p >= HCM_T)
+
+
+def test_low_cutoff_is_shown_with_enough_decimals(monkeypatch):
+    monkeypatch.setattr(CustomPredictionService, "probes", [])
+    service = CustomPredictionService()
+    spec = HeadSpec("hcm", "hcm", "HCM", "", "binary", "linear-probe", HCM_T)
+    preds = {"hcm": 0.002745}
+    assert "HCM (0.002745)" in service._diagnosis_text(preds, "waveform", [spec])
+    html = service._render_html(preds, "waveform", [spec])
+    assert "<td>0.002745</td><td>0.0027415</td>" in html and "flag-pos" in html
+    # an ordinary cutoff keeps the 3-decimal probability and 4-decimal cutoff
+    shd = HeadSpec("SHD", "shd", "SHD", "", "binary", "linear-probe", 0.537370502948761)
+    assert "<td>0.612345</td>" not in service._render_html({"SHD": 0.612345}, "waveform", [shd])
+    assert "<td>0.612</td><td>0.5374</td>" in service._render_html({"SHD": 0.612345}, "waveform", [shd])
+
+
+def test_stored_result_at_six_decimals_renders_again(client, served):
+    served.logits.update(aco=_logit(0.0012345), acco_vs_aico=_logit(0.7))
+    stored = client.post("/inference/predict", json=_waveform_request("JSON")).json()["data"]
+    assert stored["predictions"]["heads"][0]["probability"] == round(0.0012345, 6)
+    html = client.post("/inference/predict", json=_waveform_request("HTML")).json()["data"]["htmlBase64"]
+    assert client.post("/inference/render-report", json={"result": stored}).json()["data"]["htmlBase64"] == html
