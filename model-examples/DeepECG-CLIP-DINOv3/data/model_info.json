@@ -8,15 +8,15 @@
   "provenance": {
     "sourceRepository": "HeartWise-AI/pacs-ai-backend",
     "sourceRevision": null,
-    "modelRepository": "heartwise/deepecg_clip_dinov3_acs",
-    "modelRevision": "badd718a6e26be24c9ad2dd3c911160a7d4fbe06",
-    "weightsPath": "acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth",
-    "weightsSha256": "49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026"
+    "modelRepository": "heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030",
+    "modelRevision": "3eab18b498f1b05f7749052fd40d00980b4c16d1",
+    "weightsPath": "base/epoch_030.pt",
+    "weightsSha256": "335aaec39064d009c31710a96fe17d98450d85611c5bb0271ce3aad118149ae6"
   },
   "resources": {
     "gpuRequired": true,
-    "residentMemoryMiB": 1400,
-    "peakMemoryMiB": 2000,
+    "residentMemoryMiB": 1000,
+    "peakMemoryMiB": 1300,
     "maxConcurrentInferences": 1,
     "idleTimeoutSeconds": 600
   },
@@ -92,15 +92,11 @@
       "answerOptionsEn": [
         {
           "id": "false_positive",
-          "answer": "Occlusion flagged but not present"
+          "answer": "Finding flagged but not present"
         },
         {
           "id": "false_negative",
-          "answer": "Occlusion present but not flagged"
-        },
-        {
-          "id": "wrong_type",
-          "answer": "Wrong occlusion type (complete vs incomplete)"
+          "answer": "Finding present but not flagged"
         },
         {
           "id": "quality",
@@ -114,15 +110,11 @@
       "answerOptionsFr": [
         {
           "id": "false_positive",
-          "answer": "Occlusion signalée mais absente"
+          "answer": "Constat signalé mais absent"
         },
         {
           "id": "false_negative",
-          "answer": "Occlusion présente mais non signalée"
-        },
-        {
-          "id": "wrong_type",
-          "answer": "Mauvais type d'occlusion (complète ou incomplète)"
+          "answer": "Constat présent mais non signalé"
         },
         {
           "id": "quality",

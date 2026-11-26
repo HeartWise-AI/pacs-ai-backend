@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import sys
 from pathlib import Path
 
@@ -19,7 +18,9 @@ from utils.ecg_inputs import EcgInputError, ecg_page, order_candidates, waveform
 from utils.ecg_page_renderer import LEAD_ORDER, render_training_page  # noqa: E402
 from utils.image_preprocessing import preprocess_ecg_image as preprocess_page  # noqa: E402
 
-PREPROCESSING = json.loads((ROOT / "models/encoder_config.json").read_text())["preprocessing"]
+# probes/config.json "preprocessing" of heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030
+PREPROCESSING = {"resize": [448, 896], "resize_mode": "stretch", "color_mode": "grayscale",
+                 "mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]}
 # DeepECG_Docker tests/test_pdf_inputs.py: the training renderer's page of a fixed signal, verified
 # pixel-identical to the training PNGs with matplotlib 3.10.9 and Pillow 12.3.0.
 RENDERER_GOLDEN_PIXELS_SHA256 = "c4fba3cc04ec22c3d577dc9c8c883e3f1a3f3e6bd41e4474cba235afbd8aefc7"

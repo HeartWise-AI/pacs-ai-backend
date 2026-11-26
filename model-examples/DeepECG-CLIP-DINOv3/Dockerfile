@@ -19,10 +19,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN uv pip install -r requirements.txt --system
 
-# The downloader reads the pinned checkpoints from models/config.json and verifies probe files
-# with models/probes.py, so the model sources come first. Weights: heartwise/deepecg_clip_dinov3_acs
-# at the pinned revision, the same bytes as the NAS release folder
-# /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/ (SHA256SUMS there).
+# Weights: heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030 at the pinned revision (base/epoch_030.pt
+# by its SHA-256, probes/** by probes/SHA256SUMS), the same bytes as the NAS copy
+# /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/{base,probes}.
 COPY models/ ./models/
 COPY download_model.py .
 RUN --mount=type=secret,id=hf_token \

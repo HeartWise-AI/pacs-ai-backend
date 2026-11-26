@@ -1,23 +1,16 @@
-"""Download and verify the released DeepECG-CLIP DINOv3 checkpoints.
+"""Download and verify the DINOv3-SigLIP2 encoder and its probe heads.
 
-The release manifest (data/model_info.json provenance) names one checkpoint, the ACO head
-(``--weights-path``/``--weights-sha256``). The other fine-tuned heads are pinned in
-models/config.json ("Checkpoints": path + SHA-256) and come from the same immutable model
-revision. Frozen linear-probe heads (DeepECG_Docker head folders under "ProbeDirectory") come
-from the same pinned revision and are validated as the service loads them; when there are any,
-the frozen pretraining encoder they read ("FrozenEncoder", pinned by SHA-256) is downloaded too.
-A missing file, an invalid head or a different checkpoint byte fails the build.
-
-Source of the files: Hugging Face ``heartwise/deepecg_clip_dinov3_acs`` (private), uploaded
-from the NAS release folder /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/
-(its SHA256SUMS lists the same hashes).
+The release manifest (data/model_info.json provenance) names the encoder checkpoint
+(``--weights-path`` base/epoch_030.pt, ``--weights-sha256``). The probe heads come from the same
+immutable revision of heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030 (probes/**) and are checked
+against the repository's probes/SHA256SUMS: every listed file must be present with its hash.
+The repository mirrors /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/{base,probes}.
 """
 import argparse
 import hashlib
-import json
 from pathlib import Path
 
-CONFIG_NAME = "config.json"
+PROBES = "probes"
 
 
 def sha256_file(path: Path) -> str:
@@ -32,7 +25,6 @@ def verify_weights(output_dir: Path, weights_path: str, expected_sha256: str) ->
     weights = output_dir / weights_path
     if not weights.is_file():
         raise FileNotFoundError(f"Expected checkpoint was not downloaded: {weights}")
-
     actual_sha256 = sha256_file(weights)
     if actual_sha256 != expected_sha256:
         raise ValueError(
@@ -42,46 +34,26 @@ def verify_weights(output_dir: Path, weights_path: str, expected_sha256: str) ->
     return weights
 
 
-def pinned_checkpoints(output_dir: Path, weights_path: str, weights_sha256: str) -> dict[str, str]:
-    """{path: sha256} of every checkpoint the service loads. The manifest checkpoint must be
-    one of the heads of models/config.json, with the same hash."""
-    config = json.loads((output_dir / CONFIG_NAME).read_text(encoding="utf-8"))
-    pinned = {entry["path"]: entry["sha256"] for entry in config["Checkpoints"].values()}
-    if pinned.get(weights_path) != weights_sha256:
-        raise ValueError(
-            f"{weights_path} with SHA-256 {weights_sha256} is not a checkpoint of models/{CONFIG_NAME}"
-        )
-    return pinned
-
-
-def _config(output_dir: Path) -> dict:
-    return json.loads((output_dir / CONFIG_NAME).read_text(encoding="utf-8"))
-
-
-def probe_files(output_dir: Path) -> list[Path]:
-    """The files of every valid probe head of the download (none when the revision has none)."""
-    from models.probes import REQUIRED_FILES, discover_probes
-
-    directory = output_dir / _config(output_dir)["ProbeDirectory"]
-    encoder_config = json.loads((output_dir / "encoder_config.json").read_text(encoding="utf-8"))
-    probes = discover_probes(directory, encoder_config, frozen_encoder(output_dir)[1])
-    return [directory / probe.key / name for probe in probes for name in REQUIRED_FILES]
-
-
-def frozen_encoder(output_dir: Path) -> tuple[str, str]:
-    entry = _config(output_dir)["FrozenEncoder"]
-    return entry["path"], entry["sha256"]
+def verify_probes(output_dir: Path) -> list[Path]:
+    """Every file of probes/SHA256SUMS, present and with its hash."""
+    directory = output_dir / PROBES
+    sums = directory / "SHA256SUMS"
+    if not sums.is_file():
+        raise FileNotFoundError(f"Expected {sums} was not downloaded")
+    verified = []
+    for line in sums.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        expected, name = line.split(maxsplit=1)
+        name = name.lstrip("*").strip()
+        verified.append(verify_weights(directory, name, expected.lower()))
+    if not verified:
+        raise ValueError(f"{sums} lists no files")
+    return verified
 
 
 def verify_all(output_dir: Path, weights_path: str, weights_sha256: str) -> list[Path]:
-    verified = [
-        verify_weights(output_dir, path, sha256)
-        for path, sha256 in pinned_checkpoints(output_dir, weights_path, weights_sha256).items()
-    ]
-    probes = probe_files(output_dir)
-    if probes:
-        verified += probes + [verify_weights(output_dir, *frozen_encoder(output_dir))]
-    return verified
+    return [verify_weights(output_dir, weights_path, weights_sha256)] + verify_probes(output_dir)
 
 
 def download_model(
@@ -96,25 +68,16 @@ def download_model(
 
     if not token:
         raise ValueError("A Hugging Face access token is required")
-
-    pinned = pinned_checkpoints(output_dir, weights_path, expected_sha256)
-    probe_directory = _config(output_dir)["ProbeDirectory"]
-
-    def fetch(patterns: list[str]) -> None:
-        snapshot_download(
-            repo_id=repository,
-            revision=revision,
-            token=token,
-            local_dir=str(output_dir),
-            allow_patterns=patterns,
-        )
-
-    fetch(sorted(pinned) + [f"{probe_directory}/*", f"{probe_directory}/**"])
-    if probe_files(output_dir):
-        fetch([frozen_encoder(output_dir)[0]])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_download(
+        repo_id=repository,
+        revision=revision,
+        token=token,
+        local_dir=str(output_dir),
+        allow_patterns=[weights_path, f"{PROBES}/*", f"{PROBES}/**"],
+    )
     verified = verify_all(output_dir, weights_path, expected_sha256)
-    for path in verified:
-        print(f"Verified {repository}@{revision}:{path.relative_to(output_dir)}")
+    print(f"Verified {repository}@{revision}: {weights_path} and {len(verified) - 1} probe files")
     return verified
 
 

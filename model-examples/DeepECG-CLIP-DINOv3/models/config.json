@@ -1,23 +1,6 @@
 {
-  "_comment": "DeepECG-CLIP DINOv3 checkpoints. The architecture and preprocessing are in encoder_config.json (the config.json schema of DeepECG_Docker heads); every weight comes from the checkpoints below. FrozenEncoder (the pretraining checkpoint) is downloaded and loaded only when ProbeDirectory holds frozen linear-probe heads (DeepECG_Docker head folders, models/probes.py).",
-  "SharedTrunk": {
-    "shared_layers": 10,
-    "dropout_rate": 0.1
-  },
-  "Checkpoints": {
-    "aco": {
-      "path": "acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth",
-      "sha256": "49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026"
-    },
-    "acco_vs_aico": {
-      "path": "acs_ft20_dinov3_siglip2_epoch030/acco_vs_aico/best_model.pth",
-      "sha256": "55091186aaf36d66eab1fb048a1c4177fa1534bd25cc84ac4a0e4e413f74ba29"
-    }
-  },
-  "FrozenEncoder": {
-    "path": "acs_ft20_dinov3_siglip2_epoch030/base/epoch_030.pt",
-    "sha256": "335aaec39064d009c31710a96fe17d98450d85611c5bb0271ce3aad118149ae6",
-    "state_dict_key": "image_encoder"
-  },
-  "ProbeDirectory": "acs_ft20_dinov3_siglip2_epoch030/probes"
+  "_comment": "DINOv3-SigLIP2 encoder (zo59vdxk, epoch 30) + frozen-probe heads of heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030, served by models/dinov3_bank.py (DeepECG_Docker). variant: clean (probes fitted on clean rendered pages; PACS-AI receives native digital pages) or aug. heads: enabled probe tasks (decision 2026-11-26); disabled_heads are never loaded or returned.",
+  "variant": "clean",
+  "heads": ["ecg77", "shd", "lvef_le40", "lvef_lt50", "afib_5y", "hcm", "aco"],
+  "disabled_heads": ["hcm_3class", "acco_vs_aico"]
 }

@@ -1,25 +1,22 @@
-# Development build from the NAS release folder, without Hugging Face. Copy the checkpoints
-# into models/ first (same layout as the Hugging Face repository), then build:
+# Development build from the NAS copy, without Hugging Face. Copy the encoder and the probes into
+# models/ first (the layout of the Hugging Face repository), then build:
 #
 #   R=/mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030
-#   (cd $R && sha256sum -c SHA256SUMS)
-#   mkdir -p models/acs_ft20_dinov3_siglip2_epoch030/{aco,acco_vs_aico}
-#   cp $R/aco/best_model.pth models/acs_ft20_dinov3_siglip2_epoch030/aco/
-#   cp $R/acco_vs_aico/best_model.pth models/acs_ft20_dinov3_siglip2_epoch030/acco_vs_aico/
-#   # only when $R/probes exists: also copy $R/probes and $R/base/epoch_030.pt
+#   (cd $R/probes && sha256sum -c SHA256SUMS)
+#   mkdir -p models/base && cp $R/base/epoch_030.pt models/base/ && cp -r $R/probes models/
 #   docker build --platform linux/amd64 -f Dockerfile.local -t pacs-ai-deepecg-clip-dinov3:local .
 #
-# The build fails unless every copied file matches its pinned SHA-256. The image carries the
-# "local" release channel label and must not be published.
+# The build fails unless the encoder and every probes/SHA256SUMS file match. The image carries the
+# "local" release-channel label and must not be published.
 FROM python:3.12.1-slim
 
 ARG PACS_AI_SOURCE_REPOSITORY="HeartWise-AI/pacs-ai-backend"
 ARG PACS_AI_SOURCE_REVISION=""
 ARG PACS_AI_MODEL_VERSION="1.1.0"
-ARG PACS_AI_MODEL_REPOSITORY="heartwise/deepecg_clip_dinov3_acs"
-ARG PACS_AI_MODEL_REVISION="badd718a6e26be24c9ad2dd3c911160a7d4fbe06"
-ARG PACS_AI_WEIGHTS_PATH="acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth"
-ARG PACS_AI_WEIGHTS_SHA256="49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026"
+ARG PACS_AI_MODEL_REPOSITORY="heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030"
+ARG PACS_AI_MODEL_REVISION="3eab18b498f1b05f7749052fd40d00980b4c16d1"
+ARG PACS_AI_WEIGHTS_PATH="base/epoch_030.pt"
+ARG PACS_AI_WEIGHTS_SHA256="335aaec39064d009c31710a96fe17d98450d85611c5bb0271ce3aad118149ae6"
 
 RUN apt-get update && apt-get install -y --no-install-recommends nginx supervisor \
     && rm -rf /var/lib/apt/lists/*

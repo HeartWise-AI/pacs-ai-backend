@@ -5,4 +5,5 @@ __pycache__
 *.pt
 hf_token.txt
 *.pth
-models/acs_ft20_dinov3_siglip2_epoch030/
+models/base/
+models/probes/

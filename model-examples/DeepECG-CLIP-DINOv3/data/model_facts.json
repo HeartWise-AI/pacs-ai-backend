@@ -2,56 +2,62 @@
   "en": {
     "Summary": {
       "Name": "DeepECG-CLIP-DINOv3",
-      "Description": "Research ECG model from one 12-lead ECG: acute coronary occlusion (ACO) and complete (ACCO) vs incomplete (AICO) occlusion, from a DINOv3 ViT-B/16 encoder pretrained contrastively on MHI ECG images and reports. Frozen linear-probe heads on the same encoder are added from files when released.",
+      "Description": "Research ECG model: frozen linear-probe heads on the DINOv3-SigLIP2 ECG image encoder (DeepECG-PNG, zo59vdxk, epoch 30), one encoder pass per ECG. Outputs: 77 ECG findings (probabilities), structural heart disease, LVEF <= 40%, LVEF < 50%, incident AFib at 5 years, HCM and acute coronary occlusion.",
       "Developed_by": "HeartWise.AI / Montreal Heart Institute",
       "Version": "1.1.0"
     },
     "Mechanism": {
-      "Outcome": "aco: acute coronary occlusion on the catheterization following the ECG (ACS cohort v6). acco_vs_aico: complete vs incomplete occlusion, among occlusions.",
-      "Output": "One entry per head: probability (sigmoid), validation Youden threshold, positive flag. acco_vs_aico is interpreted only when aco is positive. Every available head is returned by default; additionalMetadata.heads selects a subset.",
-      "Target_population": "Adults with a 12-lead resting ECG in the MHI acute coronary syndrome cohort (development population).",
+      "Output": "One row per output: id, label, probability, threshold (validation Youden; none for the 77 findings), positive (only where a threshold exists), applicable. Every enabled head by default; additionalMetadata.heads selects a subset.",
+      "Probe_version": "clean: heads fitted on features of clean rendered ECG pages (PACS-AI receives native digital ECGs).",
+      "Disabled_heads": "HCM 3-class and ACCO vs AICO are off by decision (2026-11-26).",
+      "Target_population": "Adults with a 12-lead resting ECG at the Montreal Heart Institute (development cohorts).",
       "Input_data_source": "One ECG per request, chosen from the study: DICOM 12-lead or general ECG waveform first, then an Encapsulated PDF holding a vector ECG (standard 3x4 + lead II rhythm layout), then a single-frame ECG image; earliest acquisition first.",
       "Input_data_type": "dicom",
-      "Model_type": "Deep learning: DINOv3 ViT-B/16 (448x896 grayscale page, ImageNet normalisation); fine-tuned heads share the frozen first 10 blocks and run their own top 2 blocks and linear head.",
+      "Model_type": "Deep learning: DINOv3 ViT-B/16 image encoder (448x896 grayscale page, ImageNet normalisation, bfloat16), StandardScaler + logistic regression heads on its 1536-d feature (code: HeartWise-AI/DeepECG_Docker models/dinov3_bank.py).",
       "Supported_DICOM_modalities": "ECG (waveform), DOC (Encapsulated PDF), OT (secondary capture)"
     },
     "Performance": {
-      "Test_set": "MHI ACS v6 held-out test split: 9,021 ECGs of 4,371 patients, 589 occlusions (327 ACCO, 262 AICO).",
-      "aco": "AUROC 0.92 (95% CI 0.89-0.93), AUPRC 0.64, sensitivity 0.83, specificity 0.87, PPV 0.31, NPV 0.99 at threshold 0.0506 (clean renders); AUROC 0.90 on augmented renders.",
-      "acco_vs_aico": "Among the 589 occlusions: AUROC 0.69 (0.62-0.76), sensitivity 0.56, specificity 0.72 at threshold 0.6156.",
-      "Smartphone_photos": "300 photographs of test ECGs: any occlusion AUROC 0.89 (photo) vs 0.91 (native)."
+      "Note": "Held-out Montreal Heart Institute test sets, clean rendered pages; 95% CI from 1000 resamples of 80% of patients.",
+      "ACO": "AUROC 0.87 (0.84-0.89), sensitivity 0.73, specificity 0.85, NPV 0.98 at threshold 0.0470 (9,021 ECGs, 589 occlusions)",
+      "LVEF_le40": "AUROC 0.89 (0.88-0.90)",
+      "LVEF_lt50": "AUROC 0.87 (0.86-0.88)",
+      "SHD": "AUROC 0.77 (0.76-0.78)",
+      "HCM": "AUROC 0.71 (0.66-0.75), confirmed HCM vs rest",
+      "AFib_5y": "AUROC 0.68 (0.65-0.70)",
+      "ECG_findings_77": "macro AUROC 0.97"
     },
     "Uses_and_directions": {
-      "General_use": "Research on ECG-based detection of acute coronary occlusion.",
-      "Directions": "Send the ECG study (waveform preferred). Read each output as a model score against its threshold.",
-      "Not_intended_use": "Diagnosis, triage or catheterization decisions; ruling out an acute coronary syndrome."
+      "General_use": "Research on ECG-based detection of these conditions.",
+      "Directions": "Send the ECG study (waveform preferred). Read each output as a model score; a flag is given only where a validation threshold exists.",
+      "Not_intended_use": "Diagnosis, triage or treatment decisions."
     },
     "Warnings_and_limitations": {
       "Research_only": "No regulatory clearance, no calibration analysis, no external validation.",
-      "Input_fidelity": "Waveforms sampled at a multiple of 250 Hz give the training pixels exactly (training renderer, MUSE-era style); about 30% of training pages came from a later render style, on which outputs differ slightly. PDFs are redrawn from their vector traces (close, not identical). Images are used as they are and were only seen through training augmentation.",
-      "Pretraining_overlap": "311 of 4,371 test patients have another ECG in the encoder's pretraining corpus; without them the aco AUROC is 0.90.",
-      "Thresholds": "Youden points on the augmented validation split; no clinical operating point chosen.",
-      "License": "Weights derive from Meta DINOv3 and are subject to the DINOv3 license."
+      "Input_fidelity": "Waveforms sampled at a multiple of 250 Hz give the training pixels exactly; PDFs are redrawn from their vector traces; images are used as they are and are the least validated input.",
+      "Numerics": "Features are computed under bfloat16 autocast, as at probe fitting; GPU kernels differ from the training run's by about 1e-3 in probability (more on steep heads).",
+      "Provenance_gap": "The probe fits recorded no git commit (closest: DeepECG-PNG probe-fairness 08a2933).",
+      "License": "The encoder derives from Meta DINOv3 and is subject to the DINOv3 license."
     },
     "Artifact_provenance": {
-      "Repository": "heartwise/deepecg_clip_dinov3_acs (NAS: /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030)",
-      "Pinned_revision": "badd718a6e26be24c9ad2dd3c911160a7d4fbe06 (tag v1.1.0)",
-      "Checkpoints": "aco/best_model.pth (sha256 49db22c3...9026), acco_vs_aico/best_model.pth (sha256 55091186...ba29); pretraining base/epoch_030.pt used only by frozen probes",
-      "Training": "DeepECG-PNG commit 1f6fb84 (PR #224); pretraining W&B mhi_ai run zo59vdxk epoch 30; fine-tunes W&B project deepecg_dinov3_siglip2_finetune"
+      "Repository": "heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030 (NAS: /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/{base,probes})",
+      "Pinned_revision": "3eab18b498f1b05f7749052fd40d00980b4c16d1",
+      "Encoder": "base/epoch_030.pt, SHA-256 335aaec39064d009c31710a96fe17d98450d85611c5bb0271ce3aad118149ae6",
+      "Heads": "probes/<task>_clean, verified against probes/SHA256SUMS"
     }
   },
   "fr": {
     "Résumé": {
       "Nom": "DeepECG-CLIP-DINOv3",
-      "Description": "Modèle ECG de recherche : occlusion coronarienne aiguë (OCA) et occlusion complète (ACCO) ou incomplète (AICO), à partir d'un ECG 12 dérivations.",
+      "Description": "Modèle ECG de recherche : sondes linéaires figées sur l'encodeur d'images ECG DINOv3-SigLIP2. Sorties : 77 constats ECG, cardiopathie structurelle, FEVG <= 40 %, FEVG < 50 %, FA incidente à 5 ans, CMH et occlusion coronarienne aiguë.",
       "Version": "1.1.0"
     },
     "Performance": {
-      "OCA": "ASC 0,92 (IC 95 % 0,89-0,93), sensibilité 0,83, spécificité 0,87 au seuil 0,0506 (test ICM, 9 021 ECG).",
-      "ACCO_vs_AICO": "ASC 0,69 (0,62-0,76) parmi les 589 occlusions."
+      "OCA": "ASC 0,87 (0,84-0,89), sensibilité 0,73, spécificité 0,85 au seuil 0,0470.",
+      "FEVG": "<= 40 % : ASC 0,89 ; < 50 % : ASC 0,87.",
+      "Autres": "Cardiopathie structurelle 0,77 ; CMH 0,71 ; FA à 5 ans 0,68 ; 77 constats 0,97 (macro)."
     },
     "Avertissements": {
-      "Recherche": "Usage en recherche seulement ; aucune autorisation réglementaire, aucune validation externe.",
+      "Recherche": "Usage en recherche seulement ; aucune autorisation réglementaire, aucune validation externe ni analyse d'étalonnage.",
       "Entrées": "Le tracé DICOM est l'entrée la plus fidèle ; le PDF vectoriel est redessiné ; l'image est utilisée telle quelle et est la moins validée."
     }
   }

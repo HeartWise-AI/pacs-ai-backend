@@ -1,85 +1,46 @@
 # DeepECG-CLIP-DINOv3
 
-Research-only PACS.AI inference service for HeartWise's DeepECG-CLIP DINOv3 12-lead ECG model
-(HeartWise-AI/DeepECG-PNG). One ECG goes in; every available head comes out in one result.
+Research-only PACS.AI inference service for the DINOv3-SigLIP2 ECG image encoder of DeepECG-PNG (W&B
+`mhi_ai/deepecg_dinov3_siglip2` run zo59vdxk, epoch 30) and its frozen linear-probe heads. One ECG goes in; every
+enabled head comes out in one result, from one encoder pass.
 
-> **Not for clinical use.** Each output is a model probability compared with a validation threshold. It is
-> not a calibrated risk or a diagnosis. There is no external validation and no regulatory clearance. The
-> weights derive from Meta DINOv3 and are subject to the DINOv3 license.
+> **Not for clinical use.** Each output is a model probability; a flag is given only where a validation threshold
+> exists. No calibration analysis, no external validation, no regulatory clearance. The encoder derives from Meta
+> DINOv3 and is subject to the DINOv3 license.
 
 ## Heads
 
-| id | kind | output | threshold (validation Youden) | held-out test (MHI ACS v6, 9,021 ECGs) |
-|---|---|---|---|---|
-| `aco` | fine-tuned | acute coronary occlusion vs none | 0.05062838 | AUROC 0.92 [0.89, 0.93]; sens 0.83, spec 0.87, NPV 0.99 |
-| `acco_vs_aico` | fine-tuned | complete (ACCO) vs incomplete (AICO) occlusion; only interpreted when `aco` is positive | 0.6155858 | AUROC 0.69 [0.62, 0.76] among the 589 occlusions |
-| probes | linear probe | any head released under `probes/` (see below) | per head | per head (`model-facts`) |
+Probe version **clean** (heads fitted on features of clean rendered pages; PACS-AI receives native digital ECGs),
+set in `models/config.json` (`variant`: `clean` or `aug`).
 
-Both fine-tunes come from the DINOv3-SigLIP2 pretraining (W&B `mhi_ai` run zo59vdxk, epoch 30) with the top
-2 blocks, the final norm and a linear head trained (DeepECG-PNG commit 1f6fb84, PR #224). Their first 10
-blocks are bit-identical, so the service runs those once per ECG and then each head's own top blocks
-(`models/dinov3_heads.py`; loading refuses checkpoints that do not share them).
-
-### Frozen linear probes (77 patterns, SHD, LVEF, AFib 5 y, HCM, ...)
-
-Since 1.1.0 the release serves six clean probes from `acs_ft20_dinov3_siglip2_epoch030/probes/`
-(fitted on frozen features of clean rendered pages, scored on clean MHI test pages; threshold = validation
-Youden; 95% CI = 1,000 resamples of 80% of the patients):
-
-| folder | outputs | test AUROC [95% CI] | threshold |
+| id | output | threshold (validation Youden) | held-out MHI test AUROC [95% CI] (clean pages) |
 |---|---|---|---|
-| `ecg77_clean` | 77 ECG patterns | 0.97 [0.97, 0.97] (macro) | probabilities only |
-| `shd_clean` | `SHD` | 0.77 [0.76, 0.78] | 0.5374 |
-| `lvef_le40_clean` | `LVEF<=40` | 0.89 [0.88, 0.90] | 0.1695 |
-| `lvef_lt50_clean` | `LVEF<50` | 0.87 [0.86, 0.88] | 0.2696 |
-| `afib_5y_clean` | `iAFib5` | 0.68 [0.65, 0.70] | 0.1113 |
-| `hcm_clean` | `confirmed HCM (vs rest)` | 0.71 [0.66, 0.75] | 0.0027 |
+| `aco` | acute coronary occlusion | 0.0470 | 0.87 [0.84, 0.89] (9,021 ECGs, 589 occlusions; sens 0.73, spec 0.85) |
+| `lvef_le40` | LVEF <= 40% | 0.1695 | 0.89 [0.88, 0.90] |
+| `lvef_lt50` | LVEF < 50% | 0.2696 | 0.87 [0.86, 0.88] |
+| `shd` | structural heart disease (EchoNext definition) | 0.5374 | 0.77 [0.76, 0.78] |
+| `hcm` | confirmed HCM vs rest | 0.0027 | 0.71 [0.66, 0.75] |
+| `afib_5y` | incident AFib at 5 years | 0.1113 | 0.68 [0.65, 0.70] |
+| `ecg77:<label>` | 77 ECG findings | none (probabilities only) | 0.97 macro |
 
-Not served: the ACO and ACCO-vs-AICO probes (the fine-tunes above are better on the same task), the
-probes fitted on augmented pages (same output ids as the clean ones), and the 3-class HCM head (softmax).
-All 18 probe heads (clean and augmented, float64 copies, full provenance) are in the private Hugging Face
-repository `heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030`. Each served head reproduces its saved
-validation scores from the cached features within 3e-6.
+Disabled by decision (2026-11-26, `disabled_heads`): `hcm_3class` (softmax, probabilities only) and `acco_vs_aico`
+(test AUROC 0.59-0.61, only meaningful for occlusion ECGs). There is no amyloidosis head. The two full fine-tunes of
+the first version of this PR (ACO AUROC 0.92, ACCO vs AICO 0.69; `heartwise/deepecg_clip_dinov3_acs`) are not served.
 
-A probe head uses **the DeepECG_Docker head format, unchanged**: one folder per head with
-`config.json`, `head.json`, `thresholds.json` and `classifier.safetensors`, exactly the files of a
-DeepECG_Docker classifier repository such as `heartwise/SigLIP2_SHD`, validated with the same checks
-as `_DeepECG_SigLIP2_Bank.load_head` (`models/probes.py`). For this model:
+## Reuse of DeepECG_Docker
 
-- `config.json` equals `models/encoder_config.json` (same schema as DeepECG_Docker's encoder config:
-  `model`, `vision_config`, `preprocessing`, `feature`);
-- `head.json` `encoder.sha256` is the SHA-256 of `base/epoch_030.pt`, and `classifier.input_dim` is
-  1536 (concat[CLS, mean patch tokens] of the frozen encoder);
-- `thresholds.json` holds the validation Youden cutoff of each output, or `{}` for a probability-only
-  head (as DeepECG_Docker's 77-class head).
+The model code is DeepECG_Docker's, vendored unchanged and pinned by hash (`tests/test_vendored.py`), from
+HeartWise-AI/DeepECG_Docker PR #108 (branch `feat/dinov3-siglip2-bank`, `482d6c9`; re-pin to `main` once merged):
 
-A `scripts/probe_report.py` probe (StandardScaler + LogisticRegression) maps field for field:
-`weight = coef_`, `bias = intercept_`, `mean = mean_`, `scale = scale_`, `standardize: true`. Only sigmoid
-heads exist in this format, so a 3-class HCM head would need a format change in DeepECG_Docker first.
+- `models/dinov3_bank.py`: the encoder (architecture built locally; the gated Meta repository is never contacted;
+  `base/epoch_030.pt` checked by SHA-256 and loaded strictly), bfloat16 features, the head loader with every check of
+  the DeepECG_Docker heads (encoder file and SHA-256, shapes, dtype, outputs, thresholds), and
+  `DeepECG_DINOv3_Predictor`, whose rows this service returns;
+- `utils/image_preprocessing.py` (`preprocess_ecg_image`, PDF page checks), `utils/ecg_pdf.py`,
+  `utils/ecg_page_renderer.py`, `utils/log_config.py`.
 
-Adding heads needs no code change: upload the head folders under `probes/` in the Hugging Face repository,
-then bump `modelRevision` in `data/model_info.json` (and `PACS_AI_MODEL_REVISION` in `Dockerfile.local`)
-and the minor version. The build then also downloads `base/epoch_030.pt` (pinned in `models/config.json`);
-the service runs its top 2 blocks on the shared trunk output and feeds the pooled features to every head,
-in the same forward pass as the fine-tunes. The same folders can be published as their own repositories
-for DeepECG_Docker once it has a DINOv3 encoder.
-
-### Reuse of DeepECG_Docker
-
-Decision: share the formats and vendor DeepECG_Docker's ECG input code unchanged; do not depend on the
-DeepECG_Docker package.
-
-- Vendored unchanged from DeepECG_Docker `8f42a184` (hashes checked by `tests/test_vendored.py`; update by
-  copying newer files): `utils/ecg_page_renderer.py` (training renderer), `utils/ecg_pdf.py` (vector PDF
-  reader), `utils/image_preprocessing.py` (`preprocess_ecg_image`, `open_png_bytes`). A PDF is read exactly
-  as DeepECG_Docker's `load_ecg_pdf` reads one; every page goes through `preprocess_ecg_image` with the
-  `preprocessing` block of `models/encoder_config.json`.
-- Same head format and probability formula as DeepECG_Docker's SigLIP2 heads (above).
-- Not reused: DeepECG_Docker's model classes and pipeline. Its image models are the SigLIP2 encoder only
-  (no DINOv3), its loader is tied to its CSV batch pipeline (`main.py`, `heartwise.config`, `weights/`
-  download per repository), and PACS-AI needs a FastAPI service with the PACS-AI predict, model-info and
-  provenance contracts. Adding the DINOv3 encoder to DeepECG_Docker, reading the same head folders, is the
-  follow-up that would let both pipelines run every head.
+This service adds only the PACS-AI parts: the DICOM inputs (`utils/ecg_inputs.py`), the head selection, the JSON and
+HTML reports, render-report, and the provenance contract.
 
 ## Inputs
 
@@ -92,7 +53,7 @@ readable object: a waveform first, then a PDF, then an image; within a kind, the
 | pdf | Encapsulated PDF (`1.2.840.10008.5.1.4.1.1.104.1`), modality DOC | vector traces read from the PDF (`utils/ecg_pdf.py`, standard 3x4 + lead II rhythm layout only; scale and lead labels checked), redrawn by the training renderer | Close, not identical: the traces are interpolated from the drawing. Scanned PDFs and other layouts are refused. |
 | image | any other single-frame image (secondary capture), modality OT | the pixels as they are | Least faithful: not the training layout. The model saw such pages only through training augmentation (other layouts, photographs). |
 
-The renderer, the PDF reader and the preprocessing are DeepECG_Docker's (see above). Preprocessing equals
+The renderer, the PDF reader and the preprocessing are DeepECG_Docker's (see Reuse). Preprocessing equals
 DeepECG-PNG `utils/image.process_image`: grayscale, stretch resize to 448x896, 3 channels, ImageNet
 mean/std (`tests/test_ecg_inputs.py` checks it against the torchvision pipeline of training).
 
@@ -107,21 +68,19 @@ but has no ECG model in its registry, and drops DOC and OT series. Registering t
 
 ## Result (JSON)
 
-`predictions.heads` has one self-describing entry per head, in a fixed order:
+`predictions.heads` has one row per output, the fields of DeepECG_Docker's `DeepECG_DINOv3_Predictor`:
 
 ```json
-{"id": "aco", "head": "aco", "label": "Acute coronary occlusion (ACO)", "description": "...",
- "task": "binary", "kind": "fine-tuned", "probability": 0.4213, "threshold": 0.05062838,
- "positive": true, "applicable": true, "applicableWhen": null}
+{"id": "aco", "label": "ACO", "probability": 0.4213, "threshold": 0.046955234134749495, "positive": true, "applicable": true}
+{"id": "ecg77:Afib", "label": "Afib", "probability": 0.0103, "threshold": null, "positive": null, "applicable": true}
 ```
 
-`id` is the output name (a probe head's `head.json` `outputs`, the column names DeepECG_Docker writes);
-`head` is the head it comes from (a probe folder name). `positive` is null when the output is not
-applicable (`acco_vs_aico` with a negative `aco`) or has no threshold (probability-only head). `predictions.input` names the object that was read. Probabilities
-are rounded to 4 decimals before anything reads them. Example: `docs/examples/predict_response_json.json`.
+Probabilities are rounded to 4 decimals before the flags are computed, so a stored result holds everything its
+report needs. `predictions.input` names the DICOM object that was read; `predictions.model` gives the encoder and
+probe version. Example: `docs/examples/predict_response_json.json`.
 
-Select outputs with `additionalMetadata: {"heads": ["aco", "<head key>", "<output id>", ...]}`; a head key
-selects all its outputs, and an output with `applicableWhen` brings its parent. Without it, every head is returned.
+Select outputs with `additionalMetadata: {"heads": ["aco", "ecg77", "ecg77:Afib", ...]}` (a head name selects all its
+outputs); a disabled head is refused. Without it, every enabled output is returned.
 
 ### Calling it
 
@@ -130,37 +89,27 @@ Through api-pacs (permission `models.use`; the container must be registered):
 ```
 POST /v1/inference/model/proxy/container/{containerID}/predict
 {"studyInstanceUID": "...", "seriesInstanceUIDs": ["..."], "forceJSON": true,
- "additionalMetadata": {"heads": ["aco", "acco_vs_aico"]}}
+ "additionalMetadata": {"heads": ["aco", "lvef_le40"]}}
 ```
 
-Directly against the container (port 80 behind nginx, or 8000):
+Directly against the container:
 
 ```
 POST /api/inference/predict
-{"outputMode": "JSON", "seriesInstanceImages": {"1": {"1": "<base64 DICOM>"}},
- "additionalMetadata": {"heads": ["aco"]}}
+{"outputMode": "JSON", "seriesInstanceImages": {"1": {"1": "<base64 DICOM>"}}}
 ```
 
-`GET /api/inference/model-info` and `/api/inference/model-facts` describe the model;
-`POST /api/inference/render-report` with `{"result": <data of a JSON-mode response>}` returns the HTML
-report of a stored result without loading the model (422 for a result this version would not write).
+`GET /api/inference/model-info` and `/api/inference/model-facts` describe the model; `POST /api/inference/render-report`
+with `{"result": <data of a JSON-mode response>}` returns the HTML of a stored result without loading the model.
 
 ## Weights
 
-Hugging Face `heartwise/deepecg_clip_dinov3_acs` (private), revision
-`badd718a6e26be24c9ad2dd3c911160a7d4fbe06` (tag `v1.1.0`), uploaded from the NAS release folder
-`/mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/` (same bytes; `SHA256SUMS` there):
+Hugging Face `heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030` (private), revision
+`3eab18b498f1b05f7749052fd40d00980b4c16d1`, mirrored on the NAS at
+`/mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/{base,probes}`:
 
-| file | SHA-256 |
-|---|---|
-| `aco/best_model.pth` (manifest checkpoint) | `49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026` |
-| `acco_vs_aico/best_model.pth` | `55091186aaf36d66eab1fb048a1c4177fa1534bd25cc84ac4a0e4e413f74ba29` |
-| `base/epoch_030.pt` (only with probes) | `335aaec39064d009c31710a96fe17d98450d85611c5bb0271ce3aad118149ae6` |
-
-`download_model.py` fails the build on any missing file or hash mismatch. The architecture is built from
-`models/config.json`; the gated `facebook/dinov3-vitb16-pretrain-lvd1689m` repository is never contacted.
-The checkpoints pickle the training config object; `models/dinov3_heads.py` loads them without the
-DeepECG-PNG code by replacing only that class.
+- `base/epoch_030.pt` (manifest checkpoint), SHA-256 `335aaec39064d009c31710a96fe17d98450d85611c5bb0271ce3aad118149ae6`;
+- `probes/**`: every file checked against `probes/SHA256SUMS` at build.
 
 ## Build
 
@@ -170,24 +119,25 @@ python3 scripts/release-model.py model-examples/DeepECG-CLIP-DINOv3 \
   --hf-token-file /secure/path/hf_token
 ```
 
-The token needs read access to `heartwise/deepecg_clip_dinov3_acs`. `Dockerfile.local` builds from the NAS
-copy instead (instructions at its top) and is for development only.
+The token needs read access to `heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030`; it is a BuildKit secret, never in
+the image. `Dockerfile.local` builds from the NAS copy (instructions at its top), for development only.
 
 ## Verification
 
-- `pytest model-examples/DeepECG-CLIP-DINOv3/tests` (CPU, no weights): input conversion against the
-  training converter, the renderer's golden pixels, PDF and image inputs, the vendored files, the shared
-  trunk against the training classifier, DeepECG_Docker-format heads, predict and render-report.
-- Against the released checkpoints (CPU, 8 MHI ACS test ECGs, not committed): the service's outputs on
-  the stored training pages equal the training-code predictions (max difference 6e-5 ACO, 2e-5 ACCO);
-  preprocessing is identical (max difference 0.0). Waveform DICOMs built from the MUSE XML of the 6
-  MUSE-era ECGs rendered 100% of the training pixels and gave the same outputs (max difference 1e-6).
-- Resources (`data/model_info.json`) are estimates (about 100 M parameters in fp32); measure with
+- `pytest model-examples/DeepECG-CLIP-DINOv3/tests` (CPU, no weights): DICOM inputs against the training converter
+  and renderer, the vendored files, head selection and disabled heads, rounding and flags, predict and render-report,
+  provenance and download verification.
+- The model code is tested in DeepECG_Docker (PR #108): all 18 published heads load against the published encoder;
+  on 8 MHI test pages preprocessing equals training exactly, fp32 features match the training class (min cosine
+  0.9999997); GPU (RTX A5000): 557 MiB peak, about 110 ms per ECG for every head. Feature -> score parity against
+  the saved fit scores runs on the training host (`scripts/dinov3_probe_parity.py` there).
+- `resources` in `data/model_info.json` are estimates from that measurement plus the CUDA context; confirm with
   `scripts/benchmark-model-resources.py` on the built image.
 
 ## Changelog
 
-- 1.1.0: six frozen linear-probe heads (77 patterns, SHD, LVEF<=40, LVEF<50, AFib 5 y, HCM) at
-  model revision `badd718`; image inputs decoded with the shared `utils/dicom_pixels.py` helper.
-- 1.0.0: first release: `aco` and `acco_vs_aico` fine-tunes, waveform / PDF / image inputs, probe
-  heads in the DeepECG_Docker head format.
+- 1.1.0: serves the published frozen-probe heads of the DINOv3-SigLIP2 encoder
+  (`heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030` @ 3eab18b, clean) through DeepECG_Docker's bank; heads per the
+  decision of 2026-11-26. Supersedes the unpublished 1.0.0 (ACS fine-tunes) and the interim 1.1.0 of
+  `heartwise/deepecg_clip_dinov3_acs` revision badd718.
+- 1.0.0 (never published): ACS fine-tunes (aco, acco_vs_aico), waveform / PDF / image inputs.

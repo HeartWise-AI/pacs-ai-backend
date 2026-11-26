@@ -9,4 +9,5 @@ hf_token.txt
 # Production downloads its configured checkpoints from Hugging Face.
 **/*.pt
 **/*.pth
-models/acs_ft20_dinov3_siglip2_epoch030/
+models/base/
+models/probes/
