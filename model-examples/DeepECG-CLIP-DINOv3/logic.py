@@ -7,11 +7,13 @@ from typing import Optional
 
 import pydicom
 import torch
+from models.aco_finetune import FineTunedACO
 from models.dinov3_bank import ALL_77, GATED_HEADS, PROBE_OUTPUTS, DeepECG_DINOv3_Predictor
 from report_input import NO_ECG_HTML, NO_ECG_RESULT, difference, fail, member, number, unwrap
 from utils.ecg_inputs import EcgInputError, EcgPage, ecg_page, order_candidates
 from utils.genericLogic import BasePredictionService
 from utils.http_utils import Config, JsonPredictionResponse, PredictRequest
+from utils.image_preprocessing import preprocess_ecg_image
 
 MODEL_DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 PRIMARY_HEAD = "aco"
@@ -31,9 +33,10 @@ SOURCE_LABELS = {
     },
 }
 THRESHOLD_NOTE = (
-    "Research use only: probabilities are model outputs (frozen linear probes on the DINOv3-SigLIP2 ECG "
-    "encoder), not calibrated risks, with no external validation. A flag (positive) is given only where a "
-    "validation Youden threshold exists; the 77 ECG findings are probabilities only."
+    "Research use only: probabilities are model outputs (aco: the fully fine-tuned DINOv3 model; the others: "
+    "frozen linear probes on the DINOv3-SigLIP2 ECG encoder), not calibrated risks, with no external validation. "
+    "A flag (positive) is given only where a validation Youden threshold exists; the 77 ECG findings are "
+    "probabilities only."
 )
 
 
@@ -55,17 +58,20 @@ def _read_json(path: str) -> dict:
 
 def model_config() -> dict:
     cfg = _read_json(os.path.join(MODEL_DIRECTORY, "config.json"))
-    heads, disabled = cfg["heads"], set(cfg["disabled_heads"])
+    heads, disabled, fine = cfg["heads"], set(cfg["disabled_heads"]), set(cfg.get("fine_tuned", {}))
     if cfg["variant"] not in ("clean", "aug") or not heads or set(heads) & disabled \
-            or not set(heads) <= set(PROBE_OUTPUTS):
+            or not set(heads) <= set(PROBE_OUTPUTS) or fine & (set(heads) | disabled - {"aco"}) \
+            or fine - {"aco"}:
         raise ValueError("models/config.json: invalid variant or head selection")
     return cfg
 
 
 def head_registry(cfg: dict) -> list[HeadSpec]:
     """Every output served, read from the enabled heads' head.json and thresholds.json (no weights):
-    binary heads in configuration order, then the multi-output heads (the 77 ECG findings)."""
-    specs = []
+    the fine-tuned ACO first, binary heads in configuration order, then the multi-output heads (the 77 ECG
+    findings)."""
+    specs = [HeadSpec(head, head, entry["label"], float(entry["threshold"]))
+             for head, entry in cfg.get("fine_tuned", {}).items()]
     ordered = sorted(cfg["heads"], key=lambda task: PROBE_OUTPUTS[task] == ALL_77 or len(PROBE_OUTPUTS[task]) > 1)
     for task in ordered:
         folder = os.path.join(MODEL_DIRECTORY, "probes", f"{task}_{cfg['variant']}")
@@ -93,13 +99,19 @@ class CustomPredictionService(BasePredictionService):
         predictor = DeepECG_DINOv3_Predictor(cfg["variant"], device, snapshot_folder=MODEL_DIRECTORY,
                                              heads=tuple(cfg["heads"]))
         CustomPredictionService.models["predictor"] = predictor
+        # The fully fine-tuned ACO model: its own backbone, fp32, on the same preprocessed page.
+        for head, entry in cfg.get("fine_tuned", {}).items():
+            model = FineTunedACO()
+            model.load_checkpoint(os.path.join(MODEL_DIRECTORY, entry["path"]))
+            CustomPredictionService.models[f"fine_tuned:{head}"] = model.eval().to(device)
         CustomPredictionService._registry = head_registry(cfg)
         CustomPredictionService.is_initialized = True
         print(f"DeepECG-CLIP-DINOv3 loaded: {cfg['variant']} probes {', '.join(cfg['heads'])}; "
               f"{len(CustomPredictionService._registry)} outputs. CUDA: {torch.cuda.is_available()}")
 
     def stop_model(self):
-        CustomPredictionService.models.pop("predictor", None)
+        for key in [k for k in CustomPredictionService.models if k == "predictor" or k.startswith("fine_tuned:")]:
+            CustomPredictionService.models.pop(key, None)
         CustomPredictionService.is_initialized = False
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -162,8 +174,13 @@ class CustomPredictionService(BasePredictionService):
         page = self._select_page(dicoms)
         if page is None:
             return None
-        result = CustomPredictionService.models["predictor"].predict_image(page.image)
-        return {row["id"]: round(float(row["probability"]), DECIMALS) for row in result["heads"]}, page.source
+        predictor = CustomPredictionService.models["predictor"]
+        tensor = preprocess_ecg_image(page.image, predictor.bank.preprocessing)
+        rows = {row["id"]: float(row["probability"]) for row in predictor.predict_tensor(tensor)["heads"]}
+        for key, model in CustomPredictionService.models.items():
+            if key.startswith("fine_tuned:"):
+                rows[key.split(":", 1)[1]] = float(model.probability(tensor.unsqueeze(0))[0])
+        return {key: round(value, DECIMALS) for key, value in rows.items()}, page.source
 
     def _positive(self, spec: HeadSpec, preds: dict[str, float]) -> Optional[bool]:
         if spec.applies_when and not self._positive(self._spec(spec.applies_when), preds):
@@ -191,7 +208,8 @@ class CustomPredictionService(BasePredictionService):
         return {
             "heads": [self._head_entry(spec, preds) for spec in heads],
             "input": {"source": source, "description": SOURCE_LABELS[source]["en"]},
-            "model": {"encoder": "DINOv3-SigLIP2 zo59vdxk epoch 30", "probes": model_config()["variant"]},
+            "model": {"encoder": "DINOv3-SigLIP2 zo59vdxk epoch 30", "probes": model_config()["variant"],
+                      "fine_tuned": sorted(model_config().get("fine_tuned", {}))},
             "notes": THRESHOLD_NOTE,
         }
 
@@ -317,16 +335,16 @@ class CustomPredictionService(BasePredictionService):
  <div class=\"rec\"><h2>Research recommendation / Recommandation de recherche</h2>
  <p lang=\"en\">{recs["en"]}</p><p lang=\"fr\">{recs["fr"]}</p></div>
  <div class=\"warn\"><p lang=\"en\"><strong>Research use only — not for clinical decision-making.</strong>
- The probabilities are outputs of frozen linear probes on the DINOv3-SigLIP2 ECG image encoder, not calibrated
- risks; flags use validation Youden thresholds, and the 77 ECG findings have none. Held-out Montreal Heart
- Institute test AUROCs (clean pages): ACO 0.87 (sensitivity 0.73, specificity 0.85 at its threshold), LVEF &le; 40%
+ The probabilities are outputs of the fully fine-tuned DINOv3 ACO model and of frozen linear probes on the
+ DINOv3-SigLIP2 ECG image encoder, not calibrated risks; flags use validation Youden thresholds, and the 77 ECG findings have none. Held-out Montreal Heart
+ Institute test AUROCs (clean pages): ACO 0.92 (fully fine-tuned model; sensitivity 0.83, specificity 0.87 at its
+ threshold), LVEF &le; 40%
  0.89, LVEF &lt; 50% 0.87, SHD 0.77, HCM 0.71, incident AFib at 5 years 0.68, 77 findings 0.97 (macro). No external
  validation and no calibration analysis. No regulatory clearance.</p>
  <p lang=\"fr\"><strong>Usage en recherche seulement — non destiné à la prise de décision clinique.</strong>
  Les probabilités sont des sorties de sondes linéaires figées sur l'encodeur d'images ECG DINOv3-SigLIP2, et non
  des risques étalonnés ; les indicateurs utilisent des seuils de Youden de validation, et les 77 constats ECG n'en
- ont pas. ASC sur l'ensemble de test de l'Institut de Cardiologie de Montréal (pages propres) : OCA 0,87
- (sensibilité 0,73, spécificité 0,85 à son seuil), FEVG &le; 40 % 0,89, FEVG &lt; 50 % 0,87, cardiopathie structurelle
+ ont pas. ASC sur l'ensemble de test de l'Institut de Cardiologie de Montréal (pages propres) : OCA 0,92 (modèle entièrement affiné ; sensibilité 0,83, spécificité 0,87 à son seuil), FEVG &le; 40 % 0,89, FEVG &lt; 50 % 0,87, cardiopathie structurelle
  0,77, CMH 0,71, FA incidente à 5 ans 0,68, 77 constats 0,97 (macro). Aucune validation externe ni analyse
  d'étalonnage. Aucune autorisation réglementaire.</p></div>
 </div></body></html>"""

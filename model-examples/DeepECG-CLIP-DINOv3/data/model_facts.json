@@ -2,23 +2,23 @@
   "en": {
     "Summary": {
       "Name": "DeepECG-CLIP-DINOv3",
-      "Description": "Research ECG model: frozen linear-probe heads on the DINOv3-SigLIP2 ECG image encoder (DeepECG-PNG, zo59vdxk, epoch 30), one encoder pass per ECG. Outputs: 77 ECG findings (probabilities), structural heart disease, LVEF <= 40%, LVEF < 50%, incident AFib at 5 years, HCM and acute coronary occlusion.",
+      "Description": "Research ECG model on the DINOv3-SigLIP2 ECG image encoder (DeepECG-PNG, zo59vdxk, epoch 30): acute coronary occlusion from the fully fine-tuned model, and frozen linear-probe heads on one shared encoder pass for 77 ECG findings (probabilities), structural heart disease, LVEF <= 40%, LVEF < 50%, incident AFib at 5 years and HCM.",
       "Developed_by": "HeartWise.AI / Montreal Heart Institute",
       "Version": "1.1.0"
     },
     "Mechanism": {
       "Output": "One row per output: id, label, probability, threshold (validation Youden; none for the 77 findings), positive (only where a threshold exists), applicable. Every enabled head by default; additionalMetadata.heads selects a subset.",
       "Probe_version": "clean: heads fitted on features of clean rendered ECG pages (PACS-AI receives native digital ECGs).",
-      "Disabled_heads": "HCM 3-class and ACCO vs AICO are off by decision (2026-11-26).",
+      "Disabled_heads": "The ACO probe (the fine-tune serves aco), HCM 3-class and ACCO vs AICO are off by decision (2026-11-26).",
       "Target_population": "Adults with a 12-lead resting ECG at the Montreal Heart Institute (development cohorts).",
       "Input_data_source": "One ECG per request, chosen from the study: DICOM 12-lead or general ECG waveform first, then an Encapsulated PDF holding a vector ECG (standard 3x4 + lead II rhythm layout), then a single-frame ECG image; earliest acquisition first.",
       "Input_data_type": "dicom",
-      "Model_type": "Deep learning: DINOv3 ViT-B/16 image encoder (448x896 grayscale page, ImageNet normalisation, bfloat16), StandardScaler + logistic regression heads on its 1536-d feature (code: HeartWise-AI/DeepECG_Docker models/dinov3_bank.py).",
+      "Model_type": "Deep learning: DINOv3 ViT-B/16 image encoder (448x896 grayscale page, ImageNet normalisation). aco: the fully fine-tuned model (top 2 blocks + linear head, fp32, own backbone). Others: StandardScaler + logistic regression heads on the frozen encoder's 1536-d feature (bfloat16; code: HeartWise-AI/DeepECG_Docker models/dinov3_bank.py).",
       "Supported_DICOM_modalities": "ECG (waveform), DOC (Encapsulated PDF), OT (secondary capture)"
     },
     "Performance": {
       "Note": "Held-out Montreal Heart Institute test sets, clean rendered pages; 95% CI from 1000 resamples of 80% of patients.",
-      "ACO": "AUROC 0.87 (0.84-0.89), sensitivity 0.73, specificity 0.85, NPV 0.98 at threshold 0.0470 (9,021 ECGs, 589 occlusions)",
+      "ACO": "Fully fine-tuned: AUROC 0.92 (0.89-0.93), sensitivity 0.83, specificity 0.87, NPV 0.99 at threshold 0.0506 (9,021 ECGs, 589 occlusions)",
       "LVEF_le40": "AUROC 0.89 (0.88-0.90)",
       "LVEF_lt50": "AUROC 0.87 (0.86-0.88)",
       "SHD": "AUROC 0.77 (0.76-0.78)",
@@ -42,7 +42,8 @@
       "Repository": "heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030 (NAS: /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/{base,probes})",
       "Pinned_revision": "3eab18b498f1b05f7749052fd40d00980b4c16d1",
       "Encoder": "base/epoch_030.pt, SHA-256 335aaec39064d009c31710a96fe17d98450d85611c5bb0271ce3aad118149ae6",
-      "Heads": "probes/<task>_clean, verified against probes/SHA256SUMS"
+      "Heads": "probes/<task>_clean, verified against probes/SHA256SUMS",
+      "Fine_tuned_ACO": "heartwise/deepecg_clip_dinov3_acs @ badd718a6e26be24c9ad2dd3c911160a7d4fbe06, acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth, SHA-256 49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026"
     }
   },
   "fr": {
@@ -52,7 +53,7 @@
       "Version": "1.1.0"
     },
     "Performance": {
-      "OCA": "ASC 0,87 (0,84-0,89), sensibilité 0,73, spécificité 0,85 au seuil 0,0470.",
+      "OCA": "Modèle entièrement affiné : ASC 0,92 (0,89-0,93), sensibilité 0,83, spécificité 0,87 au seuil 0,0506.",
       "FEVG": "<= 40 % : ASC 0,89 ; < 50 % : ASC 0,87.",
       "Autres": "Cardiopathie structurelle 0,77 ; CMH 0,71 ; FA à 5 ans 0,68 ; 77 constats 0,97 (macro)."
     },

@@ -1,6 +1,16 @@
 {
-  "_comment": "DINOv3-SigLIP2 encoder (zo59vdxk, epoch 30) + frozen-probe heads of heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030, served by models/dinov3_bank.py (DeepECG_Docker). variant: clean (probes fitted on clean rendered pages; PACS-AI receives native digital pages) or aug. heads: enabled probe tasks (decision 2026-11-26); disabled_heads are never loaded or returned.",
+  "_comment": "Frozen-probe heads of the DINOv3-SigLIP2 encoder (zo59vdxk, epoch 30) from heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030 (the release manifest repository), served by models/dinov3_bank.py (DeepECG_Docker), plus the fully fine-tuned ACO model from heartwise/deepecg_clip_dinov3_acs (models/aco_finetune.py), both in one request (decision of 2026-11-26). variant: clean (probes fitted on clean rendered pages; PACS-AI receives native digital ECGs) or aug. heads: enabled probe tasks; disabled_heads are never loaded or returned.",
   "variant": "clean",
-  "heads": ["ecg77", "shd", "lvef_le40", "lvef_lt50", "afib_5y", "hcm", "aco"],
-  "disabled_heads": ["hcm_3class", "acco_vs_aico"]
+  "heads": ["ecg77", "shd", "lvef_le40", "lvef_lt50", "afib_5y", "hcm"],
+  "disabled_heads": ["aco", "hcm_3class", "acco_vs_aico"],
+  "fine_tuned": {
+    "aco": {
+      "label": "ACO (acute coronary occlusion), fully fine-tuned DINOv3",
+      "threshold": 0.05062838,
+      "repository": "heartwise/deepecg_clip_dinov3_acs",
+      "revision": "badd718a6e26be24c9ad2dd3c911160a7d4fbe06",
+      "path": "acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth",
+      "sha256": "49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026"
+    }
+  }
 }

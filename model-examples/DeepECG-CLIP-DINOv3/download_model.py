@@ -1,13 +1,17 @@
-"""Download and verify the DINOv3-SigLIP2 encoder and its probe heads.
+"""Download and verify the DINOv3-SigLIP2 encoder, its probe heads and the ACO fine-tune.
 
 The release manifest (data/model_info.json provenance) names the encoder checkpoint
 (``--weights-path`` base/epoch_030.pt, ``--weights-sha256``). The probe heads come from the same
 immutable revision of heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030 (probes/**) and are checked
 against the repository's probes/SHA256SUMS: every listed file must be present with its hash.
-The repository mirrors /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/{base,probes}.
+The fully fine-tuned models of models/config.json "fine_tuned" (the ACO fine-tune) come from
+their own repository at a pinned revision and are checked against their pinned SHA-256; the same
+token reads both repositories. NAS mirror of every file:
+/mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/{base,probes,aco} (SHA256SUMS there).
 """
 import argparse
 import hashlib
+import json
 from pathlib import Path
 
 PROBES = "probes"
@@ -52,8 +56,13 @@ def verify_probes(output_dir: Path) -> list[Path]:
     return verified
 
 
+def fine_tuned(output_dir: Path) -> dict:
+    return json.loads((output_dir / "config.json").read_text(encoding="utf-8")).get("fine_tuned", {})
+
+
 def verify_all(output_dir: Path, weights_path: str, weights_sha256: str) -> list[Path]:
-    return [verify_weights(output_dir, weights_path, weights_sha256)] + verify_probes(output_dir)
+    return ([verify_weights(output_dir, weights_path, weights_sha256)] + verify_probes(output_dir)
+            + [verify_weights(output_dir, entry["path"], entry["sha256"]) for entry in fine_tuned(output_dir).values()])
 
 
 def download_model(
@@ -76,8 +85,17 @@ def download_model(
         local_dir=str(output_dir),
         allow_patterns=[weights_path, f"{PROBES}/*", f"{PROBES}/**"],
     )
+    for entry in fine_tuned(output_dir).values():
+        snapshot_download(
+            repo_id=entry["repository"],
+            revision=entry["revision"],
+            token=token,
+            local_dir=str(output_dir),
+            allow_patterns=[entry["path"]],
+        )
     verified = verify_all(output_dir, weights_path, expected_sha256)
-    print(f"Verified {repository}@{revision}: {weights_path} and {len(verified) - 1} probe files")
+    print(f"Verified {repository}@{revision}: {weights_path}, the probe files and "
+          f"{len(fine_tuned(output_dir))} fine-tuned model(s): {len(verified)} files")
     return verified
 
 

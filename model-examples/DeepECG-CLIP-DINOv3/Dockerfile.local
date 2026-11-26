@@ -4,9 +4,12 @@
 #   R=/mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030
 #   (cd $R/probes && sha256sum -c SHA256SUMS)
 #   mkdir -p models/base && cp $R/base/epoch_030.pt models/base/ && cp -r $R/probes models/
+#   (cd $R && sha256sum -c SHA256SUMS)
+#   mkdir -p models/acs_ft20_dinov3_siglip2_epoch030/aco
+#   cp $R/aco/best_model.pth models/acs_ft20_dinov3_siglip2_epoch030/aco/   # the ACO fine-tune
 #   docker build --platform linux/amd64 -f Dockerfile.local -t pacs-ai-deepecg-clip-dinov3:local .
 #
-# The build fails unless the encoder and every probes/SHA256SUMS file match. The image carries the
+# The build fails unless the encoder, every probes/SHA256SUMS file and the ACO fine-tune match. The image carries the
 # "local" release-channel label and must not be published.
 FROM python:3.12.1-slim
 

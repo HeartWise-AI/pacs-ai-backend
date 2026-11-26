@@ -1,7 +1,15 @@
 {
-  "diagnosis": "DeepECG-CLIP-DINOv3: occlusion suspected (ACO probability 0.421, threshold 0.0470); other positive outputs: SHD (structural heart disease, EchoNext definition) (0.612) of 3; input: waveform | research use only, not a clinical diagnosis",
+  "diagnosis": "DeepECG-CLIP-DINOv3: occlusion suspected (ACO probability 0.421, threshold 0.0506); other positive outputs: SHD (structural heart disease, EchoNext definition) (0.612) of 3; input: waveform | research use only, not a clinical diagnosis",
   "predictions": {
     "heads": [
+      {
+        "id": "aco",
+        "label": "ACO (acute coronary occlusion), fully fine-tuned DINOv3",
+        "probability": 0.4213,
+        "threshold": 0.05062838,
+        "positive": true,
+        "applicable": true
+      },
       {
         "id": "shd",
         "label": "SHD (structural heart disease, EchoNext definition)",
@@ -24,14 +32,6 @@
         "probability": 0.0011,
         "threshold": 0.0027414804009191847,
         "positive": false,
-        "applicable": true
-      },
-      {
-        "id": "aco",
-        "label": "ACO",
-        "probability": 0.4213,
-        "threshold": 0.046955234134749495,
-        "positive": true,
         "applicable": true
       },
       {
@@ -65,9 +65,12 @@
     },
     "model": {
       "encoder": "DINOv3-SigLIP2 zo59vdxk epoch 30",
-      "probes": "clean"
+      "probes": "clean",
+      "fine_tuned": [
+        "aco"
+      ]
     },
-    "notes": "Research use only: probabilities are model outputs (frozen linear probes on the DINOv3-SigLIP2 ECG encoder), not calibrated risks, with no external validation. A flag (positive) is given only where a validation Youden threshold exists; the 77 ECG findings are probabilities only."
+    "notes": "Research use only: probabilities are model outputs (aco: the fully fine-tuned DINOv3 model; the others: frozen linear probes on the DINOv3-SigLIP2 ECG encoder), not calibrated risks, with no external validation. A flag (positive) is given only where a validation Youden threshold exists; the 77 ECG findings are probabilities only."
   },
   "modelRecommendations": {
     "en": "<strong>Acute coronary occlusion suspected (probability 0.421).</strong> The model output is above the research threshold. Correlate with symptoms, serial ECGs and troponin. Research use only: do not change management on the basis of this output.",

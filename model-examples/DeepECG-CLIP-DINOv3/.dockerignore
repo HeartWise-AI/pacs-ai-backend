@@ -11,3 +11,4 @@ hf_token.txt
 **/*.pth
 models/base/
 models/probes/
+models/acs_ft20_dinov3_siglip2_epoch030/

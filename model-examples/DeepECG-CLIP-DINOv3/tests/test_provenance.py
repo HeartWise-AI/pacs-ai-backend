@@ -37,11 +37,26 @@ def test_manifest_pins_the_published_encoder_and_heads():
 def test_heads_enabled_by_decision_of_2026_11_26():
     config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
     assert config["variant"] == "clean"
-    assert config["heads"] == ["ecg77", "shd", "lvef_le40", "lvef_lt50", "afib_5y", "hcm", "aco"]
-    assert config["disabled_heads"] == ["hcm_3class", "acco_vs_aico"]
+    assert config["heads"] == ["ecg77", "shd", "lvef_le40", "lvef_lt50", "afib_5y", "hcm"]
+    assert config["disabled_heads"] == ["aco", "hcm_3class", "acco_vs_aico"]   # the probe ACO: the fine-tune serves aco
+    # the fully fine-tuned ACO model: latest revision of heartwise/deepecg_clip_dinov3_acs, same bytes as the NAS copy
+    # (/mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/SHA256SUMS)
+    assert config["fine_tuned"]["aco"] == {
+        "label": "ACO (acute coronary occlusion), fully fine-tuned DINOv3",
+        "threshold": 0.05062838,
+        "repository": "heartwise/deepecg_clip_dinov3_acs",
+        "revision": "badd718a6e26be24c9ad2dd3c911160a7d4fbe06",
+        "path": "acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth",
+        "sha256": "49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026",
+    }
 
 
 def _fake_release(tmp_path: Path) -> str:
+    aco = tmp_path / "ft/aco.pth"
+    aco.parent.mkdir()
+    aco.write_bytes(b"fine-tune")
+    (tmp_path / "config.json").write_text(json.dumps({"fine_tuned": {"aco": {
+        "path": "ft/aco.pth", "sha256": hashlib.sha256(b"fine-tune").hexdigest()}}}))
     (tmp_path / "base").mkdir()
     (tmp_path / "base/epoch_030.pt").write_bytes(b"encoder")
     head = tmp_path / "probes/shd_clean"
@@ -58,7 +73,11 @@ def _fake_release(tmp_path: Path) -> str:
 def test_encoder_and_every_listed_probe_file_are_verified(tmp_path):
     sha = _fake_release(tmp_path)
     verified = download_model.verify_all(tmp_path, "base/epoch_030.pt", sha)
-    assert len(verified) == 4
+    assert len(verified) == 5 and verified[-1] == tmp_path / "ft/aco.pth"
+    (tmp_path / "ft/aco.pth").write_bytes(b"other")
+    with pytest.raises(ValueError, match="aco.pth"):
+        download_model.verify_all(tmp_path, "base/epoch_030.pt", sha)
+    (tmp_path / "ft/aco.pth").write_bytes(b"fine-tune")
     (tmp_path / "probes/shd_clean/head.json").write_text("changed")
     with pytest.raises(ValueError, match="SHA-256 mismatch"):
         download_model.verify_all(tmp_path, "base/epoch_030.pt", sha)
