@@ -184,11 +184,14 @@ copy instead (instructions at its top) and is for development only.
   the stored training pages equal the training-code predictions (max difference 6e-5 ACO, 2e-5 ACCO);
   preprocessing is identical (max difference 0.0). Waveform DICOMs built from the MUSE XML of the 6
   MUSE-era ECGs rendered 100% of the training pixels and gave the same outputs (max difference 1e-6).
-- Resources (`data/model_info.json`) are estimates (about 100 M parameters in fp32); measure with
-  `scripts/benchmark-model-resources.py` on the built image.
+- Resources (`data/model_info.json`): measured on image 1.1.0 (one RTX A6000, synthetic waveform ECGs,
+  `scripts/benchmark-model-resources.py`): 1,510 MiB VRAM resident and peak (598 MiB of it at startup),
+  4.2 s first request, 1.63 s median after (full HTTP round trip with page rendering), 1.7 GiB RAM.
+  `residentMemoryMiB` 1600 and `peakMemoryMiB` 2000 leave headroom above that.
 
 ## Changelog
 
+- 1.2.1: `residentMemoryMiB` 1400 -> 1600 (measured 1,510 MiB on 1.1.0). Same weights (model revision `badd718`).
 - 1.2.0: probabilities stored and compared at 6 decimals instead of 4. At 4 decimals the HCM flag
   (cutoff 0.0027415) was effectively `p >= 0.00275`, and the report showed HCM probabilities and cutoff
   with too few decimals to tell them apart; outputs with a cutoff below 0.01 are now shown with all stored

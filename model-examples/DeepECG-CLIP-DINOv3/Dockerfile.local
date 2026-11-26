@@ -15,7 +15,7 @@ FROM python:3.12.1-slim
 
 ARG PACS_AI_SOURCE_REPOSITORY="HeartWise-AI/pacs-ai-backend"
 ARG PACS_AI_SOURCE_REVISION=""
-ARG PACS_AI_MODEL_VERSION="1.2.0"
+ARG PACS_AI_MODEL_VERSION="1.2.1"
 ARG PACS_AI_MODEL_REPOSITORY="heartwise/deepecg_clip_dinov3_acs"
 ARG PACS_AI_MODEL_REVISION="badd718a6e26be24c9ad2dd3c911160a7d4fbe06"
 ARG PACS_AI_WEIGHTS_PATH="acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth"
