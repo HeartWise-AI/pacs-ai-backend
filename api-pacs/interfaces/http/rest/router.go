@@ -545,6 +545,8 @@ func (router *router) InitRouter() *chi.Mux {
 					// Message and payload management
 					r.Post("/threads/{threadID}/chat", orchestratorController.CreateMessage)
 					r.Get("/threads/{threadID}/chat/progress", orchestratorController.GetChatProgress)
+					// Default answer language of the chat (the viewer's language when none is chosen)
+					r.Get("/settings", orchestratorController.GetChatSettings)
 					r.Post("/threads/{threadID}/dicom", orchestratorController.UploadDicomPayload)
 
 					// Thumbs up/down on chat answers
