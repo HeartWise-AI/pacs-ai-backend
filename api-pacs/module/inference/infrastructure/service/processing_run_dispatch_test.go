@@ -878,3 +878,64 @@ func TestRunlessDispatchIsRejectedAfterCompatibilityCutoff(t *testing.T) {
 	require.Zero(t, dispatcher.buildCalls)
 	require.Zero(t, dispatcher.dispatchCalls)
 }
+
+// Live case (2026-11-26 08:51): a study whose only stored series was a
+// secondary capture made study-service answer 400 "No series for modality
+// angiogram in this study" to all seven models, and the run ended FAILED with
+// DISPATCH_FAILED attention. Nothing failed: there was nothing to analyze.
+func TestDispatchSkipsExecutionWhenStudyHasNoSeriesOfTheModality(t *testing.T) {
+	processingRunID := "run-1"
+	runRepository := &processingRunCallbackRunRepository{
+		selectedExecution: entity.InferenceIngestionProcessingJob{
+			ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusPending,
+		},
+		transitionResult:                   &repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult{Outcome: "applied", Changed: true},
+		processingRunAggregationRepository: &processingRunAggregationRepository{},
+	}
+	commandRepository := &guardedDispatchCommandRepository{}
+	dispatcher := &guardedProcessingDispatcher{dispatchErrors: []error{
+		&DispatchStudyHTTPError{StatusCode: http.StatusBadRequest, Body: `{"detail":"No series for modality angiogram in this study"}`},
+	}}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+	configureReadyInferenceContainer(service)
+
+	err := service.dispatchRetrievedCandidateToStudyService(
+		context.Background(),
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one"},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		processingRunID,
+		"request-1",
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, dispatcher.dispatchCalls, "nothing to retry")
+	require.Empty(t, runRepository.failPendingCalls, "the execution is not failed")
+	require.Len(t, runRepository.transitions, 1)
+	transition := runRepository.transitions[0]
+	require.Equal(t, "execution-1", transition.ExecutionID)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusSkipped, transition.Status)
+	require.Equal(t, entity.InferenceIngestionProcessingJobSkipReasonNoUsableDICOM, transition.SkipReason.Code)
+	require.NotEmpty(t, *transition.SkipReason.Message)
+	require.True(t, transition.OnlyIfCancellableBeforeCompute)
+	require.NotNil(t, transition.CompletedAt)
+	require.Empty(t, runRepository.updates, "no attention is raised for a study with nothing to analyze")
+}
+
+func TestOtherBadRequestsStillFailTheDispatch(t *testing.T) {
+	require.True(t, isNoSeriesForModalityDispatchError(DispatchStudyHTTPError{
+		StatusCode: http.StatusBadRequest, Body: `{"detail":"No series for modality echocardiogram in this study"}`,
+	}))
+	for _, other := range []DispatchStudyHTTPError{
+		{StatusCode: http.StatusBadRequest, Body: "invalid model"},
+		{StatusCode: http.StatusBadGateway, Body: "No series for modality angiogram in this study"},
+		{StatusCode: http.StatusNotFound, Body: "Study not found in PACS"},
+	} {
+		require.False(t, isNoSeriesForModalityDispatchError(other), other.Body)
+	}
+	require.Contains(t, noSeriesForModalitySkipMessage("angiogram"), "angiogram")
+	require.NotEmpty(t, noSeriesForModalitySkipMessage(" "))
+}

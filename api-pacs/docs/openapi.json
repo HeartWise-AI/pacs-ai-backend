@@ -4644,6 +4644,25 @@
             "nullable": true,
             "items": { "type": "string" },
             "description": "Optional. Series Instance UIDs the run was dispatched with, passed through from study-service. A run requested from the viewer records its list whether or not the user picked series; null means no list was recorded and the run used every series of the modality. Omitted when study-service does not report the field."
+          },
+          "inputVideoCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Optional. Videos the run was given. Omitted when the run recorded none."
+          },
+          "eligibleVideoCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Optional. Videos the run could use; the best-run rule compares this count. Omitted when the run recorded none."
+          },
+          "runs": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/StudyLatestModelResult" },
+            "description": "Optional. The model's completed runs for the study, newest first (at most 20), the reported run included. The result itself stays the best run (most eligible videos; the newest on a tie or unknown count); the list lets a client show another run, for example a rerun requested from the viewer on fewer series. Omitted when study-service does not list runs. Listed runs carry no runs of their own."
+          },
+          "bestRun": {
+            "type": "boolean",
+            "description": "Set on listed runs only: true for the run reported as the result."
           }
         }
       },

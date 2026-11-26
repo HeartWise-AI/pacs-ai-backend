@@ -39,6 +39,18 @@ type StudyLatestModelResult struct {
 	// run used every series of the modality). Omitted when study-service does
 	// not report it, so "unknown" stays distinct from "every series".
 	DispatchSeriesInstanceUIDs json.RawMessage `json:"dispatchSeriesInstanceUIDs,omitempty"`
+	// InputVideoCount and EligibleVideoCount are the videos the run was given
+	// and the ones it could use; omitted when the run recorded none.
+	InputVideoCount    *int `json:"inputVideoCount,omitempty"`
+	EligibleVideoCount *int `json:"eligibleVideoCount,omitempty"`
+	// Runs lists the model's completed runs for the study, newest first, the
+	// reported one included, so the viewer can show a run other than the
+	// default (for example the rerun the user has just requested). Omitted
+	// when study-service does not list runs. Listed runs have no Runs.
+	Runs []StudyLatestModelResult `json:"runs,omitempty"`
+	// BestRun is set on listed runs only: true for the run reported as the
+	// result (most eligible videos; the newest on a tie or unknown count).
+	BestRun *bool `json:"bestRun,omitempty"`
 }
 
 // StudyLatestModelResults is the viewer latest-results response.

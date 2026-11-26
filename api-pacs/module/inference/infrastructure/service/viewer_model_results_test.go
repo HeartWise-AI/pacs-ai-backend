@@ -403,3 +403,94 @@ func TestGetStudyLatestModelResultsUsesCachedIdentityWhenContainerIsDown(t *test
 	require.Equal(t, "deepcoro-jepa", *response.Results[0].ArtifactModelID, "custom-role filtering keys on this")
 	require.False(t, response.Results[0].ReportAvailable, "report capability still needs a live container")
 }
+
+// Live case (2026-11-26): an automatic run used 4 videos, then the user reran
+// the model from the viewer on one series. The automatic run stays the
+// reported result (best-run rule) and the rerun must be listed with its own
+// run, execution and trigger, or the viewer can never open it.
+func TestGetStudyLatestModelResultsListsTheOtherRunsOfTheModel(t *testing.T) {
+	service, provider, runs := viewerResultsService()
+	autoRunID, viewerRunID := "run-auto", "run-1"
+	autoJobID, viewerJobID := "job-auto", "job-1"
+	runs.runs[autoRunID] = entity.InferenceIngestionProcessingRun{
+		ID: autoRunID, TenantID: "tenant-a", StudyInstanceUID: "1.2.3", RunTrigger: entity.InferenceIngestionProcessingRunTriggerAuto,
+	}
+	runs.executions[autoRunID] = []entity.InferenceIngestionProcessingJob{{
+		ID: "execution-auto", ProcessingRunID: &autoRunID, ModelName: "DeepCORO-JEPA",
+		Status: entity.InferenceIngestionProcessingJobStatusCompleted, StudyServiceJobID: &autoJobID,
+	}}
+	four, five, one := 4, 5, 1
+	autoCompleted, viewerCompleted := "2026-11-26T08:41:20-05:00", "2026-11-26T09:16:15-05:00"
+	auto := serviceTypes.StudyServiceLatestResult{
+		JobID: autoJobID, CompletedAt: &autoCompleted, ProcessingRunID: &autoRunID,
+		InputVideoCount: &five, EligibleVideoCount: &four, DispatchSeriesInstanceUIDs: json.RawMessage(`null`),
+	}
+	viewer := serviceTypes.StudyServiceLatestResult{
+		JobID: viewerJobID, CompletedAt: &viewerCompleted, ProcessingRunID: &viewerRunID,
+		InputVideoCount: &one, EligibleVideoCount: &one, DispatchSeriesInstanceUIDs: json.RawMessage(`["1.2.3.4"]`),
+	}
+	best := auto
+	best.ModelName, best.Modality, best.Status = "DeepCORO-JEPA", "angiogram", "completed"
+	autoListed := auto
+	autoListed.Best = true
+	best.Runs = []serviceTypes.StudyServiceLatestResult{viewer, autoListed, {JobID: " "}}
+	provider.results = serviceTypes.StudyServiceLatestResults{StudyInstanceUID: "1.2.3", Results: []serviceTypes.StudyServiceLatestResult{best}}
+
+	response, err := service.GetStudyLatestModelResults(context.Background(), serviceTypes.GetStudyLatestModelResults{
+		TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, response.Results, 1)
+	result := response.Results[0]
+	require.Equal(t, autoJobID, result.StudyServiceJobID)
+	require.Equal(t, "execution-auto", *result.ExecutionID)
+	require.Equal(t, 4, *result.EligibleVideoCount)
+	require.Nil(t, result.BestRun, "only listed runs are flagged")
+	require.Len(t, result.Runs, 2, "a listed run without a job ID is dropped")
+
+	rerun := result.Runs[0]
+	require.Equal(t, viewerJobID, rerun.StudyServiceJobID)
+	require.Equal(t, "DeepCORO-JEPA", rerun.ModelName)
+	require.Equal(t, "angiogram", rerun.Modality)
+	require.Equal(t, viewerRunID, *rerun.RunID)
+	require.Equal(t, "execution-1", *rerun.ExecutionID)
+	require.Equal(t, entity.InferenceIngestionProcessingRunTriggerViewerRequest, *rerun.Trigger)
+	require.Equal(t, viewerCompleted, *rerun.CompletedAt)
+	require.Equal(t, 1, *rerun.EligibleVideoCount)
+	require.Equal(t, 1, *rerun.InputVideoCount)
+	require.False(t, *rerun.BestRun)
+	require.True(t, rerun.ReportAvailable)
+	require.Equal(t, "container-1", *rerun.ContainerID)
+	require.JSONEq(t, `["1.2.3.4"]`, string(rerun.DispatchSeriesInstanceUIDs))
+	require.Empty(t, rerun.Runs)
+
+	listedBest := result.Runs[1]
+	require.Equal(t, autoJobID, listedBest.StudyServiceJobID)
+	require.True(t, *listedBest.BestRun)
+	require.Equal(t, entity.InferenceIngestionProcessingRunTriggerAuto, *listedBest.Trigger)
+
+	payload, err := json.Marshal(result)
+	require.NoError(t, err)
+	require.Contains(t, string(payload), `"runs":[`)
+	require.Contains(t, string(payload), `"bestRun":false`)
+}
+
+// A study-service that predates the run list keeps today's response shape.
+func TestGetStudyLatestModelResultsOmitsRunsWhenStudyServiceListsNone(t *testing.T) {
+	service, provider, _ := viewerResultsService()
+	provider.results = serviceTypes.StudyServiceLatestResults{StudyInstanceUID: "1.2.3", Results: []serviceTypes.StudyServiceLatestResult{{
+		JobID: "job-1", ModelName: "DeepCORO-JEPA", Modality: "angiogram", Status: "completed",
+	}}}
+
+	response, err := service.GetStudyLatestModelResults(context.Background(), serviceTypes.GetStudyLatestModelResults{
+		TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+	})
+
+	require.NoError(t, err)
+	payload, err := json.Marshal(response.Results[0])
+	require.NoError(t, err)
+	for _, field := range []string{"runs", "bestRun", "eligibleVideoCount", "inputVideoCount"} {
+		require.NotContains(t, string(payload), field)
+	}
+}

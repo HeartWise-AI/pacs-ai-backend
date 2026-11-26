@@ -204,6 +204,17 @@ type StudyServiceLatestResult struct {
 	// with: null when study-service recorded none (the run used every series
 	// of the modality), and absent from a study-service that predates the field.
 	DispatchSeriesInstanceUIDs json.RawMessage `json:"dispatchSeriesInstanceUIDs,omitempty"`
+	// InputVideoCount and EligibleVideoCount are the videos the run was given
+	// and the ones it could use; nil when the run recorded none.
+	InputVideoCount    *int `json:"inputVideoCount"`
+	EligibleVideoCount *int `json:"eligibleVideoCount"`
+	// Runs lists the model's completed runs for the study (newest first), the
+	// reported one included; absent from a study-service that predates it. A
+	// listed run carries no model name, modality or status of its own: it
+	// shares the result's.
+	Runs []StudyServiceLatestResult `json:"runs,omitempty"`
+	// Best marks, inside Runs, the run study-service reports as the result.
+	Best bool `json:"best,omitempty"`
 }
 
 // StudyServiceLatestResults is the study-service latest-results envelope.
