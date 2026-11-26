@@ -878,3 +878,201 @@ func TestRunlessDispatchIsRejectedAfterCompatibilityCutoff(t *testing.T) {
 	require.Zero(t, dispatcher.buildCalls)
 	require.Zero(t, dispatcher.dispatchCalls)
 }
+
+// Live case (2026-11-26 08:51): a study whose only stored series was a
+// secondary capture made study-service answer 400 "No series for modality
+// angiogram in this study" to all seven models, and the run ended FAILED with
+// DISPATCH_FAILED attention. Nothing failed: there was nothing to analyze.
+func TestDispatchSkipsExecutionWhenStudyHasNoSeriesOfTheModality(t *testing.T) {
+	processingRunID := "run-1"
+	runRepository := &processingRunCallbackRunRepository{
+		selectedExecution: entity.InferenceIngestionProcessingJob{
+			ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusPending,
+		},
+		transitionResult:                   &repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult{Outcome: "applied", Changed: true},
+		processingRunAggregationRepository: &processingRunAggregationRepository{},
+	}
+	commandRepository := &guardedDispatchCommandRepository{}
+	dispatcher := &guardedProcessingDispatcher{dispatchErrors: []error{
+		&DispatchStudyHTTPError{StatusCode: http.StatusBadRequest, Body: `{"detail":"No series for modality angiogram in this study"}`},
+	}}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       commandRepository,
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+	configureReadyInferenceContainer(service)
+
+	err := service.dispatchRetrievedCandidateToStudyService(
+		context.Background(),
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one"},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		processingRunID,
+		"request-1",
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, dispatcher.dispatchCalls, "nothing to retry")
+	require.Empty(t, runRepository.failPendingCalls, "the execution is not failed")
+	require.Len(t, runRepository.transitions, 1)
+	transition := runRepository.transitions[0]
+	require.Equal(t, "execution-1", transition.ExecutionID)
+	require.Equal(t, entity.InferenceIngestionProcessingJobStatusSkipped, transition.Status)
+	require.Equal(t, entity.InferenceIngestionProcessingJobSkipReasonNoUsableDICOM, transition.SkipReason.Code)
+	require.NotEmpty(t, *transition.SkipReason.Message)
+	require.True(t, transition.OnlyIfCancellableBeforeCompute)
+	require.NotNil(t, transition.CompletedAt)
+	require.Empty(t, runRepository.updates, "no attention is raised for a study with nothing to analyze")
+}
+
+func TestOtherBadRequestsStillFailTheDispatch(t *testing.T) {
+	require.True(t, isNoSeriesForModalityDispatchError(DispatchStudyHTTPError{
+		StatusCode: http.StatusBadRequest, Body: `{"detail":"No series for modality echocardiogram in this study"}`,
+	}))
+	for _, other := range []DispatchStudyHTTPError{
+		{StatusCode: http.StatusBadRequest, Body: "invalid model"},
+		{StatusCode: http.StatusBadGateway, Body: "No series for modality angiogram in this study"},
+		{StatusCode: http.StatusNotFound, Body: "Study not found in PACS"},
+	} {
+		require.False(t, isNoSeriesForModalityDispatchError(other), other.Body)
+	}
+	require.Contains(t, noSeriesForModalitySkipMessage("angiogram"), "angiogram")
+	require.NotEmpty(t, noSeriesForModalitySkipMessage(" "))
+}
+
+// A user who requested a run on a study with nothing to analyze gets the
+// allowance back, as when the dispatch failed: no inference was accepted.
+func TestSkippedDispatchRefundsQuotaOnlyWhenNothingWasDispatched(t *testing.T) {
+	userID := "user-a"
+	jobID := "study-job-1"
+	tests := []struct {
+		name       string
+		executions []entity.InferenceIngestionProcessingJob
+		refunded   int
+	}{
+		{
+			name: "every execution skipped before dispatch",
+			executions: []entity.InferenceIngestionProcessingJob{
+				{ID: "execution-1", Status: entity.InferenceIngestionProcessingJobStatusSkipped},
+			},
+			refunded: 1,
+		},
+		{
+			name: "another execution reached study-service",
+			executions: []entity.InferenceIngestionProcessingJob{
+				{ID: "execution-1", Status: entity.InferenceIngestionProcessingJobStatusSkipped},
+				{ID: "execution-2", Status: entity.InferenceIngestionProcessingJobStatusSkipped, StudyServiceJobID: &jobID},
+			},
+		},
+		{
+			name: "another execution failed",
+			executions: []entity.InferenceIngestionProcessingJob{
+				{ID: "execution-1", Status: entity.InferenceIngestionProcessingJobStatusSkipped},
+				{ID: "execution-2", Status: entity.InferenceIngestionProcessingJobStatusFailed},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			processingRunID := "run-1"
+			runRepository := &processingRunCallbackRunRepository{
+				selectedExecution: entity.InferenceIngestionProcessingJob{
+					ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusPending,
+				},
+				transitionResult: &repositoryTypes.ApplyInferenceIngestionProcessingTransitionResult{
+					Outcome: "applied", Changed: true,
+					Run: entity.InferenceIngestionProcessingRun{
+						ID: processingRunID, TenantID: "tenant-a", RequestedByUserID: &userID,
+						Phase: entity.InferenceIngestionProcessingRunPhaseTerminal,
+					},
+				},
+				processingRunAggregationRepository: &processingRunAggregationRepository{executions: test.executions},
+			}
+			quotaManager := &recordingInferenceQuotaManager{}
+			service := &InferenceCommandService{
+				InferenceCommandRepositoryInterface:       &guardedDispatchCommandRepository{},
+				InferenceProcessingRunRepositoryInterface: runRepository,
+				InferenceQuotaManagerInterface:            quotaManager,
+			}
+
+			skipped := service.recordSkippedProcessingDispatch(
+				context.Background(),
+				entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+				entity.InferenceIngestionJob{ModelName: "model-one"},
+				serviceTypes.DispatchStudyRequest{ProcessingRunID: &processingRunID, Modality: "angiogram"},
+				noSeriesForModalitySkipMessage("angiogram"),
+			)
+
+			require.True(t, skipped)
+			require.Len(t, quotaManager.refunded, test.refunded)
+			if test.refunded > 0 {
+				require.Equal(t, processingRunID, quotaManager.refunded[0].ReservationID)
+				require.Equal(t, userID, quotaManager.refunded[0].UserID)
+			}
+			// The usual finalization still releases the reservation; after a
+			// refund the quota manager finds nothing left to release.
+			require.Len(t, quotaManager.released, 1)
+		})
+	}
+
+	// An automatic run has no requester and no reservation.
+	quotaManager := &recordingInferenceQuotaManager{}
+	service := &InferenceCommandService{InferenceQuotaManagerInterface: quotaManager}
+	service.refundQuotaWhenNothingWasDispatched(context.Background(), entity.InferenceIngestionProcessingRun{
+		ID: "run-auto", TenantID: "tenant-a", Phase: entity.InferenceIngestionProcessingRunPhaseTerminal,
+	})
+	require.Empty(t, quotaManager.refunded)
+}
+
+// Live case (2026-11-26 10:05): study-service was restarted for 33 s and the
+// two studies retrieved in that window had every model fail at dispatch.
+func TestDispatchRetryScheduleOutlastsAStudyServiceRestart(t *testing.T) {
+	require.Zero(t, studyServiceDispatchRetrySchedule[0], "the first attempt is immediate")
+	var total time.Duration
+	for index, wait := range studyServiceDispatchRetrySchedule {
+		if index > 0 {
+			require.Greater(t, wait, studyServiceDispatchRetrySchedule[index-1], "waits grow")
+		}
+		total += wait
+	}
+	require.GreaterOrEqual(t, total, 45*time.Second)
+	require.LessOrEqual(t, total, 2*time.Minute, "a study-service that is really down still fails the run in reasonable time")
+}
+
+func TestDispatchSucceedsOnceStudyServiceIsBackAfterNetworkErrors(t *testing.T) {
+	originalRetrySchedule := studyServiceDispatchRetrySchedule
+	studyServiceDispatchRetrySchedule = []time.Duration{0, 0, 0, 0, 0}
+	t.Cleanup(func() { studyServiceDispatchRetrySchedule = originalRetrySchedule })
+	processingRunID := "run-1"
+	runRepository := &processingRunCallbackRunRepository{
+		selectedExecution: entity.InferenceIngestionProcessingJob{
+			ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusPending,
+		},
+		processingRunAggregationRepository: &processingRunAggregationRepository{
+			runs: []entity.InferenceIngestionProcessingRun{{ID: processingRunID, TenantID: "tenant-a", Version: 1}},
+		},
+	}
+	refused := errors.New(`Post "http://study-service:8600/ingest/study": dial tcp: connect: connection refused`)
+	dispatcher := &guardedProcessingDispatcher{
+		dispatchErrors: []error{refused, refused, refused, refused, nil},
+		response:       serviceTypes.DispatchStudyResponse{JobID: "study-job-1"},
+	}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       &guardedDispatchCommandRepository{},
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+	configureReadyInferenceContainer(service)
+
+	err := service.dispatchRetrievedCandidateToStudyService(
+		context.Background(),
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one"},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		processingRunID,
+		"request-1",
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 5, dispatcher.dispatchCalls)
+	require.Empty(t, runRepository.failPendingCalls, "the execution is not failed while study-service restarts")
+}

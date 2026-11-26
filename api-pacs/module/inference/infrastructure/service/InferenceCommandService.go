@@ -91,10 +91,16 @@ const (
 	defaultMissingPollsThreshold uint = 3
 )
 
+// studyServiceDispatchRetrySchedule is the wait before each dispatch attempt.
+// It has to outlast a restart of study-service (about 30 s when it is
+// redeployed): with the former 10 s every run dispatched during a restart
+// ended FAILED with DISPATCH_FAILED and was never tried again.
 var studyServiceDispatchRetrySchedule = []time.Duration{
 	0,
 	2 * time.Second,
 	8 * time.Second,
+	20 * time.Second,
+	30 * time.Second,
 }
 
 var errManualDispatchCorrelation = errors.New(
@@ -2430,6 +2436,16 @@ func (service *InferenceCommandService) dispatchRetrievedCandidateToStudyService
 
 		httpErr := &DispatchStudyHTTPError{}
 		if errors.As(dispatchErr, &httpErr) {
+			if isNoSeriesForModalityDispatchError(*httpErr) &&
+				service.recordSkippedProcessingDispatch(ctx, candidate, job, dispatchRequest, noSeriesForModalitySkipMessage(dispatchRequest.Modality)) {
+				// The study holds no series the model can read (for example
+				// only a secondary capture): nothing failed and nothing is
+				// left to retry, so the execution is skipped, not failed.
+				ObserveStudyServiceDispatchAttempt("skipped_no_series", attemptDuration)
+				log.Printf("[Ingestion dispatch] skipped candidate_id=%s ingestion_job_id=%s request_id=%s skip_reason=%s modality=%s",
+					candidate.ID, job.ID, requestID, entity.InferenceIngestionProcessingJobSkipReasonNoUsableDICOM, dispatchRequest.Modality)
+				return nil
+			}
 			if !shouldRetryStudyServiceDispatchHTTPError(*httpErr) || attemptIndex == len(retrySchedule)-1 {
 				ObserveStudyServiceDispatchAttempt("permanent_error", attemptDuration)
 				if persistErr := service.persistDispatchFailure(candidate.ID, dispatchErr); persistErr != nil {
@@ -2711,6 +2727,114 @@ func (service *InferenceCommandService) markProcessingRunDispatchAttention(ctx c
 		}},
 	})
 	return err
+}
+
+// studyServiceNoSeriesForModalityDetail is how study-service ingest answers
+// (HTTP 400) when the stored study has no series of the requested modality.
+const studyServiceNoSeriesForModalityDetail = "no series for modality"
+
+// isNoSeriesForModalityDispatchError reports whether study-service refused the
+// dispatch because the study has nothing of the model's modality to process.
+func isNoSeriesForModalityDispatchError(err DispatchStudyHTTPError) bool {
+	return err.StatusCode == http.StatusBadRequest &&
+		strings.Contains(strings.ToLower(err.Body), studyServiceNoSeriesForModalityDetail)
+}
+
+func noSeriesForModalitySkipMessage(modality string) string {
+	if modality = strings.TrimSpace(modality); modality != "" {
+		return fmt.Sprintf("The study has no %s series stored, so there is nothing for the model to analyze", modality)
+	}
+	return "The study has no series the model can analyze"
+}
+
+// recordSkippedProcessingDispatch ends a still-pending execution of a
+// processing run as skipped (NO_USABLE_DICOM) with message. It returns false,
+// leaving everything as it was, when the dispatch has no processing run or the
+// execution cannot be skipped; the caller then records the failure as before.
+func (service *InferenceCommandService) recordSkippedProcessingDispatch(
+	ctx context.Context,
+	candidate entity.InferenceIngestionCandidate,
+	job entity.InferenceIngestionJob,
+	dispatchRequest types.DispatchStudyRequest,
+	message string,
+) bool {
+	processingRunID := trimmedPointerValue(dispatchRequest.ProcessingRunID)
+	if processingRunID == "" || service.InferenceProcessingRunRepositoryInterface == nil {
+		return false
+	}
+	existing, err := service.InferenceProcessingRunRepositoryInterface.SelectProcessingRunExecution(
+		ctx, candidate.TenantID, processingRunID, candidate.ID, job.ModelName,
+	)
+	if err != nil || existing.Status != entity.InferenceIngestionProcessingJobStatusPending {
+		return false
+	}
+	completedAt := time.Now().UTC()
+	transition, err := service.InferenceProcessingRunRepositoryInterface.ApplyProcessingRunExecutionTransition(
+		ctx,
+		repositoryTypes.ApplyInferenceIngestionProcessingTransition{
+			TenantID:        candidate.TenantID,
+			ProcessingRunID: processingRunID,
+			ExecutionID:     existing.ID,
+			CandidateID:     candidate.ID,
+			ModelName:       job.ModelName,
+			Status:          entity.InferenceIngestionProcessingJobStatusSkipped,
+			ModelVersion:    nonEmptyStringPointer(strings.TrimSpace(job.ModelVersion)),
+			Modality:        nonEmptyStringPointer(strings.TrimSpace(dispatchRequest.Modality)),
+			SkipReason: &entity.InferenceIngestionProcessingJobSkipReason{
+				Code:    entity.InferenceIngestionProcessingJobSkipReasonNoUsableDICOM,
+				Message: nonEmptyStringPointer(message),
+			},
+			CompletedAt:                    &completedAt,
+			OnlyIfCancellableBeforeCompute: true,
+		},
+	)
+	if err != nil {
+		log.Printf("[Ingestion dispatch] cannot record skipped execution candidate_id=%s processing_run_id=%s model_name=%s err=%v",
+			candidate.ID, processingRunID, job.ModelName, err)
+		return false
+	}
+	if !transition.Changed {
+		return false
+	}
+	// Before the usual finalization, which releases the reservation.
+	service.refundQuotaWhenNothingWasDispatched(ctx, transition.Run)
+	service.publishCommittedWorklistNotification(ctx, transition)
+	// The candidate was handled: an earlier dispatch error no longer applies.
+	if service.InferenceCommandRepositoryInterface != nil {
+		if clearErr := service.InferenceCommandRepositoryInterface.UpdateCandidateDispatchState(repositoryTypes.UpdateCandidateDispatchState{
+			ID: candidate.ID, LastDispatchError: nil,
+		}); clearErr != nil {
+			log.Printf("[Ingestion dispatch] cannot clear dispatch error after skip candidate_id=%s err=%v", candidate.ID, clearErr)
+		}
+	}
+	return true
+}
+
+// refundQuotaWhenNothingWasDispatched gives a user's allowance back when the
+// run they requested ended with every execution skipped before any reached
+// study-service: no inference was accepted, as when the dispatch failed. The
+// later release of the same reservation then finds nothing to release.
+func (service *InferenceCommandService) refundQuotaWhenNothingWasDispatched(ctx context.Context, run entity.InferenceIngestionProcessingRun) {
+	if run.Phase != entity.InferenceIngestionProcessingRunPhaseTerminal || run.StartedAt != nil || run.RequestedByUserID == nil {
+		return
+	}
+	userID := strings.TrimSpace(*run.RequestedByUserID)
+	if userID == "" {
+		return
+	}
+	executions, err := service.InferenceProcessingRunRepositoryInterface.ListProcessingRunExecutions(ctx, run.TenantID, run.ID)
+	if err != nil || len(executions) == 0 {
+		return
+	}
+	for index := range executions {
+		if executions[index].Status != entity.InferenceIngestionProcessingJobStatusSkipped || executions[index].HasStudyServiceJob() {
+			return
+		}
+	}
+	service.finishInferenceQuotaReservation(&types.InferenceQuotaReservation{
+		TenantID: run.TenantID, UserID: userID, ReservationID: run.ID, Units: 1,
+		Kind: types.InferenceQuotaReservationQueued,
+	}, true)
 }
 
 func (service *InferenceCommandService) recordFailedProcessingDispatch(ctx context.Context, candidate entity.InferenceIngestionCandidate, job entity.InferenceIngestionJob, dispatchRequest types.DispatchStudyRequest, dispatchErr error) {

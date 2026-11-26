@@ -83,6 +83,28 @@ func TestFilterLatestResults(t *testing.T) {
 	require.Len(t, filterLatestResults(accessEntity.ForRole(iamEntity.UserRole, nil), results).Results, 3)
 }
 
+func TestFilterLatestResultsAlsoFiltersTheListedRuns(t *testing.T) {
+	panEcho, rv := "PanEcho", "DeepRV_CLIP"
+	results := types.StudyLatestModelResults{Results: []types.StudyLatestModelResult{{
+		ModelName: "PanEcho", ArtifactModelID: &panEcho,
+		Runs: []types.StudyLatestModelResult{
+			{StudyServiceJobID: "job-new", ArtifactModelID: &panEcho},
+			{StudyServiceJobID: "job-other-registration", ArtifactModelID: &rv},
+			{StudyServiceJobID: "job-unresolved"},
+			{StudyServiceJobID: "job-old", ArtifactModelID: &panEcho},
+		},
+	}}}
+
+	kept := filterLatestResults(restrictedAccess("PanEcho"), results)
+
+	require.Len(t, kept.Results, 1)
+	require.Len(t, kept.Results[0].Runs, 2)
+	require.Equal(t, "job-new", kept.Results[0].Runs[0].StudyServiceJobID)
+	require.Equal(t, "job-old", kept.Results[0].Runs[1].StudyServiceJobID)
+	require.Len(t, results.Results[0].Runs, 4, "the caller's results are not modified")
+	require.Len(t, filterLatestResults(accessEntity.ForRole(iamEntity.AdminRole, nil), results).Results[0].Runs, 4)
+}
+
 func TestWriteModelAccessError(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeModelAccessError(recorder, apiError.ForbiddenAccess)

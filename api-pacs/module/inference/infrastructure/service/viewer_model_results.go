@@ -30,6 +30,7 @@ const (
 	reportContainerReadyTimeout     = 30 * time.Second
 	reportContainerReadyPoll        = 500 * time.Millisecond
 	maximumViewerStudyUIDLength     = 255
+	maximumViewerResultRuns         = 20
 	reportContentTypeHTML           = "text/html"
 	studyServiceStatusCompleted     = "completed"
 	viewerRenderTimeoutEnvironment  = "VIEWER_REPORT_RENDER_TIMEOUT_SECONDS"
@@ -235,12 +236,9 @@ func (service *InferenceQueryService) GetStudyLatestModelResults(ctx context.Con
 	runs := map[string]*entity.InferenceIngestionProcessingRun{}
 	runExecutions := map[string][]entity.InferenceIngestionProcessingJob{}
 
-	for _, result := range latest.Results {
-		status := strings.TrimSpace(result.Status)
-		if strings.TrimSpace(result.JobID) == "" || strings.TrimSpace(result.ModelName) == "" ||
-			(status != "" && !strings.EqualFold(status, studyServiceStatusCompleted)) {
-			continue
-		}
+	// join adds the registration, processing run and report capability to one
+	// study-service run. Runs and executions are loaded once per run ID.
+	join := func(result types.StudyServiceLatestResult) types.StudyLatestModelResult {
 		item := types.StudyLatestModelResult{
 			ModelName:         strings.TrimSpace(result.ModelName),
 			ModelVersion:      trimmedPointer(result.ModelVersion),
@@ -250,6 +248,8 @@ func (service *InferenceQueryService) GetStudyLatestModelResults(ctx context.Con
 			SelectedViews:     normalizeSelectedViews(result.SelectedViews),
 
 			DispatchSeriesInstanceUIDs: passThroughDispatchSeries(result.DispatchSeriesInstanceUIDs),
+			InputVideoCount:            nonNegativeIntPointer(result.InputVideoCount),
+			EligibleVideoCount:         nonNegativeIntPointer(result.EligibleVideoCount),
 		}
 		if entry := directory.match(item.ModelName, trimmedPointerValue(result.ModelVersion)); entry != nil {
 			item.ModelID = nonEmptyStringPointer(entry.model.ID)
@@ -280,9 +280,61 @@ func (service *InferenceQueryService) GetStudyLatestModelResults(ctx context.Con
 				item.ExecutionID = matchLatestResultExecution(executions, result)
 			}
 		}
+		return item
+	}
+
+	for _, result := range latest.Results {
+		status := strings.TrimSpace(result.Status)
+		if strings.TrimSpace(result.JobID) == "" || strings.TrimSpace(result.ModelName) == "" ||
+			(status != "" && !strings.EqualFold(status, studyServiceStatusCompleted)) {
+			continue
+		}
+		item := join(result)
+		for _, listed := range boundedListedRuns(result.Runs, item.StudyServiceJobID, maximumViewerResultRuns) {
+			// A listed run is a completed run of the same model and modality.
+			listed.ModelName, listed.Modality, listed.Status = result.ModelName, result.Modality, result.Status
+			run := join(listed)
+			best := strings.TrimSpace(listed.JobID) == item.StudyServiceJobID
+			run.BestRun = &best
+			item.Runs = append(item.Runs, run)
+		}
 		response.Results = append(response.Results, item)
 	}
 	return response, nil
+}
+
+// boundedListedRuns keeps the listed runs that have a job ID, in order, cut to
+// limit. The reported (best) run is never cut: when it lies beyond the limit
+// it takes the last place.
+func boundedListedRuns(listed []types.StudyServiceLatestResult, bestJobID string, limit int) []types.StudyServiceLatestResult {
+	kept := make([]types.StudyServiceLatestResult, 0, len(listed))
+	bestKept := false
+	for _, run := range listed {
+		jobID := strings.TrimSpace(run.JobID)
+		if jobID == "" {
+			continue
+		}
+		isBest := jobID == bestJobID
+		switch {
+		case len(kept) < limit:
+			kept = append(kept, run)
+		case isBest && !bestKept && limit > 0:
+			kept[limit-1] = run
+		default:
+			continue
+		}
+		bestKept = bestKept || isBest
+	}
+	return kept
+}
+
+// nonNegativeIntPointer copies a recorded count; a missing or negative one is nil.
+func nonNegativeIntPointer(value *int) *int {
+	if value == nil || *value < 0 {
+		return nil
+	}
+	count := *value
+	return &count
 }
 
 // matchLatestResultExecution returns the local execution that produced the
