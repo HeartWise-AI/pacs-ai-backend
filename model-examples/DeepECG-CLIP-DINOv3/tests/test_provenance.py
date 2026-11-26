@@ -123,3 +123,16 @@ def test_torch_and_transformers_pins_match_the_training_runtime():
     assert "torchvision==0.28.0+cu126" in requirements
     assert "transformers==5.17.0" in requirements
     assert "matplotlib==3.10.9" in requirements and "pillow==12.3.0" in requirements
+
+
+@pytest.mark.parametrize("dockerfile", ["Dockerfile", "Dockerfile.local"])
+def test_download_step_has_every_module_it_imports(dockerfile):
+    """download_model.py validates the probes with models/probes.py -> models/dinov3_bank.py, which imports
+    utils.log_config: both must be copied into the image before the weights download runs."""
+    lines = (ROOT / dockerfile).read_text().splitlines()
+    download = next(i for i, line in enumerate(lines) if "download_model.py" in line and line.lstrip().startswith(("RUN", "python")))
+    if download and lines[download].lstrip().startswith("python"):
+        download = max(i for i in range(download) if lines[i].lstrip().startswith("RUN"))
+    copied = " ".join(line for line in lines[:download] if line.startswith("COPY"))
+    for needed in ("models/", "download_model.py", "utils/log_config.py"):
+        assert needed in copied, f"{dockerfile}: {needed} is copied after the weights download"

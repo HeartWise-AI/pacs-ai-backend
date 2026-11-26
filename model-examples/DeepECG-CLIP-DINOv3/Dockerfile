@@ -24,6 +24,9 @@ RUN uv pip install -r requirements.txt --system
 # at the pinned revision, the same bytes as the NAS release folder
 # /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/ (SHA256SUMS there).
 COPY models/ ./models/
+# models/dinov3_bank.py (vendored from DeepECG_Docker) imports utils.log_config at import time, and
+# download_model.py validates the probe heads with it: that module must be present before the download.
+COPY utils/log_config.py ./utils/log_config.py
 COPY download_model.py .
 RUN --mount=type=secret,id=hf_token \
     python download_model.py \
