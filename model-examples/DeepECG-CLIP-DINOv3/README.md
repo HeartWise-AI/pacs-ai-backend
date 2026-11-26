@@ -41,45 +41,46 @@ All 18 probe heads (clean and augmented, float64 copies, full provenance) are in
 repository `heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030`. Each served head reproduces its saved
 validation scores from the cached features within 3e-6.
 
-A probe head uses **the DeepECG_Docker head format, unchanged**: one folder per head with
-`config.json`, `head.json`, `thresholds.json` and `classifier.safetensors`, exactly the files of a
-DeepECG_Docker classifier repository such as `heartwise/SigLIP2_SHD`, validated with the same checks
-as `_DeepECG_SigLIP2_Bank.load_head` (`models/probes.py`). For this model:
+Since 1.3.0 the probe heads are loaded, validated and scored by **DeepECG_Docker's own code**:
+`models/dinov3_bank.py` is vendored unchanged from HeartWise-AI/DeepECG_Docker (`_DeepECG_DINOv3_Bank.load_head`,
+`head_probabilities`), and the head folders are in its format (the same files as
+`heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030`, which DeepECG_Docker serves):
 
-- `config.json` equals `models/encoder_config.json` (same schema as DeepECG_Docker's encoder config:
-  `model`, `vision_config`, `preprocessing`, `feature`);
-- `head.json` `encoder.sha256` is the SHA-256 of `base/epoch_030.pt`, and `classifier.input_dim` is
-  1536 (concat[CLS, mean patch tokens] of the frozen encoder);
-- `thresholds.json` holds the validation Youden cutoff of each output, or `{}` for a probability-only
-  head (as DeepECG_Docker's 77-class head).
+- `probes/config.json`: encoder checkpoint (`base/epoch_030.pt`, sha256, `image_encoder`, strict), preprocessing
+  (448x896 stretch, grayscale, ImageNet mean/std) and feature (dim 1536); every head's `config.json` equals it;
+- `head.json`: `name` = `heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030/probes/<folder>`, outputs (those of
+  `dinov3_bank.PROBE_OUTPUTS` for the folder's task), encoder {repo, `base/epoch_030.pt`, sha256}, classifier
+  {linear, float32, input_dim 1536, standardize, sigmoid or softmax};
+- `thresholds.json`: the validation Youden cutoff of each output, or `{}` for a probability-only head;
+- folder names `<task>_clean` or `<task>_aug`.
 
-A `scripts/probe_report.py` probe (StandardScaler + LogisticRegression) maps field for field:
-`weight = coef_`, `bias = intercept_`, `mean = mean_`, `scale = scale_`, `standardize: true`. Only sigmoid
-heads exist in this format, so a 3-class HCM head would need a format change in DeepECG_Docker first.
+`models/probes.py` runs the bank's configuration and encoder-hash checks and its `load_head` unchanged, but
+not its encoder: the frozen features (concat[CLS, mean patch tokens] of `base/epoch_030.pt`, 1536-d) come
+from this container's shared trunk, which runs the frozen encoder's top 2 blocks on the trunk output in the
+same forward pass as the fine-tunes. With the same weights, 1.3.0 returns exactly the outputs of 1.2.1
+(336 outputs over 4 ECGs, max |diff| 0).
 
 Adding heads needs no code change: upload the head folders under `probes/` in the Hugging Face repository,
 then bump `modelRevision` in `data/model_info.json` (and `PACS_AI_MODEL_REVISION` in `Dockerfile.local`)
-and the minor version. The build then also downloads `base/epoch_030.pt` (pinned in `models/config.json`);
-the service runs its top 2 blocks on the shared trunk output and feeds the pooled features to every head,
-in the same forward pass as the fine-tunes. The same folders can be published as their own repositories
-for DeepECG_Docker once it has a DINOv3 encoder.
+and the minor version. `download_model.py` checks every head with the bank and every file of
+`probes/SHA256SUMS`.
 
 ### Reuse of DeepECG_Docker
 
 Decision: share the formats and vendor DeepECG_Docker's ECG input code unchanged; do not depend on the
 DeepECG_Docker package.
 
-- Vendored unchanged from DeepECG_Docker `8f42a184` (hashes checked by `tests/test_vendored.py`; update by
-  copying newer files): `utils/ecg_page_renderer.py` (training renderer), `utils/ecg_pdf.py` (vector PDF
-  reader), `utils/image_preprocessing.py` (`preprocess_ecg_image`, `open_png_bytes`). A PDF is read exactly
+- Vendored unchanged from DeepECG_Docker `a46499c5` (hashes checked by `tests/test_vendored.py`; update by
+  copying newer files): `models/dinov3_bank.py` (probe heads), `utils/log_config.py`,
+  `utils/ecg_page_renderer.py` (training renderer), `utils/ecg_pdf.py` (vector PDF
+  reader), `utils/image_preprocessing.py` (`preprocess_ecg_image`, `open_png_bytes`; with the bank's
+  `PAGE_FIXES`: EXIF orientation and transparency on white, no-ops on training pages). A PDF is read exactly
   as DeepECG_Docker's `load_ecg_pdf` reads one; every page goes through `preprocess_ecg_image` with the
   `preprocessing` block of `models/encoder_config.json`.
 - Same head format and probability formula as DeepECG_Docker's SigLIP2 heads (above).
-- Not reused: DeepECG_Docker's model classes and pipeline. Its image models are the SigLIP2 encoder only
-  (no DINOv3), its loader is tied to its CSV batch pipeline (`main.py`, `heartwise.config`, `weights/`
-  download per repository), and PACS-AI needs a FastAPI service with the PACS-AI predict, model-info and
-  provenance contracts. Adding the DINOv3 encoder to DeepECG_Docker, reading the same head folders, is the
-  follow-up that would let both pipelines run every head.
+- Not reused: DeepECG_Docker's DINOv3 encoder class (this container's shared trunk computes the same
+  features once for the fine-tunes and the probes) and its CSV batch pipeline; PACS-AI needs a FastAPI
+  service with the PACS-AI predict, model-info and provenance contracts.
 
 ## Inputs
 
@@ -150,7 +151,7 @@ report of a stored result without loading the model (422 for a result this versi
 ## Weights
 
 Hugging Face `heartwise/deepecg_clip_dinov3_acs` (private), revision
-`badd718a6e26be24c9ad2dd3c911160a7d4fbe06` (tag `v1.1.0`), uploaded from the NAS release folder
+`7d35c2e75b8013097c9bb4a578750434e9e10be2` (tag `v1.3.0`; probes/ in the DeepECG_Docker bank format), uploaded from the NAS release folder
 `/mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030/` (same bytes; `SHA256SUMS` there):
 
 | file | SHA-256 |
@@ -191,6 +192,9 @@ copy instead (instructions at its top) and is for development only.
 
 ## Changelog
 
+- 1.3.0: probe heads loaded, validated and scored by DeepECG_Docker's vendored `models/dinov3_bank.py`
+  (a46499c5), in its head format, model revision `7d35c2e` (same weights); probes/SHA256SUMS verified at
+  download; image preprocessing with the bank's page fixes. Outputs identical to 1.2.1.
 - 1.2.1: `residentMemoryMiB` 1400 -> 1600 (measured 1,510 MiB on 1.1.0). Same weights (model revision `badd718`).
 - 1.2.0: probabilities stored and compared at 6 decimals instead of 4. At 4 decimals the HCM flag
   (cutoff 0.0027415) was effectively `p >= 0.00275`, and the report showed HCM probabilities and cutoff

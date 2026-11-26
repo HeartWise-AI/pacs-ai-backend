@@ -59,13 +59,23 @@ def _config(output_dir: Path) -> dict:
 
 
 def probe_files(output_dir: Path) -> list[Path]:
-    """The files of every valid probe head of the download (none when the revision has none)."""
+    """The files of every valid probe head of the download (none when the revision has none): each head
+    is validated by DeepECG_Docker's bank (models/probes.py), and every file listed in the probe
+    directory's SHA256SUMS must be present with its hash."""
     from models.probes import REQUIRED_FILES, discover_probes
 
     directory = output_dir / _config(output_dir)["ProbeDirectory"]
-    encoder_config = json.loads((output_dir / "encoder_config.json").read_text(encoding="utf-8"))
-    probes = discover_probes(directory, encoder_config, frozen_encoder(output_dir)[1])
-    return [directory / probe.key / name for probe in probes for name in REQUIRED_FILES]
+    probes = discover_probes(directory, frozen_encoder(output_dir)[1])
+    if not probes:
+        return []
+    sums = directory / "SHA256SUMS"
+    if not sums.is_file():
+        raise FileNotFoundError(f"Expected {sums} was not downloaded")
+    for line in sums.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            expected, name = line.split(maxsplit=1)
+            verify_weights(directory, name.lstrip("*").strip(), expected.lower())
+    return [directory / "config.json", sums] + [directory / probe.key / name for probe in probes for name in REQUIRED_FILES]
 
 
 def frozen_encoder(output_dir: Path) -> tuple[str, str]:

@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "1.2.1"
+    "version": "1.3.0"
   },
   "servers": [
     {
@@ -247,12 +247,12 @@
                     "domainName": "Cardiology",
                     "stage": "ai_inference",
                     "modality": "ECG",
-                    "version": "1.2.1",
+                    "version": "1.3.0",
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
                       "modelRepository": "heartwise/deepecg_clip_dinov3_acs",
-                      "modelRevision": "badd718a6e26be24c9ad2dd3c911160a7d4fbe06",
+                      "modelRevision": "7d35c2e75b8013097c9bb4a578750434e9e10be2",
                       "weightsPath": "acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth",
                       "weightsSha256": "49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026"
                     },
@@ -442,7 +442,7 @@
                         "Name": "DeepECG-CLIP-DINOv3",
                         "Description": "Research ECG model from one 12-lead ECG: acute coronary occlusion (ACO) and complete (ACCO) vs incomplete (AICO) occlusion, from a DINOv3 ViT-B/16 encoder pretrained contrastively on MHI ECG images and reports. Frozen linear-probe heads on the same encoder are added from files when released.",
                         "Developed_by": "HeartWise.AI / Montreal Heart Institute",
-                        "Version": "1.2.1"
+                        "Version": "1.3.0"
                       },
                       "Mechanism": {
                         "Outcome": "aco: acute coronary occlusion on the catheterization following the ECG (ACS cohort v6). acco_vs_aico: complete vs incomplete occlusion, among occlusions.",
@@ -473,7 +473,7 @@
                       },
                       "Artifact_provenance": {
                         "Repository": "heartwise/deepecg_clip_dinov3_acs (NAS: /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030)",
-                        "Pinned_revision": "badd718a6e26be24c9ad2dd3c911160a7d4fbe06 (tag v1.1.0)",
+                        "Pinned_revision": "7d35c2e75b8013097c9bb4a578750434e9e10be2 (tag v1.3.0)",
                         "Checkpoints": "aco/best_model.pth (sha256 49db22c3...9026), acco_vs_aico/best_model.pth (sha256 55091186...ba29); pretraining base/epoch_030.pt used only by frozen probes",
                         "Training": "DeepECG-PNG commit 1f6fb84 (PR #224); pretraining W&B mhi_ai run zo59vdxk epoch 30; fine-tunes W&B project deepecg_dinov3_siglip2_finetune"
                       }
@@ -482,7 +482,7 @@
                       "Résumé": {
                         "Nom": "DeepECG-CLIP-DINOv3",
                         "Description": "Modèle ECG de recherche : occlusion coronarienne aiguë (OCA) et occlusion complète (ACCO) ou incomplète (AICO), à partir d'un ECG 12 dérivations.",
-                        "Version": "1.2.1"
+                        "Version": "1.3.0"
                       },
                       "Performance": {
                         "OCA": "ASC 0,92 (IC 95 % 0,89-0,93), sensibilité 0,83, spécificité 0,87 au seuil 0,0506 (test ICM, 9 021 ECG).",

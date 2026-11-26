@@ -9,6 +9,7 @@ from typing import Optional
 import pydicom
 import torch
 from models.dinov3_heads import SharedTrunkClassifiers, load_state_dict
+from models import dinov3_bank
 from models.probes import Probe, discover_probes
 from report_input import NO_ECG_HTML, NO_ECG_RESULT, difference, fail, member, number, unwrap
 from utils.ecg_inputs import EcgInputError, EcgPage, ecg_page, order_candidates
@@ -69,7 +70,8 @@ def head_registry(probes: list[Probe]) -> list[HeadSpec]:
         for head, spec in _read_json("class_mapping.json").items()
     ]
     for probe in probes:
-        task = "binary" if len(probe.outputs) == 1 else "multilabel"
+        task = ("binary" if len(probe.outputs) == 1
+                else "multiclass" if probe.activation == "softmax" else "multilabel")
         for output in probe.outputs:
             specs.append(HeadSpec(output, probe.key, output, probe.task, task, "linear-probe",
                                   probe.thresholds.get(output)))
@@ -87,8 +89,8 @@ def head_registry(probes: list[Probe]) -> list[HeadSpec]:
 
 def discover_heads(with_weights: bool = True) -> list[Probe]:
     cfg = _read_json("config.json")
-    return discover_probes(Path(MODEL_DIRECTORY) / cfg["ProbeDirectory"], _read_json("encoder_config.json"),
-                           cfg["FrozenEncoder"]["sha256"], with_weights)
+    return discover_probes(Path(MODEL_DIRECTORY) / cfg["ProbeDirectory"], cfg["FrozenEncoder"]["sha256"],
+                           with_weights)
 
 
 class CustomPredictionService(BasePredictionService):
@@ -101,7 +103,9 @@ class CustomPredictionService(BasePredictionService):
         cfg = _read_json("config.json")
         encoder = _read_json("encoder_config.json")
         CustomPredictionService.model_config = cfg
-        CustomPredictionService.preprocessing = encoder["preprocessing"]
+        # DeepECG_Docker's DINOv3 preprocessing: the encoder block plus the bank's real-world page fixes
+        # (EXIF orientation, transparency on white), which leave the opaque, upright training pages unchanged.
+        CustomPredictionService.preprocessing = {**encoder["preprocessing"], **dinov3_bank.PAGE_FIXES}
         heads = list(_read_json("class_mapping.json"))
         if heads != list(cfg["Checkpoints"]):
             raise ValueError("class_mapping.json and config.json name different heads")
