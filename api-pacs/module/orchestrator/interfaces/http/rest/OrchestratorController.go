@@ -318,3 +318,27 @@ func (controller *OrchestratorController) GetChatProgress(w http.ResponseWriter,
 
 	response.JSON(w)
 }
+
+// GetChatSettings returns the chat settings the viewer needs before the first message
+// (the default answer language, CHAT_DEFAULT_LANGUAGE of the chat backend).
+func (controller *OrchestratorController) GetChatSettings(w http.ResponseWriter, r *http.Request) {
+	result, err := controller.OrchestratorServiceInterface.GetChatSettings(r.Context())
+	if err != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status:    http.StatusBadGateway,
+			Success:   false,
+			Message:   "Chat settings are unavailable.",
+			ErrorCode: "chat_settings_unavailable",
+		}
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status:  http.StatusOK,
+		Success: true,
+		Message: "Chat settings retrieved successfully.",
+		Data:    result,
+	}
+	response.JSON(w)
+}

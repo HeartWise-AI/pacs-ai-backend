@@ -40,6 +40,9 @@ type OrchestratorServiceInterface interface {
 	// GetChatThreadHistory returns one of the signed-in user's threads with its messages and votes
 	GetChatThreadHistory(ctx context.Context, threadID string) (json.RawMessage, error)
 
+	// GetChatSettings returns the chat backend's settings the viewer needs (default answer language)
+	GetChatSettings(ctx context.Context) (types.ChatSettingsResponse, error)
+
 	// CountChatFeedback counts the workspace's votes on chat answers (admin panel, feedback.view)
 	CountChatFeedback(ctx context.Context, query url.Values) (json.RawMessage, error)
 }
