@@ -538,6 +538,10 @@ func (router *router) InitRouter() *chi.Mux {
 					r.Post("/threads", orchestratorController.CreateThread)
 					r.Get("/threads/{threadID}", orchestratorController.GetThread)
 
+					// Chat history per study: the caller's own threads only
+					r.Get("/threads", orchestratorController.ListChatThreads)
+					r.Get("/threads/{threadID}/messages", orchestratorController.GetChatThreadMessages)
+
 					// Message and payload management
 					r.Post("/threads/{threadID}/chat", orchestratorController.CreateMessage)
 					r.Get("/threads/{threadID}/chat/progress", orchestratorController.GetChatProgress)
