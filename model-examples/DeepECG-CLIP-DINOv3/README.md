@@ -12,13 +12,15 @@ Research-only PACS.AI inference service for HeartWise's DeepECG-CLIP DINOv3 12-l
 | id | kind | output | threshold (validation Youden) | held-out test (MHI ACS v6, 9,021 ECGs) |
 |---|---|---|---|---|
 | `aco` | fine-tuned | acute coronary occlusion vs none | 0.05062838 | AUROC 0.92 [0.89, 0.93]; sens 0.83, spec 0.87, NPV 0.99 |
-| `acco_vs_aico` | fine-tuned | complete (ACCO) vs incomplete (AICO) occlusion; only interpreted when `aco` is positive | 0.6155858 | AUROC 0.69 [0.62, 0.76] among the 589 occlusions |
 | probes | linear probe | any head released under `probes/` (see below) | per head | per head (`model-facts`) |
 
-Both fine-tunes come from the DINOv3-SigLIP2 pretraining (W&B `mhi_ai` run zo59vdxk, epoch 30) with the top
-2 blocks, the final norm and a linear head trained (DeepECG-PNG commit 1f6fb84, PR #224). Their first 10
-blocks are bit-identical, so the service runs those once per ECG and then each head's own top blocks
-(`models/dinov3_heads.py`; loading refuses checkpoints that do not share them).
+The `aco` fine-tune comes from the DINOv3-SigLIP2 pretraining (W&B `mhi_ai` run zo59vdxk, epoch 30) with the
+top 2 blocks, the final norm and a linear head trained (DeepECG-PNG commit 1f6fb84, PR #224). The service runs
+the first 10 blocks as a shared trunk, then the head's own top blocks (`models/dinov3_heads.py`, which can
+serve several fine-tunes that share those blocks and refuses checkpoints that do not).
+
+Since 1.4.0 the `acco_vs_aico` fine-tune (complete vs incomplete occlusion, AUROC 0.69 among occlusions) is no
+longer served or downloaded (owner's decision, 2026-11-26): its checkpoint stays in the model revision and on the NAS.
 
 ### Frozen linear probes (77 patterns, SHD, LVEF, AFib 5 y, HCM, ...)
 
@@ -35,7 +37,7 @@ Youden; 95% CI = 1,000 resamples of 80% of the patients):
 | `afib_5y_clean` | `iAFib5` | 0.68 [0.65, 0.70] | 0.1113 |
 | `hcm_clean` | `confirmed HCM (vs rest)` | 0.71 [0.66, 0.75] | 0.0027 |
 
-Not served: the ACO and ACCO-vs-AICO probes (the fine-tunes above are better on the same task), the
+Not served: the ACO and ACCO-vs-AICO probes (the ACO fine-tune is better on the same task), the
 probes fitted on augmented pages (same output ids as the clean ones), and the 3-class HCM head (softmax).
 All 18 probe heads (clean and augmented, float64 copies, full provenance) are in the private Hugging Face
 repository `heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030`. Each served head reproduces its saved
@@ -118,7 +120,7 @@ but has no ECG model in its registry, and drops DOC and OT series. Registering t
 
 `id` is the output name (a probe head's `head.json` `outputs`, the column names DeepECG_Docker writes);
 `head` is the head it comes from (a probe folder name). `positive` is null when the output is not
-applicable (`acco_vs_aico` with a negative `aco`) or has no threshold (probability-only head). `predictions.input` names the object that was read. Probabilities
+applicable (an output with `applicableWhen` whose parent is negative; none is served now) or has no threshold (probability-only head). `predictions.input` names the object that was read. Probabilities
 are rounded to 6 decimals before anything reads them (flags included), so a flag differs from the unrounded
 rule only within 5e-7 of its cutoff. The report shows 3 decimals, or all 6 for an output whose cutoff is below
 0.01 (HCM, cutoff 0.0027), with that cutoff to 7 decimals. Example: `docs/examples/predict_response_json.json`.
@@ -133,7 +135,7 @@ Through api-pacs (permission `models.use`; the container must be registered):
 ```
 POST /v1/inference/model/proxy/container/{containerID}/predict
 {"studyInstanceUID": "...", "seriesInstanceUIDs": ["..."], "forceJSON": true,
- "additionalMetadata": {"heads": ["aco", "acco_vs_aico"]}}
+ "additionalMetadata": {"heads": ["aco", "shd_clean"]}}
 ```
 
 Directly against the container (port 80 behind nginx, or 8000):
@@ -157,7 +159,7 @@ Hugging Face `heartwise/deepecg_clip_dinov3_acs` (private), revision
 | file | SHA-256 |
 |---|---|
 | `aco/best_model.pth` (manifest checkpoint) | `49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026` |
-| `acco_vs_aico/best_model.pth` | `55091186aaf36d66eab1fb048a1c4177fa1534bd25cc84ac4a0e4e413f74ba29` |
+| `acco_vs_aico/best_model.pth` (not downloaded since 1.4.0) | `55091186aaf36d66eab1fb048a1c4177fa1534bd25cc84ac4a0e4e413f74ba29` |
 | `base/epoch_030.pt` (only with probes) | `335aaec39064d009c31710a96fe17d98450d85611c5bb0271ce3aad118149ae6` |
 
 `download_model.py` fails the build on any missing file or hash mismatch. The architecture is built from
@@ -192,6 +194,9 @@ copy instead (instructions at its top) and is for development only.
 
 ## Changelog
 
+- 1.4.0: `acco_vs_aico` (ACCO vs AICO) removed from the service by the owner's decision: no longer loaded,
+  downloaded, returned or mentioned in the report; the reject-feedback option "wrong occlusion type" goes too.
+  83 outputs (`aco` + the six probe heads); every remaining output is unchanged. Minor bump (prediction output changes).
 - 1.3.0: probe heads loaded, validated and scored by DeepECG_Docker's vendored `models/dinov3_bank.py`
   (a46499c5), in its head format, model revision `7d35c2e` (same weights); probes/SHA256SUMS verified at
   download; image preprocessing with the bank's page fixes. Outputs identical to 1.2.1.

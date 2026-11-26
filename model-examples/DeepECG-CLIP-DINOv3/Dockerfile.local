@@ -3,9 +3,8 @@
 #
 #   R=/mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030
 #   (cd $R && sha256sum -c SHA256SUMS)
-#   mkdir -p models/acs_ft20_dinov3_siglip2_epoch030/{aco,acco_vs_aico}
+#   mkdir -p models/acs_ft20_dinov3_siglip2_epoch030/aco
 #   cp $R/aco/best_model.pth models/acs_ft20_dinov3_siglip2_epoch030/aco/
-#   cp $R/acco_vs_aico/best_model.pth models/acs_ft20_dinov3_siglip2_epoch030/acco_vs_aico/
 #   # only when $R/probes exists: also copy $R/probes and $R/base/epoch_030.pt
 #   docker build --platform linux/amd64 -f Dockerfile.local -t pacs-ai-deepecg-clip-dinov3:local .
 #
@@ -15,7 +14,7 @@ FROM python:3.12.1-slim
 
 ARG PACS_AI_SOURCE_REPOSITORY="HeartWise-AI/pacs-ai-backend"
 ARG PACS_AI_SOURCE_REVISION=""
-ARG PACS_AI_MODEL_VERSION="1.3.0"
+ARG PACS_AI_MODEL_VERSION="1.4.0"
 ARG PACS_AI_MODEL_REPOSITORY="heartwise/deepecg_clip_dinov3_acs"
 ARG PACS_AI_MODEL_REVISION="7d35c2e75b8013097c9bb4a578750434e9e10be2"
 ARG PACS_AI_WEIGHTS_PATH="acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth"

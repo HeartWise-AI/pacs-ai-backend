@@ -4,7 +4,7 @@
   "domainName": "Cardiology",
   "stage": "ai_inference",
   "modality": "ECG",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "provenance": {
     "sourceRepository": "HeartWise-AI/pacs-ai-backend",
     "sourceRevision": null,
@@ -99,10 +99,6 @@
           "answer": "Occlusion present but not flagged"
         },
         {
-          "id": "wrong_type",
-          "answer": "Wrong occlusion type (complete vs incomplete)"
-        },
-        {
           "id": "quality",
           "answer": "ECG not read correctly (wrong page, poor quality)"
         },
@@ -119,10 +115,6 @@
         {
           "id": "false_negative",
           "answer": "Occlusion présente mais non signalée"
-        },
-        {
-          "id": "wrong_type",
-          "answer": "Mauvais type d'occlusion (complète ou incomplète)"
         },
         {
           "id": "quality",

@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "1.3.0"
+    "version": "1.4.0"
   },
   "servers": [
     {
@@ -107,7 +107,7 @@
               },
               "example": {
                 "result": {
-                  "diagnosis": "DeepECG-CLIP-DINOv3: occlusion suspected (ACO probability 0.421, threshold 0.0506); complete (ACCO) more likely (ACCO probability 0.703); input: waveform | research use only, not a clinical diagnosis",
+                  "diagnosis": "DeepECG-CLIP-DINOv3: occlusion suspected (ACO probability 0.421, threshold 0.0506); input: waveform | research use only, not a clinical diagnosis",
                   "predictions": {
                     "heads": [
                       {
@@ -122,19 +122,6 @@
                         "positive": true,
                         "applicable": true,
                         "applicableWhen": null
-                      },
-                      {
-                        "id": "acco_vs_aico",
-                        "head": "acco_vs_aico",
-                        "label": "Complete (ACCO) vs incomplete (AICO) occlusion",
-                        "description": "Probability that an acute coronary occlusion is complete (ACCO) rather than incomplete (AICO). Trained on occlusion ECGs only; interpreted only when the aco output is positive.",
-                        "task": "binary",
-                        "kind": "fine-tuned",
-                        "probability": 0.7032,
-                        "threshold": 0.6155858,
-                        "positive": true,
-                        "applicable": true,
-                        "applicableWhen": "aco"
                       }
                     ],
                     "input": {
@@ -144,8 +131,8 @@
                     "notes": "Probabilities are model outputs, not calibrated risks. Each threshold is the Youden point of its validation set; an output without a threshold gives a probability only (positive is null). An output with applicableWhen is only interpreted when that output is positive."
                   },
                   "modelRecommendations": {
-                    "en": "<strong>Acute coronary occlusion suspected (probability 0.421).</strong> The model output is above the research threshold; complete occlusion (ACCO) more likely (probability 0.703). Correlate with symptoms, serial ECGs and troponin. Research use only: do not change management on the basis of this output.",
-                    "fr": "<strong>Occlusion coronarienne aiguë suspectée (probabilité 0.421).</strong> La sortie du modèle dépasse le seuil de recherche ; occlusion complète (ACCO) plus probable (probabilité 0.703). Corréler avec les symptômes, les ECG sériés et la troponine. Usage en recherche seulement : ne pas modifier la prise en charge sur la base de ce résultat.",
+                    "en": "<strong>Acute coronary occlusion suspected (probability 0.421).</strong> The model output is above the research threshold. Correlate with symptoms, serial ECGs and troponin. Research use only: do not change management on the basis of this output.",
+                    "fr": "<strong>Occlusion coronarienne aiguë suspectée (probabilité 0.421).</strong> La sortie du modèle dépasse le seuil de recherche. Corréler avec les symptômes, les ECG sériés et la troponine. Usage en recherche seulement : ne pas modifier la prise en charge sur la base de ce résultat.",
                     "presentable": true
                   }
                 }
@@ -247,7 +234,7 @@
                     "domainName": "Cardiology",
                     "stage": "ai_inference",
                     "modality": "ECG",
-                    "version": "1.3.0",
+                    "version": "1.4.0",
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
@@ -342,10 +329,6 @@
                             "answer": "Occlusion present but not flagged"
                           },
                           {
-                            "id": "wrong_type",
-                            "answer": "Wrong occlusion type (complete vs incomplete)"
-                          },
-                          {
                             "id": "quality",
                             "answer": "ECG not read correctly (wrong page, poor quality)"
                           },
@@ -362,10 +345,6 @@
                           {
                             "id": "false_negative",
                             "answer": "Occlusion présente mais non signalée"
-                          },
-                          {
-                            "id": "wrong_type",
-                            "answer": "Mauvais type d'occlusion (complète ou incomplète)"
                           },
                           {
                             "id": "quality",
@@ -440,23 +419,22 @@
                     "en": {
                       "Summary": {
                         "Name": "DeepECG-CLIP-DINOv3",
-                        "Description": "Research ECG model from one 12-lead ECG: acute coronary occlusion (ACO) and complete (ACCO) vs incomplete (AICO) occlusion, from a DINOv3 ViT-B/16 encoder pretrained contrastively on MHI ECG images and reports. Frozen linear-probe heads on the same encoder are added from files when released.",
+                        "Description": "Research ECG model from one 12-lead ECG: acute coronary occlusion (ACO), from a DINOv3 ViT-B/16 encoder pretrained contrastively on MHI ECG images and reports, plus frozen linear-probe heads on the same encoder (77 ECG patterns, SHD, LVEF, AFib 5 y, HCM).",
                         "Developed_by": "HeartWise.AI / Montreal Heart Institute",
-                        "Version": "1.3.0"
+                        "Version": "1.4.0"
                       },
                       "Mechanism": {
-                        "Outcome": "aco: acute coronary occlusion on the catheterization following the ECG (ACS cohort v6). acco_vs_aico: complete vs incomplete occlusion, among occlusions.",
-                        "Output": "One entry per head: probability (sigmoid), validation Youden threshold, positive flag. acco_vs_aico is interpreted only when aco is positive. Every available head is returned by default; additionalMetadata.heads selects a subset.",
+                        "Outcome": "aco: acute coronary occlusion on the catheterization following the ECG (ACS cohort v6).",
+                        "Output": "One entry per head: probability (sigmoid), validation Youden threshold, positive flag. Every available head is returned by default; additionalMetadata.heads selects a subset.",
                         "Target_population": "Adults with a 12-lead resting ECG in the MHI acute coronary syndrome cohort (development population).",
                         "Input_data_source": "One ECG per request, chosen from the study: DICOM 12-lead or general ECG waveform first, then an Encapsulated PDF holding a vector ECG (standard 3x4 + lead II rhythm layout), then a single-frame ECG image; earliest acquisition first.",
                         "Input_data_type": "dicom",
-                        "Model_type": "Deep learning: DINOv3 ViT-B/16 (448x896 grayscale page, ImageNet normalisation); fine-tuned heads share the frozen first 10 blocks and run their own top 2 blocks and linear head.",
+                        "Model_type": "Deep learning: DINOv3 ViT-B/16 (448x896 grayscale page, ImageNet normalisation); the fine-tuned head runs the frozen first 10 blocks, then its own top 2 blocks and linear head.",
                         "Supported_DICOM_modalities": "ECG (waveform), DOC (Encapsulated PDF), OT (secondary capture)"
                       },
                       "Performance": {
-                        "Test_set": "MHI ACS v6 held-out test split: 9,021 ECGs of 4,371 patients, 589 occlusions (327 ACCO, 262 AICO).",
+                        "Test_set": "MHI ACS v6 held-out test split: 9,021 ECGs of 4,371 patients, 589 occlusions.",
                         "aco": "AUROC 0.92 (95% CI 0.89-0.93), AUPRC 0.64, sensitivity 0.83, specificity 0.87, PPV 0.31, NPV 0.99 at threshold 0.0506 (clean renders); AUROC 0.90 on augmented renders.",
-                        "acco_vs_aico": "Among the 589 occlusions: AUROC 0.69 (0.62-0.76), sensitivity 0.56, specificity 0.72 at threshold 0.6156.",
                         "Smartphone_photos": "300 photographs of test ECGs: any occlusion AUROC 0.89 (photo) vs 0.91 (native)."
                       },
                       "Uses_and_directions": {
@@ -474,19 +452,18 @@
                       "Artifact_provenance": {
                         "Repository": "heartwise/deepecg_clip_dinov3_acs (NAS: /mnt/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030)",
                         "Pinned_revision": "7d35c2e75b8013097c9bb4a578750434e9e10be2 (tag v1.3.0)",
-                        "Checkpoints": "aco/best_model.pth (sha256 49db22c3...9026), acco_vs_aico/best_model.pth (sha256 55091186...ba29); pretraining base/epoch_030.pt used only by frozen probes",
+                        "Checkpoints": "aco/best_model.pth (sha256 49db22c3...9026); pretraining base/epoch_030.pt used only by frozen probes",
                         "Training": "DeepECG-PNG commit 1f6fb84 (PR #224); pretraining W&B mhi_ai run zo59vdxk epoch 30; fine-tunes W&B project deepecg_dinov3_siglip2_finetune"
                       }
                     },
                     "fr": {
                       "Résumé": {
                         "Nom": "DeepECG-CLIP-DINOv3",
-                        "Description": "Modèle ECG de recherche : occlusion coronarienne aiguë (OCA) et occlusion complète (ACCO) ou incomplète (AICO), à partir d'un ECG 12 dérivations.",
-                        "Version": "1.3.0"
+                        "Description": "Modèle ECG de recherche : occlusion coronarienne aiguë (OCA), à partir d'un ECG 12 dérivations, et têtes de sondage linéaire (77 anomalies ECG, cardiopathie structurelle, FEVG, FA à 5 ans, CMH).",
+                        "Version": "1.4.0"
                       },
                       "Performance": {
-                        "OCA": "ASC 0,92 (IC 95 % 0,89-0,93), sensibilité 0,83, spécificité 0,87 au seuil 0,0506 (test ICM, 9 021 ECG).",
-                        "ACCO_vs_AICO": "ASC 0,69 (0,62-0,76) parmi les 589 occlusions."
+                        "OCA": "ASC 0,92 (IC 95 % 0,89-0,93), sensibilité 0,83, spécificité 0,87 au seuil 0,0506 (test ICM, 9 021 ECG)."
                       },
                       "Avertissements": {
                         "Recherche": "Usage en recherche seulement ; aucune autorisation réglementaire, aucune validation externe.",

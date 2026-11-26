@@ -8,10 +8,6 @@
     "aco": {
       "path": "acs_ft20_dinov3_siglip2_epoch030/aco/best_model.pth",
       "sha256": "49db22c3f252d6ba13ec87562df07e4da4d68e5d1ca282dffb484b7c10459026"
-    },
-    "acco_vs_aico": {
-      "path": "acs_ft20_dinov3_siglip2_epoch030/acco_vs_aico/best_model.pth",
-      "sha256": "55091186aaf36d66eab1fb048a1c4177fa1534bd25cc84ac4a0e4e413f74ba29"
     }
   },
   "FrozenEncoder": {
