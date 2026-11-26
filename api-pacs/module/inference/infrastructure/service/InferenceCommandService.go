@@ -91,10 +91,16 @@ const (
 	defaultMissingPollsThreshold uint = 3
 )
 
+// studyServiceDispatchRetrySchedule is the wait before each dispatch attempt.
+// It has to outlast a restart of study-service (about 30 s when it is
+// redeployed): with the former 10 s every run dispatched during a restart
+// ended FAILED with DISPATCH_FAILED and was never tried again.
 var studyServiceDispatchRetrySchedule = []time.Duration{
 	0,
 	2 * time.Second,
 	8 * time.Second,
+	20 * time.Second,
+	30 * time.Second,
 }
 
 var errManualDispatchCorrelation = errors.New(

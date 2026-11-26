@@ -1023,3 +1023,56 @@ func TestSkippedDispatchRefundsQuotaOnlyWhenNothingWasDispatched(t *testing.T) {
 	})
 	require.Empty(t, quotaManager.refunded)
 }
+
+// Live case (2026-11-26 10:05): study-service was restarted for 33 s and the
+// two studies retrieved in that window had every model fail at dispatch.
+func TestDispatchRetryScheduleOutlastsAStudyServiceRestart(t *testing.T) {
+	require.Zero(t, studyServiceDispatchRetrySchedule[0], "the first attempt is immediate")
+	var total time.Duration
+	for index, wait := range studyServiceDispatchRetrySchedule {
+		if index > 0 {
+			require.Greater(t, wait, studyServiceDispatchRetrySchedule[index-1], "waits grow")
+		}
+		total += wait
+	}
+	require.GreaterOrEqual(t, total, 45*time.Second)
+	require.LessOrEqual(t, total, 2*time.Minute, "a study-service that is really down still fails the run in reasonable time")
+}
+
+func TestDispatchSucceedsOnceStudyServiceIsBackAfterNetworkErrors(t *testing.T) {
+	originalRetrySchedule := studyServiceDispatchRetrySchedule
+	studyServiceDispatchRetrySchedule = []time.Duration{0, 0, 0, 0, 0}
+	t.Cleanup(func() { studyServiceDispatchRetrySchedule = originalRetrySchedule })
+	processingRunID := "run-1"
+	runRepository := &processingRunCallbackRunRepository{
+		selectedExecution: entity.InferenceIngestionProcessingJob{
+			ID: "execution-1", ProcessingRunID: &processingRunID, Status: entity.InferenceIngestionProcessingJobStatusPending,
+		},
+		processingRunAggregationRepository: &processingRunAggregationRepository{
+			runs: []entity.InferenceIngestionProcessingRun{{ID: processingRunID, TenantID: "tenant-a", Version: 1}},
+		},
+	}
+	refused := errors.New(`Post "http://study-service:8600/ingest/study": dial tcp: connect: connection refused`)
+	dispatcher := &guardedProcessingDispatcher{
+		dispatchErrors: []error{refused, refused, refused, refused, nil},
+		response:       serviceTypes.DispatchStudyResponse{JobID: "study-job-1"},
+	}
+	service := &InferenceCommandService{
+		InferenceCommandRepositoryInterface:       &guardedDispatchCommandRepository{},
+		InferenceProcessingRunRepositoryInterface: runRepository,
+		ProcessingDispatcherInterface:             dispatcher,
+	}
+	configureReadyInferenceContainer(service)
+
+	err := service.dispatchRetrievedCandidateToStudyService(
+		context.Background(),
+		entity.InferenceIngestionJob{ID: "ingestion-1", ContainerID: "container-1", ModelName: "model-one"},
+		entity.InferenceIngestionCandidate{ID: "candidate-1", TenantID: "tenant-a"},
+		processingRunID,
+		"request-1",
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 5, dispatcher.dispatchCalls)
+	require.Empty(t, runRepository.failPendingCalls, "the execution is not failed while study-service restarts")
+}
