@@ -215,6 +215,8 @@ type StudyServiceLatestResult struct {
 	Runs []StudyServiceLatestResult `json:"runs,omitempty"`
 	// Best marks, inside Runs, the run study-service reports as the result.
 	Best bool `json:"best,omitempty"`
+	// Labels of the run (PACS-447); absent from an older study-service.
+	Labels []string `json:"labels,omitempty"`
 }
 
 // StudyServiceLatestResults is the study-service latest-results envelope.

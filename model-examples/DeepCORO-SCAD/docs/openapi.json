@@ -457,7 +457,10 @@
                         "Localisation": "Le modèle produit un seul résultat par examen et ne localise pas le segment disséqué.",
                         "Interprétation": "La probabilité affichée n'est pas un risque absolu étalonné. Un résultat sous le seuil n'exclut pas une DCS."
                       }
-                    }
+                    },
+                    "automaticRunLabels": [
+                      "DIAGNOSTIC"
+                    ]
                   }
                 }
               }

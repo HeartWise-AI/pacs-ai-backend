@@ -34,5 +34,6 @@
       "Explainability": "No segment-level attribution. Attention weights indicate which projections were used, not which anatomic structures.",
       "Performance": "Held-out v6 comparison: CardioSYNTAX n=369: MAE 3.21 (2.77-3.64), bias -0.35 (-0.87-0.17), rho 0.76 (0.71-0.81), ICC 0.86 (0.82-0.89), AUROC >=23 0.97 (0.95-0.99). MHI n=127: MAE 4.47 (3.67-5.30), bias -0.57 (-1.68-0.58), rho 0.81 (0.71-0.88), ICC 0.79 (0.71-0.86), AUROC >=23 0.89 (0.79-0.97). Single training seed; prospective and external validation remain outstanding."
     }
-  }
+  },
+  "automaticRunLabels": ["DIAGNOSTIC"]
 }

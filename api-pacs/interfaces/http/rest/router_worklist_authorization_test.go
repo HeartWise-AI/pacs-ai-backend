@@ -89,6 +89,10 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 			getStudyMedia:      respond,
 			getStudyMediaFile:  respond,
 			cancelRun:          respond,
+			getRunLabels:       respond,
+			addRunLabel:        respond,
+			removeRunLabel:     respond,
+			getRunLabelCatalog: respond,
 		},
 	)
 
@@ -123,6 +127,8 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 		"/worklist/studies/1.2.3/jobs/job-1/report",
 		"/worklist/studies/1.2.3/media",
 		"/media/media-1",
+		"/worklist/run-labels",
+		"/worklist/studies/1.2.3/jobs/job-1/labels",
 	} {
 		t.Run("regular user reads "+path, func(t *testing.T) {
 			request := authenticatedWorklistRequest(http.MethodGet, path)
@@ -173,6 +179,37 @@ func TestWorklistRoutesAllowReadsAndProtectReprocessing(t *testing.T) {
 
 		require.Equal(t, http.StatusPreconditionRequired, recorder.Code)
 	})
+
+	for _, method := range []string{http.MethodPost, http.MethodDelete} {
+		t.Run("regular user can change run labels "+method, func(t *testing.T) {
+			request := authenticatedWorklistRequest(method, "/worklist/studies/1.2.3/jobs/job-1/labels")
+			recorder := httptest.NewRecorder()
+
+			router.ServeHTTP(recorder, request)
+
+			require.Equal(t, http.StatusNoContent, recorder.Code)
+		})
+
+		t.Run("changing run labels needs models.use "+method, func(t *testing.T) {
+			authService.role = "VIEWER"
+			defer func() { authService.role = iamEntity.UserRole }()
+			request := authenticatedWorklistRequest(method, "/worklist/studies/1.2.3/jobs/job-1/labels")
+			recorder := httptest.NewRecorder()
+
+			router.ServeHTTP(recorder, request)
+
+			require.Equal(t, http.StatusForbidden, recorder.Code)
+		})
+
+		t.Run("changing run labels requires authentication "+method, func(t *testing.T) {
+			request := httptest.NewRequest(method, "/worklist/studies/1.2.3/jobs/job-1/labels", nil)
+			recorder := httptest.NewRecorder()
+
+			router.ServeHTTP(recorder, request)
+
+			require.Equal(t, http.StatusUnauthorized, recorder.Code)
+		})
+	}
 
 	t.Run("regular user can cancel the waiting models of a run", func(t *testing.T) {
 		request := authenticatedWorklistRequest(http.MethodPost, "/processing/runs/run-1/cancel")

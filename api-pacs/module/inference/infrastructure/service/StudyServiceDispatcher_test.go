@@ -595,7 +595,7 @@ func TestStudyServiceDispatcherGetLatestStudyResultsSendsTenantAndOperatorToken(
 	defer server.Close()
 	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceOperatorToken: "operator", StudyServiceClient: server.Client()}
 
-	results, found, err := dispatcher.GetLatestStudyResults(context.Background(), "tenant-a", "1.2.3", "angiogram")
+	results, found, err := dispatcher.GetLatestStudyResults(context.Background(), "tenant-a", "1.2.3", "angiogram", "")
 
 	if err != nil || !found {
 		t.Fatalf("unexpected err=%v found=%t", err, found)
@@ -622,14 +622,14 @@ func TestStudyServiceDispatcherGetLatestStudyResultsHandlesAbsenceAndFailures(t 
 	defer server.Close()
 	dispatcher := &StudyServiceDispatcher{StudyServiceBaseURL: server.URL, StudyServiceClient: server.Client()}
 
-	if _, found, err := dispatcher.GetLatestStudyResults(context.Background(), "tenant-a", "1.2.3", ""); err != nil || found {
+	if _, found, err := dispatcher.GetLatestStudyResults(context.Background(), "tenant-a", "1.2.3", "", ""); err != nil || found {
 		t.Fatalf("404 must mean endpoint absent, got found=%t err=%v", found, err)
 	}
 	status = http.StatusBadGateway
-	if _, _, err := dispatcher.GetLatestStudyResults(context.Background(), "tenant-a", "1.2.3", ""); err == nil {
+	if _, _, err := dispatcher.GetLatestStudyResults(context.Background(), "tenant-a", "1.2.3", "", ""); err == nil {
 		t.Fatal("upstream failure accepted")
 	}
-	if _, _, err := dispatcher.GetLatestStudyResults(context.Background(), " ", "1.2.3", ""); err == nil {
+	if _, _, err := dispatcher.GetLatestStudyResults(context.Background(), " ", "1.2.3", "", ""); err == nil {
 		t.Fatal("missing tenant accepted")
 	}
 }

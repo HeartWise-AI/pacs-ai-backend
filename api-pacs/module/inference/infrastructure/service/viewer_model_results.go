@@ -223,7 +223,14 @@ func (service *InferenceQueryService) GetStudyLatestModelResults(ctx context.Con
 		return types.StudyLatestModelResults{}, errors.New(apiError.InferenceResultServiceUnavailable)
 	}
 
-	latest, found, err := service.StudyResultsProvider.GetLatestStudyResults(ctx, tenantID, studyInstanceUID, data.Modality)
+	label := strings.TrimSpace(data.Label)
+	if label != "" {
+		if _, err := NormalizeRunLabel(label); err != nil {
+			return types.StudyLatestModelResults{}, errors.New(apiError.InvalidPayload)
+		}
+		response.Label = &label
+	}
+	latest, found, err := service.StudyResultsProvider.GetLatestStudyResults(ctx, tenantID, studyInstanceUID, data.Modality, label)
 	if err != nil {
 		log.Printf("[Viewer results] study-service latest-results failed tenant_id=%s err=%v", tenantID, err)
 		return types.StudyLatestModelResults{}, errors.New(apiError.InferenceResultServiceUnavailable)
@@ -250,6 +257,7 @@ func (service *InferenceQueryService) GetStudyLatestModelResults(ctx context.Con
 			DispatchSeriesInstanceUIDs: passThroughDispatchSeries(result.DispatchSeriesInstanceUIDs),
 			InputVideoCount:            nonNegativeIntPointer(result.InputVideoCount),
 			EligibleVideoCount:         nonNegativeIntPointer(result.EligibleVideoCount),
+			Labels:                     nonNilLabels(result.Labels),
 		}
 		if entry := directory.match(item.ModelName, trimmedPointerValue(result.ModelVersion)); entry != nil {
 			item.ModelID = nonEmptyStringPointer(entry.model.ID)
@@ -324,6 +332,17 @@ func boundedListedRuns(listed []types.StudyServiceLatestResult, bestJobID string
 			continue
 		}
 		bestKept = bestKept || isBest
+	}
+	return kept
+}
+
+// nonNilLabels keeps the run's labels, as an empty list when it has none.
+func nonNilLabels(labels []string) []string {
+	kept := make([]string, 0, len(labels))
+	for _, label := range labels {
+		if label = strings.TrimSpace(label); label != "" {
+			kept = append(kept, label)
+		}
 	}
 	return kept
 }

@@ -92,6 +92,29 @@ class VerifyModelTests(unittest.TestCase):
         self.assertEqual("FAIL", evidence["overall"])
         self.assertEqual("FAIL", evidence["checks"][0]["status"])
 
+    def test_model_facts_automatic_run_labels(self):
+        def check(facts):
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "data").mkdir()
+                (root / "data" / "model_facts.json").write_text(json.dumps(facts), encoding="utf-8")
+                return VERIFY.validate_model_facts(root)
+
+        self.assertIn("DIAGNOSTIC", check({"en": {}, "automaticRunLabels": ["DIAGNOSTIC"]}))
+        self.assertIn("nothing", check({"en": {}, "automaticRunLabels": []}))
+        with self.assertRaises(VERIFY.SkipCheck):
+            check({"en": {}})
+        for bad in ("DIAGNOSTIC", [" DIAGNOSTIC"], ["x" * 41], ["A", "a"], [1]):
+            with self.assertRaises(VERIFY.VerificationError, msg=repr(bad)):
+                check({"en": {}, "automaticRunLabels": bad})
+
+    def test_angiogram_models_label_automatic_runs_diagnostic(self):
+        for facts_path in sorted((REPOSITORY_ROOT / "model-examples").glob("**/data/model_facts.json")):
+            facts = json.loads(facts_path.read_text(encoding="utf-8"))
+            modalities = facts.get("en", {}).get("Mechanism", {}).get("Supported_DICOM_modalities")
+            if modalities == "XA":
+                self.assertEqual(["DIAGNOSTIC"], facts.get("automaticRunLabels"), str(facts_path))
+
     def test_current_scad_source_contract_has_no_failures(self):
         model = REPOSITORY_ROOT / "model-examples" / "DeepCORO-SCAD"
         result = VERIFY.source_model_result(model, VERIFY.git_revision(), False)

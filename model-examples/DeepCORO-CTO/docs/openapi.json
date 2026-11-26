@@ -609,7 +609,10 @@
                         "Score_definition": "Predicted jcto_score is an imaging-only morphological score in [0, 4]. Classic J-CTO also awards 1 point for a previously failed attempt; that history item is not modeled here. predictedInteger rounds the regression output to the nearest whole point; componentsAboveThreshold counts binary heads above 0.5 and may differ from the regression score.",
                         "Confidence_Scores": "Component thresholds default to 0.5 on sigmoid probability and are tracked in class_mapping.json. The J-CTO score heads are regression outputs clamped to [0, 4]."
                       }
-                    }
+                    },
+                    "automaticRunLabels": [
+                      "DIAGNOSTIC"
+                    ]
                   }
                 }
               }

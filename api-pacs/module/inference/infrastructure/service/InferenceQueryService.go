@@ -34,6 +34,8 @@ type InferenceQueryService struct {
 	application.ProcessingResultProviderInterface
 	// StudyResultsProvider reads study-service latest results for the viewer.
 	StudyResultsProvider application.StudyResultsProviderInterface
+	// RunLabelProvider reads and changes study-service run labels (PACS-447).
+	RunLabelProvider application.RunLabelProviderInterface
 	// ModelReportRenderer re-renders stored results through model containers.
 	ModelReportRenderer dockerInferenceTypes.ModelReportRendererInterface
 	// ReportRenderTimeout bounds one render call (default 60s).

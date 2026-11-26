@@ -23,11 +23,13 @@ type viewerStudyResultsProvider struct {
 	err      error
 	tenantID string
 	modality string
+	label    string
 }
 
-func (provider *viewerStudyResultsProvider) GetLatestStudyResults(_ context.Context, tenantID, _ string, modality string) (serviceTypes.StudyServiceLatestResults, bool, error) {
+func (provider *viewerStudyResultsProvider) GetLatestStudyResults(_ context.Context, tenantID, _ string, modality, label string) (serviceTypes.StudyServiceLatestResults, bool, error) {
 	provider.tenantID = tenantID
 	provider.modality = modality
+	provider.label = label
 	return provider.results, provider.found, provider.err
 }
 

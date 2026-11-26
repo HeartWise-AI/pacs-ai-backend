@@ -33,7 +33,17 @@ func TestViewerResultsOpenAPIDocumentsRoutesAndAuthorization(t *testing.T) {
 	latest := openAPIMap(t, schemas["StudyLatestModelResult"])
 	require.Contains(t, openAPIMap(t, latest["properties"]), "dispatchSeriesInstanceUIDs")
 	require.NotContains(t, latest["required"], "dispatchSeriesInstanceUIDs")
-	for _, optional := range []string{"runs", "bestRun", "eligibleVideoCount", "inputVideoCount"} {
+	for _, path := range []string{
+		"/inference/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/labels",
+		"/inference/worklist/run-labels",
+	} {
+		require.Contains(t, paths, path)
+	}
+	labelRoute := openAPIMap(t, paths["/inference/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/labels"])
+	for _, method := range []string{"get", "post", "delete"} {
+		require.Contains(t, labelRoute, method)
+	}
+	for _, optional := range []string{"runs", "bestRun", "eligibleVideoCount", "inputVideoCount", "labels"} {
 		require.Contains(t, openAPIMap(t, latest["properties"]), optional)
 		require.NotContains(t, latest["required"], optional)
 	}

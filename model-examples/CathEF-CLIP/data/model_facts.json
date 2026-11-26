@@ -32,5 +32,6 @@
       "Number_of_videos": "Uses up to 4 videos per study; extra videos are ignored.",
       "Confidence_Scores": "Reduced-EF threshold defaults to 0.5 on sigmoid probability and is tracked in class_mapping.json."
     }
-  }
+  },
+  "automaticRunLabels": ["DIAGNOSTIC"]
 }

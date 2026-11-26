@@ -33,5 +33,6 @@
       "Class_Imbalance": "Training set was ~8% abnormal. Calibration may differ in other populations.",
       "Confidence_Scores": "Abnormal-RV threshold defaults to 0.5 on sigmoid probability and is tracked in class_mapping.json."
     }
-  }
+  },
+  "automaticRunLabels": ["DIAGNOSTIC"]
 }
