@@ -898,6 +898,14 @@ Roles are enforced via Chi middleware: `RBACOwnerGuard` (owner only) and `RBACOw
 | Consent signed | `signed_consents` | User signs the onboarding consent | (tenant + user only) |
 | Custom series stored | `stored_custom_series` | AI-generated DICOM series persisted back into Orthanc | `study_instance_uid`, `series_instance_uids`, `custom_series_instance_uid`, `custom_sop_instance_uid`, `model_name`, `model_version`, `patient_id` |
 
+**Upgrading a deployment that logged raw session tokens.** Before this change `logins.session_id` held the live session token. The api-pacs release that hashes it also rotates sessions (`SessionGeneration`), so those values no longer authenticate, and every user signs in once more. To remove the old values from Elasticsearch as well, hash them in place once, as the `elastic` user (values that are already 64-character digests are left alone):
+
+```bash
+curl -u elastic -X POST 'http://localhost:9200/logins/_update_by_query?refresh=true&conflicts=proceed' \
+  -H 'Content-Type: application/json' \
+  -d '{"script":{"lang":"painless","source":"def s = ctx._source.session_id; if (s instanceof String && s.length() != 64) { ctx._source.session_id = s.sha256(); } else { ctx.op = \"noop\"; }"}}'
+```
+
 > The `predict_inference_models` and `stored_custom_series` events are the audit trail for AI activity — they are the canonical "what model touched what study, when, on whose behalf" record for compliance review.
 
 ### 13.4 Compliance posture

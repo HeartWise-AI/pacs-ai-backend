@@ -31,8 +31,25 @@ es() {
     -H 'Content-Type: application/json' -X "$1" "$ES_URL$2" --data-binary @-
 }
 
-until [ "$(printf '' | es GET /_security/_authenticate)" = 200 ]; do
-  echo "waiting for elasticsearch"
+# Wait for Elasticsearch, but stop with a clear error when it rejects the
+# elastic password (for example an existing data volume whose elastic password
+# was changed) instead of retrying forever.
+tries=0
+while :; do
+  status=$(printf '' | es GET /_security/_authenticate || true)
+  case "$status" in
+    200) break ;;
+    401)
+      echo "elasticsearch rejected the elastic user: ELASTIC_PASSWORD does not match the cluster" >&2
+      exit 1
+      ;;
+  esac
+  tries=$((tries + 1))
+  if [ "$tries" -ge 150 ]; then
+    echo "elasticsearch did not become ready (last HTTP status: $status)" >&2
+    exit 1
+  fi
+  echo "waiting for elasticsearch (HTTP $status)"
   sleep 2
 done
 
@@ -50,6 +67,7 @@ expect_ok "$(printf '{"password":"%s"}' "$KIBANA_SYSTEM_PASSWORD" |
 
 expect_ok "$(es PUT "/_security/role/$API_PACS_ROLE" <<'JSON'
 {
+  "cluster": ["monitor"],
   "indices": [
     {
       "names": [

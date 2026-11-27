@@ -30,6 +30,12 @@ func SessionReference(sessionID string) string {
 	if isSessionReference(sessionID) {
 		return sessionID
 	}
+	return HashSessionID(sessionID)
+}
+
+// HashSessionID always hashes. Use it when writing a new login record, where the
+// input is known to be a live session token whatever its format.
+func HashSessionID(sessionID string) string {
 	sum := sha256.Sum256([]byte(sessionID))
 	return hex.EncodeToString(sum[:])
 }

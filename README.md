@@ -40,6 +40,7 @@ Before running this repository, ensure you have:
    cp pacs-ai-backend/api-pacs/.env.example pacs-ai-backend/api-pacs/.env
    cp pacs-ai-backend/orthanc/.env.example pacs-ai-backend/orthanc/.env
    cp pacs-ai-backend/nginx/.env.example pacs-ai-backend/nginx/.env
+   cp pacs-ai-backend/elasticsearch/.env.example pacs-ai-backend/elasticsearch/.env   # set ELASTIC_PASSWORD, KIBANA_SYSTEM_PASSWORD, ELASTICSEARCH_API_PACS_PASSWORD
    cp pacs-ai-backend/cardio-agent/.env.example pacs-ai-backend/cardio-agent/.env
    cp pacs-ai backend/postgresql/.env.example pacs-ai backend/postgresql/.env
    cp pacs-ai backend/redis/.env.example pacs-ai backend/redis/.env
