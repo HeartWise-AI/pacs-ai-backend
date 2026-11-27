@@ -319,6 +319,9 @@ func redactTextParams(line string) string {
 		}
 		nameStart, nameEnd, sepEnd := cursor+loc[2], cursor+loc[3], cursor+loc[1]
 		class := textClass(line[nameStart:nameEnd])
+		if strings.EqualFold(line[nameStart:nameEnd], "uid") && line[nameEnd] == ':' {
+			class = classNone // our own "uid:<hash>"; the hash may be all digits
+		}
 		raw := textValue.FindString(line[sepEnd:])
 		if class == classNone || raw == "" {
 			out.WriteString(line[cursor:sepEnd])

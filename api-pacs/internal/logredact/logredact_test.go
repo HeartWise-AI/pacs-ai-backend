@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -255,6 +256,21 @@ func TestTextKeepsWholeSensitiveValues(t *testing.T) {
 		}
 		if again := Text(got); again != got {
 			t.Errorf("Text is not idempotent: %q -> %q", got, again)
+		}
+	}
+}
+
+func TestTextKeepsAllDigitHashes(t *testing.T) {
+	for _, in := range []string{"/studies/uid:28316730/series", "study uid:12345678 done", "studyInstanceUID=[uid:28316730]"} {
+		if got := Text(in); got != in {
+			t.Errorf("Text(%q) = %q", in, got)
+		}
+	}
+	// Hashes of real UIDs pass through Text unchanged, whatever their digits.
+	for i := 0; i < 2000; i++ {
+		u := UID("1.2.826.0.1.3680043.8.498." + strconv.Itoa(i))
+		if got := Text("/studies/" + u); got != "/studies/"+u {
+			t.Fatalf("hash %q changed to %q", u, got)
 		}
 	}
 }
