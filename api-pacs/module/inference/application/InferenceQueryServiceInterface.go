@@ -42,6 +42,8 @@ type InferenceQueryServiceInterface interface {
 	GetProcessingRunExecutionReport(ctx context.Context, data types.GetProcessingRunExecutionReport) (types.ModelReport, error)
 	// GetStudyJobReport re-renders the HTML report of one legacy study-service job.
 	GetStudyJobReport(ctx context.Context, data types.GetStudyJobReport) (types.ModelReport, error)
+	// GetStudyJobResult returns the stored result JSON of one completed study-service job.
+	GetStudyJobResult(ctx context.Context, data types.GetStudyJobResult) (types.StudyJobResult, error)
 	// Run labels (PACS-447): free-text labels on one run (study-service job) of a study.
 	GetStudyRunLabels(ctx context.Context, data types.GetRunLabels) (types.RunLabels, error)
 	AddStudyRunLabel(ctx context.Context, data types.ChangeRunLabel) (types.RunLabels, bool, error)

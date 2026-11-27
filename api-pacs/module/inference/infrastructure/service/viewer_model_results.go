@@ -461,6 +461,49 @@ func (service *InferenceQueryService) GetStudyJobReport(ctx context.Context, dat
 	return service.renderStoredResult(ctx, tenantID, job.ModelName, trimmedPointerValue(job.ModelVersion), job.ResultJSON)
 }
 
+// GetStudyJobResult returns the stored result JSON of one completed
+// study-service job after the same tenant, study and model-access checks as
+// GetStudyJobReport. It serves results that have no run/execution IDs (legacy
+// automatic jobs and study-service measurement results).
+func (service *InferenceQueryService) GetStudyJobResult(ctx context.Context, data types.GetStudyJobResult) (types.StudyJobResult, error) {
+	tenantID := strings.TrimSpace(data.TenantID)
+	studyInstanceUID := strings.TrimSpace(data.StudyInstanceUID)
+	jobID := strings.TrimSpace(data.StudyServiceJobID)
+	if tenantID == "" || studyInstanceUID == "" || jobID == "" || len(studyInstanceUID) > maximumViewerStudyUIDLength {
+		return types.StudyJobResult{}, errors.New(apiError.InvalidPayload)
+	}
+	if service.ProcessingResultProviderInterface == nil {
+		return types.StudyJobResult{}, errors.New(apiError.InferenceResultServiceUnavailable)
+	}
+	job, found, err := service.ProcessingResultProviderInterface.GetJobResultByID(ctx, tenantID, jobID)
+	if err != nil {
+		return types.StudyJobResult{}, errors.New(apiError.InferenceResultServiceUnavailable)
+	}
+	if !found || strings.TrimSpace(job.JobID) != jobID ||
+		strings.TrimSpace(job.StudyInstanceUID) != studyInstanceUID ||
+		trimmedPointerValue(job.TenantID) != tenantID {
+		return types.StudyJobResult{}, errors.New(apiError.MissingRecord)
+	}
+	if err := service.authorizeResultModel(ctx, tenantID, job.ModelName, trimmedPointerValue(job.ModelVersion), data.AllowModel); err != nil {
+		return types.StudyJobResult{}, err
+	}
+	if !strings.EqualFold(strings.TrimSpace(job.Status), studyServiceStatusCompleted) {
+		return types.StudyJobResult{}, errors.New(apiError.InferenceExecutionResultNotAvailable)
+	}
+	if !validExecutionResultJSON(job.ResultJSON) {
+		return types.StudyJobResult{}, errors.New(apiError.InferenceExecutionResultInvalid)
+	}
+	return types.StudyJobResult{
+		StudyServiceJobID: jobID,
+		StudyInstanceUID:  studyInstanceUID,
+		ModelName:         strings.TrimSpace(job.ModelName),
+		ModelVersion:      trimmedPointer(job.ModelVersion),
+		Status:            studyServiceStatusCompleted,
+		CompletedAt:       job.CompletedAt,
+		Result:            append(json.RawMessage(nil), job.ResultJSON...),
+	}, nil
+}
+
 func (service *InferenceQueryService) renderStoredResult(ctx context.Context, tenantID, modelName, modelVersion string, result json.RawMessage) (types.ModelReport, error) {
 	if service.ModelReportRenderer == nil || service.DockerSDKInterface == nil || service.DockerInferenceAPIInterface == nil {
 		return types.ModelReport{}, errors.New(apiError.ReportNotAvailable)

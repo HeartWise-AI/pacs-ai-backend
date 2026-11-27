@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"time"
 
 	"api-pacs/module/inference/domain/entity"
 )
@@ -85,6 +86,28 @@ type GetStudyJobReport struct {
 	// AllowModel, when set, must accept the result's model-info modelId
 	// (custom-role model access); otherwise the call is ForbiddenAccess.
 	AllowModel func(modelID string) bool
+}
+
+// GetStudyJobResult scopes a stored-result read of one study-service job (no
+// run/execution IDs) to one tenant study.
+type GetStudyJobResult struct {
+	TenantID          string
+	StudyInstanceUID  string
+	StudyServiceJobID string
+	// AllowModel, when set, must accept the result's model-info modelId
+	// (custom-role model access); otherwise the call is ForbiddenAccess.
+	AllowModel func(modelID string) bool
+}
+
+// StudyJobResult is the stored result JSON of one completed study-service job.
+type StudyJobResult struct {
+	StudyServiceJobID string          `json:"studyServiceJobId"`
+	StudyInstanceUID  string          `json:"studyInstanceUID"`
+	ModelName         string          `json:"modelName"`
+	ModelVersion      *string         `json:"modelVersion"`
+	Status            string          `json:"status"`
+	CompletedAt       *time.Time      `json:"completedAt"`
+	Result            json.RawMessage `json:"result"`
 }
 
 // ModelReport is a re-rendered HTML report.

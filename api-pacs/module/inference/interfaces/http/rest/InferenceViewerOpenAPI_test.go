@@ -14,6 +14,7 @@ func TestViewerResultsOpenAPIDocumentsRoutesAndAuthorization(t *testing.T) {
 		"/inference/worklist/studies/{studyInstanceUID}/latest-results",
 		"/inference/processing/runs/{runId}/executions/{executionId}/report",
 		"/inference/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/report",
+		"/inference/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/result",
 	} {
 		operation := openAPIMap(t, openAPIMap(t, paths[route])["get"])
 		require.Contains(t, operation["description"], "authenticated tenant user", route)

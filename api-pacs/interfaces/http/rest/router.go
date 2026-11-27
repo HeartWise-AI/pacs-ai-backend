@@ -54,6 +54,7 @@ type inferenceWorklistHandlers struct {
 	getLatestResults   http.HandlerFunc
 	getExecutionReport http.HandlerFunc
 	getStudyJobReport  http.HandlerFunc
+	getStudyJobResult  http.HandlerFunc
 	runStudyModel      http.HandlerFunc
 	getStudyMedia      http.HandlerFunc
 	getStudyMediaFile  http.HandlerFunc
@@ -174,6 +175,7 @@ func mountInferenceWorklistRoutes(
 		r.Get("/worklist/studies/{studyInstanceUID}/latest-results", handlers.getLatestResults)
 		r.Get("/processing/runs/{runId}/executions/{executionId}/report", handlers.getExecutionReport)
 		r.Get("/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/report", handlers.getStudyJobReport)
+		r.Get("/worklist/studies/{studyInstanceUID}/jobs/{studyServiceJobId}/result", handlers.getStudyJobResult)
 		r.With(useModels).Post("/worklist/studies/{studyInstanceUID}/models/{modelId}/run", handlers.runStudyModel)
 		r.Get("/worklist/studies/{studyInstanceUID}/media", handlers.getStudyMedia)
 		r.Get("/media/{mediaId}", handlers.getStudyMediaFile)
@@ -495,6 +497,7 @@ func (router *router) InitRouter() *chi.Mux {
 						getLatestResults:   inferenceQueryController.GetStudyLatestModelResults,
 						getExecutionReport: inferenceQueryController.GetProcessingRunExecutionReport,
 						getStudyJobReport:  inferenceQueryController.GetStudyJobReport,
+						getStudyJobResult:  inferenceQueryController.GetStudyJobResult,
 						runStudyModel:      inferenceCommandController.RunStudyModel,
 						getStudyMedia:      inferenceQueryController.GetStudyMedia,
 						getStudyMediaFile:  inferenceQueryController.GetStudyMediaFile,

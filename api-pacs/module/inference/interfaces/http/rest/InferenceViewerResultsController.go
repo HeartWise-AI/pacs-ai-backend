@@ -115,6 +115,33 @@ func (controller *InferenceQueryController) GetStudyJobReport(w http.ResponseWri
 	writeWorklistQuerySuccess(w, "Successfully rendered model report.", report)
 }
 
+// GetStudyJobResult returns the stored result JSON of one completed
+// study-service job (no run/execution IDs) that belongs to the study and tenant.
+func (controller *InferenceQueryController) GetStudyJobResult(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	tenantID, ok := worklistTenantID(r)
+	if !ok {
+		writeViewerResultsError(w, apiError.UnauthorizedAccess)
+		return
+	}
+	allowModel, accessErr := resultModelFilter(r)
+	if accessErr != "" {
+		writeModelAccessError(w, accessErr)
+		return
+	}
+	result, err := controller.InferenceQueryServiceInterface.GetStudyJobResult(r.Context(), serviceTypes.GetStudyJobResult{
+		TenantID:          tenantID,
+		StudyInstanceUID:  chi.URLParam(r, "studyInstanceUID"),
+		StudyServiceJobID: chi.URLParam(r, "studyServiceJobId"),
+		AllowModel:        allowModel,
+	})
+	if err != nil {
+		writeViewerResultsError(w, err.Error())
+		return
+	}
+	writeWorklistQuerySuccess(w, "Successfully retrieved the stored model result.", result)
+}
+
 // RunStudyModel creates a single-model VIEWER_REQUEST run for any
 // authenticated tenant user, reserving quota like interactive predict.
 func (controller *InferenceCommandController) RunStudyModel(w http.ResponseWriter, r *http.Request) {
