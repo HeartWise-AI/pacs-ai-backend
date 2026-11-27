@@ -322,8 +322,14 @@ func redactTextParams(line string) string {
 		if strings.EqualFold(line[nameStart:nameEnd], "uid") && line[nameEnd] == ':' {
 			class = classNone // our own "uid:<hash>"; the hash may be all digits
 		}
+		if class == classNone {
+			// Do not scan the value: on "x=a=a=a..." that would be quadratic.
+			out.WriteString(line[cursor:sepEnd])
+			cursor = sepEnd
+			continue
+		}
 		raw := textValue.FindString(line[sepEnd:])
-		if class == classNone || raw == "" {
+		if raw == "" {
 			out.WriteString(line[cursor:sepEnd])
 			cursor = sepEnd
 			continue

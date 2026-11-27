@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -272,5 +273,24 @@ func TestTextKeepsAllDigitHashes(t *testing.T) {
 		if got := Text("/studies/" + u); got != "/studies/"+u {
 			t.Fatalf("hash %q changed to %q", u, got)
 		}
+	}
+}
+
+func TestTextIsLinearOnRepeatedSeparators(t *testing.T) {
+	line := "/x?x=" + strings.Repeat("a=", 64*1024)
+	start := time.Now()
+	Text(line)
+	RequestURI(line)
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("128 KB line took %v", elapsed)
+	}
+	// Sensitive names with long values stay linear too.
+	line = strings.Repeat("patient_id=a/a?a ", 8*1024)
+	start = time.Now()
+	if got := Text(line); strings.Contains(got, "a/a") {
+		t.Fatalf("leak: %q", got[:64])
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("sensitive line took %v", elapsed)
 	}
 }
