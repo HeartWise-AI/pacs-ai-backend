@@ -43,6 +43,21 @@ class H(http.server.BaseHTTPRequestHandler):
         body = ("%s %s host=%s\n" % (self.command, self.path, self.headers.get("Host"))).encode()
         self.send_response(200); self.send_header("Content-Type", "text/plain")
         self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+    def do_POST(self):
+        n = 0
+        if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
+            while True:
+                size = int(self.rfile.readline().strip(), 16)
+                if size == 0:
+                    self.rfile.readline(); break
+                n += len(self.rfile.read(size)); self.rfile.readline()
+        else:
+            left = int(self.headers.get("Content-Length", "0"))
+            while left > 0:
+                chunk = self.rfile.read(min(left, 1 << 20)); n += len(chunk); left -= len(chunk)
+        body = ("%s %s bytes=%d\n" % (self.command, self.path, n)).encode()
+        self.send_response(200); self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
     def log_message(self, *a): pass
 http.server.ThreadingHTTPServer(("", 8000), H).serve_forever()
 PY
@@ -83,6 +98,9 @@ expect "443 frontend over h2, Host forwarded" "$(c --http2 -H 'Host: localhost' 
 expect "443 api over h2, Host forwarded" "$(c --http2 https://localhost/api/v1/x?y=1 --resolve localhost:443:10.231.9.10)" "GET /v1/x?y=1 host=localhost"
 expect "443 HTTP/1.1 still served" "$(c --http1.1 -o /dev/null -w '%{http_version} %{http_code}' https://10.231.9.10/api/ping)" "1.1 200"
 expect "443 frontend body limit still 413" "$(c --http2 -o /dev/null -w '%{http_code}' -X POST --data-binary @/etc/os-release -H 'Content-Length: 2000000' https://10.231.9.10/ 2>/dev/null || true)" "413"
+# Large unbuffered upload (DICOMweb STOW route, proxy_request_buffering off) over h2.
+docker exec "h2-client-$id" sh -c 'head -c 52428800 /dev/zero > /tmp/up.bin'
+expect "443 50 MB DICOMweb upload over h2" "$(c --http2 -X POST --data-binary @/tmp/up.bin -H 'Content-Type: application/dicom' https://10.231.9.10/api/proxy/orthanc/dicom-web/studies)" "POST /proxy/orthanc/dicom-web/studies bytes=52428800"
 # SSE: the first event must arrive about 2 s before the stream ends (no buffering).
 sse=$(docker exec "h2-client-$id" sh -c 'curl -sk --http2 -N --max-time 20 https://10.231.9.10/api/sse | while IFS= read -r l; do if [ -n "$l" ]; then echo "$(date +%s) $l"; fi; done' || true)
 first=$(echo "$sse" | head -1 | cut -d" " -f1); last=$(echo "$sse" | tail -1 | cut -d" " -f1)
