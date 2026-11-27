@@ -26,7 +26,7 @@ NAS_SHA256SUMS = {
 def test_manifest_and_runtime_configuration_identify_the_same_checkpoints():
     config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
-    assert manifest["version"] == "1.4.0"
+    assert manifest["version"] == "1.5.0"
     assert manifest["provenance"] == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,

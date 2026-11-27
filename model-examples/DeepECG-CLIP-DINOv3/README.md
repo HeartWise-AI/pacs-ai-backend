@@ -194,6 +194,12 @@ copy instead (instructions at its top) and is for development only.
 
 ## Changelog
 
+- 1.5.0: image (secondary capture) ECGs in YBR_FULL / YBR_FULL_422 are no longer colour-converted twice
+  (pydicom 3 `pixel_array` already returns RGB; the second conversion shifted the page colours and the
+  intensities the model reads). When a study holds several ECGs of one kind, the earliest is now chosen by
+  `AcquisitionDateTime` before the content, series and study timestamps (it was consulted only when none of
+  them was set, so ECGs sharing a study date/time were taken in request order). Same weights, heads and
+  outputs; predictions change only for those inputs. Minor bump (inference behaviour change).
 - 1.4.0: `acco_vs_aico` (ACCO vs AICO) removed from the service by the owner's decision: no longer loaded,
   downloaded, returned or mentioned in the report; the reject-feedback option "wrong occlusion type" goes too.
   83 outputs (`aco` + the six probe heads); every remaining output is unchanged. Minor bump (prediction output changes).
