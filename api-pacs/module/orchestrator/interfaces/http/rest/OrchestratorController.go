@@ -2,6 +2,7 @@ package rest
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"regexp"
 
@@ -127,23 +128,35 @@ func (controller *OrchestratorController) CreateMessage(w http.ResponseWriter, r
 		var httpCode int
 		var errorMsg string
 
-		switch err.Error() {
-		case apiError.InvalidRequestPayload:
+		errorCode := err.Error()
+		switch {
+		case err.Error() == apiError.InvalidRequestPayload:
 			httpCode = http.StatusBadRequest
 			errorMsg = "Invalid request payload."
-		case "unauthorized": // Replace apiError.Unauthorized with string
+		case err.Error() == "unauthorized": // Replace apiError.Unauthorized with string
 			httpCode = http.StatusUnauthorized
 			errorMsg = "Unauthorized."
+		case errors.Is(err, orchestratorService.ErrChatTurnInProgress):
+			// Retryable: the previous answer in this thread is still being written.
+			httpCode = http.StatusConflict
+			errorMsg = "The previous answer in this chat is still being written. Wait for it, or start a new chat."
+			errorCode = orchestratorService.ErrChatTurnInProgress.Error()
+		case errors.Is(err, orchestratorService.ErrChatUpstream):
+			httpCode = http.StatusBadGateway
+			errorMsg = "The chat service could not answer. Please try again."
+			errorCode = orchestratorService.ErrChatUpstream.Error()
 		default:
+			log.Printf("orchestrator chat: request failed: %v", err)
 			httpCode = http.StatusInternalServerError
-			errorMsg = "Please contact technical support."
+			errorMsg = "The chat service could not answer. Please try again."
+			errorCode = "chat_request_failed"
 		}
 
 		response := viewmodels.HTTPResponseVM{
 			Status:    httpCode,
 			Success:   false,
 			Message:   errorMsg,
-			ErrorCode: err.Error(),
+			ErrorCode: errorCode,
 		}
 
 		response.JSON(w)
