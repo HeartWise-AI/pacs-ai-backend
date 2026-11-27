@@ -434,3 +434,22 @@ func part10STOWBody(instance cachedInstance) (string, []byte) {
 	}
 	return fmt.Sprintf(`multipart/related; type="application/dicom"; boundary=%s`, writer.Boundary()), body.Bytes()
 }
+
+type failingInsert struct{ *memoryOwnership }
+
+func (failingInsert) InsertTenantStudy(context.Context, string, string) error {
+	return fmt.Errorf("database down")
+}
+
+func TestUploadIsNotReportedAsDoneWhenItsOwnerCannotBeRecorded(t *testing.T) {
+	store := &pagedOrthanc{sharedOrthanc: newSharedOrthanc()}
+	upstream := httptest.NewServer(store)
+	defer upstream.Close()
+	t.Setenv("ORTHANC_BASE_URL", upstream.URL)
+
+	uploaded := tenantInstance("71", "PATIENT-UPLOADED")
+	contentType, body := part10STOWBody(uploaded)
+	got := call(t, ownedRouter("tenant-a", failingInsert{newMemoryOwnership("")}), "tenant-a", http.MethodPost, "/proxy/orthanc/dicom-web/studies", body, contentType)
+	require.Equal(t, http.StatusServiceUnavailable, got.Code, got.Body.String())
+	require.NotContains(t, got.Body.String(), uploaded.sopUID)
+}

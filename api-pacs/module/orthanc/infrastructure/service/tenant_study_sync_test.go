@@ -222,3 +222,38 @@ func TestFollowAssignsStudiesPushedAfterTheBackfill(t *testing.T) {
 	require.Equal(t, 4, cursor)
 	require.Zero(t, report.Studies)
 }
+
+func TestFollowKeepsItsCursorWhenOrthancFails(t *testing.T) {
+	orthanc := &fakeOrthanc{}
+	failing := true
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if failing && strings.HasPrefix(r.URL.Path, "/studies/") {
+			http.Error(w, "busy", http.StatusServiceUnavailable)
+			return
+		}
+		orthanc.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+
+	store := newSyncStore()
+	sync := &TenantStudySync{Store: store, OrthancBaseURL: server.URL, DefaultTenantID: "tenant-a"}
+	orthanc.add("o-new", "1.2.5.1")
+	cursor, _, err := sync.Follow(context.Background(), 0)
+	require.Error(t, err)
+	require.Equal(t, 0, cursor, "the change is read again next time")
+	require.Empty(t, store.ownersOf("1.2.5.1"))
+
+	failing = false
+	cursor, report, err := sync.Follow(context.Background(), cursor)
+	require.NoError(t, err)
+	require.Equal(t, 1, cursor)
+	require.Equal(t, 1, report.ByDefault)
+
+	// a study deleted since its change (404) is skipped and the cursor moves on
+	orthanc.mu.Lock()
+	orthanc.changes = append(orthanc.changes, map[string]interface{}{"ChangeType": "NewStudy", "ID": "o-gone", "ResourceType": "Study", "Seq": 2})
+	orthanc.mu.Unlock()
+	cursor, _, err = sync.Follow(context.Background(), cursor)
+	require.NoError(t, err)
+	require.Equal(t, 2, cursor)
+}

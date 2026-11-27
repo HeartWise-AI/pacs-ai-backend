@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -107,7 +108,7 @@ func (sync *TenantStudySync) getJSON(ctx context.Context, path string, query url
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, response.Body)
-		return fmt.Errorf("orthanc %s answered %d", path, response.StatusCode)
+		return orthancStatusError{path: path, status: response.StatusCode}
 	}
 	return json.NewDecoder(response.Body).Decode(target)
 }
@@ -243,6 +244,15 @@ func uniqueSorted(values []string) []string {
 	return out
 }
 
+type orthancStatusError struct {
+	path   string
+	status int
+}
+
+func (err orthancStatusError) Error() string {
+	return fmt.Sprintf("orthanc %s answered %d", err.path, err.status)
+}
+
 type orthancChanges struct {
 	Changes []struct {
 		ChangeType   string `json:"ChangeType"`
@@ -283,8 +293,12 @@ func (sync *TenantStudySync) Follow(ctx context.Context, since int) (int, Tenant
 			seen[change.ID] = struct{}{}
 			var study orthancStudy
 			if err := sync.getJSON(ctx, "/studies/"+url.PathEscape(change.ID), nil, &study); err != nil {
-				// deleted since (cache purge): nothing to assign
-				continue
+				var status orthancStatusError
+				if errors.As(err, &status) && status.status == http.StatusNotFound {
+					continue // deleted since (cache purge): nothing to assign
+				}
+				// keep the cursor: this page is read again next time
+				return since, report, err
 			}
 			studies = append(studies, study)
 		}

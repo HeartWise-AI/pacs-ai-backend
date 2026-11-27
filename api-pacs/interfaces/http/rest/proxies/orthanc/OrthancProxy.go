@@ -433,14 +433,23 @@ func (proxy *OrthancProxy) serveSTOW(w http.ResponseWriter, r *http.Request, tar
 		}
 	}
 
-	recorder := &statusRecorder{ResponseWriter: w}
-	forward(recorder, r, targetURL, dicomWebPath{segments: []string{"studies", study}, studyInstanceUID: study})
-	if recorder.status >= 200 && recorder.status < 300 && proxy.TenantStudies != nil {
-		// The upload is the tenant's study from now on.
-		if err := proxy.TenantStudies.InsertTenantStudy(context.WithoutCancel(r.Context()), tenantID, study); err != nil {
-			log.Printf("[dicom-web] cannot record the uploaded study for tenant %s: %v", tenantID, err)
+	// The upload is the tenant's study from now on: ownership is written
+	// before Orthanc's answer goes out, so a client never sees a success for
+	// a study it then cannot read.
+	recorder := &statusRecorder{ResponseWriter: w, onSuccess: func() error {
+		if proxy.TenantStudies == nil {
+			return nil
 		}
-	}
+		var err error
+		for attempt := 0; attempt < 3; attempt++ {
+			if err = proxy.TenantStudies.InsertTenantStudy(context.WithoutCancel(r.Context()), tenantID, study); err == nil {
+				return nil
+			}
+		}
+		log.Printf("[dicom-web] cannot record the uploaded study for tenant %s: %v", tenantID, err)
+		return err
+	}}
+	forward(recorder, r, targetURL, dicomWebPath{segments: []string{"studies", study}, studyInstanceUID: study})
 }
 
 // newStudy reports whether no tenant owns the study and Orthanc holds none of it.
@@ -471,30 +480,57 @@ func (proxy *OrthancProxy) newStudy(r *http.Request, targetURL *url.URL, study s
 	return len(results) == 0, nil
 }
 
-// statusRecorder remembers the status Orthanc answered.
+// statusRecorder runs onSuccess before a 2xx answer is written. When it
+// fails, the client gets 503 instead of Orthanc's answer.
 type statusRecorder struct {
 	http.ResponseWriter
-	status int
+	onSuccess func() error
+	status    int
+	discard   bool
 }
 
 func (recorder *statusRecorder) WriteHeader(status int) {
-	if recorder.status == 0 {
-		recorder.status = status
+	if recorder.status != 0 {
+		return
+	}
+	recorder.status = status
+	if status >= 200 && status < 300 && recorder.onSuccess != nil {
+		if err := recorder.onSuccess(); err != nil {
+			recorder.discard = true
+			writeUnavailable(recorder.ResponseWriter)
+			return
+		}
 	}
 	recorder.ResponseWriter.WriteHeader(status)
 }
 
 func (recorder *statusRecorder) Write(body []byte) (int, error) {
 	if recorder.status == 0 {
-		recorder.status = http.StatusOK
+		recorder.WriteHeader(http.StatusOK)
+	}
+	if recorder.discard {
+		return len(body), nil
 	}
 	return recorder.ResponseWriter.Write(body)
 }
 
 func (recorder *statusRecorder) Flush() {
+	if recorder.discard {
+		return
+	}
 	if flusher, ok := recorder.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
+}
+
+func writeUnavailable(w http.ResponseWriter) {
+	response := viewmodels.HTTPResponseVM{
+		Status:    http.StatusServiceUnavailable,
+		Success:   false,
+		Message:   "The upload was stored but could not be recorded for your workspace. Retry it.",
+		ErrorCode: apiError.DatabaseError,
+	}
+	response.JSON(w)
 }
 
 // firstSTOWInstanceStudy reads the Study Instance UID of the first instance of
