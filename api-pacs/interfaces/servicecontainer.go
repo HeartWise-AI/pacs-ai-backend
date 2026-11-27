@@ -118,6 +118,7 @@ var (
 	dockerSDK                  *docker.DockerSDK
 	dockerInferenceAPI         *dockerinference.DockerInferenceAPI
 	autoGPUPlacementOnce       sync.Once
+	deploymentRegistryOnce     sync.Once
 	modelManager               *modelmanager.Manager
 	modelUpgradeCoordinator    *modelupgrade.UpgradeCoordinator
 	modelDeploymentOperations  *modelupgrade.OperationManager
@@ -267,6 +268,9 @@ func (k *kernel) RegisterIAMHandoffController() iamREST.HandoffController {
 // RegisterInferenceRESTCommandController performs dependency injection to the RegisterInferenceRESTCommandController
 func (k *kernel) RegisterInferenceRESTCommandController() inferenceREST.InferenceCommandController {
 	service := k.inferenceCommandServiceContainer()
+	deploymentRegistryOnce.Do(func() {
+		go service.RunDeploymentNotifications(context.Background(), os.Getenv("STUDY_SERVICE_BASE_URL"), os.Getenv("STUDY_SERVICE_INGEST_TOKEN"))
+	})
 
 	gpuAdministration := &inferenceService.GPUAdministrationService{Manager: modelManager, Models: service.InferenceQueryRepositoryInterface, Docker: dockerSDK, API: dockerInferenceAPI, Deployer: service}
 	if service.InferenceModelVersionRepositoryInterface != nil {
@@ -480,6 +484,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 			OrthancAPIInterface:       orthancAPI,
 		},
 	}
+	service.ProcessingDispatcherInterface.(*inferenceService.StudyServiceDispatcher).DeploymentResolver = service
 
 	return service
 }

@@ -9,6 +9,7 @@ import (
 )
 
 type InferenceQueryRepositoryInterface interface {
+	ListActiveModelRegistrations(ctx context.Context) ([]entity.InferenceModel, error)
 	// SelectInferenceModelByID get inference model by id
 	SelectInferenceModelByID(ctx context.Context, ID string) (entity.InferenceModel, error)
 	// SelectInferenceModelByContainer get inference model by container

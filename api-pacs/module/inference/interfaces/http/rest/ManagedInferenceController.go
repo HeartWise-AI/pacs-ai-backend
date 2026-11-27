@@ -17,6 +17,7 @@ import (
 	"api-pacs/interfaces/http/rest/middlewares/requestbody"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/module/inference/domain/entity"
 	types "api-pacs/module/inference/interfaces/http"
 )
 
@@ -28,6 +29,14 @@ const defaultManagedInferenceMaxRequestBodyBytes int64 = 2 * 1024 * 1024 * 1024
 func (controller *InferenceCommandController) PredictPreparedInferenceModel(w http.ResponseWriter, r *http.Request) {
 	if !authorizeStudyService(w, r) {
 		return
+	}
+	if raw := r.Header.Get("X-PACS-Deployment"); raw != "" {
+		var deployment entity.ActiveDeployment
+		if len(raw) > 8192 || json.Unmarshal([]byte(raw), &deployment) != nil {
+			writeManagedInferenceResponse(w, http.StatusBadRequest, "Invalid deployment identity.", apiError.InvalidPayload)
+			return
+		}
+		r = r.WithContext(entity.WithExpectedDeployment(r.Context(), deployment))
 	}
 
 	// The model request stays encoded: it is forwarded untouched (see PredictRequest.Raw).
@@ -107,6 +116,8 @@ func writeManagedPredictError(w http.ResponseWriter, err error) {
 		return
 	}
 	switch err.Error() {
+	case apiError.InferenceUpgradeConflict:
+		writeManagedInferenceResponse(w, http.StatusConflict, "The requested model deployment is no longer active.", err.Error())
 	case apiError.InvalidPayload:
 		writeManagedInferenceResponse(w, http.StatusBadRequest, "Invalid payload request.", err.Error())
 	case apiError.MissingRecord:

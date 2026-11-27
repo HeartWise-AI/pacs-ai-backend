@@ -3587,6 +3587,13 @@ func (service *InferenceCommandService) PredictPreparedInferenceModel(
 	if tenantID == "" || containerRef == "" {
 		return dockerInferenceTypes.PredictResponse{}, errors.New(apiError.InvalidPayload)
 	}
+	if deployment, ok := entity.ExpectedDeployment(ctx); ok {
+		pinned, err := service.PinPreparedDeployment(ctx, tenantID, deployment)
+		if err != nil {
+			return dockerInferenceTypes.PredictResponse{}, err
+		}
+		containerRef = pinned
+	}
 
 	containerInfo, err := service.resolvePreparedInferenceContainer(ctx, tenantID, containerRef)
 	if err != nil {

@@ -352,6 +352,7 @@ func (router *router) InitRouter() *chi.Mux {
 				2*1024*1024*1024,
 			), "internal_inference"))
 			r.Post("/predict", inferenceCommandController.PredictPreparedInferenceModel)
+			r.Get("/deployments", inferenceCommandController.GetActiveDeployments)
 		})
 
 		r.Route("/v1", func(r chi.Router) {
