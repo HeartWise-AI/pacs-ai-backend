@@ -28,3 +28,4 @@ docs/public-demo/evidence/dicom-validation-*.md
 docs/public-demo/evidence/pixel-review-*.json
 /backups/
 /secrets/
+/nginx/remote-tls/
