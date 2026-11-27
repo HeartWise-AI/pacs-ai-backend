@@ -658,7 +658,7 @@ func (router *router) InitRouter() *chi.Mux {
 
 		// proxy routes
 		r.Route("/proxy", func(r chi.Router) {
-			r.Handle("/docker-inference/{containerName}/app/viewer/*", dockerInferenceProxy.AppViewerProxy())
+			r.Handle("/docker-inference/{containerName}/{viewerToken}/app/viewer/*", dockerInferenceProxy.AppViewerProxy())
 
 			// protected routes
 			r.Group(func(r chi.Router) {

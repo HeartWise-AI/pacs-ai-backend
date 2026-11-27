@@ -58,6 +58,7 @@ type InferenceCommandService struct {
 	// WorklistNotificationAudienceRepository resolves who an automatic run
 	// notifies. Nil leaves automatic-run audiences unresolved (admins only).
 	WorklistNotificationAudienceRepository  repository.WorklistNotificationAudienceRepositoryInterface
+	WebAppViewerGrants                      WebAppViewerGrantStore
 	StudyServiceDispatchSemaphore           chan struct{}
 	ProcessingReconciliationMetricsRecorder ProcessingReconciliationMetricsRecorder
 	// AutoRunExpireAfter expires, in each reconciliation cycle, the waiting
@@ -3413,6 +3414,11 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	predictionResult, err := service.predictInferenceModelWithQuota(ctx, tenantID, containerID, containerName, userID, predictRequest)
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
+	}
+	if predictRequest.OutputMode == dockerInferenceTypes.OutputModeWebApp {
+		if err := service.grantWebAppViewer(tenantID, containerID, containerName, predictionResult.Data); err != nil {
+			return dockerInferenceTypes.PredictResponse{}, err
+		}
 	}
 
 	// TODO: remove this

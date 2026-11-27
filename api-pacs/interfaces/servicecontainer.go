@@ -177,7 +177,7 @@ func (k *kernel) RegisterLeadRESTCommandController() leadREST.LeadCommandControl
 // Proxies
 // RegisterDockerInferenceProxy performs dependency injection to the RegisterDockerInferenceProxy
 func (k *kernel) RegisterDockerInferenceProxy() dockerInferenceProxy.DockerInferenceProxy {
-	return dockerInferenceProxy.DockerInferenceProxy{}
+	return dockerInferenceProxy.DockerInferenceProxy{Viewers: k.inferenceCommandServiceContainer()}
 }
 
 // RegisterOrthancProxy performs dependency injection to the RegisterOrthancProxy
@@ -458,6 +458,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		ProcessingReconciliationMetricsRecorder: &inferenceService.LoggingProcessingReconciliationMetricsRecorder{},
 		AutoRunExpireAfter:                      inferenceService.ConfiguredAutoRunExpireAfter(),
 		WorklistNotificationAudienceRepository:  processingRunRepository,
+		WebAppViewerGrants:                      &inferenceService.RedisWebAppViewerGrants{RedisDBHandlerInterface: redisIAMDBHandler},
 		RequireProcessingRunID:                  configuredProcessingRunIDRequirement(),
 		ModelManager:                            managedPredictor,
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
