@@ -17,7 +17,7 @@ from utils.resource_config import load_model_info, model_info_payload
 def test_manifest_identifies_the_validated_panecho_release():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
 
-    assert manifest["version"] == "1.2.0"
+    assert manifest["version"] == "1.2.1"
     assert manifest["provenance"] == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,
@@ -88,5 +88,6 @@ def test_official_dockerfile_consumes_release_metadata():
 def test_torch_and_torchvision_are_a_compatible_pair():
     requirements = set((ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines())
 
-    assert "torch==2.8.0" in requirements
-    assert "torchvision==0.23.0" in requirements
+    assert "--extra-index-url https://download.pytorch.org/whl/cu126" in requirements
+    assert "torch==2.13.0+cu126" in requirements
+    assert "torchvision==0.28.0+cu126" in requirements

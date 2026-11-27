@@ -99,6 +99,24 @@ def _clip_key(dicom) -> str:
     return str(getattr(dicom, "SOPInstanceUID", "") or dicom.SeriesInstanceUID)
 
 
+def _resize_like_torchvision_0_23(video: torch.Tensor, size: Tuple[int, int] = (256, 256)) -> torch.Tensor:
+    """Resize uint8 RGB frames exactly as torchvision 0.23 (PanEcho 1.1.0) did.
+
+    torchvision <= 0.23 resized 3-channel uint8 frames in float (bilinear, antialias) and rounded
+    back to uint8. torchvision 0.28 (needed by the torch 2.13 security update) uses a native uint8
+    kernel instead, which differs by one grey level on about 12% of pixels and moved LV volumes by
+    up to 0.15 mL. Keeping the float path keeps the 1.1.0 pixels and predictions.
+    """
+    resized = torch.nn.functional.interpolate(
+        video.float(), size=size, mode="bilinear", align_corners=False, antialias=True
+    )
+    if video.dtype == torch.uint8:
+        resized = resized.round_().clamp_(0, 255).to(torch.uint8)
+    if isinstance(video, tv_tensors.TVTensor):
+        return tv_tensors.wrap(resized, like=video)
+    return resized
+
+
 def matches_selected_view(pred_class: Optional[str]) -> bool:
     """Check if the predicted view class matches any of the selected views.
     
@@ -580,7 +598,8 @@ class CustomPredictionService(BasePredictionService):
             return None, "failed to detect motion"
 
         cropped_tensor = torch.from_numpy(cropped).permute(0, 3, 1, 2)
-        resized = torchvision.transforms.Resize((224, 224))(cropped_tensor)
+        # Same resize as torchvision 0.23 (see _resize_like_torchvision_0_23).
+        resized = _resize_like_torchvision_0_23(cropped_tensor, (224, 224))
 
         mean = [24.277523040771484, 22.14891242980957, 22.404890060424805]
         std = [47.2259521484375, 44.02793502807617, 43.90631103515625]
@@ -1078,7 +1097,7 @@ class CustomPredictionService(BasePredictionService):
         """
         
         transform_list = [
-            v2.Resize(size=(256, 256)),
+            v2.Lambda(_resize_like_torchvision_0_23, tv_tensors.Video),
             v2.CenterCrop(size=(224, 224)),
             v2.ToDtype(torch.float32, scale=True)
         ]

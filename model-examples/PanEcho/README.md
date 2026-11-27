@@ -58,7 +58,9 @@ Clips are named by series and instance number only, never by UID.
 
 ## Changelog
 
+- 1.2.1: 1.2.0 with the same security update as 1.1.1: torch 2.13.0 and torchvision 0.28.0 (cu126), the other direct dependencies pinned, and the torchvision 0.23 resize kept for the PanEcho clips so predictions do not move.
 - 1.2.0: ships the pinned view-classifier checkpoint, so the per-clip view filter runs: PanEcho predicts only from A2C/A4C/A5C/PLAX/PSAX clips, skips TEE and studies without a standard TTE view with an explicit reason, and returns `viewSelection`. Predictions change for most studies.
+- 1.1.1 (released from the 1.1.0 code, merged into this history): security patch of 1.1.0 only. torch 2.8.0 -> 2.13.0 and torchvision 0.23.0 -> 0.28.0 (cu126 wheels); the other direct dependencies are pinned to the versions the 1.1.0 image already had. Same weights as 1.1.0. torchvision 0.28 resizes uint8 frames with a native kernel that differs by one grey level from 0.23 on about 12% of pixels (LV volumes moved by up to 0.15 mL), so the transform now does the resize the way 0.23 did (float, antialias, rounded): preprocessing is bit-identical to 1.1.0 and predictions are unchanged (side-by-side numbers in the PR). Does not include the 1.2.0 view-classifier changes.
 - 1.1.0: the view classifier's results are kept per clip (SOPInstanceUID) instead of per series. Echo studies that store every clip in one series used to take the last clip's view for all clips, so the view filter kept or dropped the whole study by that one view. Predictions change for those studies. Includes the unreleased 1.0.4 changes below.
 - 1.0.4: `read_body` reserves at most 64 MiB from `Content-Length` and grows as bytes arrive (PR #520); model-info reports the runtime `PACS_AI_MODEL_VERSION` (PR #526). Predictions unchanged.
 
