@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	dockererrdefs "github.com/docker/docker/errdefs"
+	dockererrdefs "github.com/containerd/errdefs"
 
 	api "api-pacs/infrastructures/providers/api/dockerinference/types"
 	docker "api-pacs/infrastructures/providers/sdk/docker/types"

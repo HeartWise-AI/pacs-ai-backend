@@ -6,7 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	dockererrdefs "github.com/docker/docker/errdefs"
+	dockererrdefs "github.com/containerd/errdefs"
+	"github.com/moby/moby/client"
 )
 
 // InferenceProcessIDs returns host PIDs for the single supervised API worker.
@@ -33,7 +34,7 @@ func (d *DockerSDK) ContainerProcessIDs(ctx context.Context, id string) ([]strin
 }
 
 func (d *DockerSDK) processIDs(ctx context.Context, id string, match func(string) bool) ([]string, error) {
-	top, err := d.Client.ContainerTop(ctx, id, []string{"-eo", "pid,args"})
+	top, err := d.Client.ContainerTop(ctx, id, client.ContainerTopOptions{Arguments: []string{"-eo", "pid,args"}})
 	if err != nil {
 		// A stopped or removed container definitely owns no process; any
 		// other failure says nothing about ownership.

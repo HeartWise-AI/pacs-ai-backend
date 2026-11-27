@@ -11,8 +11,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/docker/docker/client"
 	"github.com/go-chi/chi/v5"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 
 	dockerSDK "api-pacs/infrastructures/providers/sdk/docker"
