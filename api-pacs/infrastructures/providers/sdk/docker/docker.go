@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/distribution/reference"
 	engine "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -22,6 +23,11 @@ import (
 	"github.com/docker/go-connections/nat"
 
 	"api-pacs/infrastructures/providers/sdk/docker/types"
+)
+
+const (
+	dockerHubDomain        = "docker.io"
+	dockerHubServerAddress = "https://index.docker.io/v1/"
 )
 
 // DockerSDK docker sdk
@@ -46,8 +52,9 @@ func NewClient(config types.Config) (*DockerSDK, error) {
 	}
 	// docker registry credentials
 	authConfig := registry.AuthConfig{
-		Username: config.Username,
-		Password: config.Password,
+		Username:      config.Username,
+		Password:      config.Password,
+		ServerAddress: dockerHubServerAddress,
 	}
 	encodedJSON, err := json.Marshal(authConfig)
 	if err != nil {
@@ -366,9 +373,26 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 
 // PullImage pulls an image from registry
 func (d *DockerSDK) PullImage(ctx context.Context, imageName string) error {
-	reader, err := d.Client.ImagePull(ctx, imageName, image.PullOptions{
-		RegistryAuth: d.AuthStr,
-	})
+	named, err := reference.ParseNormalizedNamed(imageName)
+	if err != nil {
+		log.Println("[docker] error:", err)
+		return err
+	}
+	// The configured credentials are Docker Hub credentials; the daemon would
+	// present them to whichever registry the reference names.
+	options := image.PullOptions{}
+	if reference.Domain(named) == dockerHubDomain {
+		// The client sends the familiar name; "docker.io/evil.example/x"
+		// becomes "evil.example/x", which the daemon resolves to another
+		// registry. Refuse a reference whose familiar form leaves Docker Hub.
+		familiar, err := reference.ParseNormalizedNamed(reference.FamiliarString(named))
+		if err != nil || reference.Domain(familiar) != dockerHubDomain {
+			log.Println("[docker] error: image reference leaves Docker Hub in its familiar form")
+			return fmt.Errorf("invalid image reference")
+		}
+		options.RegistryAuth = d.AuthStr
+	}
+	reader, err := d.Client.ImagePull(ctx, named.String(), options)
 	if err != nil {
 		log.Println("[docker] error:", err)
 		return err
