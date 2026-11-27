@@ -6,11 +6,11 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: cardio
-      POSTGRES_PASSWORD: cardio
+      POSTGRES_PASSWORD: ${CARDIO_DB_PASSWORD}
       POSTGRES_DB: cardio_agent
       TZ: ${APP_TIMEZONE}
     ports:
-      - "5434:5432"
+      - "127.0.0.1:5434:5432"
     volumes:
       - cardio_postgres_data:/var/lib/postgresql/data
     healthcheck:

@@ -212,7 +212,9 @@ The same value must appear in both api-pacs `.env` and study-service `.env` for 
 - Two Postgres instances — control plane (`5433`) and cardio-agent (`5434`).
 - api-pacs uses `POSTGRES_DB_HOST`, `POSTGRES_DB_PORT`, `POSTGRES_DB_DATABASE`, `POSTGRES_DB_USERNAME`, `POSTGRES_DB_PASSWORD`.
 - cardio-agent uses `DATABASE_URL` (full Postgres URI).
-- Defaults in repo (`cardio:cardio`) are **for dev only** — replace before any non-dev install.
+- The bundled cardio-agent Postgres takes its password from `CARDIO_DB_PASSWORD` in the root `.env`; there is no default. Use the same value in `DATABASE_URL`.
+- Both Postgres host ports are bound to `127.0.0.1`; containers reach the databases over `pacs-net`.
+- `POSTGRES_PASSWORD` only applies when a data volume is first initialized. On an existing volume, rotate with `ALTER ROLE ... PASSWORD` inside the container, then update `.env` and restart dependents.
 
 ### 5.6 Redis
 - api-pacs: `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_IAM_DB`.
@@ -978,6 +980,7 @@ docker compose images > pacs-ai-versions.txt
 | `API_URL_REST_PORT` | yes | `8000` | api-pacs REST port |
 | `DOCKER_NETWORK` | yes | `pacs-net` | Shared external Docker network |
 | `DOCKER_USERNAME` / `DOCKER_PASSWORD` | optional | — | Registry login if pulling private images |
+| `CARDIO_DB_PASSWORD` | yes | — | Password for the bundled cardio-agent Postgres (must match cardio-agent `DATABASE_URL`) |
 | **PostgreSQL (control plane)** | | | |
 | `POSTGRES_DB_HOST` | yes | — | Postgres host |
 | `POSTGRES_DB_PORT` | yes | `5432` (container) / `5433` (host) | Postgres port |
