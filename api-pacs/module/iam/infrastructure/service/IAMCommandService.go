@@ -103,7 +103,8 @@ func (service *IAMCommandService) handlePublicEmailRequest(
 // admitPublicEmail applies the per-address cooldown and the atomic per-inbox
 // cap. The cap bounds concurrent requests that all observe an idle cooldown.
 func (service *IAMCommandService) admitPublicEmail(kind, tenantID, email string) (bool, error) {
-	cooldownKey := fmt.Sprintf("%s:%s:%s", kind, tenantID, email)
+	// Hashed: tenantID and email come from an unauthenticated body.
+	cooldownKey := publicEmailRateLimitKey("cooldown:"+kind, tenantID+"\x00"+email)
 	cooldownActive, err := service.IAMCommandRepositoryInterface.IsEmailCooldownActive(cooldownKey)
 	if err != nil {
 		return false, err
