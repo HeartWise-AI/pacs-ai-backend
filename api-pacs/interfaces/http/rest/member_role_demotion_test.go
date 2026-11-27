@@ -223,10 +223,14 @@ func (*memberSession) IsUserSuspended(context.Context, string, string) (bool, er
 }
 
 func memberCommandRouter(directory *memberDirectory, iam *memberAccessIAM, session *memberSession) http.Handler {
+	return memberCommandRouterWithAccess(directory, iam, session, &stubAccessResolver{})
+}
+
+func memberCommandRouterWithAccess(directory *memberDirectory, iam *memberAccessIAM, session *memberSession, resolver *stubAccessResolver) http.Handler {
 	middleware := &iamMiddleware.IAMMiddleware{
 		IAMCommandServiceInterface: &worklistAuthCommandService{},
 		IAMQueryServiceInterface:   session,
-		AccessResolver:             &stubAccessResolver{},
+		AccessResolver:             resolver,
 	}
 	controller := userRest.UserCommandController{
 		UserCommandServiceInterface: &userService.UserCommandService{
@@ -454,4 +458,89 @@ func TestAdminCannotSuspendOrDeleteOwnerWhileRoleStaysOwner(t *testing.T) {
 	require.Empty(t, cleared)
 	require.Equal(t, http.StatusForbidden, suspendCode, suspendBody)
 	require.Equal(t, http.StatusForbidden, deleteCode, deleteBody)
+}
+
+// The OWNER cannot leave the workspace without an owner by demoting itself.
+func TestOwnerCannotDemoteSelf(t *testing.T) {
+	owner := activeMember("owner", iamEntity.OwnerRole, "Original Owner")
+	directory := newMemberDirectory(owner, activeMember("admin", iamEntity.AdminRole, "Admin"))
+	iam := &memberAccessIAM{}
+	session := &memberSession{userID: "owner", role: iamEntity.OwnerRole}
+	router := memberCommandRouter(directory, iam, session)
+
+	for _, role := range []string{iamEntity.AdminRole, iamEntity.UserRole} {
+		code, body := memberRequest(directory, router, session, http.MethodPut, "/v1/user/update", "owner", iamEntity.OwnerRole, roleUpdateBody("owner", role, "Original Owner"))
+		require.Equal(t, http.StatusForbidden, code, body)
+	}
+	suspendCode, _ := memberRequest(directory, router, session, http.MethodPost, "/v1/user/owner/suspend", "owner", iamEntity.OwnerRole, map[string]string{})
+	deleteCode, _ := memberRequest(directory, router, session, http.MethodDelete, "/v1/user/owner/remove", "owner", iamEntity.OwnerRole, nil)
+	require.Equal(t, http.StatusForbidden, suspendCode)
+	require.Equal(t, http.StatusForbidden, deleteCode)
+
+	stored, ok := directory.snapshot("owner")
+	require.True(t, ok)
+	require.Equal(t, owner, stored)
+	updates, deleted := directory.mutations()
+	require.Empty(t, updates)
+	require.Empty(t, deleted)
+}
+
+// A USER whose custom role grants members.manage cannot change, promote to,
+// suspend, reactivate or remove the OWNER, nor touch an ADMIN.
+func TestMembersManageCustomRoleCannotTouchOwnerOrAdmin(t *testing.T) {
+	owner := activeMember("owner", iamEntity.OwnerRole, "Original Owner")
+	admin := activeMember("admin", iamEntity.AdminRole, "Admin")
+	directory := newMemberDirectory(owner, admin, activeMember("manager", iamEntity.UserRole, "Manager"), activeMember("user-b", iamEntity.UserRole, "Clinician"))
+	iam := &memberAccessIAM{}
+	session := &memberSession{userID: "manager", role: iamEntity.UserRole}
+	resolver := &stubAccessResolver{custom: &accessEntity.CustomRole{ID: "role-members", Name: "Member managers", Permissions: []string{accessEntity.PermMembersManage}, AllModels: true}}
+	router := memberCommandRouterWithAccess(directory, iam, session, resolver)
+
+	for _, target := range []string{"owner", "admin"} {
+		updateCode, updateBody := memberRequest(directory, router, session, http.MethodPut, "/v1/user/update", "manager", iamEntity.UserRole, roleUpdateBody(target, iamEntity.UserRole, "Taken Over"))
+		suspendCode, _ := memberRequest(directory, router, session, http.MethodPost, "/v1/user/"+target+"/suspend", "manager", iamEntity.UserRole, map[string]string{})
+		reactivateCode, _ := memberRequest(directory, router, session, http.MethodPost, "/v1/user/"+target+"/reactivate", "manager", iamEntity.UserRole, map[string]string{})
+		deleteCode, _ := memberRequest(directory, router, session, http.MethodDelete, "/v1/user/"+target+"/remove", "manager", iamEntity.UserRole, nil)
+		require.Equal(t, http.StatusForbidden, updateCode, updateBody)
+		require.Equal(t, http.StatusForbidden, suspendCode)
+		require.Equal(t, http.StatusForbidden, reactivateCode)
+		require.Equal(t, http.StatusForbidden, deleteCode)
+	}
+	// Promotion of a USER to OWNER or ADMIN is refused too.
+	for _, role := range []string{iamEntity.OwnerRole, iamEntity.AdminRole} {
+		code, body := memberRequest(directory, router, session, http.MethodPut, "/v1/user/update", "manager", iamEntity.UserRole, roleUpdateBody("user-b", role, "Clinician"))
+		require.NotEqual(t, http.StatusOK, code, body)
+	}
+
+	storedOwner, _ := directory.snapshot("owner")
+	storedAdmin, _ := directory.snapshot("admin")
+	require.Equal(t, owner, storedOwner)
+	require.Equal(t, admin, storedAdmin)
+	updates, deleted := directory.mutations()
+	require.Empty(t, updates)
+	require.Empty(t, deleted)
+	suspended, revoked, cleared := iam.effects()
+	require.Empty(t, suspended)
+	require.Empty(t, revoked)
+	require.Empty(t, cleared)
+
+	// Control: the custom role does grant members.manage over a USER.
+	code, body := memberRequest(directory, router, session, http.MethodPut, "/v1/user/update", "manager", iamEntity.UserRole, roleUpdateBody("user-b", iamEntity.UserRole, "Renamed Clinician"))
+	require.Equal(t, http.StatusOK, code, body)
+}
+
+// An ADMIN cannot promote anyone to OWNER.
+func TestAdminCannotPromoteToOwner(t *testing.T) {
+	user := activeMember("user-b", iamEntity.UserRole, "Clinician")
+	directory := newMemberDirectory(user, activeMember("admin", iamEntity.AdminRole, "Admin"), activeMember("owner", iamEntity.OwnerRole, "Original Owner"))
+	iam := &memberAccessIAM{}
+	session := &memberSession{userID: "admin", role: iamEntity.AdminRole}
+	router := memberCommandRouter(directory, iam, session)
+
+	code, body := memberRequest(directory, router, session, http.MethodPut, "/v1/user/update", "admin", iamEntity.AdminRole, roleUpdateBody("user-b", iamEntity.OwnerRole, "Clinician"))
+	require.NotEqual(t, http.StatusOK, code, body)
+	stored, _ := directory.snapshot("user-b")
+	require.Equal(t, user, stored)
+	updates, _ := directory.mutations()
+	require.Empty(t, updates)
 }
