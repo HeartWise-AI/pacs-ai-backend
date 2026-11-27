@@ -47,6 +47,9 @@ func (repository *IAMQueryRepository) GetTokenSession(key string) (entity.TokenS
 		log.Println(err)
 		return entity.TokenSession{}, errors.New(apiError.DatabaseError)
 	}
+	if session.Generation != entity.SessionGeneration {
+		return entity.TokenSession{}, errors.New(apiError.MissingRecord)
+	}
 
 	return session, nil
 }
