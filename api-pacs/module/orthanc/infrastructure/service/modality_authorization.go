@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"reflect"
 
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/orthanc/domain/entity"
@@ -18,6 +19,9 @@ type dicomModalitySelector interface {
 // call and record write must use the ModalityID of the record returned here,
 // looked up once, never the caller's input or a later lookup.
 func authorizeDICOMModality(ctx context.Context, selector dicomModalitySelector, tenantID, modalityID string) (entity.DICOMModality, error) {
+	if selector == nil || reflect.ValueOf(selector).Kind() == reflect.Ptr && reflect.ValueOf(selector).IsNil() || tenantID == "" || modalityID == "" {
+		return entity.DICOMModality{}, errors.New(apiError.MissingRecord)
+	}
 	dicomModality, err := selector.SelectDICOMModalityByModalityID(ctx, tenantID, modalityID)
 	if err != nil {
 		log.Println(err)

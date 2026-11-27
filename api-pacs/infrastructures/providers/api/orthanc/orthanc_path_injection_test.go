@@ -17,6 +17,8 @@ import (
 
 	orthancTypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
+	"api-pacs/module/orthanc/domain/entity"
+	orthancRepository "api-pacs/module/orthanc/domain/repository"
 	"api-pacs/module/orthanc/infrastructure/service"
 	rest "api-pacs/module/orthanc/interfaces/http/rest"
 )
@@ -257,15 +259,27 @@ func signedRequest(method, target string, body io.Reader) *http.Request {
 	return req.WithContext(ctx)
 }
 
+// ownedModalities authorizes every modality ID for the caller's tenant, so
+// these tests exercise the Orthanc client's own path checks: the tenant
+// ownership check (module/orthanc) runs first in production.
+type ownedModalities struct {
+	orthancRepository.OrthancQueryRepositoryInterface
+	orthancRepository.OrthancCommandRepositoryInterface
+}
+
+func (ownedModalities) SelectDICOMModalityByModalityID(_ context.Context, tenantID, modalityID string) (entity.DICOMModality, error) {
+	return entity.DICOMModality{ID: tenantID + ":" + modalityID, TenantID: tenantID, ModalityID: modalityID, CFindEnabled: true, CMoveEnabled: true, CStoreEnabled: true}, nil
+}
+
 func queryController(base string) *rest.OrthancQueryController {
 	api := Init(base)
-	svc := &service.OrthancQueryService{OrthancAPIInterface: api}
+	svc := &service.OrthancQueryService{OrthancAPIInterface: api, OrthancQueryRepositoryInterface: ownedModalities{}}
 	return &rest.OrthancQueryController{OrthancQueryServiceInterface: svc}
 }
 
 func commandController(base string) *rest.OrthancCommandController {
 	api := Init(base)
-	svc := &service.OrthancCommandService{OrthancAPIInterface: api}
+	svc := &service.OrthancCommandService{OrthancAPIInterface: api, OrthancCommandRepositoryInterface: ownedModalities{}}
 	return &rest.OrthancCommandController{OrthancCommandServiceInterface: svc}
 }
 

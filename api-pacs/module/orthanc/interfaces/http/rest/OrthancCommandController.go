@@ -190,7 +190,7 @@ func (controller *OrthancCommandController) RetrieveModalityStudy(w http.Respons
 
 // TriggerDICOMEchoSCU trigger dicom C-ECHO SCU
 func (controller *OrthancCommandController) TriggerDICOMEchoSCU(w http.ResponseWriter, r *http.Request) {
-	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
 
 	modalityID := chi.URLParam(r, "modalityID")
 	if len(modalityID) == 0 {
