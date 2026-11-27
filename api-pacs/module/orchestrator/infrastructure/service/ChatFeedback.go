@@ -127,6 +127,12 @@ func (service *OrchestratorService) CountChatFeedback(ctx context.Context, query
 	return service.chatFeedbackReview(ctx, "counts", query)
 }
 
+// GetChatFeedback returns one vote of the workspace with the redacted tool
+// calls of the rated answer (admin panel).
+func (service *OrchestratorService) GetChatFeedback(ctx context.Context, feedbackID string) (json.RawMessage, error) {
+	return service.chatFeedbackReview(ctx, url.PathEscape(feedbackID), nil)
+}
+
 func (service *OrchestratorService) chatFeedbackReview(ctx context.Context, path string, query url.Values) (json.RawMessage, error) {
 	if service.ChatFeedbackServiceToken == "" {
 		return nil, ErrChatFeedbackNotConfigured
@@ -154,6 +160,10 @@ func (service *OrchestratorService) chatFeedbackReview(ctx context.Context, path
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound && path != "list" && path != "counts" {
+		// One vote: the chat backend says it does not exist in this workspace.
+		return nil, ErrChatFeedbackNotFound
+	}
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
 		// An older chat backend without the review routes.
 		return nil, ErrChatFeedbackNotConfigured

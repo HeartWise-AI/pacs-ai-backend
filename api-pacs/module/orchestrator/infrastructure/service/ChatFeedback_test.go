@@ -119,3 +119,28 @@ func TestCreateMessageReturnsTheStoredAnswerID(t *testing.T) {
 		t.Fatalf("unexpected assistant message id %q", response.AssistantMessageID)
 	}
 }
+
+func TestGetChatFeedbackReadsOneVoteAndMapsAMissingOneToNotFound(t *testing.T) {
+	var gotPath, gotToken string
+	status := http.StatusOK
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotToken = r.URL.Path, r.Header.Get("X-Service-Token")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{"feedback_id":"f-1","tool_calls":[]}`))
+	}))
+	defer server.Close()
+	raw, err := chatFeedbackService(server, "svc-token").GetChatFeedback(orchestratorTestContext(), "f-1")
+	if err != nil || string(raw) != `{"feedback_id":"f-1","tool_calls":[]}` {
+		t.Fatalf("GetChatFeedback: %v %s", err, raw)
+	}
+	if gotPath != "/internal/chat-feedback/f-1" || gotToken != "svc-token" {
+		t.Fatalf("unexpected forward: path=%q token=%q", gotPath, gotToken)
+	}
+	status = http.StatusNotFound
+	if _, err := chatFeedbackService(server, "svc-token").GetChatFeedback(orchestratorTestContext(), "f-2"); !errors.Is(err, ErrChatFeedbackNotFound) {
+		t.Fatalf("want not found, got %v", err)
+	}
+	if _, err := chatFeedbackService(server, "svc-token").ListChatFeedback(orchestratorTestContext(), url.Values{}); !errors.Is(err, ErrChatFeedbackNotConfigured) {
+		t.Fatalf("a 404 on the list still means an older backend, got %v", err)
+	}
+}

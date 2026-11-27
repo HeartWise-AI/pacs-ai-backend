@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/middlewares/requestbody"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	apiError "api-pacs/internal/errors"
@@ -17,7 +18,8 @@ import (
 
 // Chat feedback (PACS-448). Votes: PUT/DELETE
 // /v1/orchestrator/threads/{threadID}/messages/{messageID}/feedback (feedback.vote).
-// Admin panel: GET /v1/inference/chat/feedback/list and /counts (feedback.view).
+// Admin panel: GET /v1/inference/chat/feedback/list, /counts and /{feedbackID}
+// (feedback.view); list and one vote carry the voter's name and email.
 
 const (
 	chatFeedbackMaxBodyBytes    = 16 << 10
@@ -114,6 +116,11 @@ func (controller *OrchestratorController) RemoveChatFeedback(w http.ResponseWrit
 	writeChatFeedback(w, http.StatusOK, "Feedback removed.", "", map[string]bool{"removed": true})
 }
 
+func chatFeedbackTenant(r *http.Request) string {
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	return tenantID
+}
+
 // ListChatFeedback lists the workspace's votes on chat answers, thumbs down first.
 func (controller *OrchestratorController) ListChatFeedback(w http.ResponseWriter, r *http.Request) {
 	result, err := controller.OrchestratorServiceInterface.ListChatFeedback(r.Context(), r.URL.Query())
@@ -121,6 +128,24 @@ func (controller *OrchestratorController) ListChatFeedback(w http.ResponseWriter
 		writeChatFeedbackError(w, err)
 		return
 	}
+	result = controller.nameChatFeedbackUsers(r.Context(), chatFeedbackTenant(r), result)
+	w.Header().Set("Cache-Control", "no-store")
+	writeChatFeedback(w, http.StatusOK, "Chat feedback retrieved successfully.", "", result)
+}
+
+// GetChatFeedback returns one vote with the tool calls behind the rated answer.
+func (controller *OrchestratorController) GetChatFeedback(w http.ResponseWriter, r *http.Request) {
+	feedbackID := chi.URLParam(r, "feedbackID")
+	if !orchestratorThreadIDPattern.MatchString(feedbackID) {
+		writeChatFeedback(w, http.StatusBadRequest, "Feedback ID is invalid.", apiError.InvalidRequestPayload, nil)
+		return
+	}
+	result, err := controller.OrchestratorServiceInterface.GetChatFeedback(r.Context(), feedbackID)
+	if err != nil {
+		writeChatFeedbackError(w, err)
+		return
+	}
+	result = controller.nameChatFeedbackUsers(r.Context(), chatFeedbackTenant(r), result)
 	w.Header().Set("Cache-Control", "no-store")
 	writeChatFeedback(w, http.StatusOK, "Chat feedback retrieved successfully.", "", result)
 }

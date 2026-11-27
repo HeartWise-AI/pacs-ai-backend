@@ -110,6 +110,7 @@ func mountChatFeedbackRoutes(r chi.Router, vote func(http.Handler) http.Handler,
 type chatFeedbackAdminHandlers struct {
 	list   http.HandlerFunc
 	counts http.HandlerFunc
+	get    http.HandlerFunc
 }
 
 // mountChatFeedbackAdminRoutes exposes the workspace's chat answer votes to
@@ -117,6 +118,7 @@ type chatFeedbackAdminHandlers struct {
 func mountChatFeedbackAdminRoutes(r chi.Router, canView func(http.Handler) http.Handler, handlers chatFeedbackAdminHandlers) {
 	r.With(canView).Get("/feedback/list", handlers.list)
 	r.With(canView).Get("/feedback/counts", handlers.counts)
+	r.With(canView).Get("/feedback/{feedbackID}", handlers.get)
 }
 
 type iamHandoffHandlers struct {
@@ -403,6 +405,7 @@ func (router *router) InitRouter() *chi.Mux {
 						mountChatFeedbackAdminRoutes(r, iamMiddleware.RequirePermission(accessEntity.PermFeedbackView), chatFeedbackAdminHandlers{
 							list:   orchestratorController.ListChatFeedback,
 							counts: orchestratorController.CountChatFeedback,
+							get:    orchestratorController.GetChatFeedback,
 						})
 					})
 

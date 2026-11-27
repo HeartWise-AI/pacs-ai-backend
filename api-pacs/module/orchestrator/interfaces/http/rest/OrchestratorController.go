@@ -23,6 +23,9 @@ var orchestratorThreadIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 // OrchestratorController handles orchestrator HTTP requests
 type OrchestratorController struct {
 	application.OrchestratorServiceInterface
+	// ChatFeedbackUsers names the voters in the Chat Feedback admin tab (the
+	// workspace's user directory, as on the Members page). Optional.
+	ChatFeedbackUsers ChatFeedbackUserDirectory
 }
 
 // NewOrchestratorController creates a new orchestrator controller
