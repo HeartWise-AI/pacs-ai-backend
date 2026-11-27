@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +17,24 @@ import (
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 )
+
+// retrievedTenantStudies lists, per tenant, the studies it retrieved into the
+// shared Orthanc.
+type retrievedTenantStudies map[string][]string
+
+func (studies retrievedTenantStudies) InsertTenantStudy(context.Context, string, string) error {
+	return nil
+}
+
+func (studies retrievedTenantStudies) SelectTenantStudies(_ context.Context, tenantID string, studyInstanceUIDs []string) ([]string, error) {
+	var retrieved []string
+	for _, study := range studyInstanceUIDs {
+		if slices.Contains(studies[tenantID], study) {
+			retrieved = append(retrieved, study)
+		}
+	}
+	return retrieved, nil
+}
 
 type viewerRunQueryRepository struct {
 	domainRepository.InferenceQueryRepositoryInterface
@@ -163,6 +182,7 @@ func newViewerRunFixture(t *testing.T) *viewerRunFixture {
 		InferenceProcessingRunRepositoryInterface: fixture.runs,
 		InferenceQuotaManagerInterface:            fixture.quota,
 		OrthancAPIInterface:                       &manualReprocessOrthancAPI{local: true},
+		TenantStudies:                             retrievedTenantStudies{"tenant-a": {"1.2.3"}},
 		ProcessingDispatcherInterface: &guardedProcessingDispatcher{
 			dispatchCall:          fixture.dispatchCalls,
 			response:              serviceTypes.DispatchStudyResponse{JobID: "study-service-job-1"},

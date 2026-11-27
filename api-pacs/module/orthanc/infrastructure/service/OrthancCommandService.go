@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"strconv"
@@ -22,6 +23,8 @@ import (
 // OrthancCommandService handles the Orthanc command service logic
 type OrthancCommandService struct {
 	repository.OrthancCommandRepositoryInterface
+	repository.OrthancQueryRepositoryInterface
+	repository.OrthancTenantStudyRepositoryInterface
 	orthancAPITypes.OrthancAPIInterface
 	tenantApplication.TenantQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
@@ -129,12 +132,20 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 	data.ModalityID = dicomModality.ModalityID
 
 	res, err := service.OrthancAPIInterface.RetrieveModalityStudyBySeries(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID, data.UserID != nil)
-	if err != nil && err.Error() == apiError.DuplicateRecord {
-		return nil, err // halt and proceed: the local copy is complete
-	}
-	if err != nil {
+	if err != nil && err.Error() != apiError.DuplicateRecord {
 		log.Println(err)
 		return nil, err
+	}
+
+	// The modality has the study. Retrieved through a modality the tenant
+	// moves from, the tenant may read it from the shared Orthanc.
+	if dicomModality.CMoveEnabled && service.OrthancTenantStudyRepositoryInterface != nil {
+		if recordErr := service.OrthancTenantStudyRepositoryInterface.InsertTenantStudy(ctx, data.TenantID, data.StudyInstanceUID); recordErr != nil {
+			return nil, errors.New(apiError.DatabaseError)
+		}
+	}
+	if err != nil {
+		return nil, err // halt and proceed: the local copy is complete
 	}
 
 	// logs to elasticsearch

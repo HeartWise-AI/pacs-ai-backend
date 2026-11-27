@@ -10,6 +10,7 @@ import (
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/internal/inputlimits"
 	"api-pacs/module/orthanc/application"
 	serviceTypes "api-pacs/module/orthanc/infrastructure/service/types"
 	types "api-pacs/module/orthanc/interfaces/http"
@@ -22,8 +23,10 @@ type OrthancQueryController struct {
 
 // FindLocalSOPInstance find local SOP instance
 func (controller *OrthancQueryController) FindLocalSOPInstance(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
 	sopInstanceUID := chi.URLParam(r, "sopInstanceUID")
-	if len(sopInstanceUID) == 0 {
+	if !inputlimits.ValidDICOMUID(sopInstanceUID) {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusBadRequest,
 			Success:   false,
@@ -35,12 +38,15 @@ func (controller *OrthancQueryController) FindLocalSOPInstance(w http.ResponseWr
 		return
 	}
 
-	queryIDs, err := controller.OrthancQueryServiceInterface.FindLocalSOPInstance(context.TODO(), sopInstanceUID)
+	queryIDs, err := controller.OrthancQueryServiceInterface.FindLocalSOPInstance(context.TODO(), tenantID, sopInstanceUID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "SOP instance not found."
 		case apiError.OrthancError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Orthanc service encountered an error or timeout."

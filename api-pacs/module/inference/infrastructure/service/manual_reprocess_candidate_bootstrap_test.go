@@ -116,6 +116,7 @@ func TestBootstrapLocalManualStudyCandidatesCreatesOnlyCurrentCompatibleModels(t
 	service := &InferenceCommandService{
 		InferenceQueryRepositoryInterface: state, InferenceCommandRepositoryInterface: state,
 		OrthancAPIInterface: orthanc,
+		TenantStudies:       retrievedTenantStudies{"tenant-a": {"1.2.3"}},
 	}
 
 	candidates, err := service.bootstrapLocalManualStudyCandidates(context.Background(), "tenant-a", "1.2.3")
@@ -238,6 +239,7 @@ func TestBootstrapLocalManualStudyCandidatesIsIdempotent(t *testing.T) {
 	service := &InferenceCommandService{
 		InferenceQueryRepositoryInterface: state, InferenceCommandRepositoryInterface: state,
 		OrthancAPIInterface: &manualBootstrapOrthancAPI{resources: []orthancAPITypes.GetLocalResourceResponse{localXAStudyResource()}},
+		TenantStudies:       retrievedTenantStudies{"tenant-a": {"1.2.3"}},
 	}
 
 	first, err := service.bootstrapLocalManualStudyCandidates(context.Background(), "tenant-a", "1.2.3")
@@ -374,6 +376,7 @@ func TestCreateManualStudyProcessingRunBootstrapsHistoricalLocalStudy(t *testing
 		InferenceProcessingRunRepositoryInterface: state,
 		InferenceQuotaManagerInterface:            &recordingInferenceQuotaManager{},
 		OrthancAPIInterface:                       &manualBootstrapOrthancAPI{resources: []orthancAPITypes.GetLocalResourceResponse{localXAStudyResource()}},
+		TenantStudies:                             retrievedTenantStudies{"tenant-a": {"1.2.3"}},
 		ProcessingDispatcherInterface: &guardedProcessingDispatcher{
 			dispatchCall: dispatchCalls, response: serviceTypes.DispatchStudyResponse{JobID: "study-service-job"},
 			echoManualCorrelation: true,

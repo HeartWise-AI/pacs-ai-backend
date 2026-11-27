@@ -10,8 +10,8 @@ import (
 
 // OrthancQueryServiceInterface holds the implementable methods for the Orthanc query service
 type OrthancQueryServiceInterface interface {
-	// FindLocalSOPInstance find local sop instance
-	FindLocalSOPInstance(ctx context.Context, sopInstanceUID string) ([]string, error)
+	// FindLocalSOPInstance find local sop instance in the studies the tenant retrieved
+	FindLocalSOPInstance(ctx context.Context, tenantID, sopInstanceUID string) ([]string, error)
 	// FindModalityStudies find modality studies
 	FindModalityStudies(ctx context.Context, data types.FindModalityStudies) ([]orthancAPITypes.QueryModalityStudyAnswersResponse, string, error)
 	// GetJobsInfo get jobs info

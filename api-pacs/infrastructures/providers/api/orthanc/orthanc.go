@@ -523,7 +523,9 @@ func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, 
 // skipped (see series_move.go). The first series is a job of its own and goes
 // first; the other series share a few jobs (batchMoves). interactive is true
 // when someone is waiting for the study in the viewer.
-// Returns DuplicateRecord when nothing is missing.
+// Returns DuplicateRecord when nothing is missing, and MissingRecord when the
+// modality reports no series of the study, so success and DuplicateRecord
+// both mean the modality has the study.
 func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modalityID, localAet, studyInstanceUID string, interactive bool) ([]types.QueryModalityResponse, error) {
 	remote, err := o.FindModalitySeriesByStudy(ctx, modalityID, localAet, studyInstanceUID)
 	if err != nil {
@@ -992,6 +994,77 @@ func (o *OrthancAPI) UploadDICOMInstances(ctx context.Context, dicomInstances []
 	}
 
 	return uploadDICOMInstancesResponse, nil
+}
+
+// UploadDICOMInstanceToStudy stores one DICOM instance with STOW-RS at
+// /dicom-web/studies/{studyInstanceUID}: Orthanc refuses it, without storing
+// it, unless it belongs to that study. Returns the ID of the stored instance.
+func (o *OrthancAPI) UploadDICOMInstanceToStudy(ctx context.Context, studyInstanceUID string, dicomInstance []byte) (types.UploadDICOMInstancesResponse, error) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreatePart(map[string][]string{"Content-Type": {"application/dicom"}})
+	if err != nil {
+		return types.UploadDICOMInstancesResponse{}, err
+	}
+	if _, err := part.Write(dicomInstance); err != nil {
+		return types.UploadDICOMInstancesResponse{}, err
+	}
+	if err := writer.Close(); err != nil {
+		return types.UploadDICOMInstancesResponse{}, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("%s/dicom-web/studies/%s", o.BaseURL, studyInstanceUID), &body)
+	if err != nil {
+		return types.UploadDICOMInstancesResponse{}, err
+	}
+	req.Header.Set("Content-Type", fmt.Sprintf(`multipart/related; type="application/dicom"; boundary=%s`, writer.Boundary()))
+	req.Header.Set("Accept", "application/dicom+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return types.UploadDICOMInstancesResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	var stowResponse struct {
+		ReferencedSOPSequence struct {
+			Value []struct {
+				ReferencedSOPInstanceUID struct {
+					Value []string `json:"Value"`
+				} `json:"00081155"`
+			} `json:"Value"`
+		} `json:"00081199"`
+	}
+	if resp.StatusCode != http.StatusOK {
+		response, _ := io.ReadAll(resp.Body)
+		log.Println("Error:", string(response))
+		return types.UploadDICOMInstancesResponse{}, errors.New(apiError.OrthancError)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&stowResponse); err != nil {
+		log.Println("Error:", err)
+		return types.UploadDICOMInstancesResponse{}, err
+	}
+	stored := stowResponse.ReferencedSOPSequence.Value
+	if len(stored) != 1 || len(stored[0].ReferencedSOPInstanceUID.Value) != 1 {
+		return types.UploadDICOMInstancesResponse{}, errors.New(apiError.OrthancError)
+	}
+
+	var instanceIDs []string
+	err = o.findLocalResources(map[string]interface{}{
+		"Level": "Instance",
+		"Query": map[string]string{
+			"StudyInstanceUID": studyInstanceUID,
+			"SOPInstanceUID":   stored[0].ReferencedSOPInstanceUID.Value[0],
+		},
+	}, &instanceIDs)
+	if err != nil {
+		return types.UploadDICOMInstancesResponse{}, err
+	}
+	if len(instanceIDs) != 1 {
+		return types.UploadDICOMInstancesResponse{}, errors.New(apiError.OrthancError)
+	}
+
+	return types.UploadDICOMInstancesResponse{ID: instanceIDs[0], Status: types.UploadDICOMStatusSuccess}, nil
 }
 
 func (o *OrthancAPI) findLocalResources(request, response interface{}) error {

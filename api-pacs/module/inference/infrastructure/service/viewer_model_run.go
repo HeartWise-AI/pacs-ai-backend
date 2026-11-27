@@ -70,6 +70,13 @@ func (service *InferenceCommandService) CreateViewerModelRun(ctx context.Context
 		return types.CreateViewerModelRunResult{}, errors.New(apiError.InferenceModelUnavailable)
 	}
 
+	retrieved, err := service.tenantRetrievedStudy(ctx, tenantID, studyInstanceUID)
+	if err != nil {
+		return types.CreateViewerModelRunResult{}, err
+	}
+	if !retrieved {
+		return types.CreateViewerModelRunResult{}, errors.New(apiError.StudyNotAvailableLocally)
+	}
 	local, err := service.isStudyPresentLocally(ctx, studyInstanceUID)
 	if err != nil {
 		return types.CreateViewerModelRunResult{}, fmt.Errorf("cannot verify local study before viewer run: %w", err)

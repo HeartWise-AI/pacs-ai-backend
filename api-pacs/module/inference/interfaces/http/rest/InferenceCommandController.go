@@ -371,6 +371,9 @@ func (controller *InferenceCommandController) PredictInferenceModel(w http.Respo
 		case apiError.InferenceQuotaUnavailable:
 			httpCode = http.StatusServiceUnavailable
 			errorMsg = "Inference quota enforcement is temporarily unavailable."
+		case apiError.StudyNotAvailableLocally:
+			httpCode = http.StatusConflict
+			errorMsg = "The study is not stored locally."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Please contact technical support."

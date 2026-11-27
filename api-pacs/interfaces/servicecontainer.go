@@ -182,7 +182,16 @@ func (k *kernel) RegisterDockerInferenceProxy() dockerInferenceProxy.DockerInfer
 
 // RegisterOrthancProxy performs dependency injection to the RegisterOrthancProxy
 func (k *kernel) RegisterOrthancProxy() orthancProxy.OrthancProxy {
-	return orthancProxy.OrthancProxy{}
+	return orthancProxy.OrthancProxy{
+		TenantStudies: orthancTenantStudyRepository(),
+	}
+}
+
+func orthancTenantStudyRepository() *orthancRepository.OrthancTenantStudyRepository {
+	return &orthancRepository.OrthancTenantStudyRepository{
+		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
+		DefaultTenantID:               orthancRepository.DefaultTenantID(),
+	}
 }
 
 // Controllers
@@ -458,6 +467,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		ProcessingReconciliationMetricsRecorder: &inferenceService.LoggingProcessingReconciliationMetricsRecorder{},
 		AutoRunExpireAfter:                      inferenceService.ConfiguredAutoRunExpireAfter(),
 		WorklistNotificationAudienceRepository:  processingRunRepository,
+		TenantStudies:                           orthancTenantStudyRepository(),
 		WebAppViewerGrants:                      &inferenceService.RedisWebAppViewerGrants{RedisDBHandlerInterface: redisIAMDBHandler},
 		RequireProcessingRunID:                  configuredProcessingRunIDRequirement(),
 		AllowedImageNamespace:                   modelRegistrationImageNamespaces(),
@@ -495,6 +505,18 @@ func configuredStudyServiceDispatchConcurrency() int {
 	return parsed
 }
 
+// OrthancTenantStudySync assigns the studies of the shared Orthanc to tenants.
+func OrthancTenantStudySync() *orthancService.TenantStudySync {
+	m.Lock()
+	defer m.Unlock()
+
+	return &orthancService.TenantStudySync{
+		Store:           orthancTenantStudyRepository(),
+		OrthancBaseURL:  os.Getenv("ORTHANC_BASE_URL"),
+		DefaultTenantID: orthancRepository.DefaultTenantID(),
+	}
+}
+
 func OrthancCommandServiceDI() *orthancService.OrthancCommandService {
 	m.Lock()
 	defer m.Unlock()
@@ -507,10 +529,16 @@ func OrthancCommandServiceDI() *orthancService.OrthancCommandService {
 		OrthancCommandRepositoryInterface: &orthancRepository.OrthancCommandRepositoryCircuitBreaker{
 			OrthancCommandRepositoryInterface: repository,
 		},
-		OrthancAPIInterface:                  orthancAPI,
-		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
-		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
-		UserQueryServiceInterface:            k.userQueryServiceContainer(),
+		OrthancQueryRepositoryInterface: &orthancRepository.OrthancQueryRepositoryCircuitBreaker{
+			OrthancQueryRepositoryInterface: &orthancRepository.OrthancQueryRepository{
+				FirebaseAdminSDK: firebaseAdminSDK,
+			},
+		},
+		OrthancTenantStudyRepositoryInterface: orthancTenantStudyRepository(),
+		OrthancAPIInterface:                   orthancAPI,
+		TenantQueryServiceInterface:           k.tenantQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface:  k.elasticsearchCommandServiceContainer(),
+		UserQueryServiceInterface:             k.userQueryServiceContainer(),
 		StoreBackReports: &inferenceService.StoreBackReports{
 			Results: k.inferenceQueryServiceContainer(),
 			Studies: orthancAPI,
@@ -678,10 +706,11 @@ func (k *kernel) orthancQueryServiceContainer() *orthancService.OrthancQueryServ
 		OrthancQueryRepositoryInterface: &orthancRepository.OrthancQueryRepositoryCircuitBreaker{
 			OrthancQueryRepositoryInterface: repository,
 		},
-		OrthancAPIInterface:                  orthancAPI,
-		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
-		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
-		UserQueryServiceInterface:            k.userQueryServiceContainer(),
+		OrthancTenantStudyRepositoryInterface: orthancTenantStudyRepository(),
+		OrthancAPIInterface:                   orthancAPI,
+		TenantQueryServiceInterface:           k.tenantQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface:  k.elasticsearchCommandServiceContainer(),
+		UserQueryServiceInterface:             k.userQueryServiceContainer(),
 	}
 
 	return service
@@ -1074,6 +1103,7 @@ func ServiceContainer() ServiceContainerInterface {
 			go RunInferenceIngestionRetrievalWorkerHandler()
 			go RunInferenceIngestionReconciliationWorkerHandler()
 			go RunOrthancLocalStudiesCacheHandler()
+			go RunOrthancTenantStudySyncHandler()
 		})
 	}
 	return k

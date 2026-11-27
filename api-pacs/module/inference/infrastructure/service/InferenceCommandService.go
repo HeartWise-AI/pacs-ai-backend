@@ -30,6 +30,7 @@ import (
 	repositoryTypes "api-pacs/module/inference/infrastructure/repository/types"
 	"api-pacs/module/inference/infrastructure/service/types"
 	orthancApplication "api-pacs/module/orthanc/application"
+	orthancRepository "api-pacs/module/orthanc/domain/repository"
 	orthancServiceTypes "api-pacs/module/orthanc/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
 	userApplication "api-pacs/module/user/application"
@@ -57,8 +58,11 @@ type InferenceCommandService struct {
 	inferenceApplication.WorklistNotificationPublisherInterface
 	// WorklistNotificationAudienceRepository resolves who an automatic run
 	// notifies. Nil leaves automatic-run audiences unresolved (admins only).
-	WorklistNotificationAudienceRepository  repository.WorklistNotificationAudienceRepositoryInterface
-	WebAppViewerGrants                      WebAppViewerGrantStore
+	WorklistNotificationAudienceRepository repository.WorklistNotificationAudienceRepositoryInterface
+	WebAppViewerGrants                     WebAppViewerGrantStore
+	// TenantStudies lists the studies each tenant may read from the shared
+	// Orthanc. Nil leaves no local study reachable by a tenant's request.
+	TenantStudies                           orthancRepository.OrthancTenantStudyRepositoryInterface
 	StudyServiceDispatchSemaphore           chan struct{}
 	ProcessingReconciliationMetricsRecorder ProcessingReconciliationMetricsRecorder
 	// AutoRunExpireAfter expires, in each reconciliation cycle, the waiting
@@ -3125,6 +3129,19 @@ func (service *InferenceCommandService) isStudyPresentLocally(ctx context.Contex
 	return len(localResources) > 0, nil
 }
 
+// tenantRetrievedStudy reports whether the tenant retrieved the study into
+// the shared Orthanc.
+func (service *InferenceCommandService) tenantRetrievedStudy(ctx context.Context, tenantID, studyInstanceUID string) (bool, error) {
+	if service.TenantStudies == nil {
+		return false, nil
+	}
+	studies, err := service.TenantStudies.SelectTenantStudies(ctx, tenantID, []string{studyInstanceUID})
+	if err != nil {
+		return false, errors.New(apiError.DatabaseError)
+	}
+	return len(studies) > 0, nil
+}
+
 // GenerateInferenceModelPredictRequest generates a predict request for inference model
 func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx context.Context, tenantID, containerID string, data types.PredictInferenceModel) (dockerInferenceTypes.PredictRequest, string, error) {
 	if err := validateBoundedPredictInput(data, configuredInferenceInputLimits()); err != nil {
@@ -3135,6 +3152,14 @@ func (service *InferenceCommandService) GenerateInferenceModelPredictRequest(ctx
 	// Validation must happen before sorting so an attacker cannot force
 	// unbounded CPU or allocation work with a very large UID collection.
 	data.SeriesInstanceUIDs = sortedSeriesInstanceUIDs(data.SeriesInstanceUIDs)
+
+	retrieved, err := service.tenantRetrievedStudy(ctx, tenantID, data.StudyInstanceUID)
+	if err != nil {
+		return dockerInferenceTypes.PredictRequest{}, "", err
+	}
+	if !retrieved {
+		return dockerInferenceTypes.PredictRequest{}, "", errors.New(apiError.StudyNotAvailableLocally)
+	}
 
 	// get inference model
 	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByContainer(ctx, tenantID, containerID)

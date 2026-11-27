@@ -81,6 +81,7 @@ func TestGeneratePredictRequestRejectsWhenRetrievedSeriesFallsBelowModelMinimum(
 		DockerSDKInterface:                &retrievedSeriesDockerSDK{},
 		DockerInferenceAPIInterface:       &retrievedSeriesDockerInferenceAPI{},
 		OrthancAPIInterface:               &retrievedSeriesOrthancAPI{emptySeriesUID: "1.2.3.3"},
+		TenantStudies:                     retrievedTenantStudies{"tenant-a": {"1.2.3"}},
 	}
 
 	_, _, err := service.GenerateInferenceModelPredictRequest(
@@ -107,6 +108,7 @@ func TestGeneratePredictRequestAcceptsAllUsableRetrievedSeries(t *testing.T) {
 		DockerSDKInterface:                &retrievedSeriesDockerSDK{},
 		DockerInferenceAPIInterface:       &retrievedSeriesDockerInferenceAPI{},
 		OrthancAPIInterface:               &retrievedSeriesOrthancAPI{},
+		TenantStudies:                     retrievedTenantStudies{"tenant-a": {"1.2.3"}},
 	}
 
 	request, containerName, err := service.GenerateInferenceModelPredictRequest(
