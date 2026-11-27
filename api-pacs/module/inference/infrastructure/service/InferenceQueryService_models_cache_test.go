@@ -15,18 +15,20 @@ import (
 // busyModelAPI answers model info and facts unless the container is marked busy.
 type busyModelAPI struct {
 	dockerInferenceTypes.DockerInferenceAPIInterface
-	busyInfo  map[string]bool
-	busyFacts map[string]bool
+	busyInfo     map[string]bool
+	busyFacts    map[string]bool
+	renderReport map[string]bool
 }
 
 func (api *busyModelAPI) GetModelInfo(_ context.Context, containerName string) (dockerInferenceTypes.GetModelInfoResponse, error) {
 	if api.busyInfo[containerName] {
 		return dockerInferenceTypes.GetModelInfoResponse{}, errors.New("timeout")
 	}
-	return dockerInferenceTypes.GetModelInfoResponse{
-		Success: true,
-		Data:    dockerInferenceTypes.ModelInfo{ModelID: containerName + "-id", ModelName: containerName, Version: "1.0.0"},
-	}, nil
+	info := dockerInferenceTypes.ModelInfo{ModelID: containerName + "-id", ModelName: containerName, Version: "1.0.0"}
+	if api.renderReport[containerName] {
+		info.Capabilities = &dockerInferenceTypes.ModelCapabilities{RenderReport: true}
+	}
+	return dockerInferenceTypes.GetModelInfoResponse{Success: true, Data: info}, nil
 }
 
 func (api *busyModelAPI) GetModelFacts(_ context.Context, containerName string) (dockerInferenceTypes.GetModelFactsResponse, error) {
@@ -84,6 +86,22 @@ func TestGetInferenceAvailableModelsKeepsBusyModelFromLastAnswer(t *testing.T) {
 	require.Equal(t, "panecho", result[0].ContainerName)
 	require.Equal(t, "panecho", result[0].ModelFacts.En["summary"])
 	require.Equal(t, entity.OutputModeHTML, result[0].OutputMode, "output mode comes from the database, not the cache")
+}
+
+// The viewer's latest-results falls back to this cache when a running model
+// misses its probe, so the report capability must be remembered too.
+func TestGetInferenceAvailableModelsRemembersReportCapability(t *testing.T) {
+	service, _, _, api := newBusyModelFixture()
+	api.renderReport = map[string]bool{"jepa": true}
+	modelIDs(t, service)
+
+	jepa, ok := service.lastModelInfo(context.Background(), "container-b")
+	require.True(t, ok)
+	require.NotNil(t, jepa.Capabilities)
+	require.True(t, jepa.Capabilities.RenderReport)
+	panecho, ok := service.lastModelInfo(context.Background(), "container-a")
+	require.True(t, ok)
+	require.Nil(t, panecho.Capabilities)
 }
 
 func TestGetInferenceAvailableModelsKeepsModelWhenOnlyFactsTimeOut(t *testing.T) {
