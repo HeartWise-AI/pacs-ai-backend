@@ -126,6 +126,8 @@ func TestResearchModelsAreHiddenFromEveryModelUsers(t *testing.T) {
 		require.Equal(t, apiError.ForbiddenAccess, authorizeModelRef(requestWith(&access), resolver, "t1", "reg-echoalign"))
 		require.Equal(t, "", authorizeModelRef(requestWith(&access), resolver, "t1", "reg-panecho"))
 		require.Equal(t, "", authorizeModelRef(requestWith(&access), resolver, "t1", "unregistered"), "unknown refs keep working")
+		require.Equal(t, apiError.ForbiddenAccess, authorizeModelRef(requestWith(&access), resolver, "t1", "EchoAlign"), "the modelId itself is refused even when it does not resolve")
+		require.Equal(t, apiError.ForbiddenAccess, authorizeModelRef(requestWith(&access), nil, "t1", " EchoAlign "))
 		require.Equal(t, "", authorizeModelRef(requestWith(&access), &stubArtifactResolver{err: errors.New(apiError.AccessUnavailable)}, "t1", "reg-panecho"))
 	}
 	require.Equal(t, "", authorizeModelRef(requestWith(&research), resolver, "t1", "reg-echoalign"))

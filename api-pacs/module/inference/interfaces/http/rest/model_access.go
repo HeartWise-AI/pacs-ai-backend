@@ -27,6 +27,10 @@ func authorizeModelRef(r *http.Request, resolver ModelArtifactResolver, tenantID
 	if access.Unrestricted() {
 		return ""
 	}
+	if access.AllModels && !access.AllowsModel(ref) {
+		// The reference is itself a withheld model-info modelId.
+		return apiError.ForbiddenAccess
+	}
 	if resolver == nil {
 		if access.AllModels {
 			return ""
