@@ -169,12 +169,17 @@ func TestReportEndpointsReturnHTMLAndMapErrors(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	controller.GetProcessingRunExecutionReport(recorder, viewerRequest(http.MethodGet, "/report", "", map[string]string{"runId": "run-1", "executionId": "execution-1"}))
 	require.Equal(t, http.StatusOK, recorder.Code)
+	require.NotNil(t, service.reportInput.AllowModel, "a USER's every-model access excludes research models")
+	require.False(t, service.reportInput.AllowModel("EchoAlign"))
+	service.reportInput.AllowModel = nil
 	require.Equal(t, serviceTypes.GetProcessingRunExecutionReport{TenantID: "tenant-a", RunID: "run-1", ExecutionID: "execution-1"}, service.reportInput)
 	require.JSONEq(t, `{"htmlBase64":"PGgxPg==","contentType":"text/html"}`, string(decodeViewerData(t, recorder)))
 
 	recorder = httptest.NewRecorder()
 	controller.GetStudyJobReport(recorder, viewerRequest(http.MethodGet, "/report", "", map[string]string{"studyInstanceUID": "1.2.3", "studyServiceJobId": "job-1"}))
 	require.Equal(t, http.StatusOK, recorder.Code)
+	require.False(t, service.jobInput.AllowModel("EchoAlign"))
+	service.jobInput.AllowModel = nil
 	require.Equal(t, serviceTypes.GetStudyJobReport{TenantID: "tenant-a", StudyInstanceUID: "1.2.3", StudyServiceJobID: "job-1"}, service.jobInput)
 
 	for code, status := range map[string]int{

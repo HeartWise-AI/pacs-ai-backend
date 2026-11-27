@@ -3,6 +3,7 @@
 package entity
 
 import (
+	"os"
 	"sort"
 	"strings"
 
@@ -75,6 +76,34 @@ func contains(values []string, value string) bool {
 	return false
 }
 
+// DefaultResearchModelIDs are the model-info modelIds of research-only models
+// (for example non-commercial licences). "Every model" access of a USER, from
+// the baseline or from a custom role with all_models, does not include them:
+// a USER sees one only when its custom role lists it explicitly. OWNER and
+// ADMIN keep every model. PACS_RESEARCH_MODEL_IDS (comma-separated) replaces
+// the default list; an empty value disables the exclusion.
+var DefaultResearchModelIDs = []string{"EchoAlign"}
+
+// ResearchModelIDs returns the research-only model ids in effect.
+func ResearchModelIDs() []string {
+	value, set := os.LookupEnv("PACS_RESEARCH_MODEL_IDS")
+	if !set {
+		return DefaultResearchModelIDs
+	}
+	ids := []string{}
+	for _, id := range strings.Split(value, ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// IsResearchModel reports whether modelID is research-only.
+func IsResearchModel(modelID string) bool {
+	return contains(ResearchModelIDs(), strings.TrimSpace(modelID))
+}
+
 // CustomRole is a tenant-defined set of extra permissions and model access,
 // assigned to USER accounts through users.custom_role_id.
 type CustomRole struct {
@@ -110,15 +139,19 @@ type Access struct {
 	permissions map[string]struct{}
 	AllModels   bool
 	modelIDs    map[string]struct{}
-	CustomRole  *CustomRoleRef
+	// excluded holds research-only models withheld from a USER's "every
+	// model" access. It is empty for OWNER, ADMIN and allowlist roles.
+	excluded   map[string]struct{}
+	CustomRole *CustomRoleRef
 }
 
 // ForRole computes the access of an account. OWNER and ADMIN hold every
 // permission and every model. USER holds the baseline, plus the grantable
-// permissions and the model access of its custom role when one is given.
+// permissions and the model access of its custom role when one is given;
+// a USER's "every model" access excludes research-only models.
 // Any other role holds nothing.
 func ForRole(role string, custom *CustomRole) Access {
-	access := Access{Role: role, permissions: map[string]struct{}{}, modelIDs: map[string]struct{}{}}
+	access := Access{Role: role, permissions: map[string]struct{}{}, modelIDs: map[string]struct{}{}, excluded: map[string]struct{}{}}
 	switch role {
 	case iamEntity.OwnerRole, iamEntity.AdminRole:
 		for _, permission := range AllPermissions() {
@@ -146,8 +179,19 @@ func ForRole(role string, custom *CustomRole) Access {
 			}
 			access.CustomRole = &CustomRoleRef{ID: custom.ID, Name: custom.Name}
 		}
+		if access.AllModels {
+			for _, modelID := range ResearchModelIDs() {
+				access.excluded[modelID] = struct{}{}
+			}
+		}
 	}
 	return access
+}
+
+// Unrestricted reports whether the access allows every model, research-only
+// models included (OWNER and ADMIN).
+func (access Access) Unrestricted() bool {
+	return access.AllModels && len(access.excluded) == 0
 }
 
 // Has reports whether the access holds permission.
@@ -158,10 +202,12 @@ func (access Access) Has(permission string) bool {
 
 // AllowsModel reports whether the model-info modelId may be used.
 func (access Access) AllowsModel(modelID string) bool {
+	modelID = strings.TrimSpace(modelID)
 	if access.AllModels {
-		return true
+		_, excluded := access.excluded[modelID]
+		return !excluded
 	}
-	_, ok := access.modelIDs[strings.TrimSpace(modelID)]
+	_, ok := access.modelIDs[modelID]
 	return ok
 }
 

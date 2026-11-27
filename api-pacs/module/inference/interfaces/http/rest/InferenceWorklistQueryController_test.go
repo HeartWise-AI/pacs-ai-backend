@@ -158,6 +158,9 @@ func TestGetProcessingRunExecutionResultUsesAuthenticatedTenantAndBothPathIDs(t 
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
+	require.NotNil(t, service.resultInput.AllowModel, "a USER's every-model access excludes research models")
+	require.False(t, service.resultInput.AllowModel("EchoAlign"))
+	service.resultInput.AllowModel = nil
 	require.Equal(t, serviceTypes.GetProcessingRunExecutionResult{
 		TenantID: "tenant-a", RunID: "run-7", ExecutionID: "execution-9",
 	}, service.resultInput)
