@@ -31,6 +31,11 @@ from utils.genericLogic import BasePredictionService
 SELECTED_VIEWS = {"A2C", "A4C", "A5C", "PLAX", "PSAX"}
 
 
+def _clip_key(dicom) -> str:
+    """One echo series often holds every clip of the study, so views are kept per instance."""
+    return str(getattr(dicom, "SOPInstanceUID", "") or dicom.SeriesInstanceUID)
+
+
 def matches_selected_view(pred_class: Optional[str]) -> bool:
     """Check if the predicted view class matches any of the selected views.
     
@@ -456,12 +461,13 @@ class CustomPredictionService(BasePredictionService):
     ) -> List[pydicom.Dataset]:
         """Filter DICOMs to keep only those with selected echocardiographic views.
         
-        Uses metadata (keyed by SeriesInstanceUID) to get the predicted_class (view)
-        for each DICOM and filters based on SELECTED_VIEWS.
+        Uses metadata keyed by clip (SOPInstanceUID, see ``_clip_key``) to get the predicted_class
+        (view) of each DICOM and filters based on SELECTED_VIEWS. Request metadata keyed by
+        SeriesInstanceUID is still accepted.
         
         Args:
             dicoms: List of DICOM datasets
-            metadata: Dict keyed by SeriesInstanceUID containing view predictions
+            metadata: Dict keyed by clip (or by SeriesInstanceUID) containing view predictions
             
         Returns:
             List of filtered DICOMs matching selected views
@@ -469,10 +475,9 @@ class CustomPredictionService(BasePredictionService):
         filtered_dicoms = []
         
         for dicom in dicoms:
-            dicom_name = str(dicom.SeriesInstanceUID)
-            if dicom_name not in metadata:
+            dicom_meta = metadata.get(_clip_key(dicom)) or metadata.get(str(dicom.SeriesInstanceUID))
+            if dicom_meta is None:
                 continue
-            dicom_meta = metadata[dicom_name]
             pred_class = dicom_meta.get('predicted_class')
             if not matches_selected_view(pred_class):
                 continue
@@ -559,7 +564,7 @@ class CustomPredictionService(BasePredictionService):
         prepared_dicom_names: List[str] = []
 
         for dicom in dicoms:
-            dicom_name = str(dicom.SeriesInstanceUID)
+            dicom_name = _clip_key(dicom)
             video, status = self._prepare_view_classifier_video(dicom)
             if video is None:
                 metadata[dicom_name] = {
