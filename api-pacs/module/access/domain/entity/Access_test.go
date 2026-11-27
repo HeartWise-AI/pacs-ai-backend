@@ -66,3 +66,47 @@ func TestCatalogPartitions(t *testing.T) {
 	}
 	require.Len(t, AllPermissions(), 11)
 }
+
+func TestResearchModelsAreOutsideEveryModelAccessOfUsers(t *testing.T) {
+	t.Setenv("PACS_RESEARCH_MODEL_IDS", "EchoAlign")
+	base := ForRole(iamEntity.UserRole, nil)
+	require.True(t, base.AllModels)
+	require.False(t, base.Unrestricted())
+	require.False(t, base.AllowsModel("EchoAlign"))
+	require.True(t, base.AllowsModel("PanEcho"))
+	require.True(t, base.AllowsModel(""), "an unknown model is not a research model")
+
+	allModelsRole := ForRole(iamEntity.UserRole, &CustomRole{ID: "r", Name: "Clinicians", AllModels: true})
+	require.False(t, allModelsRole.AllowsModel("EchoAlign"))
+	require.True(t, allModelsRole.AllowsModel("PanEcho"))
+
+	research := ForRole(iamEntity.UserRole, &CustomRole{ID: "r2", Name: "Research", ModelIDs: []string{"EchoAlign", "PanEcho"}})
+	require.True(t, research.AllowsModel("EchoAlign"))
+	require.False(t, research.AllowsModel("CathEF_CLIP"))
+	require.False(t, research.AllowsModel(""))
+
+	clinicianList := ForRole(iamEntity.UserRole, &CustomRole{ID: "r3", ModelIDs: []string{"PanEcho"}})
+	require.False(t, clinicianList.AllowsModel("EchoAlign"))
+
+	for _, role := range []string{iamEntity.OwnerRole, iamEntity.AdminRole} {
+		access := ForRole(role, nil)
+		require.True(t, access.Unrestricted(), role)
+		require.True(t, access.AllowsModel("EchoAlign"), role)
+	}
+}
+
+func TestResearchModelListComesFromTheEnvironment(t *testing.T) {
+	t.Setenv("PACS_RESEARCH_MODEL_IDS", " A , B ,")
+	require.Equal(t, []string{"A", "B"}, ResearchModelIDs())
+	require.True(t, IsResearchModel("B"))
+	require.False(t, ForRole(iamEntity.UserRole, nil).AllowsModel("A"))
+	require.True(t, ForRole(iamEntity.UserRole, nil).AllowsModel("EchoAlign"))
+
+	t.Setenv("PACS_RESEARCH_MODEL_IDS", "")
+	require.Empty(t, ResearchModelIDs())
+	require.True(t, ForRole(iamEntity.UserRole, nil).Unrestricted(), "an empty list disables the exclusion")
+}
+
+func TestDefaultResearchModelList(t *testing.T) {
+	require.Equal(t, []string{"EchoAlign"}, DefaultResearchModelIDs)
+}

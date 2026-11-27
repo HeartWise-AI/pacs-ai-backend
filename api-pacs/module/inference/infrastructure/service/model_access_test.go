@@ -74,6 +74,20 @@ func TestAuthorizeResultModel(t *testing.T) {
 	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "Unregistered", "", onlyEcho), apiError.ForbiddenAccess)
 }
 
+func TestAuthorizeResultModelForEveryModelExceptResearch(t *testing.T) {
+	service := &InferenceQueryService{InferenceQueryRepositoryInterface: &resultModelsRepository{inferenceModelsQueryRepository{models: []entity.InferenceModel{
+		{ID: "reg-ea", TenantID: "t1", Name: "EchoAlign", ContainerID: "c-ea", DockerImage: "img",
+			Deployment: &entity.InferenceModelDeployment{ContainerID: "c-ea", ImageReference: "img", ArtifactModelID: "EchoAlign"}},
+		{ID: "reg-legacy", TenantID: "t1", Name: "Legacy", ContainerID: "c-legacy"},
+	}}}}
+	ctx := context.Background()
+	// Same semantics as access.AllowsModel for a base USER: "" (unknown) allowed, research refused.
+	everyButResearch := func(id string) bool { return id != "EchoAlign" }
+	require.EqualError(t, service.authorizeResultModel(ctx, "t1", "EchoAlign", "", everyButResearch), apiError.ForbiddenAccess)
+	require.NoError(t, service.authorizeResultModel(ctx, "t1", "Legacy", "", everyButResearch), "unknown modelId is not research")
+	require.NoError(t, service.authorizeResultModel(ctx, "t1", "Unregistered", "", everyButResearch))
+}
+
 func TestAuthorizeResultModelUsesCachedIdentityWhenContainerIsDown(t *testing.T) {
 	service := &InferenceQueryService{InferenceQueryRepositoryInterface: &resultModelsRepository{inferenceModelsQueryRepository{models: []entity.InferenceModel{
 		// Registered without a deployment snapshot; display name differs from the model-info name.

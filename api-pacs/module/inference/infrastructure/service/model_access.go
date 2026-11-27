@@ -73,10 +73,20 @@ func (service *InferenceQueryService) authorizeResultModel(ctx context.Context, 
 	}
 	directory := service.loadViewerModelDirectory(ctx, tenantID)
 	entry := directory.match(modelName, modelVersion)
-	if entry == nil {
+	modelID := ""
+	if entry != nil {
+		modelID = strings.TrimSpace(entry.artifactModelID())
+	}
+	// allow("") is true only for access to every model except research-only
+	// ones: a result whose model is unknown is then not a research result.
+	// Allowlist access rejects "" and keeps failing closed.
+	if modelID == "" {
+		if allow("") {
+			return nil
+		}
 		return errors.New(apiError.ForbiddenAccess)
 	}
-	if modelID := strings.TrimSpace(entry.artifactModelID()); modelID == "" || !allow(modelID) {
+	if !allow(modelID) {
 		return errors.New(apiError.ForbiddenAccess)
 	}
 	return nil
