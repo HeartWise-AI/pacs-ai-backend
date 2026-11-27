@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	postgresqlTypes "api-pacs/infrastructures/database/postgresql/types"
 	"api-pacs/infrastructures/providers/sdk/firebaseadmin"
@@ -32,12 +34,16 @@ func (repository *InferenceQueryRepository) SelectInferenceModelByID(ctx context
 		log.Println(err)
 		return entity.InferenceModel{}, errors.New(apiError.FirestoreError)
 	}
+	defer firestoreClient.Close()
 
 	// get firestore inference model
 	var inferenceModel entity.InferenceModel
 
 	firestoreRes, err := firestoreClient.Collection(inferenceModel.GetModelName()).Doc(ID).Get(ctx)
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return entity.InferenceModel{}, errors.New(apiError.MissingRecord)
+		}
 		log.Println(err)
 		return entity.InferenceModel{}, errors.New(apiError.FirestoreError)
 	}
@@ -48,6 +54,7 @@ func (repository *InferenceQueryRepository) SelectInferenceModelByID(ctx context
 		return entity.InferenceModel{}, errors.New(apiError.FirestoreError)
 	}
 
+	inferenceModel.ID = firestoreRes.Ref.ID
 	return inferenceModel, nil
 }
 
@@ -59,6 +66,7 @@ func (repository *InferenceQueryRepository) SelectInferenceModelByContainer(ctx 
 		log.Println(err)
 		return entity.InferenceModel{}, errors.New(apiError.FirestoreError)
 	}
+	defer firestoreClient.Close()
 
 	// get firestore inference model
 	var inferenceModel entity.InferenceModel
@@ -79,6 +87,7 @@ func (repository *InferenceQueryRepository) SelectInferenceModelByContainer(ctx 
 		return entity.InferenceModel{}, errors.New(apiError.FirestoreError)
 	}
 
+	inferenceModel.ID = firestoreRes[0].Ref.ID
 	return inferenceModel, nil
 }
 

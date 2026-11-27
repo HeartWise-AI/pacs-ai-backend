@@ -52,6 +52,9 @@ func (err *DispatchStudyHTTPError) Error() string {
 
 // StudyServiceDispatcher builds and emits explicit study-service ingest requests.
 type StudyServiceDispatcher struct {
+	DeploymentResolver interface {
+		ResolveDispatchDeployment(context.Context, entity.InferenceIngestionJob) (*entity.ActiveDeployment, error)
+	}
 	StudyServiceBaseURL       string
 	StudyServiceIngestToken   string
 	StudyServiceOperatorToken string
@@ -92,7 +95,15 @@ func (service *StudyServiceDispatcher) BuildDispatchStudyRequest(ctx context.Con
 		strings.TrimSpace(data.IngestionJob.ID),
 	)
 
+	var deployment *entity.ActiveDeployment
+	if service.DeploymentResolver != nil {
+		deployment, err = service.DeploymentResolver.ResolveDispatchDeployment(ctx, data.IngestionJob)
+		if err != nil {
+			return serviceTypes.DispatchStudyRequest{}, err
+		}
+	}
 	return serviceTypes.DispatchStudyRequest{
+		Deployment:            deployment,
 		XRequestID:            requestID,
 		TenantID:              tenantID,
 		IngestionJobID:        ingestionJobID,

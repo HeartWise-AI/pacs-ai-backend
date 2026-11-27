@@ -127,19 +127,20 @@ type BuildStudyServiceDispatchRequestInput struct {
 }
 
 type DispatchStudyRequest struct {
-	XRequestID            string              `json:"-"`
-	TenantID              *string             `json:"tenant_id"`
-	IngestionJobID        *string             `json:"ingestion_job_id"`
-	CandidateID           *string             `json:"candidate_id"`
-	RetrievalAttemptID    *string             `json:"retrieval_attempt_id"`
-	ProcessingRunID       *string             `json:"processing_run_id,omitempty"`
-	ProcessingExecutionID *string             `json:"processing_execution_id,omitempty"`
-	DispatchIntent        DispatchStudyIntent `json:"dispatch_intent,omitempty"`
-	StudyInstanceUID      string              `json:"study_instance_uid"`
-	OrthancStudyID        string              `json:"orthanc_study_id"`
-	Modality              string              `json:"modality"`
-	ModelName             string              `json:"model_name"`
-	ModelVersion          string              `json:"model_version"`
+	Deployment            *entity.ActiveDeployment `json:"deployment,omitempty"`
+	XRequestID            string                   `json:"-"`
+	TenantID              *string                  `json:"tenant_id"`
+	IngestionJobID        *string                  `json:"ingestion_job_id"`
+	CandidateID           *string                  `json:"candidate_id"`
+	RetrievalAttemptID    *string                  `json:"retrieval_attempt_id"`
+	ProcessingRunID       *string                  `json:"processing_run_id,omitempty"`
+	ProcessingExecutionID *string                  `json:"processing_execution_id,omitempty"`
+	DispatchIntent        DispatchStudyIntent      `json:"dispatch_intent,omitempty"`
+	StudyInstanceUID      string                   `json:"study_instance_uid"`
+	OrthancStudyID        string                   `json:"orthanc_study_id"`
+	Modality              string                   `json:"modality"`
+	ModelName             string                   `json:"model_name"`
+	ModelVersion          string                   `json:"model_version"`
 	// SeriesInstanceUIDs restricts the job to these series. It is omitted for
 	// automatic and study-wide manual dispatches.
 	SeriesInstanceUIDs []string `json:"series_instance_uids,omitempty"`

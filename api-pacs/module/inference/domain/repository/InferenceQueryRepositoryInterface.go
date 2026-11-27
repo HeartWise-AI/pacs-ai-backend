@@ -8,6 +8,12 @@ import (
 	"api-pacs/module/inference/infrastructure/repository/types"
 )
 
+// ActiveModelRegistrationReader is optional for repositories supporting the
+// private deployment registry. Existing query implementations remain compatible.
+type ActiveModelRegistrationReader interface {
+	ListActiveModelRegistrations(ctx context.Context) ([]entity.InferenceModel, error)
+}
+
 type InferenceQueryRepositoryInterface interface {
 	// SelectInferenceModelByID get inference model by id
 	SelectInferenceModelByID(ctx context.Context, ID string) (entity.InferenceModel, error)
