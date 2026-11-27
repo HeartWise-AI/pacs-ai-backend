@@ -386,6 +386,23 @@ Configure each remote PACS as a modality in Orthanc:
 - Required fields: AE title, host, port.
 - Restart Orthanc to pick up changes.
 
+Then register the modality for the tenant that owns it. All tenants share one Orthanc modality table, so api-pacs lists, queries, retrieves from, stores to, echoes, updates and removes a modality only for a tenant that has its record. In the Firestore `dicom_modalities` collection, create a document with **Document ID = `<tenantId>:<modalityId>`** (the modality ID is the Orthanc modality name):
+
+| Field | Type | Example |
+|---|---|---|
+| `id` | string | `acme-pacs:hospital-pacs` |
+| `tenant_id` | string | `acme-pacs` |
+| `modality_id` | string | `hospital-pacs` |
+| `aet` | string | `HOSPITAL_PACS` |
+| `host_hash` | string | MD5 of the modality host |
+| `c_find_enabled` | bool | `true` |
+| `c_move_enabled` | bool | `true` |
+| `c_store_enabled` | bool | `true` |
+| `created_at` | int | `1715000000` |
+| `updated_at` | int | `1715000000` |
+
+> The schema comes from [api-pacs/module/orthanc/domain/entity/DICOMModality.go](../api-pacs/module/orthanc/domain/entity/DICOMModality.go). Once the record exists, tenant admins can edit the modality from PACS-AI.
+
 ### 6.7 Smoke tests
 Run after install, before handoff. Steps 1–3 are CLI checks; step 4 is driven through the PACS-AI web UI.
 
