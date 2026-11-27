@@ -17,6 +17,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -46,6 +47,12 @@ func main() {
 	// Prints the log form of a UID, to find its lines in the logs:
 	//   api-pacs log-hash <uid>
 	if len(os.Args) > 2 && os.Args[1] == "log-hash" {
+		// Without a shared key every process draws its own, and the hash
+		// printed here would not match the server's lines.
+		if strings.TrimSpace(os.Getenv(logredact.KeyEnv)) == "" {
+			fmt.Fprintln(os.Stderr, "log-hash needs "+logredact.KeyEnv+": without it the server hashes with a random per-process key")
+			os.Exit(1)
+		}
 		fmt.Println(logredact.UID(os.Args[2]))
 		return
 	}

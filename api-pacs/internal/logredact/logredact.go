@@ -214,12 +214,23 @@ func Path(path string) string {
 			segments[i] = hashed
 			continue
 		}
+		// After /studies/, /series/, /instances/ (and /by-study/) any dotted
+		// number is a UID, however short (2.25.4242 is valid).
+		if i > 0 && uidRouteParent[strings.ToLower(segments[i-1])] && dottedNumber.MatchString(decoded) {
+			segments[i] = UID(decoded)
+			continue
+		}
 		// Anything else that still holds a UID (e.g. "x-<uid>") goes through
 		// the text rules.
 		segments[i] = uidCandidate.ReplaceAllStringFunc(segment, replaceUID)
 	}
 	return strings.Join(segments, "/")
 }
+
+// uidRouteParent lists the path segments followed by a UID.
+var uidRouteParent = map[string]bool{"studies": true, "series": true, "instances": true, "by-study": true}
+
+var dottedNumber = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)*$`)
 
 // RequestURI redacts a request URI ("/path?query") for the access log.
 func RequestURI(requestURI string) string {
@@ -251,10 +262,11 @@ func replaceUID(match string) string {
 
 // Text rules for free-form log lines.
 var (
-	// name=value and name: value, e.g. "00100020=123" or "patient_id=123".
-	textParam = regexp.MustCompile(`(?i)\b([A-Za-z_]*(?:uid|uids|patient[a-z_]*|accession[a-z_]*|studyid)|00100010|00100020|00100021|00100030|00101000|00101001|00080050|00080090|00200010|0020000d|0020000e|00080018)(=|: ?)([^\s&"',;)\]}]+)`)
-	// JSON-style "name":"value" (and "name": "value").
-	jsonParam = regexp.MustCompile(`(?i)"([A-Za-z_]*(?:uid|uids|patient[a-z_]*|accession[a-z_]*|studyid)|00100010|00100020|00100021|00100030|00101000|00101001|00080050|00080090|00200010|0020000d|0020000e|00080018)"(\s*:\s*)"([^"]*)"`)
+	// name=value, name: value and "name":"value"; the name decides (see
+	// paramClass and textClass), so free text and URLs inside error messages
+	// follow the same rules as query strings.
+	textParam = regexp.MustCompile(`\b([A-Za-z0-9_]+)(=|: ?)([^\s&?=/"',;)\]}]+)`)
+	jsonParam = regexp.MustCompile(`"([A-Za-z0-9_]+)"(\s*:\s*)"([^"]*)"`)
 )
 
 func textClass(name string) int {
@@ -265,6 +277,8 @@ func textClass(name string) int {
 	switch {
 	case strings.HasPrefix(lower, "patient"), strings.HasPrefix(lower, "accession"):
 		return classPHI
+	case strings.HasSuffix(lower, "uid"), strings.HasSuffix(lower, "uids"):
+		return classUID
 	}
 	return classNone
 }
@@ -294,8 +308,11 @@ func Text(line string) string {
 			}
 			return parts[1] + parts[2] + Redacted
 		case classUID:
-			if strings.HasPrefix(parts[3], "uid:") || strings.HasPrefix(parts[3], "[uid:") {
-				return match
+			// Only dotted numbers: this also leaves "uid:<hash>" alone.
+			for _, item := range strings.Split(parts[3], ",") {
+				if !dottedNumber.MatchString(item) {
+					return match
+				}
 			}
 			return parts[1] + parts[2] + value(classUID, parts[3])
 		}
