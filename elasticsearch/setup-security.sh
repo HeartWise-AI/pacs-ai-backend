@@ -86,7 +86,7 @@ expect_ok "$(es PUT "/_security/role/$API_PACS_ROLE" <<'JSON'
   "applications": [
     {
       "application": "kibana-.kibana",
-      "privileges": ["feature_indexPatterns.all"],
+      "privileges": ["feature_indexPatterns.all", "feature_advancedSettings.all"],
       "resources": ["space:default"]
     }
   ]
