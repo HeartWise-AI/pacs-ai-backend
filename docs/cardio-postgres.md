@@ -25,8 +25,9 @@ workers and medical-agent.
   keeps its own unnamed dev volume.)
 - The container refuses to start when its data directory is on NFS, CIFS/SMB or CephFS
   (`REFUSING to start: PGDATA is on nfs`, exit 78), or when the filesystem cannot be checked.
-- Other hosts that need the data connect over the network (published port 5434, limited by
-  `pg_hba.conf` and the firewall); they never mount the files.
+- Other hosts never mount the files and never connect to this database. Port 5434 is published on
+  loopback only. A remote CardioAgent (e.g. wise-training) reads results and starts runs through the
+  study-service API with a scoped remote token; see [integrations/wise-training-access.md](integrations/wise-training-access.md).
 
 ## TLS
 
