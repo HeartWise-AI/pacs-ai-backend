@@ -28,6 +28,17 @@ workers and medical-agent.
 - Other hosts that need the data connect over the network (published port 5434, limited by
   `pg_hba.conf` and the firewall); they never mount the files.
 
+## TLS
+
+Set `CARDIO_DB_SSL=on` to serve TLS on the published port. The server reads
+`/etc/cardio-postgres-tls/server.crt` and `server.key`, mounted read-only from
+`CARDIO_DB_TLS_DIR` (default `./secrets/cardio-postgres-tls`, git-ignored). The key must be
+mode 0600 and owned by uid 999 (`postgres` in the image), or Postgres refuses to start. Keep a
+private copy of the pair outside the repo. Clients verify with
+`sslmode=verify-full sslrootcert=<server.crt>` and a host name listed in the certificate's SAN
+(`openssl x509 -in server.crt -noout -ext subjectAltName`). Containers on `pacs-net` keep
+connecting with the default `sslmode=prefer`.
+
 ## Backups
 
 The `cardio-postgres-backup` service (image `postgres:16`, script

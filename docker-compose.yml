@@ -1,7 +1,13 @@
 services:
   postgres:
     image: postgres:16
-    command: ["postgres", "-c", "timezone=${APP_TIMEZONE}", "-c", "log_timezone=${APP_TIMEZONE}"]
+    # TLS is opt-in (CARDIO_DB_SSL=on): remote readers (e.g. wise-training) connect to the
+    # published port with sslmode=verify-full. server.crt/server.key live OUTSIDE git in
+    # CARDIO_DB_TLS_DIR (default ./secrets/cardio-postgres-tls; key mode 0600, owner uid 999).
+    command: ["postgres", "-c", "timezone=${APP_TIMEZONE}", "-c", "log_timezone=${APP_TIMEZONE}",
+              "-c", "ssl=${CARDIO_DB_SSL:-off}",
+              "-c", "ssl_cert_file=/etc/cardio-postgres-tls/server.crt",
+              "-c", "ssl_key_file=/etc/cardio-postgres-tls/server.key"]
     container_name: cardio-postgres
     restart: unless-stopped
     environment:
@@ -21,6 +27,7 @@ services:
       - --
     volumes:
       - cardio_postgres_data:/var/lib/postgresql/data
+      - ${CARDIO_DB_TLS_DIR:-./secrets/cardio-postgres-tls}:/etc/cardio-postgres-tls:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cardio -d cardio_agent"]
       interval: 5s
