@@ -100,8 +100,15 @@ def _read_dicom(path, pick, crop):
     idx = pick(n, _dicom_fps(ds))
     wanted = sorted({min(i, n - 1) for i in idx})
     decoded = {}
+    # PACS-AI change: convert 10/12/16-bit and MONOCHROME1 pixels to 8-bit display values with the
+    # shared clip-level helper instead of a wrapping uint8 cast; 8-bit input is returned unchanged.
+    from utils.dicom_pixels import to_display_uint8
     # iter_pixels returns RGB for YBR_FULL_422 JPEG files; do not convert color again.
-    for j, arr in zip(wanted, iter_pixels(str(path), indices=wanted)):
+    arrays = [np.asarray(arr) for arr in iter_pixels(str(path), indices=wanted)]
+    if arrays:
+        stacked = to_display_uint8(np.stack(arrays), getattr(ds, "PhotometricInterpretation", None))
+        arrays = list(stacked)
+    for j, arr in zip(wanted, arrays):
         a = np.asarray(arr).astype(np.uint8)
         img = Image.fromarray(a).convert("RGB") if a.ndim == 2 else Image.fromarray(a)
         decoded[j] = img.crop(box) if box is not None else img

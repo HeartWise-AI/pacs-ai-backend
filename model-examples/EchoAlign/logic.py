@@ -17,6 +17,7 @@ import gc
 import html
 import json
 import os
+import re
 import tempfile
 import time
 from io import BytesIO
@@ -26,6 +27,7 @@ import numpy as np
 import pydicom
 import torch
 import yaml
+from pydicom.multival import MultiValue
 from scipy.special import expit, softmax
 
 from models.echoalign import EchoAlign, load_echo
@@ -35,7 +37,6 @@ from utils.genericLogic import BasePredictionService
 from utils.http_utils import Config, PredictRequest
 
 MODEL_KEY = "echoalign"
-TEE_WORDS = ("TEE", "ETO", "TRANSESOPH", "TRANSOESOPH")
 RESEARCH_BANNER = "Research use only — EchoAlign (CC BY-NC 4.0), not for clinical decisions"
 ATTRIBUTION = (
     "EchoAlign by Aly, Taratynova, Mecharbat, Sandler, Sokol, Penn, Maier-Hein, Saeed and Yaqub "
@@ -64,9 +65,24 @@ ZERO_SHOT = ["aortic_stenosis", "aortic_regurgitation", "mitral_regurgitation", 
              "lv_systolic_dysfunction"]
 
 
+# Same transesophageal markers as PanEcho: study/series descriptions (English and French; ETT is TTE)
+# and TEE probe names in TransducerData (e.g. Philips X8-2t, X7-2t; GE 6VT-D, 9VT-D).
+_TEE_DESCRIPTION = re.compile(r"\bTEE\b|\bETO\b|TRANS[- ]?O?ESOPH|TRANSESOPH|TRANSOESOPH", re.IGNORECASE)
+_TEE_TRANSDUCER = re.compile(r"^(X\d+[-_]\d+T|\d+VT(-D)?|.*TEE.*)$", re.IGNORECASE)
+
+
 def is_tee(ds) -> bool:
-    text = " ".join(str(getattr(ds, k, "")) for k in ("SeriesDescription", "ProtocolName", "TransducerType")).upper()
-    return any(word in text for word in TEE_WORDS)
+    """True when the clip's headers say it was acquired transesophageally."""
+    for keyword in ("StudyDescription", "SeriesDescription", "ProtocolName"):
+        value = str(getattr(ds, keyword, "") or "")
+        if value and _TEE_DESCRIPTION.search(value):
+            return True
+    transducer = getattr(ds, "TransducerData", None)
+    if transducer:
+        first = transducer[0] if isinstance(transducer, (list, tuple, MultiValue)) else str(transducer).split("\\")[0]
+        if _TEE_TRANSDUCER.match(str(first).strip()):
+            return True
+    return False
 
 
 def frame_count(ds) -> int:

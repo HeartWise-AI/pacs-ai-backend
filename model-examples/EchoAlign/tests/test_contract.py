@@ -43,7 +43,7 @@ def test_no_weights_in_source():
 
 
 def _ds(**kw):
-    base = dict(Modality="US", Rows=10, NumberOfFrames=30, SeriesDescription="", ProtocolName="", TransducerType="")
+    base = dict(Modality="US", Rows=10, NumberOfFrames=30, SeriesDescription="", ProtocolName="", StudyDescription="")
     base.update(kw)
     return SimpleNamespace(**base)
 
@@ -55,6 +55,39 @@ def test_instance_selection_matches_panecho_by_default():
     assert select_reason(_ds(NumberOfFrames=1), "all") is None
     assert select_reason(_ds(SeriesDescription="ETO 3D"), "all") == "tee"
     assert select_reason(_ds(Modality="SR"), "all") == "non_image"
+    assert select_reason(_ds(StudyDescription="ETO PERIOPERATOIRE"), "multiframe") == "tee"
+    assert select_reason(_ds(StudyDescription="Echo trans-oesophagienne"), "multiframe") == "tee"
+    assert select_reason(_ds(TransducerData=["X7-2t", "", ""]), "multiframe") == "tee"
+    assert select_reason(_ds(TransducerData="6VT-D"), "multiframe") == "tee"
+    assert select_reason(_ds(StudyDescription="ECHO CARDIAQUE AVEC DOPPLER", TransducerData="M5Sc"), "multiframe") is None
+
+
+def test_loader_converts_high_bit_depth_and_monochrome1(tmp_path):
+    import numpy as np
+    import pydicom
+    from pydicom.dataset import FileDataset, FileMetaDataset
+    from pydicom.uid import ExplicitVRLittleEndian, generate_uid
+    from models.echoalign.loader import read_frames
+
+    def write(arr, photometric, bits):
+        meta = FileMetaDataset(); meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.3.1"; meta.MediaStorageSOPInstanceUID = generate_uid()
+        ds = FileDataset(str(tmp_path / "x.dcm"), {}, file_meta=meta, preamble=b"\0" * 128)
+        ds.Modality = "US"; ds.Rows, ds.Columns = arr.shape[1:]; ds.NumberOfFrames = arr.shape[0]
+        ds.SamplesPerPixel = 1; ds.PhotometricInterpretation = photometric
+        ds.BitsAllocated = bits; ds.BitsStored = bits; ds.HighBit = bits - 1; ds.PixelRepresentation = 0
+        ds.PixelData = arr.tobytes(); path = tmp_path / f"{photometric}{bits}.dcm"; ds.save_as(path, enforce_file_format=True)
+        return path
+
+    ramp = np.tile(np.linspace(0, 4000, 8, dtype=np.uint16), (2, 8, 1))
+    frames = read_frames(write(ramp, "MONOCHROME2", 16), n_frames=1, target_fps=None)
+    row = np.asarray(frames[0])[0, :, 0]
+    assert row[0] < row[-1] and row[-1] >= 250, "16-bit values are windowed, not wrapped"
+    eight = np.tile(np.arange(0, 256, 32, dtype=np.uint8), (2, 8, 1))
+    inv = np.asarray(read_frames(write(eight, "MONOCHROME1", 8), n_frames=1, target_fps=None)[0])[0, :, 0]
+    assert inv[0] == 255 and inv[-1] == 255 - 224
+    same = np.asarray(read_frames(write(eight, "MONOCHROME2", 8), n_frames=1, target_fps=None)[0])[0, :, 0]
+    assert list(same) == list(range(0, 256, 32)), "8-bit input is unchanged"
 
 
 def test_heads_follow_the_model_card_recipe():
