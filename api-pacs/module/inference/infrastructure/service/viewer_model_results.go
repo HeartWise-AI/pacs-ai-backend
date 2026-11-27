@@ -55,6 +55,9 @@ func ViewerReportLimitsFromEnvironment() (time.Duration, int64) {
 type viewerModelEntry struct {
 	model entity.InferenceModel
 	info  *dockerInferenceTypes.ModelInfo
+	// running is true when Docker reports the container running, whether or
+	// not it answered the model-info probe in time.
+	running bool
 }
 
 func (entry viewerModelEntry) version() string {
@@ -120,6 +123,7 @@ func (service *InferenceQueryService) loadViewerModelDirectory(ctx context.Conte
 				if err != nil || info.Lifecycle != dockerTypes.LifecycleRunning {
 					return nil
 				}
+				entries[index].running = true
 				name := strings.TrimPrefix(strings.TrimSpace(info.Name), "/")
 				if name == "" {
 					return nil
@@ -138,14 +142,24 @@ func (service *InferenceQueryService) loadViewerModelDirectory(ctx context.Conte
 	}
 	// A stopped or busy container has no live model info: keep its last good
 	// identity (as /model/proxy/available does) so name matching and
-	// custom-role model access still know which model it is. Capabilities are
-	// not carried over, so report availability still needs a live answer.
+	// custom-role model access still know which model it is.
+	// A running container that did not answer in time (loading weights,
+	// predicting, or restarting its API after the idle timeout) also keeps its
+	// last good capabilities: the report endpoint waits for the container to
+	// be ready, so the viewer can still ask for the HTML report instead of
+	// falling back to the stored JSON. A stopped container gets none, since
+	// listing never starts containers.
 	for index := range entries {
 		if entries[index].info != nil {
 			continue
 		}
 		if cached, ok := service.lastModelInfo(ctx, strings.TrimSpace(entries[index].model.ContainerID)); ok && strings.TrimSpace(cached.ModelID) != "" {
-			entries[index].info = &dockerInferenceTypes.ModelInfo{ModelID: cached.ModelID, ModelName: cached.ModelName, Version: cached.Version}
+			info := &dockerInferenceTypes.ModelInfo{ModelID: cached.ModelID, ModelName: cached.ModelName, Version: cached.Version}
+			if entries[index].running && cached.Capabilities != nil {
+				capabilities := *cached.Capabilities
+				info.Capabilities = &capabilities
+			}
+			entries[index].info = info
 		}
 	}
 	sort.SliceStable(entries, func(left, right int) bool { return entries[left].model.ID < entries[right].model.ID })

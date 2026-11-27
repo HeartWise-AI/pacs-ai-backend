@@ -406,6 +406,73 @@ func TestGetStudyLatestModelResultsUsesCachedIdentityWhenContainerIsDown(t *test
 	require.False(t, response.Results[0].ReportAvailable, "report capability still needs a live container")
 }
 
+// Live case (2026-11-27): the viewer opened a large XA study while
+// DeepCORO-JEPA restarted its API after the idle timeout (model-info refused
+// for ~7 s). latest-results said reportAvailable=false, so the drawer never
+// asked for the HTML report and showed the stored JSON. A running container
+// that misses the probe keeps its last good report capability.
+func TestGetStudyLatestModelResultsKeepsCachedReportCapabilityWhenRunningContainerIsBusy(t *testing.T) {
+	service, provider, _ := viewerResultsService()
+	service.DockerInferenceAPIInterface = &viewerModelInfoAPI{err: errors.New("no live upstreams")}
+	service.rememberModelInfo(context.Background(), serviceTypes.GetInferenceAvailableModelResult{
+		ContainerID: "container-1", ModelID: "deepcoro-jepa", ModelName: "DeepCORO-JEPA", Version: "1.3.0",
+		Capabilities: &dockerInferenceTypes.ModelCapabilities{RenderReport: true},
+	})
+	provider.results = serviceTypes.StudyServiceLatestResults{StudyInstanceUID: "1.2.3", Results: []serviceTypes.StudyServiceLatestResult{{
+		JobID: "job-1", ModelName: "DeepCORO-JEPA", Modality: "angiogram", Status: "completed",
+	}}}
+
+	response, err := service.GetStudyLatestModelResults(context.Background(), serviceTypes.GetStudyLatestModelResults{
+		TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "registration-1", *response.Results[0].ModelID)
+	require.True(t, response.Results[0].ReportAvailable, "a busy running container keeps its report capability")
+}
+
+func TestGetStudyLatestModelResultsCachedCapabilityNeedsRunningContainer(t *testing.T) {
+	for name, setup := range map[string]func(*InferenceQueryService){
+		"stopped container": func(service *InferenceQueryService) {
+			service.DockerSDKInterface = &viewerResultsDocker{lifecycle: dockerTypes.LifecycleStopped}
+		},
+		"no capability remembered": func(service *InferenceQueryService) {
+			service.DockerInferenceAPIInterface = &viewerModelInfoAPI{err: errors.New("timeout")}
+			service.availableModels.store(serviceTypes.GetInferenceAvailableModelResult{
+				ContainerID: "container-1", ModelID: "deepcoro-jepa", ModelName: "DeepCORO-JEPA", Version: "1.3.0",
+			}, nil)
+		},
+		"capability remembered as off": func(service *InferenceQueryService) {
+			service.DockerInferenceAPIInterface = &viewerModelInfoAPI{err: errors.New("timeout")}
+			service.availableModels.store(serviceTypes.GetInferenceAvailableModelResult{
+				ContainerID: "container-1", ModelID: "deepcoro-jepa", ModelName: "DeepCORO-JEPA", Version: "1.3.0",
+				Capabilities: &dockerInferenceTypes.ModelCapabilities{RenderReport: false},
+			}, nil)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service, provider, _ := viewerResultsService()
+			service.rememberModelInfo(context.Background(), serviceTypes.GetInferenceAvailableModelResult{
+				ContainerID: "container-1", ModelID: "deepcoro-jepa", ModelName: "DeepCORO-JEPA", Version: "1.3.0",
+				Capabilities: &dockerInferenceTypes.ModelCapabilities{RenderReport: true},
+			})
+			setup(service)
+			provider.results = serviceTypes.StudyServiceLatestResults{StudyInstanceUID: "1.2.3", Results: []serviceTypes.StudyServiceLatestResult{{
+				JobID: "job-1", ModelName: "DeepCORO-JEPA", Modality: "angiogram", Status: "completed",
+			}}}
+
+			response, err := service.GetStudyLatestModelResults(context.Background(), serviceTypes.GetStudyLatestModelResults{
+				TenantID: "tenant-a", StudyInstanceUID: "1.2.3",
+			})
+
+			require.NoError(t, err)
+			require.Len(t, response.Results, 1)
+			require.False(t, response.Results[0].ReportAvailable)
+		})
+	}
+}
+
 // Live case (2026-11-26): an automatic run used 4 videos, then the user reran
 // the model from the viewer on one series. The automatic run stays the
 // reported result (best-run rule) and the rerun must be listed with its own

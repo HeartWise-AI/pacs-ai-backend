@@ -357,6 +357,9 @@ type GetInferenceAvailableModelResult struct {
 	ModelFacts                    ModelFacts
 	Version                       string
 	Provenance                    *dockerInferenceTypes.ModelProvenance
+	// Capabilities is the optional-endpoint list of the last good model-info,
+	// so a busy or restarting container keeps its report capability.
+	Capabilities                  *dockerInferenceTypes.ModelCapabilities
 	DicomTargetLevel              string
 	DicomUploadMin                int
 	DicomUploadMax                int
