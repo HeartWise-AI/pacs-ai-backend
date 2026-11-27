@@ -93,10 +93,11 @@ func TestUpdateTenantUserByUserActorKeepsRolesUnchanged(t *testing.T) {
 				UserCommandRepositoryInterface: repository,
 				UserQueryRepositoryInterface:   &accountAccessQueryRepository{users: users},
 				TenantQueryServiceInterface:    missingTenantQuery{},
+				IAMCommandServiceInterface:     &accountAccessIAM{},
 			}
 			err := service.UpdateTenantUser(context.Background(), serviceTypes.UpdateTenantUser{
 				ID: testCase.target, TenantID: "tenant-a", Role: testCase.role, Name: "n",
-				ActorUserID: "user-a", ActorRole: iamEntity.UserRole,
+				ActorUserID: "user-a", ActorRole: iamEntity.UserRole, ActorCanManageMembers: true,
 			})
 			if testCase.allowed {
 				require.NoError(t, err)
