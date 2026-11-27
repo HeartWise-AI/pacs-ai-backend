@@ -122,6 +122,8 @@ const (
 	InferenceUpgradeConflict string = "INFERENCE_UPGRADE_CONFLICT"
 	// InferenceUpgradeUnavailable indicates that managed deployment is disabled or not configured.
 	InferenceUpgradeUnavailable string = "INFERENCE_UPGRADE_UNAVAILABLE"
+	// InferenceIngestionJobUpgradeConflict rejects stale or unsafe ingestion-job retargeting.
+	InferenceIngestionJobUpgradeConflict string = "INFERENCE_INGESTION_JOB_UPGRADE_CONFLICT"
 	// InferenceCandidateDeploymentDisabled prevents development artifacts from running in protected environments.
 	InferenceCandidateDeploymentDisabled string = "INFERENCE_CANDIDATE_DEPLOYMENT_DISABLED"
 	// InferenceDeploymentFailed is the safe public code for an asynchronous deployment failure.

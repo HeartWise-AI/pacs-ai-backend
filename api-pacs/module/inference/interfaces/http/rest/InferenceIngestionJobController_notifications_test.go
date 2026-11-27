@@ -3,6 +3,7 @@ package rest
 import (
 	"bytes"
 	"context"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -14,15 +15,18 @@ import (
 	"github.com/stretchr/testify/require"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
+	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/application"
 	serviceTypes "api-pacs/module/inference/infrastructure/service/types"
 )
 
 type ingestionJobServiceCapture struct {
 	application.InferenceCommandServiceInterface
-	created  []serviceTypes.CreateInferenceIngestionJob
-	imported []serviceTypes.CreateInferenceIngestionJob
-	updated  []serviceTypes.UpdateInferenceIngestionJob
+	created    []serviceTypes.CreateInferenceIngestionJob
+	imported   []serviceTypes.CreateInferenceIngestionJob
+	updated    []serviceTypes.UpdateInferenceIngestionJob
+	upgraded   []serviceTypes.UpgradeInferenceIngestionJob
+	upgradeErr error
 }
 
 func (capture *ingestionJobServiceCapture) CreateInferenceIngestionJob(_ context.Context, data serviceTypes.CreateInferenceIngestionJob) error {
@@ -38,6 +42,11 @@ func (capture *ingestionJobServiceCapture) ImportInferenceIngestionJobs(_ contex
 func (capture *ingestionJobServiceCapture) UpdateInferenceIngestionJob(_ context.Context, data serviceTypes.UpdateInferenceIngestionJob) error {
 	capture.updated = append(capture.updated, data)
 	return nil
+}
+
+func (capture *ingestionJobServiceCapture) UpgradeInferenceIngestionJob(_ context.Context, data serviceTypes.UpgradeInferenceIngestionJob) error {
+	capture.upgraded = append(capture.upgraded, data)
+	return capture.upgradeErr
 }
 
 func authenticatedIngestionRequest(request *http.Request) *http.Request {
@@ -88,6 +97,29 @@ func TestUpdateInferenceIngestionJobLeavesSwitchUnchangedWhenAbsent(t *testing.T
 	require.Nil(t, capture.updated[0].NotificationsEnabled)
 	require.False(t, *capture.updated[1].NotificationsEnabled)
 	require.True(t, *capture.updated[2].NotificationsEnabled)
+}
+
+func TestUpgradeInferenceIngestionJobUsesAuthenticatedTenantAndMapsConflict(t *testing.T) {
+	capture := &ingestionJobServiceCapture{}
+	controller := InferenceCommandController{InferenceCommandServiceInterface: capture}
+	requestFor := func() *http.Request {
+		routeContext := chi.NewRouteContext()
+		routeContext.URLParams.Add("ID", "job-1")
+		request := httptest.NewRequest(http.MethodPost, "/v1/inference/ingestion/job/job-1/upgrade", strings.NewReader(`{"expectedModelVersion":"1.0.0"}`))
+		return authenticatedIngestionRequest(request.WithContext(context.WithValue(request.Context(), chi.RouteCtxKey, routeContext)))
+	}
+
+	recorder := httptest.NewRecorder()
+	controller.UpgradeInferenceIngestionJob(recorder, requestFor())
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.Equal(t, []serviceTypes.UpgradeInferenceIngestionJob{{
+		ID: "job-1", TenantID: "tenant-a", ExpectedModelVersion: "1.0.0",
+	}}, capture.upgraded)
+
+	capture.upgradeErr = errors.New(apiError.InferenceIngestionJobUpgradeConflict)
+	recorder = httptest.NewRecorder()
+	controller.UpgradeInferenceIngestionJob(recorder, requestFor())
+	require.Equal(t, http.StatusConflict, recorder.Code, recorder.Body.String())
 }
 
 func csvImportRequest(t *testing.T, content string) *http.Request {

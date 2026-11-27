@@ -482,6 +482,7 @@ func (service *InferenceQueryService) GetInferenceAvailableModels(ctx context.Co
 				result := types.GetInferenceAvailableModelResult{
 					ContainerID:                   inferenceModel.ContainerID,
 					ContainerName:                 containerName,
+					RegistrationID:                inferenceModel.ID,
 					ModelID:                       modelInfo.Data.ModelID,
 					ModelName:                     modelInfo.Data.ModelName,
 					ModelFacts:                    types.ModelFacts(modelFacts.Data),

@@ -18,6 +18,7 @@ type ingestionRegistrationReader struct {
 	repository.InferenceQueryRepositoryInterface
 	model  entity.InferenceModel
 	models []entity.InferenceModel
+	job    entity.InferenceIngestionJob
 	err    error
 }
 
@@ -37,6 +38,10 @@ func (reader *ingestionRegistrationReader) SelectInferenceModels(context.Context
 
 func (reader *ingestionRegistrationReader) SelectInferenceModelByID(context.Context, string) (entity.InferenceModel, error) {
 	return reader.model, reader.err
+}
+
+func (reader *ingestionRegistrationReader) SelectInferenceIngestionJobByID(string) (entity.InferenceIngestionJob, error) {
+	return reader.job, reader.err
 }
 
 type ingestionContainerCapture struct {

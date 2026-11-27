@@ -1090,6 +1090,56 @@ func (controller *InferenceCommandController) UpdateInferenceIngestionJob(w http
 	response.JSON(w)
 }
 
+// UpgradeInferenceIngestionJob retargets a stopped ingestion job to the
+// currently deployed version of its existing model registration.
+func (controller *InferenceCommandController) UpgradeInferenceIngestionJob(w http.ResponseWriter, r *http.Request) {
+	ID := strings.TrimSpace(chi.URLParam(r, "ID"))
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	if ID == "" || strings.TrimSpace(tenantID) == "" {
+		response := viewmodels.HTTPResponseVM{
+			Status: http.StatusBadRequest, Success: false, Message: "Invalid ingestion job upgrade request.", ErrorCode: apiError.InvalidPayload,
+		}
+		response.JSON(w)
+		return
+	}
+
+	var request types.UpgradeInferenceIngestionJobRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || types.Validate.Struct(request) != nil {
+		response := viewmodels.HTTPResponseVM{
+			Status: http.StatusBadRequest, Success: false, Message: "Invalid ingestion job upgrade request.", ErrorCode: apiError.InvalidPayload,
+		}
+		response.JSON(w)
+		return
+	}
+
+	err := controller.InferenceCommandServiceInterface.UpgradeInferenceIngestionJob(r.Context(), serviceTypes.UpgradeInferenceIngestionJob{
+		ID: ID, TenantID: tenantID, ExpectedModelVersion: request.ExpectedModelVersion,
+	})
+	if err != nil {
+		status, message := http.StatusInternalServerError, "Please contact technical support."
+		switch err.Error() {
+		case apiError.InvalidPayload:
+			status, message = http.StatusBadRequest, "Invalid ingestion job upgrade request."
+		case apiError.MissingRecord:
+			status, message = http.StatusNotFound, "Ingestion job or model registration not found."
+		case apiError.InferenceIngestionJobUpgradeConflict:
+			status, message = http.StatusConflict, "Stop the job and wait for active processing to finish, then refresh and try again."
+		case apiError.InferenceUpgradeUnavailable:
+			status, message = http.StatusConflict, "The model does not have a managed deployment available for upgrade."
+		case apiError.DatabaseError:
+			status, message = http.StatusInternalServerError, "Error occurred while upgrading the inference ingestion job."
+		}
+		response := viewmodels.HTTPResponseVM{Status: status, Success: false, Message: message, ErrorCode: err.Error()}
+		response.JSON(w)
+		return
+	}
+
+	response := viewmodels.HTTPResponseVM{
+		Status: http.StatusOK, Success: true, Message: "Inference ingestion job upgraded successfully.",
+	}
+	response.JSON(w)
+}
+
 // requestUserID returns the authenticated user, or "" when the request
 // carries none.
 func requestUserID(r *http.Request) string {
