@@ -817,7 +817,7 @@
           "modelVersion": {
             "type": "string",
             "description": "Container version that rendered the report",
-            "example": "1.0.2"
+            "example": "1.0.3"
           }
         }
       }

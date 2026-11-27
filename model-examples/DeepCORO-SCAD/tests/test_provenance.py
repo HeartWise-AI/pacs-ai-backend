@@ -19,7 +19,7 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     provenance = manifest["provenance"]
 
-    assert manifest["version"] == "1.0.1"
+    assert manifest["version"] == "1.0.2"
     assert config["ModelStateDict"]["model_path"] == provenance["weightsPath"]
     assert provenance == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
@@ -84,6 +84,6 @@ def test_official_dockerfile_consumes_release_metadata():
 def test_cuda_torch_and_torchvision_pins_match_the_validated_runtime():
     requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
 
-    assert "--extra-index-url https://download.pytorch.org/whl/cu124" in requirements
-    assert "torch==2.6.0+cu124" in requirements
-    assert "torchvision==0.21.0+cu124" in requirements
+    assert "--extra-index-url https://download.pytorch.org/whl/cu126" in requirements
+    assert "torch==2.13.0+cu126" in requirements
+    assert "torchvision==0.28.0+cu126" in requirements

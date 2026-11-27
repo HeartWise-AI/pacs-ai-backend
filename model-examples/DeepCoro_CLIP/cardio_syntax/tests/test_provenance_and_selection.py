@@ -16,7 +16,7 @@ from utils.resource_config import load_model_info, model_info_payload  # noqa: E
 
 def test_manifest_pins_the_checkpoint_the_service_runs():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
-    assert manifest["version"] == "1.1.0"
+    assert manifest["version"] == "1.1.2"
     config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
     assert manifest["dicomUploadMax"] == config["VideoMILWrapper"]["num_videos"] == 10
     assert config["ModelStateDict"]["model_path"] == manifest["provenance"]["weightsPath"]

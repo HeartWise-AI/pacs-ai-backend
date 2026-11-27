@@ -239,7 +239,7 @@
                     "domainName": "Cardiology",
                     "stage": "ai_inference",
                     "modality": "Angiogram",
-                    "version": "6.0.1",
+                    "version": "6.0.2",
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
@@ -867,7 +867,7 @@
           "modelVersion": {
             "type": "string",
             "description": "Container version that rendered the report",
-            "example": "6.0.1"
+            "example": "6.0.2"
           }
         }
       }

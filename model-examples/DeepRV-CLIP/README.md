@@ -72,6 +72,10 @@ another model version with other thresholds) is refused with 422 (`INVALID_RESUL
 
 ## Changelog
 
+- 1.0.3: security patch: PyTorch 2.13.0 (CUDA 12.6 build), torchvision 0.28.0, closing the open Dependabot
+  PyTorch advisories (incl. critical GHSA-53q9-r3pm-6pq6 and high GHSA-63cw-57p8-fm3p). Unpinned Python
+  dependencies are now pinned to the versions of the previous image. Same weights, preprocessing, thresholds
+  and report; predictions checked against the previous image on synthetic and real XA studies.
 - 1.0.2: includes `POST /inference/render-report` and `capabilities.renderReport` in model-info
   (no image of 1.0.2 was published before this was added). The endpoint does not change the
   model, weights, preprocessing, predictions or live report.

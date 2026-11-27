@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "1.0.3"
+    "version": "1.0.4"
   },
   "servers": [
     {
@@ -275,7 +275,7 @@
                     "domainName": "Cardiology",
                     "stage": "ai_inference",
                     "modality": "Angiogram",
-                    "version": "1.0.3",
+                    "version": "1.0.4",
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
@@ -943,7 +943,7 @@
           "modelVersion": {
             "type": "string",
             "description": "Container version that rendered the report",
-            "example": "1.0.3"
+            "example": "1.0.4"
           }
         }
       }

@@ -115,7 +115,7 @@ def test_render_report_equals_html_mode_predict(client, monkeypatch, lvef, proba
     assert rendered.status_code == 200, rendered.text
     body = rendered.json()
     import main
-    assert body["success"] is True and body["data"]["modelVersion"] == main.served_model_info["version"] == "1.0.2"
+    assert body["success"] is True and body["data"]["modelVersion"] == main.served_model_info["version"] == "1.0.4"
     assert body["data"]["htmlBase64"] == html_mode["data"]["htmlBase64"]
     assert f"{round(lvef, 1)}%" in _html(rendered)
     # the whole response envelope is accepted too
@@ -326,7 +326,7 @@ def test_render_report_is_not_model_activity():
 def test_model_info_advertises_render_report(client):
     data = client.get("/inference/model-info").json()["data"]
     assert data["capabilities"] == {"renderReport": True}
-    assert data["version"] == "1.0.2" and "build" not in data
+    assert data["version"] == "1.0.4" and "build" not in data
     manifest = json.loads((ROOT / "data" / "model_info.json").read_text(encoding="utf-8"))
     for dockerfile in ("Dockerfile", "Dockerfile.local"):
         text = (ROOT / dockerfile).read_text(encoding="utf-8")

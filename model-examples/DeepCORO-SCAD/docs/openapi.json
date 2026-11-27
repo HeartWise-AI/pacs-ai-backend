@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "1.0.1"
+    "version": "1.0.2"
   },
   "servers": [
     {
@@ -221,7 +221,7 @@
                     "domainName": "Cardiology",
                     "stage": "ai_inference",
                     "modality": "Angiogram",
-                    "version": "1.0.1",
+                    "version": "1.0.2",
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
@@ -684,7 +684,7 @@
           "version": {
             "type": "string",
             "description": "Model version",
-            "example": "1.0.1"
+            "example": "1.0.2"
           },
           "dicomTargetLevel": {
             "type": "string",
@@ -898,7 +898,7 @@
           "modelVersion": {
             "type": "string",
             "description": "Container version that rendered the report",
-            "example": "1.0.1"
+            "example": "1.0.2"
           }
         }
       }
