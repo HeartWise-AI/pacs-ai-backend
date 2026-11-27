@@ -22,6 +22,12 @@ type OrthancCommandRepository struct {
 	FirebaseAdminSDK *firebaseadmin.FirebaseAdminSDK
 }
 
+// SelectDICOMModalityByModalityID get DICOM modality by modality id
+func (repository *OrthancCommandRepository) SelectDICOMModalityByModalityID(ctx context.Context, tenantID, modalityID string) (entity.DICOMModality, error) {
+	queryRepository := &OrthancQueryRepository{FirebaseAdminSDK: repository.FirebaseAdminSDK}
+	return queryRepository.SelectDICOMModalityByModalityID(ctx, tenantID, modalityID)
+}
+
 // DeleteDICOMModality deletes a dicom modality
 func (repository *OrthancCommandRepository) DeleteDICOMModality(ctx context.Context, tenantID, modalityID string) error {
 	var model entity.DICOMModality

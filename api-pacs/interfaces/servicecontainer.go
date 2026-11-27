@@ -177,7 +177,7 @@ func (k *kernel) RegisterLeadRESTCommandController() leadREST.LeadCommandControl
 // Proxies
 // RegisterDockerInferenceProxy performs dependency injection to the RegisterDockerInferenceProxy
 func (k *kernel) RegisterDockerInferenceProxy() dockerInferenceProxy.DockerInferenceProxy {
-	return dockerInferenceProxy.DockerInferenceProxy{}
+	return dockerInferenceProxy.DockerInferenceProxy{Viewers: k.inferenceCommandServiceContainer()}
 }
 
 // RegisterOrthancProxy performs dependency injection to the RegisterOrthancProxy
@@ -467,7 +467,9 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		AutoRunExpireAfter:                      inferenceService.ConfiguredAutoRunExpireAfter(),
 		WorklistNotificationAudienceRepository:  processingRunRepository,
 		TenantStudies:                           orthancTenantStudyRepository(),
+		WebAppViewerGrants:                      &inferenceService.RedisWebAppViewerGrants{RedisDBHandlerInterface: redisIAMDBHandler},
 		RequireProcessingRunID:                  configuredProcessingRunIDRequirement(),
+		AllowedImageNamespace:                   modelRegistrationImageNamespaces(),
 		ModelManager:                            managedPredictor,
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
 			StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
@@ -524,6 +526,10 @@ func OrthancCommandServiceDI() *orthancService.OrthancCommandService {
 		TenantQueryServiceInterface:           k.tenantQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface:  k.elasticsearchCommandServiceContainer(),
 		UserQueryServiceInterface:             k.userQueryServiceContainer(),
+		StoreBackReports: &inferenceService.StoreBackReports{
+			Results: k.inferenceQueryServiceContainer(),
+			Studies: orthancAPI,
+		},
 	}
 
 	return service
@@ -832,7 +838,10 @@ func registerHandlers() {
 
 	// create new elasticsearch connection
 	elasticsearchDBHandler, err = elasticsearch.NewTypedClient(elasticsearchTypes.Config{
-		ElasticsearchURL: os.Getenv("ELASTICSEARCH_URL")})
+		ElasticsearchURL: os.Getenv("ELASTICSEARCH_URL"),
+		Username:         os.Getenv("ELASTICSEARCH_USERNAME"),
+		Password:         os.Getenv("ELASTICSEARCH_PASSWORD"),
+	})
 	if err != nil {
 		log.Fatalf("[SERVER] cannot create elasticsearch server: %v", err)
 	}
@@ -867,7 +876,7 @@ func registerHandlers() {
 	go orthancAPI.SuperviseMoves(context.Background())
 
 	// init kibana connection
-	kibanaAPI = kibana.Init(os.Getenv("KIBANA_BASE_URL"))
+	kibanaAPI = kibana.Init(os.Getenv("KIBANA_BASE_URL"), os.Getenv("ELASTICSEARCH_USERNAME"), os.Getenv("ELASTICSEARCH_PASSWORD"))
 
 	// init mailchimp API
 	mailchimpAPI = mailchimp.Init(mailchimpTypes.Config{
@@ -1025,10 +1034,20 @@ func registerHandlers() {
 	})
 }
 
+// modelRegistrationImageNamespaces is the comma-separated allowlist of image
+// namespaces /inference/model/add accepts (MODEL_ALLOWED_IMAGE_NAMESPACES),
+// falling back to the upgrade namespace.
+func modelRegistrationImageNamespaces() string {
+	if value := strings.TrimSpace(os.Getenv("MODEL_ALLOWED_IMAGE_NAMESPACES")); value != "" {
+		return value
+	}
+	return modelUpgradeImageNamespace()
+}
+
 func modelUpgradeImageNamespace() string {
 	value := strings.TrimSpace(os.Getenv("MODEL_UPGRADE_ALLOWED_IMAGE_NAMESPACE"))
 	if value == "" {
-		return "heartwisehub"
+		return modelupgrade.DefaultAllowedImageNamespace
 	}
 	return value
 }

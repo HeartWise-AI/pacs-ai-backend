@@ -942,14 +942,15 @@ func (controller *UserCommandController) UpdateTenantUser(w http.ResponseWriter,
 	actorUserID, _ := r.Context().Value(iamTypes.UserIDCtx).(string)
 	actorRole, _ := r.Context().Value(iamTypes.RoleCtx).(string)
 	err = controller.UserCommandServiceInterface.UpdateTenantUser(context.TODO(), serviceTypes.UpdateTenantUser{
-		ID:          request.ID,
-		TenantID:    tenantID,
-		Role:        request.Role,
-		Name:        request.Name,
-		LicenseNo:   request.LicenseNo,
-		Specialty:   request.Specialty,
-		ActorUserID: actorUserID,
-		ActorRole:   actorRole,
+		ID:                    request.ID,
+		TenantID:              tenantID,
+		Role:                  request.Role,
+		Name:                  request.Name,
+		LicenseNo:             request.LicenseNo,
+		Specialty:             request.Specialty,
+		ActorUserID:           actorUserID,
+		ActorRole:             actorRole,
+		ActorCanManageMembers: accessctx.Has(r.Context(), accessEntity.PermMembersManage),
 	})
 	if err != nil {
 		var httpCode int
@@ -959,6 +960,9 @@ func (controller *UserCommandController) UpdateTenantUser(w http.ResponseWriter,
 		case apiError.ForbiddenAccess:
 			httpCode = http.StatusForbidden
 			errorMsg = "Forbidden access."
+		case apiError.AccountAccessTransitionInProgress:
+			httpCode = http.StatusConflict
+			errorMsg = "Another account access change is already in progress."
 		case apiError.MissingRecord:
 			httpCode = http.StatusNotFound
 			errorMsg = "User not found."

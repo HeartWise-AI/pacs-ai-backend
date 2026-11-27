@@ -119,6 +119,9 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "DICOM modality not found."
 		case apiError.OrthancError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Orthanc service encountered an error or timeout."

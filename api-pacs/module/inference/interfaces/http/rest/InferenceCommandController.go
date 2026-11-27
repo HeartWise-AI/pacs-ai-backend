@@ -216,7 +216,6 @@ func (controller *InferenceCommandController) AddInferenceModel(w http.ResponseW
 		TenantID:    tenantID,
 		Name:        request.Name,
 		DockerImage: request.DockerImage,
-		Envs:        request.Envs,
 		OutputMode:  request.OutputMode,
 	})
 	if err != nil {
@@ -224,6 +223,9 @@ func (controller *InferenceCommandController) AddInferenceModel(w http.ResponseW
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.InvalidPayload:
+			httpCode = http.StatusBadRequest
+			errorMsg = "Docker image must be a semantic-version tag or sha256 digest in the approved namespace."
 		case apiError.DockerError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker service encountered an error."
@@ -413,12 +415,16 @@ func (controller *InferenceCommandController) RemoveInferenceModel(w http.Respon
 		return
 	}
 
-	err := controller.InferenceCommandServiceInterface.RemoveInferenceModel(context.TODO(), ID)
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	err := controller.InferenceCommandServiceInterface.RemoveInferenceModel(context.TODO(), tenantID, ID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "Inference model not found."
 		case apiError.DockerError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker service encountered an error."
@@ -465,12 +471,16 @@ func (controller *InferenceCommandController) RestartInferenceModelContainer(w h
 		return
 	}
 
-	err := controller.InferenceCommandServiceInterface.RestartInferenceModelContainer(r.Context(), containerID)
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	err := controller.InferenceCommandServiceInterface.RestartInferenceModelContainer(r.Context(), tenantID, containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "Inference model container not found."
 		case apiError.DockerError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker service encountered an error."
@@ -520,12 +530,16 @@ func (controller *InferenceCommandController) StartInferenceModelContainer(w htt
 		return
 	}
 
-	err := controller.InferenceCommandServiceInterface.StartInferenceModelContainer(r.Context(), containerID)
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	err := controller.InferenceCommandServiceInterface.StartInferenceModelContainer(r.Context(), tenantID, containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "Inference model container not found."
 		case apiError.DockerError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker service encountered an error."
@@ -575,12 +589,16 @@ func (controller *InferenceCommandController) StopInferenceModelContainer(w http
 		return
 	}
 
-	err := controller.InferenceCommandServiceInterface.StopInferenceModelContainer(r.Context(), containerID)
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	err := controller.InferenceCommandServiceInterface.StopInferenceModelContainer(r.Context(), tenantID, containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "Inference model container not found."
 		case apiError.DockerError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker service encountered an error."

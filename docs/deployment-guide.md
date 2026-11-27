@@ -29,7 +29,7 @@ See [architecture diagrams](./architecture.md) (Mermaid + Graphviz). The system 
 
 ### 1.4 Versions
 - **Application version:** pinned to a specific git commit SHA — record the full 40-char SHA in the customer's install record (e.g. `d8079b4f3e1a…`). Each install ships from a tagged GitHub Release; the release page lists the exact SHA.
-- Compatible Docker Engine: ≥ 24.0 (required for Compose `include:` support).
+- Compatible Docker Engine: ≥ 28.3.3. Older engines let hosts on the same network segment reach ports published on `127.0.0.1` (moby/moby#49325, CVE-2025-54388), which would expose the unauthenticated Orthanc REST API and the loopback-only services in §3. On an older engine, run [`scripts/docker-loopback-guard.sh`](../scripts/docker-loopback-guard.sh) as root after Docker starts (for example from a systemd timer): it adds one `DOCKER-USER` rule that drops forwarded packets whose original destination was `127.0.0.0/8`. Do not add rules with `firewall-cmd --direct` on a firewalld host; that removes Docker's FORWARD rules until `firewall-cmd --reload`.
 - Compatible Docker Compose: ≥ v2.20.
 - Pinned base images (from compose files): Postgres 17.2 (Orthanc index), Postgres 16 (cardio-agent), Orthanc `orthancteam/orthanc:24.12.0-full`.
 
@@ -112,7 +112,7 @@ Customer must whitelist the api-pacs host in their source PACS.
 | nginx | 80 | 80 | Public | Browsers, redirect to 443 |
 | nginx | 443 | 443 | Public | Browsers, API clients |
 | api-pacs | 8000 | `127.0.0.1:8000` | Loopback + internal | nginx, local diagnostics |
-| Orthanc REST | 8042 | — | Internal | api-pacs, study-service |
+| Orthanc REST | 8042 | `127.0.0.1:8042` | Loopback + internal | api-pacs, study-service, local diagnostics |
 | Orthanc DIMSE | 4242 | 4242 | Customer LAN | Remote PACS (C-STORE) |
 | study-service | 8600 | — | Internal | api-pacs |
 | PostgreSQL (control) | 5432 | 5433 | Loopback only | api-pacs |
@@ -212,7 +212,10 @@ The same value must appear in both api-pacs `.env` and study-service `.env` for 
 - Two Postgres instances — control plane (`5433`) and cardio-agent (`5434`).
 - api-pacs uses `POSTGRES_DB_HOST`, `POSTGRES_DB_PORT`, `POSTGRES_DB_DATABASE`, `POSTGRES_DB_USERNAME`, `POSTGRES_DB_PASSWORD`.
 - cardio-agent uses `DATABASE_URL` (full Postgres URI).
-- Defaults in repo (`cardio:cardio`) are **for dev only** — replace before any non-dev install.
+- The bundled cardio-agent Postgres takes its password from `CARDIO_DB_PASSWORD` in the root `.env`; there is no default. Use the same value in `DATABASE_URL`.
+- Both Postgres host ports are bound to `127.0.0.1`; containers reach the databases over `pacs-net`.
+- If CardioAgent on another host shares the cardio-agent database (as on MHI with wise-training), do not publish 5434 on every interface. Publish it, restrict new connections to that host's IP in `DOCKER-USER`, and limit the role in `pg_hba.conf` (for example `host all cardio <ip>/32 scram-sha-256`, `host all all 172.16.0.0/12 scram-sha-256`, `host all all all reject`).
+- `POSTGRES_PASSWORD` only applies when a data volume is first initialized. On an existing volume, rotate with `ALTER ROLE ... PASSWORD` inside the container, then update `.env` and recreate the dependents with `docker compose up -d --no-build <services>` (`docker compose restart` keeps the old environment).
 
 ### 5.6 Redis
 - api-pacs: `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_IAM_DB`.
@@ -386,6 +389,24 @@ Configure each remote PACS as a modality in Orthanc:
 - Required fields: AE title, host, port.
 - Restart Orthanc to pick up changes.
 
+Every tenant shares the one Orthanc, so api-pacs only lets a tenant list, query, retrieve from, store to, echo, update or remove a modality for which that tenant has a record in the Firestore `dicom_modalities` collection. Any other modality ID answers 404, and ingestion jobs on it fail. Create one document per tenant and modality in the Firebase Console:
+
+| Field | Type | Example | Notes |
+|---|---|---|---|
+| Document ID | — | `acme-pacs:HOSPITAL_PACS` | `<tenantId>:<modalityId>` |
+| `id` | string | `acme-pacs:HOSPITAL_PACS` | Same as the document ID |
+| `tenant_id` | string | `acme-pacs` | The owning tenant |
+| `modality_id` | string | `HOSPITAL_PACS` | The Orthanc modality name, exactly as configured |
+| `aet` | string | `HOSPITAL_PACS` | Remote AE title |
+| `host_hash` | string | | MD5 of the host; set when the modality is saved from the UI |
+| `c_find_enabled` | bool | `true` | |
+| `c_move_enabled` | bool | `true` | |
+| `c_store_enabled` | bool | `false` | |
+| `created_at` | int | `1715000000` | Unix epoch seconds |
+| `updated_at` | int | `1715000000` | Unix epoch seconds |
+
+Give a modality to one tenant only, unless both tenants are meant to reach the same remote PACS. The update endpoint changes a modality only after its record exists; it does not create records.
+
 ### 6.7 Smoke tests
 Run after install, before handoff. Steps 1–3 are CLI checks; step 4 is driven through the PACS-AI web UI.
 
@@ -498,7 +519,7 @@ Replace `<retention-days>` with the customer's chosen window and apply once duri
 
 ```bash
 # 1. Create the policy
-curl -X PUT "http://localhost:9200/_ilm/policy/pacs-ai-logs" \
+curl -u elastic -X PUT "http://localhost:9200/_ilm/policy/pacs-ai-logs" \
   -H 'Content-Type: application/json' \
   -d '{
     "policy": {
@@ -517,7 +538,7 @@ curl -X PUT "http://localhost:9200/_ilm/policy/pacs-ai-logs" \
   }'
 
 # 2. Bind the policy to api-pacs log indices via an index template
-curl -X PUT "http://localhost:9200/_index_template/pacs-ai-logs-template" \
+curl -u elastic -X PUT "http://localhost:9200/_index_template/pacs-ai-logs-template" \
   -H 'Content-Type: application/json' \
   -d '{
     "index_patterns": ["pacs-ai-*", "logs-*"],
@@ -530,7 +551,7 @@ curl -X PUT "http://localhost:9200/_index_template/pacs-ai-logs-template" \
   }'
 ```
 
-> Adjust `index_patterns` to match the index names api-pacs actually writes (verify with `curl http://localhost:9200/_cat/indices`). Validate the policy is active with `curl http://localhost:9200/_ilm/policy/pacs-ai-logs`.
+> Adjust `index_patterns` to match the index names api-pacs actually writes (verify with `curl -u elastic http://localhost:9200/_cat/indices`). Validate the policy is active with `curl -u elastic http://localhost:9200/_ilm/policy/pacs-ai-logs`.
 
 The customer adjusts the cache TTL via api-pacs `.env`; long-term retention is policy-driven (not enforced by env vars at present).
 
@@ -862,13 +883,13 @@ Roles are enforced via Chi middleware: `RBACOwnerGuard` (owner only) and `RBACOw
 
 **Sink:** Elasticsearch only — no separate immutable archive ships by default. Customers requiring tamper-resistant audit must replicate the indices to write-once storage on their side (see §10.2 for forwarding patterns).
 
-**Export format:** Kibana (deployed alongside Elasticsearch — see [docker-compose.yml](../docker-compose.yml)). Customers run audit queries in Kibana Discover and export results as **CSV or JSON** via *Share → CSV Reports* / *Inspect → Download CSV*. Direct `_search` API queries (`curl http://elasticsearch:9200/<index>/_search ...`) are also supported for scripted dumps.
+**Export format:** Kibana (deployed alongside Elasticsearch — see [docker-compose.yml](../docker-compose.yml)). Elasticsearch security is enabled and Kibana listens on `127.0.0.1:5601` only: reach it through an SSH tunnel (`ssh -L 5601:127.0.0.1:5601 <host>`) or an authenticated reverse proxy, and sign in with an Elasticsearch user. Credentials are set in `elasticsearch/.env` (see `elasticsearch/.env.example`); the `elasticsearch-setup` service applies them on every start. Customers run audit queries in Kibana Discover and export results as **CSV or JSON** via *Share → CSV Reports* / *Inspect → Download CSV*. Direct `_search` API queries (`curl -u <user> http://elasticsearch:9200/<index>/_search ...`) are also supported for scripted dumps.
 
 **Events logged** — derived from the audit entities under [api-pacs/module/elasticsearch/domain/entity/](../api-pacs/module/elasticsearch/domain/entity/). Every event carries `tenant_id`, `tenant_name`, `user_id`, `email`, `name`, and `timestamp` (Unix epoch), so each is attributable to a tenant + user.
 
 | Event | ES index | When emitted | Notable fields |
 |---|---|---|---|
-| User login | `logins` | Successful authentication | `session_id`, `role`, `specialty` |
+| User login | `logins` | Successful authentication | `session_id` (SHA-256 of the session token, not the token), `role`, `specialty` |
 | Admin invite sent | `admin_invites` | Tenant admin invites a new user | invitee `email` |
 | User management | `admin_members` | User created, role changed, or removed | `action` (`CREATE` / `UPDATE` / `DELETE`), target user, role, license |
 | Remote-PACS query (C-FIND) | `find_modality_studies` | api-pacs queries source PACS for studies | `modality_id`, `query_id` |
@@ -876,6 +897,14 @@ Roles are enforced via Chi middleware: `RBACOwnerGuard` (owner only) and `RBACOw
 | Inference run | `predict_inference_models` | Model container produces a prediction | `inference_model_id`, `docker_image`, `model`, `study_instance_uid`, `series_instance_uids`, free-form `additional_metadata` |
 | Consent signed | `signed_consents` | User signs the onboarding consent | (tenant + user only) |
 | Custom series stored | `stored_custom_series` | AI-generated DICOM series persisted back into Orthanc | `study_instance_uid`, `series_instance_uids`, `custom_series_instance_uid`, `custom_sop_instance_uid`, `model_name`, `model_version`, `patient_id` |
+
+**Upgrading a deployment that logged raw session tokens.** Before this change `logins.session_id` held the live session token. The api-pacs release that hashes it also rotates sessions (`SessionGeneration`), so those values no longer authenticate, and every user signs in once more. To remove the old values from Elasticsearch as well, hash them in place once, as the `elastic` user (values that are already 64-character digests are left alone):
+
+```bash
+curl -u elastic -X POST 'http://localhost:9200/logins/_update_by_query?refresh=true&conflicts=proceed' \
+  -H 'Content-Type: application/json' \
+  -d '{"script":{"lang":"painless","source":"def s = ctx._source.session_id; if (s instanceof String && s.length() != 64) { ctx._source.session_id = s.sha256(); } else { ctx.op = \"noop\"; }"}}'
+```
 
 > The `predict_inference_models` and `stored_custom_series` events are the audit trail for AI activity — they are the canonical "what model touched what study, when, on whose behalf" record for compliance review.
 
@@ -978,6 +1007,7 @@ docker compose images > pacs-ai-versions.txt
 | `API_URL_REST_PORT` | yes | `8000` | api-pacs REST port |
 | `DOCKER_NETWORK` | yes | `pacs-net` | Shared external Docker network |
 | `DOCKER_USERNAME` / `DOCKER_PASSWORD` | optional | — | Registry login if pulling private images |
+| `CARDIO_DB_PASSWORD` | yes | — | Password for the bundled cardio-agent Postgres (must match cardio-agent `DATABASE_URL`) |
 | **PostgreSQL (control plane)** | | | |
 | `POSTGRES_DB_HOST` | yes | — | Postgres host |
 | `POSTGRES_DB_PORT` | yes | `5432` (container) / `5433` (host) | Postgres port |
@@ -991,6 +1021,8 @@ docker compose images > pacs-ai-versions.txt
 | `REDIS_IAM_DB` | yes | — | DB index used for IAM cache |
 | **Elasticsearch / Kibana** | | | |
 | `ELASTICSEARCH_URL` | yes | — | ES URL |
+| `ELASTICSEARCH_USERNAME` | yes | — | Least-privilege ES user created by `elasticsearch-setup` (`ELASTICSEARCH_API_PACS_USERNAME`) |
+| `ELASTICSEARCH_PASSWORD` | yes | — | Password of that user (`ELASTICSEARCH_API_PACS_PASSWORD`) |
 | `KIBANA_BASE_URL` | optional | — | Kibana base URL for log links |
 | **Firebase** | | | |
 | `FIREBASE_PROJECT_ID` | yes | — | Firebase project |

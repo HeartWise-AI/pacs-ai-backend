@@ -32,6 +32,8 @@ func (c *ElasticsearchDBHandler) GetAllIndices() (indices.Response, error) {
 func NewTypedClient(config types.Config) (*ElasticsearchDBHandler, error) {
 	typedclient, err := elasticsearch.NewTypedClient(elasticsearch.Config{
 		Addresses: []string{config.ElasticsearchURL},
+		Username:  config.Username,
+		Password:  config.Password,
 	})
 	if err != nil {
 		return nil, err
@@ -58,14 +60,7 @@ func (c *ElasticsearchDBHandler) SearchDocuments(ctx context.Context, param type
 	startDateTimestamp := ecsTypes.Float64(param.StartDate)
 	endtDateTimestamp := ecsTypes.Float64(param.EndDate)
 
-	mustQuery := []ecsTypes.Query{
-		{
-			MultiMatch: &ecsTypes.MultiMatchQuery{
-				Query:  param.TenantID,
-				Fields: []string{"tenant_id"},
-			},
-		},
-	}
+	var mustQuery []ecsTypes.Query
 
 	// check if query is not empty
 	if len(param.Query) > 0 {
@@ -89,6 +84,13 @@ func (c *ElasticsearchDBHandler) SearchDocuments(ctx context.Context, param type
 			Bool: &ecsTypes.BoolQuery{
 				Must: mustQuery,
 				Filter: []ecsTypes.Query{
+					{
+						// tenant_id is dynamically mapped as analyzed text, so only the
+						// keyword subfield matches the whole tenant ID exactly.
+						Term: map[string]ecsTypes.TermQuery{
+							"tenant_id.keyword": {Value: param.TenantID},
+						},
+					},
 					{
 						Range: map[string]ecsTypes.RangeQuery{
 							"timestamp": ecsTypes.NumberRangeQuery{

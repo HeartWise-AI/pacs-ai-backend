@@ -248,10 +248,10 @@ const (
 )
 
 // GetContainerInfo returns the container runtime information.
-func (service *InferenceQueryService) GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error) {
-	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
+func (service *InferenceQueryService) GetContainerInfo(ctx context.Context, tenantID, containerID string) (types.GetContainerInfoResult, error) {
+	containerInfo, err := service.tenantModelContainerInfo(ctx, tenantID, containerID)
 	if err != nil {
-		return types.GetContainerInfoResult{}, errors.New(apiError.DockerError)
+		return types.GetContainerInfoResult{}, err
 	}
 
 	return types.GetContainerInfoResult{
@@ -380,9 +380,9 @@ func (service *InferenceQueryService) GetInferenceModelVersions(
 }
 
 // GetInferenceModelInfo gets the inference model info
-func (service *InferenceQueryService) GetInferenceModelInfo(ctx context.Context, containerID string) (dockerInferenceTypes.GetModelInfoResponse, error) {
+func (service *InferenceQueryService) GetInferenceModelInfo(ctx context.Context, tenantID, containerID string) (dockerInferenceTypes.GetModelInfoResponse, error) {
 	// get container name
-	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
+	containerInfo, err := service.tenantModelContainerInfo(ctx, tenantID, containerID)
 	if err != nil {
 		return dockerInferenceTypes.GetModelInfoResponse{}, err
 	}
@@ -396,9 +396,9 @@ func (service *InferenceQueryService) GetInferenceModelInfo(ctx context.Context,
 }
 
 // GetInferenceModelFacts gets the inference model facts
-func (service *InferenceQueryService) GetInferenceModelFacts(ctx context.Context, containerID string) (dockerInferenceTypes.GetModelFactsResponse, error) {
+func (service *InferenceQueryService) GetInferenceModelFacts(ctx context.Context, tenantID, containerID string) (dockerInferenceTypes.GetModelFactsResponse, error) {
 	// get container name
-	containerInfo, err := service.DockerSDKInterface.GetContainerInfo(ctx, containerID)
+	containerInfo, err := service.tenantModelContainerInfo(ctx, tenantID, containerID)
 	if err != nil {
 		return dockerInferenceTypes.GetModelFactsResponse{}, err
 	}

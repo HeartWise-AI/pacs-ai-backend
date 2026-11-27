@@ -13,15 +13,15 @@ type InferenceQueryServiceInterface interface {
 	// GetInferenceQuota returns the authenticated user's current quota state.
 	GetInferenceQuota(ctx context.Context, tenantID, userID string) (types.InferenceQuotaStatus, error)
 	// GetContainerInfo returns the container runtime information.
-	GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error)
+	GetContainerInfo(ctx context.Context, tenantID, containerID string) (types.GetContainerInfoResult, error)
 	// GetInferenceModels returns the inference models
 	GetInferenceModels(ctx context.Context, tenantID string) ([]types.GetInferenceModelResult, error)
 	// GetInferenceModelVersions lists catalog versions for one tenant-owned registration.
 	GetInferenceModelVersions(ctx context.Context, data types.GetInferenceModelVersions) ([]types.GetInferenceModelVersionResult, error)
 	// GetInferenceModelInfo gets the inference model info
-	GetInferenceModelInfo(ctx context.Context, containerID string) (dockerInferenceTypes.GetModelInfoResponse, error)
+	GetInferenceModelInfo(ctx context.Context, tenantID, containerID string) (dockerInferenceTypes.GetModelInfoResponse, error)
 	// GetInferenceModelFacts gets the inference model facts
-	GetInferenceModelFacts(ctx context.Context, containerID string) (dockerInferenceTypes.GetModelFactsResponse, error)
+	GetInferenceModelFacts(ctx context.Context, tenantID, containerID string) (dockerInferenceTypes.GetModelFactsResponse, error)
 	// GetInferenceAvailableModels gets the inference available models
 	GetInferenceAvailableModels(ctx context.Context, tenantID string) ([]types.GetInferenceAvailableModelResult, error)
 	// GetInferenceIngestionJobs gets the inference ingestion jobs

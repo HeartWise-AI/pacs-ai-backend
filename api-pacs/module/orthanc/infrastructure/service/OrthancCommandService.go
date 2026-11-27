@@ -1,18 +1,14 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
-	dicomUtils "api-pacs/internal/dicom"
 	apiError "api-pacs/internal/errors"
 	hashUtils "api-pacs/internal/hash"
 	elasticsearchApplication "api-pacs/module/elasticsearch/application"
@@ -33,6 +29,9 @@ type OrthancCommandService struct {
 	tenantApplication.TenantQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	userApplication.UserQueryServiceInterface
+	// StoreBackReports looks up the model-run report a store-back may send.
+	// Nil refuses every store-back.
+	StoreBackReports StoreBackReportSource
 }
 
 const (
@@ -95,14 +94,19 @@ func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context
 
 // RemoveDICOMModality remove dicom modality
 func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, tenantID string, modalityID string) error {
-	err := service.OrthancAPIInterface.DeleteDICOMModality(ctx, modalityID)
+	dicomModality, err := authorizeDICOMModality(ctx, service.OrthancCommandRepositoryInterface, tenantID, modalityID)
+	if err != nil {
+		return err
+	}
+
+	err = service.OrthancAPIInterface.DeleteDICOMModality(ctx, dicomModality.ModalityID)
 	if err != nil {
 		log.Println(err)
 		return err
 	}
 
 	// delete dicom modality in database
-	err = service.OrthancCommandRepositoryInterface.DeleteDICOMModality(ctx, tenantID, modalityID)
+	err = service.OrthancCommandRepositoryInterface.DeleteDICOMModality(ctx, dicomModality.TenantID, dicomModality.ModalityID)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -121,6 +125,12 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 	// used one C-MOVE per image, which opened up to one association per image
 	// against the PACS and got refused under load.
 	// Someone waiting in the viewer (a user ID) goes before automatic ingestion.
+	dicomModality, err := authorizeDICOMModality(ctx, service.OrthancCommandRepositoryInterface, data.TenantID, data.ModalityID)
+	if err != nil {
+		return nil, err
+	}
+	data.ModalityID = dicomModality.ModalityID
+
 	res, err := service.OrthancAPIInterface.RetrieveModalityStudyBySeries(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID, data.UserID != nil)
 	if err != nil && err.Error() != apiError.DuplicateRecord {
 		log.Println(err)
@@ -173,165 +183,14 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 	return res, nil
 }
 
-// StoreStudyCustomSeries store study custom series
-func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context, data types.StoreStudyCustomSeries) error {
-	retrieved, err := service.OrthancTenantStudyRepositoryInterface.SelectTenantStudies(ctx, data.TenantID, []string{data.StudyInstanceUID})
-	if err != nil {
-		return errors.New(apiError.DatabaseError)
-	}
-	if len(retrieved) == 0 {
-		return errors.New(apiError.MissingRecord)
-	}
-
-	// TODO: handle direct dicom image
-	var customSeriesInstanceUID string
-	var customSOPInstanceUID string
-
-	/// check mime type
-	if data.FileMimeType == "application/pdf" {
-		// convert pdf to dicom
-		// form the series instance uids. It should already be in ascending order (timestamp)
-		var orderedSeriesInstanceUIDsFormat string
-		if len(data.SeriesInstanceUIDs) == 1 {
-			orderedSeriesInstanceUIDsFormat = data.SeriesInstanceUIDs[0]
-		} else {
-			orderedSeriesInstanceUIDsFormat = strings.Join(data.SeriesInstanceUIDs, ":")
-		}
-
-		// first: use standard prefix: 1.2.826.0.1.3680043.10.511.
-		// second: crc32 digit hash of <tenant_id>:<orderedSeriesInstanceUIDsFormat>:<model_name>_<model_version>
-		uniqueSeriesID := hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSeriesInstanceUIDHashFormat, data.TenantID, orderedSeriesInstanceUIDsFormat, strings.ToLower(data.ModelName+"_"+data.ModelVersion)))
-		customSeriesInstanceUID = fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", uniqueSeriesID)
-
-		// first: use standard prefix: 1.2.826.0.1.3680043.10.511.
-		// second: crc32 digit hash of <tenant_id>:<custom_series_instance_uid>
-		uniqueInstanceID := hashUtils.GetCRC32DigitHash(fmt.Sprintf(customSOPInstanceUIDHashFormat, data.TenantID, customSeriesInstanceUID))
-		customSOPInstanceUID = fmt.Sprintf("1.2.826.0.1.3680043.10.511.%s", uniqueInstanceID)
-
-		// e.g: cathef-v1.0.0 Report
-		seriesDescription := fmt.Sprintf("%s-%s Report", data.ModelName, data.ModelVersion)
-
-		log.Println("customSeriesInstanceUIDHash:", customSeriesInstanceUID)
-		log.Println("customSOPInstanceUID:", customSOPInstanceUID)
-		log.Println("seriesDescription:", seriesDescription)
-
-		dicomInstancesBytes, err := dicomUtils.ConvertPDFToDICOM(data.FileBody, data.StudyInstanceUID, customSeriesInstanceUID, customSOPInstanceUID, seriesDescription, data.PatientID, data.PatientName)
-		if err != nil {
-			log.Println("[dicom] error converting pdf to dicom:", err)
-			return errors.New(apiError.DICOMParseError)
-		}
-
-		data.FileBody = dicomInstancesBytes
-	}
-
-	/// upload to local orthanc
-	var uploadDICOMInstancesResponse orthancAPITypes.UploadDICOMInstancesResponse
-	if data.FileMimeType == "application/pdf" {
-		uploadDICOMInstancesResponse, err = service.OrthancAPIInterface.UploadDICOMInstances(ctx, data.FileBody)
-	} else {
-		uploadDICOMInstancesResponse, err = service.uploadDICOMFileToStudy(ctx, data.StudyInstanceUID, data.FileBody)
-	}
-	if err != nil {
-		if err.Error() == apiError.DICOMParseError {
-			return err
-		}
-		log.Println("[orthanc] error uploading DICOM instances:", err)
-		return errors.New(apiError.OrthancError)
-	}
-
-	if uploadDICOMInstancesResponse.Status != orthancAPITypes.UploadDICOMStatusSuccess && uploadDICOMInstancesResponse.Status != orthancAPITypes.UploadDICOMStatusAlreadyStored {
-		log.Println("[orthanc] error uploading DICOM instances:", uploadDICOMInstancesResponse.Status)
-		return errors.New(apiError.OrthancError)
-	}
-
-	// if already exist, return duplicate error
-	if uploadDICOMInstancesResponse.Status == orthancAPITypes.UploadDICOMStatusAlreadyStored {
-		return errors.New(apiError.DuplicateRecord)
-	}
-
-	/// forward to target dicom modality
-	storeRes, err := service.OrthancAPIInterface.StraightDICOMStoreSCU(ctx, data.ModalityID, data.FileBody)
-	if err != nil {
-		log.Println("[orthanc] error straight DICOM store SCU:", err)
-
-		// delete already uploaded local resource
-		err = service.OrthancAPIInterface.DeleteLocalResources(ctx, orthancAPITypes.DeleteLocalResourcesRequest{
-			Resources: []string{uploadDICOMInstancesResponse.ID},
-		})
-		if err != nil {
-			log.Println("[orthanc] error deleting local resource:", err)
-		}
-
-		return errors.New(apiError.OrthancError)
-	}
-
-	log.Println("store SOPClassUID:", storeRes.SOPClassUID)
-	log.Println("store SOPInstanceUID:", storeRes.SOPInstanceUID)
-
-	// log to elasticsearch
-	go func() {
-		user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, data.UserID)
-		if err != nil {
-			return
-		}
-
-		tenant, err := service.TenantQueryServiceInterface.GetTenantByID(ctx, data.TenantID)
-		if err != nil {
-			return
-		}
-
-		_, err = service.ElasticsearchCommandServiceInterface.CreateStoredCustomSeriesLog(ctx, elasticsearchTypes.CreateStoredCustomSeriesLog{
-			TenantID:                data.TenantID,
-			TenantName:              tenant.Name,
-			ModalityID:              data.ModalityID,
-			UserID:                  data.UserID,
-			Email:                   user.Email,
-			Name:                    user.Name,
-			StudyInstanceUID:        data.StudyInstanceUID,
-			SeriesInstanceUIDs:      data.SeriesInstanceUIDs,
-			PatientID:               data.PatientID,
-			ModelName:               data.ModelName,
-			ModelVersion:            data.ModelVersion,
-			CustomSeriesInstanceUID: customSeriesInstanceUID,
-			CustomSOPInstanceUID:    customSOPInstanceUID,
-		})
-		if err != nil {
-			log.Println(err)
-			return
-		}
-	}()
-
-	return nil
-}
-
-// uploadDICOMFileToStudy stores a DICOM file the client sent into the study it
-// was sent for: Orthanc refuses it unless it belongs to that study.
-func (service *OrthancCommandService) uploadDICOMFileToStudy(ctx context.Context, studyInstanceUID string, file []byte) (orthancAPITypes.UploadDICOMInstancesResponse, error) {
-	uids, err := dicomUtils.ReadPart10UIDs(bytes.NewReader(file))
-	if err != nil || uids.StudyInstanceUID != studyInstanceUID || uids.SOPInstanceUID == "" {
-		return orthancAPITypes.UploadDICOMInstancesResponse{}, errors.New(apiError.DICOMParseError)
-	}
-
-	_, err = service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
-		Level: "Instance",
-		Query: orthancAPITypes.QueryLocalResource{
-			StudyInstanceUID: studyInstanceUID,
-			SOPInstanceUID:   uids.SOPInstanceUID,
-		},
-	})
-	if err == nil {
-		return orthancAPITypes.UploadDICOMInstancesResponse{Status: orthancAPITypes.UploadDICOMStatusAlreadyStored}, nil
-	}
-	if err.Error() != apiError.MissingRecord {
-		return orthancAPITypes.UploadDICOMInstancesResponse{}, err
-	}
-
-	return service.OrthancAPIInterface.UploadDICOMInstanceToStudy(ctx, studyInstanceUID, file)
-}
-
 // TriggerDICOMEchoSCU trigger dicom echo scu
-func (service *OrthancCommandService) TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error {
-	err := service.OrthancAPIInterface.TriggerDICOMEchoSCU(ctx, modalityID)
+func (service *OrthancCommandService) TriggerDICOMEchoSCU(ctx context.Context, tenantID, modalityID string) error {
+	dicomModality, err := authorizeDICOMModality(ctx, service.OrthancCommandRepositoryInterface, tenantID, modalityID)
+	if err != nil {
+		return err
+	}
+
+	err = service.OrthancAPIInterface.TriggerDICOMEchoSCU(ctx, dicomModality.ModalityID)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -342,7 +201,14 @@ func (service *OrthancCommandService) TriggerDICOMEchoSCU(ctx context.Context, m
 
 // UpdateDICOMModality update dicom modality
 func (service *OrthancCommandService) UpdateDICOMModality(ctx context.Context, data types.UpdateDICOMModality) error {
-	err := service.OrthancAPIInterface.UpdateDICOMModality(ctx, data.ModalityID, orthancAPITypes.UpdateDICOMModalityRequest{
+	dicomModality, err := authorizeDICOMModality(ctx, service.OrthancCommandRepositoryInterface, data.TenantID, data.ModalityID)
+	if err != nil {
+		return err
+	}
+	data.TenantID = dicomModality.TenantID
+	data.ModalityID = dicomModality.ModalityID
+
+	err = service.OrthancAPIInterface.UpdateDICOMModality(ctx, data.ModalityID, orthancAPITypes.UpdateDICOMModalityRequest{
 		AET:                    data.AET,
 		AllowEcho:              true,
 		AllowFind:              true,

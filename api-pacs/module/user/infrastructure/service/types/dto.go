@@ -130,6 +130,8 @@ type UpdateTenantUser struct {
 	// cannot change their role.
 	ActorUserID string
 	ActorRole   string
+	// ActorCanManageMembers: see ChangeTenantUserAccess.
+	ActorCanManageMembers bool
 }
 
 type UpdateTenantUserPassword struct {

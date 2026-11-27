@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -46,37 +48,120 @@ type IAMCommandService struct {
 	MailgunSDK         *mailgun.MailgunSDK
 }
 
-// ForgotTenantUserPassword forgot password
-func (service *IAMCommandService) ForgotTenantUserPassword(ctx context.Context, tenantID, email string) error {
+const (
+	publicEmailWindow        = time.Hour
+	publicEmailIPRequests    = 30
+	publicEmailInboxRequests = 5
+	// publicEmailResponseTime is how long every request that passes the IP
+	// limit takes, whether or not an email is sent, so the response time does
+	// not reveal the account state. Slower sends finish after the response.
+	publicEmailResponseTime = time.Second
+	publicEmailSendTimeout  = 30 * time.Second
+)
+
+// ForgotTenantUserPassword emails a password reset link to a verified account.
+// The response is the same whether or not the account exists or is verified.
+func (service *IAMCommandService) ForgotTenantUserPassword(ctx context.Context, tenantID, email, clientIP string) error {
+	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
+	return service.handlePublicEmailRequest(ctx, "password_reset", tenantID, normalizedEmail, clientIP, service.sendPasswordResetEmail)
+}
+
+// handlePublicEmailRequest rate-limits the unauthenticated password reset and
+// email verification endpoints before any account lookup, then sends in the
+// background so the outcome never depends on the account.
+func (service *IAMCommandService) handlePublicEmailRequest(
+	ctx context.Context,
+	kind, tenantID, email, clientIP string,
+	send func(ctx context.Context, tenantID, email string),
+) error {
+	ipRequests, err := service.IAMCommandRepositoryInterface.IncrementPublicEmailRequests(publicEmailRateLimitKey("ip", clientIP), publicEmailWindow)
+	if err != nil {
+		return err
+	}
+	if ipRequests > publicEmailIPRequests {
+		log.Printf("[security] event=public_email_rate_limited kind=%s scope=ip", kind)
+		return errors.New(apiError.MaximumLimitReached)
+	}
+
+	admitted, err := service.admitPublicEmail(kind, tenantID, email)
+	if err != nil {
+		return err
+	}
+	if admitted {
+		sendContext := context.WithoutCancel(ctx)
+		go func() {
+			sendContext, cancel := context.WithTimeout(sendContext, publicEmailSendTimeout)
+			defer cancel()
+			send(sendContext, tenantID, email)
+		}()
+	}
+
+	time.Sleep(publicEmailResponseTime)
+	return nil
+}
+
+// admitPublicEmail applies the per-address cooldown and the atomic per-inbox
+// cap. The cap bounds concurrent requests that all observe an idle cooldown.
+func (service *IAMCommandService) admitPublicEmail(kind, tenantID, email string) (bool, error) {
+	// Hashed: tenantID and email come from an unauthenticated body.
+	cooldownKey := publicEmailRateLimitKey("cooldown:"+kind, tenantID+"\x00"+email)
+	cooldownActive, err := service.IAMCommandRepositoryInterface.IsEmailCooldownActive(cooldownKey)
+	if err != nil {
+		return false, err
+	}
+	if cooldownActive {
+		return false, nil
+	}
+	if err := service.IAMCommandRepositoryInterface.SetEmailCooldown(cooldownKey); err != nil {
+		return false, err
+	}
+
+	inboxRequests, err := service.IAMCommandRepositoryInterface.IncrementPublicEmailRequests(publicEmailRateLimitKey("inbox", email), publicEmailWindow)
+	if err != nil {
+		return false, err
+	}
+	if inboxRequests > publicEmailInboxRequests {
+		log.Printf("[security] event=public_email_rate_limited kind=%s scope=inbox", kind)
+		return false, nil
+	}
+	return true, nil
+}
+
+func publicEmailRateLimitKey(scope, value string) string {
+	digest := sha256.Sum256([]byte(value))
+	return "pacs-ai:public-email-rate-limit:" + scope + ":" + hex.EncodeToString(digest[:])
+}
+
+func (service *IAMCommandService) sendPasswordResetEmail(ctx context.Context, tenantID, email string) {
 	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
 	if err != nil {
 		log.Println(err)
-		return errors.New(apiError.FirebaseAuthError)
+		return
 	}
 
 	// tenant auth
 	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
 	if err != nil {
 		log.Println(err)
-		return errors.New(apiError.FirebaseAuthError)
+		return
 	}
 
 	userEmail, err := tenantAuth.GetUserByEmail(ctx, email)
 	if err != nil {
 		log.Println(err)
-		return errors.New(apiError.FirebaseAuthError)
+		return
 	}
 
 	// check if email is verified
 	if !userEmail.EmailVerified {
 		log.Println("[error] email not verified.")
-		return errors.New(apiError.FirebaseAuthEmailNotVerified)
+		return
 	}
 
 	resetLink, err := tenantAuth.PasswordResetLink(ctx, email)
 	if err != nil {
 		log.Println(err)
-		return errors.New(apiError.FirebaseAuthError)
+		return
 	}
 
 	// send to email
@@ -93,10 +178,7 @@ func (service *IAMCommandService) ForgotTenantUserPassword(ctx context.Context, 
 	})
 	if err != nil {
 		log.Println("[error] cannot send verification code via mailgun", err)
-		return errors.New(apiError.MailgunError)
 	}
-
-	return nil
 }
 
 // LoginTenantUser authenticates credentials through Identity Platform and only
@@ -435,39 +517,31 @@ func (service *IAMCommandService) SetTokenSession(ctx context.Context, data type
 	return nil
 }
 
-// VerifyTenantUserEmail verifies tenant user email
-func (service *IAMCommandService) VerifyTenantUserEmail(ctx context.Context, tenantID, email string) error {
+// VerifyTenantUserEmail emails a verification link to an existing account.
+// The response is the same whether or not the account exists.
+func (service *IAMCommandService) VerifyTenantUserEmail(ctx context.Context, tenantID, email, clientIP string) error {
 	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
-	cooldownKey := fmt.Sprintf("email_verification:%s:%s", tenantID, normalizedEmail)
-	cooldownActive, err := service.IAMCommandRepositoryInterface.IsEmailVerificationCooldownActive(cooldownKey)
-	if err != nil {
-		return err
-	}
-	if cooldownActive {
-		return errors.New(apiError.MaximumLimitReached)
-	}
+	return service.handlePublicEmailRequest(ctx, "email_verification", tenantID, normalizedEmail, clientIP, service.sendVerificationEmail)
+}
 
+func (service *IAMCommandService) sendVerificationEmail(ctx context.Context, tenantID, email string) {
 	firebaseAuth, err := service.FirebaseAdminSDK.App.Auth(ctx)
 	if err != nil {
 		log.Println(err)
-		return errors.New(apiError.FirebaseAuthError)
+		return
 	}
 
 	// tenant auth
 	tenantAuth, err := firebaseAuth.TenantManager.AuthForTenant(tenantID)
 	if err != nil {
 		log.Println(err)
-		return errors.New(apiError.FirebaseAuthError)
+		return
 	}
 
-	verifyLink, err := tenantAuth.EmailVerificationLink(ctx, normalizedEmail)
+	verifyLink, err := tenantAuth.EmailVerificationLink(ctx, email)
 	if err != nil {
 		log.Println(err)
-		return errors.New(apiError.FirebaseAuthError)
-	}
-
-	if err := service.IAMCommandRepositoryInterface.SetEmailVerificationCooldown(cooldownKey); err != nil {
-		return err
+		return
 	}
 
 	textMessage := fmt.Sprintf("Hello,<br /><br />"+
@@ -475,18 +549,15 @@ func (service *IAMCommandService) VerifyTenantUserEmail(ctx context.Context, ten
 		"<a href=\"%s\">%s</a><br /><br />"+
 		"If you did not create a PACS AI account, you can ignore this email.<br /><br />"+
 		"Thanks,<br />"+
-		"Your PACS AI team", normalizedEmail, verifyLink, verifyLink)
+		"Your PACS AI team", email, verifyLink, verifyLink)
 	err = service.MailgunSDK.SendEmail(ctx, mailgunTypes.MailgunSendEmailRequest{
 		Subject:       "[PACS AI]: Verify your email",
-		Recipient:     normalizedEmail,
+		Recipient:     email,
 		PlainTextBody: textMessage,
 	})
 	if err != nil {
 		log.Println("[error] cannot send verification email via mailgun", err)
-		return errors.New(apiError.MailgunError)
 	}
-
-	return nil
 }
 
 // generateID generates unique id

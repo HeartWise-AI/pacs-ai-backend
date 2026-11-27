@@ -215,6 +215,15 @@ func authorizeAccountManagement(actorID, actorRole, targetID, targetRole string,
 	return nil
 }
 
+// authorizeRoleGrant allows OWNER to assign ADMIN or USER and every other
+// actor to assign USER only. OWNER is granted only by CreateTenantOwner.
+func authorizeRoleGrant(actorRole, role string) error {
+	if role == iamEntity.UserRole || (role == iamEntity.AdminRole && actorRole == iamEntity.OwnerRole) {
+		return nil
+	}
+	return errors.New(apiError.ForbiddenAccess)
+}
+
 func (service *UserCommandService) logAccountAccessAudit(ctx context.Context, data types.ChangeTenantUserAccess, target repositoryTypes.GetTenantUser, outcome, failureReason string) {
 	previousState := userEntity.ResolveAccountAccessState(target.AccessState, target.IsAccountDisabled)
 	log.Printf(
@@ -753,19 +762,37 @@ func (service *UserCommandService) SendTenantUserEmailInvite(ctx context.Context
 	return nil
 }
 
-// UpdateTenantUser update tenant user
+// UpdateTenantUser updates a tenant user under the same role hierarchy as
+// suspend and delete. The target is loaded and authorized once while the
+// account transition lock is held, and only that account is written.
 func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data types.UpdateTenantUser) error {
-	if data.ActorRole == iamEntity.UserRole {
-		target, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, data.TenantID, data.ID)
-		if err != nil {
-			return err
-		}
-		if target.ID == data.ActorUserID || target.Role != iamEntity.UserRole || data.Role != iamEntity.UserRole {
-			return errors.New(apiError.ForbiddenAccess)
-		}
+	lockToken, err := service.acquireUserAccessTransition(ctx, data.TenantID, data.ID)
+	if err != nil {
+		return err
 	}
-	err := service.UserCommandRepositoryInterface.UpdateTenantUser(ctx, repositoryTypes.UpdateTenantUser{
-		ID:        data.ID,
+	defer service.releaseUserAccessTransition(ctx, data.TenantID, data.ID, lockToken)
+	transitionContext, cancel := context.WithTimeout(ctx, userAccessTransitionOperationTimeout)
+	defer cancel()
+
+	target, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(transitionContext, data.TenantID, data.ID)
+	if err != nil {
+		return err
+	}
+	actor, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(transitionContext, data.TenantID, data.ActorUserID)
+	if err != nil {
+		return err
+	}
+	if userEntity.ResolveAccountAccessState(actor.AccessState, actor.IsAccountDisabled) != userEntity.AccountAccessActive {
+		return errors.New(apiError.ForbiddenAccess)
+	}
+	if err := authorizeAccountManagement(data.ActorUserID, actor.Role, target.ID, target.Role, data.ActorCanManageMembers); err != nil {
+		return err
+	}
+	if err := authorizeRoleGrant(actor.Role, data.Role); err != nil {
+		return err
+	}
+	err = service.UserCommandRepositoryInterface.UpdateTenantUser(transitionContext, repositoryTypes.UpdateTenantUser{
+		ID:        target.ID,
 		TenantID:  data.TenantID,
 		Role:      data.Role,
 		Name:      data.Name,
@@ -777,7 +804,7 @@ func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data ty
 		return err
 	}
 
-	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, data.TenantID, data.ID)
+	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(transitionContext, data.TenantID, target.ID)
 	if err != nil {
 		return err
 	}
