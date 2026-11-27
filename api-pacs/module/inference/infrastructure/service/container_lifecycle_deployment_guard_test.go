@@ -10,8 +10,22 @@ import (
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	apiError "api-pacs/internal/errors"
 	"api-pacs/module/inference/domain/entity"
+	"api-pacs/module/inference/domain/repository"
 	"api-pacs/module/inference/infrastructure/modelupgrade"
 )
+
+const lifecycleContainerID = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+type lifecycleModels struct {
+	repository.InferenceQueryRepositoryInterface
+}
+
+func (lifecycleModels) SelectInferenceModelByContainer(_ context.Context, tenantID, containerID string) (entity.InferenceModel, error) {
+	if tenantID != "tenant-a" || containerID != lifecycleContainerID {
+		return entity.InferenceModel{}, errors.New(apiError.MissingRecord)
+	}
+	return entity.InferenceModel{ID: "model-a", TenantID: tenantID, ContainerID: containerID}, nil
+}
 
 type lifecycleDocker struct {
 	dockerTypes.DockerSDKInterface
@@ -55,19 +69,23 @@ func (deployments *lifecycleDeployments) HasActiveDeployment(context.Context) (b
 func TestContainerLifecycleControlsWaitForRunningDeployments(t *testing.T) {
 	controls := map[string]func(*InferenceCommandService) error{
 		"start": func(service *InferenceCommandService) error {
-			return service.StartInferenceModelContainer(context.Background(), "c1")
+			return service.StartInferenceModelContainer(context.Background(), "tenant-a", lifecycleContainerID)
 		},
 		"stop": func(service *InferenceCommandService) error {
-			return service.StopInferenceModelContainer(context.Background(), "c1")
+			return service.StopInferenceModelContainer(context.Background(), "tenant-a", lifecycleContainerID)
 		},
 		"restart": func(service *InferenceCommandService) error {
-			return service.RestartInferenceModelContainer(context.Background(), "c1")
+			return service.RestartInferenceModelContainer(context.Background(), "tenant-a", lifecycleContainerID)
 		},
 	}
 	for name, control := range controls {
 		t.Run(name, func(t *testing.T) {
 			docker := &lifecycleDocker{}
-			service := &InferenceCommandService{DockerSDKInterface: docker, ModelDeploymentOperations: &lifecycleDeployments{active: true}}
+			service := &InferenceCommandService{
+				InferenceQueryRepositoryInterface: lifecycleModels{},
+				DockerSDKInterface:                docker,
+				ModelDeploymentOperations:         &lifecycleDeployments{active: true},
+			}
 			require.EqualError(t, control(service), apiError.InferenceUpgradeConflict)
 			require.Empty(t, docker.calls)
 
@@ -77,7 +95,7 @@ func TestContainerLifecycleControlsWaitForRunningDeployments(t *testing.T) {
 
 			service.ModelDeploymentOperations = &lifecycleDeployments{}
 			require.NoError(t, control(service))
-			require.Equal(t, []string{name + ":c1"}, docker.calls)
+			require.Equal(t, []string{name + ":" + lifecycleContainerID}, docker.calls)
 		})
 	}
 }

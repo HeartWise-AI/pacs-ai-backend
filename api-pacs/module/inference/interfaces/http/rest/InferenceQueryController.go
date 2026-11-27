@@ -88,12 +88,16 @@ func (controller *InferenceQueryController) GetContainerInfo(w http.ResponseWrit
 		return
 	}
 
-	containerInfo, err := controller.InferenceQueryServiceInterface.GetContainerInfo(r.Context(), containerID)
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	containerInfo, err := controller.InferenceQueryServiceInterface.GetContainerInfo(r.Context(), tenantID, containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "Inference model container not found."
 		case apiError.DockerError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker service encountered an error."
@@ -217,12 +221,16 @@ func (controller *InferenceQueryController) GetInferenceModelInfo(w http.Respons
 		return
 	}
 
-	modelInfo, err := controller.InferenceQueryServiceInterface.GetInferenceModelInfo(r.Context(), containerID)
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	modelInfo, err := controller.InferenceQueryServiceInterface.GetInferenceModelInfo(r.Context(), tenantID, containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "Inference model container not found."
 		case apiError.DockerError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker service encountered an error."
@@ -270,12 +278,16 @@ func (controller *InferenceQueryController) GetInferenceModelFacts(w http.Respon
 		return
 	}
 
-	modelFacts, err := controller.InferenceQueryServiceInterface.GetInferenceModelFacts(r.Context(), containerID)
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	modelFacts, err := controller.InferenceQueryServiceInterface.GetInferenceModelFacts(r.Context(), tenantID, containerID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "Inference model container not found."
 		case apiError.DockerError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker service encountered an error."
