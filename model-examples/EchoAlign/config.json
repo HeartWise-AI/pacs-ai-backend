@@ -2,11 +2,11 @@
   "modelDirectory": "models",
   "models": {
     "echoalign": {
-      "weights_path": "/app/assets/EchoAlign.pt",
-      "heads_path": "/app/assets/echoalign_private_heads.npz",
-      "heads_meta_path": "/app/assets/echoalign_private_heads.json",
-      "prompts_path": "/app/assets/prompts.yaml",
-      "grades_path": "/app/assets/grades.yaml",
+      "weights_path": "/app/models/EchoAlign.pt",
+      "heads_path": "/app/models/echoalign_private_heads.npz",
+      "heads_meta_path": "/app/models/echoalign_private_heads.json",
+      "prompts_path": "/app/models/prompts.yaml",
+      "grades_path": "/app/models/grades.yaml",
       "clip_batch_size": 8,
       "instance_selection": "multiframe"
     }

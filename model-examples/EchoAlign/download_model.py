@@ -61,7 +61,7 @@ def resolve_url(repository: str, revision: str, path: str) -> str:
 
 
 def download_model(repository: str, revision: str, weights_path: str, weights_sha256: str,
-                   output_dir: Path = Path("assets")) -> list[Path]:
+                   output_dir: Path = Path("models")) -> list[Path]:
     if (repository, revision, weights_path) != (EXPECTED_REPOSITORY, EXPECTED_REVISION, EXPECTED_WEIGHTS_PATH):
         raise ValueError("EchoAlign release metadata does not identify the validated artifacts")
     files = [download(resolve_url(repository, revision, weights_path), output_dir / Path(weights_path).name, weights_sha256)]
@@ -71,14 +71,25 @@ def download_model(repository: str, revision: str, weights_path: str, weights_sh
     return files
 
 
+def verify_artifacts(output_dir: Path, weights_path: str, weights_sha256: str) -> list[Path]:
+    files = [verify_file(output_dir / Path(weights_path).name, weights_sha256)]
+    files += [verify_file(output_dir / Path(path).name, sha) for path, sha in COMPANION_FILES.items()]
+    return files
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", required=True)
     parser.add_argument("--revision", required=True)
     parser.add_argument("--weights-path", required=True)
     parser.add_argument("--weights-sha256", required=True)
-    parser.add_argument("--output-dir", type=Path, default=Path("assets"))
+    parser.add_argument("--output-dir", type=Path, default=Path("models"))
+    parser.add_argument("--verify-only", action="store_true", help="Only verify the packaged artifacts")
     args = parser.parse_args()
+    if args.verify_only:
+        verify_artifacts(args.output_dir, args.weights_path, args.weights_sha256)
+        print("Verified packaged EchoAlign artifacts")
+        return
     download_model(args.repository, args.revision, args.weights_path, args.weights_sha256, args.output_dir)
 
 

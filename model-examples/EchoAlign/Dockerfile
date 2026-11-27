@@ -26,7 +26,7 @@ RUN python download_model.py \
       --revision "${PACS_AI_MODEL_REVISION}" \
       --weights-path "${PACS_AI_WEIGHTS_PATH}" \
       --weights-sha256 "${PACS_AI_WEIGHTS_SHA256}" \
-      --output-dir assets
+      --output-dir models
 
 COPY main.py logic.py config.json README.md ./
 COPY data/ ./data/
