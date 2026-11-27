@@ -117,3 +117,21 @@ def test_html_has_research_banner():
     page = CustomPredictionService.render_html(result)
     assert "Research use only — EchoAlign (CC BY-NC 4.0), not for clinical decisions" in page
     assert "arXiv:2611.27517" in page
+
+
+def test_render_report_contract_and_banner():
+    import json as _json
+    info = _json.loads((ROOT / "data/model_info.json").read_text())
+    assert info["capabilities"] == {"renderReport": True}
+    import main
+    head = {"type": "regression", "value": 3.08, "unit": "m/s"}
+    stored = {"predictions": {"keyHeads": {"transaortic_peak_velocity": head}, "clipsUsed": 55, "instanceSelection": "multiframe",
+                              "summary": {"aorticStenosis": {"grade": "moderate", "severeProbability": 0.11,
+                                                             "moderateOrSevereProbability": 0.97, "avPeakVelocity": 3.08,
+                                                             "meanGradient": 31.0}, "ejectionFraction": 67.0}},
+              "diagnosis": "x", "modelRecommendations": {}}
+    page = main._render_stored_result({"result": stored})
+    assert page.index("Research use only — EchoAlign (CC BY-NC 4.0), not for clinical decisions") < page.index("<h2>EchoAlign")
+    for bad in ({}, {"result": {}}, {"result": stored, "extra": 1}, {"result": {"predictions": {"summary": {}}}}):
+        with pytest.raises(main.ResultError):
+            main._render_stored_result(bad)

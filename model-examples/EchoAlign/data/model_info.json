@@ -4,7 +4,7 @@
   "domainName": "Cardiology",
   "stage": "ai_inference",
   "modality": "Echocardiogram",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "researchOnly": true,
   "license": "CC BY-NC 4.0, research use only, not for diagnosis or treatment",
   "provenance": {
@@ -36,6 +36,9 @@
     "HTML",
     "JSON"
   ],
+  "capabilities": {
+    "renderReport": true
+  },
   "approveFeedbackQuestionnaires": [
     {
       "id": "confidence",
