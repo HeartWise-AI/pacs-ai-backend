@@ -92,14 +92,19 @@ func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context
 
 // RemoveDICOMModality remove dicom modality
 func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, tenantID string, modalityID string) error {
-	err := service.OrthancAPIInterface.DeleteDICOMModality(ctx, modalityID)
+	dicomModality, err := authorizeDICOMModality(ctx, service.OrthancCommandRepositoryInterface, tenantID, modalityID)
+	if err != nil {
+		return err
+	}
+
+	err = service.OrthancAPIInterface.DeleteDICOMModality(ctx, dicomModality.ModalityID)
 	if err != nil {
 		log.Println(err)
 		return err
 	}
 
 	// delete dicom modality in database
-	err = service.OrthancCommandRepositoryInterface.DeleteDICOMModality(ctx, tenantID, modalityID)
+	err = service.OrthancCommandRepositoryInterface.DeleteDICOMModality(ctx, dicomModality.TenantID, dicomModality.ModalityID)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -118,6 +123,12 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 	// used one C-MOVE per image, which opened up to one association per image
 	// against the PACS and got refused under load.
 	// Someone waiting in the viewer (a user ID) goes before automatic ingestion.
+	dicomModality, err := authorizeDICOMModality(ctx, service.OrthancCommandRepositoryInterface, data.TenantID, data.ModalityID)
+	if err != nil {
+		return nil, err
+	}
+	data.ModalityID = dicomModality.ModalityID
+
 	res, err := service.OrthancAPIInterface.RetrieveModalityStudyBySeries(ctx, data.ModalityID, os.Getenv("ORTHANC_AET"), data.StudyInstanceUID, data.UserID != nil)
 	if err != nil && err.Error() == apiError.DuplicateRecord {
 		return nil, err // halt and proceed: the local copy is complete
@@ -166,6 +177,12 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 	// TODO: handle direct dicom image
 	var customSeriesInstanceUID string
 	var customSOPInstanceUID string
+
+	dicomModality, err := authorizeDICOMModality(ctx, service.OrthancCommandRepositoryInterface, data.TenantID, data.ModalityID)
+	if err != nil {
+		return err
+	}
+	data.ModalityID = dicomModality.ModalityID
 
 	/// check mime type
 	if data.FileMimeType == "application/pdf" {
@@ -277,8 +294,13 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 }
 
 // TriggerDICOMEchoSCU trigger dicom echo scu
-func (service *OrthancCommandService) TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error {
-	err := service.OrthancAPIInterface.TriggerDICOMEchoSCU(ctx, modalityID)
+func (service *OrthancCommandService) TriggerDICOMEchoSCU(ctx context.Context, tenantID, modalityID string) error {
+	dicomModality, err := authorizeDICOMModality(ctx, service.OrthancCommandRepositoryInterface, tenantID, modalityID)
+	if err != nil {
+		return err
+	}
+
+	err = service.OrthancAPIInterface.TriggerDICOMEchoSCU(ctx, dicomModality.ModalityID)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -289,7 +311,14 @@ func (service *OrthancCommandService) TriggerDICOMEchoSCU(ctx context.Context, m
 
 // UpdateDICOMModality update dicom modality
 func (service *OrthancCommandService) UpdateDICOMModality(ctx context.Context, data types.UpdateDICOMModality) error {
-	err := service.OrthancAPIInterface.UpdateDICOMModality(ctx, data.ModalityID, orthancAPITypes.UpdateDICOMModalityRequest{
+	dicomModality, err := authorizeDICOMModality(ctx, service.OrthancCommandRepositoryInterface, data.TenantID, data.ModalityID)
+	if err != nil {
+		return err
+	}
+	data.TenantID = dicomModality.TenantID
+	data.ModalityID = dicomModality.ModalityID
+
+	err = service.OrthancAPIInterface.UpdateDICOMModality(ctx, data.ModalityID, orthancAPITypes.UpdateDICOMModalityRequest{
 		AET:                    data.AET,
 		AllowEcho:              true,
 		AllowFind:              true,

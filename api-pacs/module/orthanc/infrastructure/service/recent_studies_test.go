@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/module/orthanc/domain/entity"
+	"api-pacs/module/orthanc/domain/repository"
 	"api-pacs/module/orthanc/infrastructure/service/types"
 )
 
@@ -117,11 +120,28 @@ func TestFindRecentModalityStudiesReturnsPACSErrors(t *testing.T) {
 	require.Error(t, err)
 }
 
+// fakeModalityRecords holds the DICOM modality records of one tenant.
+type fakeModalityRecords struct {
+	repository.OrthancQueryRepositoryInterface
+	tenantID    string
+	modalityIDs []string
+}
+
+func (records *fakeModalityRecords) SelectDICOMModalityByModalityID(_ context.Context, tenantID, modalityID string) (entity.DICOMModality, error) {
+	if tenantID != records.tenantID || !slices.Contains(records.modalityIDs, modalityID) {
+		return entity.DICOMModality{}, errors.New(apiError.FirestoreError)
+	}
+	return entity.DICOMModality{ID: tenantID + ":" + modalityID, TenantID: tenantID, ModalityID: modalityID}, nil
+}
+
 func TestFindModalityStudiesKeepsOneQueryForPatientSearches(t *testing.T) {
 	pacs := &fakeStudyPACS{dates: []string{"20100101", "20261117", "20200101"}}
-	service := &OrthancQueryService{OrthancAPIInterface: pacs}
+	service := &OrthancQueryService{
+		OrthancQueryRepositoryInterface: &fakeModalityRecords{tenantID: "tenant-a", modalityIDs: []string{"pacs-a"}},
+		OrthancAPIInterface:             pacs,
+	}
 
-	studies, _, err := service.FindModalityStudies(context.Background(), types.FindModalityStudies{PatientID: "123"})
+	studies, _, err := service.FindModalityStudies(context.Background(), types.FindModalityStudies{TenantID: "tenant-a", ModalityID: "pacs-a", PatientID: "123"})
 	require.NoError(t, err)
 	require.Equal(t, []string{""}, pacs.queries)
 	require.Equal(t, "20261117", studies[0].StudyDate)

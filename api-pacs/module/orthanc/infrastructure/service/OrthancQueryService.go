@@ -53,6 +53,12 @@ func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, dat
 		queryID string
 		err     error
 	)
+	dicomModality, err := authorizeDICOMModality(ctx, service.OrthancQueryRepositoryInterface, data.TenantID, data.ModalityID)
+	if err != nil {
+		return nil, "", err
+	}
+	data.ModalityID = dicomModality.ModalityID
+
 	if wantsRecentStudies(data) {
 		res, queryID, err = service.findRecentModalityStudies(ctx, data, time.Now())
 	} else {
@@ -173,13 +179,13 @@ func (service *OrthancQueryService) ListDICOMModalities(ctx context.Context, ten
 				m.Lock()
 				defer m.Unlock()
 
-				// get dicom modality from database
-				dbDicomModality, err := service.OrthancQueryRepositoryInterface.SelectDICOMModalityByModalityID(egCtx, tenantID, dicomModalityID)
+				// only the tenant's own modalities are listed
+				dbDicomModality, err := authorizeDICOMModality(egCtx, service.OrthancQueryRepositoryInterface, tenantID, dicomModalityID)
 				if err != nil {
-					log.Println(err) // silently ignore error
+					return nil
 				}
 
-				results[dicomModalityID] = types.ListDICOMModalityResult{
+				results[dbDicomModality.ModalityID] = types.ListDICOMModalityResult{
 					AET:                 dicomModality.AET,
 					AllowEcho:           dicomModality.AllowEcho,
 					AllowFind:           dicomModality.AllowFind,
