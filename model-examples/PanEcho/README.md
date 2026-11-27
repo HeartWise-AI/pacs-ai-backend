@@ -23,6 +23,7 @@ matches the behavior of the measured 1.0.0 deployment.
 
 ## Changelog
 
+- 1.1.0: the view classifier's results are kept per clip (SOPInstanceUID) instead of per series. Echo studies that store every clip in one series used to take the last clip's view for all clips, so the view filter kept or dropped the whole study by that one view. Predictions change for those studies. Includes the unreleased 1.0.4 changes below.
 - 1.0.4: `read_body` reserves at most 64 MiB from `Content-Length` and grows as bytes arrive (PR #520); model-info reports the runtime `PACS_AI_MODEL_VERSION` (PR #526). Predictions unchanged.
 
 ## Request handling and performance (1.0.3)
