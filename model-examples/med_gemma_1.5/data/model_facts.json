@@ -30,7 +30,8 @@
     "Warnings_and_limitations": {
       "Image_Quality": "The model requires high-quality medical text and image.",
       "Multiple_Devices": "The model is designed to perform medical text and image comprehension.",
-      "Confidence_Scores": "Current threshold applied on probability output for classification is 0.1"
+      "Confidence_Scores": "Current threshold applied on probability output for classification is 0.1",
+      "Revalidation_required": "Version 1.5.2 moves torch from 2.6.0 (CUDA 12.4) to 2.13.0 (CUDA 12.6) to close security advisories. The generated text changed: in a parity check on 12 chest X-ray inputs (greedy decoding), only 1 of 12 reports was identical to 1.5.1, the top token changed on 1.1% of 2,728 teacher-forced tokens (max probability difference 0.115), and one mirrored input gained a cardiomegaly finding. This version must be clinically re-validated before the model is re-enabled."
     }
   },
   "automaticRunLabels": ["DIAGNOSTIC"]
