@@ -214,7 +214,8 @@ The same value must appear in both api-pacs `.env` and study-service `.env` for 
 - cardio-agent uses `DATABASE_URL` (full Postgres URI).
 - The bundled cardio-agent Postgres takes its password from `CARDIO_DB_PASSWORD` in the root `.env`; there is no default. Use the same value in `DATABASE_URL`.
 - Both Postgres host ports are bound to `127.0.0.1`; containers reach the databases over `pacs-net`.
-- `POSTGRES_PASSWORD` only applies when a data volume is first initialized. On an existing volume, rotate with `ALTER ROLE ... PASSWORD` inside the container, then update `.env` and restart dependents.
+- If CardioAgent on another host shares the cardio-agent database (as on MHI with wise-training), do not publish 5434 on every interface. Publish it, restrict new connections to that host's IP in `DOCKER-USER`, and limit the role in `pg_hba.conf` (for example `host all cardio <ip>/32 scram-sha-256`, `host all all 172.16.0.0/12 scram-sha-256`, `host all all all reject`).
+- `POSTGRES_PASSWORD` only applies when a data volume is first initialized. On an existing volume, rotate with `ALTER ROLE ... PASSWORD` inside the container, then update `.env` and recreate the dependents with `docker compose up -d --no-build <services>` (`docker compose restart` keeps the old environment).
 
 ### 5.6 Redis
 - api-pacs: `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_IAM_DB`.
