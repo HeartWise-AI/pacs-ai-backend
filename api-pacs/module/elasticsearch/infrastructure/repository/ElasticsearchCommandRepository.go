@@ -93,7 +93,7 @@ func (repository *ElasticsearchCommandRepository) InsertGetModalityStudyLog(ctx 
 // InsertLoginLog insert login log
 func (repository *ElasticsearchCommandRepository) InsertLoginLog(ctx context.Context, data repositoryTypes.CreateLoginLog) (*index.Response, error) {
 	login := entity.Login{
-		SessionID:  data.SessionID,
+		SessionID:  entity.SessionReference(data.SessionID),
 		TenantID:   data.TenantID,
 		TenantName: data.TenantName,
 		UserID:     data.UserID,
