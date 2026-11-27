@@ -1,6 +1,50 @@
 import json
 
+import html as _html
+
+AS_SCREENING_KEYS = ("Aortic valve stenosis", "Aortic valve peak velocity")
+
+
 class HTMLParser:
+    @staticmethod
+    def _aortic_stenosis_screening_section(screening, rows):
+        """P(severe AS), P(any AS) and the AI Vmax estimate, labelled as screening."""
+        if not screening and not rows:
+            return ""
+        items = []
+        if screening:
+            items.append(("P(severe AS)", f"{float(screening['pSevere']):.2f}"))
+            items.append(("P(any AS) = P(mild or moderate) + P(severe)", f"{float(screening['pAny']):.2f}"))
+            vmax = screening.get("avVmaxEstimate")
+            if vmax:
+                items.append((f"Aortic valve peak velocity ({vmax['label']})", f"{float(vmax['value']):.1f} m/s"))
+            note_en = screening.get("note", {}).get("en", "")
+            note_fr = screening.get("note", {}).get("fr", "")
+        else:
+            items = [(key, str(value)) for key, value in rows.items()]
+            note_en = note_fr = ""
+        cards = "".join(
+            f"""
+                    <div class="finding-card screening">
+                        <div class="finding-name">{_html.escape(name)}</div>
+                        <div class="finding-value">{_html.escape(value)}</div>
+                        <div class="finding-status">Screening score, not a diagnosis</div>
+                    </div>"""
+            for name, value in items
+        )
+        notes = ""
+        if note_en:
+            notes = f"""
+                <div class="highlight"><strong>Aortic stenosis:</strong> {_html.escape(note_en)}<br>
+                <span lang="fr">{_html.escape(note_fr)}</span></div>"""
+        return f"""
+                <div class="section">
+                    <h2>Aortic stenosis screening (AI)</h2>
+                    <div class="findings-grid">{cards}
+                    </div>{notes}
+                </div>
+        """
+
     @staticmethod
     def generate_detection_results(results):
         """Generate HTML output with echocardiographic analysis results.
@@ -58,6 +102,15 @@ class HTMLParser:
             }
         }
         
+        # Aortic stenosis is a screening score (1.1.2): shown in its own section, never
+        # counted as a normal/abnormal/urgent finding.
+        as_screening = results.get('asScreening') or None
+        screening_rows = {}
+        for key in AS_SCREENING_KEYS:
+            if key in diagnosis_dict:
+                screening_rows[key] = diagnosis_dict[key]
+        diagnosis_dict = {k: v for k, v in diagnosis_dict.items() if k not in AS_SCREENING_KEYS}
+
         # Categorize each finding
         for key, value in diagnosis_dict.items():
             category = 'Other'  # Default category
@@ -263,6 +316,10 @@ class HTMLParser:
                     background: linear-gradient(135deg, #f39c1215, #f39c1205);
                 }}
 
+                .finding-card.screening {{
+                    border-left-color: var(--primary-color);
+                }}
+
                 .finding-card.normal {{
                     border-left-color: var(--normal-color);
                     background: linear-gradient(135deg, #27ae6015, #27ae6005);
@@ -415,6 +472,8 @@ class HTMLParser:
                     </div>
                 </div>
         """
+
+        html_content += HTMLParser._aortic_stenosis_screening_section(as_screening, screening_rows)
 
         # Add detailed findings by category
         for category_key, category_data in categories.items():

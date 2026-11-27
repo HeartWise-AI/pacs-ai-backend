@@ -82,6 +82,8 @@ class JsonPredictionResponse(BaseModel):
 
     predictions: Any
     diagnosis: Optional[str] = None
+    # Aortic stenosis screening scores (1.1.2): pSevere, pAny, avVmaxEstimate, note.
+    asScreening: Optional[Dict[str, Any]] = None
     modelRecommendations: Optional[ModelRecommendations]
     # Which clips PanEcho used, their predicted views, and the skip reason when it did not run.
     viewSelection: Optional[Dict[str, Any]] = None
