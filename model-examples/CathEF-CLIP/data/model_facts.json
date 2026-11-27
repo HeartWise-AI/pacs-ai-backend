@@ -5,7 +5,7 @@
       "Description": "DeepCORO-CLIP based LVEF estimator from left coronary angiograms. Predicts continuous LVEF (%) and binary reduced-EF probability (<40%) from up to 4 videos per study.",
       "Developed_by": "HeartWise.AI / MHI",
       "Development_period": "2024-2026",
-      "Version": "1.0.0 (v2 retrained)"
+      "Version": "1.0.4 (v2 retrained)"
     },
     "Mechanism": {
       "Outcome": "LVEF (%) regression and P(LVEF<40%) binary classification",

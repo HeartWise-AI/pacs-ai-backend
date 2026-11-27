@@ -21,7 +21,7 @@ def float32(value: float) -> float:
     return float(torch.tensor(value, dtype=torch.float32))
 
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 MAIN = ("predictions", "primary", "compositeMace", "probability")  # the stored number the hostile-input tests alter
 MAIN_BAD = {"too_low": -0.001, "too_high": 1.5, "too_many_decimals": 0.85812, "other": 0.777}
 HEADS = list(CLASS_MAPPING)

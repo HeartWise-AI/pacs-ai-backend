@@ -1,4 +1,6 @@
-# Angiogram procedure classifier 1.0.5
+# Angiogram procedure classifier 1.0.6
+
+**1.0.6:** security patch: PyTorch 2.13.0 (CUDA 12.6 build), torchvision 0.28.0, pydicom 3.0.2, closing the open Dependabot PyTorch advisories (incl. critical GHSA-53q9-r3pm-6pq6 and high GHSA-63cw-57p8-fm3p). Unpinned Python dependencies are now pinned to the versions of the previous image. Same weights, preprocessing, thresholds and report; predictions checked against the previous image on synthetic and real XA studies.
 
 **1.0.5:** same weights, class mapping, pixel conversion, thresholds and labels as 1.0.4. Only the chronology
 used for PCI/POST_PCI status changes, and only for studies where several videos share one SeriesTime (exported

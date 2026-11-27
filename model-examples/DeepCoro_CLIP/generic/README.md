@@ -51,3 +51,7 @@ docker run -p 8000:8000 --gpus all deepcoro-clip-generic:local
 # Interactive shell on pacs-net
 docker run -it --network pacs-net --gpus all --entrypoint /bin/bash deepcoro-clip-generic:local
 ```
+
+## Changelog
+
+- 1.1.2: security patch: PyTorch 2.13.0 (CUDA 12.6 build), torchvision 0.28.0, closing the open Dependabot PyTorch advisories (incl. critical GHSA-53q9-r3pm-6pq6 and high GHSA-63cw-57p8-fm3p). Unpinned Python dependencies are now pinned to the versions of the previous image. Same weights, preprocessing, thresholds and report; predictions checked against the previous image on synthetic and real XA studies.
