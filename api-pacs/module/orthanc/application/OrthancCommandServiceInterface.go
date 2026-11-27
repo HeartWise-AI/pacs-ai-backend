@@ -18,7 +18,7 @@ type OrthancCommandServiceInterface interface {
 	// StoreStudyCustomSeries store study custom series
 	StoreStudyCustomSeries(ctx context.Context, data types.StoreStudyCustomSeries) error
 	// TriggerDICOMEchoSCU trigger dicom echo scu
-	TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error
+	TriggerDICOMEchoSCU(ctx context.Context, tenantID, modalityID string) error
 	// UpdateDICOMModality update dicom modality
 	UpdateDICOMModality(ctx context.Context, data types.UpdateDICOMModality) error
 }

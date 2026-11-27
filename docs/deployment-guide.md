@@ -386,6 +386,24 @@ Configure each remote PACS as a modality in Orthanc:
 - Required fields: AE title, host, port.
 - Restart Orthanc to pick up changes.
 
+Every tenant shares the one Orthanc, so api-pacs only lets a tenant list, query, retrieve from, store to, echo, update or remove a modality for which that tenant has a record in the Firestore `dicom_modalities` collection. Any other modality ID answers 404, and ingestion jobs on it fail. Create one document per tenant and modality in the Firebase Console:
+
+| Field | Type | Example | Notes |
+|---|---|---|---|
+| Document ID | — | `acme-pacs:HOSPITAL_PACS` | `<tenantId>:<modalityId>` |
+| `id` | string | `acme-pacs:HOSPITAL_PACS` | Same as the document ID |
+| `tenant_id` | string | `acme-pacs` | The owning tenant |
+| `modality_id` | string | `HOSPITAL_PACS` | The Orthanc modality name, exactly as configured |
+| `aet` | string | `HOSPITAL_PACS` | Remote AE title |
+| `host_hash` | string | | MD5 of the host; set when the modality is saved from the UI |
+| `c_find_enabled` | bool | `true` | |
+| `c_move_enabled` | bool | `true` | |
+| `c_store_enabled` | bool | `false` | |
+| `created_at` | int | `1715000000` | Unix epoch seconds |
+| `updated_at` | int | `1715000000` | Unix epoch seconds |
+
+Give a modality to one tenant only, unless both tenants are meant to reach the same remote PACS. The update endpoint changes a modality only after its record exists; it does not create records.
+
 ### 6.7 Smoke tests
 Run after install, before handoff. Steps 1–3 are CLI checks; step 4 is driven through the PACS-AI web UI.
 
