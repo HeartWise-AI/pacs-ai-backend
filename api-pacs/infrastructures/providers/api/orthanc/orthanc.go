@@ -475,7 +475,9 @@ func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, 
 // skipped (see series_move.go). The first series is a job of its own and goes
 // first; the other series share a few jobs (batchMoves). interactive is true
 // when someone is waiting for the study in the viewer.
-// Returns DuplicateRecord when nothing is missing.
+// Returns DuplicateRecord when nothing is missing, and MissingRecord when the
+// modality reports no series of the study, so success and DuplicateRecord
+// both mean the modality has the study.
 func (o *OrthancAPI) RetrieveModalityStudyBySeries(ctx context.Context, modalityID, localAet, studyInstanceUID string, interactive bool) ([]types.QueryModalityResponse, error) {
 	remote, err := o.FindModalitySeriesByStudy(ctx, modalityID, localAet, studyInstanceUID)
 	if err != nil {

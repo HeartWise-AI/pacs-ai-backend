@@ -182,7 +182,15 @@ func (k *kernel) RegisterDockerInferenceProxy() dockerInferenceProxy.DockerInfer
 
 // RegisterOrthancProxy performs dependency injection to the RegisterOrthancProxy
 func (k *kernel) RegisterOrthancProxy() orthancProxy.OrthancProxy {
-	return orthancProxy.OrthancProxy{}
+	return orthancProxy.OrthancProxy{
+		TenantStudies: orthancTenantStudyRepository(),
+	}
+}
+
+func orthancTenantStudyRepository() *orthancRepository.OrthancTenantStudyRepository {
+	return &orthancRepository.OrthancTenantStudyRepository{
+		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
+	}
 }
 
 // Controllers
@@ -505,10 +513,16 @@ func OrthancCommandServiceDI() *orthancService.OrthancCommandService {
 		OrthancCommandRepositoryInterface: &orthancRepository.OrthancCommandRepositoryCircuitBreaker{
 			OrthancCommandRepositoryInterface: repository,
 		},
-		OrthancAPIInterface:                  orthancAPI,
-		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
-		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
-		UserQueryServiceInterface:            k.userQueryServiceContainer(),
+		OrthancQueryRepositoryInterface: &orthancRepository.OrthancQueryRepositoryCircuitBreaker{
+			OrthancQueryRepositoryInterface: &orthancRepository.OrthancQueryRepository{
+				FirebaseAdminSDK: firebaseAdminSDK,
+			},
+		},
+		OrthancTenantStudyRepositoryInterface: orthancTenantStudyRepository(),
+		OrthancAPIInterface:                   orthancAPI,
+		TenantQueryServiceInterface:           k.tenantQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface:  k.elasticsearchCommandServiceContainer(),
+		UserQueryServiceInterface:             k.userQueryServiceContainer(),
 	}
 
 	return service
