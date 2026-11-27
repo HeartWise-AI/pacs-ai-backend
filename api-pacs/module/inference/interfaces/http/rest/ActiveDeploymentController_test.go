@@ -42,7 +42,7 @@ func (f *deploymentFixture) model() entity.InferenceModel {
 		id = strings.Repeat("b", 64)
 	}
 	return entity.InferenceModel{ID: "fixture-registration", TenantID: "fixture-tenant", Name: "DeepCORO-CTO", ContainerID: id,
-		Deployment: &entity.InferenceModelDeployment{ContainerID: id, ModelVersion: f.version, LocalImageID: "sha256:" + id,
+		Deployment: &entity.InferenceModelDeployment{ContainerID: id, ModelName: "DeepCORO-CTO", ModelVersion: f.version, LocalImageID: "sha256:" + id,
 			CatalogVersionID: "fixture-" + f.version, ImageDigest: "sha256:" + id}}
 }
 func (f *deploymentFixture) ListActiveModelRegistrations(context.Context) ([]entity.InferenceModel, error) {

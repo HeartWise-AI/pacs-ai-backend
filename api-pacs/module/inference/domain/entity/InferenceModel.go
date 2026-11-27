@@ -37,6 +37,7 @@ type InferenceModelDeployment struct {
 	ImageDigest      string                    `firestore:"image_digest" json:"imageDigest"`
 	LocalImageID     string                    `firestore:"local_image_id" json:"localImageId"`
 	ModelVersion     string                    `firestore:"model_version" json:"modelVersion"`
+	ModelName        string                    `firestore:"model_name,omitempty" json:"modelName,omitempty"`
 	Provenance       *InferenceModelProvenance `firestore:"provenance,omitempty" json:"provenance,omitempty"`
 	DeployedAt       int64                     `firestore:"deployed_at" json:"deployedAt"`
 }

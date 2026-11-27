@@ -78,7 +78,7 @@ func (service *InferenceCommandService) ActiveDeployments(ctx context.Context) (
 }
 
 func (service *InferenceCommandService) activeDeployment(ctx context.Context, model entity.InferenceModel) (entity.ActiveDeployment, error) {
-	entry := entity.ActiveDeployment{TenantID: model.TenantID, RegistrationID: model.ID, ModelName: model.Name, ContainerID: model.ContainerID, State: "READY"}
+	entry := entity.ActiveDeployment{TenantID: model.TenantID, RegistrationID: model.ID, ContainerID: model.ContainerID, State: "READY"}
 	info, err := service.DockerSDKInterface.GetContainerInfo(ctx, model.ContainerID)
 	if err != nil || info.ID != model.ContainerID || !validPreparedContainer(info) || info.ImageID == "" {
 		return entry, errors.New(apiError.DockerError)
@@ -89,9 +89,12 @@ func (service *InferenceCommandService) activeDeployment(ctx context.Context, mo
 			return entry, errors.New(apiError.InferenceUpgradeConflict)
 		}
 		entry.ModelVersion, entry.CatalogVersionID, entry.ImageDigest = d.ModelVersion, d.CatalogVersionID, d.ImageDigest
-	} else {
-		// Legacy registrations have no durable deployment snapshot. Read the
-		// immutable image labels first, then the runtime's own contract.
+		entry.ModelName = strings.TrimSpace(d.ModelName)
+	}
+	if entry.ModelName == "" {
+		// Registration names are editable display names, not artifact names.
+		// Older snapshots lack ModelName; recover it from immutable release labels
+		// or the runtime contract without assuming it equals the display name.
 		var image dockerTypes.InspectImageResult
 		imageErr := errors.New("image inspection unavailable")
 		if inspector, ok := service.DockerSDKInterface.(interface {
@@ -100,20 +103,31 @@ func (service *InferenceCommandService) activeDeployment(ctx context.Context, mo
 			image, imageErr = inspector.InspectImage(ctx, info.ImageID)
 		}
 		if imageErr == nil && image.ID == info.ImageID {
-			entry.ModelVersion = strings.TrimSpace(image.Labels["org.opencontainers.image.version"])
-			// A base OS version is not a model version.
-			if image.Labels["org.opencontainers.image.title"] != model.Name {
-				entry.ModelVersion = ""
+			name := strings.TrimSpace(image.Labels["org.opencontainers.image.title"])
+			version := strings.TrimSpace(image.Labels["org.opencontainers.image.version"])
+			// HeartWise release provenance distinguishes a model title from an
+			// inherited OS title when the registration has a custom display name.
+			if name != "" && version != "" && (name == model.Name || image.Labels["ai.heartwise.model.repository"] != "") {
+				if entry.ModelVersion != "" && entry.ModelVersion != version {
+					return entry, errors.New(apiError.InferenceUpgradeConflict)
+				}
+				entry.ModelName, entry.ModelVersion = name, version
 			}
 		}
-		if entry.ModelVersion == "" {
+		if entry.ModelName == "" {
+			if service.DockerInferenceAPIInterface == nil {
+				return entry, errors.New(apiError.DockerInferenceError)
+			}
 			probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			metadata, err := service.DockerInferenceAPIInterface.GetModelInfo(probeCtx, strings.TrimPrefix(info.Name, "/"))
 			cancel()
-			if err != nil || !metadata.Success || metadata.Data.ModelName != model.Name || metadata.Data.Version == "" {
+			if err != nil || !metadata.Success || metadata.Data.ModelName == "" || metadata.Data.Version == "" {
 				return entry, errors.New(apiError.DockerInferenceError)
 			}
-			entry.ModelVersion = metadata.Data.Version
+			if entry.ModelVersion != "" && entry.ModelVersion != metadata.Data.Version {
+				return entry, errors.New(apiError.InferenceUpgradeConflict)
+			}
+			entry.ModelName, entry.ModelVersion = metadata.Data.ModelName, metadata.Data.Version
 		}
 	}
 	return entry, nil

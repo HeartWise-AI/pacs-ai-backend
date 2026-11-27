@@ -2,8 +2,10 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	apiError "api-pacs/internal/errors"
 	"github.com/afex/hystrix-go/hystrix"
 
 	"api-pacs/module/inference/domain/entity"
@@ -14,6 +16,33 @@ import (
 // InferenceQueryRepositoryCircuitBreaker is the circuit breaker for the inference query repository
 type InferenceQueryRepositoryCircuitBreaker struct {
 	repository.InferenceQueryRepositoryInterface
+}
+
+func (r *InferenceQueryRepositoryCircuitBreaker) ListActiveModelRegistrations(ctx context.Context) ([]entity.InferenceModel, error) {
+	reader, ok := r.InferenceQueryRepositoryInterface.(repository.ActiveModelRegistrationReader)
+	if !ok {
+		return nil, errors.New(apiError.MissingConfiguration)
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	output := make(chan []entity.InferenceModel, 1)
+	hystrix.ConfigureCommand("list_active_model_registrations", config.Settings())
+	errChan := hystrix.GoC(ctx, "list_active_model_registrations", func(ctx context.Context) error {
+		models, err := reader.ListActiveModelRegistrations(ctx)
+		if err != nil {
+			return err
+		}
+		output <- models
+		return nil
+	}, nil)
+	select {
+	case models := <-output:
+		return models, nil
+	case err := <-errChan:
+		return nil, err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 // SelectInferenceModelByID get inference model by id

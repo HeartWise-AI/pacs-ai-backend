@@ -25,6 +25,9 @@ func (service *InferenceCommandService) runDeploymentNotifications(ctx context.C
 	for {
 		attemptCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		registry, err := service.ActiveDeployments(attemptCtx)
+		if err != nil {
+			log.Print("[deployment-registry] registry reconciliation failed; will retry")
+		}
 		if err == nil && registry.Revision != lastRevision {
 			request, reqErr := http.NewRequestWithContext(attemptCtx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/ingest/deployments/refresh", nil)
 			if reqErr == nil {

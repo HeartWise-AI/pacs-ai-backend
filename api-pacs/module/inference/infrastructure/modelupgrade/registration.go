@@ -46,6 +46,7 @@ func DeploymentFromCandidate(
 		ImageDigest:      strings.TrimSpace(candidate.ImageDigest),
 		LocalImageID:     strings.TrimSpace(candidate.LocalImageID),
 		ModelVersion:     strings.TrimSpace(candidate.ModelInfo.Version),
+		ModelName:        strings.TrimSpace(candidate.ModelInfo.ModelName),
 		Provenance: &entity.InferenceModelProvenance{
 			SourceRepository: provenance.SourceRepository,
 			SourceRevision:   sourceRevision,
@@ -90,6 +91,7 @@ func DeploymentFromMovedCandidate(
 		ImageDigest:      strings.TrimSpace(running.Digest),
 		LocalImageID:     strings.TrimSpace(running.ImageID),
 		ModelVersion:     strings.TrimSpace(candidate.ModelInfo.Version),
+		ModelName:        strings.TrimSpace(candidate.ModelInfo.ModelName),
 		Provenance:       previous.Provenance,
 		DeployedAt:       deployedAt.Unix(),
 	}

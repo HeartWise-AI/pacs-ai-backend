@@ -47,7 +47,30 @@ func TestActiveRegistryLegacyLabelsAndMetadata(t *testing.T) {
 	registry, err = svc.ActiveDeployments(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, "9.1.0", registry.Models[0].ModelVersion)
-	api.info.ModelName = "DifferentModel"
+	// A display-name alias must not change the canonical adapter name.
+	repo.models[0].Name = "My custom display name"
+	registry, err = svc.ActiveDeployments(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "Dummy", registry.Models[0].ModelName)
+	// Existing deployment snapshots also recover the name from runtime metadata.
+	repo.models[0].Deployment = &entity.InferenceModelDeployment{ContainerID: container, LocalImageID: "sha256:dummy", ModelVersion: "9.1.0"}
+	registry, err = svc.ActiveDeployments(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "Dummy", registry.Models[0].ModelName)
+	selected, err := svc.ResolveDispatchDeployment(context.Background(), entity.InferenceIngestionJob{TenantID: "tenant", ContainerID: container, ModelName: "Dummy", ModelVersion: "9.1.0"})
+	require.NoError(t, err)
+	require.Equal(t, "Dummy", selected.ModelName)
+	// Verified release labels also support a cold custom-named registration.
+	sdk.image.Labels["org.opencontainers.image.title"] = "Dummy"
+	sdk.image.Labels["org.opencontainers.image.version"] = "9.1.0"
+	sdk.image.Labels["ai.heartwise.model.repository"] = "heartwise/dummy"
+	api.err = errors.New("cold")
+	registry, err = svc.ActiveDeployments(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "Dummy", registry.Models[0].ModelName)
+	api.err = nil
+	sdk.image.Labels = nil
+	api.info.ModelName = ""
 	registry, err = svc.ActiveDeployments(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, "UNAVAILABLE", registry.Models[0].State)
@@ -115,7 +138,7 @@ func (r *activeRegistryRepository) SelectInferenceModelByContainer(_ context.Con
 func TestActiveRegistryUpgradeRollbackRemovalAndTenantIsolation(t *testing.T) {
 	container := strings.Repeat("a", 64)
 	model := entity.InferenceModel{ID: "registration", TenantID: "tenant-a", Name: "Dummy", ContainerID: container,
-		Deployment: &entity.InferenceModelDeployment{ContainerID: container, ModelVersion: "9.0.0", LocalImageID: "sha256:image-a", CatalogVersionID: "catalog-a", ImageDigest: "sha256:digest-a"}}
+		Deployment: &entity.InferenceModelDeployment{ContainerID: container, ModelName: "Dummy", ModelVersion: "9.0.0", LocalImageID: "sha256:image-a", CatalogVersionID: "catalog-a", ImageDigest: "sha256:digest-a"}}
 	repo := &activeRegistryRepository{models: []entity.InferenceModel{model}}
 	docker := &managedGatewayDockerSDK{info: dockerTypes.GetContainerInfoResult{ID: container, ImageID: "sha256:image-a", Name: "/dummy"}}
 	predictor := &recordingManagedPredictor{response: dockerInferenceTypes.PredictResponse{Success: true}}

@@ -13,8 +13,10 @@ Study-service filters its public discovery by authenticated tenant.
 
 The registry reads current Firestore registrations, not deployment history, and
 checks their container/image identities against Docker. Modern registrations use
-the verified deployment snapshot. Legacy registrations use immutable image labels
-only when the model title matches, otherwise the runtime's model-info contract.
+the verified deployment snapshot, including the canonical artifact model name
+for newly validated deployments. Older snapshots and legacy registrations recover
+the canonical name from model release labels or the runtime's model-info contract;
+an editable registration display name is never used as the adapter identity.
 Unverifiable registrations become `UNAVAILABLE`, not an invented/default version.
 `READY` means the deployment identity is resolvable; it does not promise that a
 GPU is admitted or that a cold container is already running. Legacy cold images
