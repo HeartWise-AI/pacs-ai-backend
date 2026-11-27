@@ -40,6 +40,7 @@ Before running this repository, ensure you have:
    cp pacs-ai-backend/api-pacs/.env.example pacs-ai-backend/api-pacs/.env
    cp pacs-ai-backend/orthanc/.env.example pacs-ai-backend/orthanc/.env
    cp pacs-ai-backend/nginx/.env.example pacs-ai-backend/nginx/.env
+   cp pacs-ai-backend/elasticsearch/.env.example pacs-ai-backend/elasticsearch/.env   # set ELASTIC_PASSWORD, KIBANA_SYSTEM_PASSWORD, ELASTICSEARCH_API_PACS_PASSWORD
    cp pacs-ai-backend/cardio-agent/.env.example pacs-ai-backend/cardio-agent/.env
    cp pacs-ai backend/postgresql/.env.example pacs-ai backend/postgresql/.env
    cp pacs-ai backend/redis/.env.example pacs-ai backend/redis/.env
@@ -195,6 +196,8 @@ Update `api-pacs/.env` with the following variables:
 | 'DOCUSIGN_PRIVATE_KEY'      | Docusign private key                                                                |
 | 'DOCUSIGN_ACCOUNT_ID'       | Docusign account id                                                                 |
 | `ELASTICSEARCH_URL`         | Should be set to `http://elasticsearch:9200`                                        |
+| `ELASTICSEARCH_USERNAME`    | Same value as `ELASTICSEARCH_API_PACS_USERNAME` in `elasticsearch/.env`             |
+| `ELASTICSEARCH_PASSWORD`    | Same value as `ELASTICSEARCH_API_PACS_PASSWORD` in `elasticsearch/.env`             |
 | `FIREBASE_CONFIG_FILE_PATH` | Should be set to `/app/build/configs/firebase/pacs-ai-firebase-admin.json`          |
 | `FIREBASE_PROJECT_ID`       | Your Firebase project ID (same as in `PACS-AI/platform/app/.env`)                   |
 | `FIREBASE_SUPERUSER_KEY`    | Strong password for super user access (used for first user creation and API access) |
@@ -306,6 +309,8 @@ Update `api-pacs/.env` with the following variables:
 | 'DOCUSIGN_PRIVATE_KEY'      | Docusign private key                                                                                                      |
 | 'DOCUSIGN_ACCOUNT_ID'       | Docusign account id                                                                                                       |
 | `ELASTICSEARCH_URL`         | Should be set to `http://localhost:9200`                                                                                  |
+| `ELASTICSEARCH_USERNAME`    | Same value as `ELASTICSEARCH_API_PACS_USERNAME` in `elasticsearch/.env`                                                   |
+| `ELASTICSEARCH_PASSWORD`    | Same value as `ELASTICSEARCH_API_PACS_PASSWORD` in `elasticsearch/.env`                                                   |
 | `FIREBASE_CONFIG_FILE_PATH` | Should be set to `pacs-ai-backend/api-pacs/configs/firebase/pacs-ai-firebase-admin.json`, make sure it's the correct path |
 | `FIREBASE_PROJECT_ID`       | Your Firebase project ID (same as in `PACS-AI/platform/app/.env`)                                                         |
 | `FIREBASE_SUPERUSER_KEY`    | Strong password for super user access (used for first user creation and API access)                                       |

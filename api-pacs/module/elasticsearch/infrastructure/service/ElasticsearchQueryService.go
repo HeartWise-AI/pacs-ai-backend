@@ -104,6 +104,7 @@ func (service *ElasticsearchQueryService) SearchLoginLogs(ctx context.Context, d
 		if err != nil {
 			return nil, err
 		}
+		login.SessionID = entity.SessionReference(login.SessionID)
 
 		logins = append(logins, login)
 	}

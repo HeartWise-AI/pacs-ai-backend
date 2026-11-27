@@ -822,7 +822,10 @@ func registerHandlers() {
 
 	// create new elasticsearch connection
 	elasticsearchDBHandler, err = elasticsearch.NewTypedClient(elasticsearchTypes.Config{
-		ElasticsearchURL: os.Getenv("ELASTICSEARCH_URL")})
+		ElasticsearchURL: os.Getenv("ELASTICSEARCH_URL"),
+		Username:         os.Getenv("ELASTICSEARCH_USERNAME"),
+		Password:         os.Getenv("ELASTICSEARCH_PASSWORD"),
+	})
 	if err != nil {
 		log.Fatalf("[SERVER] cannot create elasticsearch server: %v", err)
 	}
@@ -857,7 +860,7 @@ func registerHandlers() {
 	go orthancAPI.SuperviseMoves(context.Background())
 
 	// init kibana connection
-	kibanaAPI = kibana.Init(os.Getenv("KIBANA_BASE_URL"))
+	kibanaAPI = kibana.Init(os.Getenv("KIBANA_BASE_URL"), os.Getenv("ELASTICSEARCH_USERNAME"), os.Getenv("ELASTICSEARCH_PASSWORD"))
 
 	// init mailchimp API
 	mailchimpAPI = mailchimp.Init(mailchimpTypes.Config{

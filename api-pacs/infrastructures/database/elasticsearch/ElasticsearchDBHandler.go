@@ -32,6 +32,8 @@ func (c *ElasticsearchDBHandler) GetAllIndices() (indices.Response, error) {
 func NewTypedClient(config types.Config) (*ElasticsearchDBHandler, error) {
 	typedclient, err := elasticsearch.NewTypedClient(elasticsearch.Config{
 		Addresses: []string{config.ElasticsearchURL},
+		Username:  config.Username,
+		Password:  config.Password,
 	})
 	if err != nil {
 		return nil, err

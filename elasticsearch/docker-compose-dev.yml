@@ -7,13 +7,15 @@ services:
     volumes:
       - es_data:/usr/share/elasticsearch/data
     ports:
-      - 9200:9200
+      - 127.0.0.1:9200:9200
     environment:
       - node.name=elasticsearch
       - cluster.name=docker-cluster
       - discovery.type=single-node
       - bootstrap.memory_lock=true
-      - xpack.security.enabled=false # disable security
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?set ELASTIC_PASSWORD in elasticsearch/.env}
     deploy:
       resources:
         limits:
@@ -25,10 +27,26 @@ services:
         soft: -1
         hard: -1
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200 || exit 1"]
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 | grep -q 'missing authentication credentials'"]
       interval: 10s
       timeout: 10s
       retries: 120
+
+  elasticsearch-setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.7.1
+    container_name: elasticsearch-setup
+    restart: "no"
+    volumes:
+      - ./setup-security.sh:/usr/local/bin/setup-security.sh:ro
+    entrypoint: ["sh", "/usr/local/bin/setup-security.sh"]
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?set ELASTIC_PASSWORD in elasticsearch/.env}
+      - KIBANA_SYSTEM_PASSWORD=${KIBANA_SYSTEM_PASSWORD:?set KIBANA_SYSTEM_PASSWORD in elasticsearch/.env}
+      - ELASTICSEARCH_API_PACS_USERNAME=${ELASTICSEARCH_API_PACS_USERNAME:-api_pacs}
+      - ELASTICSEARCH_API_PACS_PASSWORD=${ELASTICSEARCH_API_PACS_PASSWORD:?set ELASTICSEARCH_API_PACS_PASSWORD in elasticsearch/.env}
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.7.1
@@ -38,10 +56,13 @@ services:
     volumes:
       - kibana_data:/usr/share/kibana/data
     ports:
-      - 5601:5601
+      # Loopback only; reach Kibana through an SSH tunnel or an authenticated proxy.
+      - 127.0.0.1:5601:5601
     environment:
       - SERVERNAME=kibana
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_SYSTEM_PASSWORD:?set KIBANA_SYSTEM_PASSWORD in elasticsearch/.env}
     deploy:
       resources:
         limits:
@@ -58,8 +79,8 @@ services:
       timeout: 10s
       retries: 120
     depends_on:
-      elasticsearch:
-        condition: service_healthy
+      elasticsearch-setup:
+        condition: service_completed_successfully
 
 volumes:
   es_data:

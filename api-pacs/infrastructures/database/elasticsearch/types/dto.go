@@ -2,6 +2,8 @@ package types
 
 type Config struct {
 	ElasticsearchURL string
+	Username         string
+	Password         string
 }
 
 type SearchDocument struct {
