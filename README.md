@@ -9,6 +9,7 @@ A robust PACS identity and user access management API using Firebase with multi-
 Before running this repository, ensure you have:
 
 - [Docker](https://docs.docker.com/engine/install/) version >= v2.24.7 (check with `docker compose version`)
+- Docker Engine >= 28.3.3 (check with `docker version`). Older engines let neighbouring hosts reach ports published on `127.0.0.1`; see the deployment guide §1.4 for the `scripts/docker-loopback-guard.sh` workaround
 - [DockerHub](https://hub.docker.com/) account
 - [Google Cloud Platform](https://cloud.google.com/) and [Firebase](https://firebase.google.com/) account (only one account is needed, they are linked)
 - [Mailgun](https://www.mailgun.com/) account for email services

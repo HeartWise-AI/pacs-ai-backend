@@ -29,7 +29,7 @@ See [architecture diagrams](./architecture.md) (Mermaid + Graphviz). The system 
 
 ### 1.4 Versions
 - **Application version:** pinned to a specific git commit SHA — record the full 40-char SHA in the customer's install record (e.g. `d8079b4f3e1a…`). Each install ships from a tagged GitHub Release; the release page lists the exact SHA.
-- Compatible Docker Engine: ≥ 28.3.3. Older engines let hosts on the same network segment reach ports published on `127.0.0.1` (moby/moby#49325, CVE-2025-54388), which would expose the unauthenticated Orthanc REST API and the loopback-only services in §3.
+- Compatible Docker Engine: ≥ 28.3.3. Older engines let hosts on the same network segment reach ports published on `127.0.0.1` (moby/moby#49325, CVE-2025-54388), which would expose the unauthenticated Orthanc REST API and the loopback-only services in §3. On an older engine, run [`scripts/docker-loopback-guard.sh`](../scripts/docker-loopback-guard.sh) as root after Docker starts (for example from a systemd timer): it adds one `DOCKER-USER` rule that drops forwarded packets whose original destination was `127.0.0.0/8`. Do not add rules with `firewall-cmd --direct` on a firewalld host; that removes Docker's FORWARD rules until `firewall-cmd --reload`.
 - Compatible Docker Compose: ≥ v2.20.
 - Pinned base images (from compose files): Postgres 17.2 (Orthanc index), Postgres 16 (cardio-agent), Orthanc `orthancteam/orthanc:24.12.0-full`.
 
