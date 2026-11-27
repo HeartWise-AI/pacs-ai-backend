@@ -23,6 +23,7 @@ matches the behavior of the measured 1.0.0 deployment.
 
 ## Changelog
 
+- 1.1.1: security patch of 1.1.0 only. torch 2.8.0 -> 2.13.0 and torchvision 0.23.0 -> 0.28.0 (cu126 wheels); the other direct dependencies are pinned to the versions the 1.1.0 image already had. Same code and weights as 1.1.0; predictions unchanged (side-by-side numbers in the PR). Does not include the 1.2.0 view-classifier changes.
 - 1.1.0: the view classifier's results are kept per clip (SOPInstanceUID) instead of per series. Echo studies that store every clip in one series used to take the last clip's view for all clips, so the view filter kept or dropped the whole study by that one view. Predictions change for those studies. Includes the unreleased 1.0.4 changes below.
 - 1.0.4: `read_body` reserves at most 64 MiB from `Content-Length` and grows as bytes arrive (PR #520); model-info reports the runtime `PACS_AI_MODEL_VERSION` (PR #526). Predictions unchanged.
 
