@@ -39,9 +39,12 @@ const (
 )
 
 func TestLogsViewSearchReturnsOnlyTheExactCallerTenant(t *testing.T) {
-	esURL := os.Getenv("ELASTICSEARCH_URL")
+	// The test deletes and recreates the real audit index names (logins,
+	// admin_members, ...). Never point it at a cluster that holds audit data:
+	// it only runs against the throwaway Elasticsearch 8.7.1 named here.
+	esURL := os.Getenv("ELASTICSEARCH_TEST_URL")
 	if esURL == "" {
-		esURL = "http://127.0.0.1:9200"
+		t.Skip("set ELASTICSEARCH_TEST_URL to a throwaway Elasticsearch 8.7.1 (security disabled); this test deletes the audit indices")
 	}
 	requireElasticsearch871(t, esURL)
 
