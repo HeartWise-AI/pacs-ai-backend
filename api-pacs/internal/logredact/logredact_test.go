@@ -236,3 +236,25 @@ func TestTextUsesEverySensitiveParameter(t *testing.T) {
 		}
 	}
 }
+
+func TestTextKeepsWholeSensitiveValues(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"patient_id=SITE/TEST0012345 next=1", "patient_id=[redacted] next=1"},
+		{"PatientName=DOE?X=1", "PatientName=[redacted]"},
+		{`Get "http://orthanc:8042/dicom-web/studies?StudyInstanceUID=1.2%2C2.3&limit=1": EOF`,
+			`Get "http://orthanc:8042/dicom-web/studies?StudyInstanceUID=[` + UID("1.2") + "," + UID("2.3") + `]&limit=1": EOF`},
+		{"url=http://orthanc:8042/dicom-web/studies?00100020=" + patientID, "url=http://orthanc:8042/dicom-web/studies?00100020=[redacted]"},
+	}
+	for _, c := range cases {
+		got := Text(c.in)
+		if got != c.want {
+			t.Errorf("Text(%q)\n got  %q\n want %q", c.in, got, c.want)
+		}
+		if strings.Contains(got, "TEST0012345") || strings.Contains(got, "DOE") {
+			t.Errorf("leak in %q", got)
+		}
+		if again := Text(got); again != got {
+			t.Errorf("Text is not idempotent: %q -> %q", got, again)
+		}
+	}
+}

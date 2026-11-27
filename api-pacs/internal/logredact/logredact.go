@@ -265,7 +265,10 @@ var (
 	// name=value, name: value and "name":"value"; the name decides (see
 	// paramClass and textClass), so free text and URLs inside error messages
 	// follow the same rules as query strings.
-	textParam = regexp.MustCompile(`\b([A-Za-z0-9_]+)(=|: ?)([^\s&?=/"',;)\]}]+)`)
+	textParam = regexp.MustCompile(`\b([A-Za-z0-9_]+)(=|: ?)`)
+	// A sensitive value runs to the next separator; "/", "?" and "=" belong
+	// to it (an ID like SITE/123 must go whole).
+	textValue = regexp.MustCompile(`^[^\s&"',;)\]}]+`)
 	jsonParam = regexp.MustCompile(`"([A-Za-z0-9_]+)"(\s*:\s*)"([^"]*)"`)
 )
 
@@ -299,26 +302,56 @@ func Text(line string) string {
 		}
 		return match // UIDs fall through to the UID rule below
 	})
-	line = textParam.ReplaceAllStringFunc(line, func(match string) string {
-		parts := textParam.FindStringSubmatch(match)
-		switch textClass(parts[1]) {
-		case classPHI:
-			if strings.HasPrefix(parts[3], "[") {
-				return match
-			}
-			return parts[1] + parts[2] + Redacted
-		case classUID:
-			// Only dotted numbers: this also leaves "uid:<hash>" alone.
-			for _, item := range strings.Split(parts[3], ",") {
-				if !dottedNumber.MatchString(item) {
-					return match
-				}
-			}
-			return parts[1] + parts[2] + value(classUID, parts[3])
-		}
-		return match
-	})
+	line = redactTextParams(line)
 	return uidCandidate.ReplaceAllStringFunc(line, replaceUID)
+}
+
+// redactTextParams rewrites the values of sensitive name=value pairs. Only a
+// sensitive name consumes its value, so a URL after "url=" or "Get " is still
+// scanned for the parameters inside it.
+func redactTextParams(line string) string {
+	var out strings.Builder
+	cursor := 0
+	for cursor < len(line) {
+		loc := textParam.FindStringSubmatchIndex(line[cursor:])
+		if loc == nil {
+			break
+		}
+		nameStart, nameEnd, sepEnd := cursor+loc[2], cursor+loc[3], cursor+loc[1]
+		class := textClass(line[nameStart:nameEnd])
+		raw := textValue.FindString(line[sepEnd:])
+		if class == classNone || raw == "" {
+			out.WriteString(line[cursor:sepEnd])
+			cursor = sepEnd
+			continue
+		}
+		out.WriteString(line[cursor:sepEnd])
+		out.WriteString(textParamValue(class, raw))
+		cursor = sepEnd + len(raw)
+	}
+	out.WriteString(line[cursor:])
+	return out.String()
+}
+
+func textParamValue(class int, raw string) string {
+	if class == classPHI {
+		if strings.HasPrefix(raw, "[") {
+			return raw
+		}
+		return Redacted
+	}
+	// UIDs: only dotted numbers (after URL decoding), which also leaves
+	// "uid:<hash>" alone.
+	decoded, err := url.QueryUnescape(raw)
+	if err != nil {
+		return raw
+	}
+	for _, item := range strings.Split(decoded, ",") {
+		if !dottedNumber.MatchString(strings.TrimSpace(item)) {
+			return raw
+		}
+	}
+	return value(classUID, raw)
 }
 
 // Writer redacts every write with Text. The standard log package writes one
