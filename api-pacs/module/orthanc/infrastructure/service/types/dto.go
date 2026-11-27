@@ -48,18 +48,14 @@ type RetrieveModalityStudyBySeries struct {
 	UserID           *string
 }
 
+// StoreStudyCustomSeries asks to C-STORE one registered model-run report.
+// Identity, study and PDF come from the report registered for ExecutionID,
+// never from the request.
 type StoreStudyCustomSeries struct {
-	TenantID           string
-	UserID             string
-	ModalityID         string
-	StudyInstanceUID   string
-	SeriesInstanceUIDs []string
-	PatientID          string
-	PatientName        string
-	ModelName          string
-	ModelVersion       string
-	FileBody           []byte
-	FileMimeType       string
+	TenantID    string
+	UserID      string
+	ModalityID  string
+	ExecutionID string
 }
 
 type UpdateDICOMModality struct {

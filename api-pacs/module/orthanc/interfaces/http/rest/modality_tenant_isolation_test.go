@@ -442,7 +442,9 @@ func TestCrossTenantModalityStoreIsRefused(t *testing.T) {
 	body, contentType := storeSeriesBody(t)
 	recorder := h.serve(http.MethodPost, "/v1/orthanc/modality/"+otherModalityID+"/study/"+ownedStudyUID+"/series/store", body, contentType)
 	h.requireNoSideEffects(t)
-	require.Equal(t, http.StatusNotFound, recorder.Code, recorder.Body.String())
+	// Store-back now needs processing.manage (store_back_authorization_test.go),
+	// so a plain USER is refused before the modality lookup.
+	require.Contains(t, []int{http.StatusForbidden, http.StatusNotFound}, recorder.Code, recorder.Body.String())
 }
 
 func TestOwnedModalityQueryUsesTheAuthorizedModality(t *testing.T) {
@@ -521,27 +523,15 @@ func TestOwnedModalityEchoReachesTheAuthorizedModality(t *testing.T) {
 	h.requireAuthorizedUse(t, ownedModalityID, false)
 }
 
-func TestOwnedModalityStoreSendsToTheAuthorizedModality(t *testing.T) {
+// A plain USER can no longer store a caller-supplied file to an owned modality:
+// store-back sends only registered model-run reports and needs
+// processing.manage (store_back_authorization_test.go covers the allowed path).
+func TestOwnedModalityStoreOfCallerFileIsRefused(t *testing.T) {
 	h := newModalityHarness(t, iamEntity.UserRole)
 	body, contentType := storeSeriesBody(t)
 	recorder := h.serve(http.MethodPost, "/v1/orthanc/modality/"+ownedModalityID+"/study/"+ownedStudyUID+"/series/store", body, contentType)
-	require.Equal(t, http.StatusCreated, recorder.Code, recorder.Body.String())
-	h.requireAuthorizedUse(t, ownedModalityID, false)
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	var sawUpload, sawStore bool
-	for _, event := range h.events {
-		if event.kind == "orthanc" && event.path == "/instances" {
-			sawUpload = true
-		}
-		if event.kind == "orthanc" && strings.HasSuffix(event.path, "/store-straight") {
-			sawStore = true
-			require.Contains(t, event.path, "/modalities/"+ownedModalityID+"/")
-		}
-	}
-	require.True(t, sawUpload)
-	require.True(t, sawStore)
+	h.requireNoSideEffects(t)
+	require.Equal(t, http.StatusForbidden, recorder.Code, recorder.Body.String())
 }
 
 func storeSeriesBody(t *testing.T) (string, string) {

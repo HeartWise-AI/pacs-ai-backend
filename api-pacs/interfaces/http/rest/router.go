@@ -568,7 +568,7 @@ func (router *router) InitRouter() *chi.Mux {
 
 					r.Post("/modality/studies", orthancQueryController.FindModalityStudies)
 					r.Post("/modality/retrieve", orthancCommandController.RetrieveModalityStudy)
-					r.Post("/modality/{modalityID}/study/{studyInstanceUID}/series/store", orthancCommandController.StoreStudyCustomSeries)
+					r.With(iamMiddleware.RequirePermission(accessEntity.PermProcessingManage), iamMiddleware.RequireAllModels).Post("/modality/{modalityID}/study/{studyInstanceUID}/series/store", orthancCommandController.StoreStudyCustomSeries)
 					r.Get("/jobs", orthancQueryController.GetJobsInfo)
 					r.Get("/modalities/list", orthancQueryController.ListDICOMModalities)
 					r.Get("/modality/{modalityID}/linked/storage/enabled", orthancQueryController.GetLinkedDICOMModalityWithEnabledCStore)
