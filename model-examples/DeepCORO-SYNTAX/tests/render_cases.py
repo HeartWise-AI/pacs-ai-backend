@@ -21,7 +21,7 @@ def float32(value: float) -> float:
     return float(torch.tensor(value, dtype=torch.float32))
 
 
-VERSION = "6.0.1"
+VERSION = "6.0.2"
 MAIN = ("predictions", "syntax", "value")  # the stored number the hostile-input tests alter
 MAIN_BAD = {"too_low": -0.1, "too_high": 1000.1, "too_many_decimals": 25.74, "other": 44.4}
 THRESHOLD = CLASS_MAPPING["syntax_category"]["threshold_binary_ge23"]

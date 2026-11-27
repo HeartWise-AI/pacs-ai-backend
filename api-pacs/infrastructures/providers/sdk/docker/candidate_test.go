@@ -5,23 +5,22 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"slices"
 	"strings"
 	"testing"
 
-	engine "github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 
 	dockertypes "api-pacs/infrastructures/providers/sdk/docker/types"
 )
 
 func TestCandidateContainerConfigsPreserveRuntimeWithoutIdentityConflicts(t *testing.T) {
-	active := engine.ContainerJSON{
-		ContainerJSONBase: &engine.ContainerJSONBase{HostConfig: &container.HostConfig{
+	active := container.InspectResponse{
+		HostConfig: &container.HostConfig{
 			Binds: []string{"model-data:/models:ro"},
 			Mounts: []mount.Mount{{
 				Type:   mount.TypeBind,
@@ -34,21 +33,21 @@ func TestCandidateContainerConfigsPreserveRuntimeWithoutIdentityConflicts(t *tes
 				Memory:         8192,
 				DeviceRequests: []container.DeviceRequest{{Driver: "nvidia", Count: -1}},
 			},
-			DNS:             []string{"0.0.0.0"},
-			PortBindings:    nat.PortMap{"80/tcp": []nat.PortBinding{{HostPort: "8080"}}},
+			DNS:             []netip.Addr{netip.IPv4Unspecified()},
+			PortBindings:    network.PortMap{network.MustParsePort("80/tcp"): []network.PortBinding{{HostPort: "8080"}}},
 			PublishAllPorts: true,
 			Links:           []string{"database:database"},
 			AutoRemove:      true,
 			ContainerIDFile: "/tmp/active.cid",
 			RestartPolicy:   container.RestartPolicy{Name: container.RestartPolicyAlways},
-		}},
+		},
 		Config: &container.Config{
 			Env:          []string{"ACTIVE_IMAGE_DEFAULT=old"},
-			ExposedPorts: nat.PortSet{"80/tcp": struct{}{}},
+			ExposedPorts: network.PortSet{network.MustParsePort("80/tcp"): struct{}{}},
 		},
-		NetworkSettings: &engine.NetworkSettings{Networks: map[string]*network.EndpointSettings{
-			"pacs-net": {IPAddress: "172.20.0.5", Aliases: []string{"active-model"}},
-			"metrics":  {IPAddress: "172.21.0.5", Aliases: []string{"active-metrics"}},
+		NetworkSettings: &container.NetworkSettings{Networks: map[string]*network.EndpointSettings{
+			"pacs-net": {IPAddress: netip.MustParseAddr("172.20.0.5"), Aliases: []string{"active-model"}},
+			"metrics":  {IPAddress: netip.MustParseAddr("172.21.0.5"), Aliases: []string{"active-metrics"}},
 		}},
 	}
 
@@ -64,7 +63,7 @@ func TestCandidateContainerConfigsPreserveRuntimeWithoutIdentityConflicts(t *tes
 	if !slices.Equal(containerConfig.Env, []string{"REGISTRATION_SETTING=current"}) {
 		t.Fatalf("candidate environment = %v", containerConfig.Env)
 	}
-	if _, ok := containerConfig.ExposedPorts["80/tcp"]; !ok {
+	if _, ok := containerConfig.ExposedPorts[network.MustParsePort("80/tcp")]; !ok {
 		t.Fatalf("candidate exposed ports = %v", containerConfig.ExposedPorts)
 	}
 	if hostConfig.ShmSize != 4096 || hostConfig.Runtime != "nvidia" || hostConfig.Resources.Memory != 8192 {
@@ -76,7 +75,7 @@ func TestCandidateContainerConfigsPreserveRuntimeWithoutIdentityConflicts(t *tes
 	if !slices.Equal(hostConfig.Binds, []string{"model-data:/models:ro"}) || len(hostConfig.Mounts) != 1 {
 		t.Fatalf("mounts were not preserved: binds=%v mounts=%v", hostConfig.Binds, hostConfig.Mounts)
 	}
-	if !slices.Equal(hostConfig.DNS, []string{"0.0.0.0"}) {
+	if !slices.Equal(hostConfig.DNS, []netip.Addr{netip.IPv4Unspecified()}) {
 		t.Fatalf("network restrictions were not preserved: %v", hostConfig.DNS)
 	}
 	if hostConfig.PortBindings != nil || hostConfig.PublishAllPorts || hostConfig.Links != nil || hostConfig.AutoRemove || hostConfig.ContainerIDFile != "" {
@@ -89,7 +88,7 @@ func TestCandidateContainerConfigsPreserveRuntimeWithoutIdentityConflicts(t *tes
 		t.Fatalf("candidate network memberships = %v", networkConfig.EndpointsConfig)
 	}
 	for name, endpoint := range networkConfig.EndpointsConfig {
-		if endpoint.IPAddress != "" || len(endpoint.Aliases) != 0 {
+		if endpoint.IPAddress.IsValid() || len(endpoint.Aliases) != 0 {
 			t.Fatalf("network %s retained active identity: %+v", name, endpoint)
 		}
 	}
@@ -103,7 +102,7 @@ func TestCandidateContainerConfigsUseConfiguredNetworkAsFallback(t *testing.T) {
 	sdk := &DockerSDK{Network: "pacs-net"}
 	_, _, networkConfig := sdk.candidateContainerConfigs(
 		dockertypes.CreateCandidateContainer{Image: "heartwise/model:2.0.0"},
-		engine.ContainerJSON{},
+		container.InspectResponse{},
 	)
 
 	if _, ok := networkConfig.EndpointsConfig["pacs-net"]; !ok || len(networkConfig.EndpointsConfig) != 1 {
@@ -123,14 +122,12 @@ func TestCreateCandidateContainerUsesActiveContainerAsTemplate(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/containers/active/json"):
-			json.NewEncoder(w).Encode(engine.ContainerJSON{
-				ContainerJSONBase: &engine.ContainerJSONBase{
-					ID:         "active-id",
-					Name:       "/active-model",
-					HostConfig: &container.HostConfig{ShmSize: 4096},
-				},
-				Config: &container.Config{ExposedPorts: nat.PortSet{"80/tcp": struct{}{}}},
-				NetworkSettings: &engine.NetworkSettings{Networks: map[string]*network.EndpointSettings{
+			json.NewEncoder(w).Encode(container.InspectResponse{
+				ID:         "active-id",
+				Name:       "/active-model",
+				HostConfig: &container.HostConfig{ShmSize: 4096},
+				Config:     &container.Config{ExposedPorts: network.PortSet{network.MustParsePort("80/tcp"): struct{}{}}},
+				NetworkSettings: &container.NetworkSettings{Networks: map[string]*network.EndpointSettings{
 					"pacs-net": {},
 				}},
 			})
@@ -271,21 +268,19 @@ var _ dockertypes.CandidateDockerSDKInterface = (*DockerSDK)(nil)
 func TestMovedContainerKeepsEverythingButItsGPU(t *testing.T) {
 	const otherGPU = "GPU-22222222-2222-2222-2222-222222222222"
 	activeID := strings.Repeat("ab", 32)
-	active := engine.ContainerJSON{
-		ContainerJSONBase: &engine.ContainerJSONBase{
-			ID: activeID, Name: "/DeepRV-CLIP", Image: "sha256:running",
-			HostConfig: &container.HostConfig{
-				Binds:         []string{"model-data:/models:ro"},
-				Mounts:        []mount.Mount{{Type: mount.TypeBind, Source: "/srv/cache", Target: "/cache"}},
-				ShmSize:       2 << 30,
-				Runtime:       "nvidia",
-				DNS:           []string{"0.0.0.0"},
-				RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyUnlessStopped},
-				PortBindings:  nat.PortMap{"80/tcp": []nat.PortBinding{{HostPort: "8080"}}},
-				Resources: container.Resources{DeviceRequests: []container.DeviceRequest{{
-					Driver: "nvidia", DeviceIDs: []string{"GPU-11111111-1111-1111-1111-111111111111"}, Capabilities: [][]string{{"gpu"}},
-				}}},
-			},
+	active := container.InspectResponse{
+		ID: activeID, Name: "/DeepRV-CLIP", Image: "sha256:running",
+		HostConfig: &container.HostConfig{
+			Binds:         []string{"model-data:/models:ro"},
+			Mounts:        []mount.Mount{{Type: mount.TypeBind, Source: "/srv/cache", Target: "/cache"}},
+			ShmSize:       2 << 30,
+			Runtime:       "nvidia",
+			DNS:           []netip.Addr{netip.IPv4Unspecified()},
+			RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyUnlessStopped},
+			PortBindings:  network.PortMap{network.MustParsePort("80/tcp"): []network.PortBinding{{HostPort: "8080"}}},
+			Resources: container.Resources{DeviceRequests: []container.DeviceRequest{{
+				Driver: "nvidia", DeviceIDs: []string{"GPU-11111111-1111-1111-1111-111111111111"}, Capabilities: [][]string{{"gpu"}},
+			}}},
 		},
 		Config: &container.Config{
 			Image:        "deeprv-clip-local:1.0.1-render-report-1",
@@ -296,10 +291,10 @@ func TestMovedContainerKeepsEverythingButItsGPU(t *testing.T) {
 			WorkingDir:   "/app",
 			User:         "model",
 			Labels:       map[string]string{"ai.heartwise.pacs.deployment": "render-report-1", gpuPlacementNameLabel: "DeepRV-CLIP"},
-			ExposedPorts: nat.PortSet{"80/tcp": struct{}{}},
+			ExposedPorts: network.PortSet{network.MustParsePort("80/tcp"): struct{}{}},
 		},
-		NetworkSettings: &engine.NetworkSettings{Networks: map[string]*network.EndpointSettings{
-			"pacs-net": {IPAddress: "172.20.0.5", Aliases: []string{"DeepRV-CLIP", activeID[:12], "deeprv"}},
+		NetworkSettings: &container.NetworkSettings{Networks: map[string]*network.EndpointSettings{
+			"pacs-net": {IPAddress: netip.MustParseAddr("172.20.0.5"), Aliases: []string{"DeepRV-CLIP", activeID[:12], "deeprv"}},
 		}},
 	}
 
@@ -327,7 +322,7 @@ func TestMovedContainerKeepsEverythingButItsGPU(t *testing.T) {
 		t.Fatalf("the old container's generated hostname leaked: %q", containerConfig.Hostname)
 	}
 	if hostConfig.RestartPolicy.Name != container.RestartPolicyUnlessStopped || hostConfig.ShmSize != 2<<30 ||
-		!slices.Equal(hostConfig.Binds, active.HostConfig.Binds) || len(hostConfig.Mounts) != 1 || !slices.Equal(hostConfig.DNS, []string{"0.0.0.0"}) {
+		!slices.Equal(hostConfig.Binds, active.HostConfig.Binds) || len(hostConfig.Mounts) != 1 || !slices.Equal(hostConfig.DNS, []netip.Addr{netip.IPv4Unspecified()}) {
 		t.Fatalf("host configuration was not kept: %+v", hostConfig)
 	}
 	if len(hostConfig.DeviceRequests) != 1 || !slices.Equal(hostConfig.DeviceRequests[0].DeviceIDs, []string{otherGPU}) {
@@ -354,9 +349,9 @@ func TestMoveIsNotCreatedWhenTheActiveContainerRunsAnotherImage(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/containers/active/json"):
-			json.NewEncoder(w).Encode(engine.ContainerJSON{
-				ContainerJSONBase: &engine.ContainerJSONBase{ID: "active-id", Name: "/active-model", Image: "sha256:replaced", HostConfig: &container.HostConfig{}},
-				Config:            &container.Config{},
+			json.NewEncoder(w).Encode(container.InspectResponse{
+				ID: "active-id", Name: "/active-model", Image: "sha256:replaced", HostConfig: &container.HostConfig{},
+				Config: &container.Config{},
 			})
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/containers/create"):
 			created = true

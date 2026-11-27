@@ -19,7 +19,7 @@ def test_runtime_configuration_and_manifest_identify_the_same_checkpoint():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
     provenance = manifest["provenance"]
 
-    assert manifest["version"] == "1.1.0"
+    assert manifest["version"] == "1.1.2"
     assert config == {
         "VideoEncoder": {
             "backbone": "mvit",
@@ -74,9 +74,9 @@ def test_manifest_upload_limit_matches_model_video_capacity():
 def test_cuda_dependencies_match_the_validated_runtime_pair():
     requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
 
-    assert "--extra-index-url https://download.pytorch.org/whl/cu121" in requirements
-    assert "torch==2.4.0+cu121" in requirements
-    assert "torchvision==0.19.0+cu121" in requirements
+    assert "--extra-index-url https://download.pytorch.org/whl/cu126" in requirements
+    assert "torch==2.13.0+cu126" in requirements
+    assert "torchvision==0.28.0+cu126" in requirements
 
 
 def test_weight_verification_accepts_only_the_expected_bytes(tmp_path):

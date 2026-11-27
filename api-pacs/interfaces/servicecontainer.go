@@ -721,12 +721,15 @@ func (k *kernel) orchestratorServiceContainer() *orchestratorService.Orchestrato
 	// Configure orchestrator service
 	orchestratorAPIURL := os.Getenv("ORCHESTRATOR_API_URL")
 
+	// Shared with the chat backend; unset leaves the Chat Feedback tab empty (503).
+	// Also sent as X-Service-Token on every chat backend call: without Firebase the
+	// chat backend serves user routes only for this gateway.
+	chatServiceToken := strings.TrimSpace(os.Getenv("CHAT_FEEDBACK_SERVICE_TOKEN"))
 	service := &orchestratorService.OrchestratorService{
-		OrchestratorAPIURL: orchestratorAPIURL,
-		OrchestratorClient: &http.Client{Timeout: 5 * time.Minute},
-		ThreadsByID:        make(map[string]*entity.Thread),
-		// Shared with the chat backend; unset leaves the Chat Feedback tab empty (503).
-		ChatFeedbackServiceToken: strings.TrimSpace(os.Getenv("CHAT_FEEDBACK_SERVICE_TOKEN")),
+		OrchestratorAPIURL:       orchestratorAPIURL,
+		OrchestratorClient:       orchestratorService.NewOrchestratorClient(chatServiceToken, &http.Client{Timeout: 5 * time.Minute}),
+		ThreadsByID:              make(map[string]*entity.Thread),
+		ChatFeedbackServiceToken: chatServiceToken,
 	}
 
 	return service

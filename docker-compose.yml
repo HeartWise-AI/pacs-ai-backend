@@ -1,7 +1,13 @@
 services:
   postgres:
     image: postgres:16
-    command: ["postgres", "-c", "timezone=${APP_TIMEZONE}", "-c", "log_timezone=${APP_TIMEZONE}"]
+    # TLS is opt-in (CARDIO_DB_SSL=on): remote readers (e.g. wise-training) connect to the
+    # published port with sslmode=verify-full. server.crt/server.key live OUTSIDE git in
+    # CARDIO_DB_TLS_DIR (default ./secrets/cardio-postgres-tls; key mode 0600, owner uid 999).
+    command: ["postgres", "-c", "timezone=${APP_TIMEZONE}", "-c", "log_timezone=${APP_TIMEZONE}",
+              "-c", "ssl=${CARDIO_DB_SSL:-off}",
+              "-c", "ssl_cert_file=/etc/cardio-postgres-tls/server.crt",
+              "-c", "ssl_key_file=/etc/cardio-postgres-tls/server.key"]
     container_name: cardio-postgres
     restart: unless-stopped
     environment:
@@ -11,13 +17,48 @@ services:
       TZ: ${APP_TIMEZONE}
     ports:
       - "127.0.0.1:5434:5432"
+    # The data directory must be on LOCAL disk (a named Docker volume) and must never be
+    # shared with another host or a second Postgres: see docs/cardio-postgres.md. The
+    # entrypoint refuses to start when the data directory is on a network filesystem.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - 'fs=$$(stat -f -c %T /var/lib/postgresql/data) || { echo "REFUSING to start: cannot check the PGDATA filesystem." >&2; exit 78; }; case "$$fs" in nfs*|cifs|smb*|ceph*) echo "REFUSING to start: PGDATA is on $$fs. Postgres data must be on local disk (see docs/cardio-postgres.md)." >&2; exit 78;; esac; exec docker-entrypoint.sh "$$@"'
+      - --
     volumes:
       - cardio_postgres_data:/var/lib/postgresql/data
+      - ${CARDIO_DB_TLS_DIR:-./secrets/cardio-postgres-tls}:/etc/cardio-postgres-tls:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cardio -d cardio_agent"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # Nightly logical backup (pg_dump -Fc) of cardio_agent; keeps 14 days. Dump files may live
+  # on NFS (set CARDIO_DB_BACKUP_DIR); the live data directory may not. Manual run:
+  #   docker exec cardio-postgres-backup /bin/sh /backup.sh once
+  cardio-postgres-backup:
+    image: postgres:16
+    container_name: cardio-postgres-backup
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    command: ["loop"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: cardio
+      PGPASSWORD: ${CARDIO_DB_PASSWORD:?}
+      PGDATABASE: cardio_agent
+      TZ: ${APP_TIMEZONE}
+      BACKUP_DIR: /backups
+      BACKUP_KEEP_DAYS: ${CARDIO_DB_BACKUP_KEEP_DAYS:-14}
+      BACKUP_AT: ${CARDIO_DB_BACKUP_AT:-02:30}
+    volumes:
+      - ./scripts/ops/cardio-postgres-backup.sh:/backup.sh:ro
+      - ${CARDIO_DB_BACKUP_DIR:-./backups/cardio-postgres}:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 networks:
   default:
@@ -38,3 +79,7 @@ include:
 
 volumes:
   cardio_postgres_data:
+    # A local named volume (under /var/lib/docker). Default name = what Compose used before
+    # (<project>_cardio_postgres_data); set CARDIO_POSTGRES_VOLUME in .env to pin another
+    # existing local volume (MHI: cardio-postgres-data). Never point this at NFS/shared storage.
+    name: ${CARDIO_POSTGRES_VOLUME:-${COMPOSE_PROJECT_NAME}_cardio_postgres_data}

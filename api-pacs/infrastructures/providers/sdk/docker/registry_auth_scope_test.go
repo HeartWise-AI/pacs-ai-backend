@@ -2,6 +2,7 @@ package docker_test
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,10 +17,10 @@ import (
 
 	"github.com/distribution/reference"
 	distauth "github.com/docker/distribution/registry/client/auth"
+	"github.com/docker/distribution/registry/client/auth/challenge"
 	disttransport "github.com/docker/distribution/registry/client/transport"
-	"github.com/docker/docker/api/types/registry"
-	"github.com/docker/docker/dockerversion"
-	dockreg "github.com/docker/docker/registry"
+	"github.com/moby/moby/api/pkg/authconfig"
+	"github.com/moby/moby/api/types/registry"
 	"github.com/opencontainers/go-digest"
 
 	sdk "api-pacs/infrastructures/providers/sdk/docker"
@@ -158,7 +159,7 @@ func (daemon *daemonDouble) pull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// postImagesCreate ignores a malformed auth header and still pulls.
-	authConfig, _ := registry.DecodeAuthConfig(r.Header.Get(registry.AuthHeader))
+	authConfig, _ := authconfig.Decode(r.Header.Get(registry.AuthHeader))
 	if err := daemon.pullRef(r.Context(), ref, authConfig); err != nil {
 		daemon.t.Logf("pull %s: %v", ref.String(), err)
 		writePullError(w)
@@ -186,15 +187,7 @@ func writePullError(w http.ResponseWriter) {
 }
 
 func (daemon *daemonDouble) pullRef(ctx context.Context, ref reference.Named, authConfig *registry.AuthConfig) error {
-	svc, err := dockreg.NewService(dockreg.ServiceOptions{})
-	if err != nil {
-		return err
-	}
-	repoInfo, err := svc.ResolveRepository(ref)
-	if err != nil {
-		return err
-	}
-	endpoints, err := svc.LookupPullEndpoints(reference.Domain(repoInfo.Name))
+	endpoints, err := lookupPullEndpoints(reference.Domain(ref))
 	if err != nil {
 		return err
 	}
@@ -205,7 +198,7 @@ func (daemon *daemonDouble) pullRef(ctx context.Context, ref reference.Named, au
 			lastErr = err
 			continue
 		}
-		if err = authorizePull(ctx, ref, repoInfo, endpoint, authConfig); err != nil {
+		if err = authorizePull(ctx, ref, endpoint, authConfig); err != nil {
 			lastErr = err
 			continue
 		}
@@ -219,8 +212,8 @@ func (daemon *daemonDouble) pullRef(ctx context.Context, ref reference.Named, au
 
 // standInOfficialRegistry keeps LookupPullEndpoints' choice of registry-1.docker.io
 // and serves it locally. Other endpoints keep the URL the engine would dial.
-func (daemon *daemonDouble) standInOfficialRegistry(endpoint dockreg.APIEndpoint) (dockreg.APIEndpoint, error) {
-	if endpoint.URL == nil || endpoint.URL.Host != dockreg.DefaultRegistryHost {
+func (daemon *daemonDouble) standInOfficialRegistry(endpoint apiEndpoint) (apiEndpoint, error) {
+	if endpoint.URL == nil || endpoint.URL.Host != defaultRegistryHost {
 		return endpoint, nil
 	}
 	if daemon.hub == nil {
@@ -234,14 +227,12 @@ func (daemon *daemonDouble) standInOfficialRegistry(endpoint dockreg.APIEndpoint
 	return endpoint, nil
 }
 
-func authorizePull(ctx context.Context, ref reference.Named, repoInfo *dockreg.RepositoryInfo, endpoint dockreg.APIEndpoint, authConfig *registry.AuthConfig) error {
+func authorizePull(ctx context.Context, ref reference.Named, endpoint apiEndpoint, authConfig *registry.AuthConfig) error {
 	if authConfig == nil {
 		authConfig = &registry.AuthConfig{}
 	}
-	repoName := repoInfo.Name.Name()
-	if endpoint.TrimHostname {
-		repoName = reference.Path(repoInfo.Name)
-	}
+	// v2 endpoints address the repository by its path without the registry host.
+	repoName := reference.Path(ref)
 	direct := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
 	base := &http.Transport{
 		Proxy:               http.ProxyFromEnvironment,
@@ -250,25 +241,24 @@ func authorizePull(ctx context.Context, ref reference.Named, repoInfo *dockreg.R
 		TLSClientConfig:     endpoint.TLSConfig,
 		DisableKeepAlives:   true,
 	}
-	modifiers := dockreg.Headers(dockerversion.DockerUserAgent(ctx), nil)
+	modifiers := []disttransport.RequestModifier{disttransport.NewHeaderRequestModifier(http.Header{"User-Agent": []string{engineUserAgent}})}
 	authTransport := disttransport.NewTransport(base, modifiers...)
-	challengeManager, err := dockreg.PingV2Registry(endpoint.URL, authTransport)
+	challengeManager, err := pingV2Registry(endpoint.URL, authTransport)
 	if err != nil {
 		return err
 	}
 	if authConfig.RegistryToken != "" {
 		return fmt.Errorf("registry token auth is not the configured credential")
 	}
-	creds := dockreg.NewStaticCredentialStore(authConfig)
+	creds := staticCredentialStore{auth: authConfig}
 	tokenHandler := distauth.NewTokenHandlerWithOptions(distauth.TokenHandlerOptions{
 		Transport:   authTransport,
 		Credentials: creds,
 		Scopes: []distauth.Scope{distauth.RepositoryScope{
 			Repository: repoName,
 			Actions:    []string{"pull"},
-			Class:      repoInfo.Class,
 		}},
-		ClientID: dockreg.AuthClientID,
+		ClientID: authClientID,
 	})
 	basicHandler := distauth.NewBasicHandler(creds)
 	modifiers = append(modifiers, distauth.NewAuthorizer(challengeManager, tokenHandler, basicHandler))
@@ -417,3 +407,94 @@ func TestPullImageRefusesHubPrefixedForeignRegistry(t *testing.T) {
 		}
 	}
 }
+
+// The helpers below reproduce, for the test double only, how the Docker
+// Engine (moby registry package, v27-v29) chooses pull endpoints and
+// authorizes a manifest request. The engine's own registry package lives in
+// the daemon module, which api-pacs does not link.
+
+const (
+	defaultRegistryHost = "registry-1.docker.io"
+	authClientID        = "docker"
+	engineUserAgent     = "docker/29.0.0 go/go1.26 os/linux arch/amd64"
+)
+
+type apiEndpoint struct {
+	URL       *url.URL
+	TLSConfig *tls.Config
+}
+
+// lookupPullEndpoints mirrors the engine's lookupV2Endpoints without mirrors:
+// Docker Hub names resolve to registry-1.docker.io; any other registry is
+// tried over HTTPS, then over plain HTTP when it is insecure, which by default
+// means it resolves into 127.0.0.0/8.
+func lookupPullEndpoints(hostname string) ([]apiEndpoint, error) {
+	if hostname == "docker.io" || hostname == "index.docker.io" {
+		return []apiEndpoint{{URL: &url.URL{Scheme: "https", Host: defaultRegistryHost}, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}}, nil
+	}
+	insecure := insecureRegistryHost(hostname)
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: insecure} //nolint:gosec // mirrors the engine's insecure-registry handling in a test double
+	endpoints := []apiEndpoint{{URL: &url.URL{Scheme: "https", Host: hostname}, TLSConfig: tlsConfig}}
+	if insecure {
+		endpoints = append(endpoints, apiEndpoint{URL: &url.URL{Scheme: "http", Host: hostname}, TLSConfig: tlsConfig})
+	}
+	return endpoints, nil
+}
+
+func insecureRegistryHost(hostport string) bool {
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		host = hostport
+	}
+	addrs, err := net.LookupIP(host)
+	if err != nil {
+		if ip := net.ParseIP(host); ip != nil {
+			addrs = []net.IP{ip}
+		}
+	}
+	_, loopback, _ := net.ParseCIDR("127.0.0.0/8")
+	for _, addr := range addrs {
+		if loopback.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+func pingV2Registry(endpoint *url.URL, transport http.RoundTripper) (challenge.Manager, error) {
+	pingClient := &http.Client{Transport: transport, Timeout: 15 * time.Second}
+	request, err := http.NewRequest(http.MethodGet, strings.TrimRight(endpoint.String(), "/")+"/v2/", nil)
+	if err != nil {
+		return nil, err
+	}
+	response, err := pingClient.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	manager := challenge.NewSimpleManager()
+	if err := manager.AddResponse(response); err != nil {
+		return nil, err
+	}
+	return manager, nil
+}
+
+type staticCredentialStore struct {
+	auth *registry.AuthConfig
+}
+
+func (store staticCredentialStore) Basic(*url.URL) (string, string) {
+	if store.auth == nil {
+		return "", ""
+	}
+	return store.auth.Username, store.auth.Password
+}
+
+func (store staticCredentialStore) RefreshToken(*url.URL, string) string {
+	if store.auth == nil {
+		return ""
+	}
+	return store.auth.IdentityToken
+}
+
+func (store staticCredentialStore) SetRefreshToken(*url.URL, string, string) {}

@@ -5,7 +5,7 @@
       "Description": "Calculate the SYNTAX score from coronary angiogram images. The SYNTAX score quantifies the complexity of coronary artery disease based on lesion characteristics. Use this tool ONLY for SYNTAX score calculation. DO NOT use for stenosis severity assessment, thrombus detection, CTO detection, or calcification detection - use DeepCoro_CLIP_generic for those. Model v6 (run 20260929-203527, epoch 19): modified 16-segment SYNTAX score trained on merged CardioSYNTAX + MHI studies. Held-out test MAE 3.21 points (CardioSYNTAX) / 4.47 (MHI), ICC 0.86 / 0.79, AUROC for SYNTAX >= 23 0.97 / 0.89.",
       "Developed_by": "Heartwise",
       "Development_period": "2024-2026",
-      "Version": "1.1.1"
+      "Version": "1.1.2"
     },
     "Mechanism": {
       "Outcome": "Predict cardiac syntax",

@@ -15,7 +15,9 @@ RUN pip install uv
 COPY requirements.txt .
 
 # Use uv to install dependencies
-RUN uv pip install --system -r requirements.txt
+# uv takes a package from the first index that has it, so without best-match the PyTorch index's
+# stale copies (for example idna 3.4) would win over newer PyPI releases.
+RUN uv pip install --system --index-strategy unsafe-best-match -r requirements.txt
 
 ARG MODEL_ID=google/medgemma-1.5-4b-it
 ENV MODEL_PATH=/models/medgemma

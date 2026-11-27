@@ -8,7 +8,7 @@
       "name": "HeartWise AI",
       "email": "hello@heartwise.ai"
     },
-    "version": "1.0.3"
+    "version": "1.0.4"
   },
   "servers": [
     {
@@ -275,7 +275,7 @@
                     "domainName": "Cardiology",
                     "stage": "ai_inference",
                     "modality": "Angiogram",
-                    "version": "1.0.3",
+                    "version": "1.0.4",
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
@@ -460,7 +460,7 @@
                         "Name": "DeepCORO-MACE",
                         "Description": "DeepCORO-CLIP based research model that produces nine one-year cardiovascular outcome scores from up to three coronary angiography videos.",
                         "Developed_by": "HeartWise.AI / Montreal Heart Institute",
-                        "Version": "1.0.1"
+                        "Version": "1.0.4"
                       },
                       "Mechanism": {
                         "Outcome": "One-year composite MACE and component outcome scores",
@@ -495,7 +495,7 @@
                       "Résumé": {
                         "Nom": "DeepCORO-MACE",
                         "Description": "Modèle de recherche fondé sur DeepCORO-CLIP qui produit neuf scores d'événements cardiovasculaires à un an à partir d'au plus trois vidéos de coronarographie.",
-                        "Version": "1.0.1"
+                        "Version": "1.0.4"
                       },
                       "Avertissements": {
                         "Recherche_uniquement": "Aucune autorisation réglementaire. Le modèle et les seuils d'affichage de 0,5 ne sont pas validés pour la prise de décision clinique.",
@@ -943,7 +943,7 @@
           "modelVersion": {
             "type": "string",
             "description": "Container version that rendered the report",
-            "example": "1.0.3"
+            "example": "1.0.4"
           }
         }
       }

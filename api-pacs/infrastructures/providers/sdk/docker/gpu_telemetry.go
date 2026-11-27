@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	dockererrdefs "github.com/docker/docker/errdefs"
-	"github.com/docker/docker/pkg/stdcopy"
+	dockererrdefs "github.com/containerd/errdefs"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/client"
 )
 
 type GPUTelemetry struct {
@@ -134,14 +134,14 @@ func runWithKillTimeout(key string, command []string, run func([]string) (string
 // execRead runs a command in a running container and returns its bounded
 // standard output and exit status.
 func (sdk *DockerSDK) execRead(ctx context.Context, id string, command []string) (string, int, error) {
-	created, err := sdk.Client.ContainerExecCreate(ctx, id, container.ExecOptions{Cmd: command, AttachStdout: true, AttachStderr: true})
+	created, err := sdk.Client.ExecCreate(ctx, id, client.ExecCreateOptions{Cmd: command, AttachStdout: true, AttachStderr: true})
 	if err != nil {
 		if dockererrdefs.IsNotFound(err) || dockererrdefs.IsConflict(err) {
 			return "", 0, ErrGPUProbeNotRunning
 		}
 		return "", 0, probeError(ctx, err)
 	}
-	attached, err := sdk.Client.ContainerExecAttach(ctx, created.ID, container.ExecAttachOptions{})
+	attached, err := sdk.Client.ExecAttach(ctx, created.ID, client.ExecAttachOptions{})
 	if err != nil {
 		return "", 0, probeError(ctx, err)
 	}
@@ -162,7 +162,7 @@ func (sdk *DockerSDK) execRead(ctx context.Context, id string, command []string)
 		}
 		return "", 0, errors.New("GPU telemetry read failed")
 	}
-	state, err := sdk.Client.ContainerExecInspect(ctx, created.ID)
+	state, err := sdk.Client.ExecInspect(ctx, created.ID, client.ExecInspectOptions{})
 	if err != nil {
 		return "", 0, probeError(ctx, err)
 	}

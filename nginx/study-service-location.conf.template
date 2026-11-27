@@ -1,0 +1,22 @@
+# Rendered by start.sh into /etc/nginx/snippets/study-service-location.conf and
+# included by the 443 server (default.conf) and the 8443 server
+# (remote-study-service.conf.template). Needs $study_service_upstream set.
+location /study-service/ {
+    allow ${NGINX_STUDY_SERVICE_ALLOWED_IP};
+    deny all;
+    limit_except GET {
+        deny all;
+    }
+    rewrite ^/study-service(/.*)$ $1 break;
+    proxy_pass http://$study_service_upstream;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header CF-Connecting-IP "";
+    # Waveforms and media are streamed.
+    proxy_buffering off;
+    proxy_max_temp_file_size 0;
+    client_max_body_size 16k;
+    proxy_read_timeout 120;
+}

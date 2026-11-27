@@ -18,7 +18,7 @@ from utils.resource_config import load_model_info, model_info_payload
 def test_manifest_identifies_the_validated_task_297_archive():
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
 
-    assert manifest["version"] == "2.9.2"
+    assert manifest["version"] == "2.9.3"
     assert manifest["provenance"] == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,
@@ -92,7 +92,8 @@ def test_inference_stack_pins_match_the_validated_runtime():
         "numpy==1.26.4",
         "scipy==1.15.3",
         "scikit-image==0.25.2",
-        "torch==2.7.1",
-        "torchvision==0.22.1",
-        "triton==3.3.1",
+        "--extra-index-url https://download.pytorch.org/whl/cu126",
+        "torch==2.13.0+cu126",
+        "torchvision==0.28.0+cu126",
+        "triton==3.7.1",
     }.issubset(requirements)

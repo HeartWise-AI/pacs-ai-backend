@@ -46,7 +46,7 @@ inference_lock = create_inference_semaphore(model_info)
 app = FastAPI(
     title="PACS.AI Inference Model API",
     description="API Documentation of PACS.AI Model Inference",
-    version="1.5.0",
+    version="1.5.1",
     docs_url=None,  # Disable default docs
     redoc_url=None,  # Disable default redoc
 )

@@ -15,7 +15,9 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Use uv instead of pip for much faster installation
-RUN uv pip install -r requirements.txt --system
+# uv takes a package from the first index that has it, so without best-match the PyTorch index's
+# stale copies (for example idna 3.4) would win over newer PyPI releases.
+RUN uv pip install -r requirements.txt --system --index-strategy unsafe-best-match
 
 # Copy the model download script
 COPY download_model.py .

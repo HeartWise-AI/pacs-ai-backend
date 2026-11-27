@@ -11,9 +11,8 @@ import (
 	"testing"
 	"time"
 
-	engine "github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 func TestGPUTelemetryParsesOnlyExpectedPhysicalUUID(t *testing.T) {
@@ -40,9 +39,9 @@ func TestGPUTelemetryNeverStartsStoppedOrWrongGPUProbe(t *testing.T) {
 					http.Error(w, "unexpected mutation", 500)
 					return
 				}
-				state := &engine.ContainerState{Status: status, StartedAt: "2026-01-01T00:00:00Z", FinishedAt: "2026-01-01T00:00:00Z"}
+				state := &container.State{Status: container.ContainerState(status), StartedAt: "2026-01-01T00:00:00Z", FinishedAt: "2026-01-01T00:00:00Z"}
 				host := &container.HostConfig{Resources: container.Resources{DeviceRequests: gpuDeviceRequests("")}}
-				json.NewEncoder(w).Encode(engine.ContainerJSON{ContainerJSONBase: &engine.ContainerJSONBase{ID: strings.Repeat("a", 64), Name: "/model", State: state, HostConfig: host}})
+				json.NewEncoder(w).Encode(container.InspectResponse{ID: strings.Repeat("a", 64), Name: "/model", State: state, HostConfig: host})
 			}))
 			defer server.Close()
 			cli, err := client.NewClientWithOpts(client.WithHost(server.URL), client.WithVersion("1.47"))

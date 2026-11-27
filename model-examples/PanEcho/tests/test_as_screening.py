@@ -100,12 +100,12 @@ def test_html_report_shows_screening_section_outside_the_findings():
     assert ">Aortic valve stenosis<" not in html
 
 
-def test_model_facts_and_manifest_are_1_1_2():
+def test_model_facts_match_the_manifest_version():
     facts = json.loads((ROOT / "data/model_facts.json").read_text(encoding="utf-8"))
     info = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
 
-    assert info["version"] == "1.1.2"
     for language in ("en", "fr"):
-        assert facts[language]["Summary"]["Version"] == "1.1.2"
+        assert facts[language]["Summary"]["Version"] == info["version"]
+        assert info["version"] in facts[language]["Changelogs"]
         assert "1.1.2" in facts[language]["Changelogs"]
     assert "screening" in facts["en"]["Warnings_and_limitations"]["Risks"]

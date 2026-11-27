@@ -9,14 +9,14 @@
       "License_date": "",
       "Approval_date": "",
       "Last_update": "2026-11-27",
-      "Version": "1.1.2"
+      "Version": "1.2.2"
     },
     "Mechanism": {
       "Outcome": "39 reporting tasks from echocardiogram videos",
       "Output": "39 reporting tasks from echocardiogram videos",
       "Target_population": "Adult patients aged ≥18 years who received a transthoracic echocardiogram (TTE)",
       "Time_of_prediction": "N/A",
-      "Input_data_source": "Transthoracic echocardiogram videos",
+      "Input_data_source": "Transthoracic echocardiogram videos. Since 1.2.0 PanEcho classifies every multi-frame clip with the EchoPrime 20-view classifier (MViT-v2-S, checkpoint sha256 5bf6010b17c9...) and predicts only from clips classified as A2C, A4C, A5C, PLAX or PSAX (zoomed and LV-focused variants of those views included, e.g. A4C_ZOOM, PSAX_AV, PLAX_DEEP). Subcostal, suprasternal, A3C, RV inflow and OTHER clips, single-frame images and Doppler stills are not used.",
       "Input_data_type": "Video data",
       "Training_data_location_and_time-period": "N/A",
       "Model_type": "Multi-task model",
@@ -28,15 +28,15 @@
       "Target_population_and_use_case": "Adult patients aged ≥18 years who received a transthoracic echocardiogram (TTE)",
       "General_use": "PanEcho is a view-agnostic, multi-task model that performs 39 reporting tasks from echocardiogram videos. It can be used to provide real-time, dynamic assessment of cardiac function during echocardiography without additional equipment or procedures.",
       "Appropriate_decision_and_support": "N/A",
-      "Before_using_this_model": "Make sure you have at least one view available to input into the model",
+      "Before_using_this_model": "The study must contain transthoracic clips in at least one standard view (A2C, A4C, A5C, PLAX, PSAX). Each result lists in viewSelection how many clips the study had (totalClips), how many were used (clipsUsed), the predicted view of every clip (viewCounts, clips[].view, clips[].used, by series and instance number) and the view-classifier checkpoint (classifier.sha256). When no clip is in a standard view, or the study is a transesophageal echo, PanEcho returns no predictions and gives the reason in viewSelection.skipReason (NO_STANDARD_TTE_VIEWS, TEE_NOT_SUPPORTED, NO_VIDEO_CLIPS) and in the recommendation text.",
       "Safety_and_efficacy_evaluation": "N/A"
     },
     "Warnings_and_limitations": {
       "Risks": "Aortic stenosis is a screening output only. PanEcho reads the 2D clips without the continuous-wave Doppler spectra: it under-estimates aortic valve peak velocity (shrunk towards about 1.7 m/s) and on local validation read severe aortic stenosis (measured Vmax 3.9-4.8 m/s) as none or mild. The report shows P(severe AS) and P(any AS) = P(mild or moderate) + P(severe) as screening scores and the peak velocity as an AI estimate; they do not rule out aortic stenosis. Grade aortic stenosis from the measured Doppler values (Vmax, mean gradient, valve area).",
-      "Inappropriate_settings": "N/A",
+      "Inappropriate_settings": "Transesophageal echo (TEE/ETO): skipped (TEE_NOT_SUPPORTED), detected from the study or series description (TEE, ETO, trans-oesophageal) or a TEE probe in TransducerData. Non-cardiac ultrasound (vascular, abdominal, thyroid): its clips are not standard TTE views, so the study is skipped (NO_STANDARD_TTE_VIEWS). Congenital and pediatric echo: outside the adult training population.",
       "Clinical_rationale": "N/A",
       "Inappropriate_decision_support": "Do not grade or exclude aortic stenosis, or select patients for valve intervention, from PanEcho outputs.",
-      "Generalizability": "N/A",
+      "Generalizability": "Results come from the clips the view classifier accepted; a misclassified clip can be included or left out. Before 1.2.0 PanEcho used every multi-frame clip of the study, so 1.2.0 values can differ from earlier runs of the same study.",
       "Discontinue_use_if": "N/A"
     },
     "Other_results": [],
@@ -53,7 +53,11 @@
     "Changelogs": {
       "1.0.0": "2023-06-23: Initial release",
       "1.0.1": "2026-10-16: Added immutable model provenance and reproducible artifact verification",
-      "1.1.2": "2026-11-27: Aortic stenosis shown as screening scores (P(severe AS), P(any AS)) instead of the argmax class; aortic valve peak velocity labelled as an AI estimate that under-estimates severe AS. Weights and other outputs unchanged."
+      "1.1.0": "2026-11-27: View classifier results kept per clip instead of per series",
+      "1.1.2": "2026-11-27: Aortic stenosis shown as screening scores (P(severe AS), P(any AS)) instead of the argmax class; aortic valve peak velocity labelled as an AI estimate that under-estimates severe AS. Weights and other outputs unchanged.",
+      "1.2.0": "2026-11-27: The image ships the EchoPrime 20-view classifier (pinned, sha256 verified at build); PanEcho keeps only A2C/A4C/A5C/PLAX/PSAX clips, skips TEE and studies without a standard TTE view with an explicit reason, and reports the clips and views it used (viewSelection). Predictions change.",
+      "1.2.1": "2026-11-27: Security update (torch 2.13.0, torchvision 0.28.0); resize kept as in torchvision 0.23 so predictions do not change.",
+      "1.2.2": "2026-11-27: 1.2.1 with the 1.1.2 aortic stenosis presentation (screening scores P(severe AS), P(any AS); AV peak velocity as an AI estimate). View filter and other outputs unchanged."
     }
   },
   "fr": {
@@ -66,7 +70,7 @@
       "License_date": "",
       "Approval_date": "",
       "Last_update": "2026-11-27",
-      "Version": "1.1.2"
+      "Version": "1.2.2"
     },
     "Mechanism": {
       "Outcome": "39 tâches de compte rendu à partir des vidéos d'échocardiographie",
@@ -90,10 +94,10 @@
     },
     "Warnings_and_limitations": {
       "Risks": "La sténose aortique est uniquement un score de dépistage. PanEcho lit les clips 2D sans les spectres Doppler continu : il sous-estime la vitesse maximale aortique (ramenée vers environ 1,7 m/s) et, en validation locale, a lu des sténoses aortiques sévères (Vmax mesurée 3,9-4,8 m/s) comme absentes ou légères. Le rapport affiche P(SA sévère) et P(toute SA) = P(légère ou modérée) + P(sévère) comme scores de dépistage, et la vitesse maximale comme estimation IA ; ils n'excluent pas une sténose aortique. Grader la sténose aortique à partir des valeurs Doppler mesurées (Vmax, gradient moyen, surface valvulaire).",
-      "Inappropriate_settings": "N/A",
+      "Inappropriate_settings": "Échographie transœsophagienne (ETO/TEE) : ignorée (TEE_NOT_SUPPORTED), détectée par la description de l'examen ou de la série, ou par une sonde ETO dans TransducerData. Échographie non cardiaque (vasculaire, abdominale, thyroïde) : examen ignoré (NO_STANDARD_TTE_VIEWS). Échographie congénitale et pédiatrique : hors de la population adulte d'entraînement.",
       "Clinical_rationale": "N/A",
       "Inappropriate_decision_support": "Ne pas grader ni exclure une sténose aortique, ni sélectionner des patients pour une intervention valvulaire, à partir de PanEcho.",
-      "Generalizability": "N/A",
+      "Generalizability": "Les résultats viennent des clips acceptés par le classificateur de vues ; un clip mal classé peut être inclus ou exclu. Avant 1.2.0, PanEcho utilisait tous les clips multi-images de l'examen, donc les valeurs 1.2.x peuvent différer des analyses antérieures du même examen.",
       "Discontinue_use_if": "N/A"
     },
     "Other_results": [],
@@ -110,7 +114,11 @@
     "Changelogs": {
       "1.0.0": "2023-06-23 : version initiale",
       "1.0.1": "2026-10-16 : provenance immuable du modèle et vérification reproductible de l'artefact",
-      "1.1.2": "2026-11-27 : sténose aortique affichée comme scores de dépistage (P(SA sévère), P(toute SA)) au lieu de la classe la plus probable ; vitesse maximale aortique présentée comme estimation IA qui sous-estime la SA sévère. Poids et autres sorties inchangés."
+      "1.1.0": "2026-11-27 : résultats du classificateur de vues conservés par clip et non par série",
+      "1.1.2": "2026-11-27 : sténose aortique affichée comme scores de dépistage (P(SA sévère), P(toute SA)) au lieu de la classe la plus probable ; vitesse maximale aortique présentée comme estimation IA qui sous-estime la SA sévère. Poids et autres sorties inchangés.",
+      "1.2.0": "2026-11-27 : l'image inclut le classificateur de vues EchoPrime (20 vues, épinglé) ; PanEcho ne garde que les clips A2C/A4C/A5C/PLAX/PSAX, ignore l'ETO et les examens sans vue ETT standard avec une raison explicite, et indique les clips et vues utilisés (viewSelection). Les prédictions changent.",
+      "1.2.1": "2026-11-27 : mise à jour de sécurité (torch 2.13.0, torchvision 0.28.0) ; redimensionnement conservé comme dans torchvision 0.23, prédictions inchangées.",
+      "1.2.2": "2026-11-27 : 1.2.1 avec la présentation 1.1.2 de la sténose aortique (scores de dépistage, vitesse maximale comme estimation IA). Filtre de vues et autres sorties inchangés."
     }
   }
 }
