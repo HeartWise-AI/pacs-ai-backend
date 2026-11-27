@@ -17,7 +17,7 @@ services:
     entrypoint:
       - /bin/sh
       - -c
-      - 'fs=$$(stat -f -c %T /var/lib/postgresql/data); case "$$fs" in nfs*|cifs|smb*|fuse*|ceph*|9p) echo "REFUSING to start: PGDATA is on $$fs. Postgres data must be on local disk (see docs/cardio-postgres.md)." >&2; exit 78;; esac; exec docker-entrypoint.sh "$$@"'
+      - 'fs=$$(stat -f -c %T /var/lib/postgresql/data) || { echo "REFUSING to start: cannot check the PGDATA filesystem." >&2; exit 78; }; case "$$fs" in nfs*|cifs|smb*|ceph*) echo "REFUSING to start: PGDATA is on $$fs. Postgres data must be on local disk (see docs/cardio-postgres.md)." >&2; exit 78;; esac; exec docker-entrypoint.sh "$$@"'
       - --
     volumes:
       - cardio_postgres_data:/var/lib/postgresql/data

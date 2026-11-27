@@ -19,9 +19,12 @@ workers and medical-agent.
 - The data directory lives on **local disk**: the named Docker volume `cardio_postgres_data`
   (under `/var/lib/docker`). `CARDIO_POSTGRES_VOLUME` in `.env` can pin the name of an
   existing local volume (MHI uses `cardio-postgres-data`); do not change it on a running
-  deployment unless you mean to start from an empty database.
-- The container refuses to start when its data directory is on NFS, CIFS/SMB, FUSE, Ceph or
-  9p (`REFUSING to start: PGDATA is on nfs`, exit 78).
+  deployment unless you mean to start from an empty database. Before deploying a compose
+  change, compare `docker compose config | grep -A2 '^volumes'` with `docker volume ls`: a
+  different name means Compose would create a new, empty volume. (`docker-compose-dev.yml`
+  keeps its own unnamed dev volume.)
+- The container refuses to start when its data directory is on NFS, CIFS/SMB or CephFS
+  (`REFUSING to start: PGDATA is on nfs`, exit 78), or when the filesystem cannot be checked.
 - Other hosts that need the data connect over the network (published port 5434, limited by
   `pg_hba.conf` and the firewall); they never mount the files.
 
