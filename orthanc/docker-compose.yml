@@ -5,7 +5,9 @@ services:
     restart: unless-stopped
     ports:
       - ${ORTHANC_DICOM_PORT}:${ORTHANC_DICOM_PORT}
-      - 8042:8042
+      # The REST API has no authentication; keep it loopback-only. Services on
+      # pacs-net reach it as orthanc:8042.
+      - 127.0.0.1:8042:8042
     volumes:
       - orthanc-storage:/var/lib/orthanc/db/
     environment:

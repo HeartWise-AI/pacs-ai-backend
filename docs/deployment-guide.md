@@ -29,7 +29,7 @@ See [architecture diagrams](./architecture.md) (Mermaid + Graphviz). The system 
 
 ### 1.4 Versions
 - **Application version:** pinned to a specific git commit SHA — record the full 40-char SHA in the customer's install record (e.g. `d8079b4f3e1a…`). Each install ships from a tagged GitHub Release; the release page lists the exact SHA.
-- Compatible Docker Engine: ≥ 24.0 (required for Compose `include:` support).
+- Compatible Docker Engine: ≥ 28.3.3. Older engines let hosts on the same network segment reach ports published on `127.0.0.1` (moby/moby#49325, CVE-2025-54388), which would expose the unauthenticated Orthanc REST API and the loopback-only services in §3.
 - Compatible Docker Compose: ≥ v2.20.
 - Pinned base images (from compose files): Postgres 17.2 (Orthanc index), Postgres 16 (cardio-agent), Orthanc `orthancteam/orthanc:24.12.0-full`.
 
@@ -112,7 +112,7 @@ Customer must whitelist the api-pacs host in their source PACS.
 | nginx | 80 | 80 | Public | Browsers, redirect to 443 |
 | nginx | 443 | 443 | Public | Browsers, API clients |
 | api-pacs | 8000 | `127.0.0.1:8000` | Loopback + internal | nginx, local diagnostics |
-| Orthanc REST | 8042 | — | Internal | api-pacs, study-service |
+| Orthanc REST | 8042 | `127.0.0.1:8042` | Loopback + internal | api-pacs, study-service, local diagnostics |
 | Orthanc DIMSE | 4242 | 4242 | Customer LAN | Remote PACS (C-STORE) |
 | study-service | 8600 | — | Internal | api-pacs |
 | PostgreSQL (control) | 5432 | 5433 | Loopback only | api-pacs |
