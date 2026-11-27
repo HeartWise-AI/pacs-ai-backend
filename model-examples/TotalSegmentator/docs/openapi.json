@@ -197,7 +197,7 @@
                   "data": {
                     "modelId": "TotalSegmentator",
                     "modelName": "TotalSegmentator",
-                    "version": "2.9.2",
+                    "version": "2.9.3",
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
