@@ -72,6 +72,8 @@ type InferenceCommandServiceInterface interface {
 	UpdateInferenceModel(ctx context.Context, data types.UpdateInferenceModel) error
 	// UpdateInferenceIngestionJob updates an inference ingestion job
 	UpdateInferenceIngestionJob(ctx context.Context, data types.UpdateInferenceIngestionJob) error
+	// UpgradeInferenceIngestionJob retargets a stopped job to its current managed model deployment.
+	UpgradeInferenceIngestionJob(ctx context.Context, data types.UpgradeInferenceIngestionJob) error
 	// UpdateModelFeedback updates model feedback
 	UpdateModelFeedback(ctx context.Context, data types.UpdateModelFeedback) error
 }

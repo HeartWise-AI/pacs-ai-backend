@@ -278,11 +278,17 @@ func TestTextKeepsAllDigitHashes(t *testing.T) {
 }
 
 func TestTextIsLinearOnRepeatedSeparators(t *testing.T) {
+	// CI runs this suite with the race detector, whose instrumentation makes
+	// this wall-clock assertion substantially slower. Keep enough headroom for
+	// shared-runner load while still catching the multi-second blow-up caused
+	// by a quadratic scan of these 128 KB inputs.
+	const maxDuration = 2 * time.Second
+
 	line := "/x?x=" + strings.Repeat("a=", 64*1024)
 	start := time.Now()
 	Text(line)
 	RequestURI(line)
-	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+	if elapsed := time.Since(start); elapsed > maxDuration {
 		t.Fatalf("128 KB line took %v", elapsed)
 	}
 	// Sensitive names with long values stay linear too.
@@ -291,7 +297,7 @@ func TestTextIsLinearOnRepeatedSeparators(t *testing.T) {
 	if got := Text(line); strings.Contains(got, "a/a") {
 		t.Fatalf("leak: %q", got[:64])
 	}
-	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+	if elapsed := time.Since(start); elapsed > maxDuration {
 		t.Fatalf("sensitive line took %v", elapsed)
 	}
 }

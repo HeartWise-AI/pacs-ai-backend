@@ -473,6 +473,7 @@ func (router *router) InitRouter() *chi.Mux {
 							r.Get("/job/{ID}/candidates", inferenceQueryController.GetInferenceIngestionJobCandidates)
 							r.Get("/job/{ID}/study/{studyInstanceUID}", inferenceQueryController.GetInferenceIngestionCandidateByStudyUID)
 							r.Put("/job/{ID}/update", inferenceCommandController.UpdateInferenceIngestionJob)
+							r.Post("/job/{ID}/upgrade", inferenceCommandController.UpgradeInferenceIngestionJob)
 							r.Delete("/job/{ID}/remove", inferenceCommandController.RemoveInferenceIngestionJob)
 						})
 					})

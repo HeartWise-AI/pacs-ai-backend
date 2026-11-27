@@ -421,6 +421,16 @@ type UpdateInferenceIngestionJob struct {
 	NotificationsEnabled *bool
 }
 
+type UpgradeInferenceIngestionJob struct {
+	ID                   string
+	TenantID             string
+	ExpectedModelVersion string
+	ContainerID          string
+	ModelID              string
+	ModelName            string
+	ModelVersion         string
+}
+
 // ProcessingRunNotificationJob is one automatic ingestion job behind a
 // processing run, reduced to what the notification audience needs.
 type ProcessingRunNotificationJob struct {

@@ -21,6 +21,20 @@ func (service *InferenceCommandService) selectIngestionRegistration(ctx context.
 	if err != nil {
 		return entity.InferenceModel{}, err
 	}
+	model, logicalID, err := matchIngestionRegistration(models, job)
+	if err != nil {
+		return entity.InferenceModel{}, err
+	}
+	if err := service.verifyIngestionRegistration(ctx, model, job, logicalID); err != nil {
+		return entity.InferenceModel{}, err
+	}
+	return model, nil
+}
+
+// matchIngestionRegistration resolves the current tenant registration without
+// comparing its version. Upgrade uses this to find the authoritative target;
+// normal dispatch follows it with verifyIngestionRegistration.
+func matchIngestionRegistration(models []entity.InferenceModel, job entity.InferenceIngestionJob) (entity.InferenceModel, bool, error) {
 	var byID, byContainer, byArtifact []entity.InferenceModel
 	for _, model := range models {
 		if model.TenantID != job.TenantID || strings.TrimSpace(model.ContainerID) == "" {
@@ -41,15 +55,11 @@ func (service *InferenceCommandService) selectIngestionRegistration(ctx context.
 			continue
 		}
 		if len(matches) != 1 {
-			return entity.InferenceModel{}, errors.New("ingestion model registration is ambiguous")
+			return entity.InferenceModel{}, false, errors.New("ingestion model registration is ambiguous")
 		}
-		model := matches[0]
-		if err := service.verifyIngestionRegistration(ctx, model, job, index != 0); err != nil {
-			return entity.InferenceModel{}, err
-		}
-		return model, nil
+		return matches[0], index != 0, nil
 	}
-	return entity.InferenceModel{}, errors.New(apiError.MissingRecord)
+	return entity.InferenceModel{}, false, errors.New(apiError.MissingRecord)
 }
 
 // A snapshot belongs to the current registration only while both immutable

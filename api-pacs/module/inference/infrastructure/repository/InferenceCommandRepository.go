@@ -837,6 +837,63 @@ func updateInferenceIngestionJobParams(data types.UpdateInferenceIngestionJob) m
 	}
 }
 
+// UpgradeInferenceIngestionJob retargets only a stopped, unchanged job with no
+// queued/running candidate or processing execution. One UPDATE keeps the
+// optimistic version check and active-work guard atomic.
+func (repository *InferenceCommandRepository) UpgradeInferenceIngestionJob(data types.UpgradeInferenceIngestionJob) error {
+	job := entity.InferenceIngestionJob{}
+	candidate := entity.InferenceIngestionCandidate{}
+	processingJob := entity.InferenceIngestionProcessingJob{}
+	stmt := fmt.Sprintf(`UPDATE %s AS job
+		SET container_id = :container_id,
+			model_id = :model_id,
+			model_name = :model_name,
+			model_version = :model_version
+		WHERE job.id = :id
+			AND job.tenant_id = :tenant_id
+			AND job.status = :stopped_status
+			AND job.model_version = :expected_model_version
+			AND NOT EXISTS (
+				SELECT 1 FROM %s AS candidate
+				WHERE candidate.ingestion_job_id = job.id
+					AND candidate.processing_status IN (:candidate_queued_status, :candidate_running_status)
+			)
+			AND NOT EXISTS (
+				SELECT 1 FROM %s AS processing
+				JOIN %s AS candidate ON candidate.id = processing.candidate_id
+				WHERE candidate.ingestion_job_id = job.id
+					AND processing.status IN (:processing_pending_status, :processing_queued_status, :processing_running_status)
+			)`, job.GetModelName(), candidate.GetModelName(), processingJob.GetModelName(), candidate.GetModelName())
+	result, err := repository.PostgresSQLDBHandlerInterface.Execute(stmt, map[string]interface{}{
+		"id":                        data.ID,
+		"tenant_id":                 data.TenantID,
+		"expected_model_version":    data.ExpectedModelVersion,
+		"container_id":              data.ContainerID,
+		"model_id":                  data.ModelID,
+		"model_name":                data.ModelName,
+		"model_version":             data.ModelVersion,
+		"stopped_status":            entity.InferenceIngestionJobStatusStopped,
+		"candidate_queued_status":   entity.InferenceIngestionCandidateProcessingStatusQueued,
+		"candidate_running_status":  entity.InferenceIngestionCandidateProcessingStatusRunning,
+		"processing_pending_status": entity.InferenceIngestionProcessingJobStatusPending,
+		"processing_queued_status":  entity.InferenceIngestionProcessingJobStatusQueued,
+		"processing_running_status": entity.InferenceIngestionProcessingJobStatusRunning,
+	})
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		log.Println(err)
+		return errors.New(apiError.DatabaseError)
+	}
+	if rows != 1 {
+		return errors.New(apiError.InferenceIngestionJobUpgradeConflict)
+	}
+	return nil
+}
+
 // UpdateInferenceIngestionJobStatus updates the status of an inference ingestion job
 func (repository *InferenceCommandRepository) UpdateInferenceIngestionJobStatus(ID string, status entity.InferenceIngestionJobStatus) error {
 	job := &entity.InferenceIngestionJob{

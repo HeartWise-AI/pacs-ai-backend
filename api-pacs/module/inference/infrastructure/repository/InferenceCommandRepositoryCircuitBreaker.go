@@ -475,6 +475,31 @@ func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceInges
 	}
 }
 
+// UpgradeInferenceIngestionJob is the circuit-breaker decorator for safe job retargeting.
+func (repository *InferenceCommandRepositoryCircuitBreaker) UpgradeInferenceIngestionJob(data types.UpgradeInferenceIngestionJob) error {
+	output := make(chan bool, 1)
+	errChan := make(chan error, 1)
+
+	hystrix.ConfigureCommand("upgrade_inference_ingestion_job", config.Settings())
+	errors := hystrix.Go("upgrade_inference_ingestion_job", func() error {
+		if err := repository.InferenceCommandRepositoryInterface.UpgradeInferenceIngestionJob(data); err != nil {
+			errChan <- err
+			return nil
+		}
+		output <- true
+		return nil
+	}, nil)
+
+	select {
+	case <-output:
+		return nil
+	case err := <-errChan:
+		return err
+	case err := <-errors:
+		return err
+	}
+}
+
 // UpdateInferenceIngestionJobStatus is the decorator for the inference command repository to update the status of an inference ingestion job
 func (repository *InferenceCommandRepositoryCircuitBreaker) UpdateInferenceIngestionJobStatus(ID string, status entity.InferenceIngestionJobStatus) error {
 	output := make(chan bool, 1)
