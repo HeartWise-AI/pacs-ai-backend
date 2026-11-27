@@ -64,8 +64,9 @@ type InferenceCommandService struct {
 	// executions of automatic runs older than this; zero disables it.
 	AutoRunExpireAfter     time.Duration
 	RequireProcessingRunID bool
-	// AllowedImageNamespace limits the images AddInferenceModel may run. Empty
-	// means modelupgrade.DefaultAllowedImageNamespace.
+	// AllowedImageNamespace limits the images AddInferenceModel may run: a
+	// comma-separated list of registry namespaces (MODEL_ALLOWED_IMAGE_NAMESPACES).
+	// Empty means modelupgrade.DefaultAllowedImageNamespace.
 	AllowedImageNamespace                   string
 	inferenceContainerReadinessTimeout      time.Duration
 	inferenceContainerReadinessPollInterval time.Duration
@@ -773,13 +774,32 @@ func (service *InferenceCommandService) recalculateProcessingRunForExecution(ctx
 	return err
 }
 
+// normalizeRegistrationImage accepts an image from any of the comma-separated
+// namespaces (default modelupgrade.DefaultAllowedImageNamespace), pinned by a
+// semantic-version tag or a sha256 digest, and returns the normalized
+// reference that is pulled, run and stored.
+func normalizeRegistrationImage(dockerImage, namespaces string) (string, error) {
+	var lastErr error
+	for _, namespace := range strings.Split(namespaces, ",") {
+		namespace = strings.TrimSpace(namespace)
+		if namespace == "" {
+			continue
+		}
+		image, err := modelupgrade.NormalizeAllowedImageReference(dockerImage, "", namespace)
+		if err == nil {
+			return image, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		return modelupgrade.NormalizeAllowedImageReference(dockerImage, "", modelupgrade.DefaultAllowedImageNamespace)
+	}
+	return "", lastErr
+}
+
 // AddInferenceModel adds an inference model
 func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error {
-	namespace := service.AllowedImageNamespace
-	if namespace == "" {
-		namespace = modelupgrade.DefaultAllowedImageNamespace
-	}
-	image, err := modelupgrade.NormalizeAllowedImageReference(data.DockerImage, "", namespace)
+	image, err := normalizeRegistrationImage(data.DockerImage, service.AllowedImageNamespace)
 	if err != nil {
 		return errors.New(apiError.InvalidPayload)
 	}

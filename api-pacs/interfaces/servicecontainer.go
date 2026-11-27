@@ -459,7 +459,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		AutoRunExpireAfter:                      inferenceService.ConfiguredAutoRunExpireAfter(),
 		WorklistNotificationAudienceRepository:  processingRunRepository,
 		RequireProcessingRunID:                  configuredProcessingRunIDRequirement(),
-		AllowedImageNamespace:                   modelUpgradeImageNamespace(),
+		AllowedImageNamespace:                   modelRegistrationImageNamespaces(),
 		ModelManager:                            managedPredictor,
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
 			StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
@@ -1008,6 +1008,16 @@ func registerHandlers() {
 		PrivateKey:     os.Getenv("DOCUSIGN_PRIVATE_KEY"),
 		AccountID:      os.Getenv("DOCUSIGN_ACCOUNT_ID"),
 	})
+}
+
+// modelRegistrationImageNamespaces is the comma-separated allowlist of image
+// namespaces /inference/model/add accepts (MODEL_ALLOWED_IMAGE_NAMESPACES),
+// falling back to the upgrade namespace.
+func modelRegistrationImageNamespaces() string {
+	if value := strings.TrimSpace(os.Getenv("MODEL_ALLOWED_IMAGE_NAMESPACES")); value != "" {
+		return value
+	}
+	return modelUpgradeImageNamespace()
 }
 
 func modelUpgradeImageNamespace() string {
