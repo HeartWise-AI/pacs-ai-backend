@@ -35,9 +35,8 @@ Set `CARDIO_DB_SSL=on` to serve TLS on the published port. The server reads
 `CARDIO_DB_TLS_DIR` (default `./secrets/cardio-postgres-tls`, git-ignored). The key must be
 mode 0600 and owned by uid 999 (`postgres` in the image), or Postgres refuses to start. Keep a
 private copy of the pair outside the repo. Clients verify with
-`sslmode=verify-full sslrootcert=<server.crt>` and a host name in the certificate's SAN. On
-MHI the self-signed certificate (valid to 2036) is CN `sgbmavram01.icm.local` with SAN
-`sgbmavram01.icm.local`, `sgbmavram01` and `10.128.228.213`. Containers on `pacs-net` keep
+`sslmode=verify-full sslrootcert=<server.crt>` and a host name listed in the certificate's SAN
+(`openssl x509 -in server.crt -noout -ext subjectAltName`). Containers on `pacs-net` keep
 connecting with the default `sslmode=prefer`.
 
 ## Backups
