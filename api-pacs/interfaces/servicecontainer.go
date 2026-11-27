@@ -501,9 +501,16 @@ func OrthancCommandServiceDI() *orthancService.OrthancCommandService {
 		FirebaseAdminSDK: firebaseAdminSDK,
 	}
 
+	queryRepository := &orthancRepository.OrthancQueryRepository{
+		FirebaseAdminSDK: firebaseAdminSDK,
+	}
+
 	service := &orthancService.OrthancCommandService{
 		OrthancCommandRepositoryInterface: &orthancRepository.OrthancCommandRepositoryCircuitBreaker{
 			OrthancCommandRepositoryInterface: repository,
+		},
+		OrthancQueryRepositoryInterface: &orthancRepository.OrthancQueryRepositoryCircuitBreaker{
+			OrthancQueryRepositoryInterface: queryRepository,
 		},
 		OrthancAPIInterface:                  orthancAPI,
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),

@@ -52,6 +52,9 @@ func (controller *OrthancCommandController) RemoveDICOMModality(w http.ResponseW
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.ForbiddenAccess:
+			httpCode = http.StatusForbidden
+			errorMsg = "DICOM modality is not available."
 		case apiError.OrthancError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Orthanc service encountered an error or timeout."
@@ -138,6 +141,9 @@ func (controller *OrthancCommandController) RetrieveModalityStudy(w http.Respons
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.ForbiddenAccess:
+			httpCode = http.StatusForbidden
+			errorMsg = "DICOM modality is not available."
 		case apiError.DuplicateRecord:
 			httpCode = http.StatusConflict
 			errorMsg = "Skipping retrieve."
@@ -184,6 +190,8 @@ func (controller *OrthancCommandController) RetrieveModalityStudy(w http.Respons
 
 // TriggerDICOMEchoSCU trigger dicom C-ECHO SCU
 func (controller *OrthancCommandController) TriggerDICOMEchoSCU(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
+
 	modalityID := chi.URLParam(r, "modalityID")
 	if len(modalityID) == 0 {
 		response := viewmodels.HTTPResponseVM{
@@ -197,12 +205,15 @@ func (controller *OrthancCommandController) TriggerDICOMEchoSCU(w http.ResponseW
 		return
 	}
 
-	err := controller.OrthancCommandServiceInterface.TriggerDICOMEchoSCU(context.TODO(), modalityID)
+	err := controller.OrthancCommandServiceInterface.TriggerDICOMEchoSCU(context.TODO(), tenantID, modalityID)
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.ForbiddenAccess:
+			httpCode = http.StatusForbidden
+			errorMsg = "DICOM modality is not available."
 		case apiError.OrthancError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Orthanc service encountered an error or timeout."
@@ -305,6 +316,9 @@ func (controller *OrthancCommandController) UpdateDICOMModality(w http.ResponseW
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.ForbiddenAccess:
+			httpCode = http.StatusForbidden
+			errorMsg = "DICOM modality is not available."
 		case apiError.FirestoreError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Firestore error."
@@ -544,6 +558,9 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.ForbiddenAccess:
+			httpCode = http.StatusForbidden
+			errorMsg = "DICOM modality is not available."
 		case apiError.OrthancError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Orthanc service encountered an error or timeout."

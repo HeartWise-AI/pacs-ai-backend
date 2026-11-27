@@ -116,6 +116,9 @@ func (controller *OrthancQueryController) FindModalityStudies(w http.ResponseWri
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.ForbiddenAccess:
+			httpCode = http.StatusForbidden
+			errorMsg = "DICOM modality is not available."
 		case apiError.OrthancError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Orthanc service encountered an error or timeout."

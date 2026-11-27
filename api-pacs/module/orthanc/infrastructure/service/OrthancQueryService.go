@@ -48,10 +48,15 @@ func (service *OrthancQueryService) FindLocalSOPInstance(ctx context.Context, so
 // studies up to its own cap (5,000 studies from 2006-2020 on MHI). See
 // findRecentModalityStudies.
 func (service *OrthancQueryService) FindModalityStudies(ctx context.Context, data types.FindModalityStudies) ([]orthancAPITypes.QueryModalityStudyAnswersResponse, string, error) {
+	dicomModality, err := tenantDICOMModality(ctx, service.OrthancQueryRepositoryInterface, data.TenantID, data.ModalityID)
+	if err != nil {
+		return nil, "", err
+	}
+	data.ModalityID = dicomModality.ModalityID
+
 	var (
 		res     []orthancAPITypes.QueryModalityStudyAnswersResponse
 		queryID string
-		err     error
 	)
 	if wantsRecentStudies(data) {
 		res, queryID, err = service.findRecentModalityStudies(ctx, data, time.Now())
@@ -173,10 +178,10 @@ func (service *OrthancQueryService) ListDICOMModalities(ctx context.Context, ten
 				m.Lock()
 				defer m.Unlock()
 
-				// get dicom modality from database
-				dbDicomModality, err := service.OrthancQueryRepositoryInterface.SelectDICOMModalityByModalityID(egCtx, tenantID, dicomModalityID)
-				if err != nil {
-					log.Println(err) // silently ignore error
+				// list only the modalities registered for the tenant
+				dbDicomModality, err := tenantDICOMModality(egCtx, service.OrthancQueryRepositoryInterface, tenantID, dicomModalityID)
+				if err != nil || dbDicomModality.ModalityID != dicomModalityID {
+					return nil
 				}
 
 				results[dicomModalityID] = types.ListDICOMModalityResult{

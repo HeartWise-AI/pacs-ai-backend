@@ -26,6 +26,7 @@ import (
 // OrthancCommandService handles the Orthanc command service logic
 type OrthancCommandService struct {
 	repository.OrthancCommandRepositoryInterface
+	repository.OrthancQueryRepositoryInterface
 	orthancAPITypes.OrthancAPIInterface
 	tenantApplication.TenantQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
@@ -92,14 +93,19 @@ func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context
 
 // RemoveDICOMModality remove dicom modality
 func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, tenantID string, modalityID string) error {
-	err := service.OrthancAPIInterface.DeleteDICOMModality(ctx, modalityID)
+	dicomModality, err := tenantDICOMModality(ctx, service.OrthancQueryRepositoryInterface, tenantID, modalityID)
+	if err != nil {
+		return err
+	}
+
+	err = service.OrthancAPIInterface.DeleteDICOMModality(ctx, dicomModality.ModalityID)
 	if err != nil {
 		log.Println(err)
 		return err
 	}
 
 	// delete dicom modality in database
-	err = service.OrthancCommandRepositoryInterface.DeleteDICOMModality(ctx, tenantID, modalityID)
+	err = service.OrthancCommandRepositoryInterface.DeleteDICOMModality(ctx, tenantID, dicomModality.ModalityID)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -110,6 +116,12 @@ func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, t
 
 // RetrieveModalityStudyBySeries retrieve modality study by series
 func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.Context, data types.RetrieveModalityStudyBySeries) ([]orthancAPITypes.QueryModalityResponse, error) {
+	dicomModality, err := tenantDICOMModality(ctx, service.OrthancQueryRepositoryInterface, data.TenantID, data.ModalityID)
+	if err != nil {
+		return nil, err
+	}
+	data.ModalityID = dicomModality.ModalityID
+
 	// Only what the local store lacks is moved: series that are not stored,
 	// and the missing images of partly stored ones. Nothing missing answers
 	// DuplicateRecord, as an up-to-date local copy did before.
@@ -163,6 +175,12 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 
 // StoreStudyCustomSeries store study custom series
 func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context, data types.StoreStudyCustomSeries) error {
+	dicomModality, err := tenantDICOMModality(ctx, service.OrthancQueryRepositoryInterface, data.TenantID, data.ModalityID)
+	if err != nil {
+		return err
+	}
+	data.ModalityID = dicomModality.ModalityID
+
 	// TODO: handle direct dicom image
 	var customSeriesInstanceUID string
 	var customSOPInstanceUID string
@@ -277,8 +295,13 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 }
 
 // TriggerDICOMEchoSCU trigger dicom echo scu
-func (service *OrthancCommandService) TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error {
-	err := service.OrthancAPIInterface.TriggerDICOMEchoSCU(ctx, modalityID)
+func (service *OrthancCommandService) TriggerDICOMEchoSCU(ctx context.Context, tenantID, modalityID string) error {
+	dicomModality, err := tenantDICOMModality(ctx, service.OrthancQueryRepositoryInterface, tenantID, modalityID)
+	if err != nil {
+		return err
+	}
+
+	err = service.OrthancAPIInterface.TriggerDICOMEchoSCU(ctx, dicomModality.ModalityID)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -289,7 +312,13 @@ func (service *OrthancCommandService) TriggerDICOMEchoSCU(ctx context.Context, m
 
 // UpdateDICOMModality update dicom modality
 func (service *OrthancCommandService) UpdateDICOMModality(ctx context.Context, data types.UpdateDICOMModality) error {
-	err := service.OrthancAPIInterface.UpdateDICOMModality(ctx, data.ModalityID, orthancAPITypes.UpdateDICOMModalityRequest{
+	dicomModality, err := tenantDICOMModality(ctx, service.OrthancQueryRepositoryInterface, data.TenantID, data.ModalityID)
+	if err != nil {
+		return err
+	}
+	data.ModalityID = dicomModality.ModalityID
+
+	err = service.OrthancAPIInterface.UpdateDICOMModality(ctx, data.ModalityID, orthancAPITypes.UpdateDICOMModalityRequest{
 		AET:                    data.AET,
 		AllowEcho:              true,
 		AllowFind:              true,

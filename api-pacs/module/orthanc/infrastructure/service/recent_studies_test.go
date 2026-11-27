@@ -11,6 +11,8 @@ import (
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/module/orthanc/domain/entity"
+	"api-pacs/module/orthanc/domain/repository"
 	"api-pacs/module/orthanc/infrastructure/service/types"
 )
 
@@ -117,11 +119,20 @@ func TestFindRecentModalityStudiesReturnsPACSErrors(t *testing.T) {
 	require.Error(t, err)
 }
 
+// registeredModality answers every modality lookup with the tenant's record.
+type registeredModality struct {
+	repository.OrthancQueryRepositoryInterface
+}
+
+func (registeredModality) SelectDICOMModalityByModalityID(_ context.Context, tenantID, modalityID string) (entity.DICOMModality, error) {
+	return entity.DICOMModality{TenantID: tenantID, ModalityID: modalityID}, nil
+}
+
 func TestFindModalityStudiesKeepsOneQueryForPatientSearches(t *testing.T) {
 	pacs := &fakeStudyPACS{dates: []string{"20100101", "20261117", "20200101"}}
-	service := &OrthancQueryService{OrthancAPIInterface: pacs}
+	service := &OrthancQueryService{OrthancQueryRepositoryInterface: registeredModality{}, OrthancAPIInterface: pacs}
 
-	studies, _, err := service.FindModalityStudies(context.Background(), types.FindModalityStudies{PatientID: "123"})
+	studies, _, err := service.FindModalityStudies(context.Background(), types.FindModalityStudies{TenantID: "tenant", ModalityID: "pacs", PatientID: "123"})
 	require.NoError(t, err)
 	require.Equal(t, []string{""}, pacs.queries)
 	require.Equal(t, "20261117", studies[0].StudyDate)
