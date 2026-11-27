@@ -1,0 +1,119 @@
+{
+  "automaticRunLabels": [],
+  "en": {
+    "Summary": {
+      "Name": "EchoAlign (research use only)",
+      "Description": "Echocardiography vision-language foundation model that aligns each cardiac structure, video and study with report text. PACS-AI runs the authors' released linear probes (53 tasks: aortic stenosis detection and grade, AV peak velocity and gradients, LVEF, regurgitation detection and grades, chamber size, and others) on the study embedding. RESEARCH USE ONLY (CC BY-NC 4.0): not for diagnosis or treatment.",
+      "Developed_by": "Ahmed Aly, Darya Taratynova, Lotfi Abdelkrim Mecharbat, Roman A. Sandler, Joseph Z. Sokol, Joshua Penn, Klaus H. Maier-Hein, Numan Saeed, Mohammad Yaqub (MBZUAI BioMedIA, iCardio.ai, DKFZ)",
+      "Development_period": "2026",
+      "Licensed_to": "CC BY-NC 4.0 (non-commercial, attribution)",
+      "License_date": "",
+      "Approval_date": "",
+      "Last_update": "2026-11-27",
+      "Version": "0.1.0"
+    },
+    "Mechanism": {
+      "Outcome": "53 echo findings and measurements (released probes) plus zero-shot prompt scores",
+      "Output": "Per-study probabilities, grades and measurements; per-clip AS, AV Vmax and EF",
+      "Target_population": "Adult transthoracic echocardiography",
+      "Time_of_prediction": "On demand only (not run by automatic ingestion)",
+      "Input_data_source": "Transthoracic echo DICOM clips: every multi-frame US instance by default (the same clips PanEcho receives); TEE and non-image instances are skipped. No view classifier.",
+      "Input_data_type": "Video data",
+      "Training_data_location_and_time-period": "2.87 million echo videos and images from 159 centres (telecardiology; test data from iCardio.ai). Probes fitted on the developers' private cohort.",
+      "Model_type": "Vision-language foundation model with linear probes",
+      "Supported_DICOM_modalities": "US"
+    },
+    "Validation_and_performance": [
+      "Developers (arXiv:2611.27517): mean AUROC 0.890 over 68 classification tasks and mean QWK 0.530 over 31 grading tasks (linear probes); AS (>= moderate) probe AUROC 0.979 private / 0.841 MIMIC-IV-Echo (EchoPrime 0.984 / 0.912).",
+      "MHI local check (54 TTE studies, SR truth, nothing fitted): severe AS AUROC 0.94 (95% CI 0.83-1.00), same as PanEcho 0.94; any AS 0.95 vs 0.95; LVEF<40 0.96 vs 0.96. The severe grade was never called (0/5 severe AS, including 4 TAVI patients); released grade >= moderate flagged 3/5 severe at specificity 48/49. AV Vmax estimate compressed (slope 0.12; severe AS predicted about 2.9 m/s)."
+    ],
+    "Uses_and_directions": {
+      "Benefits": "Research comparison with PanEcho and other echo models.",
+      "Target_population_and_use_case": "Research evaluation by authorized researchers only.",
+      "General_use": "Research only.",
+      "Appropriate_decision_and_support": "None: research use only.",
+      "Before_using_this_model": "Read the research-use banner. Results are visible only to OWNER/ADMIN and to roles that list EchoAlign explicitly.",
+      "Safety_and_efficacy_evaluation": "Not clinically validated."
+    },
+    "Warnings_and_limitations": {
+      "Risks": "Research use only, not for diagnosis or treatment (CC BY-NC 4.0 and the developers' model card). Not calibrated on MHI: severe AS is not called and AV peak velocity/gradients are compressed toward the middle because spectral Doppler is not an input.",
+      "Inappropriate_settings": "Clinical decisions of any kind; commercial use; TEE; pediatric or congenital echo.",
+      "Clinical_rationale": "N/A",
+      "Inappropriate_decision_support": "Do not use for diagnosis, grading or treatment decisions.",
+      "Generalizability": "Probes and thresholds come from the developers' telecardiology cohort.",
+      "Discontinue_use_if": "Any clinical use is intended."
+    },
+    "Other_results": [],
+    "Other_information": {
+      "Outcome_definition": "See the released probe list in the model repository.",
+      "Related_model": "PanEcho, EchoPrime",
+      "Github": "https://github.com/BioMedIA-MBZUAI/EchoAlign",
+      "Scientific_publication": "https://arxiv.org/abs/2611.27517",
+      "Clinical_trial": "N/A",
+      "Clinical_trial_URL": "N/A",
+      "Clinical_impact_evaluation": "N/A",
+      "Contact_info": "N/A"
+    },
+    "Changelogs": {
+      "0.1.0": "2026-11-27: Research container: EchoAlign weights and probes from Hugging Face EchoAlign/EchoAlign@7ceeb3e (sha256-verified), code from GitHub BioMedIA-MBZUAI/EchoAlign@7f0d78a."
+    }
+  },
+  "fr": {
+    "Summary": {
+      "Name": "EchoAlign (research use only)",
+      "Description": "Modèle de fondation en échocardiographie. RECHERCHE SEULEMENT (CC BY-NC 4.0) : pas pour le diagnostic ni le traitement. Echocardiography vision-language foundation model that aligns each cardiac structure, video and study with report text. PACS-AI runs the authors' released linear probes (53 tasks: aortic stenosis detection and grade, AV peak velocity and gradients, LVEF, regurgitation detection and grades, chamber size, and others) on the study embedding. RESEARCH USE ONLY (CC BY-NC 4.0): not for diagnosis or treatment.",
+      "Developed_by": "Ahmed Aly, Darya Taratynova, Lotfi Abdelkrim Mecharbat, Roman A. Sandler, Joseph Z. Sokol, Joshua Penn, Klaus H. Maier-Hein, Numan Saeed, Mohammad Yaqub (MBZUAI BioMedIA, iCardio.ai, DKFZ)",
+      "Development_period": "2026",
+      "Licensed_to": "CC BY-NC 4.0 (non-commercial, attribution)",
+      "License_date": "",
+      "Approval_date": "",
+      "Last_update": "2026-11-27",
+      "Version": "0.1.0"
+    },
+    "Mechanism": {
+      "Outcome": "53 echo findings and measurements (released probes) plus zero-shot prompt scores",
+      "Output": "Per-study probabilities, grades and measurements; per-clip AS, AV Vmax and EF",
+      "Target_population": "Adult transthoracic echocardiography",
+      "Time_of_prediction": "On demand only (not run by automatic ingestion)",
+      "Input_data_source": "Transthoracic echo DICOM clips: every multi-frame US instance by default (the same clips PanEcho receives); TEE and non-image instances are skipped. No view classifier.",
+      "Input_data_type": "Video data",
+      "Training_data_location_and_time-period": "2.87 million echo videos and images from 159 centres (telecardiology; test data from iCardio.ai). Probes fitted on the developers' private cohort.",
+      "Model_type": "Vision-language foundation model with linear probes",
+      "Supported_DICOM_modalities": "US"
+    },
+    "Validation_and_performance": [
+      "Developers (arXiv:2611.27517): mean AUROC 0.890 over 68 classification tasks and mean QWK 0.530 over 31 grading tasks (linear probes); AS (>= moderate) probe AUROC 0.979 private / 0.841 MIMIC-IV-Echo (EchoPrime 0.984 / 0.912).",
+      "MHI local check (54 TTE studies, SR truth, nothing fitted): severe AS AUROC 0.94 (95% CI 0.83-1.00), same as PanEcho 0.94; any AS 0.95 vs 0.95; LVEF<40 0.96 vs 0.96. The severe grade was never called (0/5 severe AS, including 4 TAVI patients); released grade >= moderate flagged 3/5 severe at specificity 48/49. AV Vmax estimate compressed (slope 0.12; severe AS predicted about 2.9 m/s)."
+    ],
+    "Uses_and_directions": {
+      "Benefits": "Research comparison with PanEcho and other echo models.",
+      "Target_population_and_use_case": "Research evaluation by authorized researchers only.",
+      "General_use": "Research only.",
+      "Appropriate_decision_and_support": "None: research use only.",
+      "Before_using_this_model": "Read the research-use banner. Results are visible only to OWNER/ADMIN and to roles that list EchoAlign explicitly.",
+      "Safety_and_efficacy_evaluation": "Not clinically validated."
+    },
+    "Warnings_and_limitations": {
+      "Risks": "Research use only, not for diagnosis or treatment (CC BY-NC 4.0 and the developers' model card). Not calibrated on MHI: severe AS is not called and AV peak velocity/gradients are compressed toward the middle because spectral Doppler is not an input.",
+      "Inappropriate_settings": "Clinical decisions of any kind; commercial use; TEE; pediatric or congenital echo.",
+      "Clinical_rationale": "N/A",
+      "Inappropriate_decision_support": "Do not use for diagnosis, grading or treatment decisions.",
+      "Generalizability": "Probes and thresholds come from the developers' telecardiology cohort.",
+      "Discontinue_use_if": "Any clinical use is intended."
+    },
+    "Other_results": [],
+    "Other_information": {
+      "Outcome_definition": "See the released probe list in the model repository.",
+      "Related_model": "PanEcho, EchoPrime",
+      "Github": "https://github.com/BioMedIA-MBZUAI/EchoAlign",
+      "Scientific_publication": "https://arxiv.org/abs/2611.27517",
+      "Clinical_trial": "N/A",
+      "Clinical_trial_URL": "N/A",
+      "Clinical_impact_evaluation": "N/A",
+      "Contact_info": "N/A"
+    },
+    "Changelogs": {
+      "0.1.0": "2026-11-27: Research container: EchoAlign weights and probes from Hugging Face EchoAlign/EchoAlign@7ceeb3e (sha256-verified), code from GitHub BioMedIA-MBZUAI/EchoAlign@7f0d78a."
+    }
+  }
+}

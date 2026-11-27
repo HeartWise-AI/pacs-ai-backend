@@ -22,6 +22,7 @@ CONVERTING_MODELS = [
     "DeepCoro_CLIP/cardio_syntax",
     "DeepCoro_CLIP/generic",
     "DeepCoro_CLIP/procedure_view_classifier",
+    "EchoAlign",
     "DeepRV",
     "DeepRV-CLIP",
     "ECHO-PRIME/generic",
