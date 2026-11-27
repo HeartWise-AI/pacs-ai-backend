@@ -15,6 +15,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
@@ -193,6 +194,12 @@ func (proxy *OrthancProxy) retrievedStudies(r *http.Request, tenantID string, st
 // (200 on MHI), which would otherwise cut a search short.
 const qidoChunk = 100
 
+// qidoDefaultMax bounds the answer of a filtered search that sets no limit.
+const qidoDefaultMax = 1000
+
+// qidoClient bounds each page asked of Orthanc.
+var qidoClient = &http.Client{Timeout: 2 * time.Minute}
+
 // qidoMaxScanned bounds how many results of other tenants' studies one search
 // may skip over.
 const qidoMaxScanned = 100000
@@ -252,6 +259,9 @@ func (proxy *OrthancProxy) serveQIDO(w http.ResponseWriter, r *http.Request, tar
 	}
 	query.Del("limit")
 	query.Del("offset")
+	if limit == 0 || limit > qidoDefaultMax {
+		limit = qidoDefaultMax
+	}
 
 	visible := make([]json.RawMessage, 0)
 	want := offset + limit
@@ -289,11 +299,11 @@ func (proxy *OrthancProxy) serveQIDO(w http.ResponseWriter, r *http.Request, tar
 			return
 		}
 		for index, result := range results {
-			if _, ok := retrieved[studyOf[index]]; ok {
+			if _, ok := retrieved[studyOf[index]]; ok && len(visible) < want {
 				visible = append(visible, result)
 			}
 		}
-		if len(results) < qidoChunk || (limit > 0 && len(visible) >= want) {
+		if len(results) < qidoChunk || len(visible) >= want {
 			break
 		}
 	}
@@ -303,7 +313,7 @@ func (proxy *OrthancProxy) serveQIDO(w http.ResponseWriter, r *http.Request, tar
 	} else {
 		visible = visible[offset:]
 	}
-	if limit > 0 && limit < len(visible) {
+	if limit < len(visible) {
 		visible = visible[:limit]
 	}
 
@@ -332,7 +342,7 @@ func qidoPage(r *http.Request, targetURL *url.URL, path dicomWebPath, query url.
 	upstream.Header.Set("X-Forwarded-Host", r.Host)
 	upstream.Header.Set("X-Forwarded-For", r.RemoteAddr)
 
-	resp, err := http.DefaultClient.Do(upstream)
+	resp, err := qidoClient.Do(upstream)
 	if err != nil {
 		return nil, 0, err
 	}

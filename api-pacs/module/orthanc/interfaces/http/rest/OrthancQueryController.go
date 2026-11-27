@@ -44,6 +44,9 @@ func (controller *OrthancQueryController) FindLocalSOPInstance(w http.ResponseWr
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "SOP instance not found."
 		case apiError.OrthancError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Orthanc service encountered an error or timeout."
