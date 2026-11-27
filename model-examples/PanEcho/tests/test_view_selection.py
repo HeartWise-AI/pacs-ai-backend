@@ -98,8 +98,8 @@ def test_packaged_classifier_is_the_pinned_checkpoint_and_gives_pinned_outputs()
     assert logits.max().item() == pytest.approx(PINNED_TOP_LOGIT, abs=1e-2)
 
 
-PINNED_CLASS = "__PIN__"
-PINNED_TOP_LOGIT = 0.0
+PINNED_CLASS = "OTHER"  # seeded noise is not an echo view; computed in the 1.2.0 image on CPU
+PINNED_TOP_LOGIT = 7.8602
 
 
 def test_model_refuses_to_load_without_a_required_classifier(monkeypatch, tmp_path):
