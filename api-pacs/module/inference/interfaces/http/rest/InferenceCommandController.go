@@ -216,7 +216,6 @@ func (controller *InferenceCommandController) AddInferenceModel(w http.ResponseW
 		TenantID:    tenantID,
 		Name:        request.Name,
 		DockerImage: request.DockerImage,
-		Envs:        request.Envs,
 		OutputMode:  request.OutputMode,
 	})
 	if err != nil {
@@ -224,6 +223,9 @@ func (controller *InferenceCommandController) AddInferenceModel(w http.ResponseW
 		var errorMsg string
 
 		switch err.Error() {
+		case apiError.InvalidPayload:
+			httpCode = http.StatusBadRequest
+			errorMsg = "Docker image must be a semantic-version tag or sha256 digest in the approved namespace."
 		case apiError.DockerError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Docker service encountered an error."

@@ -63,8 +63,12 @@ type InferenceCommandService struct {
 	ProcessingReconciliationMetricsRecorder ProcessingReconciliationMetricsRecorder
 	// AutoRunExpireAfter expires, in each reconciliation cycle, the waiting
 	// executions of automatic runs older than this; zero disables it.
-	AutoRunExpireAfter                      time.Duration
-	RequireProcessingRunID                  bool
+	AutoRunExpireAfter     time.Duration
+	RequireProcessingRunID bool
+	// AllowedImageNamespace limits the images AddInferenceModel may run: a
+	// comma-separated list of registry namespaces (MODEL_ALLOWED_IMAGE_NAMESPACES).
+	// Empty means modelupgrade.DefaultAllowedImageNamespace.
+	AllowedImageNamespace                   string
 	inferenceContainerReadinessTimeout      time.Duration
 	inferenceContainerReadinessPollInterval time.Duration
 }
@@ -771,10 +775,38 @@ func (service *InferenceCommandService) recalculateProcessingRunForExecution(ctx
 	return err
 }
 
+// normalizeRegistrationImage accepts an image from any of the comma-separated
+// namespaces (default modelupgrade.DefaultAllowedImageNamespace), pinned by a
+// semantic-version tag or a sha256 digest, and returns the normalized
+// reference that is pulled, run and stored.
+func normalizeRegistrationImage(dockerImage, namespaces string) (string, error) {
+	var lastErr error
+	for _, namespace := range strings.Split(namespaces, ",") {
+		namespace = strings.TrimSpace(namespace)
+		if namespace == "" {
+			continue
+		}
+		image, err := modelupgrade.NormalizeAllowedImageReference(dockerImage, "", namespace)
+		if err == nil {
+			return image, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		return modelupgrade.NormalizeAllowedImageReference(dockerImage, "", modelupgrade.DefaultAllowedImageNamespace)
+	}
+	return "", lastErr
+}
+
 // AddInferenceModel adds an inference model
 func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error {
+	image, err := normalizeRegistrationImage(data.DockerImage, service.AllowedImageNamespace)
+	if err != nil {
+		return errors.New(apiError.InvalidPayload)
+	}
+
 	// pull docker image
-	err := service.DockerSDKInterface.PullImage(ctx, data.DockerImage)
+	err = service.DockerSDKInterface.PullImage(ctx, image)
 	if err != nil {
 		return errors.New(apiError.DockerError)
 	}
@@ -782,8 +814,7 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 	// create container
 	containerID, err := service.DockerSDKInterface.CreateContainer(ctx, dockerTypes.CreateContainer{
 		Name:  data.Name,
-		Image: data.DockerImage,
-		Envs:  data.Envs,
+		Image: image,
 	})
 	if err != nil {
 		return errors.New(apiError.DockerError)
@@ -806,8 +837,8 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 		TenantID:            data.TenantID,
 		ContainerID:         containerID,
 		Name:                data.Name,
-		DockerImage:         data.DockerImage,
-		Envs:                data.Envs,
+		DockerImage:         image,
+		Envs:                []string{},
 		DisallowedDICOMTags: []string{}, // initialize empty list
 		OutputMode:          data.OutputMode,
 	})

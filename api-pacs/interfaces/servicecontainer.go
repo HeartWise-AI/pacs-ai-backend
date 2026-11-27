@@ -460,6 +460,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		WorklistNotificationAudienceRepository:  processingRunRepository,
 		WebAppViewerGrants:                      &inferenceService.RedisWebAppViewerGrants{RedisDBHandlerInterface: redisIAMDBHandler},
 		RequireProcessingRunID:                  configuredProcessingRunIDRequirement(),
+		AllowedImageNamespace:                   modelRegistrationImageNamespaces(),
 		ModelManager:                            managedPredictor,
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
 			StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
@@ -1010,10 +1011,20 @@ func registerHandlers() {
 	})
 }
 
+// modelRegistrationImageNamespaces is the comma-separated allowlist of image
+// namespaces /inference/model/add accepts (MODEL_ALLOWED_IMAGE_NAMESPACES),
+// falling back to the upgrade namespace.
+func modelRegistrationImageNamespaces() string {
+	if value := strings.TrimSpace(os.Getenv("MODEL_ALLOWED_IMAGE_NAMESPACES")); value != "" {
+		return value
+	}
+	return modelUpgradeImageNamespace()
+}
+
 func modelUpgradeImageNamespace() string {
 	value := strings.TrimSpace(os.Getenv("MODEL_UPGRADE_ALLOWED_IMAGE_NAMESPACE"))
 	if value == "" {
-		return "heartwisehub"
+		return modelupgrade.DefaultAllowedImageNamespace
 	}
 	return value
 }

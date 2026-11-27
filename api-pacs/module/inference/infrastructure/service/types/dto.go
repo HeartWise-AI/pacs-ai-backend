@@ -14,7 +14,6 @@ type AddInferenceModel struct {
 	TenantID    string
 	Name        string
 	DockerImage string
-	Envs        []string
 	OutputMode  entity.OutputMode
 }
 
