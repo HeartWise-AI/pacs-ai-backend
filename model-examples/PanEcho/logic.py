@@ -36,6 +36,20 @@ def _clip_key(dicom) -> str:
     return str(getattr(dicom, "SOPInstanceUID", "") or dicom.SeriesInstanceUID)
 
 
+def _resize_like_torchvision_0_23(video: torch.Tensor, size: Tuple[int, int] = (256, 256)) -> torch.Tensor:
+    """Resize uint8 RGB frames exactly as torchvision 0.23 (PanEcho 1.1.0) did.
+
+    torchvision <= 0.23 resized 3-channel uint8 frames in float (bilinear, antialias) and rounded
+    back to uint8. torchvision 0.28 (needed by the torch 2.13 security update) uses a native uint8
+    kernel instead, which differs by one grey level on about 12% of pixels and moved LV volumes by
+    up to 0.15 mL. Keeping the float path keeps the 1.1.0 pixels and predictions.
+    """
+    resized = torch.nn.functional.interpolate(
+        video.float(), size=size, mode="bilinear", align_corners=False, antialias=True
+    )
+    return tv_tensors.wrap(resized.round_().clamp_(0, 255).to(torch.uint8), like=video)
+
+
 def matches_selected_view(pred_class: Optional[str]) -> bool:
     """Check if the predicted view class matches any of the selected views.
     
@@ -907,7 +921,7 @@ class CustomPredictionService(BasePredictionService):
         """
         
         transform_list = [
-            v2.Resize(size=(256, 256)),
+            v2.Lambda(_resize_like_torchvision_0_23, tv_tensors.Video),
             v2.CenterCrop(size=(224, 224)),
             v2.ToDtype(torch.float32, scale=True)
         ]
