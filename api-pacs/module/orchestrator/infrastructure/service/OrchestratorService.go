@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/segmentio/ksuid"
@@ -26,14 +27,46 @@ var ErrChatProgressUnsupported = errors.New("chat_progress_unsupported")
 // sized for a whole chat request.
 const chatProgressTimeout = 4 * time.Second
 
+// threadCacheLimit and threadCacheTTL bound ThreadsByID. The chat backend is
+// the source of truth, so an evicted thread only loses its local copy.
+const (
+	threadCacheLimit = 10000
+	threadCacheTTL   = 24 * time.Hour
+)
+
 // OrchestratorService implements the orchestrator service
 type OrchestratorService struct {
 	OrchestratorAPIURL     string
 	OrchestratorClient     *http.Client
 	ThreadsByID            map[string]*entity.Thread
+	// threadsMu guards ThreadsByID and every thread in it: one service
+	// instance serves all requests concurrently.
+	threadsMu sync.RWMutex
 	// ChatFeedbackServiceToken authenticates the admin panel's reads of chat
 	// feedback (CHAT_FEEDBACK_SERVICE_TOKEN, shared with the chat backend).
 	ChatFeedbackServiceToken string
+}
+
+// cacheThreadLocked stores thread in ThreadsByID, evicting stale or the
+// least recently updated threads when the cache is full. Callers hold threadsMu.
+func (service *OrchestratorService) cacheThreadLocked(thread *entity.Thread) {
+	if _, exists := service.ThreadsByID[thread.ID]; !exists && len(service.ThreadsByID) >= threadCacheLimit {
+		var oldestID string
+		var oldest time.Time
+		for id, cached := range service.ThreadsByID {
+			if time.Since(cached.UpdatedAt) > threadCacheTTL {
+				delete(service.ThreadsByID, id)
+				continue
+			}
+			if oldestID == "" || cached.UpdatedAt.Before(oldest) {
+				oldestID, oldest = id, cached.UpdatedAt
+			}
+		}
+		if len(service.ThreadsByID) >= threadCacheLimit {
+			delete(service.ThreadsByID, oldestID)
+		}
+	}
+	service.ThreadsByID[thread.ID] = thread
 }
 
 // extractBearerTokenFromContext extracts the bearer token from context
@@ -116,13 +149,15 @@ func (service *OrchestratorService) CreateThread(ctx context.Context, request ty
 	}
 
 	// Initialize in local cache too for safety
-	service.ThreadsByID[response.ThreadID] = &entity.Thread{
+	service.threadsMu.Lock()
+	service.cacheThreadLocked(&entity.Thread{
 		ID:        response.ThreadID,
 		Messages:  []entity.Message{},
 		Metadata:  request.Metadata,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-	}
+	})
+	service.threadsMu.Unlock()
 
 	// Return the thread ID from the external service
 	return types.CreateThreadResponse{ThreadID: response.ThreadID}, nil
@@ -200,19 +235,6 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 	createTime := time.Now()
 	completedTime := time.Now()
 
-	// Get thread from local cache or create it if it doesn't exist
-	thread, exists := service.ThreadsByID[request.ThreadID]
-	if !exists {
-		thread = &entity.Thread{
-			ID:        request.ThreadID,
-			Messages:  []entity.Message{},
-			Metadata:  make(map[string]interface{}),
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
-		service.ThreadsByID[request.ThreadID] = thread
-	}
-
 	// Content from Python response
 	var responseContent string
 	if pythonResponse.Message != nil {
@@ -248,9 +270,24 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 		CreatedAt: completedTime,
 	}
 
+	service.threadsMu.Lock()
+	// Get thread from local cache or create it if it doesn't exist
+	thread, exists := service.ThreadsByID[request.ThreadID]
+	if !exists {
+		thread = &entity.Thread{
+			ID:        request.ThreadID,
+			Messages:  []entity.Message{},
+			Metadata:  make(map[string]interface{}),
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		service.cacheThreadLocked(thread)
+	}
+
 	// Add messages to thread
 	thread.Messages = append(thread.Messages, userMessage, assistantMessage)
 	thread.UpdatedAt = completedTime
+	service.threadsMu.Unlock()
 
 	// Prepare response in the new format
 	response := types.CreateMessageResponse{
@@ -346,6 +383,7 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 
 	// Update local thread cache if it exists
 	if request.ThreadID != nil {
+		service.threadsMu.Lock()
 		if thread, exists := service.ThreadsByID[*request.ThreadID]; exists {
 			if thread.Metadata == nil {
 				thread.Metadata = make(map[string]interface{})
@@ -369,6 +407,7 @@ func (service *OrchestratorService) UploadDicomPayload(ctx context.Context, requ
 			// Update thread
 			thread.UpdatedAt = time.Now()
 		}
+		service.threadsMu.Unlock()
 	}
 
 	// Return response with new fields
@@ -439,7 +478,9 @@ func (service *OrchestratorService) GetThread(ctx context.Context, threadID stri
 	var metadata map[string]interface{}
 	var createdAt, updatedAt time.Time
 
-	if thread, exists := service.ThreadsByID[threadID]; exists {
+	service.threadsMu.RLock()
+	thread, exists := service.ThreadsByID[threadID]
+	if exists {
 		// Prepare messages for response
 		messages = make([]types.MessageResponse, len(thread.Messages))
 		for i, msg := range thread.Messages {
@@ -452,10 +493,19 @@ func (service *OrchestratorService) GetThread(ctx context.Context, threadID stri
 			}
 		}
 
-		metadata = thread.Metadata
+		// Copied: UploadDicomPayload keeps writing the cached map after we unlock.
+		if thread.Metadata != nil {
+			metadata = make(map[string]interface{}, len(thread.Metadata))
+			for key, value := range thread.Metadata {
+				metadata[key] = value
+			}
+		}
 		createdAt = thread.CreatedAt
 		updatedAt = thread.UpdatedAt
-	} else {
+	}
+	service.threadsMu.RUnlock()
+
+	if !exists {
 		// If not in local cache, create minimal response with what we know
 		metadata = map[string]interface{}{
 			"hasDicomPayload": pythonResponse.HasDicomPayload,
