@@ -37,6 +37,17 @@ func (proxy *OrthancProxy) DICOMWebProxy() http.HandlerFunc {
 
 		// modify the request path to strip the prefix
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/proxy/orthanc/dicom-web")
+		if !staysInDICOMWeb(r.URL.Path) {
+			response := viewmodels.HTTPResponseVM{
+				Status:    http.StatusBadRequest,
+				Success:   false,
+				Message:   "Invalid DICOMweb path.",
+				ErrorCode: apiError.InvalidRequestPayload,
+			}
+
+			response.JSON(w)
+			return
+		}
 		r.URL.Host = targetURL.Host
 		r.URL.Scheme = targetURL.Scheme
 		r.Header.Set("X-Forwarded-Host", r.Host)
@@ -46,4 +57,19 @@ func (proxy *OrthancProxy) DICOMWebProxy() http.HandlerFunc {
 		// serve the reverse proxy
 		reverseProxy.ServeHTTP(w, r)
 	}
+}
+
+// staysInDICOMWeb reports whether Orthanc routes the decoded path under
+// /dicom-web. Its web server turns backslashes into slashes, stops at a NUL
+// byte and removes dot segments, so a path with any of them is refused.
+func staysInDICOMWeb(path string) bool {
+	if strings.ContainsAny(path, "\\\x00") {
+		return false
+	}
+	for _, segment := range strings.Split(path, "/") {
+		if segment != "" && strings.Trim(segment, ".") == "" {
+			return false
+		}
+	}
+	return true
 }
