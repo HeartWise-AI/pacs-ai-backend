@@ -214,12 +214,23 @@ func Path(path string) string {
 			segments[i] = hashed
 			continue
 		}
+		// After /studies/, /series/, /instances/ (and /by-study/) any dotted
+		// number is a UID, however short (2.25.4242 is valid).
+		if i > 0 && uidRouteParent[strings.ToLower(segments[i-1])] && dottedNumber.MatchString(decoded) {
+			segments[i] = UID(decoded)
+			continue
+		}
 		// Anything else that still holds a UID (e.g. "x-<uid>") goes through
 		// the text rules.
 		segments[i] = uidCandidate.ReplaceAllStringFunc(segment, replaceUID)
 	}
 	return strings.Join(segments, "/")
 }
+
+// uidRouteParent lists the path segments followed by a UID.
+var uidRouteParent = map[string]bool{"studies": true, "series": true, "instances": true, "by-study": true}
+
+var dottedNumber = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)*$`)
 
 // RequestURI redacts a request URI ("/path?query") for the access log.
 func RequestURI(requestURI string) string {
@@ -251,10 +262,14 @@ func replaceUID(match string) string {
 
 // Text rules for free-form log lines.
 var (
-	// name=value and name: value, e.g. "00100020=123" or "patient_id=123".
-	textParam = regexp.MustCompile(`(?i)\b([A-Za-z_]*(?:uid|uids|patient[a-z_]*|accession[a-z_]*|studyid)|00100010|00100020|00100021|00100030|00101000|00101001|00080050|00080090|00200010|0020000d|0020000e|00080018)(=|: ?)([^\s&"',;)\]}]+)`)
-	// JSON-style "name":"value" (and "name": "value").
-	jsonParam = regexp.MustCompile(`(?i)"([A-Za-z_]*(?:uid|uids|patient[a-z_]*|accession[a-z_]*|studyid)|00100010|00100020|00100021|00100030|00101000|00101001|00080050|00080090|00200010|0020000d|0020000e|00080018)"(\s*:\s*)"([^"]*)"`)
+	// name=value, name: value and "name":"value"; the name decides (see
+	// paramClass and textClass), so free text and URLs inside error messages
+	// follow the same rules as query strings.
+	textParam = regexp.MustCompile(`\b([A-Za-z0-9_]+)(=|: ?)`)
+	// A sensitive value runs to the next separator; "/", "?" and "=" belong
+	// to it (an ID like SITE/123 must go whole).
+	textValue = regexp.MustCompile(`^[^\s&"',;)\]}]+`)
+	jsonParam = regexp.MustCompile(`"([A-Za-z0-9_]+)"(\s*:\s*)"([^"]*)"`)
 )
 
 func textClass(name string) int {
@@ -265,6 +280,8 @@ func textClass(name string) int {
 	switch {
 	case strings.HasPrefix(lower, "patient"), strings.HasPrefix(lower, "accession"):
 		return classPHI
+	case strings.HasSuffix(lower, "uid"), strings.HasSuffix(lower, "uids"):
+		return classUID
 	}
 	return classNone
 }
@@ -285,23 +302,65 @@ func Text(line string) string {
 		}
 		return match // UIDs fall through to the UID rule below
 	})
-	line = textParam.ReplaceAllStringFunc(line, func(match string) string {
-		parts := textParam.FindStringSubmatch(match)
-		switch textClass(parts[1]) {
-		case classPHI:
-			if strings.HasPrefix(parts[3], "[") {
-				return match
-			}
-			return parts[1] + parts[2] + Redacted
-		case classUID:
-			if strings.HasPrefix(parts[3], "uid:") || strings.HasPrefix(parts[3], "[uid:") {
-				return match
-			}
-			return parts[1] + parts[2] + value(classUID, parts[3])
-		}
-		return match
-	})
+	line = redactTextParams(line)
 	return uidCandidate.ReplaceAllStringFunc(line, replaceUID)
+}
+
+// redactTextParams rewrites the values of sensitive name=value pairs. Only a
+// sensitive name consumes its value, so a URL after "url=" or "Get " is still
+// scanned for the parameters inside it.
+func redactTextParams(line string) string {
+	var out strings.Builder
+	cursor := 0
+	for cursor < len(line) {
+		loc := textParam.FindStringSubmatchIndex(line[cursor:])
+		if loc == nil {
+			break
+		}
+		nameStart, nameEnd, sepEnd := cursor+loc[2], cursor+loc[3], cursor+loc[1]
+		class := textClass(line[nameStart:nameEnd])
+		if strings.EqualFold(line[nameStart:nameEnd], "uid") && line[nameEnd] == ':' {
+			class = classNone // our own "uid:<hash>"; the hash may be all digits
+		}
+		if class == classNone {
+			// Do not scan the value: on "x=a=a=a..." that would be quadratic.
+			out.WriteString(line[cursor:sepEnd])
+			cursor = sepEnd
+			continue
+		}
+		raw := textValue.FindString(line[sepEnd:])
+		if raw == "" {
+			out.WriteString(line[cursor:sepEnd])
+			cursor = sepEnd
+			continue
+		}
+		out.WriteString(line[cursor:sepEnd])
+		out.WriteString(textParamValue(class, raw))
+		cursor = sepEnd + len(raw)
+	}
+	out.WriteString(line[cursor:])
+	return out.String()
+}
+
+func textParamValue(class int, raw string) string {
+	if class == classPHI {
+		if strings.HasPrefix(raw, "[") {
+			return raw
+		}
+		return Redacted
+	}
+	// UIDs: only dotted numbers (after URL decoding), which also leaves
+	// "uid:<hash>" alone.
+	decoded, err := url.QueryUnescape(raw)
+	if err != nil {
+		return raw
+	}
+	for _, item := range strings.Split(decoded, ",") {
+		if !dottedNumber.MatchString(strings.TrimSpace(item)) {
+			return raw
+		}
+	}
+	return value(classUID, raw)
 }
 
 // Writer redacts every write with Text. The standard log package writes one

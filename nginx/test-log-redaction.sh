@@ -32,6 +32,8 @@ check "/api/proxy/orthanc/dicom-web/studies/$U1/series?includefield=0008103E" /a
 check "/api/proxy/orthanc/dicom-web/studies?00100020=TEST001&limit=1" /api/proxy/orthanc/dicom-web/studies
 check "/api/v1/inference/worklist/studies/$U1/latest-results" /api/v1/inference/worklist/studies/uid/latest-results
 check "/api/v1/orchestrator/threads?studyInstanceUID=$U1" /api/v1/orchestrator/threads
+check "/api/v1/inference/worklist/studies/2.25.4242/latest-results" /api/v1/inference/worklist/studies/uid/latest-results
+check "/api/proxy/orthanc/dicom-web/studies/1.2/series/3.4/metadata" /api/proxy/orthanc/dicom-web/studies/uid/series/uid/metadata
 check "/api/v1/inference/model/PanEcho-1.1.0/feedback" /api/v1/inference/model/PanEcho-1.1.0/feedback
 check "/viewer?StudyInstanceUIDs=$U1&patientId=TEST001" /viewer
 
