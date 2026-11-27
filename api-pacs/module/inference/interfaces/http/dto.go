@@ -66,7 +66,6 @@ var (
 type AddInferenceModelRequest struct {
 	Name        string            `json:"name" validate:"required"`
 	DockerImage string            `json:"dockerImage" validate:"required"`
-	Envs        []string          `json:"envs"`
 	OutputMode  entity.OutputMode `json:"outputMode" validate:"required"`
 }
 

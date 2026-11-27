@@ -120,7 +120,6 @@ fi
 
 IMAGE_PREFIX="${IMAGE_PREFIX:-pacs-ai}"
 DEFAULT_OUTPUT_MODE="${DEFAULT_OUTPUT_MODE:-JSON}"
-NEW_MODEL_ENVS="${NEW_MODEL_ENVS:-[]}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-300}"
 MODELS_ROOT="${MODELS_ROOT:-$SCRIPT_DIR/../model-examples}"
 
@@ -251,11 +250,10 @@ deploy_model() {
   log "Phase 3/3: registering model with the backend..."
 
   # 3a. look up existing model by name
-  local list_resp existing envs output_mode jobs_snapshot
+  local list_resp existing output_mode jobs_snapshot
   list_resp=$(api GET "/v1/inference/model/list")
   existing=$(jq --arg n "$model_name" '[.data // [] | .[] | select(.name == $n)] | first // empty' <<<"$list_resp")
 
-  envs="$NEW_MODEL_ENVS"
   output_mode="$DEFAULT_OUTPUT_MODE"
   jobs_snapshot="[]"
 
@@ -264,11 +262,10 @@ deploy_model() {
     existing_id=$(jq -r '.id' <<<"$existing")
     existing_container_id=$(jq -r '.container.id' <<<"$existing")
     existing_image=$(jq -r '.dockerImage' <<<"$existing")
-    envs=$(jq '.envs // []' <<<"$existing")
     output_mode=$(jq -r '.outputMode' <<<"$existing")
 
     log "Found existing model '$model_name' (id=$existing_id, image=$existing_image)."
-    log "Carrying over envs and outputMode=$output_mode."
+    log "Carrying over outputMode=$output_mode."
 
     # snapshot ingestion job configs attached to the old container
     jobs_resp=$(api GET "/v1/inference/ingestion/jobs")
@@ -296,8 +293,8 @@ deploy_model() {
   log "Adding model with image $image (backend is pulling — may take a while)..."
   local add_resp
   add_resp=$(api POST "/v1/inference/model/add" \
-    "$(jq -n --arg n "$model_name" --arg i "$image" --arg o "$output_mode" --argjson e "$envs" \
-        '{name:$n, dockerImage:$i, envs:$e, outputMode:$o}')")
+    "$(jq -n --arg n "$model_name" --arg i "$image" --arg o "$output_mode" \
+        '{name:$n, dockerImage:$i, outputMode:$o}')")
   assert_success "$add_resp" "Model add"
   log "Model registered."
 

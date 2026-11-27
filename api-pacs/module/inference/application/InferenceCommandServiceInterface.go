@@ -51,7 +51,7 @@ type InferenceCommandServiceInterface interface {
 	// PredictPreparedInferenceModel authorizes and executes a prepared internal prediction request.
 	PredictPreparedInferenceModel(ctx context.Context, tenantID, containerRef string, request dockerInferenceTypes.PredictRequest) (dockerInferenceTypes.PredictResponse, error)
 	// RemoveInferenceModel deletes an inference model
-	RemoveInferenceModel(ctx context.Context, ID string) error
+	RemoveInferenceModel(ctx context.Context, tenantID, ID string) error
 	// RemoveInferenceIngestionJob removes an inference ingestion job
 	RemoveInferenceIngestionJob(ctx context.Context, ID string) error
 	// RemoveModelFeedback removes model feedback
@@ -59,13 +59,13 @@ type InferenceCommandServiceInterface interface {
 	// RemoveOnboardingModelQuestionnaireAnswer removes an onboarding model questionnaire answer
 	RemoveOnboardingModelQuestionnaireAnswer(ctx context.Context, ID string) error
 	// RestartInferenceModelContainer restarts an inference model container
-	RestartInferenceModelContainer(ctx context.Context, containerID string) error
+	RestartInferenceModelContainer(ctx context.Context, tenantID, containerID string) error
 	// StartInferenceModelContainer starts an inference model container
-	StartInferenceModelContainer(ctx context.Context, containerID string) error
+	StartInferenceModelContainer(ctx context.Context, tenantID, containerID string) error
 	// StartInferenceIngestionJob starts an inference ingestion job
 	StartInferenceIngestionJob(ctx context.Context, jobID string) error
 	// StopInferenceModelContainer stops an inference model container
-	StopInferenceModelContainer(ctx context.Context, containerID string) error
+	StopInferenceModelContainer(ctx context.Context, tenantID, containerID string) error
 	// StopInferenceIngestionJob stops an inference ingestion job
 	StopInferenceIngestionJob(ctx context.Context, jobID string) error
 	// UpdateInferenceModel updates an inference model

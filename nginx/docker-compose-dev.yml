@@ -7,7 +7,8 @@ services:
     restart: unless-stopped
     env_file: .env
     ports:
-      - 80:80
+      # /orthanc/ proxies the unauthenticated Orthanc REST API; keep it loopback-only.
+      - 127.0.0.1:80:80
     depends_on:
       - orthanc
       - api-pacs

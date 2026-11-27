@@ -11,6 +11,8 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,7 +29,15 @@ type OrthancAPI struct {
 
 var (
 	client *http.Client = &http.Client{Timeout: 5 * time.Minute}
+
+	// Orthanc's web server URL-decodes the path, turns backslashes into
+	// slashes and removes dot segments before routing, so escaping cannot keep
+	// an identifier inside its segment: only these characters are let through,
+	// with a dot never first, last or next to another dot.
+	orthancIdentifier = regexp.MustCompile(`^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$`)
 )
+
+const maxOrthancIdentifierLength = 64
 
 // Init initialize orthanc connection
 func Init(baseURL string) *OrthancAPI {
@@ -36,9 +46,27 @@ func Init(baseURL string) *OrthancAPI {
 	}
 }
 
+// resourceURL fills each %s of path with an identifier (modality, job, query,
+// resource or DICOM UID) and refuses one that could leave its segment.
+func (o *OrthancAPI) resourceURL(path string, identifiers ...string) (string, error) {
+	segments := make([]any, len(identifiers))
+	for i, identifier := range identifiers {
+		if len(identifier) > maxOrthancIdentifierLength || !orthancIdentifier.MatchString(identifier) {
+			return "", errors.New(apiError.InvalidRequestPayload)
+		}
+		segments[i] = identifier
+	}
+	return o.BaseURL + fmt.Sprintf(path, segments...), nil
+}
+
 // DeleteDICOMModality delete dicom modality
 func (o *OrthancAPI) DeleteDICOMModality(ctx context.Context, modalityID string) error {
-	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/modalities/%s", o.BaseURL, modalityID), nil)
+	endpoint, err := o.resourceURL("/modalities/%s", modalityID)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, endpoint, nil)
 	if err != nil {
 		return err
 	}
@@ -98,7 +126,12 @@ func (o *OrthancAPI) DeleteLocalResources(ctx context.Context, request types.Del
 
 // DownloadDICOM download dicom by query ID
 func (o *OrthancAPI) DownloadDICOM(ctx context.Context, queryID string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/instances/%s/file", o.BaseURL, queryID), nil)
+	endpoint, err := o.resourceURL("/instances/%s/file", queryID)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -331,7 +364,12 @@ func (o *OrthancAPI) countLocalSeriesInstances(studyInstanceUID, seriesInstanceU
 }
 
 func (o *OrthancAPI) getJobInfo(jobID string) (types.GetJobResponse, error) {
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/jobs/%s", o.BaseURL, jobID), nil)
+	endpoint, err := o.resourceURL("/jobs/%s", jobID)
+	if err != nil {
+		return types.GetJobResponse{}, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return types.GetJobResponse{}, err
 	}
@@ -364,7 +402,12 @@ func (o *OrthancAPI) getJobInfo(jobID string) (types.GetJobResponse, error) {
 
 // GetDICOMWebSeriesInstances get DICOM web series instances
 func (o *OrthancAPI) GetDICOMWebSeriesInstances(ctx context.Context, studyInstanceUID, seriesInstanceUID string) ([]map[string]interface{}, error) {
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/dicom-web/studies/%s/series/%s/instances", o.BaseURL, studyInstanceUID, seriesInstanceUID), nil)
+	endpoint, err := o.resourceURL("/dicom-web/studies/%s/series/%s/instances", studyInstanceUID, seriesInstanceUID)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -432,13 +475,18 @@ func (o *OrthancAPI) ListDICOMModalities(ctx context.Context) (map[string]types.
 // RetrieveModalityStudy retrieve modality study
 // Retrieve entire study (old implementation)
 func (o *OrthancAPI) RetrieveModalityStudy(ctx context.Context, queryID string, answerIndex uint, request types.RetrieveQueryModalityAnswerRequest) (types.QueryModalityResponse, error) {
-	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(request)
+	endpoint, err := o.resourceURL("/queries/%s/answers/%s/retrieve", queryID, strconv.FormatUint(uint64(answerIndex), 10))
 	if err != nil {
 		return types.QueryModalityResponse{}, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/queries/%s/answers/%d/retrieve", o.BaseURL, queryID, answerIndex), buf)
+	buf := new(bytes.Buffer)
+	err = json.NewEncoder(buf).Encode(request)
+	if err != nil {
+		return types.QueryModalityResponse{}, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, endpoint, buf)
 	if err != nil {
 		return types.QueryModalityResponse{}, err
 	}
@@ -609,7 +657,11 @@ func (o *OrthancAPI) missingSeriesInstances(modalityID, localAet string, move pl
 		}
 	}
 
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/series/%s/instances", o.BaseURL, move.local.orthancID), nil)
+	endpoint, err := o.resourceURL("/series/%s/instances", move.local.orthancID)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -642,12 +694,17 @@ func (o *OrthancAPI) missingSeriesInstances(modalityID, localAet string, move pl
 }
 
 func (o *OrthancAPI) submitSeriesMove(modalityID string, request map[string]interface{}) (types.QueryModalityResponse, error) {
+	endpoint, err := o.resourceURL("/modalities/%s/move", modalityID)
+	if err != nil {
+		return types.QueryModalityResponse{}, err
+	}
+
 	buf := new(bytes.Buffer)
 	if err := json.NewEncoder(buf).Encode(request); err != nil {
 		return types.QueryModalityResponse{}, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/move", o.BaseURL, modalityID), buf)
+	req, err := http.NewRequest(http.MethodPost, endpoint, buf)
 	if err != nil {
 		return types.QueryModalityResponse{}, err
 	}
@@ -673,7 +730,12 @@ func (o *OrthancAPI) submitSeriesMove(modalityID string, request map[string]inte
 
 // RetrieveDICOMWebInstanceFile retrieve DICOM web instance file
 func (o *OrthancAPI) RetrieveDICOMWebInstanceFile(ctx context.Context, studyInstanceUID, seriesInstanceUID, sopInstanceUID string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/dicom-web/studies/%s/series/%s/instances/%s", o.BaseURL, studyInstanceUID, seriesInstanceUID, sopInstanceUID), nil)
+	endpoint, err := o.resourceURL("/dicom-web/studies/%s/series/%s/instances/%s", studyInstanceUID, seriesInstanceUID, sopInstanceUID)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -740,7 +802,12 @@ func (o *OrthancAPI) RetrieveDICOMWebInstanceFile(ctx context.Context, studyInst
 
 // RetrieveDICOMWebInstanceMetadata retrieve DICOM web instance metadata
 func (o *OrthancAPI) RetrieveDICOMWebInstanceMetadata(ctx context.Context, studyInstanceUID, seriesInstanceUID, sopInstanceUID string) ([]map[string]interface{}, error) {
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/dicom-web/studies/%s/series/%s/instances/%s/metadata", o.BaseURL, studyInstanceUID, seriesInstanceUID, sopInstanceUID), nil)
+	endpoint, err := o.resourceURL("/dicom-web/studies/%s/series/%s/instances/%s/metadata", studyInstanceUID, seriesInstanceUID, sopInstanceUID)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -773,7 +840,12 @@ func (o *OrthancAPI) RetrieveDICOMWebInstanceMetadata(ctx context.Context, study
 
 // StraightDICOMStoreSCU straight DICOM store SCU
 func (o *OrthancAPI) StraightDICOMStoreSCU(ctx context.Context, modalityID string, dicomInstances []byte) (types.StraightDICOMStoreSCUResponse, error) {
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/store-straight", o.BaseURL, modalityID), bytes.NewReader(dicomInstances))
+	endpoint, err := o.resourceURL("/modalities/%s/store-straight", modalityID)
+	if err != nil {
+		return types.StraightDICOMStoreSCUResponse{}, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(dicomInstances))
 	if err != nil {
 		return types.StraightDICOMStoreSCUResponse{}, err
 	}
@@ -809,8 +881,13 @@ func (o *OrthancAPI) StraightDICOMStoreSCU(ctx context.Context, modalityID strin
 
 // TriggerDICOMEchoSCU trigger dicom C-ECHO SCU
 func (o *OrthancAPI) TriggerDICOMEchoSCU(ctx context.Context, modalityID string) error {
+	endpoint, err := o.resourceURL("/modalities/%s/echo", modalityID)
+	if err != nil {
+		return err
+	}
+
 	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(map[string]interface{}{
+	err = json.NewEncoder(buf).Encode(map[string]interface{}{
 		"CheckFind": false,
 		"Timeout":   0,
 	})
@@ -818,7 +895,7 @@ func (o *OrthancAPI) TriggerDICOMEchoSCU(ctx context.Context, modalityID string)
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/echo", o.BaseURL, modalityID), buf)
+	req, err := http.NewRequest(http.MethodPost, endpoint, buf)
 	if err != nil {
 		return err
 	}
@@ -845,13 +922,18 @@ func (o *OrthancAPI) TriggerDICOMEchoSCU(ctx context.Context, modalityID string)
 
 // UpdateDICOMModality create or update dicom modality
 func (o *OrthancAPI) UpdateDICOMModality(ctx context.Context, modalityID string, request types.UpdateDICOMModalityRequest) error {
-	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(request)
+	endpoint, err := o.resourceURL("/modalities/%s", modalityID)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/modalities/%s", o.BaseURL, modalityID), buf)
+	buf := new(bytes.Buffer)
+	err = json.NewEncoder(buf).Encode(request)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, endpoint, buf)
 	if err != nil {
 		return err
 	}
@@ -950,7 +1032,12 @@ func (o *OrthancAPI) findLocalResources(request, response interface{}) error {
 }
 
 func (o *OrthancAPI) findQueryAnswers(queryID string, response interface{}) error {
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/queries/%s/answers?expand=true&simplify=true", o.BaseURL, queryID), nil)
+	endpoint, err := o.resourceURL("/queries/%s/answers?expand=true&simplify=true", queryID)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err
 	}
@@ -981,13 +1068,18 @@ func (o *OrthancAPI) findQueryAnswers(queryID string, response interface{}) erro
 }
 
 func (o *OrthancAPI) queryModalities(modalityID string, request interface{}, response *types.QueryModalityResponse) error {
-	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(request)
+	endpoint, err := o.resourceURL("/modalities/%s/query", modalityID)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/modalities/%s/query", o.BaseURL, modalityID), buf)
+	buf := new(bytes.Buffer)
+	err = json.NewEncoder(buf).Encode(request)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, endpoint, buf)
 	if err != nil {
 		return err
 	}

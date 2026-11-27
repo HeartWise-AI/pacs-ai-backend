@@ -58,12 +58,17 @@ type InferenceCommandService struct {
 	// WorklistNotificationAudienceRepository resolves who an automatic run
 	// notifies. Nil leaves automatic-run audiences unresolved (admins only).
 	WorklistNotificationAudienceRepository  repository.WorklistNotificationAudienceRepositoryInterface
+	WebAppViewerGrants                      WebAppViewerGrantStore
 	StudyServiceDispatchSemaphore           chan struct{}
 	ProcessingReconciliationMetricsRecorder ProcessingReconciliationMetricsRecorder
 	// AutoRunExpireAfter expires, in each reconciliation cycle, the waiting
 	// executions of automatic runs older than this; zero disables it.
-	AutoRunExpireAfter                      time.Duration
-	RequireProcessingRunID                  bool
+	AutoRunExpireAfter     time.Duration
+	RequireProcessingRunID bool
+	// AllowedImageNamespace limits the images AddInferenceModel may run: a
+	// comma-separated list of registry namespaces (MODEL_ALLOWED_IMAGE_NAMESPACES).
+	// Empty means modelupgrade.DefaultAllowedImageNamespace.
+	AllowedImageNamespace                   string
 	inferenceContainerReadinessTimeout      time.Duration
 	inferenceContainerReadinessPollInterval time.Duration
 }
@@ -770,10 +775,38 @@ func (service *InferenceCommandService) recalculateProcessingRunForExecution(ctx
 	return err
 }
 
+// normalizeRegistrationImage accepts an image from any of the comma-separated
+// namespaces (default modelupgrade.DefaultAllowedImageNamespace), pinned by a
+// semantic-version tag or a sha256 digest, and returns the normalized
+// reference that is pulled, run and stored.
+func normalizeRegistrationImage(dockerImage, namespaces string) (string, error) {
+	var lastErr error
+	for _, namespace := range strings.Split(namespaces, ",") {
+		namespace = strings.TrimSpace(namespace)
+		if namespace == "" {
+			continue
+		}
+		image, err := modelupgrade.NormalizeAllowedImageReference(dockerImage, "", namespace)
+		if err == nil {
+			return image, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		return modelupgrade.NormalizeAllowedImageReference(dockerImage, "", modelupgrade.DefaultAllowedImageNamespace)
+	}
+	return "", lastErr
+}
+
 // AddInferenceModel adds an inference model
 func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error {
+	image, err := normalizeRegistrationImage(data.DockerImage, service.AllowedImageNamespace)
+	if err != nil {
+		return errors.New(apiError.InvalidPayload)
+	}
+
 	// pull docker image
-	err := service.DockerSDKInterface.PullImage(ctx, data.DockerImage)
+	err = service.DockerSDKInterface.PullImage(ctx, image)
 	if err != nil {
 		return errors.New(apiError.DockerError)
 	}
@@ -781,8 +814,7 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 	// create container
 	containerID, err := service.DockerSDKInterface.CreateContainer(ctx, dockerTypes.CreateContainer{
 		Name:  data.Name,
-		Image: data.DockerImage,
-		Envs:  data.Envs,
+		Image: image,
 	})
 	if err != nil {
 		return errors.New(apiError.DockerError)
@@ -805,8 +837,8 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 		TenantID:            data.TenantID,
 		ContainerID:         containerID,
 		Name:                data.Name,
-		DockerImage:         data.DockerImage,
-		Envs:                data.Envs,
+		DockerImage:         image,
+		Envs:                []string{},
 		DisallowedDICOMTags: []string{}, // initialize empty list
 		OutputMode:          data.OutputMode,
 	})
@@ -3414,6 +3446,11 @@ func (service *InferenceCommandService) PredictInferenceModel(ctx context.Contex
 	if err != nil {
 		return dockerInferenceTypes.PredictResponse{}, err
 	}
+	if predictRequest.OutputMode == dockerInferenceTypes.OutputModeWebApp {
+		if err := service.grantWebAppViewer(tenantID, containerID, containerName, predictionResult.Data); err != nil {
+			return dockerInferenceTypes.PredictResponse{}, err
+		}
+	}
 
 	// TODO: remove this
 	predictionEndTime := time.Since(predictionStartTime)
@@ -3569,11 +3606,14 @@ func (service *InferenceCommandService) finishInferenceQuotaReservation(reservat
 }
 
 // RemoveInferenceModel deletes an inference model
-func (service *InferenceCommandService) RemoveInferenceModel(ctx context.Context, ID string) error {
+func (service *InferenceCommandService) RemoveInferenceModel(ctx context.Context, tenantID, ID string) error {
 	// get inference model
 	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByID(ctx, ID)
 	if err != nil {
 		return err
+	}
+	if tenantID == "" || inferenceModel.TenantID != tenantID {
+		return errors.New(apiError.MissingRecord)
 	}
 
 	// force remove container
@@ -3654,11 +3694,15 @@ func (service *InferenceCommandService) RemoveModelFeedback(ctx context.Context,
 }
 
 // RestartInferenceModelContainer restarts an inference model container
-func (service *InferenceCommandService) RestartInferenceModelContainer(ctx context.Context, containerID string) error {
-	if err := service.refuseLifecycleDuringDeployment(ctx); err != nil {
+func (service *InferenceCommandService) RestartInferenceModelContainer(ctx context.Context, tenantID, containerID string) error {
+	containerID, err := tenantModelContainerID(ctx, service.InferenceQueryRepositoryInterface, tenantID, containerID)
+	if err != nil {
 		return err
 	}
-	err := service.DockerSDKInterface.RestartContainer(ctx, containerID)
+	if err = service.refuseLifecycleDuringDeployment(ctx); err != nil {
+		return err
+	}
+	err = service.DockerSDKInterface.RestartContainer(ctx, containerID)
 	if err != nil {
 		return errors.New(apiError.DockerError)
 	}
@@ -3693,11 +3737,15 @@ func (service *InferenceCommandService) refuseLifecycleDuringDeployment(ctx cont
 }
 
 // StartInferenceModelContainer starts an inference model container
-func (service *InferenceCommandService) StartInferenceModelContainer(ctx context.Context, containerID string) error {
-	if err := service.refuseLifecycleDuringDeployment(ctx); err != nil {
+func (service *InferenceCommandService) StartInferenceModelContainer(ctx context.Context, tenantID, containerID string) error {
+	containerID, err := tenantModelContainerID(ctx, service.InferenceQueryRepositoryInterface, tenantID, containerID)
+	if err != nil {
 		return err
 	}
-	err := service.DockerSDKInterface.StartContainer(ctx, containerID)
+	if err = service.refuseLifecycleDuringDeployment(ctx); err != nil {
+		return err
+	}
+	err = service.DockerSDKInterface.StartContainer(ctx, containerID)
 	if err != nil {
 		return errors.New(apiError.DockerError)
 	}
@@ -3716,11 +3764,15 @@ func (service *InferenceCommandService) StartInferenceIngestionJob(ctx context.C
 }
 
 // StopInferenceModelContainer stops an inference model container
-func (service *InferenceCommandService) StopInferenceModelContainer(ctx context.Context, containerID string) error {
-	if err := service.refuseLifecycleDuringDeployment(ctx); err != nil {
+func (service *InferenceCommandService) StopInferenceModelContainer(ctx context.Context, tenantID, containerID string) error {
+	containerID, err := tenantModelContainerID(ctx, service.InferenceQueryRepositoryInterface, tenantID, containerID)
+	if err != nil {
 		return err
 	}
-	err := service.DockerSDKInterface.StopContainer(ctx, containerID)
+	if err = service.refuseLifecycleDuringDeployment(ctx); err != nil {
+		return err
+	}
+	err = service.DockerSDKInterface.StopContainer(ctx, containerID)
 	if err != nil {
 		return errors.New(apiError.DockerError)
 	}

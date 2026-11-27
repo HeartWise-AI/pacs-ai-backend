@@ -68,21 +68,15 @@ func (controller *IAMCommandController) ForgotTenantUserPassword(w http.Response
 		return
 	}
 
-	err = controller.IAMCommandServiceInterface.ForgotTenantUserPassword(context.TODO(), request.TenantID, request.Email)
+	err = controller.IAMCommandServiceInterface.ForgotTenantUserPassword(context.TODO(), request.TenantID, request.Email, clientip.Resolve(r, controller.TrustedProxyCIDRs))
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
-		case errors.UnauthorizedAccess:
-			httpCode = http.StatusUnauthorized
-			errorMsg = "Unauthorized access."
-		case errors.AccountSuspended:
-			httpCode = http.StatusForbidden
-			errorMsg = "Account is suspended."
-		case errors.FirebaseAuthEmailNotVerified:
-			httpCode = http.StatusUnauthorized
-			errorMsg = "Email is not verified."
+		case errors.MaximumLimitReached:
+			httpCode = http.StatusTooManyRequests
+			errorMsg = "Please wait before requesting another password reset email."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Please contact technical support."
@@ -274,15 +268,12 @@ func (controller *IAMCommandController) VerifyTenantUserEmail(w http.ResponseWri
 		return
 	}
 
-	err = controller.IAMCommandServiceInterface.VerifyTenantUserEmail(context.TODO(), request.TenantID, strings.ToLower(request.Email))
+	err = controller.IAMCommandServiceInterface.VerifyTenantUserEmail(context.TODO(), request.TenantID, strings.ToLower(request.Email), clientip.Resolve(r, controller.TrustedProxyCIDRs))
 	if err != nil {
 		var httpCode int
 		var errorMsg string
 
 		switch err.Error() {
-		case errors.MailgunError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Error occurred while sending verify email request."
 		case errors.MaximumLimitReached:
 			httpCode = http.StatusTooManyRequests
 			errorMsg = "Please wait before requesting another verification email."
