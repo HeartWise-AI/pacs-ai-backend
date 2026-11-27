@@ -50,6 +50,50 @@ def _resize_like_torchvision_0_23(video: torch.Tensor, size: Tuple[int, int] = (
     return tv_tensors.wrap(resized.round_().clamp_(0, 255).to(torch.uint8), like=video)
 
 
+# Aortic stenosis is presented as a screening score, not a diagnosis (1.1.2).
+# PanEcho reads only the 2D clips, without the continuous-wave Doppler spectra; on
+# MHI (TAVI patients with measured Vmax 3.9-4.8 m/s) the 3-class argmax read severe
+# AS as none or mild and the AV peak velocity regressed towards the training mean.
+# The weights and every other head are unchanged.
+AS_STENOSIS_DESCRIPTION = "Aortic valve stenosis"
+AS_VMAX_DESCRIPTION = "Aortic valve peak velocity"
+AS_SCREENING_NOTE_EN = (
+    "AI screening scores from the 2D clips (no Doppler): not a diagnosis. PanEcho under-estimates "
+    "severe aortic stenosis; use the measured Doppler values (Vmax, mean gradient, valve area)."
+)
+AS_SCREENING_NOTE_FR = (
+    "Scores de dépistage IA à partir des clips 2D (sans Doppler) : pas un diagnostic. PanEcho sous-estime "
+    "la sténose aortique sévère ; utiliser les valeurs Doppler mesurées (Vmax, gradient moyen, surface valvulaire)."
+)
+AS_VMAX_ESTIMATE_LABEL = "AI estimate, under-estimates severe AS"
+
+
+def aortic_stenosis_screening(predictions: Dict[str, object]) -> Optional[Dict[str, object]]:
+    """P(severe AS) and P(any AS) = P(Mild|Moderate) + P(Severe), plus the AI Vmax estimate.
+
+    Class order of the AVStenosis head: Mild|Moderate=0, None=1, Severe=2.
+    """
+    probabilities = predictions.get(AS_STENOSIS_DESCRIPTION)
+    if not isinstance(probabilities, (list, tuple)) or len(probabilities) != 3:
+        return None
+    try:
+        p_mild_moderate, p_none, p_severe = (float(value) for value in probabilities)
+    except (TypeError, ValueError):
+        return None
+    screening: Dict[str, object] = {
+        "pSevere": round(p_severe, 4),
+        "pAny": round(p_mild_moderate + p_severe, 4),
+        "pMildModerate": round(p_mild_moderate, 4),
+        "pNone": round(p_none, 4),
+        "kind": "screening",
+        "note": {"en": AS_SCREENING_NOTE_EN, "fr": AS_SCREENING_NOTE_FR},
+    }
+    vmax = predictions.get(AS_VMAX_DESCRIPTION)
+    if isinstance(vmax, (int, float)):
+        screening["avVmaxEstimate"] = {"value": round(float(vmax), 2), "unit": "m/s", "label": AS_VMAX_ESTIMATE_LABEL}
+    return screening
+
+
 def matches_selected_view(pred_class: Optional[str]) -> bool:
     """Check if the predicted view class matches any of the selected views.
     
@@ -297,7 +341,10 @@ class CustomPredictionService(BasePredictionService):
                 
                 serializable_predictions[description] = scalar_value
                 
-                if 'normal_range' in head_cfg or 'thresholds' in head_cfg:
+                if description == AS_VMAX_DESCRIPTION:
+                    # No Normal/stenosis category: the estimate is shrunk towards the training mean.
+                    diagnoses[description] = f"{scalar_value:.1f} {units} ({AS_VMAX_ESTIMATE_LABEL})"
+                elif 'normal_range' in head_cfg or 'thresholds' in head_cfg:
                     interpretation = self._interpret_regression_value(scalar_value, head_cfg, sex)
                     diagnoses[description] = f"{scalar_value:.1f} {units} ({interpretation})"
                 else:
@@ -324,7 +371,16 @@ class CustomPredictionService(BasePredictionService):
                     predicted_class_idx = torch.argmax(value).item()
                     predicted_class = [k for k, v in class_labels.items() if v == predicted_class_idx][0]
 
-                    diagnoses[description] = predicted_class
+                    if description == AS_STENOSIS_DESCRIPTION:
+                        # Screening scores instead of the argmax class (see aortic_stenosis_screening).
+                        probs = [float(x) for x in (value.tolist() if isinstance(value, torch.Tensor) else value)]
+                        p_severe = probs[class_labels["Severe"]]
+                        p_any = probs[class_labels["Mild|Moderate"]] + p_severe
+                        diagnoses[description] = (
+                            f"Screening score, not a diagnosis: P(severe AS) {p_severe:.2f}, P(any AS) {p_any:.2f}"
+                        )
+                    else:
+                        diagnoses[description] = predicted_class
                     
                     if isinstance(value, torch.Tensor):
                         serializable_predictions[description] = value.tolist()
@@ -383,11 +439,8 @@ class CustomPredictionService(BasePredictionService):
         
         # Check valve diseases
         valve_issues = []
-        if "Aortic valve stenosis" in diagnosis_dict:
-            av_stenosis = diagnosis_dict["Aortic valve stenosis"]
-            if "Mild" in av_stenosis or "Moderate" in av_stenosis or "Severe" in av_stenosis:
-                valve_issues.append("aortic stenosis")
-        
+        # Aortic stenosis is a screening score since 1.1.2 and never drives a recommendation.
+
         if "Aortic valve regurgitation" in diagnosis_dict:
             av_regurg = diagnosis_dict["Aortic valve regurgitation"]
             if "Moderate" in av_regurg or "Severe" in av_regurg:
@@ -758,6 +811,7 @@ class CustomPredictionService(BasePredictionService):
         # Prepare comprehensive data for HTML parser
         html_data = {
             'diagnosis': diagnosis,
+            'asScreening': aortic_stenosis_screening(predictions_serializable),
             'probability': predictions_serializable,
             'recommendations': {
                 'en': recommendations_en,
@@ -840,6 +894,7 @@ class CustomPredictionService(BasePredictionService):
         return {
             'diagnosis': json.dumps(diagnosis_dict),
             'predictions': predictions_serializable,
+            'asScreening': aortic_stenosis_screening(predictions_serializable),
             'modelRecommendations': {
                 'en': recommendations_en,
                 'fr': recommendations_fr,

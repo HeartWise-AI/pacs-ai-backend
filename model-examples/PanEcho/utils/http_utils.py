@@ -80,6 +80,8 @@ class JsonPredictionResponse(BaseModel):
 
     predictions: Any
     diagnosis: Optional[str] = None
+    # Aortic stenosis screening scores (1.1.2): pSevere, pAny, avVmaxEstimate, note.
+    asScreening: Optional[Dict[str, Any]] = None
     modelRecommendations: Optional[ModelRecommendations]
 
 class OHIFPredictionResponse(BaseModel):

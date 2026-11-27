@@ -8,8 +8,8 @@
       "Licensed_to": "",
       "License_date": "",
       "Approval_date": "",
-      "Last_update": "",
-      "Version": "1.0.1"
+      "Last_update": "2026-11-27",
+      "Version": "1.1.2"
     },
     "Mechanism": {
       "Outcome": "39 reporting tasks from echocardiogram videos",
@@ -32,10 +32,10 @@
       "Safety_and_efficacy_evaluation": "N/A"
     },
     "Warnings_and_limitations": {
-      "Risks": "N/A",
+      "Risks": "Aortic stenosis is a screening output only. PanEcho reads the 2D clips without the continuous-wave Doppler spectra: it under-estimates aortic valve peak velocity (shrunk towards about 1.7 m/s) and on local validation read severe aortic stenosis (measured Vmax 3.9-4.8 m/s) as none or mild. The report shows P(severe AS) and P(any AS) = P(mild or moderate) + P(severe) as screening scores and the peak velocity as an AI estimate; they do not rule out aortic stenosis. Grade aortic stenosis from the measured Doppler values (Vmax, mean gradient, valve area).",
       "Inappropriate_settings": "N/A",
       "Clinical_rationale": "N/A",
-      "Inappropriate_decision_support": "N/A",
+      "Inappropriate_decision_support": "Do not grade or exclude aortic stenosis, or select patients for valve intervention, from PanEcho outputs.",
       "Generalizability": "N/A",
       "Discontinue_use_if": "N/A"
     },
@@ -52,7 +52,65 @@
     },
     "Changelogs": {
       "1.0.0": "2023-06-23: Initial release",
-      "1.0.1": "2026-10-16: Added immutable model provenance and reproducible artifact verification"
+      "1.0.1": "2026-10-16: Added immutable model provenance and reproducible artifact verification",
+      "1.1.2": "2026-11-27: Aortic stenosis shown as screening scores (P(severe AS), P(any AS)) instead of the argmax class; aortic valve peak velocity labelled as an AI estimate that under-estimates severe AS. Weights and other outputs unchanged."
+    }
+  },
+  "fr": {
+    "Summary": {
+      "Name": "PanEcho",
+      "Description": "PanEcho est un modèle multitâche indépendant de la vue qui réalise 39 tâches de compte rendu à partir des vidéos d'échocardiographie. Il comprend un encodeur d'images, un Transformer temporel et des têtes de sortie par tâche. Les prédictions sont agrégées sur les clips d'un même examen pour produire une prédiction par examen et par tâche.",
+      "Developed_by": "Gregory Holste et al.",
+      "Development_period": "2020-01-01 to 2023-06-23",
+      "Licensed_to": "",
+      "License_date": "",
+      "Approval_date": "",
+      "Last_update": "2026-11-27",
+      "Version": "1.1.2"
+    },
+    "Mechanism": {
+      "Outcome": "39 tâches de compte rendu à partir des vidéos d'échocardiographie",
+      "Output": "39 tâches de compte rendu à partir des vidéos d'échocardiographie",
+      "Target_population": "Patients adultes (≥18 ans) ayant eu une échocardiographie transthoracique (ETT)",
+      "Time_of_prediction": "N/A",
+      "Input_data_source": "Vidéos d'échocardiographie transthoracique",
+      "Input_data_type": "Vidéo",
+      "Training_data_location_and_time-period": "N/A",
+      "Model_type": "Modèle multitâche",
+      "Supported_DICOM_modalities": "US"
+    },
+    "Validation_and_performance": [],
+    "Uses_and_directions": {
+      "Benefits": "N/A",
+      "Target_population_and_use_case": "Patients adultes (≥18 ans) ayant eu une échocardiographie transthoracique (ETT)",
+      "General_use": "PanEcho réalise 39 tâches de compte rendu à partir des vidéos d'échocardiographie et peut fournir une évaluation de la fonction cardiaque sans équipement ni procédure supplémentaire.",
+      "Appropriate_decision_and_support": "N/A",
+      "Before_using_this_model": "Vérifier qu'au moins une vue est disponible pour le modèle",
+      "Safety_and_efficacy_evaluation": "N/A"
+    },
+    "Warnings_and_limitations": {
+      "Risks": "La sténose aortique est uniquement un score de dépistage. PanEcho lit les clips 2D sans les spectres Doppler continu : il sous-estime la vitesse maximale aortique (ramenée vers environ 1,7 m/s) et, en validation locale, a lu des sténoses aortiques sévères (Vmax mesurée 3,9-4,8 m/s) comme absentes ou légères. Le rapport affiche P(SA sévère) et P(toute SA) = P(légère ou modérée) + P(sévère) comme scores de dépistage, et la vitesse maximale comme estimation IA ; ils n'excluent pas une sténose aortique. Grader la sténose aortique à partir des valeurs Doppler mesurées (Vmax, gradient moyen, surface valvulaire).",
+      "Inappropriate_settings": "N/A",
+      "Clinical_rationale": "N/A",
+      "Inappropriate_decision_support": "Ne pas grader ni exclure une sténose aortique, ni sélectionner des patients pour une intervention valvulaire, à partir de PanEcho.",
+      "Generalizability": "N/A",
+      "Discontinue_use_if": "N/A"
+    },
+    "Other_results": [],
+    "Other_information": {
+      "Outcome_definition": "39 tâches de compte rendu à partir des vidéos d'échocardiographie",
+      "Related_model": "N/A",
+      "Github": "N/A",
+      "Scientific_publication": "N/A",
+      "Clinical_trial": "N/A",
+      "Clinical_trial_URL": "N/A",
+      "Clinical_impact_evaluation": "N/A",
+      "Contact_info": "N/A"
+    },
+    "Changelogs": {
+      "1.0.0": "2023-06-23 : version initiale",
+      "1.0.1": "2026-10-16 : provenance immuable du modèle et vérification reproductible de l'artefact",
+      "1.1.2": "2026-11-27 : sténose aortique affichée comme scores de dépistage (P(SA sévère), P(toute SA)) au lieu de la classe la plus probable ; vitesse maximale aortique présentée comme estimation IA qui sous-estime la SA sévère. Poids et autres sorties inchangés."
     }
   }
 }
