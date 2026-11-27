@@ -10,6 +10,7 @@
 package rest
 
 import (
+	"api-pacs/internal/logredact"
 	"expvar"
 	"fmt"
 	"log"
@@ -302,7 +303,8 @@ func (router *router) InitRouter() *chi.Mux {
 	// Capture the real socket peer before RealIP rewrites RemoteAddr from headers.
 	r.Use(peeraddr.Capture)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
+	// Access log without patient identifiers: UIDs hashed, PatientID and the like removed.
+	r.Use(logredact.AccessLogger())
 	r.Use(cors.Init().Handler)
 	r.Use(middleware.Recoverer)
 

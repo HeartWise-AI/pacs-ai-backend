@@ -24,6 +24,7 @@ import (
 	"api-pacs/infrastructures/database/postgresql"
 	postgresqlTypes "api-pacs/infrastructures/database/postgresql/types"
 	"api-pacs/interfaces/http/rest"
+	"api-pacs/internal/logredact"
 	orthancRepository "api-pacs/module/orthanc/infrastructure/repository"
 	orthancService "api-pacs/module/orthanc/infrastructure/service"
 )
@@ -38,6 +39,17 @@ func init() {
 }
 
 func main() {
+	// Every log line goes through the redactor: DICOM UIDs become a keyed hash
+	// and patient demographics are dropped (see internal/logredact).
+	log.SetOutput(logredact.NewWriter(os.Stderr))
+
+	// Prints the log form of a UID, to find its lines in the logs:
+	//   api-pacs log-hash <uid>
+	if len(os.Args) > 2 && os.Args[1] == "log-hash" {
+		fmt.Println(logredact.UID(os.Args[2]))
+		return
+	}
+
 	// One-off admin command, run in the api-pacs container:
 	//   api-pacs backfill-orthanc-tenant-studies [--dry-run]
 	// assigns every study in the shared Orthanc to its tenant and prints a report.
