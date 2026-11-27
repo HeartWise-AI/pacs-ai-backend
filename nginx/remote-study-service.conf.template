@@ -5,6 +5,7 @@
 # browser-facing certificate on 443. Only /study-service/ is served here.
 server {
     listen 8443 ssl;
+    http2 on;
     access_log /var/log/nginx/access.log redacted;
     server_name ${SERVER_NAME};
 
