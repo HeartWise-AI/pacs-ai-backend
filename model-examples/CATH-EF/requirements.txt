@@ -2,7 +2,7 @@
 annotated-types==0.7.0
 anyio==4.15.1
 click==8.1.7
-fastapi==0.115.5
+fastapi==0.163.2
 filelock==4.2.4
 fsspec==2026.9.0
 h11==0.16.0

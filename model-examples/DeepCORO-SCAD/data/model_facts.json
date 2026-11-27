@@ -4,7 +4,7 @@
       "Name": "DeepCORO-SCAD",
       "Description": "DeepCORO-CLIP based research model that estimates the study-level probability of spontaneous coronary artery dissection (SCAD) from up to four coronary angiography videos.",
       "Developed_by": "HeartWise.AI / Montreal Heart Institute",
-      "Version": "1.0.0"
+      "Version": "1.0.2"
     },
     "Mechanism": {
       "Outcome": "Spontaneous coronary artery dissection (SCAD) on the diagnostic coronary angiogram",
@@ -43,7 +43,7 @@
     "Résumé": {
       "Nom": "DeepCORO-SCAD",
       "Description": "Modèle de recherche fondé sur DeepCORO-CLIP qui estime, à l'échelle de l'examen, la probabilité de dissection coronarienne spontanée (DCS) à partir d'au plus quatre vidéos de coronarographie.",
-      "Version": "1.0.0"
+      "Version": "1.0.2"
     },
     "Performance": {
       "Test_tous_sites": "n=270 examens (56 DCS) : ASC 0,95 (IC 95 % 0,91-0,97), sensibilité 0,91, spécificité 0,84, VPN 0,97",
