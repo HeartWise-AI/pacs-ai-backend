@@ -26,6 +26,10 @@ var (
 	ErrCandidateContract       = errors.New("invalid candidate contract")
 )
 
+// DefaultAllowedImageNamespace is the registry namespace model images must
+// come from when none is configured.
+const DefaultAllowedImageNamespace = "heartwisehub"
+
 var semanticVersionPattern = regexp.MustCompile(
 	`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`,
 )
@@ -131,7 +135,13 @@ type ValidateCandidateContainer struct {
 // ValidateImageReference rejects mutable, unversioned, or out-of-namespace
 // references before the upgrade workflow contacts a registry.
 func (validator *CandidateValidator) ValidateImageReference(value, expectedDigest string) (string, error) {
-	image, err := validateImageReference(value, expectedDigest, validator.config.AllowedImageNamespace)
+	return NormalizeAllowedImageReference(value, expectedDigest, validator.config.AllowedImageNamespace)
+}
+
+// NormalizeAllowedImageReference applies the candidate image policy without a
+// validator and returns the normalized reference that must be pulled and run.
+func NormalizeAllowedImageReference(value, expectedDigest, allowedNamespace string) (string, error) {
+	image, err := validateImageReference(value, expectedDigest, allowedNamespace)
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrCandidateImageReference, err)
 	}

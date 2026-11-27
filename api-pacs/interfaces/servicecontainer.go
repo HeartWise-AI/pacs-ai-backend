@@ -459,6 +459,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		AutoRunExpireAfter:                      inferenceService.ConfiguredAutoRunExpireAfter(),
 		WorklistNotificationAudienceRepository:  processingRunRepository,
 		RequireProcessingRunID:                  configuredProcessingRunIDRequirement(),
+		AllowedImageNamespace:                   modelUpgradeImageNamespace(),
 		ModelManager:                            managedPredictor,
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
 			StudyServiceBaseURL:       os.Getenv("STUDY_SERVICE_BASE_URL"),
@@ -1012,7 +1013,7 @@ func registerHandlers() {
 func modelUpgradeImageNamespace() string {
 	value := strings.TrimSpace(os.Getenv("MODEL_UPGRADE_ALLOWED_IMAGE_NAMESPACE"))
 	if value == "" {
-		return "heartwisehub"
+		return modelupgrade.DefaultAllowedImageNamespace
 	}
 	return value
 }

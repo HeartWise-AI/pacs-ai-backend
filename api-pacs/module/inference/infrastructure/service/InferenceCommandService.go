@@ -62,8 +62,11 @@ type InferenceCommandService struct {
 	ProcessingReconciliationMetricsRecorder ProcessingReconciliationMetricsRecorder
 	// AutoRunExpireAfter expires, in each reconciliation cycle, the waiting
 	// executions of automatic runs older than this; zero disables it.
-	AutoRunExpireAfter                      time.Duration
-	RequireProcessingRunID                  bool
+	AutoRunExpireAfter     time.Duration
+	RequireProcessingRunID bool
+	// AllowedImageNamespace limits the images AddInferenceModel may run. Empty
+	// means modelupgrade.DefaultAllowedImageNamespace.
+	AllowedImageNamespace                   string
 	inferenceContainerReadinessTimeout      time.Duration
 	inferenceContainerReadinessPollInterval time.Duration
 }
@@ -772,8 +775,17 @@ func (service *InferenceCommandService) recalculateProcessingRunForExecution(ctx
 
 // AddInferenceModel adds an inference model
 func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, data types.AddInferenceModel) error {
+	namespace := service.AllowedImageNamespace
+	if namespace == "" {
+		namespace = modelupgrade.DefaultAllowedImageNamespace
+	}
+	image, err := modelupgrade.NormalizeAllowedImageReference(data.DockerImage, "", namespace)
+	if err != nil {
+		return errors.New(apiError.InvalidPayload)
+	}
+
 	// pull docker image
-	err := service.DockerSDKInterface.PullImage(ctx, data.DockerImage)
+	err = service.DockerSDKInterface.PullImage(ctx, image)
 	if err != nil {
 		return errors.New(apiError.DockerError)
 	}
@@ -781,8 +793,7 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 	// create container
 	containerID, err := service.DockerSDKInterface.CreateContainer(ctx, dockerTypes.CreateContainer{
 		Name:  data.Name,
-		Image: data.DockerImage,
-		Envs:  data.Envs,
+		Image: image,
 	})
 	if err != nil {
 		return errors.New(apiError.DockerError)
@@ -805,8 +816,8 @@ func (service *InferenceCommandService) AddInferenceModel(ctx context.Context, d
 		TenantID:            data.TenantID,
 		ContainerID:         containerID,
 		Name:                data.Name,
-		DockerImage:         data.DockerImage,
-		Envs:                data.Envs,
+		DockerImage:         image,
+		Envs:                []string{},
 		DisallowedDICOMTags: []string{}, // initialize empty list
 		OutputMode:          data.OutputMode,
 	})
