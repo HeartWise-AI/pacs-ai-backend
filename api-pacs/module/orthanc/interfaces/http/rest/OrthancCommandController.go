@@ -1,14 +1,9 @@
 package rest
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
-	"log"
 	"net/http"
-	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -17,6 +12,8 @@ import (
 	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/interfaces/http/rest/viewmodels"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/module/access/accessctx"
+	accessEntity "api-pacs/module/access/domain/entity"
 	"api-pacs/module/orthanc/application"
 	serviceTypes "api-pacs/module/orthanc/infrastructure/service/types"
 	types "api-pacs/module/orthanc/interfaces/http"
@@ -26,8 +23,6 @@ import (
 type OrthancCommandController struct {
 	application.OrthancCommandServiceInterface
 }
-
-var inputSeriesAllowedFileTypes = []string{"application/pdf", "application/dicom"}
 
 // RemoveDICOMModality remove dicom modality
 func (controller *OrthancCommandController) RemoveDICOMModality(w http.ResponseWriter, r *http.Request) {
@@ -350,236 +345,72 @@ func (controller *OrthancCommandController) UpdateDICOMModality(w http.ResponseW
 	response.JSON(w)
 }
 
-// StoreStudyCustomSeries store study custom series
+// StoreStudyCustomSeries sends a registered model-run report (form field
+// executionID) back to one of the tenant's C-STORE modalities. It needs
+// processing.manage with access to every model. Caller-supplied files and
+// identity fields are never stored: raw DICOM is refused and the PDF and
+// identity come from the registered run.
 func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.ResponseWriter, r *http.Request) {
-	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
-	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
+	tenantID, _ := r.Context().Value(iamTypes.TenantIDCtx).(string)
+	userID, _ := r.Context().Value(iamTypes.UserIDCtx).(string)
+	refuse := func(status int, message, code string) {
+		response := viewmodels.HTTPResponseVM{Status: status, Success: false, Message: message, ErrorCode: code}
+		response.JSON(w)
+	}
 
-	// get modality ID
+	access, err := accessctx.Get(r.Context())
+	if err != nil {
+		refuse(http.StatusServiceUnavailable, "Access verification is temporarily unavailable.", apiError.AccessUnavailable)
+		return
+	}
+	if !access.Has(accessEntity.PermProcessingManage) || !access.AllModels {
+		refuse(http.StatusForbidden, "Forbidden access.", apiError.ForbiddenAccess)
+		return
+	}
+
 	modalityID := chi.URLParam(r, "modalityID")
-	if len(modalityID) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid modality ID.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
+	if tenantID == "" || len(modalityID) == 0 {
+		refuse(http.StatusBadRequest, "Invalid modality ID.", apiError.InvalidRequestPayload)
 		return
 	}
 
-	// get study instance UID
-	studyInstanceUID := chi.URLParam(r, "studyInstanceUID")
-	if len(studyInstanceUID) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid study instance UID.",
-			ErrorCode: apiError.InvalidRequestPayload,
+	// A legacy client may still attach its own rendering; only a PDF is
+	// tolerated and it is ignored. Raw DICOM is refused for every role.
+	if file, fileHeader, err := r.FormFile("file"); err == nil {
+		file.Close()
+		if fileHeader.Header.Get("Content-Type") != "application/pdf" {
+			refuse(http.StatusBadRequest, "Only registered model reports can be stored.", apiError.InvalidPayload)
+			return
 		}
+	}
 
-		response.JSON(w)
+	executionID := strings.TrimSpace(r.FormValue("executionID"))
+	if executionID == "" {
+		refuse(http.StatusBadRequest, "Invalid execution ID.", apiError.InvalidRequestPayload)
 		return
 	}
 
-	/// get file
-	file, fileHeader, err := r.FormFile("file")
-	if err != nil {
-		log.Println("Cannot read file:", err)
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Cannot read file.",
-			ErrorCode: apiError.InvalidPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-	defer file.Close()
-
-	mimeType := fileHeader.Header.Get("Content-Type")
-
-	// limit allowed mime type only
-	var isMimeTypeAllowed bool
-	for _, allowedInputSeriesFileType := range inputSeriesAllowedFileTypes {
-		if mimeType == allowedInputSeriesFileType {
-			isMimeTypeAllowed = true
-		}
-	}
-
-	if !isMimeTypeAllowed {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid input series file type.",
-			ErrorCode: apiError.InvalidPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// copy content and assign
-	var buf bytes.Buffer
-	io.Copy(&buf, file)
-	fileBody := buf.String()
-
-	/// get metadata
-	// series instance UIDs
-	seriesInstanceUIDsStr := r.FormValue("seriesInstanceUIDs")
-	if len(seriesInstanceUIDsStr) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid series instance UIDs.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	var seriesInstanceUIDs []string
-	if err := json.Unmarshal([]byte(seriesInstanceUIDsStr), &seriesInstanceUIDs); err != nil {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid series instance UIDs.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// check if empty
-	if len(seriesInstanceUIDs) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Series instance UIDs is empty.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// sort series instance by last part asc
-	sort.Slice(seriesInstanceUIDs, func(i, j int) bool {
-		partsI := strings.Split(seriesInstanceUIDs[i], ".")
-		lastPartI, err := strconv.ParseInt(partsI[len(partsI)-1], 10, 64)
-		if err != nil {
-			return false
-		}
-
-		partsJ := strings.Split(seriesInstanceUIDs[j], ".")
-		lastPartJ, err := strconv.ParseInt(partsJ[len(partsJ)-1], 10, 64)
-		if err != nil {
-			return false
-		}
-
-		return lastPartI < lastPartJ
-	})
-
-	// patient ID
-	patientID := r.FormValue("patientID")
-	if len(patientID) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid patient ID.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// patient name
-	patientName := r.FormValue("patientName")
-	if len(patientName) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid patient name.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// model name
-	modelName := r.FormValue("modelName")
-	if len(modelName) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid model name.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	// model version
-	modelVersion := r.FormValue("modelVersion")
-	if len(modelVersion) == 0 {
-		response := viewmodels.HTTPResponseVM{
-			Status:    http.StatusBadRequest,
-			Success:   false,
-			Message:   "Invalid model version.",
-			ErrorCode: apiError.InvalidRequestPayload,
-		}
-
-		response.JSON(w)
-		return
-	}
-
-	err = controller.OrthancCommandServiceInterface.StoreStudyCustomSeries(context.TODO(), serviceTypes.StoreStudyCustomSeries{
-		TenantID:           tenantID,
-		UserID:             userID,
-		ModalityID:         modalityID,
-		StudyInstanceUID:   studyInstanceUID,
-		SeriesInstanceUIDs: seriesInstanceUIDs,
-		PatientID:          patientID,
-		PatientName:        patientName,
-		ModelName:          modelName,
-		ModelVersion:       modelVersion,
-		FileBody:           []byte(fileBody),
-		FileMimeType:       mimeType,
+	err = controller.OrthancCommandServiceInterface.StoreStudyCustomSeries(r.Context(), serviceTypes.StoreStudyCustomSeries{
+		TenantID:    tenantID,
+		UserID:      userID,
+		ModalityID:  modalityID,
+		ExecutionID: executionID,
 	})
 	if err != nil {
-		var httpCode int
-		var errorMsg string
-
 		switch err.Error() {
+		case apiError.InvalidPayload, apiError.InvalidRequestPayload, apiError.DICOMParseError:
+			refuse(http.StatusBadRequest, "Invalid store request.", err.Error())
 		case apiError.MissingRecord:
-			httpCode = http.StatusNotFound
-			errorMsg = "DICOM modality not found."
-		case apiError.OrthancError:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Orthanc service encountered an error or timeout."
+			refuse(http.StatusNotFound, "No C-STORE modality or registered report found.", err.Error())
+		case apiError.ForbiddenAccess:
+			refuse(http.StatusForbidden, "C-STORE is not enabled for this modality.", err.Error())
 		case apiError.DuplicateRecord:
-			httpCode = http.StatusConflict
-			errorMsg = "Report already exist for this study and model version."
+			refuse(http.StatusConflict, "Report already exist for this study and model version.", err.Error())
+		case apiError.OrthancError:
+			refuse(http.StatusInternalServerError, "Orthanc service encountered an error or timeout.", err.Error())
 		default:
-			httpCode = http.StatusInternalServerError
-			errorMsg = "Server error."
+			refuse(http.StatusInternalServerError, "Server error.", err.Error())
 		}
-
-		response := viewmodels.HTTPResponseVM{
-			Status:    httpCode,
-			Success:   false,
-			Message:   errorMsg,
-			ErrorCode: err.Error(),
-		}
-
-		response.JSON(w)
 		return
 	}
 
@@ -588,6 +419,5 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 		Success: true,
 		Message: "Successfully stored study custom series.",
 	}
-
 	response.JSON(w)
 }

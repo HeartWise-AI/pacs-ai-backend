@@ -511,6 +511,10 @@ func OrthancCommandServiceDI() *orthancService.OrthancCommandService {
 		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
 		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
 		UserQueryServiceInterface:            k.userQueryServiceContainer(),
+		StoreBackReports: &inferenceService.StoreBackReports{
+			Results: k.inferenceQueryServiceContainer(),
+			Studies: orthancAPI,
+		},
 	}
 
 	return service
