@@ -408,3 +408,12 @@ type insertOnlyRepository struct {
 func (insertOnlyRepository) InsertInferenceModel(context.Context, repotypes.AddInferenceModel) error {
 	return nil
 }
+
+func TestPullImageRefusesHubPrefixedForeignRegistry(t *testing.T) {
+	client := &sdk.DockerSDK{AuthStr: "hub-credentials-placeholder"}
+	for _, ref := range []string{"docker.io/evil.example/model:1.0.0", "docker.io/localhost:5000/model:1.0.0"} {
+		if err := client.PullImage(context.Background(), ref); err == nil {
+			t.Fatalf("%s: pull with Hub credentials was not refused", ref)
+		}
+	}
+}
