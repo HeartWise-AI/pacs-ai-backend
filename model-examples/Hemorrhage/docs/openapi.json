@@ -197,7 +197,7 @@
                   "data": {
                     "modelId": "Hemorrhage",
                     "modelName": "Hemorrhage",
-                    "version": "1.0.3",
+                    "version": "1.0.4",
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
