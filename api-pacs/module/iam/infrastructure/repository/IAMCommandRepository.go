@@ -112,8 +112,8 @@ func (repository *IAMCommandRepository) DeleteTokenSession(key string) error {
 	return nil
 }
 
-// IsEmailVerificationCooldownActive checks whether a verification email was sent recently.
-func (repository *IAMCommandRepository) IsEmailVerificationCooldownActive(key string) (bool, error) {
+// IsEmailCooldownActive checks whether a public email was requested recently.
+func (repository *IAMCommandRepository) IsEmailCooldownActive(key string) (bool, error) {
 	_, err := repository.RedisDBHandlerInterface.Get(key)
 	if err == nil {
 		return true, nil
@@ -126,8 +126,8 @@ func (repository *IAMCommandRepository) IsEmailVerificationCooldownActive(key st
 	return false, errors.New(apiError.DatabaseError)
 }
 
-// SetEmailVerificationCooldown rate-limits verification email sends for one minute.
-func (repository *IAMCommandRepository) SetEmailVerificationCooldown(key string) error {
+// SetEmailCooldown rate-limits public email sends for one minute.
+func (repository *IAMCommandRepository) SetEmailCooldown(key string) error {
 	err := repository.RedisDBHandlerInterface.Set(key, "1", time.Minute)
 	if err != nil {
 		log.Println(err)
@@ -135,6 +135,18 @@ func (repository *IAMCommandRepository) SetEmailVerificationCooldown(key string)
 	}
 
 	return nil
+}
+
+// IncrementPublicEmailRequests atomically counts one request in a fixed window
+// that starts with the first request, and returns the count so far.
+func (repository *IAMCommandRepository) IncrementPublicEmailRequests(key string, window time.Duration) (int64, error) {
+	count, _, err := repository.RedisDBHandlerInterface.IncrementWithExpiry(key, window)
+	if err != nil {
+		log.Println(err)
+		return 0, errors.New(apiError.DatabaseError)
+	}
+
+	return count, nil
 }
 
 // SetAuthSession places a new session (or update) to the redis instance

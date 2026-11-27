@@ -12,8 +12,9 @@ type IAMCommandRepositoryInterface interface {
 	DeleteTokenSession(key string) error
 	RevokeUserSessions(tenantID, userID string) error
 	ReleaseUserAccessTransition(tenantID, userID, ownerToken string) error
-	IsEmailVerificationCooldownActive(key string) (bool, error)
-	SetEmailVerificationCooldown(key string) error
+	IncrementPublicEmailRequests(key string, window time.Duration) (int64, error)
+	IsEmailCooldownActive(key string) (bool, error)
+	SetEmailCooldown(key string) error
 	SetTokenSession(data repositoryTypes.SetTokenSession) error
 	SetUserSuspended(tenantID, userID string) (bool, error)
 }
