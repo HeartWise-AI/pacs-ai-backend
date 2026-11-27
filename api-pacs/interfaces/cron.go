@@ -163,3 +163,21 @@ func RunOrthancLocalStudiesCacheHandler() {
 		}
 	}
 }
+
+// RunOrthancTenantStudySyncHandler assigns the studies of the shared Orthanc
+// to tenants: every cached study once at start (backfill), then each study
+// that arrives (C-STORE push, retrieve, direct upload). ORTHANC_TENANT_STUDY_SYNC=false
+// turns it off; ORTHANC_TENANT_STUDY_SYNC_SECONDS sets the interval (30 s).
+func RunOrthancTenantStudySyncHandler() {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("ORTHANC_TENANT_STUDY_SYNC")), "false") {
+		log.Println("[orthanc-tenant-studies] sync disabled")
+		return
+	}
+	interval := 30 * time.Second
+	if seconds, err := strconv.Atoi(os.Getenv("ORTHANC_TENANT_STUDY_SYNC_SECONDS")); err == nil && seconds > 0 {
+		interval = time.Duration(seconds) * time.Second
+	}
+	sync := OrthancTenantStudySync()
+	log.Printf("[orthanc-tenant-studies] sync every %s default_tenant_set=%t", interval, sync.DefaultTenantID != "")
+	sync.Run(context.Background(), interval)
+}

@@ -139,8 +139,7 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 
 	// The modality has the study. Retrieved through a modality the tenant
 	// moves from, the tenant may read it from the shared Orthanc.
-	modality, modalityErr := service.OrthancQueryRepositoryInterface.SelectDICOMModalityByModalityID(ctx, data.TenantID, data.ModalityID)
-	if modalityErr == nil && modality.CMoveEnabled {
+	if dicomModality.CMoveEnabled && service.OrthancTenantStudyRepositoryInterface != nil {
 		if recordErr := service.OrthancTenantStudyRepositoryInterface.InsertTenantStudy(ctx, data.TenantID, data.StudyInstanceUID); recordErr != nil {
 			return nil, errors.New(apiError.DatabaseError)
 		}

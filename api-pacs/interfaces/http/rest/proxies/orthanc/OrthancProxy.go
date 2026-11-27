@@ -2,6 +2,7 @@ package orthanc
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -28,8 +29,9 @@ import (
 const stowHeaderMaxBytes = 16 * 1024 * 1024
 
 // OrthancProxy serves the DICOMweb API of the Orthanc that all tenants share.
-// A tenant only reaches the studies it retrieved (TenantStudies); without
-// TenantStudies no study is reachable.
+// A tenant only reaches its studies (TenantStudies): the ones it retrieved,
+// uploaded, or that its ingestion records, an upload label or the install's
+// default tenant assign to it. Without TenantStudies no study is reachable.
 type OrthancProxy struct {
 	TenantStudies repository.OrthancTenantStudyRepositoryInterface
 }
@@ -186,11 +188,47 @@ func (proxy *OrthancProxy) retrievedStudies(r *http.Request, tenantID string, st
 	return retrieved, nil
 }
 
+// qidoChunk is the page size the proxy asks Orthanc for while it filters a
+// search across the whole store. It stays under Orthanc's LimitFindResults
+// (200 on MHI), which would otherwise cut a search short.
+const qidoChunk = 100
+
+// qidoMaxScanned bounds how many results of other tenants' studies one search
+// may skip over.
+const qidoMaxScanned = 100000
+
+// ownership returns the repository's install-wide answers, or nil.
+func (proxy *OrthancProxy) ownership() repository.OrthancTenantStudyOwnershipInterface {
+	ownership, _ := proxy.TenantStudies.(repository.OrthancTenantStudyOwnershipInterface)
+	return ownership
+}
+
+// seesEveryStudy reports whether every study of the shared Orthanc is the
+// tenant's (the default tenant of a single-tenant install).
+func (proxy *OrthancProxy) seesEveryStudy(r *http.Request, tenantID string) bool {
+	ownership := proxy.ownership()
+	if ownership == nil {
+		return false
+	}
+	every, err := ownership.SeesEveryStudy(r.Context(), tenantID)
+	if err != nil {
+		log.Printf("[dicom-web] cannot check the owners of the shared Orthanc: %v", err)
+		return false
+	}
+	return every
+}
+
 // serveQIDO runs the search in Orthanc and answers only the results of the
-// studies the tenant retrieved. Orthanc matches the whole store, so limit and
-// offset are applied here, after the results of other studies are removed.
+// tenant's studies. A search under /studies/{StudyInstanceUID} only matches
+// that study, which was checked. A search across the store is sent as is when
+// every study is the tenant's; otherwise it is run in pages of qidoChunk and
+// limit and offset are applied here, after other studies' results are removed.
 func (proxy *OrthancProxy) serveQIDO(w http.ResponseWriter, r *http.Request, targetURL *url.URL, tenantID string, path dicomWebPath) {
-	if path.studyInstanceUID != "" && !proxy.tenantRetrievedStudy(w, r, tenantID, path.studyInstanceUID) {
+	if path.studyInstanceUID != "" {
+		if !proxy.tenantRetrievedStudy(w, r, tenantID, path.studyInstanceUID) {
+			return
+		}
+		forward(w, r, targetURL, path)
 		return
 	}
 
@@ -208,70 +246,58 @@ func (proxy *OrthancProxy) serveQIDO(w http.ResponseWriter, r *http.Request, tar
 		response.JSON(w)
 		return
 	}
+	if proxy.seesEveryStudy(r, tenantID) {
+		forward(w, r, targetURL, path)
+		return
+	}
 	query.Del("limit")
 	query.Del("offset")
 
-	upstreamURL := *targetURL
-	upstreamURL.Path = strings.TrimSuffix(targetURL.Path, "/") + path.String()
-	upstreamURL.RawPath = ""
-	upstreamURL.RawQuery = query.Encode()
+	visible := make([]json.RawMessage, 0)
+	want := offset + limit
+	scanned := 0
+	for upstreamOffset := 0; scanned < qidoMaxScanned; upstreamOffset += qidoChunk {
+		query.Set("limit", strconv.Itoa(qidoChunk))
+		query.Set("offset", strconv.Itoa(upstreamOffset))
+		results, status, err := qidoPage(r, targetURL, path, query)
+		if err != nil {
+			log.Println("[dicom-web] QIDO-RS request failed:", err)
+			writeServerError(w)
+			return
+		}
+		if status != http.StatusOK && status != http.StatusNoContent {
+			w.Header().Set("Content-Type", "application/dicom+json")
+			w.WriteHeader(status)
+			return
+		}
+		scanned += len(results)
 
-	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodGet, upstreamURL.String(), nil)
-	if err != nil {
-		writeServerError(w)
-		return
-	}
-	upstream.Header = r.Header.Clone()
-	upstream.Header.Set("Accept", "application/dicom+json")
-	upstream.Header.Del("Accept-Encoding")
-	upstream.Header.Set("X-Forwarded-Host", r.Host)
-	upstream.Header.Set("X-Forwarded-For", r.RemoteAddr)
-
-	resp, err := http.DefaultClient.Do(upstream)
-	if err != nil {
-		log.Println("[dicom-web] QIDO-RS request failed:", err)
-		writeServerError(w)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
-		w.WriteHeader(resp.StatusCode)
-		_, _ = io.Copy(w, resp.Body)
-		return
-	}
-
-	var results []json.RawMessage
-	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
-		log.Println("[dicom-web] cannot decode QIDO-RS answer:", err)
-		writeServerError(w)
-		return
-	}
-
-	studyOf := make([]string, len(results))
-	var studies []string
-	seen := map[string]struct{}{}
-	for index, result := range results {
-		study := resultStudyInstanceUID(result)
-		studyOf[index] = study
-		if _, duplicate := seen[study]; study != "" && !duplicate {
-			seen[study] = struct{}{}
-			studies = append(studies, study)
+		studyOf := make([]string, len(results))
+		var studies []string
+		seen := map[string]struct{}{}
+		for index, result := range results {
+			study := resultStudyInstanceUID(result)
+			studyOf[index] = study
+			if _, duplicate := seen[study]; study != "" && !duplicate {
+				seen[study] = struct{}{}
+				studies = append(studies, study)
+			}
+		}
+		retrieved, err := proxy.retrievedStudies(r, tenantID, studies)
+		if err != nil {
+			writeServerError(w)
+			return
+		}
+		for index, result := range results {
+			if _, ok := retrieved[studyOf[index]]; ok {
+				visible = append(visible, result)
+			}
+		}
+		if len(results) < qidoChunk || (limit > 0 && len(visible) >= want) {
+			break
 		}
 	}
-	retrieved, err := proxy.retrievedStudies(r, tenantID, studies)
-	if err != nil {
-		writeServerError(w)
-		return
-	}
 
-	visible := make([]json.RawMessage, 0, len(results))
-	for index, result := range results {
-		if _, ok := retrieved[studyOf[index]]; ok {
-			visible = append(visible, result)
-		}
-	}
 	if offset >= len(visible) {
 		visible = visible[:0]
 	} else {
@@ -286,6 +312,50 @@ func (proxy *OrthancProxy) serveQIDO(w http.ResponseWriter, r *http.Request, tar
 	encoder := json.NewEncoder(w)
 	encoder.SetEscapeHTML(false)
 	_ = encoder.Encode(visible)
+}
+
+// qidoPage runs one page of a QIDO-RS search in Orthanc.
+func qidoPage(r *http.Request, targetURL *url.URL, path dicomWebPath, query url.Values) ([]json.RawMessage, int, error) {
+	upstreamURL := *targetURL
+	upstreamURL.Path = strings.TrimSuffix(targetURL.Path, "/") + path.String()
+	upstreamURL.RawPath = ""
+	upstreamURL.RawQuery = query.Encode()
+
+	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodGet, upstreamURL.String(), nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	upstream.Header = r.Header.Clone()
+	upstream.Header.Del("Authorization")
+	upstream.Header.Set("Accept", "application/dicom+json")
+	upstream.Header.Del("Accept-Encoding")
+	upstream.Header.Set("X-Forwarded-Host", r.Host)
+	upstream.Header.Set("X-Forwarded-For", r.RemoteAddr)
+
+	resp, err := http.DefaultClient.Do(upstream)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent {
+		return nil, resp.StatusCode, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil, resp.StatusCode, nil
+	}
+	var results []json.RawMessage
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil, resp.StatusCode, nil
+	}
+	if err := json.Unmarshal(body, &results); err != nil {
+		return nil, 0, fmt.Errorf("cannot decode QIDO-RS answer: %w", err)
+	}
+	return results, resp.StatusCode, nil
 }
 
 func qidoBound(value string) (int, error) {
@@ -334,10 +404,87 @@ func (proxy *OrthancProxy) serveSTOW(w http.ResponseWriter, r *http.Request, tar
 		}
 	}
 
-	if !proxy.tenantRetrievedStudy(w, r, tenantID, study) {
+	retrieved, err := proxy.retrievedStudies(r, tenantID, []string{study})
+	if err != nil {
+		writeServerError(w)
 		return
 	}
-	forward(w, r, targetURL, dicomWebPath{segments: []string{"studies", study}, studyInstanceUID: study})
+	if _, ok := retrieved[study]; !ok {
+		// A new study, which no tenant owns and Orthanc does not hold yet,
+		// becomes the uploader's. Anything else stays refused.
+		isNew, err := proxy.newStudy(r, targetURL, study)
+		if err != nil {
+			writeServerError(w)
+			return
+		}
+		if !isNew {
+			writeNotFound(w)
+			return
+		}
+	}
+
+	recorder := &statusRecorder{ResponseWriter: w}
+	forward(recorder, r, targetURL, dicomWebPath{segments: []string{"studies", study}, studyInstanceUID: study})
+	if recorder.status >= 200 && recorder.status < 300 && proxy.TenantStudies != nil {
+		// The upload is the tenant's study from now on.
+		if err := proxy.TenantStudies.InsertTenantStudy(context.WithoutCancel(r.Context()), tenantID, study); err != nil {
+			log.Printf("[dicom-web] cannot record the uploaded study for tenant %s: %v", tenantID, err)
+		}
+	}
+}
+
+// newStudy reports whether no tenant owns the study and Orthanc holds none of it.
+func (proxy *OrthancProxy) newStudy(r *http.Request, targetURL *url.URL, study string) (bool, error) {
+	ownership := proxy.ownership()
+	if ownership == nil {
+		return false, nil
+	}
+	owned, err := ownership.SelectOwnedStudies(r.Context(), []string{study})
+	if err != nil {
+		log.Printf("[dicom-web] cannot check the owners of an uploaded study: %v", err)
+		return false, err
+	}
+	if len(owned) > 0 {
+		return false, nil
+	}
+	results, status, err := qidoPage(r, targetURL, dicomWebPath{segments: []string{"studies"}}, url.Values{
+		"StudyInstanceUID": {study},
+		"limit":            {"1"},
+	})
+	if err != nil {
+		log.Printf("[dicom-web] cannot check whether Orthanc holds an uploaded study: %v", err)
+		return false, err
+	}
+	if status != http.StatusOK && status != http.StatusNoContent {
+		return false, fmt.Errorf("orthanc answered %d", status)
+	}
+	return len(results) == 0, nil
+}
+
+// statusRecorder remembers the status Orthanc answered.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (recorder *statusRecorder) WriteHeader(status int) {
+	if recorder.status == 0 {
+		recorder.status = status
+	}
+	recorder.ResponseWriter.WriteHeader(status)
+}
+
+func (recorder *statusRecorder) Write(body []byte) (int, error) {
+	if recorder.status == 0 {
+		recorder.status = http.StatusOK
+	}
+	return recorder.ResponseWriter.Write(body)
+}
+
+func (recorder *statusRecorder) Flush() {
+	if flusher, ok := recorder.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 // firstSTOWInstanceStudy reads the Study Instance UID of the first instance of

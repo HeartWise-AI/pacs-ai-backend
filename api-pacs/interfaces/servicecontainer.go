@@ -190,6 +190,7 @@ func (k *kernel) RegisterOrthancProxy() orthancProxy.OrthancProxy {
 func orthancTenantStudyRepository() *orthancRepository.OrthancTenantStudyRepository {
 	return &orthancRepository.OrthancTenantStudyRepository{
 		PostgresSQLDBHandlerInterface: postgresqlDBHanddler,
+		DefaultTenantID:               orthancRepository.DefaultTenantID(),
 	}
 }
 
@@ -502,6 +503,18 @@ func configuredStudyServiceDispatchConcurrency() int {
 	}
 
 	return parsed
+}
+
+// OrthancTenantStudySync assigns the studies of the shared Orthanc to tenants.
+func OrthancTenantStudySync() *orthancService.TenantStudySync {
+	m.Lock()
+	defer m.Unlock()
+
+	return &orthancService.TenantStudySync{
+		Store:           orthancTenantStudyRepository(),
+		OrthancBaseURL:  os.Getenv("ORTHANC_BASE_URL"),
+		DefaultTenantID: orthancRepository.DefaultTenantID(),
+	}
 }
 
 func OrthancCommandServiceDI() *orthancService.OrthancCommandService {
@@ -1090,6 +1103,7 @@ func ServiceContainer() ServiceContainerInterface {
 			go RunInferenceIngestionRetrievalWorkerHandler()
 			go RunInferenceIngestionReconciliationWorkerHandler()
 			go RunOrthancLocalStudiesCacheHandler()
+			go RunOrthancTenantStudySyncHandler()
 		})
 	}
 	return k
