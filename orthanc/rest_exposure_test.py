@@ -150,6 +150,7 @@ class OrthancRestExposureTest(unittest.TestCase):
         cls.env = os.environ.copy()
         cls.env["ORTHANC_DICOM_AET"] = "PACS_AI"
         cls.env["ORTHANC_DICOM_PORT"] = "4242"
+        refuse_to_replace_foreign_containers(["orthanc", "orthanc-index"])
         run(["docker", "rm", "-f", "orthanc", "orthanc-index"])
         run(["docker", "network", "rm", ATTACKER_NETWORK])
         down = compose(["down", "-v", "--remove-orphans"], cls.env)
@@ -310,6 +311,31 @@ class OrthancRestExposureTest(unittest.TestCase):
             if status not in (401, 403):
                 accepted.append("GET /patients -> HTTP %s via %s:%s" % (status, host, port))
         self.assertEqual(accepted, [], "\n".join(accepted))
+
+
+def refuse_to_replace_foreign_containers(names):
+    """The compose file pins container_name, so the test removes containers by name.
+    Refuse when one of them belongs to another compose project (for example a
+    production stack on the same Docker host) instead of deleting it."""
+    for name in names:
+        result = run(
+            [
+                "docker",
+                "inspect",
+                "--format",
+                '{{ index .Config.Labels "com.docker.compose.project" }}',
+                name,
+            ]
+        )
+        if result.returncode != 0:
+            continue  # no such container
+        project = result.stdout.strip()
+        if project != PROJECT:
+            raise unittest.SkipTest(
+                "container %r belongs to compose project %r; run this test on a "
+                "Docker host without a PACS-AI stack (for example docker:dind)"
+                % (name, project or "<none>")
+            )
 
 
 def primary_ipv4():
