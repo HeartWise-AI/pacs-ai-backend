@@ -1,0 +1,26 @@
+# Second TLS listener for machine callers on another host (CardioAgent on
+# wise-training), rendered by start.sh into conf.d only when a certificate and
+# key are mounted in /etc/nginx/remote-tls (NGINX_REMOTE_TLS_DIR in compose).
+# It carries its own certificate, so remote callers do not depend on the
+# browser-facing certificate on 443. Only /study-service/ is served here.
+server {
+    listen 8443 ssl;
+    access_log /var/log/nginx/access.log redacted;
+    server_name ${SERVER_NAME};
+
+    client_header_timeout 10s;
+    client_body_timeout 30s;
+
+    ssl_certificate /etc/nginx/remote-tls/server.crt;
+    ssl_certificate_key /etc/nginx/remote-tls/server.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+
+    set $study_service_upstream study-service:8600;
+
+    include /etc/nginx/snippets/study-service-location.conf;
+
+    location / {
+        return 404;
+    }
+}

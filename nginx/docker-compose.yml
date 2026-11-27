@@ -7,8 +7,12 @@ services:
     ports:
       - 80:80
       - 443:443
+      # Remote machine callers (CardioAgent's study-service reads); only served
+      # when NGINX_REMOTE_TLS_DIR holds server.crt/server.key.
+      - ${NGINX_REMOTE_TLS_PORT:-8443}:8443
     volumes:
       - ./ssl:/etc/nginx/ssl
+      - ${NGINX_REMOTE_TLS_DIR:-./remote-tls}:/etc/nginx/remote-tls:ro
     depends_on:
       - orthanc
       - api-pacs
