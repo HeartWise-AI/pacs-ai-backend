@@ -4,7 +4,8 @@ services:
     container_name: orthanc
     restart: unless-stopped
     ports:
-      - 8053:8042
+      # The REST API has no authentication; keep it loopback-only.
+      - 127.0.0.1:8053:8042
       - 4242:4242
     volumes:
       - orthanc-storage:/var/lib/orthanc/db/
@@ -46,7 +47,7 @@ services:
     image: postgres:17.2
     container_name: orthanc-index
     restart: unless-stopped
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]
     volumes: ["orthanc-index:/var/lib/postgresql/data"]
     command: -c 'max_connections=200'
     environment:

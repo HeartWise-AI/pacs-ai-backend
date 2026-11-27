@@ -4,7 +4,7 @@ services:
     container_name: orthanc-hospital-1-query
     restart: unless-stopped
     ports:
-      - 8063:8042
+      - 127.0.0.1:8063:8042
     volumes:
       - orthanc-storage-hospital-1:/var/lib/orthanc/db/
     environment:
@@ -44,7 +44,7 @@ services:
     container_name: orthanc-hospital-1-store
     restart: unless-stopped
     ports:
-      - 8073:8042
+      - 127.0.0.1:8073:8042
     volumes:
       - orthanc-storage-hospital-1:/var/lib/orthanc/db/
     environment:
@@ -84,7 +84,7 @@ services:
     container_name: orthanc-hospital-2
     restart: unless-stopped
     ports:
-      - 8083:8042
+      - 127.0.0.1:8083:8042
     volumes:
       - orthanc-storage-hospital-2:/var/lib/orthanc/db/
     environment:
