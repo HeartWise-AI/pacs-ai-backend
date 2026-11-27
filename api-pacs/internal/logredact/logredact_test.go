@@ -201,6 +201,7 @@ func TestShortUIDsInUIDRoutes(t *testing.T) {
 		{"/v1/inference/worklist/studies/" + short + "/latest-results", "/v1/inference/worklist/studies/" + UID(short) + "/latest-results"},
 		{"/dicom-web/studies/1.2/series/3/instances/4.5/frames/1", "/dicom-web/studies/" + UID("1.2") + "/series/" + UID("3") + "/instances/" + UID("4.5") + "/frames/1"},
 		{"/jobs/by-study/" + short + "/latest-results", "/jobs/by-study/" + UID(short) + "/latest-results"},
+		{"/v1/inference/worklist/studies/" + short + "/jobs/job-1/result", "/v1/inference/worklist/studies/" + UID(short) + "/jobs/job-1/result"},
 		// Route words after "studies" stay.
 		{"/v1/inference/worklist/studies/reprocess-batch", "/v1/inference/worklist/studies/reprocess-batch"},
 		{"/v1/orthanc/modality/studies", "/v1/orthanc/modality/studies"},

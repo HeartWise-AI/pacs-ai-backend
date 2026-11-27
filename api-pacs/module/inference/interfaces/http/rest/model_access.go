@@ -78,6 +78,11 @@ func filterLatestResults(access accessEntity.Access, results types.StudyLatestMo
 	}
 	kept := make([]types.StudyLatestModelResult, 0, len(results.Results))
 	for _, result := range results.Results {
+		if types.IsStudyServiceMeasurementResult(result.ModelName) {
+			// Measurements from the study itself, not a model: visible to every role.
+			kept = append(kept, result)
+			continue
+		}
 		if result.ArtifactModelID == nil || !access.AllowsModel(*result.ArtifactModelID) {
 			continue
 		}

@@ -7,6 +7,7 @@ import (
 
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	apiError "api-pacs/internal/errors"
+	"api-pacs/module/inference/infrastructure/service/types"
 )
 
 // ResolveModelArtifactIDs maps a viewer model reference (Firestore
@@ -67,7 +68,7 @@ func (service *InferenceQueryService) ResolveModelArtifactIDs(ctx context.Contex
 // allow accepts everything; a model that cannot be matched to a registration
 // with a known modelId is refused.
 func (service *InferenceQueryService) authorizeResultModel(ctx context.Context, tenantID, modelName, modelVersion string, allow func(string) bool) error {
-	if allow == nil {
+	if allow == nil || types.IsStudyServiceMeasurementResult(modelName) {
 		return nil
 	}
 	directory := service.loadViewerModelDirectory(ctx, tenantID)
