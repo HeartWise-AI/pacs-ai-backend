@@ -104,3 +104,23 @@ def test_a_single_series_study_is_not_dropped_when_its_last_clip_is_off_view(mon
     svc = service()
     kept = svc._filter_dicoms_with_metadata(clips, svc._generate_view_classifier_metadata(clips))
     assert kept == clips[:3]
+
+
+def test_clips_in_their_own_series_are_classified_and_filtered_one_by_one(monkeypatch):
+    import torch
+
+    service_cls = logic.CustomPredictionService
+    monkeypatch.setitem(service_cls.models, "view_classifier", _FakeClassifier())
+    monkeypatch.setattr(service_cls, "_view_classifier_class_mapping", {"0": "A4C", "1": "Subcostal", "2": "PLAX"}, raising=False)
+    monkeypatch.setattr(service_cls, "_prepare_view_classifier_video",
+                        lambda self, dicom: (torch.full((3, 2, 4, 4), float(VIEW[dicom.SOPInstanceUID])), "success"))
+    shared = generate_uid()
+    clips = []
+    for view, series in ((1, generate_uid()), (0, generate_uid()), (2, shared), (1, shared), (0, generate_uid())):
+        ds = clip(series)  # a mix: clips alone in their series and two clips sharing one
+        VIEW[ds.SOPInstanceUID] = view
+        clips.append(ds)
+    svc = service()
+    metadata = svc._generate_view_classifier_metadata(clips)
+    assert len(metadata) == 5
+    assert svc._filter_dicoms_with_metadata(clips, metadata) == [clips[1], clips[2], clips[4]]
