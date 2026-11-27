@@ -3,10 +3,11 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
-	"github.com/docker/docker/errdefs"
+	"github.com/containerd/errdefs"
 	"github.com/stretchr/testify/require"
 
 	api "api-pacs/infrastructures/providers/api/dockerinference/types"
@@ -31,7 +32,7 @@ func (d *stableGatewayDocker) GetContainerInfo(_ context.Context, ref string) (d
 	if info, ok := d.infos[ref]; ok {
 		return info, nil
 	}
-	return dockerTypes.GetContainerInfoResult{}, errdefs.NotFound(errors.New("not found"))
+	return dockerTypes.GetContainerInfoResult{}, fmt.Errorf("%w: %w", errdefs.ErrNotFound, errors.New("not found"))
 }
 
 type stableGatewayRepository struct {

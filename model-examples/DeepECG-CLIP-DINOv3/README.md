@@ -194,6 +194,8 @@ copy instead (instructions at its top) and is for development only.
 
 ## Changelog
 
+- 1.5.1: security patch only. Pillow 12.3.0 -> 13.0.0 (Dependabot advisories for Pillow <= 12.3.0). The renderer golden-pixel test and
+  the predictions on the fixtures and synthetic ECGs are unchanged (see the PR for the side-by-side numbers).
 - 1.5.0: image (secondary capture) ECGs in YBR_FULL / YBR_FULL_422 are no longer colour-converted twice
   (pydicom 3 `pixel_array` already returns RGB; the second conversion shifted the page colours and the
   intensities the model reads). When a study holds several ECGs of one kind, the earliest is now chosen by

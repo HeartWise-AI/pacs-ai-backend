@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/docker/docker/errdefs"
+	"github.com/containerd/errdefs"
 
 	dockerTypes "api-pacs/infrastructures/providers/sdk/docker/types"
 	apiError "api-pacs/internal/errors"

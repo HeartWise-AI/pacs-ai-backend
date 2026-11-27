@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	dockererrdefs "github.com/docker/docker/errdefs"
+	dockererrdefs "github.com/containerd/errdefs"
 
 	docker "api-pacs/infrastructures/providers/sdk/docker/types"
 )

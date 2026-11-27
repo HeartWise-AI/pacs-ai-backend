@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,6 +24,14 @@ import (
 // ErrChatProgressUnsupported is returned when the chat backend has no progress
 // endpoint (an older version): callers fall back to showing no live activity.
 var ErrChatProgressUnsupported = errors.New("chat_progress_unsupported")
+
+// ErrChatTurnInProgress is returned when the chat backend refuses a message
+// because an answer is still being written in the same thread (its 409).
+var ErrChatTurnInProgress = errors.New("chat_turn_in_progress")
+
+// ErrChatUpstream is returned when the chat backend fails a message without an
+// answer the user can see (any other non-200).
+var ErrChatUpstream = errors.New("chat_upstream_error")
 
 // chatProgressTimeout bounds one progress poll; the client's own timeout is
 // sized for a whole chat request.
@@ -215,8 +225,15 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 	defer resp.Body.Close()
 
 	// Check response status
+	if resp.StatusCode == http.StatusConflict {
+		// One answer at a time per thread: the previous one is still running.
+		log.Printf("orchestrator chat: thread busy (409 from chat backend), status=409")
+		return types.CreateMessageResponse{}, ErrChatTurnInProgress
+	}
 	if resp.StatusCode != http.StatusOK {
-		return types.CreateMessageResponse{}, fmt.Errorf("external API returned status: %d", resp.StatusCode)
+		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		log.Printf("orchestrator chat: chat backend returned status %d: %s", resp.StatusCode, sanitizeLogText(string(detail)))
+		return types.CreateMessageResponse{}, fmt.Errorf("%w: status %d", ErrChatUpstream, resp.StatusCode)
 	}
 
 	// Parse response
@@ -225,9 +242,15 @@ func (service *OrchestratorService) CreateMessage(ctx context.Context, request t
 		return types.CreateMessageResponse{}, err
 	}
 
-	// Check if there was an error
+	// A turn that timed out or failed is answered by the chat backend with a
+	// stored, retryable message (and its id, so it can be voted on): pass it on.
+	// Only a non-success status without any answer is an error here.
 	if pythonResponse.Status != "success" {
-		return types.CreateMessageResponse{}, fmt.Errorf("python API error: %s", pythonResponse.Error)
+		if pythonResponse.Message == nil || pythonResponse.Message.Content == "" {
+			log.Printf("orchestrator chat: chat backend status %q without an answer", sanitizeLogText(pythonResponse.Status))
+			return types.CreateMessageResponse{}, fmt.Errorf("%w: status %s", ErrChatUpstream, pythonResponse.Status)
+		}
+		log.Printf("orchestrator chat: turn answered with status %q", sanitizeLogText(pythonResponse.Status))
 	}
 
 	// Create message records in the local cache for consistency
@@ -591,4 +614,19 @@ func (service *OrchestratorService) GetChatProgress(ctx context.Context, threadI
 // generateID generates a unique ID
 func generateID() string {
 	return ksuid.New().String()
+}
+
+// sanitizeLogText keeps a log line on one line and short.
+func sanitizeLogText(value string) string {
+	out := make([]rune, 0, len(value))
+	for _, r := range value {
+		if r < 0x20 || r == 0x7f {
+			r = ' '
+		}
+		out = append(out, r)
+		if len(out) >= 200 {
+			break
+		}
+	}
+	return string(out)
 }

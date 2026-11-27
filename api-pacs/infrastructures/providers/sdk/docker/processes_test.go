@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 func TestInferenceProcessIDsIdentifiesSupervisedWorker(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/errdefs"
+	"github.com/containerd/errdefs"
+	"github.com/moby/moby/client"
 )
 
 func TestGetContainerInfoResolvesOnlyUnambiguousCaseInsensitiveNames(t *testing.T) {

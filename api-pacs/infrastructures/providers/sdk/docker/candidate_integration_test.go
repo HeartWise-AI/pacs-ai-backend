@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 
 	dockertypes "api-pacs/infrastructures/providers/sdk/docker/types"
 )
@@ -29,7 +29,8 @@ func TestCandidateContainerDockerIntegration(t *testing.T) {
 	}
 	defer dockerClient.Close()
 
-	active, err := dockerClient.ContainerInspect(ctx, activeID)
+	activeResult, err := dockerClient.ContainerInspect(ctx, activeID, client.ContainerInspectOptions{})
+	active := activeResult.Container
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +60,8 @@ func TestCandidateContainerDockerIntegration(t *testing.T) {
 		}
 	})
 
-	candidate, err := dockerClient.ContainerInspect(ctx, candidateID)
+	candidateResult, err := dockerClient.ContainerInspect(ctx, candidateID, client.ContainerInspectOptions{})
+	candidate := candidateResult.Container
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,7 +4,7 @@
       "Name": "DeepECG-CLIP-DINOv3",
       "Description": "Research ECG model from one 12-lead ECG: acute coronary occlusion (ACO), from a DINOv3 ViT-B/16 encoder pretrained contrastively on MHI ECG images and reports, plus frozen linear-probe heads on the same encoder (77 ECG patterns, SHD, LVEF, AFib 5 y, HCM).",
       "Developed_by": "HeartWise.AI / Montreal Heart Institute",
-      "Version": "1.5.0"
+      "Version": "1.5.1"
     },
     "Mechanism": {
       "Outcome": "aco: acute coronary occlusion on the catheterization following the ECG (ACS cohort v6).",
@@ -43,7 +43,7 @@
     "Résumé": {
       "Nom": "DeepECG-CLIP-DINOv3",
       "Description": "Modèle ECG de recherche : occlusion coronarienne aiguë (OCA), à partir d'un ECG 12 dérivations, et têtes de sondage linéaire (77 anomalies ECG, cardiopathie structurelle, FEVG, FA à 5 ans, CMH).",
-      "Version": "1.5.0"
+      "Version": "1.5.1"
     },
     "Performance": {
       "OCA": "ASC 0,92 (IC 95 % 0,89-0,93), sensibilité 0,83, spécificité 0,87 au seuil 0,0506 (test ICM, 9 021 ECG)."

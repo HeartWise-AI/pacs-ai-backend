@@ -8,7 +8,10 @@ set -eu
 # 127.0.0.1 is never a remote client, so the default keeps the route closed.
 : "${NGINX_HANDOFF_ALLOWED_IP:=127.0.0.1}"
 : "${NGINX_DICOMWEB_MAX_BODY_SIZE:=6g}"
-export SERVER_NAME NGINX_FRONTEND_MAX_BODY_SIZE NGINX_API_MAX_BODY_SIZE NGINX_DICOMWEB_MAX_BODY_SIZE NGINX_HANDOFF_ALLOWED_IP
+# One address (or CIDR) allowed on /study-service/ (CardioAgent's study-service
+# reads from another host). The default keeps the route closed.
+: "${NGINX_STUDY_SERVICE_ALLOWED_IP:=127.0.0.1}"
+export SERVER_NAME NGINX_FRONTEND_MAX_BODY_SIZE NGINX_API_MAX_BODY_SIZE NGINX_DICOMWEB_MAX_BODY_SIZE NGINX_HANDOFF_ALLOWED_IP NGINX_STUDY_SERVICE_ALLOWED_IP
 
 validate_body_size() {
   name="$1"
@@ -74,8 +77,24 @@ fi
 case "$NGINX_HANDOFF_ALLOWED_IP" in
   *[!0-9./]*|'') echo "NGINX_HANDOFF_ALLOWED_IP must be an IPv4 address or CIDR" >&2; exit 1 ;;
 esac
+case "$NGINX_STUDY_SERVICE_ALLOWED_IP" in
+  *[!0-9./]*|'') echo "NGINX_STUDY_SERVICE_ALLOWED_IP must be an IPv4 address or CIDR" >&2; exit 1 ;;
+esac
 
-envsubst '${SERVER_NAME} ${NGINX_FRONTEND_MAX_BODY_SIZE} ${NGINX_API_MAX_BODY_SIZE} ${NGINX_DICOMWEB_MAX_BODY_SIZE} ${NGINX_HANDOFF_ALLOWED_IP}' < /etc/nginx/nginx.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${SERVER_NAME} ${NGINX_FRONTEND_MAX_BODY_SIZE} ${NGINX_API_MAX_BODY_SIZE} ${NGINX_DICOMWEB_MAX_BODY_SIZE} ${NGINX_HANDOFF_ALLOWED_IP} ${NGINX_STUDY_SERVICE_ALLOWED_IP}' < /etc/nginx/nginx.conf.template > /etc/nginx/conf.d/default.conf
+
+mkdir -p /etc/nginx/snippets
+envsubst '${NGINX_STUDY_SERVICE_ALLOWED_IP}' < /etc/nginx/study-service-location.conf.template > /etc/nginx/snippets/study-service-location.conf
+
+# The 8443 listener for remote machine callers exists only when its certificate
+# and key are mounted; without them nginx starts exactly as before.
+REMOTE_TLS_DIR=/etc/nginx/remote-tls
+if [ -s "$REMOTE_TLS_DIR/server.crt" ] && [ -s "$REMOTE_TLS_DIR/server.key" ]; then
+  envsubst '${SERVER_NAME}' < /etc/nginx/remote-study-service.conf.template > /etc/nginx/conf.d/remote-study-service.conf
+  echo "Remote study-service listener on 8443 enabled."
+else
+  rm -f /etc/nginx/conf.d/remote-study-service.conf
+fi
 
 # Start Nginx
 exec nginx -g 'daemon off;'

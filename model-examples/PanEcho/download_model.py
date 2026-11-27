@@ -20,6 +20,23 @@ EXPECTED_TASKS_SHA256 = (
 )
 USER_AGENT = "PACS-AI-model-release/1.0"
 
+# EchoPrime 20-view classifier (MViT-v2-S) used by PanEcho to keep only standard TTE views.
+# The original Hugging Face repository (VoyagerWSH/20EchoViewClassifier) is private and no longer
+# reachable, so the checkpoint is taken from the published, digest-pinned image that packaged it
+# (heartwisehub/echo-prime_view-classifier:1.0). The Dockerfile copies it from this exact digest
+# and the build fails unless the bytes match VIEW_CLASSIFIER_SHA256. Same bytes as the team copy
+# on the NAS (models/PanEcho/view_classifier/).
+VIEW_CLASSIFIER_SOURCE_IMAGE = (
+    "heartwisehub/echo-prime_view-classifier@sha256:"
+    "b2f785a4efe3eb7fd4377a8cba7ef40fce65631356b091c2a28a2c47db5d91e0"
+)
+VIEW_CLASSIFIER_SOURCE_PATH = "/app/weights/best_model_pretrained_echoprime_updated.pth"
+VIEW_CLASSIFIER_ORIGIN = "huggingface.co/VoyagerWSH/20EchoViewClassifier (private)"
+VIEW_CLASSIFIER_WEIGHTS_PATH = "weights/best_model_pretrained_echoprime_updated.pth"
+VIEW_CLASSIFIER_SHA256 = (
+    "5bf6010b17c945b44a8d8890baf02995bfb00ed932c5adbda031c2b4f5174af2"
+)
+
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
@@ -92,13 +109,31 @@ def download_model(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--repository", required=True)
-    parser.add_argument("--revision", required=True)
-    parser.add_argument("--weights-path", required=True)
-    parser.add_argument("--weights-sha256", required=True)
+    parser.add_argument("--repository")
+    parser.add_argument("--revision")
+    parser.add_argument("--weights-path")
+    parser.add_argument("--weights-sha256")
     parser.add_argument("--output-dir", type=Path, default=Path("content"))
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument(
+        "--verify-view-classifier",
+        type=Path,
+        help="Only verify the packaged view-classifier checkpoint at this path",
+    )
     args = parser.parse_args()
+
+    if args.verify_view_classifier is not None:
+        verify_file(args.verify_view_classifier, VIEW_CLASSIFIER_SHA256)
+        print(f"Verified view classifier {VIEW_CLASSIFIER_SOURCE_IMAGE} ({VIEW_CLASSIFIER_SHA256})")
+        return
+
+    missing = [
+        name
+        for name in ("repository", "revision", "weights_path", "weights_sha256")
+        if not getattr(args, name)
+    ]
+    if missing:
+        parser.error("missing release metadata: " + ", ".join(missing))
 
     if args.verify_only:
         verify_artifacts(args.output_dir, args.weights_path, args.weights_sha256)

@@ -21,6 +21,8 @@ class Config(BaseModel):
         normalization: str
         view_classifier_model_path: Optional[str] = None
         view_classifier_class_mapping_path: Optional[str] = None
+        # 1.2.0: refuse to serve without the view classifier instead of predicting on every clip.
+        view_classifier_required: bool = False
     
     modelDirectory: str
     models: Dict[str, ModelConfig]
@@ -81,6 +83,8 @@ class JsonPredictionResponse(BaseModel):
     predictions: Any
     diagnosis: Optional[str] = None
     modelRecommendations: Optional[ModelRecommendations]
+    # Which clips PanEcho used, their predicted views, and the skip reason when it did not run.
+    viewSelection: Optional[Dict[str, Any]] = None
 
 class OHIFPredictionResponse(BaseModel):
     class Segmentation(BaseModel):

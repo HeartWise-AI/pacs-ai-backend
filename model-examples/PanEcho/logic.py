@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import time
 import torch
@@ -8,6 +9,7 @@ import numpy as np
 import torchvision
 
 from io import BytesIO
+from pydicom.multival import MultiValue
 from torchvision import tv_tensors
 from torchvision.transforms import v2
 from typing import Any, List, Dict, Union, Tuple, Optional
@@ -30,6 +32,67 @@ from utils.genericLogic import BasePredictionService
 # Selected views for PanEcho inference (includes zoom variants via substring match)
 SELECTED_VIEWS = {"A2C", "A4C", "A5C", "PLAX", "PSAX"}
 
+VIEW_CLASSIFIER_NAME = "EchoPrime 20-view classifier (MViT-v2-S)"
+VIEW_CLASSIFIER_SHA256 = "5bf6010b17c945b44a8d8890baf02995bfb00ed932c5adbda031c2b4f5174af2"
+
+# Explicit skips: PanEcho returns no predictions and says why instead of predicting on clips it
+# was not trained for.
+SKIP_NO_VIDEO_CLIPS = "NO_VIDEO_CLIPS"
+SKIP_TEE = "TEE_NOT_SUPPORTED"
+SKIP_NO_STANDARD_VIEWS = "NO_STANDARD_TTE_VIEWS"
+
+SKIP_MESSAGES = {
+    SKIP_NO_VIDEO_CLIPS: (
+        "PanEcho did not run: the study has no multi-frame echo clips.",
+        "PanEcho n'a pas été exécuté : l'examen ne contient aucune séquence échographique multi-images.",
+    ),
+    SKIP_TEE: (
+        "PanEcho did not run: this is a transesophageal echo (TEE). PanEcho is validated on "
+        "transthoracic echo only.",
+        "PanEcho n'a pas été exécuté : il s'agit d'une échographie transœsophagienne (ETO). "
+        "PanEcho est validé uniquement en échographie transthoracique.",
+    ),
+    SKIP_NO_STANDARD_VIEWS: (
+        "PanEcho did not run: none of the {total} clips was classified as a standard "
+        "transthoracic view (A2C, A4C, A5C, PLAX, PSAX).",
+        "PanEcho n'a pas été exécuté : aucune des {total} séquences n'a été reconnue comme une "
+        "coupe transthoracique standard (A2C, A4C, A5C, PLAX, PSAX).",
+    ),
+}
+
+# Transesophageal markers seen in study/series descriptions (English and French: ETO, ETT is TTE)
+# and TEE probe names in TransducerData (e.g. Philips X8-2t, X7-2t; GE 6VT-D, 9VT-D).
+_TEE_DESCRIPTION = re.compile(
+    r"\bTEE\b|\bETO\b|TRANS[- ]?O?ESOPH|TRANSESOPH|TRANSOESOPH", re.IGNORECASE
+)
+_TEE_TRANSDUCER = re.compile(r"^(X\d+[-_]\d+T|\d+VT(-D)?|.*TEE.*)$", re.IGNORECASE)
+
+
+def is_tee_clip(dicom) -> bool:
+    """True when the clip's headers say it was acquired transesophageally."""
+    for keyword in ("StudyDescription", "SeriesDescription", "ProtocolName"):
+        value = str(getattr(dicom, keyword, "") or "")
+        if value and _TEE_DESCRIPTION.search(value):
+            return True
+    transducer = getattr(dicom, "TransducerData", None)
+    if transducer:
+        first = transducer[0] if isinstance(transducer, (list, tuple, MultiValue)) else str(transducer).split("\\")[0]
+        if _TEE_TRANSDUCER.match(str(first).strip()):
+            return True
+    return False
+
+
+def _clip_label(dicom) -> Dict[str, Any]:
+    """Clip position for the result without identifiers: series and instance numbers."""
+    def number(keyword):
+        value = getattr(dicom, keyword, None)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    return {"seriesNumber": number("SeriesNumber"), "instanceNumber": number("InstanceNumber")}
+
 
 def _clip_key(dicom) -> str:
     """One echo series often holds every clip of the study, so views are kept per instance."""
@@ -47,7 +110,11 @@ def _resize_like_torchvision_0_23(video: torch.Tensor, size: Tuple[int, int] = (
     resized = torch.nn.functional.interpolate(
         video.float(), size=size, mode="bilinear", align_corners=False, antialias=True
     )
-    return tv_tensors.wrap(resized.round_().clamp_(0, 255).to(torch.uint8), like=video)
+    if video.dtype == torch.uint8:
+        resized = resized.round_().clamp_(0, 255).to(torch.uint8)
+    if isinstance(video, tv_tensors.TVTensor):
+        return tv_tensors.wrap(resized, like=video)
+    return resized
 
 
 def matches_selected_view(pred_class: Optional[str]) -> bool:
@@ -149,7 +216,7 @@ class CustomPredictionService(BasePredictionService):
                 print(f"View classifier class mapping not found at {class_mapping_path}")
 
             if view_classifier_weights_path and os.path.exists(view_classifier_weights_path):
-                print("Loading PanEcho view classifier")
+                print(f"Loading PanEcho view classifier ({VIEW_CLASSIFIER_SHA256[:12]})")
                 view_classifier = EchoPrimeViewClassifier(view_classifier_weights_path)
                 view_classifier.eval()
                 view_classifier.to("cuda" if torch.cuda.is_available() else "cpu")
@@ -161,7 +228,18 @@ class CustomPredictionService(BasePredictionService):
                     "request metadata or unfiltered inference"
                 )
         except Exception as e:
+            if getattr(config.models["pan_echo"], "view_classifier_required", False):
+                raise
             print(f"Error loading view classifier, continuing without it: {e}")
+
+        if (
+            getattr(config.models["pan_echo"], "view_classifier_required", False)
+            and "view_classifier" not in CustomPredictionService.models
+        ):
+            raise RuntimeError(
+                "PanEcho view classifier is required but was not loaded from "
+                f"{view_classifier_weights_path}"
+            )
 
         CustomPredictionService.is_initialized = True   
         
@@ -520,7 +598,8 @@ class CustomPredictionService(BasePredictionService):
             return None, "failed to detect motion"
 
         cropped_tensor = torch.from_numpy(cropped).permute(0, 3, 1, 2)
-        resized = torchvision.transforms.Resize((224, 224))(cropped_tensor)
+        # Same resize as torchvision 0.23 (see _resize_like_torchvision_0_23).
+        resized = _resize_like_torchvision_0_23(cropped_tensor, (224, 224))
 
         mean = [24.277523040771484, 22.14891242980957, 22.404890060424805]
         std = [47.2259521484375, 44.02793502807617, 43.90631103515625]
@@ -596,6 +675,7 @@ class CustomPredictionService(BasePredictionService):
         for dicom_name, (pred_class, probs, status) in zip(prepared_dicom_names, batch_results):
             metadata[dicom_name] = {
                 "predicted_class": pred_class,
+                "confidence": float(np.max(probs)) if probs is not None else None,
                 "probabilities": probs.tolist() if probs is not None else None,
                 "status": status,
             }
@@ -604,31 +684,119 @@ class CustomPredictionService(BasePredictionService):
 
     def _prepare_dicoms_for_inference(
         self, dicoms: List[pydicom.Dataset], request_metadata: Optional[Dict[str, Any]]
-    ) -> List[pydicom.Dataset]:
-        metadata = request_metadata
-        metadata_source = "request.additionalMetadata"
+    ) -> Tuple[List[pydicom.Dataset], Dict[str, Any]]:
+        """Pick the clips PanEcho runs on and describe the choice.
 
+        Returns the kept clips and a ``viewSelection`` summary. When the summary has a
+        ``skipReason`` the kept list is empty and PanEcho must not predict.
+        """
+        selection: Dict[str, Any] = {
+            "status": "used",
+            "skipReason": None,
+            "standardViews": sorted(SELECTED_VIEWS),
+            "totalClips": len(dicoms),
+            "clipsUsed": 0,
+            "viewCounts": {},
+            "usedViewCounts": {},
+            "method": None,
+            "classifier": None,
+            "clips": [],
+        }
+
+        def skip(reason: str) -> Tuple[List[pydicom.Dataset], Dict[str, Any]]:
+            selection["status"] = "skipped"
+            selection["skipReason"] = reason
+            selection["clipsUsed"] = 0
+            print(f"PanEcho skipped: {reason} ({len(dicoms)} clips)")
+            return [], selection
+
+        if not dicoms:
+            return skip(SKIP_NO_VIDEO_CLIPS)
+
+        tee = [dicom for dicom in dicoms if is_tee_clip(dicom)]
+        if tee:
+            # One TEE marker (study description, probe) makes the whole study transesophageal.
+            selection["teeClips"] = len(tee)
+            return skip(SKIP_TEE)
+
+        metadata = request_metadata
+        selection["method"] = "request.additionalMetadata"
         if not metadata:
             started = time.perf_counter()
             metadata = self._generate_view_classifier_metadata(dicoms)
-            metadata_source = "PanEcho view classifier"
             self._time("view_classifier", started)
+            if metadata is not None:
+                selection["method"] = "PanEcho view classifier"
+                selection["classifier"] = {
+                    "name": VIEW_CLASSIFIER_NAME,
+                    "sha256": VIEW_CLASSIFIER_SHA256,
+                }
 
-        if metadata:
-            filtered_dicoms = self._filter_dicoms_with_metadata(dicoms, metadata)
-            print(
-                f"Filtering via {metadata_source}: {len(dicoms)} total DICOMs, "
-                f"{len(filtered_dicoms)} matched selected views "
-                f"({', '.join(sorted(SELECTED_VIEWS))})"
-            )
-            if filtered_dicoms:
-                return filtered_dicoms
-            print(f"No selected view matches from {metadata_source}, using all {len(dicoms)} DICOMs")
-        else:
+        if not metadata:
+            # Only without a classifier (development images): say so in the result.
             print("No view metadata available, using all DICOMs")
+            selection["method"] = "unfiltered (no view classifier)"
+            selection["status"] = "unfiltered"
+            selection["clipsUsed"] = len(dicoms)
+            selection["clips"] = [{**_clip_label(d), "view": None, "used": True} for d in dicoms]
+            return dicoms, selection
 
-        return dicoms
-        
+        filtered_dicoms = self._filter_dicoms_with_metadata(dicoms, metadata)
+        kept = {id(d) for d in filtered_dicoms}
+        view_counts: Dict[str, int] = {}
+        used_counts: Dict[str, int] = {}
+        for dicom in dicoms:
+            meta = metadata.get(_clip_key(dicom)) or metadata.get(str(dicom.SeriesInstanceUID)) or {}
+            view = meta.get("predicted_class") or f"unclassified: {meta.get('status') or 'no label'}"
+            view_counts[view] = view_counts.get(view, 0) + 1
+            used = id(dicom) in kept
+            if used:
+                used_counts[view] = used_counts.get(view, 0) + 1
+            confidence = meta.get("confidence")
+            selection["clips"].append({
+                **_clip_label(dicom),
+                "view": view,
+                "confidence": round(float(confidence), 3) if confidence is not None else None,
+                "used": used,
+            })
+        selection["viewCounts"] = dict(sorted(view_counts.items()))
+        selection["usedViewCounts"] = dict(sorted(used_counts.items()))
+        selection["clipsUsed"] = len(filtered_dicoms)
+        print(
+            f"Filtering via {selection['method']}: {len(dicoms)} total DICOMs, "
+            f"{len(filtered_dicoms)} matched selected views "
+            f"({', '.join(sorted(SELECTED_VIEWS))}); views {selection['viewCounts']}"
+        )
+        if not filtered_dicoms:
+            return skip(SKIP_NO_STANDARD_VIEWS)
+        return filtered_dicoms, selection
+
+    @staticmethod
+    def _skip_message(selection: Dict[str, Any]) -> Tuple[str, str]:
+        en, fr = SKIP_MESSAGES[selection["skipReason"]]
+        total = selection.get("totalClips", 0)
+        return en.format(total=total), fr.format(total=total)
+
+    def _skipped_json(self, selection: Dict[str, Any]) -> Dict[str, Any]:
+        en, fr = self._skip_message(selection)
+        return {
+            "diagnosis": json.dumps({}),
+            "predictions": {},
+            "modelRecommendations": {"en": en, "fr": fr, "presentable": True},
+            "viewSelection": selection,
+        }
+
+    def _skipped_html(self, selection: Dict[str, Any]) -> Dict[str, Any]:
+        import html as html_lib
+
+        en, fr = self._skip_message(selection)
+        page = (
+            "<html><body><h2>PanEcho</h2>"
+            f"<p>{html_lib.escape(en)}</p><p>{html_lib.escape(fr)}</p>"
+            f"<p>Skip reason: {html_lib.escape(selection['skipReason'])}</p></body></html>"
+        )
+        return {"htmlBase64": base64.b64encode(page.encode("utf-8")).decode("utf-8")}
+
     def _extract_dicoms(self, request: PredictRequest) -> list:
         """Extract and filter multi-frame DICOMs from the request payload."""
         dicoms = []
@@ -690,7 +858,7 @@ class CustomPredictionService(BasePredictionService):
     async def _html_output(self, request: PredictRequest):
         try:
             dicoms = self._extract_dicoms(request)
-            dicoms = self._prepare_dicoms_for_inference(dicoms, request.additionalMetadata)
+            dicoms, selection = self._prepare_dicoms_for_inference(dicoms, request.additionalMetadata)
         except Exception as e:
             error_msg = f"Error in _handle_html_output: {e}"
             print(error_msg)
@@ -704,6 +872,9 @@ class CustomPredictionService(BasePredictionService):
                 }
             }
                 
+        if selection["skipReason"]:
+            return self._skipped_html(selection)
+
         try:
             probability = self._run_inference(dicoms=dicoms)
         except Exception as e:
@@ -786,7 +957,7 @@ class CustomPredictionService(BasePredictionService):
 
         try:
             dicoms = self._extract_dicoms(request)
-            dicoms = self._prepare_dicoms_for_inference(dicoms, request.additionalMetadata)
+            dicoms, selection = self._prepare_dicoms_for_inference(dicoms, request.additionalMetadata)
         except Exception as e:
             error_msg = f"Error in _handle_json_output: {e}"
             print(error_msg)
@@ -800,6 +971,9 @@ class CustomPredictionService(BasePredictionService):
                 }
             }
 
+        if selection["skipReason"]:
+            return self._skipped_json(selection)
+
         try:
             probability = self._run_inference(dicoms=dicoms)
         except Exception as e:
@@ -811,7 +985,8 @@ class CustomPredictionService(BasePredictionService):
                     "en": "Error in _run_inference",
                     "fr": "Erreur dans _run_inference",
                     "presentable": True,
-                }
+                },
+                "viewSelection": selection,
             }
         # Obtain per-head diagnosis/interpretation
         try:
@@ -844,7 +1019,8 @@ class CustomPredictionService(BasePredictionService):
                 'en': recommendations_en,
                 'fr': recommendations_fr,
                 'presentable': True
-            }
+            },
+            'viewSelection': selection,
         }
 
     def _load_clip_from_dicom(
