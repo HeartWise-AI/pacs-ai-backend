@@ -466,6 +466,7 @@ func InferenceCommandServiceDI() *inferenceService.InferenceCommandService {
 		ProcessingReconciliationMetricsRecorder: &inferenceService.LoggingProcessingReconciliationMetricsRecorder{},
 		AutoRunExpireAfter:                      inferenceService.ConfiguredAutoRunExpireAfter(),
 		WorklistNotificationAudienceRepository:  processingRunRepository,
+		TenantStudies:                           orthancTenantStudyRepository(),
 		RequireProcessingRunID:                  configuredProcessingRunIDRequirement(),
 		ModelManager:                            managedPredictor,
 		ProcessingDispatcherInterface: &inferenceService.StudyServiceDispatcher{
@@ -686,10 +687,11 @@ func (k *kernel) orthancQueryServiceContainer() *orthancService.OrthancQueryServ
 		OrthancQueryRepositoryInterface: &orthancRepository.OrthancQueryRepositoryCircuitBreaker{
 			OrthancQueryRepositoryInterface: repository,
 		},
-		OrthancAPIInterface:                  orthancAPI,
-		TenantQueryServiceInterface:          k.tenantQueryServiceContainer(),
-		ElasticsearchCommandServiceInterface: k.elasticsearchCommandServiceContainer(),
-		UserQueryServiceInterface:            k.userQueryServiceContainer(),
+		OrthancTenantStudyRepositoryInterface: orthancTenantStudyRepository(),
+		OrthancAPIInterface:                   orthancAPI,
+		TenantQueryServiceInterface:           k.tenantQueryServiceContainer(),
+		ElasticsearchCommandServiceInterface:  k.elasticsearchCommandServiceContainer(),
+		UserQueryServiceInterface:             k.userQueryServiceContainer(),
 	}
 
 	return service

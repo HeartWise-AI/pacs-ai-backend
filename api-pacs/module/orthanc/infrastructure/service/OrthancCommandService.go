@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -174,6 +175,14 @@ func (service *OrthancCommandService) RetrieveModalityStudyBySeries(ctx context.
 
 // StoreStudyCustomSeries store study custom series
 func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context, data types.StoreStudyCustomSeries) error {
+	retrieved, err := service.OrthancTenantStudyRepositoryInterface.SelectTenantStudies(ctx, data.TenantID, []string{data.StudyInstanceUID})
+	if err != nil {
+		return errors.New(apiError.DatabaseError)
+	}
+	if len(retrieved) == 0 {
+		return errors.New(apiError.MissingRecord)
+	}
+
 	// TODO: handle direct dicom image
 	var customSeriesInstanceUID string
 	var customSOPInstanceUID string
@@ -216,8 +225,16 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 	}
 
 	/// upload to local orthanc
-	uploadDICOMInstancesResponse, err := service.OrthancAPIInterface.UploadDICOMInstances(ctx, data.FileBody)
+	var uploadDICOMInstancesResponse orthancAPITypes.UploadDICOMInstancesResponse
+	if data.FileMimeType == "application/pdf" {
+		uploadDICOMInstancesResponse, err = service.OrthancAPIInterface.UploadDICOMInstances(ctx, data.FileBody)
+	} else {
+		uploadDICOMInstancesResponse, err = service.uploadDICOMFileToStudy(ctx, data.StudyInstanceUID, data.FileBody)
+	}
 	if err != nil {
+		if err.Error() == apiError.DICOMParseError {
+			return err
+		}
 		log.Println("[orthanc] error uploading DICOM instances:", err)
 		return errors.New(apiError.OrthancError)
 	}
@@ -285,6 +302,31 @@ func (service *OrthancCommandService) StoreStudyCustomSeries(ctx context.Context
 	}()
 
 	return nil
+}
+
+// uploadDICOMFileToStudy stores a DICOM file the client sent into the study it
+// was sent for: Orthanc refuses it unless it belongs to that study.
+func (service *OrthancCommandService) uploadDICOMFileToStudy(ctx context.Context, studyInstanceUID string, file []byte) (orthancAPITypes.UploadDICOMInstancesResponse, error) {
+	uids, err := dicomUtils.ReadPart10UIDs(bytes.NewReader(file))
+	if err != nil || uids.StudyInstanceUID != studyInstanceUID || uids.SOPInstanceUID == "" {
+		return orthancAPITypes.UploadDICOMInstancesResponse{}, errors.New(apiError.DICOMParseError)
+	}
+
+	_, err = service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
+		Level: "Instance",
+		Query: orthancAPITypes.QueryLocalResource{
+			StudyInstanceUID: studyInstanceUID,
+			SOPInstanceUID:   uids.SOPInstanceUID,
+		},
+	})
+	if err == nil {
+		return orthancAPITypes.UploadDICOMInstancesResponse{Status: orthancAPITypes.UploadDICOMStatusAlreadyStored}, nil
+	}
+	if err.Error() != apiError.MissingRecord {
+		return orthancAPITypes.UploadDICOMInstancesResponse{}, err
+	}
+
+	return service.OrthancAPIInterface.UploadDICOMInstanceToStudy(ctx, studyInstanceUID, file)
 }
 
 // TriggerDICOMEchoSCU trigger dicom echo scu

@@ -259,6 +259,15 @@ func (service *InferenceCommandService) bootstrapLocalManualStudyCandidates(
 	if service.OrthancAPIInterface == nil {
 		return nil, errors.New(apiError.MissingRecord)
 	}
+	// The local copy may have been retrieved by another tenant: only a study
+	// this tenant retrieved is read from it.
+	retrieved, err := service.tenantRetrievedStudy(ctx, tenantID, studyInstanceUID)
+	if err != nil {
+		return nil, err
+	}
+	if !retrieved {
+		return nil, errors.New(apiError.MissingRecord)
+	}
 	resources, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
 		Level: "Study",
 		Query: orthancAPITypes.QueryLocalResource{

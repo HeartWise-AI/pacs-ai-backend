@@ -43,4 +43,6 @@ type OrthancAPIInterface interface {
 	UpdateDICOMModality(ctx context.Context, modalityID string, request UpdateDICOMModalityRequest) error
 	// UploadDICOMInstances uploads DICOM instances
 	UploadDICOMInstances(ctx context.Context, dicomInstances []byte) (UploadDICOMInstancesResponse, error)
+	// UploadDICOMInstanceToStudy uploads one DICOM instance that Orthanc stores only if it belongs to the study
+	UploadDICOMInstanceToStudy(ctx context.Context, studyInstanceUID string, dicomInstance []byte) (UploadDICOMInstancesResponse, error)
 }

@@ -192,4 +192,5 @@ type QueryStudy struct {
 
 type QueryLocalResource struct {
 	StudyInstanceUID string `json:"StudyInstanceUID,omitempty"`
+	SOPInstanceUID   string `json:"SOPInstanceUID,omitempty"`
 }

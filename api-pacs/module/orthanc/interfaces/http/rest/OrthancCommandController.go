@@ -550,6 +550,12 @@ func (controller *OrthancCommandController) StoreStudyCustomSeries(w http.Respon
 		case apiError.DuplicateRecord:
 			httpCode = http.StatusConflict
 			errorMsg = "Report already exist for this study and model version."
+		case apiError.MissingRecord:
+			httpCode = http.StatusNotFound
+			errorMsg = "Study not found."
+		case apiError.DICOMParseError:
+			httpCode = http.StatusBadRequest
+			errorMsg = "The DICOM file does not belong to this study."
 		default:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Server error."

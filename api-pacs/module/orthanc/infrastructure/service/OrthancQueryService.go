@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -23,18 +25,43 @@ import (
 // OrthancQueryService handles the Orthanc query service logic
 type OrthancQueryService struct {
 	repository.OrthancQueryRepositoryInterface
+	repository.OrthancTenantStudyRepositoryInterface
 	orthancAPITypes.OrthancAPIInterface
 	tenantApplication.TenantQueryServiceInterface
 	elasticsearchApplication.ElasticsearchCommandServiceInterface
 	userApplication.UserQueryServiceInterface
 }
 
-// FindLocalSOPInstance find local SOP instance
-func (service *OrthancQueryService) FindLocalSOPInstance(ctx context.Context, sopInstanceUID string) ([]string, error) {
-	queryIDs, err := service.OrthancAPIInterface.FindLocalSOPInstance(ctx, sopInstanceUID)
+// FindLocalSOPInstance find local SOP instance in the studies the tenant retrieved
+func (service *OrthancQueryService) FindLocalSOPInstance(ctx context.Context, tenantID, sopInstanceUID string) ([]string, error) {
+	instances, err := service.OrthancAPIInterface.FindLocalResources(ctx, orthancAPITypes.QueryLocalResourceRequest{
+		Level:         "Instance",
+		Query:         orthancAPITypes.QueryLocalResource{SOPInstanceUID: sopInstanceUID},
+		Expand:        true,
+		RequestedTags: []string{"StudyInstanceUID"},
+	})
 	if err != nil {
 		log.Println(err)
 		return nil, err
+	}
+
+	var studies []string
+	for _, instance := range instances {
+		studies = append(studies, instance.RequestedTags["StudyInstanceUID"])
+	}
+	retrieved, err := service.OrthancTenantStudyRepositoryInterface.SelectTenantStudies(ctx, tenantID, studies)
+	if err != nil {
+		return nil, errors.New(apiError.DatabaseError)
+	}
+
+	var queryIDs []string
+	for _, instance := range instances {
+		if slices.Contains(retrieved, instance.RequestedTags["StudyInstanceUID"]) {
+			queryIDs = append(queryIDs, instance.ID)
+		}
+	}
+	if len(queryIDs) == 0 {
+		return nil, errors.New(apiError.MissingRecord)
 	}
 
 	return queryIDs, nil
