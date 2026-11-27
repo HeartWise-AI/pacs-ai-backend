@@ -3569,11 +3569,14 @@ func (service *InferenceCommandService) finishInferenceQuotaReservation(reservat
 }
 
 // RemoveInferenceModel deletes an inference model
-func (service *InferenceCommandService) RemoveInferenceModel(ctx context.Context, ID string) error {
+func (service *InferenceCommandService) RemoveInferenceModel(ctx context.Context, tenantID, ID string) error {
 	// get inference model
 	inferenceModel, err := service.InferenceQueryRepositoryInterface.SelectInferenceModelByID(ctx, ID)
 	if err != nil {
 		return err
+	}
+	if tenantID == "" || inferenceModel.TenantID != tenantID {
+		return errors.New(apiError.MissingRecord)
 	}
 
 	// force remove container
@@ -3654,11 +3657,15 @@ func (service *InferenceCommandService) RemoveModelFeedback(ctx context.Context,
 }
 
 // RestartInferenceModelContainer restarts an inference model container
-func (service *InferenceCommandService) RestartInferenceModelContainer(ctx context.Context, containerID string) error {
-	if err := service.refuseLifecycleDuringDeployment(ctx); err != nil {
+func (service *InferenceCommandService) RestartInferenceModelContainer(ctx context.Context, tenantID, containerID string) error {
+	containerID, err := tenantModelContainerID(ctx, service.InferenceQueryRepositoryInterface, tenantID, containerID)
+	if err != nil {
 		return err
 	}
-	err := service.DockerSDKInterface.RestartContainer(ctx, containerID)
+	if err = service.refuseLifecycleDuringDeployment(ctx); err != nil {
+		return err
+	}
+	err = service.DockerSDKInterface.RestartContainer(ctx, containerID)
 	if err != nil {
 		return errors.New(apiError.DockerError)
 	}
@@ -3693,11 +3700,15 @@ func (service *InferenceCommandService) refuseLifecycleDuringDeployment(ctx cont
 }
 
 // StartInferenceModelContainer starts an inference model container
-func (service *InferenceCommandService) StartInferenceModelContainer(ctx context.Context, containerID string) error {
-	if err := service.refuseLifecycleDuringDeployment(ctx); err != nil {
+func (service *InferenceCommandService) StartInferenceModelContainer(ctx context.Context, tenantID, containerID string) error {
+	containerID, err := tenantModelContainerID(ctx, service.InferenceQueryRepositoryInterface, tenantID, containerID)
+	if err != nil {
 		return err
 	}
-	err := service.DockerSDKInterface.StartContainer(ctx, containerID)
+	if err = service.refuseLifecycleDuringDeployment(ctx); err != nil {
+		return err
+	}
+	err = service.DockerSDKInterface.StartContainer(ctx, containerID)
 	if err != nil {
 		return errors.New(apiError.DockerError)
 	}
@@ -3716,11 +3727,15 @@ func (service *InferenceCommandService) StartInferenceIngestionJob(ctx context.C
 }
 
 // StopInferenceModelContainer stops an inference model container
-func (service *InferenceCommandService) StopInferenceModelContainer(ctx context.Context, containerID string) error {
-	if err := service.refuseLifecycleDuringDeployment(ctx); err != nil {
+func (service *InferenceCommandService) StopInferenceModelContainer(ctx context.Context, tenantID, containerID string) error {
+	containerID, err := tenantModelContainerID(ctx, service.InferenceQueryRepositoryInterface, tenantID, containerID)
+	if err != nil {
 		return err
 	}
-	err := service.DockerSDKInterface.StopContainer(ctx, containerID)
+	if err = service.refuseLifecycleDuringDeployment(ctx); err != nil {
+		return err
+	}
+	err = service.DockerSDKInterface.StopContainer(ctx, containerID)
 	if err != nil {
 		return errors.New(apiError.DockerError)
 	}
