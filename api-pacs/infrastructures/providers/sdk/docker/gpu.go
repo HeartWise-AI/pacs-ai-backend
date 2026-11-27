@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/api/types/container"
 )
 
 var gpuUUIDPattern = regexp.MustCompile(`^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)

@@ -3,11 +3,12 @@ package modelmanager
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
 
-	dockererrdefs "github.com/docker/docker/errdefs"
+	dockererrdefs "github.com/containerd/errdefs"
 
 	api "api-pacs/infrastructures/providers/api/dockerinference/types"
 	docker "api-pacs/infrastructures/providers/sdk/docker/types"
@@ -209,7 +210,7 @@ func (d *locateDocker) GetContainerInfo(_ context.Context, reference string) (do
 	if info, ok := d.byRef[reference]; ok {
 		return info, nil
 	}
-	return docker.GetContainerInfoResult{}, dockererrdefs.NotFound(errors.New("no such container"))
+	return docker.GetContainerInfoResult{}, fmt.Errorf("%w: %w", dockererrdefs.ErrNotFound, errors.New("no such container"))
 }
 
 func TestContainerBackendLocatesAReplacementOnlyByExactName(t *testing.T) {

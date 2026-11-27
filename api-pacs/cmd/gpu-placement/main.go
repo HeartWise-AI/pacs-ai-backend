@@ -15,8 +15,9 @@ import (
 	"time"
 
 	"github.com/distribution/reference"
-	dockerContainer "github.com/docker/docker/api/types/container"
-	dockerNetwork "github.com/docker/docker/api/types/network"
+	dockerContainer "github.com/moby/moby/api/types/container"
+	dockerNetwork "github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 
 	"api-pacs/infrastructures/providers/api/dockerinference"
 	"api-pacs/infrastructures/providers/sdk/docker"
@@ -219,11 +220,11 @@ func run(directory, names string, apply bool, actor string) error {
 }
 
 func requireMaintenance(ctx context.Context, sdk *docker.DockerSDK) error {
-	containers, err := sdk.Client.ContainerList(ctx, dockerContainer.ListOptions{})
+	containers, err := sdk.Client.ContainerList(ctx, client.ContainerListOptions{})
 	if err != nil {
 		return err
 	}
-	for _, container := range containers {
+	for _, container := range containers.Items {
 		for _, name := range container.Names {
 			name = strings.TrimPrefix(name, "/")
 			if name == "api-pacs" || name == "study-service" || name == "study-celery-worker" || strings.HasPrefix(name, "study-celery-worker-") {
@@ -306,7 +307,7 @@ func (m *migration) inspect(ctx context.Context, registered entity.InferenceMode
 			return planEntry{}, errors.New("catalog resolves to different image")
 		}
 	}
-	snapshot, err := m.docker.Client.ContainerInspect(ctx, registered.ContainerID)
+	snapshot, err := m.engine().ContainerInspect(ctx, registered.ContainerID)
 	if err != nil {
 		return planEntry{}, err
 	}
@@ -389,19 +390,19 @@ func (m *migration) recoverActivation(ctx context.Context, entry planEntry, resu
 	} else if current.ContainerID != entry.Registration.ContainerID {
 		return errors.New("registration changed during activation recovery; refusing to overwrite")
 	}
-	cleanupErr := m.docker.Client.ContainerStop(ctx, result.Active.ContainerID, dockerContainer.StopOptions{})
-	if candidate, inspectErr := m.docker.Client.ContainerInspect(ctx, result.Active.ContainerID); inspectErr == nil {
+	cleanupErr := m.engine().ContainerStop(ctx, result.Active.ContainerID, nil)
+	if candidate, inspectErr := m.engine().ContainerInspect(ctx, result.Active.ContainerID); inspectErr == nil {
 		for network := range candidate.NetworkSettings.Networks {
-			cleanupErr = errors.Join(cleanupErr, m.docker.Client.NetworkDisconnect(ctx, network, result.Active.ContainerID, true))
+			cleanupErr = errors.Join(cleanupErr, m.engine().NetworkDisconnect(ctx, network, result.Active.ContainerID, true))
 		}
 	}
-	cleanupErr = errors.Join(cleanupErr, m.docker.Client.ContainerStart(ctx, entry.Registration.ContainerID, dockerContainer.StartOptions{}))
+	cleanupErr = errors.Join(cleanupErr, m.engine().ContainerStart(ctx, entry.Registration.ContainerID, nil))
 	journalErr := m.event(entry.OriginalName, "activation_recovered", map[string]string{"previousContainerId": entry.Registration.ContainerID})
 	return errors.Join(cleanupErr, journalErr)
 }
 
 func (m *migration) stabilize(ctx context.Context, entry planEntry, result modelupgrade.UpgradeResult) (err error) {
-	old, err := m.docker.Client.ContainerInspect(ctx, entry.Registration.ContainerID)
+	old, err := m.engine().ContainerInspect(ctx, entry.Registration.ContainerID)
 	if err != nil {
 		return err
 	}
@@ -416,43 +417,43 @@ func (m *migration) stabilize(ctx context.Context, entry planEntry, result model
 		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
 		defer cancel()
 		rollbackErr := m.commands.RestoreInferenceModelRegistration(rollbackCtx, repositoryTypes.RestoreInferenceModelRegistration{ID: entry.Registration.ID, TenantID: entry.Registration.TenantID, ExpectedContainerID: result.Active.ContainerID, ExpectedImageReference: result.Active.ImageReference, Previous: result.Previous})
-		rollbackErr = errors.Join(rollbackErr, m.docker.Client.ContainerStop(rollbackCtx, result.Active.ContainerID, dockerContainer.StopOptions{}))
-		if candidate, inspectErr := m.docker.Client.ContainerInspect(rollbackCtx, result.Active.ContainerID); inspectErr == nil {
+		rollbackErr = errors.Join(rollbackErr, m.engine().ContainerStop(rollbackCtx, result.Active.ContainerID, nil))
+		if candidate, inspectErr := m.engine().ContainerInspect(rollbackCtx, result.Active.ContainerID); inspectErr == nil {
 			for network := range candidate.NetworkSettings.Networks {
-				rollbackErr = errors.Join(rollbackErr, m.docker.Client.NetworkDisconnect(rollbackCtx, network, result.Active.ContainerID, true))
+				rollbackErr = errors.Join(rollbackErr, m.engine().NetworkDisconnect(rollbackCtx, network, result.Active.ContainerID, true))
 			}
 		}
 		if candidateRenamed {
-			rollbackErr = errors.Join(rollbackErr, m.docker.Client.ContainerRename(rollbackCtx, result.Active.ContainerID, result.ContainerName))
+			rollbackErr = errors.Join(rollbackErr, m.engine().ContainerRename(rollbackCtx, result.Active.ContainerID, result.ContainerName))
 		}
 		if renamed {
-			rollbackErr = errors.Join(rollbackErr, m.docker.Client.ContainerRename(rollbackCtx, entry.Registration.ContainerID, entry.OriginalName))
+			rollbackErr = errors.Join(rollbackErr, m.engine().ContainerRename(rollbackCtx, entry.Registration.ContainerID, entry.OriginalName))
 		}
 		for _, network := range disconnected {
 			settings := old.NetworkSettings.Networks[network]
-			rollbackErr = errors.Join(rollbackErr, m.docker.Client.NetworkConnect(rollbackCtx, network, entry.Registration.ContainerID, settings))
+			rollbackErr = errors.Join(rollbackErr, m.engine().NetworkConnect(rollbackCtx, network, entry.Registration.ContainerID, settings))
 		}
-		rollbackErr = errors.Join(rollbackErr, m.docker.Client.ContainerStart(rollbackCtx, entry.Registration.ContainerID, dockerContainer.StartOptions{}))
+		rollbackErr = errors.Join(rollbackErr, m.engine().ContainerStart(rollbackCtx, entry.Registration.ContainerID, nil))
 		err = errors.Join(err, rollbackErr)
 		_ = m.event(entry.OriginalName, "name_stabilization_failed", map[string]string{"error": err.Error()})
 	}()
-	if _, err = m.docker.Client.ContainerUpdate(ctx, result.Active.ContainerID, dockerContainer.UpdateConfig{RestartPolicy: old.HostConfig.RestartPolicy}); err != nil {
+	if _, err = m.engine().ContainerUpdate(ctx, result.Active.ContainerID, old.HostConfig.RestartPolicy); err != nil {
 		return err
 	}
-	if err = m.docker.Client.ContainerStop(ctx, entry.Registration.ContainerID, dockerContainer.StopOptions{}); err != nil {
+	if err = m.engine().ContainerStop(ctx, entry.Registration.ContainerID, nil); err != nil {
 		return err
 	}
 	for network := range old.NetworkSettings.Networks {
-		if err = m.docker.Client.NetworkDisconnect(ctx, network, entry.Registration.ContainerID, true); err != nil {
+		if err = m.engine().NetworkDisconnect(ctx, network, entry.Registration.ContainerID, true); err != nil {
 			return err
 		}
 		disconnected = append(disconnected, network)
 	}
-	if err = m.docker.Client.ContainerRename(ctx, entry.Registration.ContainerID, backup); err != nil {
+	if err = m.engine().ContainerRename(ctx, entry.Registration.ContainerID, backup); err != nil {
 		return err
 	}
 	renamed = true
-	if err = m.docker.Client.ContainerRename(ctx, result.Active.ContainerID, entry.OriginalName); err != nil {
+	if err = m.engine().ContainerRename(ctx, result.Active.ContainerID, entry.OriginalName); err != nil {
 		return err
 	}
 	candidateRenamed = true
@@ -464,7 +465,7 @@ func (m *migration) stabilize(ctx context.Context, entry planEntry, result model
 		return errors.New("new placement/image identity verification failed")
 	}
 	// Ensure exact-case stable DNS alias exists independently of rename behavior.
-	current, err := m.docker.Client.ContainerInspect(ctx, result.Active.ContainerID)
+	current, err := m.engine().ContainerInspect(ctx, result.Active.ContainerID)
 	if err != nil {
 		return err
 	}
@@ -498,10 +499,10 @@ func (m *migration) stabilize(ctx context.Context, entry planEntry, result model
 		if reflect.DeepEqual(aliases, endpoint.Aliases) {
 			continue
 		}
-		if err = m.docker.Client.NetworkDisconnect(ctx, network, result.Active.ContainerID, true); err != nil {
+		if err = m.engine().NetworkDisconnect(ctx, network, result.Active.ContainerID, true); err != nil {
 			return err
 		}
-		if err = m.docker.Client.NetworkConnect(ctx, network, result.Active.ContainerID, &dockerNetwork.EndpointSettings{Aliases: aliases}); err != nil {
+		if err = m.engine().NetworkConnect(ctx, network, result.Active.ContainerID, &dockerNetwork.EndpointSettings{Aliases: aliases}); err != nil {
 			return err
 		}
 	}
@@ -557,4 +558,44 @@ func (m *migration) event(name, stage string, extra any) error {
 		return err
 	}
 	return file.Sync()
+}
+
+// engine adapts the Moby client's option/result API to the calls the
+// migration makes, keeping the stabilization sequence readable.
+func (m *migration) engine() engineOps { return engineOps{c: m.docker.Client} }
+
+type engineOps struct{ c *client.Client }
+
+func (e engineOps) ContainerInspect(ctx context.Context, id string) (dockerContainer.InspectResponse, error) {
+	result, err := e.c.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
+	return result.Container, err
+}
+
+func (e engineOps) ContainerStop(ctx context.Context, id string, _ any) error {
+	_, err := e.c.ContainerStop(ctx, id, client.ContainerStopOptions{})
+	return err
+}
+
+func (e engineOps) ContainerStart(ctx context.Context, id string, _ any) error {
+	_, err := e.c.ContainerStart(ctx, id, client.ContainerStartOptions{})
+	return err
+}
+
+func (e engineOps) ContainerRename(ctx context.Context, id, name string) error {
+	_, err := e.c.ContainerRename(ctx, id, client.ContainerRenameOptions{NewName: name})
+	return err
+}
+
+func (e engineOps) ContainerUpdate(ctx context.Context, id string, policy dockerContainer.RestartPolicy) (client.ContainerUpdateResult, error) {
+	return e.c.ContainerUpdate(ctx, id, client.ContainerUpdateOptions{RestartPolicy: &policy})
+}
+
+func (e engineOps) NetworkDisconnect(ctx context.Context, network, id string, force bool) error {
+	_, err := e.c.NetworkDisconnect(ctx, network, client.NetworkDisconnectOptions{Container: id, Force: force})
+	return err
+}
+
+func (e engineOps) NetworkConnect(ctx context.Context, network, id string, settings *dockerNetwork.EndpointSettings) error {
+	_, err := e.c.NetworkConnect(ctx, network, client.NetworkConnectOptions{Container: id, EndpointConfig: settings})
+	return err
 }

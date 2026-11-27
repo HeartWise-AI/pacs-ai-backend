@@ -11,14 +11,14 @@ import (
 
 	"api-pacs/infrastructures/providers/sdk/docker"
 	"api-pacs/module/inference/domain/entity"
-	engine "github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 func TestRequireMaintenanceRejectsEveryRunningAdmissionCaller(t *testing.T) {
 	for _, name := range []string{"api-pacs", "study-service", "study-celery-worker", "study-celery-worker-deepcoro-cto", "study-celery-worker-deeprv-clip"} {
 		t.Run(name, func(t *testing.T) {
-			sdk, closeServer := maintenanceTestSDK(t, []engine.Container{
+			sdk, closeServer := maintenanceTestSDK(t, []container.Summary{
 				{ID: "operator", Names: []string{"/gpu-placement-operator"}},
 				{ID: "model", Names: []string{"/deepcoro-jepa"}},
 				{ID: "caller", Names: []string{"/" + name}},
@@ -33,7 +33,7 @@ func TestRequireMaintenanceRejectsEveryRunningAdmissionCaller(t *testing.T) {
 }
 
 func TestRequireMaintenanceAllowsOperatorAndInferenceModels(t *testing.T) {
-	sdk, closeServer := maintenanceTestSDK(t, []engine.Container{
+	sdk, closeServer := maintenanceTestSDK(t, []container.Summary{
 		{ID: "operator", Names: []string{"/gpu-placement-operator"}},
 		{ID: "model1", Names: []string{"/DeepCORO-CTO"}},
 		{ID: "model2", Names: []string{"/deepcoro-jepa"}},
@@ -45,7 +45,7 @@ func TestRequireMaintenanceAllowsOperatorAndInferenceModels(t *testing.T) {
 }
 
 func TestRequireMaintenanceInspectsEveryReturnedName(t *testing.T) {
-	sdk, closeServer := maintenanceTestSDK(t, []engine.Container{
+	sdk, closeServer := maintenanceTestSDK(t, []container.Summary{
 		{ID: "caller", Names: []string{"/unrelated-alias", "/study-service"}},
 	}, http.StatusOK)
 	defer closeServer()
@@ -72,7 +72,7 @@ func TestRequireMaintenanceHonorsCancellation(t *testing.T) {
 	}
 }
 
-func maintenanceTestSDK(t *testing.T, containers []engine.Container, statusCode int) (*docker.DockerSDK, func()) {
+func maintenanceTestSDK(t *testing.T, containers []container.Summary, statusCode int) (*docker.DockerSDK, func()) {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/v1.47/containers/json" {
