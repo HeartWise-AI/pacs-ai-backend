@@ -1,10 +1,11 @@
 package dockerinference
 
 import (
-	"fmt"
+	"context"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -13,51 +14,84 @@ import (
 	apiError "api-pacs/internal/errors"
 )
 
-type DockerInferenceProxy struct{}
+const viewerPathPrefix = "/app/viewer/"
 
-// AppViewerProxy is the proxy for the app viewer docker inference
+// ViewerResolver maps a viewer token to the model container it was issued for.
+type ViewerResolver interface {
+	ResolveWebAppViewer(ctx context.Context, token, containerName string) (string, error)
+}
+
+type DockerInferenceProxy struct {
+	Viewers ViewerResolver
+}
+
+// AppViewerProxy is the proxy for the app viewer docker inference. The
+// upstream host is the container bound to the viewer token, never a value
+// taken from the request.
 func (proxy *DockerInferenceProxy) AppViewerProxy() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		containerName := chi.URLParam(r, "containerName")
-		if len(containerName) == 0 {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusBadRequest,
-				Success:   false,
-				Message:   "Invalid container name.",
-				ErrorCode: apiError.InvalidRequestPayload,
-			}
-
-			response.JSON(w)
+		viewerToken := chi.URLParam(r, "viewerToken")
+		if len(containerName) == 0 || len(viewerToken) == 0 || proxy.Viewers == nil {
+			writeViewerError(w, http.StatusUnauthorized, "Unauthorized access.", apiError.UnauthorizedAccess)
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			writeViewerError(w, http.StatusMethodNotAllowed, "Method not allowed.", apiError.InvalidRequestPayload)
 			return
 		}
 
-		// construct the target container URL
-		target := fmt.Sprintf("http://%s/app/viewer", containerName)
-		targetURL, err := url.Parse(target)
+		// chi matches the escaped path when one is present.
+		rest := chi.URLParam(r, "*")
+		if r.URL.RawPath != "" {
+			unescaped, err := url.PathUnescape(rest)
+			if err != nil {
+				writeViewerError(w, http.StatusBadRequest, "Invalid viewer path.", apiError.InvalidRequestPayload)
+				return
+			}
+			rest = unescaped
+		}
+		upstreamPath := path.Clean(viewerPathPrefix + rest)
+		if rest == "" || strings.HasSuffix(rest, "/") {
+			upstreamPath += "/"
+		}
+		if !strings.HasPrefix(upstreamPath, viewerPathPrefix) {
+			writeViewerError(w, http.StatusBadRequest, "Invalid viewer path.", apiError.InvalidRequestPayload)
+			return
+		}
+
+		host, err := proxy.Viewers.ResolveWebAppViewer(r.Context(), viewerToken, containerName)
 		if err != nil {
-			response := viewmodels.HTTPResponseVM{
-				Status:    http.StatusInternalServerError,
-				Success:   false,
-				Message:   "Invalid target container URL.",
-				ErrorCode: apiError.ServerError,
+			switch err.Error() {
+			case apiError.UnauthorizedAccess:
+				writeViewerError(w, http.StatusUnauthorized, "Unauthorized access.", apiError.UnauthorizedAccess)
+			case apiError.ForbiddenAccess:
+				writeViewerError(w, http.StatusForbidden, "Forbidden access.", apiError.ForbiddenAccess)
+			default:
+				writeViewerError(w, http.StatusServiceUnavailable, "Model viewer is temporarily unavailable.", err.Error())
 			}
-
-			response.JSON(w)
 			return
 		}
 
-		// create the reverse proxy
-		reverseProxy := httputil.NewSingleHostReverseProxy(targetURL)
-
-		// modify the request path to strip the prefix
-		r.URL.Path = strings.TrimPrefix(r.URL.Path, fmt.Sprintf("/proxy/docker-inference/%s/app/viewer", containerName))
-		r.URL.Host = targetURL.Host
-		r.URL.Scheme = targetURL.Scheme
-		r.Header.Set("X-Forwarded-Host", r.Host)
-		r.Header.Set("X-Forwarded-For", r.RemoteAddr)
-		r.Host = targetURL.Host
-
-		// serve the reverse proxy
+		reverseProxy := &httputil.ReverseProxy{
+			Rewrite: func(pr *httputil.ProxyRequest) {
+				pr.Out.URL = &url.URL{Scheme: "http", Host: host, Path: upstreamPath, RawQuery: pr.In.URL.RawQuery}
+				pr.Out.Host = host
+				pr.Out.Header.Del("Authorization")
+				pr.Out.Header.Del("Cookie")
+				pr.SetXForwarded()
+			},
+		}
 		reverseProxy.ServeHTTP(w, r)
 	}
+}
+
+func writeViewerError(w http.ResponseWriter, status int, message, errorCode string) {
+	response := viewmodels.HTTPResponseVM{
+		Status:    status,
+		Success:   false,
+		Message:   message,
+		ErrorCode: errorCode,
+	}
+	response.JSON(w)
 }
