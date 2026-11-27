@@ -316,8 +316,23 @@ func (k *kernel) RegisterInferenceRESTPredictionsController() inferenceREST.Infe
 func (k *kernel) RegisterOrchestratorRESTController() orchestratorREST.OrchestratorController {
 	service := k.orchestratorServiceContainer()
 
+	users := k.userQueryServiceContainer()
 	controller := orchestratorREST.OrchestratorController{
 		OrchestratorServiceInterface: service,
+		// Voter names in the Chat Feedback admin tab, from the Members page source.
+		ChatFeedbackUsers: &orchestratorREST.CachedChatFeedbackUsers{
+			List: func(ctx context.Context, tenantID string) (map[string]orchestratorREST.ChatFeedbackUser, error) {
+				list, err := users.GetTenantUsers(ctx, tenantID)
+				if err != nil {
+					return nil, err
+				}
+				out := make(map[string]orchestratorREST.ChatFeedbackUser, len(list))
+				for _, user := range list {
+					out[user.ID] = orchestratorREST.ChatFeedbackUser{Name: user.Name, Email: user.Email}
+				}
+				return out, nil
+			},
+		},
 	}
 
 	return controller

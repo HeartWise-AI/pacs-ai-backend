@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
+	iamTypes "api-pacs/interfaces/http/rest/middlewares/iam/types"
 	"api-pacs/module/orchestrator/application"
 	orchestratorService "api-pacs/module/orchestrator/infrastructure/service"
 	serviceTypes "api-pacs/module/orchestrator/infrastructure/service/types"
@@ -88,4 +89,100 @@ func TestListChatFeedbackPassesTheBackendJSONThrough(t *testing.T) {
 	recorder = httptest.NewRecorder()
 	NewOrchestratorController(stub).ListChatFeedback(recorder, httptest.NewRequest(http.MethodGet, "/chat/feedback/list", nil))
 	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+type chatFeedbackOneStub struct {
+	chatFeedbackServiceStub
+	gotID string
+	one   json.RawMessage
+	err   error
+}
+
+func (stub *chatFeedbackOneStub) GetChatFeedback(_ context.Context, feedbackID string) (json.RawMessage, error) {
+	stub.gotID = feedbackID
+	return stub.one, stub.err
+}
+
+type fakeChatFeedbackUsers struct {
+	calls int
+	err   error
+}
+
+func (users *fakeChatFeedbackUsers) list(_ context.Context, tenantID string) (map[string]ChatFeedbackUser, error) {
+	users.calls++
+	if users.err != nil {
+		return nil, users.err
+	}
+	if tenantID != "tenant-a" {
+		return map[string]ChatFeedbackUser{}, nil
+	}
+	return map[string]ChatFeedbackUser{"uid-alice": {Name: "Alice Martin", Email: "alice@example.org"}}, nil
+}
+
+func chatFeedbackOneRequest(feedbackID string) *http.Request {
+	request := httptest.NewRequest(http.MethodGet, "/chat/feedback/"+feedbackID, nil)
+	routeContext := chi.NewRouteContext()
+	routeContext.URLParams.Add("feedbackID", feedbackID)
+	ctx := context.WithValue(request.Context(), chi.RouteCtxKey, routeContext)
+	ctx = context.WithValue(ctx, iamTypes.TenantIDCtx, "tenant-a")
+	return request.WithContext(ctx)
+}
+
+func TestGetChatFeedbackForwardsTheIDAndNamesTheVoter(t *testing.T) {
+	stub := &chatFeedbackOneStub{one: json.RawMessage(`{"feedback_id":"f-1","user_id":"uid-alice","tool_calls":[{"tool":"task"}]}`)}
+	users := &fakeChatFeedbackUsers{}
+	controller := NewOrchestratorController(stub)
+	controller.ChatFeedbackUsers = &CachedChatFeedbackUsers{List: users.list}
+
+	recorder := httptest.NewRecorder()
+	controller.GetChatFeedback(recorder, chatFeedbackOneRequest("f-1"))
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "f-1", stub.gotID)
+	require.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
+	var body struct {
+		Data struct {
+			UserName  string                   `json:"user_name"`
+			UserEmail string                   `json:"user_email"`
+			ToolCalls []map[string]interface{} `json:"tool_calls"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &body))
+	require.Equal(t, "Alice Martin", body.Data.UserName)
+	require.Equal(t, "alice@example.org", body.Data.UserEmail)
+	require.Len(t, body.Data.ToolCalls, 1)
+
+	// The directory is cached per workspace.
+	controller.GetChatFeedback(httptest.NewRecorder(), chatFeedbackOneRequest("f-1"))
+	require.Equal(t, 1, users.calls)
+
+	recorder = httptest.NewRecorder()
+	controller.GetChatFeedback(recorder, chatFeedbackOneRequest("../x"))
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+
+	stub.err = orchestratorService.ErrChatFeedbackNotFound
+	recorder = httptest.NewRecorder()
+	controller.GetChatFeedback(recorder, chatFeedbackOneRequest("f-2"))
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+}
+
+func TestListChatFeedbackNamesVotersAndPassesThroughWhenTheDirectoryFails(t *testing.T) {
+	stub := &chatFeedbackServiceStub{listBody: json.RawMessage(`{"total":2,"items":[{"user_id":"uid-alice"},{"user_id":"uid-unknown"}]}`)}
+	users := &fakeChatFeedbackUsers{}
+	controller := NewOrchestratorController(stub)
+	controller.ChatFeedbackUsers = &CachedChatFeedbackUsers{List: users.list}
+	request := httptest.NewRequest(http.MethodGet, "/chat/feedback/list", nil)
+	request = request.WithContext(context.WithValue(request.Context(), iamTypes.TenantIDCtx, "tenant-a"))
+
+	recorder := httptest.NewRecorder()
+	controller.ListChatFeedback(recorder, request)
+	require.Contains(t, recorder.Body.String(), `"user_name":"Alice Martin"`)
+	require.NotContains(t, recorder.Body.String(), `"user_name":""`)
+
+	failing := NewOrchestratorController(stub)
+	failing.ChatFeedbackUsers = &CachedChatFeedbackUsers{List: (&fakeChatFeedbackUsers{err: context.DeadlineExceeded}).list}
+	recorder = httptest.NewRecorder()
+	failing.ListChatFeedback(recorder, request)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.NotContains(t, recorder.Body.String(), "user_name")
+	require.Contains(t, recorder.Body.String(), `"uid-alice"`)
 }
