@@ -136,6 +136,25 @@ def test_heads_filter_returns_only_the_named_heads_and_their_parents(client, ser
     assert bad.status_code == 500 and "Unknown head" in bad.json()["message"]
 
 
+def test_one_output_of_a_multiclass_probe_renders_from_its_stored_result(client, served, tmp_path, monkeypatch):
+    """Selecting a single output of a softmax (3-class) probe: no flag depends on the unreturned sibling
+    probabilities (the bank's 3-class head is probability-only; a14aaff5 dropped the sibling argmax that
+    raised KeyError), so render-report redraws the stored result."""
+    outputs = ["rest", "probable HCM", "confirmed HCM"]   # names the bank requires for this head
+    pf.write_head(tmp_path / "mc", "hcm_3class_clean", outputs, {}, activation="softmax")   # probabilities only
+    probes = [*CustomPredictionService.probes, *discover_probes(tmp_path / "mc", pf.FROZEN_SHA256)]
+    monkeypatch.setattr(CustomPredictionService, "probes", probes)
+    monkeypatch.setattr(CustomPredictionService, "_registry", head_registry(probes), raising=False)
+    for wanted in (["rest"], ["probable HCM"]):
+        extra = {"additionalMetadata": {"heads": wanted}}
+        stored = client.post("/inference/predict", json=_waveform_request("JSON", **extra)).json()["data"]
+        assert [h["id"] for h in stored["predictions"]["heads"]] == wanted
+        html = client.post("/inference/predict", json=_waveform_request("HTML", **extra)).json()["data"]["htmlBase64"]
+        rendered = client.post("/inference/render-report", json={"result": json.loads(json.dumps(stored))})
+        assert rendered.status_code == 200, rendered.json()
+        assert rendered.json()["data"]["htmlBase64"] == html
+
+
 def test_no_readable_ecg_gives_the_no_ecg_answer(client, served):
     ds = fx.image_dicom(__import__("numpy").zeros((4, 4, 4), dtype="uint8")[..., 0])
     ds.NumberOfFrames = 2   # a cine object is not an ECG page

@@ -73,13 +73,18 @@ def input_kind(dicom: pydicom.Dataset) -> Optional[str]:
 
 
 def _acquisition_key(dicom: pydicom.Dataset) -> str:
+    """Sort key of the object's acquisition time, YYYYMMDDHHMMSS[.ffffff] (earliest first): the acquisition
+    timestamp (AcquisitionDateTime, the Waveform IOD's type 1 attribute, or AcquisitionDate/Time) before the
+    content, series and study fallbacks, so two ECGs of one study are told apart by when they were acquired."""
+    acquired = str(getattr(dicom, "AcquisitionDateTime", "") or "").strip()
+    if acquired:
+        return acquired.split("+")[0].split("-")[0]   # the UTC offset suffix does not sort
     for date_tag, time_tag in (("AcquisitionDate", "AcquisitionTime"), ("ContentDate", "ContentTime"),
                                ("SeriesDate", "SeriesTime"), ("StudyDate", "StudyTime")):
         date, time = str(getattr(dicom, date_tag, "") or ""), str(getattr(dicom, time_tag, "") or "")
         if date or time:
             return f"{date:8}{time}"
-    acquired = str(getattr(dicom, "AcquisitionDateTime", "") or "")
-    return acquired or "~"   # undated objects last
+    return "~"   # undated objects last
 
 
 def order_candidates(dicoms: list[pydicom.Dataset]) -> list[tuple[str, pydicom.Dataset]]:
@@ -244,9 +249,8 @@ def _image_page(dicom: pydicom.Dataset) -> Image.Image:
     if pixels.ndim == 2:
         return Image.fromarray(pixels, mode="L")
     if pixels.ndim == 3 and pixels.shape[-1] == 3:
-        if photometric.startswith("YBR"):
-            from pydicom.pixels import convert_color_space
-            pixels = convert_color_space(pixels, photometric, "RGB")
+        # pydicom 3 ``pixel_array`` already returns RGB for every YBR_* interpretation (``as_rgb`` defaults
+        # to True; JPEG decoders apply their own colour transform), so the pixels are used as they come.
         return Image.fromarray(np.asarray(pixels, dtype=np.uint8), mode="RGB")
     raise EcgInputError("the image is not a single grayscale or RGB frame")
 

@@ -107,6 +107,51 @@ def test_image_objects_are_used_as_they_are():
     assert preprocess_page(page.image, PREPROCESSING).shape == (3, 448, 896)
 
 
+@pytest.mark.parametrize("photometric", ["YBR_FULL", "YBR_FULL_422"])
+def test_ybr_images_are_decoded_to_rgb_once(photometric):
+    """pydicom 3 pixel_array already converts YBR_* to RGB; converting again shifted the colours
+    (a red page came out about (255, 0, 255) for YBR_FULL)."""
+    from pydicom.pixels import convert_color_space
+
+    rgb = np.zeros((4, 8, 3), dtype=np.uint8)
+    rgb[:, :4] = (200, 30, 30)          # red trace colour on the left, grey grid on the right
+    rgb[:, 4:] = (128, 128, 128)
+    ds = fx.image_dicom(rgb)
+    ybr = convert_color_space(rgb, "RGB", "YBR_FULL")
+    if photometric == "YBR_FULL_422":   # stored as Y0 Y1 Cb Cr per horizontal pixel pair
+        pairs = ybr.reshape(4, 4, 2, 3)
+        stored = np.stack([pairs[:, :, 0, 0], pairs[:, :, 1, 0], pairs[:, :, 0, 1], pairs[:, :, 0, 2]], axis=-1)
+        ds.PixelData = np.ascontiguousarray(stored, dtype=np.uint8).tobytes()
+    else:
+        ds.PixelData = np.ascontiguousarray(ybr, dtype=np.uint8).tobytes()
+    ds.PhotometricInterpretation = photometric
+    page = ecg_page("image", fx.roundtrip(ds))
+    decoded = np.asarray(page.image)
+    assert page.image.mode == "RGB"
+    assert np.abs(decoded.astype(int) - rgb.astype(int)).max() <= 2
+
+
+def test_acquisition_datetime_orders_ecgs_of_the_same_study():
+    """Two ECGs dated only by AcquisitionDateTime and sharing the study date/time: the earliest acquisition
+    comes first whatever the request order (the study timestamp is only a fallback)."""
+    late = fx.waveform_dicom(fx.synthetic_counts(), acquisition="20260101130000")
+    early = fx.waveform_dicom(fx.synthetic_counts(), acquisition="20260101110000-0500")
+    for ds in (late, early):
+        ds.StudyDate, ds.StudyTime = "20260101", "090000"
+        ds.ContentDate, ds.ContentTime = "20260101", "140000"
+    for given in ((late, early), (early, late)):
+        ordered = order_candidates([fx.roundtrip(d) for d in given])
+        assert ordered[0][1].SOPInstanceUID == early.SOPInstanceUID
+    undated = fx.waveform_dicom(fx.synthetic_counts(), acquisition="")
+    del undated.AcquisitionDateTime
+    study_only = fx.waveform_dicom(fx.synthetic_counts(), acquisition="")
+    del study_only.AcquisitionDateTime
+    study_only.StudyDate, study_only.StudyTime = "20250101", "080000"
+    ordered = order_candidates([fx.roundtrip(d) for d in (undated, late, study_only)])
+    assert [d.SOPInstanceUID for _, d in ordered] == [study_only.SOPInstanceUID, late.SOPInstanceUID,
+                                                      undated.SOPInstanceUID]
+
+
 def test_waveforms_are_preferred_then_pdfs_then_images_then_the_earliest():
     late = fx.waveform_dicom(fx.synthetic_counts(), acquisition="20260101130000")
     early = fx.waveform_dicom(fx.synthetic_counts(), acquisition="20260101110000")
