@@ -195,6 +195,8 @@ Update `api-pacs/.env` with the following variables:
 | 'DOCUSIGN_PRIVATE_KEY'      | Docusign private key                                                                |
 | 'DOCUSIGN_ACCOUNT_ID'       | Docusign account id                                                                 |
 | `ELASTICSEARCH_URL`         | Should be set to `http://elasticsearch:9200`                                        |
+| `ELASTICSEARCH_USERNAME`    | Same value as `ELASTICSEARCH_API_PACS_USERNAME` in `elasticsearch/.env`             |
+| `ELASTICSEARCH_PASSWORD`    | Same value as `ELASTICSEARCH_API_PACS_PASSWORD` in `elasticsearch/.env`             |
 | `FIREBASE_CONFIG_FILE_PATH` | Should be set to `/app/build/configs/firebase/pacs-ai-firebase-admin.json`          |
 | `FIREBASE_PROJECT_ID`       | Your Firebase project ID (same as in `PACS-AI/platform/app/.env`)                   |
 | `FIREBASE_SUPERUSER_KEY`    | Strong password for super user access (used for first user creation and API access) |
@@ -306,6 +308,8 @@ Update `api-pacs/.env` with the following variables:
 | 'DOCUSIGN_PRIVATE_KEY'      | Docusign private key                                                                                                      |
 | 'DOCUSIGN_ACCOUNT_ID'       | Docusign account id                                                                                                       |
 | `ELASTICSEARCH_URL`         | Should be set to `http://localhost:9200`                                                                                  |
+| `ELASTICSEARCH_USERNAME`    | Same value as `ELASTICSEARCH_API_PACS_USERNAME` in `elasticsearch/.env`                                                   |
+| `ELASTICSEARCH_PASSWORD`    | Same value as `ELASTICSEARCH_API_PACS_PASSWORD` in `elasticsearch/.env`                                                   |
 | `FIREBASE_CONFIG_FILE_PATH` | Should be set to `pacs-ai-backend/api-pacs/configs/firebase/pacs-ai-firebase-admin.json`, make sure it's the correct path |
 | `FIREBASE_PROJECT_ID`       | Your Firebase project ID (same as in `PACS-AI/platform/app/.env`)                                                         |
 | `FIREBASE_SUPERUSER_KEY`    | Strong password for super user access (used for first user creation and API access)                                       |

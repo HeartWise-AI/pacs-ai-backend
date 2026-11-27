@@ -519,7 +519,7 @@ Replace `<retention-days>` with the customer's chosen window and apply once duri
 
 ```bash
 # 1. Create the policy
-curl -X PUT "http://localhost:9200/_ilm/policy/pacs-ai-logs" \
+curl -u elastic -X PUT "http://localhost:9200/_ilm/policy/pacs-ai-logs" \
   -H 'Content-Type: application/json' \
   -d '{
     "policy": {
@@ -538,7 +538,7 @@ curl -X PUT "http://localhost:9200/_ilm/policy/pacs-ai-logs" \
   }'
 
 # 2. Bind the policy to api-pacs log indices via an index template
-curl -X PUT "http://localhost:9200/_index_template/pacs-ai-logs-template" \
+curl -u elastic -X PUT "http://localhost:9200/_index_template/pacs-ai-logs-template" \
   -H 'Content-Type: application/json' \
   -d '{
     "index_patterns": ["pacs-ai-*", "logs-*"],
@@ -551,7 +551,7 @@ curl -X PUT "http://localhost:9200/_index_template/pacs-ai-logs-template" \
   }'
 ```
 
-> Adjust `index_patterns` to match the index names api-pacs actually writes (verify with `curl http://localhost:9200/_cat/indices`). Validate the policy is active with `curl http://localhost:9200/_ilm/policy/pacs-ai-logs`.
+> Adjust `index_patterns` to match the index names api-pacs actually writes (verify with `curl -u elastic http://localhost:9200/_cat/indices`). Validate the policy is active with `curl -u elastic http://localhost:9200/_ilm/policy/pacs-ai-logs`.
 
 The customer adjusts the cache TTL via api-pacs `.env`; long-term retention is policy-driven (not enforced by env vars at present).
 
@@ -883,13 +883,13 @@ Roles are enforced via Chi middleware: `RBACOwnerGuard` (owner only) and `RBACOw
 
 **Sink:** Elasticsearch only — no separate immutable archive ships by default. Customers requiring tamper-resistant audit must replicate the indices to write-once storage on their side (see §10.2 for forwarding patterns).
 
-**Export format:** Kibana (deployed alongside Elasticsearch — see [docker-compose.yml](../docker-compose.yml)). Customers run audit queries in Kibana Discover and export results as **CSV or JSON** via *Share → CSV Reports* / *Inspect → Download CSV*. Direct `_search` API queries (`curl http://elasticsearch:9200/<index>/_search ...`) are also supported for scripted dumps.
+**Export format:** Kibana (deployed alongside Elasticsearch — see [docker-compose.yml](../docker-compose.yml)). Elasticsearch security is enabled and Kibana listens on `127.0.0.1:5601` only: reach it through an SSH tunnel (`ssh -L 5601:127.0.0.1:5601 <host>`) or an authenticated reverse proxy, and sign in with an Elasticsearch user. Credentials are set in `elasticsearch/.env` (see `elasticsearch/.env.example`); the `elasticsearch-setup` service applies them on every start. Customers run audit queries in Kibana Discover and export results as **CSV or JSON** via *Share → CSV Reports* / *Inspect → Download CSV*. Direct `_search` API queries (`curl -u <user> http://elasticsearch:9200/<index>/_search ...`) are also supported for scripted dumps.
 
 **Events logged** — derived from the audit entities under [api-pacs/module/elasticsearch/domain/entity/](../api-pacs/module/elasticsearch/domain/entity/). Every event carries `tenant_id`, `tenant_name`, `user_id`, `email`, `name`, and `timestamp` (Unix epoch), so each is attributable to a tenant + user.
 
 | Event | ES index | When emitted | Notable fields |
 |---|---|---|---|
-| User login | `logins` | Successful authentication | `session_id`, `role`, `specialty` |
+| User login | `logins` | Successful authentication | `session_id` (SHA-256 of the session token, not the token), `role`, `specialty` |
 | Admin invite sent | `admin_invites` | Tenant admin invites a new user | invitee `email` |
 | User management | `admin_members` | User created, role changed, or removed | `action` (`CREATE` / `UPDATE` / `DELETE`), target user, role, license |
 | Remote-PACS query (C-FIND) | `find_modality_studies` | api-pacs queries source PACS for studies | `modality_id`, `query_id` |
@@ -1013,6 +1013,8 @@ docker compose images > pacs-ai-versions.txt
 | `REDIS_IAM_DB` | yes | — | DB index used for IAM cache |
 | **Elasticsearch / Kibana** | | | |
 | `ELASTICSEARCH_URL` | yes | — | ES URL |
+| `ELASTICSEARCH_USERNAME` | yes | — | Least-privilege ES user created by `elasticsearch-setup` (`ELASTICSEARCH_API_PACS_USERNAME`) |
+| `ELASTICSEARCH_PASSWORD` | yes | — | Password of that user (`ELASTICSEARCH_API_PACS_PASSWORD`) |
 | `KIBANA_BASE_URL` | optional | — | Kibana base URL for log links |
 | **Firebase** | | | |
 | `FIREBASE_PROJECT_ID` | yes | — | Firebase project |

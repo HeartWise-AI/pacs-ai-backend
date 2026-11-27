@@ -17,16 +17,20 @@ import (
 )
 
 type KibanaAPI struct {
-	BaseURL string
+	BaseURL  string
+	Username string
+	Password string
 }
 
 var (
 	client *http.Client = &http.Client{Timeout: 5 * time.Minute}
 )
 
-func Init(baseURL string) *KibanaAPI {
+func Init(baseURL, username, password string) *KibanaAPI {
 	return &KibanaAPI{
-		BaseURL: baseURL,
+		BaseURL:  baseURL,
+		Username: username,
+		Password: password,
 	}
 }
 
@@ -48,6 +52,7 @@ func (k *KibanaAPI) CreateDataView(ctx context.Context, requestPayload types.Dat
 		return err
 	}
 
+	req.SetBasicAuth(k.Username, k.Password)
 	req.Header.Set("kbn-xsrf", "true")
 	req.Header.Set("Content-Type", "application/json")
 
