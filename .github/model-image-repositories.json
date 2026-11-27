@@ -17,6 +17,7 @@
     "model-examples/DeepRV-CLIP": "heartwisehub/deeprv-clip",
     "model-examples/ECHO-PRIME/generic": "heartwisehub/echo-prime-generic",
     "model-examples/ECHO-PRIME/view_classifier": "heartwisehub/echo-prime_view-classifier",
+    "model-examples/EchoAlign": "heartwisehub/pacs-ai-echoalign-research",
     "model-examples/Hemorrhage": "heartwisehub/hemorrhage",
     "model-examples/PanEcho": "heartwisehub/pacs-ai-pan-echo",
     "model-examples/TotalSegmentator": "heartwisehub/pacs-ai-segmentation",

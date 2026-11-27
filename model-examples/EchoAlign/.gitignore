@@ -1,0 +1,6 @@
+__pycache__
+.env
+*.pt
+*.pkl
+*.npz
+assets/
