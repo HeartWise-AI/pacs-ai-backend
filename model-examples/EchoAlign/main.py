@@ -7,6 +7,9 @@ from datetime import datetime
 import signal
 import asyncio
 import time
+import base64
+
+from fastapi.concurrency import run_in_threadpool
 
 from utils.http_utils import (
     Config,
@@ -162,6 +165,71 @@ async def predict(http_request: Request):
                 message="Unsupported output mode",
                 error_code="UNSUPPORTED_OUTPUT_MODE"
             ).to_response()
+
+RENDER_REPORT_MAX_BYTES = 4 * 1024 * 1024  # a stored result (all heads + per-clip rows) is well under 1 MB
+RENDER_REPORT_DRAIN_BYTES = 64 * 1024 * 1024
+
+
+class ResultError(ValueError):
+    """The stored result cannot be rendered."""
+
+
+def _reject_constant(name: str):
+    raise ValueError(f"{name} is not valid JSON")
+
+
+async def _bounded_body(request: Request, limit: int):
+    """The request body, or None when it is larger than `limit` bytes (drained so nginx passes the 413 on)."""
+    body, seen = bytearray(), 0
+    async for chunk in request.stream():
+        seen += len(chunk)
+        if seen <= limit:
+            body += chunk
+        elif seen > RENDER_REPORT_DRAIN_BYTES:
+            break
+    return bytes(body) if seen <= limit else None
+
+
+def _render_stored_result(payload) -> str:
+    if not isinstance(payload, dict) or set(payload) != {"result"}:
+        raise ResultError('body must be {"result": <the data object of a JSON-mode prediction>}')
+    result = payload["result"]
+    predictions = result.get("predictions") if isinstance(result, dict) else None
+    if not isinstance(predictions, dict) or not isinstance(predictions.get("keyHeads"), dict) \
+            or not isinstance(predictions.get("summary"), dict):
+        raise ResultError("result.predictions with summary and keyHeads is required")
+    return CustomPredictionService.render_html(predictions)
+
+
+@app.post("/inference/render-report")
+async def render_report(request: Request):
+    """HTML report (with the research-use banner) of a stored JSON-mode result. CPU only: no model load, no
+    forward pass, and it does not count as model activity."""
+    body = await _bounded_body(request, RENDER_REPORT_MAX_BYTES)
+    if body is None:
+        return HTTPResponse(status=413, success=False, error_code="PAYLOAD_TOO_LARGE",
+                            message=f"Body larger than {RENDER_REPORT_MAX_BYTES} bytes").to_response()
+    try:
+        payload = json.loads(body, parse_constant=_reject_constant)
+    except (ValueError, RecursionError) as e:
+        return HTTPResponse(status=422, success=False, error_code="INVALID_RESULT",
+                            message=f"Body is not valid JSON: {type(e).__name__}").to_response()
+    try:
+        html = await run_in_threadpool(_render_stored_result, payload)
+    except ResultError as e:
+        return HTTPResponse(status=422, success=False, error_code="INVALID_RESULT",
+                            message=f"Cannot render this result: {e}").to_response()
+    except Exception as e:  # a shape the checks let through but the renderer cannot draw
+        print(f"render-report failed: {e!r}")
+        return HTTPResponse(status=422, success=False, error_code="INVALID_RESULT",
+                            message=f"Cannot render this result: {type(e).__name__}").to_response()
+    return HTTPResponse(
+        status=200, success=True, message="Report rendered",
+        data={"htmlBase64": base64.b64encode(html.encode("utf-8")).decode("ascii"),
+              "modelVersion": served_model_info["version"]},
+    ).to_response()
+
+
 
 @app.get("/inference/model-info")
 async def get_model_info():
