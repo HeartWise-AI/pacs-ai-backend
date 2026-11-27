@@ -140,9 +140,10 @@ func (repository *IAMCommandRepository) SetEmailVerificationCooldown(key string)
 // SetAuthSession places a new session (or update) to the redis instance
 func (repository *IAMCommandRepository) SetTokenSession(data repositoryTypes.SetTokenSession) error {
 	session := entity.TokenSession{
-		TenantID: data.TenantID,
-		UserID:   data.UserID,
-		Role:     data.Role,
+		TenantID:   data.TenantID,
+		UserID:     data.UserID,
+		Role:       data.Role,
+		Generation: entity.SessionGeneration,
 	}
 
 	// convert to string

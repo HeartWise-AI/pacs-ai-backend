@@ -105,7 +105,6 @@ func (service *ElasticsearchCommandService) CreateGetModalityStudyLog(ctx contex
 // CreateLoginLog add a new login log
 func (service *ElasticsearchCommandService) CreateLoginLog(ctx context.Context, data types.CreateLoginLog) (*index.Response, error) {
 	res, err := service.ElasticsearchCommandRepositoryInterface.InsertLoginLog(ctx, repositoryTypes.CreateLoginLog{
-		SessionID:  data.SessionID,
 		TenantID:   data.TenantID,
 		TenantName: data.TenantName,
 		UserID:     data.UserID,

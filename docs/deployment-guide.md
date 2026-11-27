@@ -868,7 +868,7 @@ Roles are enforced via Chi middleware: `RBACOwnerGuard` (owner only) and `RBACOw
 
 | Event | ES index | When emitted | Notable fields |
 |---|---|---|---|
-| User login | `logins` | Successful authentication | `session_id`, `role`, `specialty` |
+| User login | `logins` | Successful authentication | `role`, `specialty` |
 | Admin invite sent | `admin_invites` | Tenant admin invites a new user | invitee `email` |
 | User management | `admin_members` | User created, role changed, or removed | `action` (`CREATE` / `UPDATE` / `DELETE`), target user, role, license |
 | Remote-PACS query (C-FIND) | `find_modality_studies` | api-pacs queries source PACS for studies | `modality_id`, `query_id` |

@@ -196,7 +196,7 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, data type
 		return "", newLoginError(apiError.LoginProtectionUnavailable, decision.ChallengeRequired, 0)
 	}
 
-	service.logSuccessfulLogin(ctx, sessionToken, data.TenantID, user)
+	service.logSuccessfulLogin(ctx, data.TenantID, user)
 	log.Printf("[security] event=login_success tenant_id=%s challenged=%t", data.TenantID, decision.ChallengeRequired)
 	return sessionToken, nil
 }
@@ -370,7 +370,7 @@ func LoginTurnstileAllowedHostnamesFromEnvironment(value string) map[string]stru
 	return hostnames
 }
 
-func (service *IAMCommandService) logSuccessfulLogin(ctx context.Context, sessionToken, tenantID string, user userServiceTypes.GetTenantUser) {
+func (service *IAMCommandService) logSuccessfulLogin(ctx context.Context, tenantID string, user userServiceTypes.GetTenantUser) {
 	if service.TenantQueryServiceInterface == nil || service.ElasticsearchCommandServiceInterface == nil {
 		return
 	}
@@ -384,7 +384,6 @@ func (service *IAMCommandService) logSuccessfulLogin(ctx context.Context, sessio
 			return
 		}
 		_, err = service.ElasticsearchCommandServiceInterface.CreateLoginLog(auditContext, elasticsearchTypes.CreateLoginLog{
-			SessionID:  sessionToken,
 			TenantID:   tenantID,
 			TenantName: tenant.Name,
 			UserID:     user.ID,

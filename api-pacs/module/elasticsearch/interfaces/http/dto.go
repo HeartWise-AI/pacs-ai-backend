@@ -59,7 +59,6 @@ type AdminMemberLogResponse struct {
 }
 
 type LoginLogResponse struct {
-	SessionID  string `json:"sessionId" csv:"session_id"`
 	TenantID   string `json:"tenantId" csv:"tenant_id"`
 	TenantName string `json:"tenantName" csv:"tenant_name"`
 	UserID     string `json:"userId" csv:"user_id"`

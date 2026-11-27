@@ -26,7 +26,6 @@ type CreateAdminMemberLog struct {
 }
 
 type CreateLoginLog struct {
-	SessionID  string
 	TenantID   string
 	TenantName string
 	UserID     string

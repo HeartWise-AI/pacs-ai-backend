@@ -142,7 +142,6 @@ func (controller *ElasticsearchQueryController) SearchDocumentLogs(w http.Respon
 
 		for _, login := range res {
 			logins = append(logins, types.LoginLogResponse{
-				SessionID:  login.SessionID,
 				TenantID:   login.TenantID,
 				TenantName: login.TenantName,
 				UserID:     login.UserID,

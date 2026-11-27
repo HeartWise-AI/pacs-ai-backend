@@ -2,7 +2,6 @@ package entity
 
 // Login holds the login entity fields
 type Login struct {
-	SessionID  string `json:"session_id"`
 	TenantID   string `json:"tenant_id"`
 	TenantName string `json:"tenant_name"`
 	UserID     string `json:"user_id"`
