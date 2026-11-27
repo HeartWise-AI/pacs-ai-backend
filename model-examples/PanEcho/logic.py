@@ -461,12 +461,13 @@ class CustomPredictionService(BasePredictionService):
     ) -> List[pydicom.Dataset]:
         """Filter DICOMs to keep only those with selected echocardiographic views.
         
-        Uses metadata (keyed by SeriesInstanceUID) to get the predicted_class (view)
-        for each DICOM and filters based on SELECTED_VIEWS.
+        Uses metadata keyed by clip (SOPInstanceUID, see ``_clip_key``) to get the predicted_class
+        (view) of each DICOM and filters based on SELECTED_VIEWS. Request metadata keyed by
+        SeriesInstanceUID is still accepted.
         
         Args:
             dicoms: List of DICOM datasets
-            metadata: Dict keyed by SeriesInstanceUID containing view predictions
+            metadata: Dict keyed by clip (or by SeriesInstanceUID) containing view predictions
             
         Returns:
             List of filtered DICOMs matching selected views
