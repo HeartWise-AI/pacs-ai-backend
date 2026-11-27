@@ -26,7 +26,7 @@ NAS_SHA256SUMS = {
 def test_manifest_and_runtime_configuration_identify_the_same_checkpoints():
     config = json.loads((ROOT / "models/config.json").read_text(encoding="utf-8"))
     manifest = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
-    assert manifest["version"] == "1.5.0"
+    assert manifest["version"] == "1.5.1"
     assert manifest["provenance"] == {
         "sourceRepository": "HeartWise-AI/pacs-ai-backend",
         "sourceRevision": None,
@@ -124,7 +124,7 @@ def test_torch_and_transformers_pins_match_the_training_runtime():
     assert "torch==2.13.0+cu126" in requirements
     assert "torchvision==0.28.0+cu126" in requirements
     assert "transformers==5.17.0" in requirements
-    assert "matplotlib==3.10.9" in requirements and "pillow==12.3.0" in requirements
+    assert "matplotlib==3.10.9" in requirements and "pillow==13.0.0" in requirements
 
 
 @pytest.mark.parametrize("dockerfile", ["Dockerfile", "Dockerfile.local"])

@@ -11,7 +11,7 @@ pydantic==2.14.4
 pydicom==3.0.2
 numpy==2.5.4
 # The training renderer's pixels are pinned to these (tests/test_ecg_inputs.py golden hash).
-pillow==12.3.0
+pillow==13.0.0
 matplotlib==3.10.9
 scipy==1.17.1
 pypdf[crypto]==6.21.4
