@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: cardio
-      POSTGRES_PASSWORD: ${CARDIO_DB_PASSWORD}
+      POSTGRES_PASSWORD: ${CARDIO_DB_PASSWORD:?}
       POSTGRES_DB: cardio_agent
       TZ: ${APP_TIMEZONE}
     ports:

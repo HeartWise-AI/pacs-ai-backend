@@ -15,6 +15,14 @@ from pathlib import Path
 
 import psycopg2
 
+try:
+    from _container_guard import refuse_foreign_containers
+except ImportError:
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _container_guard import refuse_foreign_containers
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIGRATIONS = REPO_ROOT / "api-pacs" / "infrastructures" / "database" / "postgresql" / "migrations"
 PLACEHOLDER_PASSWORD = "placeholder-not-a-secret"
@@ -27,6 +35,7 @@ ATTACKER_V6 = "fd00:199::2"
 HOST_VETH_V6 = "fd00:199::1"
 COMPOSE_ENV_KEYS = (
     "POSTGRES_PASSWORD",
+    "CARDIO_DB_PASSWORD",
     "APP_TIMEZONE",
     "ORTHANC_DICOM_PORT",
     "ORTHANC_DICOM_AET",
@@ -60,6 +69,7 @@ def _sudo(command, *, check=True, env=None, timeout=180):
 def _compose_env():
     env = os.environ.copy()
     env["POSTGRES_PASSWORD"] = PLACEHOLDER_PASSWORD
+    env["CARDIO_DB_PASSWORD"] = PLACEHOLDER_PASSWORD
     env["APP_TIMEZONE"] = "UTC"
     env["ORTHANC_DICOM_PORT"] = "4242"
     env["ORTHANC_DICOM_AET"] = "TESTAET"
@@ -82,6 +92,7 @@ def _primary_host_ipv4():
 class PublishedPostgresExposureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        refuse_foreign_containers(["postgresql", "cardio-postgres", "orthanc-index"], ["sudo", "docker"] if shutil.which("sudo") else None)
         if shutil.which("docker") is None:
             raise unittest.SkipTest("docker is required to publish the Compose ports")
         cls.created_stubs = _install_include_stubs()
@@ -92,6 +103,14 @@ class PublishedPostgresExposureTests(unittest.TestCase):
                 "POSTGRES_PASSWORD=placeholder-not-a-secret\nAPP_TIMEZONE=UTC\n",
                 encoding="utf-8",
             )
+        # The root compose includes services whose env_file must exist for
+        # `docker compose` to load the project at all.
+        cls.created_env_files = []
+        for relative in ("api-pacs/.env", "nginx/.env"):
+            path = REPO_ROOT / relative
+            if not path.exists():
+                path.write_text("APP_TIMEZONE=UTC\n", encoding="utf-8")
+                cls.created_env_files.append(path)
         cls.override_dir = tempfile.TemporaryDirectory(prefix="pg-exposure-")
         cls.override = Path(cls.override_dir.name) / "password-override.yml"
         cls.override.write_text(
@@ -120,6 +139,8 @@ class PublishedPostgresExposureTests(unittest.TestCase):
         override_dir = getattr(cls, "override_dir", None)
         if override_dir is not None:
             override_dir.cleanup()
+        for path in getattr(cls, "created_env_files", ()):
+            path.unlink(missing_ok=True)
         if getattr(cls, "env_file", None) is not None and not cls.env_file_existed:
             cls.env_file.unlink(missing_ok=True)
         _remove_include_stubs(getattr(cls, "created_stubs", ()))
@@ -200,7 +221,11 @@ class PublishedPostgresExposureTests(unittest.TestCase):
 
     def _assert_unreachable(self, compose_file, target, family, host):
         with self.subTest(compose=compose_file, service=target["service"], family=family):
-            drop = family == "ipv4"
+            # Do not add an INPUT DROP here: once the port is no longer published on
+            # this address nothing listens on it, the kernel answers with a reset and
+            # the probe reports "Connection refused". A DROP turns that into a timeout,
+            # which the probe (rightly) treats as inconclusive.
+            drop = False
             if drop:
                 _install_input_drop(target["port"])
             try:
@@ -359,7 +384,12 @@ def _install_input_drop(port):
     for binary in ("iptables", "iptables-legacy"):
         if shutil.which(binary) is None:
             continue
-        _sudo([binary, "-I", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "DROP"])
+        # iptables-legacy exists on hosts whose kernel has no legacy tables
+        # (e.g. RHEL 9); a failure there is not a test failure.
+        _sudo(
+            [binary, "-I", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "DROP"],
+            check=binary == "iptables",
+        )
 
 
 def _remove_input_drop(port):

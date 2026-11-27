@@ -8,10 +8,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
+try:
+    from _container_guard import refuse_foreign_containers
+except ImportError:  # run as scripts/tests/<file>.py from the repo root
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _container_guard import refuse_foreign_containers
+
 REPO = Path(__file__).resolve().parents[2]
 COMPOSE_FILES = ("docker-compose.yml", "docker-compose-dev.yml")
 LOOPBACK_HOSTS = {"127.0.0.1", "::1"}
-ENV_REFERENCE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
+ENV_REFERENCE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)(?::?\?[^}]*)?\}$")
 ATTACK_PLACEHOLDER = "placeholder-not-a-real-secret"
 WRITE_MARKER = "exposure-test-tamper"
 
@@ -149,6 +157,7 @@ class CardioPostgresRemoteAccessTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        refuse_foreign_containers(["cardio-postgres"])
         for name in COMPOSE_FILES:
             for path in _include_paths(REPO / name):
                 if path.exists():
