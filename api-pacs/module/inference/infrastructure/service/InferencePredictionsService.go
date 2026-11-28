@@ -253,6 +253,16 @@ func (service *InferencePredictionsService) ListPredictions(ctx context.Context,
 		if models == nil {
 			models = []types.PredictionModel{}
 		}
+		if data.AllowModelName != nil {
+			// Research-only models withheld from the session are left out before counting.
+			kept := make([]types.PredictionModel, 0, len(models))
+			for _, model := range models {
+				if data.AllowModelName(model.ModelName) {
+					kept = append(kept, model)
+				}
+			}
+			models = kept
+		}
 		examLaunchers := launchersByExam[row.StudyInstanceUID]
 		if examLaunchers == nil {
 			examLaunchers = []types.PredictionLauncher{}

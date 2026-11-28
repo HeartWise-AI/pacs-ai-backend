@@ -212,6 +212,12 @@ type UpdateInferenceIngestionJobRequest struct {
 	NotificationsEnabled *bool `json:"notificationsEnabled,omitempty"`
 }
 
+// UpgradeInferenceIngestionJobRequest carries the job snapshot observed by the
+// administrator. The server resolves the target model registration itself.
+type UpgradeInferenceIngestionJobRequest struct {
+	ExpectedModelVersion string `json:"expectedModelVersion" validate:"required"`
+}
+
 type UpdateModelFeedbackRequest struct {
 	ID                   *string               `json:"id"`
 	InferenceModelID     string                `json:"inferenceModelId" validate:"required"`
@@ -278,6 +284,7 @@ type GetInferenceModelResponse struct {
 type GetInferenceAvailableModelResponse struct {
 	ContainerID                   string                                `json:"containerId"`
 	ContainerName                 string                                `json:"containerName"`
+	RegistrationID                string                                `json:"registrationId"`
 	ModelID                       string                                `json:"modelId"`
 	ModelName                     string                                `json:"modelName"`
 	ModelFacts                    ModelFacts                            `json:"modelFacts"`

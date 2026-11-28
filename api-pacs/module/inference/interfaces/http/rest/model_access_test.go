@@ -113,3 +113,67 @@ func TestWriteModelAccessError(t *testing.T) {
 	writeModelAccessError(recorder, apiError.AccessUnavailable)
 	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
 }
+
+func TestResearchModelsAreHiddenFromEveryModelUsers(t *testing.T) {
+	t.Setenv("PACS_RESEARCH_MODEL_IDS", "EchoAlign")
+	resolver := &stubArtifactResolver{ids: map[string][]string{"reg-echoalign": {"EchoAlign"}, "reg-panecho": {"PanEcho"}}}
+	base := accessEntity.ForRole(iamEntity.UserRole, nil)
+	allModelsRole := accessEntity.ForRole(iamEntity.UserRole, &accessEntity.CustomRole{ID: "c", AllModels: true})
+	research := restrictedAccess("EchoAlign")
+	admin := accessEntity.ForRole(iamEntity.AdminRole, nil)
+
+	for _, access := range []accessEntity.Access{base, allModelsRole} {
+		require.Equal(t, apiError.ForbiddenAccess, authorizeModelRef(requestWith(&access), resolver, "t1", "reg-echoalign"))
+		require.Equal(t, "", authorizeModelRef(requestWith(&access), resolver, "t1", "reg-panecho"))
+		require.Equal(t, "", authorizeModelRef(requestWith(&access), resolver, "t1", "unregistered"), "unknown refs keep working")
+		require.Equal(t, apiError.ForbiddenAccess, authorizeModelRef(requestWith(&access), resolver, "t1", "EchoAlign"), "the modelId itself is refused even when it does not resolve")
+		require.Equal(t, apiError.ForbiddenAccess, authorizeModelRef(requestWith(&access), nil, "t1", " EchoAlign "))
+		require.Equal(t, "", authorizeModelRef(requestWith(&access), &stubArtifactResolver{err: errors.New(apiError.AccessUnavailable)}, "t1", "reg-panecho"))
+	}
+	require.Equal(t, "", authorizeModelRef(requestWith(&research), resolver, "t1", "reg-echoalign"))
+	require.Equal(t, "", authorizeModelRef(requestWith(&admin), nil, "t1", "reg-echoalign"))
+
+	models := []types.GetInferenceAvailableModelResult{{ModelID: "PanEcho"}, {ModelID: "EchoAlign"}, {ModelID: ""}}
+	require.Equal(t, []types.GetInferenceAvailableModelResult{{ModelID: "PanEcho"}, {ModelID: ""}}, filterAvailableModels(base, models))
+	require.Equal(t, []types.GetInferenceAvailableModelResult{{ModelID: "PanEcho"}, {ModelID: ""}}, filterAvailableModels(allModelsRole, models))
+	require.Equal(t, []types.GetInferenceAvailableModelResult{{ModelID: "EchoAlign"}}, filterAvailableModels(research, models))
+	require.Len(t, filterAvailableModels(admin, models), 3)
+
+	panEcho, echoAlign := "PanEcho", "EchoAlign"
+	results := types.StudyLatestModelResults{Results: []types.StudyLatestModelResult{
+		{ModelName: "PanEcho", ArtifactModelID: &panEcho},
+		{ModelName: "EchoAlign", ArtifactModelID: &echoAlign},
+		{ModelName: "legacy"},
+		{ModelName: "PanEcho runs", ArtifactModelID: &panEcho, Runs: []types.StudyLatestModelResult{
+			{StudyServiceJobID: "a", ArtifactModelID: &panEcho}, {StudyServiceJobID: "b", ArtifactModelID: &echoAlign}, {StudyServiceJobID: "c"},
+		}},
+	}}
+	kept := filterLatestResults(base, results)
+	require.Len(t, kept.Results, 3)
+	require.Equal(t, "legacy", kept.Results[1].ModelName, "results of unknown models stay visible")
+	require.Len(t, kept.Results[2].Runs, 2)
+	require.Len(t, filterLatestResults(admin, results).Results, 4)
+
+	allow, code := resultModelFilter(requestWith(&base))
+	require.Equal(t, "", code)
+	require.NotNil(t, allow)
+	require.False(t, allow("EchoAlign"))
+	require.True(t, allow(""))
+	allow, _ = resultModelFilter(requestWith(&admin))
+	require.Nil(t, allow)
+}
+
+func TestFilterRunExecutionsHidesResearchModelsFromUsers(t *testing.T) {
+	t.Setenv("PACS_RESEARCH_MODEL_IDS", "EchoAlign")
+	executions := []types.ProcessingRunExecutionSummary{
+		{ExecutionID: "a", ModelName: "PanEcho"},
+		{ExecutionID: "b", ModelName: "EchoAlign (research use only)"},
+		{ExecutionID: "c", ModelName: "EchoAlign"},
+	}
+	base := accessEntity.ForRole(iamEntity.UserRole, nil)
+	kept := filterRunExecutions(base, executions)
+	require.Len(t, kept, 1)
+	require.Equal(t, "a", kept[0].ExecutionID)
+	require.Len(t, filterRunExecutions(accessEntity.ForRole(iamEntity.AdminRole, nil), executions), 3)
+	require.Len(t, filterRunExecutions(restrictedAccess("EchoAlign", "PanEcho"), executions), 3)
+}

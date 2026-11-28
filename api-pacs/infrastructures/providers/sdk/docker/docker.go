@@ -7,20 +7,18 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/netip"
 	"regexp"
 	"strings"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/distribution/reference"
-	engine "github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/registry"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/errdefs"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/registry"
+	"github.com/moby/moby/client"
 
 	"api-pacs/infrastructures/providers/sdk/docker/types"
 )
@@ -80,8 +78,8 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 		Image:  config.Image,
 		Env:    config.Envs,
 		Labels: map[string]string{gpuPlacementNameLabel: config.Name},
-		ExposedPorts: nat.PortSet{
-			"80/tcp": struct{}{}, // expose port 80 (nginx)
+		ExposedPorts: network.PortSet{
+			network.MustParsePort("80/tcp"): struct{}{}, // expose port 80 (nginx)
 		},
 	}
 
@@ -115,11 +113,11 @@ func (d *DockerSDK) CreateContainer(ctx context.Context, config types.CreateCont
 	}
 
 	// override with DNS settings to block internet access
-	hostConfig.DNS = []string{"0.0.0.0"} // invalid DNS to prevent resolution
-	hostConfig.DNSSearch = []string{""}  // empty DNS search
+	hostConfig.DNS = []netip.Addr{netip.IPv4Unspecified()} // invalid DNS to prevent resolution
+	hostConfig.DNSSearch = []string{""}                    // empty DNS search
 
 	// create container
-	resp, err := d.Client.ContainerCreate(ctx, containerConfig, hostConfig, networkConfig, nil, config.Name)
+	resp, err := d.Client.ContainerCreate(ctx, client.ContainerCreateOptions{Config: containerConfig, HostConfig: hostConfig, NetworkingConfig: networkConfig, Name: config.Name})
 	if err != nil {
 		log.Println("[docker] error:", err)
 		return "", err
@@ -142,12 +140,13 @@ func (d *DockerSDK) CreateCandidateContainer(ctx context.Context, config types.C
 		return "", fmt.Errorf("candidate name, image, and active container ID are required")
 	}
 
-	active, err := d.Client.ContainerInspect(ctx, config.ActiveContainerID)
+	inspected, err := d.Client.ContainerInspect(ctx, config.ActiveContainerID, client.ContainerInspectOptions{})
 	if err != nil {
 		log.Println("[docker] error:", err)
 		return "", err
 	}
-	if active.ContainerJSONBase == nil || active.Config == nil || active.HostConfig == nil {
+	active := inspected.Container
+	if active.Config == nil || active.HostConfig == nil {
 		return "", fmt.Errorf("active container inspection is incomplete")
 	}
 	if strings.TrimPrefix(active.Name, "/") == config.Name {
@@ -164,7 +163,7 @@ func (d *DockerSDK) CreateCandidateContainer(ctx context.Context, config types.C
 	}
 
 	containerConfig, hostConfig, networkConfig := d.candidateContainerConfigs(config, active)
-	response, err := d.Client.ContainerCreate(ctx, containerConfig, hostConfig, networkConfig, nil, config.Name)
+	response, err := d.Client.ContainerCreate(ctx, client.ContainerCreateOptions{Config: containerConfig, HostConfig: hostConfig, NetworkingConfig: networkConfig, Name: config.Name})
 	if err != nil {
 		log.Println("[docker] error:", err)
 		return "", err
@@ -175,7 +174,7 @@ func (d *DockerSDK) CreateCandidateContainer(ctx context.Context, config types.C
 
 func (d *DockerSDK) candidateContainerConfigs(
 	config types.CreateCandidateContainer,
-	active engine.ContainerJSON,
+	active container.InspectResponse,
 ) (*container.Config, *container.HostConfig, *network.NetworkingConfig) {
 	containerConfig := &container.Config{
 		Image: config.Image,
@@ -200,10 +199,9 @@ func (d *DockerSDK) candidateContainerConfigs(
 			copied.Volumes[volume] = struct{}{}
 		}
 		// Docker names a container's host after its own ID unless told otherwise.
-		if active.ContainerJSONBase != nil && len(copied.Hostname) >= 12 && strings.HasPrefix(active.ID, copied.Hostname) {
+		if active.ID != "" && len(copied.Hostname) >= 12 && strings.HasPrefix(active.ID, copied.Hostname) {
 			copied.Hostname = ""
 		}
-		copied.MacAddress = "" //nolint:staticcheck // an address cannot be shared with the running container
 		containerConfig = &copied
 	}
 	if active.Config != nil {
@@ -211,12 +209,12 @@ func (d *DockerSDK) candidateContainerConfigs(
 	}
 
 	hostConfig := &container.HostConfig{}
-	if active.ContainerJSONBase != nil && active.HostConfig != nil {
+	if active.HostConfig != nil {
 		copied := *active.HostConfig
 		copied.Binds = append([]string(nil), active.HostConfig.Binds...)
 		copied.Mounts = append([]mount.Mount(nil), active.HostConfig.Mounts...)
 		copied.DeviceRequests = append([]container.DeviceRequest(nil), active.HostConfig.DeviceRequests...)
-		copied.DNS = append([]string(nil), active.HostConfig.DNS...)
+		copied.DNS = append([]netip.Addr(nil), active.HostConfig.DNS...)
 		copied.DNSSearch = append([]string(nil), active.HostConfig.DNSSearch...)
 		copied.DNSOptions = append([]string(nil), active.HostConfig.DNSOptions...)
 
@@ -235,10 +233,7 @@ func (d *DockerSDK) candidateContainerConfigs(
 
 	// Apply the registration's stable placement policy across repeated upgrades.
 	// With no configured policy, preserve its existing devices.
-	activeName := ""
-	if active.ContainerJSONBase != nil {
-		activeName = strings.TrimPrefix(active.Name, "/")
-	}
+	activeName := strings.TrimPrefix(active.Name, "/")
 	if active.Config != nil && active.Config.Labels[gpuPlacementNameLabel] != "" {
 		activeName = active.Config.Labels[gpuPlacementNameLabel]
 	}
@@ -276,11 +271,8 @@ func (d *DockerSDK) candidateContainerConfigs(
 // container. Its name and ID are left out: Docker resolves those to the active
 // container, which keeps running beside the candidate, and a candidate that
 // answered to them would receive requests meant for the other one.
-func extraNetworkAliases(active engine.ContainerJSON, aliases []string) []string {
-	name, id := "", ""
-	if active.ContainerJSONBase != nil {
-		name, id = strings.TrimPrefix(active.Name, "/"), active.ID
-	}
+func extraNetworkAliases(active container.InspectResponse, aliases []string) []string {
+	name, id := strings.TrimPrefix(active.Name, "/"), active.ID
 	var kept []string
 	for _, alias := range aliases {
 		if alias == "" || alias == name || (len(alias) >= 12 && strings.HasPrefix(id, alias)) {
@@ -291,11 +283,11 @@ func extraNetworkAliases(active engine.ContainerJSON, aliases []string) []string
 	return kept
 }
 
-func clonePortSet(source nat.PortSet) nat.PortSet {
+func clonePortSet(source network.PortSet) network.PortSet {
 	if source == nil {
 		return nil
 	}
-	cloned := make(nat.PortSet, len(source))
+	cloned := make(network.PortSet, len(source))
 	for port := range source {
 		cloned[port] = struct{}{}
 	}
@@ -309,18 +301,18 @@ var containerIDReferencePattern = regexp.MustCompile(`^[a-fA-F0-9]{12,64}$`)
 func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (types.GetContainerInfoResult, error) {
 
 	// inspect the container for basic info
-	containerJSON, err := d.Client.ContainerInspect(ctx, containerID)
+	inspected, err := d.Client.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	// URL parsers lowercase hostnames, whereas Docker container names are case
 	// sensitive. Resolve only an unambiguous name after an exact lookup misses;
 	// callers still authorize the inspected canonical container ID.
-	if errdefs.IsNotFound(err) && containerNameReferencePattern.MatchString(containerID) && !containerIDReferencePattern.MatchString(containerID) {
+	if cerrdefs.IsNotFound(err) && containerNameReferencePattern.MatchString(containerID) && !containerIDReferencePattern.MatchString(containerID) {
 		originalErr := err
-		listed, listErr := d.Client.ContainerList(ctx, container.ListOptions{All: true})
+		listed, listErr := d.Client.ContainerList(ctx, client.ContainerListOptions{All: true})
 		if listErr != nil {
 			return types.GetContainerInfoResult{}, listErr
 		}
 		matches := make(map[string]struct{})
-		for _, candidate := range listed {
+		for _, candidate := range listed.Items {
 			for _, name := range candidate.Names {
 				if strings.EqualFold(strings.TrimPrefix(name, "/"), strings.TrimPrefix(containerID, "/")) {
 					matches[candidate.ID] = struct{}{}
@@ -332,7 +324,7 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 		}
 		err = originalErr
 		for canonicalID := range matches {
-			containerJSON, err = d.Client.ContainerInspect(ctx, canonicalID)
+			inspected, err = d.Client.ContainerInspect(ctx, canonicalID, client.ContainerInspectOptions{})
 		}
 	}
 	if err != nil {
@@ -340,6 +332,10 @@ func (d *DockerSDK) GetContainerInfo(ctx context.Context, containerID string) (t
 		return types.GetContainerInfoResult{}, err
 	}
 
+	containerJSON := inspected.Container
+	if containerJSON.State == nil {
+		return types.GetContainerInfoResult{}, fmt.Errorf("container inspection has no state")
+	}
 	// convert to time
 	startedAtTime, err := time.Parse(time.RFC3339Nano, containerJSON.State.StartedAt)
 	if err != nil {
@@ -380,11 +376,12 @@ func (d *DockerSDK) PullImage(ctx context.Context, imageName string) error {
 	}
 	// The configured credentials are Docker Hub credentials; the daemon would
 	// present them to whichever registry the reference names.
-	options := image.PullOptions{}
+	options := client.ImagePullOptions{}
 	if reference.Domain(named) == dockerHubDomain {
-		// The client sends the familiar name; "docker.io/evil.example/x"
-		// becomes "evil.example/x", which the daemon resolves to another
-		// registry. Refuse a reference whose familiar form leaves Docker Hub.
+		// Older clients sent the familiar name, where "docker.io/evil.example/x"
+		// becomes "evil.example/x" and the daemon resolves another registry.
+		// The Moby client sends the fully qualified name, but keep refusing a
+		// reference whose familiar form leaves Docker Hub.
 		familiar, err := reference.ParseNormalizedNamed(reference.FamiliarString(named))
 		if err != nil || reference.Domain(familiar) != dockerHubDomain {
 			log.Println("[docker] error: image reference leaves Docker Hub in its familiar form")
@@ -435,7 +432,7 @@ func consumeImagePull(reader io.Reader) error {
 // InspectImage returns the local immutable identity, repository digests, and
 // OCI labels used to validate a candidate image.
 func (d *DockerSDK) InspectImage(ctx context.Context, imageName string) (types.InspectImageResult, error) {
-	inspection, _, err := d.Client.ImageInspectWithRaw(ctx, imageName)
+	inspection, err := d.Client.ImageInspect(ctx, imageName)
 	if err != nil {
 		log.Println("[docker] error:", err)
 		return types.InspectImageResult{}, err
@@ -458,11 +455,11 @@ func (d *DockerSDK) InspectImage(ctx context.Context, imageName string) (types.I
 
 // RemoveContainer removes a container
 func (d *DockerSDK) RemoveContainer(ctx context.Context, containerID string) error {
-	err := d.Client.ContainerRemove(ctx, containerID, container.RemoveOptions{
+	_, err := d.Client.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{
 		RemoveVolumes: true,
 		Force:         true,
 	})
-	if errdefs.IsNotFound(err) {
+	if cerrdefs.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
@@ -475,7 +472,7 @@ func (d *DockerSDK) RemoveContainer(ctx context.Context, containerID string) err
 
 // RestartContainer restarts a container
 func (d *DockerSDK) RestartContainer(ctx context.Context, containerID string) error {
-	err := d.Client.ContainerRestart(ctx, containerID, container.StopOptions{})
+	_, err := d.Client.ContainerRestart(ctx, containerID, client.ContainerRestartOptions{})
 	if err != nil {
 		log.Println("[docker] error:", err)
 		return err
@@ -486,7 +483,7 @@ func (d *DockerSDK) RestartContainer(ctx context.Context, containerID string) er
 
 // StartContainer starts a container
 func (d *DockerSDK) StartContainer(ctx context.Context, containerID string) error {
-	err := d.Client.ContainerStart(ctx, containerID, container.StartOptions{})
+	_, err := d.Client.ContainerStart(ctx, containerID, client.ContainerStartOptions{})
 	if err != nil {
 		log.Println("[docker] error:", err)
 		return err
@@ -512,7 +509,7 @@ func (d *DockerSDK) StartContainer(ctx context.Context, containerID string) erro
 
 // StopContainer stops a container
 func (d *DockerSDK) StopContainer(ctx context.Context, containerID string) error {
-	err := d.Client.ContainerStop(ctx, containerID, container.StopOptions{})
+	_, err := d.Client.ContainerStop(ctx, containerID, client.ContainerStopOptions{})
 	if err != nil {
 		log.Println("[docker] error:", err)
 		return err
@@ -529,7 +526,7 @@ func (d *DockerSDK) RenameContainer(ctx context.Context, containerID, newName st
 	if containerID == "" || !containerNameReferencePattern.MatchString(newName) || len(newName) < 2 {
 		return fmt.Errorf("a container and a valid new container name are required")
 	}
-	if err := d.Client.ContainerRename(ctx, containerID, newName); err != nil {
+	if _, err := d.Client.ContainerRename(ctx, containerID, client.ContainerRenameOptions{NewName: newName}); err != nil {
 		log.Println("[docker] error:", err)
 		return err
 	}
@@ -538,14 +535,14 @@ func (d *DockerSDK) RenameContainer(ctx context.Context, containerID, newName st
 }
 
 func (d *DockerSDK) checkNvidiaRuntime(ctx context.Context) (bool, error) {
-	info, err := d.Client.Info(ctx)
+	info, err := d.Client.Info(ctx, client.InfoOptions{})
 	if err != nil {
 		log.Println("[docker] error:", err)
 		return false, err
 	}
 
 	// check if 'nvidia' is in the list of available runtimes
-	for runtime := range info.Runtimes {
+	for runtime := range info.Info.Runtimes {
 		if strings.EqualFold(runtime, "nvidia") {
 			return true, nil
 		}

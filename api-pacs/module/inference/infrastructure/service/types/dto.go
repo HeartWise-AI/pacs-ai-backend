@@ -350,13 +350,17 @@ type GetInferenceModelResult struct {
 }
 
 type GetInferenceAvailableModelResult struct {
-	ContainerID                   string
-	ContainerName                 string
-	ModelID                       string
-	ModelName                     string
-	ModelFacts                    ModelFacts
-	Version                       string
-	Provenance                    *dockerInferenceTypes.ModelProvenance
+	ContainerID    string
+	ContainerName  string
+	RegistrationID string
+	ModelID        string
+	ModelName      string
+	ModelFacts     ModelFacts
+	Version        string
+	Provenance     *dockerInferenceTypes.ModelProvenance
+	// Capabilities is the optional-endpoint list of the last good model-info,
+	// so a busy or restarting container keeps its report capability.
+	Capabilities                  *dockerInferenceTypes.ModelCapabilities
 	DicomTargetLevel              string
 	DicomUploadMin                int
 	DicomUploadMax                int
@@ -436,6 +440,12 @@ type UpdateInferenceIngestionJob struct {
 	ScheduleEndTimestamp   uint64
 	// NotificationsEnabled nil leaves the stored value unchanged.
 	NotificationsEnabled *bool
+}
+
+type UpgradeInferenceIngestionJob struct {
+	ID                   string
+	TenantID             string
+	ExpectedModelVersion string
 }
 
 type UpdateModelFeedback struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	dockererrdefs "github.com/docker/docker/errdefs"
+	dockererrdefs "github.com/containerd/errdefs"
 
 	"api-pacs/infrastructures/providers/api/dockerinference"
 	api "api-pacs/infrastructures/providers/api/dockerinference/types"
@@ -157,7 +158,7 @@ func TestBackendInspectDoesNotStartStoppedContainer(t *testing.T) {
 }
 
 func TestBackendInspectClassifiesMissingContainer(t *testing.T) {
-	d := &dockerFake{inspectErr: dockererrdefs.NotFound(errors.New("no such container"))}
+	d := &dockerFake{inspectErr: fmt.Errorf("%w: %w", dockererrdefs.ErrNotFound, errors.New("no such container"))}
 	b := &ContainerBackend{Docker: d, API: &dockerinference.DockerInferenceAPI{}}
 	model, _, err := b.Inspect(context.Background(), id(1))
 	if !errors.Is(err, ErrContainerMissing) || model.ContainerID != id(1) {

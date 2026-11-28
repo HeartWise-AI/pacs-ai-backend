@@ -239,7 +239,7 @@
                     "domainName": "Cardiology",
                     "stage": "ai_inference",
                     "modality": "Angiogram",
-                    "version": "6.0.1",
+                    "version": "6.0.2",
                     "provenance": {
                       "sourceRepository": "HeartWise-AI/pacs-ai-backend",
                       "sourceRevision": null,
@@ -381,7 +381,7 @@
                         "Description": "DeepCORO-CLIP based estimator of a modified SYNTAX score from a complete multi-view coronary angiography study. Emits continuous global, left and right scores plus four-class severity.",
                         "Developed_by": "HeartWise.AI / Montreal Heart Institute",
                         "Development_period": "2025-2026",
-                        "Version": "6.0.0 (CardioSYNTAX v3, 16-segment reference standard)"
+                        "Version": "6.0.2 (CardioSYNTAX v3, 16-segment reference standard)"
                       },
                       "Mechanism": {
                         "Outcome": "Modified SYNTAX score (continuous) and four-class severity",
@@ -867,7 +867,7 @@
           "modelVersion": {
             "type": "string",
             "description": "Container version that rendered the report",
-            "example": "6.0.1"
+            "example": "6.0.2"
           }
         }
       }

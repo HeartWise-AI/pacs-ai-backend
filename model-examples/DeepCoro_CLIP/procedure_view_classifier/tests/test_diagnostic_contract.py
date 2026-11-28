@@ -340,6 +340,6 @@ def test_json_request_opts_in_to_undetermined_status_through_additional_metadata
 def test_declared_contract_advertises_chronology_and_undetermined_status():
     import json
     info = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
-    assert info["version"] == "1.0.5"
+    assert info["version"] == "1.0.6"
     assert info["preprocessingContract"]["chronologyTime"] == "series-time-ties-by-acquisition-time-v1"
     assert info["preprocessingContract"]["ambiguousTimingStatus"] == "undetermined-on-request"

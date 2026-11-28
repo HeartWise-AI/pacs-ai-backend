@@ -55,6 +55,9 @@ func ViewerReportLimitsFromEnvironment() (time.Duration, int64) {
 type viewerModelEntry struct {
 	model entity.InferenceModel
 	info  *dockerInferenceTypes.ModelInfo
+	// running is true when Docker reports the container running, whether or
+	// not it answered the model-info probe in time.
+	running bool
 }
 
 func (entry viewerModelEntry) version() string {
@@ -120,6 +123,7 @@ func (service *InferenceQueryService) loadViewerModelDirectory(ctx context.Conte
 				if err != nil || info.Lifecycle != dockerTypes.LifecycleRunning {
 					return nil
 				}
+				entries[index].running = true
 				name := strings.TrimPrefix(strings.TrimSpace(info.Name), "/")
 				if name == "" {
 					return nil
@@ -138,14 +142,24 @@ func (service *InferenceQueryService) loadViewerModelDirectory(ctx context.Conte
 	}
 	// A stopped or busy container has no live model info: keep its last good
 	// identity (as /model/proxy/available does) so name matching and
-	// custom-role model access still know which model it is. Capabilities are
-	// not carried over, so report availability still needs a live answer.
+	// custom-role model access still know which model it is.
+	// A running container that did not answer in time (loading weights,
+	// predicting, or restarting its API after the idle timeout) also keeps its
+	// last good capabilities: the report endpoint waits for the container to
+	// be ready, so the viewer can still ask for the HTML report instead of
+	// falling back to the stored JSON. A stopped container gets none, since
+	// listing never starts containers.
 	for index := range entries {
 		if entries[index].info != nil {
 			continue
 		}
 		if cached, ok := service.lastModelInfo(ctx, strings.TrimSpace(entries[index].model.ContainerID)); ok && strings.TrimSpace(cached.ModelID) != "" {
-			entries[index].info = &dockerInferenceTypes.ModelInfo{ModelID: cached.ModelID, ModelName: cached.ModelName, Version: cached.Version}
+			info := &dockerInferenceTypes.ModelInfo{ModelID: cached.ModelID, ModelName: cached.ModelName, Version: cached.Version}
+			if entries[index].running && cached.Capabilities != nil {
+				capabilities := *cached.Capabilities
+				info.Capabilities = &capabilities
+			}
+			entries[index].info = info
 		}
 	}
 	sort.SliceStable(entries, func(left, right int) bool { return entries[left].model.ID < entries[right].model.ID })
@@ -445,6 +459,49 @@ func (service *InferenceQueryService) GetStudyJobReport(ctx context.Context, dat
 		return types.ModelReport{}, errors.New(apiError.InferenceExecutionResultInvalid)
 	}
 	return service.renderStoredResult(ctx, tenantID, job.ModelName, trimmedPointerValue(job.ModelVersion), job.ResultJSON)
+}
+
+// GetStudyJobResult returns the stored result JSON of one completed
+// study-service job after the same tenant, study and model-access checks as
+// GetStudyJobReport. It serves results that have no run/execution IDs (legacy
+// automatic jobs and study-service measurement results).
+func (service *InferenceQueryService) GetStudyJobResult(ctx context.Context, data types.GetStudyJobResult) (types.StudyJobResult, error) {
+	tenantID := strings.TrimSpace(data.TenantID)
+	studyInstanceUID := strings.TrimSpace(data.StudyInstanceUID)
+	jobID := strings.TrimSpace(data.StudyServiceJobID)
+	if tenantID == "" || studyInstanceUID == "" || jobID == "" || len(studyInstanceUID) > maximumViewerStudyUIDLength {
+		return types.StudyJobResult{}, errors.New(apiError.InvalidPayload)
+	}
+	if service.ProcessingResultProviderInterface == nil {
+		return types.StudyJobResult{}, errors.New(apiError.InferenceResultServiceUnavailable)
+	}
+	job, found, err := service.ProcessingResultProviderInterface.GetJobResultByID(ctx, tenantID, jobID)
+	if err != nil {
+		return types.StudyJobResult{}, errors.New(apiError.InferenceResultServiceUnavailable)
+	}
+	if !found || strings.TrimSpace(job.JobID) != jobID ||
+		strings.TrimSpace(job.StudyInstanceUID) != studyInstanceUID ||
+		trimmedPointerValue(job.TenantID) != tenantID {
+		return types.StudyJobResult{}, errors.New(apiError.MissingRecord)
+	}
+	if err := service.authorizeResultModel(ctx, tenantID, job.ModelName, trimmedPointerValue(job.ModelVersion), data.AllowModel); err != nil {
+		return types.StudyJobResult{}, err
+	}
+	if !strings.EqualFold(strings.TrimSpace(job.Status), studyServiceStatusCompleted) {
+		return types.StudyJobResult{}, errors.New(apiError.InferenceExecutionResultNotAvailable)
+	}
+	if !validExecutionResultJSON(job.ResultJSON) {
+		return types.StudyJobResult{}, errors.New(apiError.InferenceExecutionResultInvalid)
+	}
+	return types.StudyJobResult{
+		StudyServiceJobID: jobID,
+		StudyInstanceUID:  studyInstanceUID,
+		ModelName:         strings.TrimSpace(job.ModelName),
+		ModelVersion:      trimmedPointer(job.ModelVersion),
+		Status:            studyServiceStatusCompleted,
+		CompletedAt:       job.CompletedAt,
+		Result:            append(json.RawMessage(nil), job.ResultJSON...),
+	}, nil
 }
 
 func (service *InferenceQueryService) renderStoredResult(ctx context.Context, tenantID, modelName, modelVersion string, result json.RawMessage) (types.ModelReport, error) {

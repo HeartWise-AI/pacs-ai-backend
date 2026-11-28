@@ -72,6 +72,10 @@ is refused with 422 (`INVALID_RESULT`); a body over 64 KB is refused with 413.
 
 ## Changelog
 
+- 1.0.4: security patch: PyTorch 2.13.0 (CUDA 12.6 build), torchvision 0.28.0, closing the open Dependabot
+  PyTorch advisories (incl. critical GHSA-53q9-r3pm-6pq6 and high GHSA-63cw-57p8-fm3p). Unpinned Python
+  dependencies are now pinned to the versions of the previous image. Same weights, preprocessing, thresholds
+  and report; predictions checked against the previous image on synthetic and real XA studies.
 - 1.0.3: model-info reports the runtime `PACS_AI_MODEL_VERSION` (PR #526). No change to the model,
   weights, preprocessing, predictions or report.
 - 1.0.2: includes `POST /inference/render-report` and `capabilities.renderReport` in model-info

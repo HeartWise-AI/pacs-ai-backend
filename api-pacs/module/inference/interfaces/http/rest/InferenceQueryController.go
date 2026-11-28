@@ -370,6 +370,7 @@ func (controller *InferenceQueryController) GetInferenceAvailableModels(w http.R
 		inferenceAvailableModelsResponse = append(inferenceAvailableModelsResponse, types.GetInferenceAvailableModelResponse{
 			ContainerID:                   inferenceAvailableModel.ContainerID,
 			ContainerName:                 inferenceAvailableModel.ContainerName,
+			RegistrationID:                inferenceAvailableModel.RegistrationID,
 			ModelID:                       inferenceAvailableModel.ModelID,
 			ModelName:                     inferenceAvailableModel.ModelName,
 			ModelFacts:                    types.ModelFacts(inferenceAvailableModel.ModelFacts),

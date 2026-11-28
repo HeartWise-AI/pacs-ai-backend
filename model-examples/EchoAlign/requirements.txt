@@ -1,0 +1,20 @@
+# EchoAlign research container. cu126 wheels run on the MHI driver (CUDA <= 12.8).
+# EchoAlign was released with torch 2.6.0; it was validated here with torch 2.13.0 (no Dependabot advisories).
+--extra-index-url https://download.pytorch.org/whl/cu126
+torch==2.13.0+cu126
+torchvision==0.28.0+cu126
+transformers==5.10.1
+tokenizers==0.22.1
+numpy==2.2.6
+scipy==1.15.3
+pyyaml==6.0.3
+pillow==13.0.0
+pydicom==3.0.2
+pylibjpeg==2.1.0
+pylibjpeg-libjpeg==2.5.0
+pyjpegls==1.5.1
+nibabel==5.3.2
+fastapi==0.115.6
+uvicorn==0.34.0
+pybase64==1.5.2
+pytest==9.0.3

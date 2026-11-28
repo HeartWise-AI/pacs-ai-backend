@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/distribution/reference"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
 	"github.com/go-chi/chi/v5"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 
 	inferenceAPI "api-pacs/infrastructures/providers/api/dockerinference/types"
@@ -209,7 +209,9 @@ func enginePullQuery(t *testing.T, image string) string {
 	t.Helper()
 	parsed, err := reference.ParseNormalizedNamed(image)
 	require.NoError(t, err)
-	fromImage := reference.FamiliarName(parsed)
+	// The Moby client sends the fully qualified repository name
+	// ("docker.io/heartwisehub/model"), not the familiar one.
+	fromImage := parsed.Name()
 	tag := ""
 	if digested, ok := parsed.(reference.Digested); ok {
 		tag = digested.Digest().String()
@@ -360,7 +362,9 @@ func newAddModelEngine(t *testing.T) *addModelEngine {
 			}
 			dns := []string{}
 			if request.HostConfig != nil {
-				dns = append(dns, request.HostConfig.DNS...)
+				for _, addr := range request.HostConfig.DNS {
+					dns = append(dns, addr.String())
+				}
 			}
 			engine.mu.Lock()
 			engine.creates = append(engine.creates, engineCreate{

@@ -19,12 +19,19 @@ type ingestionJobCaptureHandler struct {
 	postgresqlTypes.PostgresSQLDBHandlerInterface
 	statement string
 	model     interface{}
+	result    sql.Result
+	err       error
 }
 
 func (handler *ingestionJobCaptureHandler) Execute(statement string, model interface{}) (sql.Result, error) {
 	handler.statement, handler.model = statement, model
-	return nil, nil
+	return handler.result, handler.err
 }
+
+type ingestionJobResult int64
+
+func (result ingestionJobResult) LastInsertId() (int64, error) { return 0, nil }
+func (result ingestionJobResult) RowsAffected() (int64, error) { return int64(result), nil }
 
 func (handler *ingestionJobCaptureHandler) Query(statement string, model interface{}, _ interface{}) error {
 	handler.statement, handler.model = statement, model
@@ -113,4 +120,25 @@ func TestIngestionJobNotificationQueriesSurviveNamedQueryCompilation(t *testing.
 	compiled, _, err = sqlx.Named(handler.statement, handler.model)
 	require.NoError(t, err)
 	require.NotContains(t, compiled, ":")
+}
+
+func TestUpgradeInferenceIngestionJobIsGuardedByStoppedSnapshotAndActiveWork(t *testing.T) {
+	handler := &ingestionJobCaptureHandler{result: ingestionJobResult(1)}
+	repository := &InferenceCommandRepository{PostgresSQLDBHandlerInterface: handler}
+	data := types.UpgradeInferenceIngestionJob{
+		ID: "job-1", TenantID: "tenant-a", ExpectedModelVersion: "1.0.0",
+		ContainerID: "container-2", ModelID: "model-a", ModelName: "Model A", ModelVersion: "2.0.0",
+	}
+	require.NoError(t, repository.UpgradeInferenceIngestionJob(data))
+	statement := strings.Join(strings.Fields(handler.statement), " ")
+	require.Contains(t, statement, "job.status = :stopped_status")
+	require.Contains(t, statement, "job.model_version = :expected_model_version")
+	require.Contains(t, statement, "candidate.processing_status IN (:candidate_queued_status, :candidate_running_status)")
+	require.Contains(t, statement, "processing.status IN (:processing_pending_status, :processing_queued_status, :processing_running_status)")
+	compiled, _, err := sqlx.Named(handler.statement, handler.model)
+	require.NoError(t, err)
+	require.NotContains(t, compiled, ":")
+
+	handler.result = ingestionJobResult(0)
+	require.EqualError(t, repository.UpgradeInferenceIngestionJob(data), "INFERENCE_INGESTION_JOB_UPGRADE_CONFLICT")
 }

@@ -2,10 +2,10 @@ package docker
 
 import (
 	dockertypes "api-pacs/infrastructures/providers/sdk/docker/types"
-	engine "github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
 	"slices"
 	"testing"
+
+	"github.com/moby/moby/api/types/container"
 )
 
 const testGPUUUID = "GPU-999e1fca-539d-fb99-2531-ad97b91da026"
@@ -32,9 +32,9 @@ func TestGPUPlacementUsesUUIDAndRejectsAmbiguousInspection(t *testing.T) {
 func TestUpgradeUsesActiveModelGPUAssignment(t *testing.T) {
 	other := "GPU-0fe2f69a-78ce-4eb0-730e-2f5a15f4a1b7"
 	sdk := &DockerSDK{GPUDefaultUUID: other, GPUAssignments: map[string]string{"deepcoro-jepa": testGPUUUID}}
-	active := engine.ContainerJSON{ContainerJSONBase: &engine.ContainerJSONBase{
+	active := container.InspectResponse{
 		Name: "/deepcoro-jepa", HostConfig: &container.HostConfig{Resources: container.Resources{DeviceRequests: gpuDeviceRequests(other)}},
-	}}
+	}
 	config, host, _ := sdk.candidateContainerConfigs(dockertypes.CreateCandidateContainer{Name: "temporary-candidate"}, active)
 	if singleGPUUUID(host) != testGPUUUID {
 		t.Fatal("candidate lost the active model's placement policy", host.DeviceRequests)
@@ -44,9 +44,9 @@ func TestUpgradeUsesActiveModelGPUAssignment(t *testing.T) {
 	}
 	// Activated candidates keep their temporary names. A later upgrade must
 	// still resolve the registration's explicit assignment, including updates.
-	active = engine.ContainerJSON{ContainerJSONBase: &engine.ContainerJSONBase{
-		Name: "/temporary-candidate", HostConfig: host,
-	}, Config: config}
+	active = container.InspectResponse{
+		Name: "/temporary-candidate", HostConfig: host, Config: config,
+	}
 	_, nextHost, _ := sdk.candidateContainerConfigs(dockertypes.CreateCandidateContainer{Name: "next-candidate"}, active)
 	if singleGPUUUID(nextHost) != testGPUUUID {
 		t.Fatal("successive upgrade lost original placement key")
@@ -81,7 +81,7 @@ func TestGPUAssignmentsRequireUUIDAndFallback(t *testing.T) {
 func TestExplicitCandidateGPUOverridesEnvironmentWithoutMutatingSDK(t *testing.T) {
 	other := "GPU-0fe2f69a-78ce-4eb0-730e-2f5a15f4a1b7"
 	sdk := &DockerSDK{GPUDefaultUUID: other, GPUAssignments: map[string]string{"model": other}}
-	active := engine.ContainerJSON{ContainerJSONBase: &engine.ContainerJSONBase{Name: "/model", HostConfig: &container.HostConfig{}}}
+	active := container.InspectResponse{Name: "/model", HostConfig: &container.HostConfig{}}
 	_, host, _ := sdk.candidateContainerConfigs(dockertypes.CreateCandidateContainer{Name: "candidate", GPUUUID: testGPUUUID}, active)
 	if singleGPUUUID(host) != testGPUUUID || sdk.GPUAssignments["model"] != other {
 		t.Fatal("explicit placement mutated shared policy or was ignored")

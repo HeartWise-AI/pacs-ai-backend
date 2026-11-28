@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	dockererrdefs "github.com/docker/docker/errdefs"
+	dockererrdefs "github.com/containerd/errdefs"
 
 	api "api-pacs/infrastructures/providers/api/dockerinference/types"
 	docker "api-pacs/infrastructures/providers/sdk/docker/types"
@@ -52,7 +52,7 @@ func (fake *handOverDocker) GetContainerInfo(_ context.Context, reference string
 	if container := fake.find(reference); container != nil {
 		return *container, nil
 	}
-	return docker.GetContainerInfoResult{}, dockererrdefs.NotFound(errors.New("No such container: " + reference))
+	return docker.GetContainerInfoResult{}, fmt.Errorf("%w: %w", dockererrdefs.ErrNotFound, errors.New("No such container: "+reference))
 }
 
 func (fake *handOverDocker) StopContainer(_ context.Context, id string) error {
@@ -62,7 +62,7 @@ func (fake *handOverDocker) StopContainer(_ context.Context, id string) error {
 	}
 	container := fake.find(id)
 	if container == nil {
-		return dockererrdefs.NotFound(errors.New("No such container: " + id))
+		return fmt.Errorf("%w: %w", dockererrdefs.ErrNotFound, errors.New("No such container: "+id))
 	}
 	container.Lifecycle = docker.LifecycleStopped
 	return nil
@@ -76,10 +76,10 @@ func (fake *handOverDocker) RenameContainer(_ context.Context, id, name string) 
 	}
 	container := fake.find(id)
 	if container == nil {
-		return dockererrdefs.NotFound(errors.New("No such container: " + id))
+		return fmt.Errorf("%w: %w", dockererrdefs.ErrNotFound, errors.New("No such container: "+id))
 	}
 	if holder := fake.find(name); holder != nil {
-		return dockererrdefs.Conflict(fmt.Errorf("the container name %q is already in use by %s", name, holder.ID))
+		return fmt.Errorf("%w: %w", dockererrdefs.ErrConflict, fmt.Errorf("the container name %q is already in use by %s", name, holder.ID))
 	}
 	container.Name = "/" + name
 	return nil

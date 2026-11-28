@@ -24,14 +24,27 @@ func authorizeModelRef(r *http.Request, resolver ModelArtifactResolver, tenantID
 	if err != nil {
 		return apiError.AccessUnavailable
 	}
-	if access.AllModels {
+	if access.Unrestricted() {
 		return ""
 	}
+	if access.AllModels && !access.AllowsModel(ref) {
+		// The reference is itself a withheld model-info modelId.
+		return apiError.ForbiddenAccess
+	}
 	if resolver == nil {
+		if access.AllModels {
+			return ""
+		}
 		return apiError.AccessUnavailable
 	}
 	modelIDs, err := resolver.ResolveModelArtifactIDs(r.Context(), tenantID, ref)
 	if err != nil {
+		if access.AllModels {
+			// Every model except research-only ones: keep the pre-exclusion
+			// behaviour when the reference cannot be resolved (a research
+			// model is identified only when it resolves).
+			return ""
+		}
 		switch err.Error() {
 		case apiError.MissingRecord, apiError.InvalidPayload:
 			return apiError.ForbiddenAccess
@@ -58,7 +71,7 @@ func modelAccessFilter(r *http.Request) (accessEntity.Access, string) {
 
 // filterAvailableModels keeps the models the access allows.
 func filterAvailableModels(access accessEntity.Access, models []types.GetInferenceAvailableModelResult) []types.GetInferenceAvailableModelResult {
-	if access.AllModels {
+	if access.Unrestricted() {
 		return models
 	}
 	kept := make([]types.GetInferenceAvailableModelResult, 0, len(models))
@@ -71,14 +84,26 @@ func filterAvailableModels(access accessEntity.Access, models []types.GetInferen
 }
 
 // filterLatestResults keeps results of allowed models; a result whose
-// model-info modelId is unknown is dropped for restricted users.
+// model-info modelId is unknown is dropped for allowlist users and kept for
+// users with every model except research-only ones.
 func filterLatestResults(access accessEntity.Access, results types.StudyLatestModelResults) types.StudyLatestModelResults {
-	if access.AllModels {
+	if access.Unrestricted() {
 		return results
+	}
+	allowed := func(modelID *string) bool {
+		if modelID == nil {
+			return access.AllModels
+		}
+		return access.AllowsModel(*modelID)
 	}
 	kept := make([]types.StudyLatestModelResult, 0, len(results.Results))
 	for _, result := range results.Results {
-		if result.ArtifactModelID == nil || !access.AllowsModel(*result.ArtifactModelID) {
+		if types.IsStudyServiceMeasurementResult(result.ModelName) {
+			// Measurements from the study itself, not a model: visible to every role.
+			kept = append(kept, result)
+			continue
+		}
+		if !allowed(result.ArtifactModelID) {
 			continue
 		}
 		// The listed runs are runs of the same model; one that resolves to
@@ -86,7 +111,7 @@ func filterLatestResults(access accessEntity.Access, results types.StudyLatestMo
 		if len(result.Runs) > 0 {
 			runs := make([]types.StudyLatestModelResult, 0, len(result.Runs))
 			for _, run := range result.Runs {
-				if run.ArtifactModelID != nil && access.AllowsModel(*run.ArtifactModelID) {
+				if allowed(run.ArtifactModelID) {
 					runs = append(runs, run)
 				}
 			}
@@ -114,8 +139,23 @@ func resultModelFilter(r *http.Request) (func(string) bool, string) {
 	if code != "" {
 		return nil, code
 	}
-	if access.AllModels {
+	if access.Unrestricted() {
 		return nil, ""
 	}
 	return access.AllowsModel, ""
+}
+
+// filterRunExecutions drops the executions of research-only models the access
+// does not allow from run detail and history responses (model names, statuses).
+func filterRunExecutions(access accessEntity.Access, executions []types.ProcessingRunExecutionSummary) []types.ProcessingRunExecutionSummary {
+	if access.Unrestricted() {
+		return executions
+	}
+	kept := make([]types.ProcessingRunExecutionSummary, 0, len(executions))
+	for _, execution := range executions {
+		if access.AllowsModelName(execution.ModelName) {
+			kept = append(kept, execution)
+		}
+	}
+	return kept
 }

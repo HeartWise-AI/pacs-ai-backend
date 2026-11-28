@@ -38,6 +38,8 @@ type viewerResultsQueryService struct {
 	latest      serviceTypes.StudyLatestModelResults
 	reportInput serviceTypes.GetProcessingRunExecutionReport
 	jobInput    serviceTypes.GetStudyJobReport
+	resultInput serviceTypes.GetStudyJobResult
+	jobResult   serviceTypes.StudyJobResult
 	report      serviceTypes.ModelReport
 	err         error
 }
@@ -55,6 +57,11 @@ func (service *viewerResultsQueryService) GetProcessingRunExecutionReport(_ cont
 func (service *viewerResultsQueryService) GetStudyJobReport(_ context.Context, data serviceTypes.GetStudyJobReport) (serviceTypes.ModelReport, error) {
 	service.jobInput = data
 	return service.report, service.err
+}
+
+func (service *viewerResultsQueryService) GetStudyJobResult(_ context.Context, data serviceTypes.GetStudyJobResult) (serviceTypes.StudyJobResult, error) {
+	service.resultInput = data
+	return service.jobResult, service.err
 }
 
 func viewerRequest(method, target, body string, params map[string]string) *http.Request {
@@ -162,12 +169,17 @@ func TestReportEndpointsReturnHTMLAndMapErrors(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	controller.GetProcessingRunExecutionReport(recorder, viewerRequest(http.MethodGet, "/report", "", map[string]string{"runId": "run-1", "executionId": "execution-1"}))
 	require.Equal(t, http.StatusOK, recorder.Code)
+	require.NotNil(t, service.reportInput.AllowModel, "a USER's every-model access excludes research models")
+	require.False(t, service.reportInput.AllowModel("EchoAlign"))
+	service.reportInput.AllowModel = nil
 	require.Equal(t, serviceTypes.GetProcessingRunExecutionReport{TenantID: "tenant-a", RunID: "run-1", ExecutionID: "execution-1"}, service.reportInput)
 	require.JSONEq(t, `{"htmlBase64":"PGgxPg==","contentType":"text/html"}`, string(decodeViewerData(t, recorder)))
 
 	recorder = httptest.NewRecorder()
 	controller.GetStudyJobReport(recorder, viewerRequest(http.MethodGet, "/report", "", map[string]string{"studyInstanceUID": "1.2.3", "studyServiceJobId": "job-1"}))
 	require.Equal(t, http.StatusOK, recorder.Code)
+	require.False(t, service.jobInput.AllowModel("EchoAlign"))
+	service.jobInput.AllowModel = nil
 	require.Equal(t, serviceTypes.GetStudyJobReport{TenantID: "tenant-a", StudyInstanceUID: "1.2.3", StudyServiceJobID: "job-1"}, service.jobInput)
 
 	for code, status := range map[string]int{
@@ -214,4 +226,65 @@ func TestRunStudyModelDeniesModelsOutsideTheCustomRole(t *testing.T) {
 
 	require.Equal(t, http.StatusForbidden, recorder.Code)
 	require.Equal(t, serviceTypes.CreateViewerModelRun{}, service.input, "no run is created")
+}
+
+func TestGetStudyJobResultReturnsStoredJSONAndMapsErrors(t *testing.T) {
+	version := "1.0.0"
+	service := &viewerResultsQueryService{jobResult: serviceTypes.StudyJobResult{
+		StudyServiceJobID: "job-1", StudyInstanceUID: "1.2.3", ModelName: "echo-sr-measurements",
+		ModelVersion: &version, Status: "completed", Result: json.RawMessage(`{"summary":{}}`),
+	}}
+	controller := InferenceQueryController{InferenceQueryServiceInterface: service}
+	params := map[string]string{"studyInstanceUID": "1.2.3", "studyServiceJobId": "job-1"}
+
+	recorder := httptest.NewRecorder()
+	controller.GetStudyJobResult(recorder, viewerRequest(http.MethodGet, "/result", "", params))
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
+	require.Equal(t, "tenant-a", service.resultInput.TenantID)
+	require.Equal(t, "1.2.3", service.resultInput.StudyInstanceUID)
+	require.Equal(t, "job-1", service.resultInput.StudyServiceJobID)
+	require.JSONEq(t, `{"studyServiceJobId":"job-1","studyInstanceUID":"1.2.3","modelName":"echo-sr-measurements","modelVersion":"1.0.0","status":"completed","completedAt":null,"result":{"summary":{}}}`,
+		string(decodeViewerData(t, recorder)))
+
+	for code, status := range map[string]int{
+		apiError.MissingRecord:                        http.StatusNotFound,
+		apiError.ForbiddenAccess:                      http.StatusForbidden,
+		apiError.InferenceExecutionResultNotAvailable: http.StatusConflict,
+		apiError.InferenceExecutionResultInvalid:      http.StatusUnprocessableEntity,
+		apiError.InferenceResultServiceUnavailable:    http.StatusServiceUnavailable,
+	} {
+		service.err = errors.New(code)
+		recorder = httptest.NewRecorder()
+		controller.GetStudyJobResult(recorder, viewerRequest(http.MethodGet, "/result", "", params))
+		require.Equal(t, status, recorder.Code, code)
+	}
+
+	recorder = httptest.NewRecorder()
+	controller.GetStudyJobResult(recorder, httptest.NewRequest(http.MethodGet, "/result", nil))
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+}
+
+func TestLatestResultsKeepMeasurementResultsForRestrictedRoles(t *testing.T) {
+	artifact := "PanEcho"
+	service := &viewerResultsQueryService{latest: serviceTypes.StudyLatestModelResults{StudyInstanceUID: "1.2.3", Results: []serviceTypes.StudyLatestModelResult{
+		{ModelName: "echo-sr-measurements", StudyServiceJobID: "job-sr"},
+		{ModelName: "Unknown-Model", StudyServiceJobID: "job-x"},
+		{ModelName: "DeepCORO-JEPA", StudyServiceJobID: "job-j", ArtifactModelID: &artifact},
+	}}}
+	controller := InferenceQueryController{InferenceQueryServiceInterface: service}
+	request := viewerRequest(http.MethodGet, "/latest-results", "", map[string]string{"studyInstanceUID": "1.2.3"})
+	request = request.WithContext(accessctx.WithAccess(request.Context(), restrictedAccess("PanEcho")))
+	recorder := httptest.NewRecorder()
+
+	controller.GetStudyLatestModelResults(recorder, request)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var data serviceTypes.StudyLatestModelResults
+	require.NoError(t, json.Unmarshal(decodeViewerData(t, recorder), &data))
+	names := []string{}
+	for _, result := range data.Results {
+		names = append(names, result.ModelName)
+	}
+	require.Equal(t, []string{"echo-sr-measurements", "DeepCORO-JEPA"}, names)
 }

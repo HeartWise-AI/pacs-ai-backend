@@ -147,7 +147,7 @@ func (service *InferencePredictionsService) ExportPredictions(
 		if len(page.Exams) > MaximumPredictionsExportExams-exported {
 			page.Exams = page.Exams[:MaximumPredictionsExportExams-exported]
 		}
-		if err := service.writePredictionExportBatch(ctx, query, page.Exams, writer, &summary); err != nil {
+		if err := service.writePredictionExportBatch(ctx, query, page.Exams, writer, &summary, data.AllowModelName); err != nil {
 			return summary, err
 		}
 		exported += len(page.Exams)
@@ -175,6 +175,7 @@ func (service *InferencePredictionsService) writePredictionExportBatch(
 	exams []repositoryTypes.PredictionExamRow,
 	writer *csv.Writer,
 	summary *types.PredictionsExportSummary,
+	allowModelName func(string) bool,
 ) error {
 	if len(exams) == 0 {
 		return nil
@@ -201,6 +202,9 @@ func (service *InferencePredictionsService) writePredictionExportBatch(
 	// Keep the page order: most recent exam first, newest run first within it.
 	for _, uid := range uids {
 		for _, execution := range grouped[uid] {
+			if allowModelName != nil && !allowModelName(execution.ModelName) {
+				continue
+			}
 			if err := writer.Write(predictionExportLine(byUID[uid], execution)); err != nil {
 				return err
 			}

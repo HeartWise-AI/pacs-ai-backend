@@ -36,6 +36,8 @@ type InferenceCommandRepositoryInterface interface {
 	UpdateInferenceModel(ctx context.Context, data types.UpdateInferenceModel) error
 	// UpdateInferenceIngestionJob updates an inference ingestion job
 	UpdateInferenceIngestionJob(data types.UpdateInferenceIngestionJob) error
+	// UpgradeInferenceIngestionJob atomically retargets a safe, stopped ingestion job.
+	UpgradeInferenceIngestionJob(data types.UpgradeInferenceIngestionJob) error
 	// UpdateInferenceIngestionJobStatus updates the status of an inference ingestion job
 	UpdateInferenceIngestionJobStatus(ID string, status entity.InferenceIngestionJobStatus) error
 	// UpdateInferenceIngestionJobLastExecutedAt updates last executed at of infererence ingestion job
