@@ -197,6 +197,18 @@ class StudyTooLarge(ValueError):
     """The study exceeds the size limits of this research model; it is skipped, not failed."""
 
 
+def skip_result(code: str, message: str, skipped: Optional[Dict[str, int]] = None,
+                selection: str = "multiframe") -> Dict[str, Any]:
+    """A study the model does not run on: a successful result that says why (as PanEcho 1.2.x),
+    so that ingestion records it instead of retrying and failing."""
+    return {
+        "researchUseOnly": True, "banner": RESEARCH_BANNER, "attribution": ATTRIBUTION, "license": "CC BY-NC 4.0",
+        "skipReason": code, "skipMessage": f"Not run: {message}", "instanceSelection": selection,
+        "clipsUsed": 0, "skipped": skipped or {}, "summary": {}, "keyHeads": {}, "allHeads": {},
+        "zeroShotScores": {}, "perClip": [], "seconds": 0.0,
+    }
+
+
 class CustomPredictionService(BasePredictionService):
     models: Dict[str, Any] = {}
     is_initialized: bool = False
@@ -308,7 +320,11 @@ class CustomPredictionService(BasePredictionService):
                     flush()
             flush()
         if not G:
-            raise ValueError("No usable transthoracic echo clips in the request")
+            only_tee = skipped["tee"] > 0 and not any(skipped[k] for k in ("non_image", "single_frame", "invalid"))
+            code = "TEE_NOT_SUPPORTED" if skipped["tee"] > 0 and only_tee else "NO_VIDEO_CLIPS"
+            message = ("transesophageal echo (TEE) is not supported" if code == "TEE_NOT_SUPPORTED"
+                       else "no usable transthoracic echo clips in the study")
+            return skip_result(code, message, skipped, selection)
         g, c = np.asarray(G, np.float32), np.asarray(C, np.float32)
         heads, zs = self._study_outputs(g, c)
         per_clip = []
@@ -345,6 +361,8 @@ class CustomPredictionService(BasePredictionService):
     # ---------- outputs ----------
     @staticmethod
     def diagnosis(result: Dict[str, Any]) -> str:
+        if result.get("skipReason"):
+            return f"[Research use only] {result.get('skipMessage') or 'Not run'}"
         a = result["summary"]["aorticStenosis"]
         return (f"[Research use only] AS grade {a['grade']} (P severe {a['severeProbability']:.2f}, "
                 f"P moderate or severe {a['moderateOrSevereProbability']:.2f}); AV Vmax estimate "
@@ -393,29 +411,20 @@ class CustomPredictionService(BasePredictionService):
 
     @staticmethod
     def render_html(result: Dict[str, Any]) -> str:
-        return HTMLParser.generate_detection_results(CustomPredictionService.report_inputs(result))
+        inputs = CustomPredictionService.report_inputs(result)
+        if result.get("skipReason"):
+            inputs["recommendations"] = {"en": f"{result.get('skipMessage')}. {RESEARCH_BANNER}.",
+                                         "fr": f"Non ex\u00e9cut\u00e9 ({result['skipReason']}). Recherche seulement."}
+        return HTMLParser.generate_detection_results(inputs)
 
-    async def predict(self, request: PredictRequest):
-        # A study over the limits answers 413 STUDY_TOO_LARGE (a skip) instead of a 500 processing error.
-        self._skip_reason = None
-        success, result = await super().predict(request)
-        if self._skip_reason:
-            from utils.http_utils import HTTPResponse
-            return False, HTTPResponse(status=413, success=False, message=self._skip_reason,
-                                       error_code="STUDY_TOO_LARGE").to_response()
-        return success, result
-
-    def _guarded_inference(self, request: PredictRequest) -> Optional[Dict[str, Any]]:
+    def _guarded_inference(self, request: PredictRequest) -> Dict[str, Any]:
         try:
             return self._run_inference(request)
         except StudyTooLarge as exc:
-            self._skip_reason = str(exc)
-            return None
+            return skip_result("STUDY_TOO_LARGE", str(exc).replace("Study skipped: ", ""))
 
     async def _handle_json_output(self, request: PredictRequest):
         result = self._guarded_inference(request)
-        if result is None:
-            return {}
         return {
             "predictions": result,
             "diagnosis": self.diagnosis(result),
@@ -426,6 +435,4 @@ class CustomPredictionService(BasePredictionService):
 
     async def _handle_html_output(self, request: PredictRequest):
         result = self._guarded_inference(request)
-        if result is None:
-            return {}
         return {"htmlBase64": base64.b64encode(self.render_html(result).encode("utf-8")).decode("ascii")}
