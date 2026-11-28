@@ -18,4 +18,5 @@ type IAMCommandServiceInterface interface {
 	SetTokenSession(ctx context.Context, data types.SetTokenSession) error
 	SetUserSuspended(ctx context.Context, tenantID, userID string) (bool, error)
 	VerifyTenantUserEmail(ctx context.Context, tenantID, email, clientIP string) error
+	VerifyTenantUserPassword(ctx context.Context, data types.VerifyTenantUserPassword) error
 }

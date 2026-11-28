@@ -10,6 +10,14 @@ type LoginTenantUser struct {
 	ClientIP       string
 }
 
+type VerifyTenantUserPassword struct {
+	TenantID string
+	UserID   string
+	Email    string
+	Password string
+	ClientIP string
+}
+
 type LoginAbuseSignals struct {
 	TenantID string
 	Email    string
