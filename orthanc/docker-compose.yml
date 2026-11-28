@@ -15,6 +15,13 @@ services:
       ORTHANC__DICOM_AET: ${ORTHANC_DICOM_AET}
       ORTHANC__DICOM_PORT: ${ORTHANC_DICOM_PORT}
       ORTHANC__DICOM_MODALITIES_IN_DATABASE: "true"
+      # A calling AE title is accepted only from the Host registered for it.
+      # Every DicomAlwaysAllow* option must stay false: while any is true,
+      # Orthanc skips the per-association host check, and a peer from any
+      # address may then use an AE title registered by two modalities.
+      ORTHANC__DICOM_CHECK_MODALITY_HOST: "true"
+      ORTHANC__DICOM_ALWAYS_ALLOW_ECHO: "false"
+      ORTHANC__DICOM_ALWAYS_ALLOW_STORE: "false"
       ORTHANC__DATABASE_SERVER_IDENTIFIER: "PACS_AI_ORTHANC"
       ORTHANC__DICOM_WEB__PUBLIC_ROOT: "/orthanc/dicom-web/"
       DICOM_WEB_PLUGIN_ENABLED: "true"
