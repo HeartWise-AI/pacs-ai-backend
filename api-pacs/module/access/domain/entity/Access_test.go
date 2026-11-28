@@ -117,6 +117,10 @@ func TestResearchModelNamesFollowTheModelAccess(t *testing.T) {
 	require.True(t, IsResearchModelName(" EchoAlign (research use only) "))
 	require.False(t, IsResearchModelName("EchoAlignment"))
 	require.False(t, IsResearchModelName("PanEcho"))
+	t.Setenv("PACS_RESEARCH_MODEL_IDS", "EchoAlign,DeepRV_CLIP")
+	require.True(t, IsResearchModelName("DeepRV-CLIP"), "display names that differ from the modelId by punctuation")
+	require.True(t, IsResearchModelName("deeprv clip"))
+	t.Setenv("PACS_RESEARCH_MODEL_IDS", "EchoAlign")
 
 	base := ForRole(iamEntity.UserRole, nil)
 	require.False(t, base.AllowsModelName("EchoAlign (research use only)"))

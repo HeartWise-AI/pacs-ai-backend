@@ -612,3 +612,19 @@ func TestExpiredExecutionsAreShownCountedAndNotActive(t *testing.T) {
 	require.Equal(t, "expired", lines[1][10])
 	require.Equal(t, "EXPIRED_NEVER_RAN: Expired: did not complete within 30 days (automatic)", lines[1][13])
 }
+
+func TestListPredictionsCountsOnlyTheModelsTheSessionMayList(t *testing.T) {
+	service := InferencePredictionsService{Now: pinnedNow, Repository: predictionsFixture(), Users: &predictionsUsersFake{}}
+	request := basePredictionsRequest(types.PredictionsViewMine, "USER")
+	// Hide the waiting and queued models of the first exam (as for a research-only model).
+	request.AllowModelName = func(name string) bool { return name != "CathEF-CLIP" && name != "DeepRV-CLIP" }
+
+	page, err := service.ListPredictions(context.Background(), request)
+	require.NoError(t, err)
+	exam := page.Exams[0]
+	for _, model := range exam.Models {
+		require.NotContains(t, []string{"CathEF-CLIP", "DeepRV-CLIP"}, model.ModelName)
+	}
+	require.Equal(t, types.PredictionCounts{Total: len(exam.Models), Completed: len(exam.Models)}, exam.Counts)
+	require.False(t, exam.Active, "a hidden running model does not make the exam active")
+}
