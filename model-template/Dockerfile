@@ -1,5 +1,5 @@
 # Build the API
-FROM golang:1.26.0-alpine AS builder
+FROM golang:1.26.11-alpine AS builder
 
 ENV GO111MODULE=on
 
