@@ -38,6 +38,8 @@ from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
 
 MODEL_KEY = "echoalign"
+# Memory/runtime guard for automatic runs: a study with more usable clips is skipped with a reason.
+MAX_CLIPS = int(os.environ.get("ECHOALIGN_MAX_CLIPS", "200"))
 RESEARCH_BANNER = "Research use only — EchoAlign (CC BY-NC 4.0), not for clinical decisions"
 ATTRIBUTION = (
     "EchoAlign by Aly, Taratynova, Mecharbat, Sandler, Sokol, Penn, Maier-Hein, Saeed and Yaqub "
@@ -99,6 +101,17 @@ REPORT_FINDINGS = [
     ("atrial_fibrillation", "Atrial fibrillation"),
     ("pacemaker", "Pacemaker"),
 ]
+# What a called / not-called binary head means for its finding (same wording as the viewer template).
+BINARY_WORDING = {
+    "rwma": ("Present", "Absent"), "septal_motion_abnormality": ("Present", "Absent"),
+    "rv_enlargement": ("Enlarged", "Normal"), "rv_systolic_dysfunction": ("Reduced", "Normal"),
+    "ra_enlargement": ("Enlarged", "Normal"), "elevated_ra_pressure": ("Elevated", "Not elevated"),
+    "ivc_dilation": ("Dilated", "Not dilated"), "bicuspid_av": ("Bicuspid", "Not detected"),
+    "aortic_sclerosis": ("Present", "Absent"), "aortic_valve_replacement": ("Prosthetic valve", "Native valve"),
+    "mitral_stenosis": ("Present", "Absent"), "mitral_valve_prolapse": ("Present", "Absent"),
+    "pulmonic_regurgitation": ("Present", "Absent"), "ascending_aorta_dilation": ("Dilated", "Not dilated"),
+    "atrial_fibrillation": ("Present", "Absent"), "pacemaker": ("Present", "Absent"),
+}
 AS_SCREENING_NOTE_EN = (
     "AI screening scores from the 2D and colour clips (no Doppler spectra): not a diagnosis. EchoAlign compresses "
     "the AV peak velocity and gradients towards the middle of the range and did not call severe AS on MHI; use the "
@@ -271,6 +284,11 @@ class CustomPredictionService(BasePredictionService):
                 if reason:
                     skipped[reason] += 1
                     continue
+                if len(labels) + len(clips) >= MAX_CLIPS:
+                    raise ValueError(
+                        f"STUDY_TOO_LARGE: study skipped, more than {MAX_CLIPS} usable clips "
+                        f"(limit of this research model)"
+                    )
                 with open(path, "wb") as handle:
                     handle.write(data)
                 del data
@@ -343,7 +361,8 @@ class CustomPredictionService(BasePredictionService):
             if head["type"] == "regression":
                 diagnosis[key] = f"{head['value']:.1f} {UNITS.get(head_name, head.get('unit', ''))}".strip()
             elif head["type"] == "classification":
-                diagnosis[key] = f"{'Present' if head['called'] else 'Absent'} (P {head['probability']:.2f})"
+                called, not_called = BINARY_WORDING.get(head_name, ("Present", "Absent"))
+                diagnosis[key] = f"{called if head['called'] else not_called} (P {head['probability']:.2f})"
             else:
                 grade = str(head["grade"]).replace("_", " ")
                 p = head["probabilities"].get(head["grade"])

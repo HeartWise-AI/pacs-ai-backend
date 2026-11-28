@@ -93,6 +93,16 @@ async def update_last_request_time(request: Request, call_next):
 async def predict(http_request: Request):
     # The body is read and parsed here rather than by FastAPI: see utils/fast_request.py.
     started = time.perf_counter()
+    # Memory guard: the whole study arrives base64-encoded in one body (about 1.4 x the study) and is held
+    # while clips are decoded. Refuse larger studies before reading them, with an explicit reason.
+    declared = http_request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_REQUEST_BYTES:
+        print(f"EchoAlign request refused: {int(declared) / 2**30:.1f} GiB > {MAX_REQUEST_BYTES / 2**30:.1f} GiB")
+        return HTTPResponse(
+            status=413, success=False, error_code="STUDY_TOO_LARGE",
+            message=(f"Study skipped: request of {int(declared) / 2**30:.1f} GiB exceeds the "
+                     f"{MAX_REQUEST_BYTES / 2**30:.0f} GiB limit of this research model"),
+        ).to_response()
     body = await read_body(http_request)
     received = time.perf_counter()
     body_bytes = len(body)
@@ -166,6 +176,7 @@ async def predict(http_request: Request):
                 error_code="UNSUPPORTED_OUTPUT_MODE"
             ).to_response()
 
+MAX_REQUEST_BYTES = int(os.environ.get("ECHOALIGN_MAX_REQUEST_BYTES", str(16 * 2**30)))
 RENDER_REPORT_MAX_BYTES = 4 * 1024 * 1024  # a stored result (all heads + per-clip rows) is well under 1 MB
 RENDER_REPORT_DRAIN_BYTES = 64 * 1024 * 1024
 

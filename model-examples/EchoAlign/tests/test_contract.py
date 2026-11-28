@@ -22,7 +22,7 @@ def test_manifest_is_research_only_and_pinned():
 
 def test_facts_have_no_automatic_runs_and_state_research_use():
     facts = json.loads((ROOT / "data/model_facts.json").read_text())
-    assert facts["automaticRunLabels"] == []
+    assert facts["automaticRunLabels"] == []  # automatic runs carry no clinical label
     assert "RESEARCH USE ONLY" in facts["en"]["Summary"]["Description"]
 
 
@@ -148,3 +148,23 @@ def test_render_report_contract_and_banner():
     for bad in ({}, {"result": {}}, {"result": stored, "extra": 1}, {"result": {"predictions": {"summary": {}}}}):
         with pytest.raises(main.ResultError):
             main._render_stored_result(bad)
+
+
+def test_guards_and_binary_wording():
+    import asyncio
+    import main
+    from logic import MAX_CLIPS, CustomPredictionService
+    assert main.MAX_REQUEST_BYTES == 16 * 2**30 and MAX_CLIPS == 200
+
+    class FakeRequest:
+        headers = {"content-length": str(17 * 2**30)}
+
+    response = asyncio.run(main.predict(FakeRequest()))
+    body = response.body.decode()
+    assert response.status_code == 413 and "STUDY_TOO_LARGE" in body and "Study skipped" in body
+
+    heads = {"rv_systolic_dysfunction": {"type": "classification", "probability": 0.9, "threshold": 0.1, "called": True},
+             "rv_enlargement": {"type": "classification", "probability": 0.01, "threshold": 0.1, "called": False}}
+    diagnosis = CustomPredictionService.report_inputs({"allHeads": heads})["diagnosis"]
+    assert diagnosis["RV systolic function"] == "Reduced (P 0.90)"
+    assert diagnosis["RV size"] == "Normal (P 0.01)"
