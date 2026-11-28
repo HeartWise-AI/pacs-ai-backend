@@ -1,5 +1,9 @@
 """1.1.2: aortic stenosis is a screening score, not a diagnosis.
 
+These tests cover the uncalibrated screening display (1.1.2 behaviour, still the fallback when
+models/as_calibration.json is absent); the MHI calibration of 1.1.3 is disabled here and tested in
+test_as_calibration.py.
+
 Synthetic head outputs only (no PHI). Loads logic.py without the model weights.
 """
 
@@ -21,6 +25,7 @@ from utils.html_parser import HTMLParser  # noqa: E402
 @pytest.fixture(autouse=True)
 def _model_dir(monkeypatch):
     monkeypatch.chdir(ROOT)
+    monkeypatch.setattr(logic.CustomPredictionService, "_as_calibration_override", None, raising=False)
 
 
 def service():
@@ -64,7 +69,7 @@ def test_other_heads_are_unchanged():
 def test_screening_object_has_p_severe_and_p_any():
     _, predictions = service().postprocess_predictions(heads())
 
-    screening = logic.aortic_stenosis_screening(predictions)
+    screening = logic.aortic_stenosis_screening(predictions, None)
 
     assert screening["pSevere"] == pytest.approx(0.20, abs=1e-4)
     assert screening["pAny"] == pytest.approx(0.57, abs=1e-4)
@@ -72,7 +77,7 @@ def test_screening_object_has_p_severe_and_p_any():
     assert screening["avVmaxEstimate"] == {"value": 2.4, "unit": "m/s", "label": "AI estimate, under-estimates severe AS"}
     assert "not a diagnosis" in screening["note"]["en"]
     assert "pas un diagnostic" in screening["note"]["fr"]
-    assert logic.aortic_stenosis_screening({}) is None
+    assert logic.aortic_stenosis_screening({}, None) is None
 
 
 def test_screening_never_drives_the_recommendation():
@@ -86,7 +91,7 @@ def test_html_report_shows_screening_section_outside_the_findings():
     diagnosis, predictions = service().postprocess_predictions(heads())
     html = HTMLParser.generate_detection_results({
         "diagnosis": json.dumps(diagnosis),
-        "asScreening": logic.aortic_stenosis_screening(predictions),
+        "asScreening": logic.aortic_stenosis_screening(predictions, None),
         "probability": predictions,
         "recommendations": {"en": "x", "fr": "y"},
     })
@@ -100,12 +105,13 @@ def test_html_report_shows_screening_section_outside_the_findings():
     assert ">Aortic valve stenosis<" not in html
 
 
-def test_model_facts_and_manifest_are_1_1_2():
+def test_model_facts_and_manifest_are_1_1_3_with_the_1_1_2_changelog():
     facts = json.loads((ROOT / "data/model_facts.json").read_text(encoding="utf-8"))
     info = json.loads((ROOT / "data/model_info.json").read_text(encoding="utf-8"))
 
-    assert info["version"] == "1.1.2"
+    assert info["version"] == "1.1.3"
     for language in ("en", "fr"):
-        assert facts[language]["Summary"]["Version"] == "1.1.2"
+        assert facts[language]["Summary"]["Version"] == "1.1.3"
         assert "1.1.2" in facts[language]["Changelogs"]
+        assert "1.1.3" in facts[language]["Changelogs"]
     assert "screening" in facts["en"]["Warnings_and_limitations"]["Risks"]

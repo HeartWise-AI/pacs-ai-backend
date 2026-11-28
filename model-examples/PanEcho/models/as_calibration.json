@@ -1,0 +1,44 @@
+{
+  "version": "MHI-2026-11-28",
+  "scope": "MHI only: GE Vivid adult TTE at the Montreal Heart Institute; not validated elsewhere",
+  "label_rule": "'Significant AS likely' (moderate or severe AS: Vmax >= 3.0 m/s or mean gradient >= 20 mmHg) when P(Mild|Moderate) + P(Severe) >= any_as_threshold, else 'No significant AS suspected'. severe_threshold is the secondary severe flag (P(Severe), >= 90% sensitivity on dev), shown as ', severe possible' only when severe_flag is true.",
+  "severe_threshold": 0.07481144071709521,
+  "any_as_threshold": 0.293502700719789,
+  "vmax_map": {
+    "kind": "linear",
+    "slope": 2.6044891695042374,
+    "intercept": -2.7345750120622583,
+    "clip": [
+      0.5,
+      6.5
+    ]
+  },
+  "input": "upstream-aligned for the AS heads: ultrasound-sector crop, 4 clips per video, probabilities averaged per study",
+  "dataset": {
+    "studies": 392,
+    "dev": 235,
+    "locked_test": 157,
+    "test_counts": {
+      "severe": 46,
+      "moderate": 31,
+      "mild": 5,
+      "none": 75
+    }
+  },
+  "locked_test": {
+    "A_sens_moderate_or_severe": 0.81,
+    "A_spec_vs_no_AS": 0.91,
+    "A_ppv": 0.9,
+    "A_npv": 0.82,
+    "severe_flag_sens": 0.89,
+    "severe_flag_spec_vs_no_AS": 0.92,
+    "severe_flag_spec_vs_all_non_severe": 0.74,
+    "vmax_mae_before": 1.04,
+    "vmax_mae_after": 0.68
+  },
+  "note": {
+    "en": "MHI-calibrated AI screening from the 2D clips (no Doppler): not a diagnosis. On the MHI locked test 'significant AS likely' had sensitivity 0.81 and specificity 0.91 against echos without AS; the severe flag had sensitivity 0.89 but specificity only 0.74 against all non-severe echos (it does not separate severe from moderate AS well). The AV peak velocity is a corrected AI estimate (mean error 0.7 m/s). Use the measured Doppler values (Vmax, mean gradient, valve area).",
+    "fr": "Dépistage IA calibré sur l'ICM à partir des clips 2D (sans Doppler) : pas un diagnostic. Sur le jeu de test verrouillé de l'ICM, « SA significative probable » avait une sensibilité de 0,81 et une spécificité de 0,91 face aux échos sans SA ; le signal « sévère » avait une sensibilité de 0,89 mais une spécificité de seulement 0,74 face à toutes les échos non sévères (il distingue mal la SA sévère de la SA modérée). La vitesse de pointe aortique est une estimation IA corrigée (erreur moyenne 0,7 m/s). Utiliser les valeurs Doppler mesurées (Vmax, gradient moyen, surface valvulaire)."
+  },
+  "severe_flag": false
+}

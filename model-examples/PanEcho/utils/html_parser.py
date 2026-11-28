@@ -13,11 +13,16 @@ class HTMLParser:
             return ""
         items = []
         if screening:
+            calibrated = screening.get("calibrated")
+            if calibrated:
+                items.append(("Aortic stenosis (MHI-calibrated screening label)", str(calibrated["label"])))
             items.append(("P(severe AS)", f"{float(screening['pSevere']):.2f}"))
             items.append(("P(any AS) = P(mild or moderate) + P(severe)", f"{float(screening['pAny']):.2f}"))
             vmax = screening.get("avVmaxEstimate")
             if vmax:
                 items.append((f"Aortic valve peak velocity ({vmax['label']})", f"{float(vmax['value']):.1f} m/s"))
+                if vmax.get("uncorrected") is not None:
+                    items.append(("Aortic valve peak velocity (uncorrected model output)", f"{float(vmax['uncorrected']):.1f} m/s"))
             note_en = screening.get("note", {}).get("en", "")
             note_fr = screening.get("note", {}).get("fr", "")
         else:

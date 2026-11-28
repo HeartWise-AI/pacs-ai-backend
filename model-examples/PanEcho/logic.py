@@ -23,6 +23,16 @@ from models.view_classifier_utils import (
     mask_and_crop,
 )
 from utils.fast_request import decode_base64
+from utils.upstream_preprocess import video_clips
+from utils.as_calibration import (
+    AS_HEAD,
+    MILD_MODERATE,
+    SEVERE,
+    VMAX_HEAD,
+    calibrated_as_label,
+    corrected_vmax,
+    load_calibration,
+)
 from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
 from utils.genericLogic import BasePredictionService
@@ -68,10 +78,18 @@ AS_SCREENING_NOTE_FR = (
 AS_VMAX_ESTIMATE_LABEL = "AI estimate, under-estimates severe AS"
 
 
-def aortic_stenosis_screening(predictions: Dict[str, object]) -> Optional[Dict[str, object]]:
+AS_VMAX_CALIBRATED_LABEL = "AI estimate, MHI-calibrated"
+_AS_CALIBRATION = load_calibration()
+
+
+def aortic_stenosis_screening(
+    predictions: Dict[str, object], calibration: Optional[Dict[str, Any]] = _AS_CALIBRATION
+) -> Optional[Dict[str, object]]:
     """P(severe AS) and P(any AS) = P(Mild|Moderate) + P(Severe), plus the AI Vmax estimate.
 
     Class order of the AVStenosis head: Mild|Moderate=0, None=1, Severe=2.
+    With the MHI calibration (1.1.3) it also carries the calibrated label, the thresholds
+    and the uncorrected Vmax; avVmaxEstimate.value is then the corrected Vmax.
     """
     probabilities = predictions.get(AS_STENOSIS_DESCRIPTION)
     if not isinstance(probabilities, (list, tuple)) or len(probabilities) != 3:
@@ -91,6 +109,20 @@ def aortic_stenosis_screening(predictions: Dict[str, object]) -> Optional[Dict[s
     vmax = predictions.get(AS_VMAX_DESCRIPTION)
     if isinstance(vmax, (int, float)):
         screening["avVmaxEstimate"] = {"value": round(float(vmax), 2), "unit": "m/s", "label": AS_VMAX_ESTIMATE_LABEL}
+    if calibration is not None:
+        screening["calibrated"] = {
+            "label": calibrated_as_label([p_mild_moderate, p_none, p_severe], calibration),
+            "severeThreshold": calibration["severe_threshold"],
+            "anyThreshold": calibration["any_as_threshold"],
+            "scope": calibration.get("scope"),
+            "version": calibration.get("version"),
+        }
+        if calibration.get("note"):
+            screening["note"] = calibration["note"]
+        raw = predictions.get(f"{AS_VMAX_DESCRIPTION} (uncorrected)")
+        if "avVmaxEstimate" in screening and isinstance(raw, (int, float)):
+            screening["avVmaxEstimate"]["label"] = AS_VMAX_CALIBRATED_LABEL
+            screening["avVmaxEstimate"]["uncorrected"] = round(float(raw), 2)
     return screening
 
 
@@ -387,7 +419,42 @@ class CustomPredictionService(BasePredictionService):
                     else:
                         serializable_predictions[description] = value
 
+        self._apply_as_calibration(predictions, diagnoses, serializable_predictions, class_mapping)
         return diagnoses, serializable_predictions
+
+    def _as_calibration(self) -> Optional[Dict[str, Any]]:
+        return getattr(self.__class__, "_as_calibration_override", _AS_CALIBRATION)
+
+    def _apply_as_calibration(self, predictions, diagnoses, serializable_predictions, class_mapping) -> None:
+        """MHI calibration (1.1.3): calibrated AS label and corrected AV Vmax; raw values are kept.
+
+        Only "Aortic valve stenosis" and "Aortic valve peak velocity" change. The raw softmax list stays
+        under "Aortic valve stenosis" in predictions and the raw Vmax is kept as
+        "Aortic valve peak velocity (uncorrected)". AS stays a screening output, never a diagnosis.
+        """
+        cal = self._as_calibration()
+        if cal is None:
+            return
+        if AS_HEAD in predictions:
+            value = predictions[AS_HEAD]
+            probs = [float(x) for x in (value.squeeze(0).tolist() if isinstance(value, torch.Tensor) else value)]
+            p_severe = probs[SEVERE]
+            p_any = probs[MILD_MODERATE] + p_severe
+            label = calibrated_as_label(probs, cal)
+            diagnoses[AS_STENOSIS_DESCRIPTION] = (
+                f"{label} (MHI-calibrated screening, not a diagnosis): "
+                f"P(severe AS) {p_severe:.2f}, P(any AS) {p_any:.2f}"
+            )
+        if VMAX_HEAD in predictions:
+            units = class_mapping.get(VMAX_HEAD, {}).get("units", "m/s")
+            value = predictions[VMAX_HEAD]
+            raw = value.item() if isinstance(value, torch.Tensor) else float(value)
+            corrected = corrected_vmax(raw, cal)
+            serializable_predictions[AS_VMAX_DESCRIPTION] = corrected
+            serializable_predictions[f"{AS_VMAX_DESCRIPTION} (uncorrected)"] = raw
+            diagnoses[AS_VMAX_DESCRIPTION] = (
+                f"{corrected:.1f} {units} ({AS_VMAX_CALIBRATED_LABEL}; uncorrected {raw:.1f} {units})"
+            )
 
     def _get_recommendations(self, diagnosis_dict: Dict[str, str], language: str) -> str:
         """Generate clinical recommendations based on echocardiographic findings.
@@ -811,7 +878,7 @@ class CustomPredictionService(BasePredictionService):
         # Prepare comprehensive data for HTML parser
         html_data = {
             'diagnosis': diagnosis,
-            'asScreening': aortic_stenosis_screening(predictions_serializable),
+            'asScreening': aortic_stenosis_screening(predictions_serializable, self._as_calibration()),
             'probability': predictions_serializable,
             'recommendations': {
                 'en': recommendations_en,
@@ -894,7 +961,7 @@ class CustomPredictionService(BasePredictionService):
         return {
             'diagnosis': json.dumps(diagnosis_dict),
             'predictions': predictions_serializable,
-            'asScreening': aortic_stenosis_screening(predictions_serializable),
+            'asScreening': aortic_stenosis_screening(predictions_serializable, self._as_calibration()),
             'modelRecommendations': {
                 'en': recommendations_en,
                 'fr': recommendations_fr,
@@ -1076,46 +1143,83 @@ class CustomPredictionService(BasePredictionService):
             raise e
     
     def _run_inference(
-        self, 
-        dicoms: List[pydicom.Dataset], 
+        self,
+        dicoms: List[pydicom.Dataset],
         views: Optional[List[Optional[str]]] = None
     ) -> Dict[str, torch.Tensor]:
+        """Study-level predictions (1.1.3 hybrid).
+
+        The aortic stenosis heads (AVStenosis, AVPkVel) come from the upstream-aligned input
+        (_run_inference_upstream), on which the MHI calibration was fitted and tested. Every other head
+        keeps the 1.1.x input and aggregation (mean logits over one centred clip per video), so the
+        other 38 outputs are unchanged: the upstream-aligned input moved some of them away from the
+        MHI SR measurements (LVEF, IVSd, LVPWd, LVEDV, LA diameter) on the calibration dataset.
         """
-        Run inference on DICOM datasets and return predictions with activations applied.
-        
-        Computes averaged logits via _run_inference_logits_only, then applies task-specific
-        activation functions to produce final predictions.
-        
-        Args:
-            dicoms: List of DICOM datasets to process
-            views: Optional list of view names (currently unused, reserved for future use)
-            
-        Returns:
-            Dictionary mapping task names to predictions with activations:
-            - Binary classification: sigmoid probabilities (0-1)
-            - Multi-class classification: softmax probabilities
-            - Regression: raw values
-        """
-        
+        final_output = self._run_inference_live(dicoms)
+        upstream = self._run_inference_upstream(dicoms)
+        for head in (AS_HEAD, VMAX_HEAD):
+            if head in upstream:
+                final_output[head] = upstream[head]
+        return final_output
+
+    def _run_inference_live(self, dicoms: List[pydicom.Dataset]) -> Dict[str, torch.Tensor]:
+        """1.1.x study output: softmax/sigmoid of the mean logits over one centred clip per video."""
         final_logits = self._run_inference_logits_only(dicoms)
-        
         final_output = {}
         task_dict = CustomPredictionService.models['pan_echo'].model.tasks
-        
         for key, averaged_logits in final_logits.items():
-            # Find the task to determine the correct activation
             task = next((t for t in task_dict if t.task_name == key), None)
-            if task:
-                if task.task_type == 'binary_classification':
-                    final_output[key] = torch.sigmoid(averaged_logits)
-                elif task.task_type == 'multi-class_classification':
-                    # Apply softmax to averaged logits
-                    final_output[key] = torch.softmax(averaged_logits, dim=-1)
-                else:
-                    # Regression - no activation needed
-                    final_output[key] = averaged_logits
+            if task and task.task_type == 'binary_classification':
+                final_output[key] = torch.sigmoid(averaged_logits)
+            elif task and task.task_type == 'multi-class_classification':
+                final_output[key] = torch.softmax(averaged_logits, dim=-1)
             else:
-                # Fallback if task not found
                 final_output[key] = averaged_logits
-        
         return final_output
+
+    def _run_inference_upstream(self, dicoms: List[pydicom.Dataset]) -> Dict[str, torch.Tensor]:
+        """Study-level predictions with the upstream-aligned input (1.1.3, used for the AS heads).
+
+        Per video: sector crop, 4 clips (utils.upstream_preprocess), logits averaged over the 4 clips,
+        then the task activation (sigmoid, softmax or none for regressions). Per study: the mean of the
+        per-video probabilities and regression outputs, as in the PanEcho authors' evaluation.
+        """
+        model = CustomPredictionService.models['pan_echo']
+        task_types = {t.task_name: t.task_type for t in model.model.tasks}
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        sums: Dict[str, torch.Tensor] = {}
+        videos = 0
+        for index, dicom in enumerate(dicoms):
+            started = time.perf_counter()
+            try:
+                frames = to_display_uint8(load_pixel_array(dicom), getattr(dicom, "PhotometricInterpretation", None))
+                if frames.ndim < 3:
+                    print(f"Skipping DICOM {index} with invalid dimensions: {frames.shape}")
+                    continue
+                clips = video_clips(frames, dicom)
+            except Exception as e:
+                print(f"Skipping DICOM {index}: {e}")
+                continue
+            del frames
+            started = self._time("clip_transform", started)
+            with torch.no_grad():
+                outputs = model(torch.stack(clips).to(device))
+            for key, output in outputs.items():
+                logits = output.float().mean(dim=0)
+                task_type = task_types.get(key)
+                if task_type == 'binary_classification':
+                    value = torch.sigmoid(logits)
+                elif task_type == 'multi-class_classification':
+                    value = torch.softmax(logits, dim=-1)
+                else:
+                    value = logits
+                value = value.cpu()
+                sums[key] = sums[key] + value if key in sums else value.clone()
+            videos += 1
+            del outputs, clips
+            self._time("model_forward", started)
+        if device == 'cuda':
+            torch.cuda.empty_cache()
+        if videos == 0:
+            raise ValueError("No valid DICOM files processed")
+        return {key: total / videos for key, total in sums.items()}
