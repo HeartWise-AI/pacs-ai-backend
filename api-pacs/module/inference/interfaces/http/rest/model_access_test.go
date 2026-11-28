@@ -162,3 +162,30 @@ func TestResearchModelsAreHiddenFromEveryModelUsers(t *testing.T) {
 	allow, _ = resultModelFilter(requestWith(&admin))
 	require.Nil(t, allow)
 }
+
+func TestFilterRunExecutionsHidesResearchModelsFromUsers(t *testing.T) {
+	t.Setenv("PACS_RESEARCH_MODEL_IDS", "EchoAlign")
+	executions := []types.ProcessingRunExecutionSummary{
+		{ExecutionID: "a", ModelName: "PanEcho"},
+		{ExecutionID: "b", ModelName: "EchoAlign (research use only)"},
+		{ExecutionID: "c", ModelName: "EchoAlign"},
+	}
+	base := accessEntity.ForRole(iamEntity.UserRole, nil)
+	kept := filterRunExecutions(base, executions)
+	require.Len(t, kept, 1)
+	require.Equal(t, "a", kept[0].ExecutionID)
+	require.Len(t, filterRunExecutions(accessEntity.ForRole(iamEntity.AdminRole, nil), executions), 3)
+	require.Len(t, filterRunExecutions(restrictedAccess("EchoAlign", "PanEcho"), executions), 3)
+}
+
+func TestFilterPredictionModelsHidesResearchModelsFromUsers(t *testing.T) {
+	t.Setenv("PACS_RESEARCH_MODEL_IDS", "EchoAlign")
+	models := []types.PredictionModel{
+		{PredictionExecution: types.PredictionExecution{ModelName: "PanEcho"}},
+		{PredictionExecution: types.PredictionExecution{ModelName: "EchoAlign (research use only)"}},
+	}
+	kept := filterPredictionModels(accessEntity.ForRole(iamEntity.UserRole, nil), models)
+	require.Len(t, kept, 1)
+	require.Equal(t, "PanEcho", kept[0].ModelName)
+	require.Len(t, filterPredictionModels(restrictedAccess("EchoAlign", "PanEcho"), models), 2)
+}

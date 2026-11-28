@@ -59,6 +59,9 @@ type ListPredictions struct {
 	LaunchedBy string
 	Limit      int
 	Offset     int
+	// AllowModelName, when set, must accept a line's model name for the export
+	// to write it (research-only models withheld from the session's access).
+	AllowModelName func(modelName string) bool
 }
 
 // GetPredictionModelHistory pages the executions of one model on one exam.

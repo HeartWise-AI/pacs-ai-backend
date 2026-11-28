@@ -144,3 +144,18 @@ func resultModelFilter(r *http.Request) (func(string) bool, string) {
 	}
 	return access.AllowsModel, ""
 }
+
+// filterRunExecutions drops the executions of research-only models the access
+// does not allow from run detail and history responses (model names, statuses).
+func filterRunExecutions(access accessEntity.Access, executions []types.ProcessingRunExecutionSummary) []types.ProcessingRunExecutionSummary {
+	if access.Unrestricted() {
+		return executions
+	}
+	kept := make([]types.ProcessingRunExecutionSummary, 0, len(executions))
+	for _, execution := range executions {
+		if access.AllowsModelName(execution.ModelName) {
+			kept = append(kept, execution)
+		}
+	}
+	return kept
+}

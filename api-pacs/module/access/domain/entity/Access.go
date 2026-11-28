@@ -99,6 +99,42 @@ func ResearchModelIDs() []string {
 	return ids
 }
 
+// IsResearchModelName reports whether a recorded model name (registration or
+// study-service name) belongs to a research-only model: the modelId itself, or
+// the modelId followed by a parenthesised qualifier, e.g. "EchoAlign (research use only)".
+func IsResearchModelName(name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	for _, id := range ResearchModelIDs() {
+		id = strings.ToLower(id)
+		if name == id || strings.HasPrefix(name, id+" (") {
+			return true
+		}
+	}
+	return false
+}
+
+// HidesResearchModels reports whether research-only models are withheld from
+// this access (every USER without an explicit allowlist that names them).
+func (access Access) HidesResearchModels() bool {
+	return !access.Unrestricted()
+}
+
+// AllowsModelName reports whether a result recorded under a model name may be
+// listed: research-only names follow AllowsModel of their modelId, other names
+// keep the previous behaviour (listing does not resolve registrations).
+func (access Access) AllowsModelName(name string) bool {
+	if !IsResearchModelName(name) {
+		return true
+	}
+	for _, id := range ResearchModelIDs() {
+		lowered := strings.ToLower(strings.TrimSpace(name))
+		if lowered == strings.ToLower(id) || strings.HasPrefix(lowered, strings.ToLower(id)+" (") {
+			return access.AllowsModel(id)
+		}
+	}
+	return false
+}
+
 // IsResearchModel reports whether modelID is research-only.
 func IsResearchModel(modelID string) bool {
 	return contains(ResearchModelIDs(), strings.TrimSpace(modelID))

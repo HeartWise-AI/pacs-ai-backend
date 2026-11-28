@@ -129,6 +129,11 @@ func (controller *InferencePredictionsController) ListPredictions(w http.Respons
 		writePredictionsError(w, err.Error())
 		return
 	}
+	if access, err := accessctx.Get(r.Context()); err == nil && !access.Unrestricted() {
+		for index := range page.Exams {
+			page.Exams[index].Models = filterPredictionModels(access, page.Exams[index].Models)
+		}
+	}
 	response := viewmodels.HTTPResponseVM{
 		Status: http.StatusOK, Success: true, Message: "Successfully retrieved AI predictions.", Data: page,
 	}
@@ -164,6 +169,10 @@ func (controller *InferencePredictionsController) GetPredictionModelHistory(w ht
 	})
 	if err != nil {
 		writePredictionsError(w, err.Error())
+		return
+	}
+	if access, err := accessctx.Get(r.Context()); err == nil && !access.AllowsModelName(page.ModelName) {
+		writePredictionsError(w, apiError.MissingRecord)
 		return
 	}
 	response := viewmodels.HTTPResponseVM{
@@ -204,6 +213,9 @@ func (controller *InferencePredictionsController) ExportPredictions(w http.Respo
 		// Byte order mark so spreadsheet applications read UTF-8.
 		_, _ = io.WriteString(w, "\xEF\xBB\xBF")
 		return w
+	}
+	if access, err := accessctx.Get(r.Context()); err == nil && !access.Unrestricted() {
+		request.AllowModelName = access.AllowsModelName
 	}
 	summary, err := controller.InferencePredictionsServiceInterface.ExportPredictions(r.Context(), request, start)
 	if err != nil {
@@ -273,4 +285,15 @@ func writeFeedbackReportCountsError(w http.ResponseWriter, errorCode string) {
 	}
 	response := viewmodels.HTTPResponseVM{Status: status, Success: false, Message: message, ErrorCode: errorCode}
 	response.JSON(w)
+}
+
+// filterPredictionModels drops research-only models the access does not allow.
+func filterPredictionModels(access accessEntity.Access, models []serviceTypes.PredictionModel) []serviceTypes.PredictionModel {
+	kept := make([]serviceTypes.PredictionModel, 0, len(models))
+	for _, model := range models {
+		if access.AllowsModelName(model.ModelName) {
+			kept = append(kept, model)
+		}
+	}
+	return kept
 }
