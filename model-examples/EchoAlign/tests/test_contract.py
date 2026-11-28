@@ -114,9 +114,22 @@ def test_html_has_research_banner():
     result = {"keyHeads": {"transaortic_peak_velocity": head}, "clipsUsed": 3, "instanceSelection": "multiframe",
               "summary": {"aorticStenosis": {"grade": "mild", "severeProbability": 0.01, "moderateOrSevereProbability": 0.2,
                                              "avPeakVelocity": 2.5, "meanGradient": 15.0}, "ejectionFraction": 60.0}}
+    result["keyHeads"]["aortic_stenosis_grade"] = {
+        "type": "ordinal", "probabilities": {"normal": 0.12, "mild": 0.2, "moderate": 0.57, "severe": 0.11},
+        "expectedGrade": 1.7, "grade": "moderate", "gradeIndex": 2}
+    result["keyHeads"]["ejection_fraction"] = {"type": "regression", "value": 66.84, "unit": "%"}
+    result["keyHeads"]["mitral_regurgitation_grade"] = {
+        "type": "ordinal", "probabilities": {"normal": 0.32, "trace": 0.56, "mild": 0.12, "moderate": 0.0, "severe": 0.0},
+        "grade": "trace", "gradeIndex": 1}
     page = CustomPredictionService.render_html(result)
     assert "Research use only — EchoAlign (CC BY-NC 4.0), not for clinical decisions" in page
     assert "arXiv:2611.27517" in page
+    # PanEcho 1.1.2 layout: same title, AS screening section, PanEcho finding keys, no AS grade row
+    assert "Echocardiographic Analysis Report" in page and "Aortic stenosis screening (AI)" in page
+    assert "P(severe AS)" in page and "0.11" in page
+    assert "Left ventricular (LV) ejection fraction" in page and "66.8 %" in page
+    assert "Mitral valve regurgitation" in page and "Trace (P 0.56)" in page
+    assert "aortic_stenosis_grade" not in page
 
 
 def test_render_report_contract_and_banner():
@@ -131,7 +144,7 @@ def test_render_report_contract_and_banner():
                                                              "meanGradient": 31.0}, "ejectionFraction": 67.0}},
               "diagnosis": "x", "modelRecommendations": {}}
     page = main._render_stored_result({"result": stored})
-    assert page.index("Research use only — EchoAlign (CC BY-NC 4.0), not for clinical decisions") < page.index("<h2>EchoAlign")
+    assert page.index("Research use only — EchoAlign (CC BY-NC 4.0), not for clinical decisions") < page.index("Echocardiographic Analysis Report</h1>")
     for bad in ({}, {"result": {}}, {"result": stored, "extra": 1}, {"result": {"predictions": {"summary": {}}}}):
         with pytest.raises(main.ResultError):
             main._render_stored_result(bad)
