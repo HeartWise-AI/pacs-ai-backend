@@ -65,6 +65,15 @@ func (controller *InferenceQueryController) GetStudyProcessingRunHistory(w http.
 		return
 	}
 
+	if access, code := modelAccessFilter(r); code != "" {
+		writeModelAccessError(w, code)
+		return
+	} else if !access.Unrestricted() {
+		for index := range page.Runs {
+			page.Runs[index].Executions = filterRunExecutions(access, page.Runs[index].Executions)
+		}
+	}
+
 	writeWorklistQuerySuccess(w, "Successfully retrieved study processing-run history.", page)
 }
 
@@ -83,6 +92,13 @@ func (controller *InferenceQueryController) GetProcessingRunDetail(w http.Respon
 	if err != nil {
 		writeWorklistQueryError(w, err.Error())
 		return
+	}
+
+	if access, code := modelAccessFilter(r); code != "" {
+		writeModelAccessError(w, code)
+		return
+	} else if !access.Unrestricted() {
+		detail.Executions = filterRunExecutions(access, detail.Executions)
 	}
 
 	writeWorklistQuerySuccess(w, "Successfully retrieved processing-run detail.", detail)

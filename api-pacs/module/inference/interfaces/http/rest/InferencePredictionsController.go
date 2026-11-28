@@ -124,6 +124,14 @@ func (controller *InferencePredictionsController) ListPredictions(w http.Respons
 		writePredictionsError(w, apiError.InvalidPayload)
 		return
 	}
+	access, accessErr := accessctx.Get(r.Context())
+	if accessErr != nil {
+		writeModelAccessError(w, apiError.AccessUnavailable)
+		return
+	}
+	if !access.Unrestricted() {
+		request.AllowModelName = access.AllowsModelName
+	}
 	page, err := controller.InferencePredictionsServiceInterface.ListPredictions(r.Context(), request)
 	if err != nil {
 		writePredictionsError(w, err.Error())
@@ -166,6 +174,13 @@ func (controller *InferencePredictionsController) GetPredictionModelHistory(w ht
 		writePredictionsError(w, err.Error())
 		return
 	}
+	if access, err := accessctx.Get(r.Context()); err != nil {
+		writeModelAccessError(w, apiError.AccessUnavailable)
+		return
+	} else if !access.AllowsModelName(page.ModelName) {
+		writePredictionsError(w, apiError.MissingRecord)
+		return
+	}
 	response := viewmodels.HTTPResponseVM{
 		Status: http.StatusOK, Success: true, Message: "Successfully retrieved the model history.", Data: page,
 	}
@@ -204,6 +219,12 @@ func (controller *InferencePredictionsController) ExportPredictions(w http.Respo
 		// Byte order mark so spreadsheet applications read UTF-8.
 		_, _ = io.WriteString(w, "\xEF\xBB\xBF")
 		return w
+	}
+	if access, err := accessctx.Get(r.Context()); err != nil {
+		writeModelAccessError(w, apiError.AccessUnavailable)
+		return
+	} else if !access.Unrestricted() {
+		request.AllowModelName = access.AllowsModelName
 	}
 	summary, err := controller.InferencePredictionsServiceInterface.ExportPredictions(r.Context(), request, start)
 	if err != nil {

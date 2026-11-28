@@ -99,6 +99,60 @@ func ResearchModelIDs() []string {
 	return ids
 }
 
+// normalizedModelName compares recorded names with model-info modelIds: the part
+// before a parenthesised qualifier, lower-cased, letters and digits only, so
+// "EchoAlign (research use only)" matches "EchoAlign" and "DeepRV-CLIP" matches
+// "DeepRV_CLIP", while "EchoAlignment" does not match "EchoAlign".
+func normalizedModelName(name string) string {
+	if index := strings.Index(name, " ("); index >= 0 {
+		name = name[:index]
+	}
+	var builder strings.Builder
+	for _, r := range strings.ToLower(name) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			builder.WriteRune(r)
+		}
+	}
+	return builder.String()
+}
+
+// researchModelIDForName returns the research modelId a recorded name belongs to, or "".
+func researchModelIDForName(name string) string {
+	normalized := normalizedModelName(strings.TrimSpace(name))
+	if normalized == "" {
+		return ""
+	}
+	for _, id := range ResearchModelIDs() {
+		if normalizedModelName(id) == normalized {
+			return id
+		}
+	}
+	return ""
+}
+
+// IsResearchModelName reports whether a recorded model name (registration or
+// study-service name) belongs to a research-only model.
+func IsResearchModelName(name string) bool {
+	return researchModelIDForName(name) != ""
+}
+
+// HidesResearchModels reports whether research-only models are withheld from
+// this access (every USER without an explicit allowlist that names them).
+func (access Access) HidesResearchModels() bool {
+	return !access.Unrestricted()
+}
+
+// AllowsModelName reports whether a result recorded under a model name may be
+// listed: research-only names follow AllowsModel of their modelId, other names
+// keep the previous behaviour (listing does not resolve registrations).
+func (access Access) AllowsModelName(name string) bool {
+	id := researchModelIDForName(name)
+	if id == "" {
+		return true
+	}
+	return access.AllowsModel(id)
+}
+
 // IsResearchModel reports whether modelID is research-only.
 func IsResearchModel(modelID string) bool {
 	return contains(ResearchModelIDs(), strings.TrimSpace(modelID))

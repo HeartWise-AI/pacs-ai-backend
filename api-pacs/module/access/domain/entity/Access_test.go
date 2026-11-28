@@ -110,3 +110,25 @@ func TestResearchModelListComesFromTheEnvironment(t *testing.T) {
 func TestDefaultResearchModelList(t *testing.T) {
 	require.Equal(t, []string{"EchoAlign"}, DefaultResearchModelIDs)
 }
+
+func TestResearchModelNamesFollowTheModelAccess(t *testing.T) {
+	t.Setenv("PACS_RESEARCH_MODEL_IDS", "EchoAlign")
+	require.True(t, IsResearchModelName("EchoAlign"))
+	require.True(t, IsResearchModelName(" EchoAlign (research use only) "))
+	require.False(t, IsResearchModelName("EchoAlignment"))
+	require.False(t, IsResearchModelName("PanEcho"))
+	t.Setenv("PACS_RESEARCH_MODEL_IDS", "EchoAlign,DeepRV_CLIP")
+	require.True(t, IsResearchModelName("DeepRV-CLIP"), "display names that differ from the modelId by punctuation")
+	require.True(t, IsResearchModelName("deeprv clip"))
+	t.Setenv("PACS_RESEARCH_MODEL_IDS", "EchoAlign")
+
+	base := ForRole(iamEntity.UserRole, nil)
+	require.False(t, base.AllowsModelName("EchoAlign (research use only)"))
+	require.True(t, base.AllowsModelName("PanEcho"))
+	require.True(t, base.HidesResearchModels())
+	research := ForRole(iamEntity.UserRole, &CustomRole{ModelIDs: []string{"EchoAlign"}})
+	require.True(t, research.AllowsModelName("EchoAlign (research use only)"))
+	admin := ForRole(iamEntity.AdminRole, nil)
+	require.True(t, admin.AllowsModelName("EchoAlign (research use only)"))
+	require.False(t, admin.HidesResearchModels())
+}
