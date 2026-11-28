@@ -193,68 +193,21 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, data type
 		ClientIP: strings.TrimSpace(data.ClientIP),
 	}
 
-	decision, err := service.evaluateLoginAttempt(ctx, signals)
+	userID, challengeRequired, err := service.authenticatePassword(ctx, data, signals)
 	if err != nil {
-		return "", newLoginError(apiError.LoginProtectionUnavailable, false, 0)
-	}
-	if decision.RetryAfter > 0 {
-		return "", newLoginRateLimitError(decision.RetryAfter)
-	}
-	if decision.ChallengeRequired {
-		if service.loginCooldownMode() || data.TurnstileToken == "" {
-			// In cooldown mode a token is never accepted in place of waiting.
-			log.Printf("[security] event=login_challenge_required tenant_id=%s mode=%s", data.TenantID, service.loginChallengeMode())
-			return "", service.handleDeniedLogin(ctx, signals, apiError.LoginChallengeRequired)
-		}
-		if err := service.validateLoginTurnstile(ctx, data.TurnstileToken, signals); err != nil {
-			return "", err
-		}
-	}
-
-	if service.IdentityToolkitAPIInterface == nil {
-		log.Printf("[security] event=login_identity_provider_unavailable reason=not_configured")
-		return "", newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
-	}
-	signInResponse, err := service.IdentityToolkitAPIInterface.SignInWithPassword(ctx, identitytoolkitTypes.SignInWithPasswordRequest{
-		TenantID: data.TenantID,
-		Email:    data.Email,
-		Password: data.Password,
-	})
-	if err != nil {
-		if errors.Is(err, identitytoolkit.ErrCredentialsRejected) {
-			return "", service.handleRejectedLogin(ctx, signals)
-		}
-		if errors.Is(err, identitytoolkit.ErrTooManyAttempts) {
-			return "", service.handleProviderLockout(ctx, signals)
-		}
-		log.Printf("[security] event=login_identity_provider_unavailable tenant_id=%s reason=%s",
-			data.TenantID, identitytoolkit.FailureReason(err))
-		return "", newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
-	}
-	if service.TenantIDTokenVerifierInterface == nil {
-		log.Printf("[security] event=login_identity_provider_unavailable reason=verifier_not_configured")
-		return "", newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
-	}
-	userID, err := service.TenantIDTokenVerifierInterface.VerifyTenantIDToken(ctx, data.TenantID, signInResponse.IDToken)
-	if err != nil || userID == "" || userID != signInResponse.LocalID {
-		log.Printf("[security] event=login_identity_token_verification_failed tenant_id=%s", data.TenantID)
-		return "", newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
-	}
-	if normalizedLoginEmail(signInResponse.Email) != data.Email {
-		log.Printf("[security] event=login_identity_mismatch tenant_id=%s", data.TenantID)
-		return "", newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
+		return "", err
 	}
 
 	user, err := service.UserQueryServiceInterface.GetTenantUserByID(ctx, data.TenantID, userID)
 	if err != nil {
 		log.Printf("[security] event=login_user_profile_unavailable tenant_id=%s", data.TenantID)
-		return "", newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
+		return "", newLoginError(apiError.FirebaseAuthError, challengeRequired, 0)
 	}
 	if !user.IsEmailVerified && !user.IsAdminCreated {
-		return "", newLoginError(apiError.FirebaseAuthEmailNotVerified, decision.ChallengeRequired, 0)
+		return "", newLoginError(apiError.FirebaseAuthEmailNotVerified, challengeRequired, 0)
 	}
 	if user.IsAccountDisabled || user.AccessState == "SUSPENDED" {
-		return "", newLoginError(apiError.AccountSuspended, decision.ChallengeRequired, 0)
+		return "", newLoginError(apiError.AccountSuspended, challengeRequired, 0)
 	}
 
 	sessionToken := generateID()
@@ -267,20 +220,107 @@ func (service *IAMCommandService) LoginTenantUser(ctx context.Context, data type
 	})
 	if err != nil {
 		if err.Error() == apiError.AccountSuspended {
-			return "", newLoginError(apiError.AccountSuspended, decision.ChallengeRequired, 0)
+			return "", newLoginError(apiError.AccountSuspended, challengeRequired, 0)
 		}
-		return "", newLoginError(apiError.LoginProtectionUnavailable, decision.ChallengeRequired, 0)
+		return "", newLoginError(apiError.LoginProtectionUnavailable, challengeRequired, 0)
 	}
 	if err := service.resetLoginAccountFailures(ctx, signals); err != nil {
 		if rollbackErr := service.IAMCommandRepositoryInterface.DeleteTokenSession(sessionToken); rollbackErr != nil {
 			log.Printf("[security] event=login_session_rollback_failed tenant_id=%s", data.TenantID)
 		}
-		return "", newLoginError(apiError.LoginProtectionUnavailable, decision.ChallengeRequired, 0)
+		return "", newLoginError(apiError.LoginProtectionUnavailable, challengeRequired, 0)
 	}
 
 	service.logSuccessfulLogin(ctx, sessionToken, data.TenantID, user)
-	log.Printf("[security] event=login_success tenant_id=%s challenged=%t", data.TenantID, decision.ChallengeRequired)
+	log.Printf("[security] event=login_success tenant_id=%s challenged=%t", data.TenantID, challengeRequired)
 	return sessionToken, nil
+}
+
+// VerifyTenantUserPassword re-authenticates a signed-in user with the same
+// abuse limits and Identity Platform checks as login. It succeeds only when
+// the account that proved the password is data.UserID.
+func (service *IAMCommandService) VerifyTenantUserPassword(ctx context.Context, data types.VerifyTenantUserPassword) error {
+	login := types.LoginTenantUser{
+		TenantID: strings.TrimSpace(data.TenantID),
+		Email:    normalizedLoginEmail(data.Email),
+		Password: data.Password,
+		ClientIP: data.ClientIP,
+	}
+	signals := types.LoginAbuseSignals{
+		TenantID: login.TenantID,
+		Email:    login.Email,
+		ClientIP: strings.TrimSpace(login.ClientIP),
+	}
+
+	userID, challengeRequired, err := service.authenticatePassword(ctx, login, signals)
+	if err != nil {
+		return err
+	}
+	if userID != data.UserID {
+		log.Printf("[security] event=reauthentication_identity_mismatch tenant_id=%s", login.TenantID)
+		return service.handleRejectedLogin(ctx, signals)
+	}
+	if err := service.resetLoginAccountFailures(ctx, signals); err != nil {
+		return newLoginError(apiError.LoginProtectionUnavailable, challengeRequired, 0)
+	}
+	return nil
+}
+
+// authenticatePassword applies the adaptive login policy, checks the password
+// with Identity Platform and returns the verified account ID.
+func (service *IAMCommandService) authenticatePassword(ctx context.Context, data types.LoginTenantUser, signals types.LoginAbuseSignals) (string, bool, error) {
+	decision, err := service.evaluateLoginAttempt(ctx, signals)
+	if err != nil {
+		return "", false, newLoginError(apiError.LoginProtectionUnavailable, false, 0)
+	}
+	if decision.RetryAfter > 0 {
+		return "", false, newLoginRateLimitError(decision.RetryAfter)
+	}
+	if decision.ChallengeRequired {
+		if service.loginCooldownMode() || data.TurnstileToken == "" {
+			// In cooldown mode a token is never accepted in place of waiting.
+			log.Printf("[security] event=login_challenge_required tenant_id=%s mode=%s", data.TenantID, service.loginChallengeMode())
+			return "", false, service.handleDeniedLogin(ctx, signals, apiError.LoginChallengeRequired)
+		}
+		if err := service.validateLoginTurnstile(ctx, data.TurnstileToken, signals); err != nil {
+			return "", false, err
+		}
+	}
+
+	if service.IdentityToolkitAPIInterface == nil {
+		log.Printf("[security] event=login_identity_provider_unavailable reason=not_configured")
+		return "", false, newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
+	}
+	signInResponse, err := service.IdentityToolkitAPIInterface.SignInWithPassword(ctx, identitytoolkitTypes.SignInWithPasswordRequest{
+		TenantID: data.TenantID,
+		Email:    data.Email,
+		Password: data.Password,
+	})
+	if err != nil {
+		if errors.Is(err, identitytoolkit.ErrCredentialsRejected) {
+			return "", false, service.handleRejectedLogin(ctx, signals)
+		}
+		if errors.Is(err, identitytoolkit.ErrTooManyAttempts) {
+			return "", false, service.handleProviderLockout(ctx, signals)
+		}
+		log.Printf("[security] event=login_identity_provider_unavailable tenant_id=%s reason=%s",
+			data.TenantID, identitytoolkit.FailureReason(err))
+		return "", false, newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
+	}
+	if service.TenantIDTokenVerifierInterface == nil {
+		log.Printf("[security] event=login_identity_provider_unavailable reason=verifier_not_configured")
+		return "", false, newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
+	}
+	userID, err := service.TenantIDTokenVerifierInterface.VerifyTenantIDToken(ctx, data.TenantID, signInResponse.IDToken)
+	if err != nil || userID == "" || userID != signInResponse.LocalID {
+		log.Printf("[security] event=login_identity_token_verification_failed tenant_id=%s", data.TenantID)
+		return "", false, newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
+	}
+	if normalizedLoginEmail(signInResponse.Email) != data.Email {
+		log.Printf("[security] event=login_identity_mismatch tenant_id=%s", data.TenantID)
+		return "", false, newLoginError(apiError.FirebaseAuthError, decision.ChallengeRequired, 0)
+	}
+	return userID, decision.ChallengeRequired, nil
 }
 
 func (service *IAMCommandService) evaluateLoginAttempt(ctx context.Context, signals types.LoginAbuseSignals) (types.LoginProtectionDecision, error) {

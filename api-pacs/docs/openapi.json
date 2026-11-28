@@ -2872,7 +2872,7 @@
       "put": {
         "tags": ["user"],
         "summary": "Update Tenant User Password",
-        "description": "Update tenant user password.",
+        "description": "Change the signed-in user's password. The current password is checked with the same rate limits as sign-in. On success every session of the user is revoked and data.sessionToken holds a fresh session for the caller.",
         "security": [
           {
             "bearerAuth": []
@@ -5810,11 +5810,12 @@
         }
       },
       "UpdateTenantUserPasswordRequest": {
-        "required": ["id", "newPassword"],
+        "required": ["currentPassword", "newPassword"],
         "type": "object",
         "properties": {
-          "id": {
-            "type": "string"
+          "currentPassword": {
+            "type": "string",
+            "maxLength": 4096
           },
           "newPassword": {
             "type": "string"

@@ -135,9 +135,11 @@ type UpdateTenantUser struct {
 }
 
 type UpdateTenantUserPassword struct {
-	TenantID    string
-	ID          string
-	NewPassword string
+	TenantID        string
+	ID              string
+	CurrentPassword string
+	NewPassword     string
+	ClientIP        string
 }
 
 type UpdateUserMetadata struct {

@@ -9,34 +9,35 @@ import (
 var (
 	Validate         *validator.Validate = newValidator()
 	ValidationErrors map[string]string   = map[string]string{
-		"CreateTenantOwnerRequest.TenantID":           "Tenant ID is required.",
-		"CreateTenantUserRequest.Role":                "Role is required.",
-		"CreateTenantUserRequest.Name":                "Name is required.",
-		"CreateTenantUserRequest.Email":               "Email is required.",
-		"CreateTenantUserRequest.LicenseNo":           "License number is required.",
-		"CreateTenantUserRequest.Specialty":           "Specialty is required.",
-		"DeleteTenantUserRequest.UserID":              "User ID is required.",
-		"ChangeTenantUserAccessRequest.Reason":        "Reason must not exceed 500 characters.",
-		"SendTenantEmailInviteRequest.Email":          "Valid email is required.",
-		"RegisterTenantUserRequest.TenantID":          "Tenant ID is required and must not exceed 128 characters.",
-		"RegisterTenantUserRequest.TurnstileToken":    "Turnstile token is required and must not exceed 4096 characters.",
-		"RegisterTenantUserRequest.Name":              "Name is required and must not exceed 100 characters.",
-		"RegisterTenantUserRequest.Email":             "A valid email address is required.",
-		"RegisterTenantUserRequest.Password":          "Password must be 8 to 128 characters and contain uppercase, lowercase, and special characters.",
-		"RegisterTenantUserRequest.LicenseNo":         "License number must not exceed 100 characters.",
-		"RegisterTenantUserRequest.Specialty":         "Specialty is required and must not exceed 100 characters.",
-		"RegisterTenantUserRequest.Code":              "Invitation code must not exceed 256 characters.",
-		"RegisterTenantUserRequest.PolicyAcceptances": "Acceptance of the current Terms and Privacy Policy is required.",
-		"AcceptPoliciesRequest.Acceptances":           "Current policy acceptances are required.",
-		"PolicyAcceptanceRequest.PolicyKey":           "Policy key is required.",
-		"PolicyAcceptanceRequest.Version":             "Policy version is required.",
-		"ResendTenantEmailInviteRequest.ID":           "ID is required.",
-		"UpdateTenantUserRequest.ID":                  "ID is required.",
-		"UpdateTenantUserRequest.Role":                "Role is required.",
-		"UpdateTenantUserRequest.Name":                "Name is required.",
-		"UpdateTenantUserRequest.LicenseNo":           "License number is required.",
-		"UpdateTenantUserRequest.Specialty":           "Specialty is required.",
-		"UpdateTenantUserPasswordRequest.NewPassword": "New password is required.",
+		"CreateTenantOwnerRequest.TenantID":               "Tenant ID is required.",
+		"CreateTenantUserRequest.Role":                    "Role is required.",
+		"CreateTenantUserRequest.Name":                    "Name is required.",
+		"CreateTenantUserRequest.Email":                   "Email is required.",
+		"CreateTenantUserRequest.LicenseNo":               "License number is required.",
+		"CreateTenantUserRequest.Specialty":               "Specialty is required.",
+		"DeleteTenantUserRequest.UserID":                  "User ID is required.",
+		"ChangeTenantUserAccessRequest.Reason":            "Reason must not exceed 500 characters.",
+		"SendTenantEmailInviteRequest.Email":              "Valid email is required.",
+		"RegisterTenantUserRequest.TenantID":              "Tenant ID is required and must not exceed 128 characters.",
+		"RegisterTenantUserRequest.TurnstileToken":        "Turnstile token is required and must not exceed 4096 characters.",
+		"RegisterTenantUserRequest.Name":                  "Name is required and must not exceed 100 characters.",
+		"RegisterTenantUserRequest.Email":                 "A valid email address is required.",
+		"RegisterTenantUserRequest.Password":              "Password must be 8 to 128 characters and contain uppercase, lowercase, and special characters.",
+		"RegisterTenantUserRequest.LicenseNo":             "License number must not exceed 100 characters.",
+		"RegisterTenantUserRequest.Specialty":             "Specialty is required and must not exceed 100 characters.",
+		"RegisterTenantUserRequest.Code":                  "Invitation code must not exceed 256 characters.",
+		"RegisterTenantUserRequest.PolicyAcceptances":     "Acceptance of the current Terms and Privacy Policy is required.",
+		"AcceptPoliciesRequest.Acceptances":               "Current policy acceptances are required.",
+		"PolicyAcceptanceRequest.PolicyKey":               "Policy key is required.",
+		"PolicyAcceptanceRequest.Version":                 "Policy version is required.",
+		"ResendTenantEmailInviteRequest.ID":               "ID is required.",
+		"UpdateTenantUserRequest.ID":                      "ID is required.",
+		"UpdateTenantUserRequest.Role":                    "Role is required.",
+		"UpdateTenantUserRequest.Name":                    "Name is required.",
+		"UpdateTenantUserRequest.LicenseNo":               "License number is required.",
+		"UpdateTenantUserRequest.Specialty":               "Specialty is required.",
+		"UpdateTenantUserPasswordRequest.CurrentPassword": "Current password is required and must not exceed 4096 characters.",
+		"UpdateTenantUserPasswordRequest.NewPassword":     "New password is required.",
 	}
 )
 
@@ -147,7 +148,12 @@ type UpdateTenantUserRequest struct {
 }
 
 type UpdateTenantUserPasswordRequest struct {
-	NewPassword string `json:"newPassword" validate:"required"`
+	CurrentPassword string `json:"currentPassword" validate:"required,max=4096"`
+	NewPassword     string `json:"newPassword" validate:"required"`
+}
+
+type UpdateTenantUserPasswordResponse struct {
+	SessionToken string `json:"sessionToken"`
 }
 
 type UpdateUserMetadataRequest struct {

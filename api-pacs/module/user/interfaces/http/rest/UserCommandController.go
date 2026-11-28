@@ -994,7 +994,8 @@ func (controller *UserCommandController) UpdateTenantUser(w http.ResponseWriter,
 	response.JSON(w)
 }
 
-// UpdateTenantUserPassword update a tenant user password. Only callable by admin or owner.
+// UpdateTenantUserPassword changes the signed-in user's own password after
+// re-authenticating with the current password.
 func (controller *UserCommandController) UpdateTenantUserPassword(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(iamTypes.TenantIDCtx).(string)
 	userID := r.Context().Value(iamTypes.UserIDCtx).(string)
@@ -1040,16 +1041,42 @@ func (controller *UserCommandController) UpdateTenantUserPassword(w http.Respons
 		return
 	}
 
-	err = controller.UserCommandServiceInterface.UpdateTenantUserPassword(context.TODO(), serviceTypes.UpdateTenantUserPassword{
-		ID:          userID,
-		TenantID:    tenantID,
-		NewPassword: request.NewPassword,
+	sessionToken, err := controller.UserCommandServiceInterface.UpdateTenantUserPassword(r.Context(), serviceTypes.UpdateTenantUserPassword{
+		ID:              userID,
+		TenantID:        tenantID,
+		CurrentPassword: request.CurrentPassword,
+		NewPassword:     request.NewPassword,
+		ClientIP:        controller.registrationClientIP(r),
 	})
 	if err != nil {
+		code := err.Error()
+		retryAfterSeconds := 0
+		var loginError *apiError.LoginError
+		if stderrors.As(err, &loginError) {
+			code = loginError.Code
+			retryAfterSeconds = loginError.RetryAfterSeconds
+		}
+
 		var httpCode int
 		var errorMsg string
 
-		switch err.Error() {
+		switch code {
+		case errors.UnauthorizedAccess:
+			// Not 401: the session is valid, only the current password is wrong.
+			httpCode = http.StatusForbidden
+			errorMsg = "Current password is incorrect."
+		case errors.LoginChallengeRequired, errors.TurnstileInvalid:
+			httpCode = http.StatusForbidden
+			errorMsg = "Too many failed attempts. Sign in again to change your password."
+		case errors.LoginRateLimited:
+			httpCode = http.StatusTooManyRequests
+			errorMsg = "Too many attempts. Please try again later."
+			if retryAfterSeconds > 0 {
+				w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
+			}
+		case errors.FirebaseAuthError, errors.CloudflareAPIError, errors.LoginProtectionUnavailable:
+			httpCode = http.StatusServiceUnavailable
+			errorMsg = "Password change is temporarily unavailable. Please try again later."
 		case errors.DatabaseError:
 			httpCode = http.StatusInternalServerError
 			errorMsg = "Error occurred while updating user password."
@@ -1062,7 +1089,7 @@ func (controller *UserCommandController) UpdateTenantUserPassword(w http.Respons
 			Status:    httpCode,
 			Success:   false,
 			Message:   errorMsg,
-			ErrorCode: err.Error(),
+			ErrorCode: code,
 		}
 
 		response.JSON(w)
@@ -1073,6 +1100,9 @@ func (controller *UserCommandController) UpdateTenantUserPassword(w http.Respons
 		Status:  http.StatusOK,
 		Success: true,
 		Message: "Successfully updated tenant user password.",
+		Data: &types.UpdateTenantUserPasswordResponse{
+			SessionToken: sessionToken,
+		},
 	}
 
 	response.JSON(w)

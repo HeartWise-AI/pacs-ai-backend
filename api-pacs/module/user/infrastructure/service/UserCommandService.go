@@ -20,6 +20,7 @@ import (
 	elasticsearchTypes "api-pacs/module/elasticsearch/infrastructure/service/types"
 	iamApplication "api-pacs/module/iam/application"
 	iamEntity "api-pacs/module/iam/domain/entity"
+	iamServiceTypes "api-pacs/module/iam/infrastructure/service/types"
 	inferenceApplication "api-pacs/module/inference/application"
 	inferenceTypes "api-pacs/module/inference/infrastructure/service/types"
 	tenantApplication "api-pacs/module/tenant/application"
@@ -836,19 +837,54 @@ func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data ty
 	return nil
 }
 
-// UpdateTenantUserPassword update user password
-func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context, data types.UpdateTenantUserPassword) error {
-	err := service.UserCommandRepositoryInterface.UpdateTenantUserPassword(ctx, repositoryTypes.UpdateTenantUserPassword{
+// UpdateTenantUserPassword changes the signed-in user's password once the
+// current password is proven for that same account, then replaces every
+// session of the user with a single fresh one.
+func (service *UserCommandService) UpdateTenantUserPassword(ctx context.Context, data types.UpdateTenantUserPassword) (string, error) {
+	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(ctx, data.TenantID, data.ID)
+	if err != nil {
+		return "", err
+	}
+
+	err = service.IAMCommandServiceInterface.VerifyTenantUserPassword(ctx, iamServiceTypes.VerifyTenantUserPassword{
+		TenantID: data.TenantID,
+		UserID:   data.ID,
+		Email:    user.Email,
+		Password: data.CurrentPassword,
+		ClientIP: data.ClientIP,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	err = service.UserCommandRepositoryInterface.UpdateTenantUserPassword(ctx, repositoryTypes.UpdateTenantUserPassword{
 		ID:          data.ID,
 		TenantID:    data.TenantID,
 		NewPassword: data.NewPassword,
 	})
 	if err != nil {
 		log.Println(err)
-		return err
+		return "", err
 	}
 
-	return nil
+	if err := service.IAMCommandServiceInterface.RevokeUserSessions(ctx, data.TenantID, data.ID); err != nil {
+		log.Printf("[security] event=password_change_session_revocation_failed tenant_id=%s user_id=%s error=%v", data.TenantID, data.ID, err)
+		return "", err
+	}
+
+	sessionToken := generateID()
+	err = service.IAMCommandServiceInterface.SetTokenSession(ctx, iamServiceTypes.SetTokenSession{
+		SessionID:           sessionToken,
+		TenantID:            data.TenantID,
+		UserID:              data.ID,
+		Role:                user.Role,
+		ExpireTimeInSeconds: iamEntity.ExpireTimeInSeconds,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return sessionToken, nil
 }
 
 // UpdateUserMetadata update user metadata

@@ -28,8 +28,9 @@ type UserCommandServiceInterface interface {
 	SendTenantUserEmailInvite(ctx context.Context, data types.SendTenantUserEmailInvite) error
 	// UpdateTenantUser updates a tenant user
 	UpdateTenantUser(ctx context.Context, data types.UpdateTenantUser) error
-	// UpdateTenantUserPassword updates a tenant user's password
-	UpdateTenantUserPassword(ctx context.Context, data types.UpdateTenantUserPassword) error
+	// UpdateTenantUserPassword updates a tenant user's password after verifying
+	// the current one, and returns a fresh session token
+	UpdateTenantUserPassword(ctx context.Context, data types.UpdateTenantUserPassword) (string, error)
 	// UpdateUserMetadata updates a user metadata
 	UpdateUserMetadata(ctx context.Context, data types.UpdateUserMetadata) error
 	// CompleteUserViewerTour records that the user completed or skipped the viewer tour
