@@ -193,6 +193,10 @@ def apply_head(x: np.ndarray, name: str, meta: Dict[str, Any], heads: Dict[str, 
     return out
 
 
+class StudyTooLarge(ValueError):
+    """The study exceeds the size limits of this research model; it is skipped, not failed."""
+
+
 class CustomPredictionService(BasePredictionService):
     models: Dict[str, Any] = {}
     is_initialized: bool = False
@@ -285,9 +289,8 @@ class CustomPredictionService(BasePredictionService):
                     skipped[reason] += 1
                     continue
                 if len(labels) + len(clips) >= MAX_CLIPS:
-                    raise ValueError(
-                        f"STUDY_TOO_LARGE: study skipped, more than {MAX_CLIPS} usable clips "
-                        f"(limit of this research model)"
+                    raise StudyTooLarge(
+                        f"Study skipped: more than {MAX_CLIPS} usable clips (limit of this research model)"
                     )
                 with open(path, "wb") as handle:
                     handle.write(data)
@@ -392,8 +395,27 @@ class CustomPredictionService(BasePredictionService):
     def render_html(result: Dict[str, Any]) -> str:
         return HTMLParser.generate_detection_results(CustomPredictionService.report_inputs(result))
 
+    async def predict(self, request: PredictRequest):
+        # A study over the limits answers 413 STUDY_TOO_LARGE (a skip) instead of a 500 processing error.
+        self._skip_reason = None
+        success, result = await super().predict(request)
+        if self._skip_reason:
+            from utils.http_utils import HTTPResponse
+            return False, HTTPResponse(status=413, success=False, message=self._skip_reason,
+                                       error_code="STUDY_TOO_LARGE").to_response()
+        return success, result
+
+    def _guarded_inference(self, request: PredictRequest) -> Optional[Dict[str, Any]]:
+        try:
+            return self._run_inference(request)
+        except StudyTooLarge as exc:
+            self._skip_reason = str(exc)
+            return None
+
     async def _handle_json_output(self, request: PredictRequest):
-        result = self._run_inference(request)
+        result = self._guarded_inference(request)
+        if result is None:
+            return {}
         return {
             "predictions": result,
             "diagnosis": self.diagnosis(result),
@@ -403,5 +425,7 @@ class CustomPredictionService(BasePredictionService):
         }
 
     async def _handle_html_output(self, request: PredictRequest):
-        result = self._run_inference(request)
+        result = self._guarded_inference(request)
+        if result is None:
+            return {}
         return {"htmlBase64": base64.b64encode(self.render_html(result).encode("utf-8")).decode("ascii")}

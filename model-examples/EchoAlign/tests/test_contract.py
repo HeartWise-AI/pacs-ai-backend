@@ -168,3 +168,20 @@ def test_guards_and_binary_wording():
     diagnosis = CustomPredictionService.report_inputs({"allHeads": heads})["diagnosis"]
     assert diagnosis["RV systolic function"] == "Reduced (P 0.90)"
     assert diagnosis["RV size"] == "Normal (P 0.01)"
+
+
+def test_too_many_clips_is_a_structured_skip(monkeypatch):
+    import asyncio
+    import logic
+    from types import SimpleNamespace
+    service = logic.CustomPredictionService()
+    monkeypatch.setattr(logic.CustomPredictionService, "is_initialized", True, raising=False)
+    monkeypatch.setattr(logic.CustomPredictionService, "supported_output_modes", ["HTML", "JSON"], raising=False)
+
+    def too_large(self, request):
+        raise logic.StudyTooLarge("Study skipped: more than 200 usable clips (limit of this research model)")
+
+    monkeypatch.setattr(logic.CustomPredictionService, "_run_inference", too_large)
+    success, response = asyncio.run(service.predict(SimpleNamespace(outputMode="JSON")))
+    assert success is False and response.status_code == 413
+    assert b"STUDY_TOO_LARGE" in response.body and b"Study skipped" in response.body
