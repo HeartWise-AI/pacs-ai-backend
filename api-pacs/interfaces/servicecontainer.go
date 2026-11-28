@@ -1106,6 +1106,7 @@ func ServiceContainer() ServiceContainerInterface {
 			go RunInferenceIngestionRetrievalWorkerHandler()
 			go RunInferenceIngestionReconciliationWorkerHandler()
 			go RunOrthancLocalStudiesCacheHandler()
+			go RunOrthancModalityRightsHandler()
 			go RunOrthancTenantStudySyncHandler()
 		})
 	}

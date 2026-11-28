@@ -13,6 +13,8 @@ type OrthancCommandServiceInterface interface {
 	ClearLocalStudiesCache(ctx context.Context) error
 	// RemoveDICOMModality remove dicom modality
 	RemoveDICOMModality(ctx context.Context, tenantID string, modalityID string) error
+	// RestrictDICOMModalityRights restrict every Orthanc modality to inbound C-STORE and C-ECHO
+	RestrictDICOMModalityRights(ctx context.Context) error
 	// RetrieveModalityStudyBySeries retrieve modality study by series
 	RetrieveModalityStudyBySeries(ctx context.Context, data types.RetrieveModalityStudyBySeries) ([]orthancAPITypes.QueryModalityResponse, error)
 	// StoreStudyCustomSeries store study custom series

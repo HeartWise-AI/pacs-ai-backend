@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	orthancAPITypes "api-pacs/infrastructures/providers/api/orthanc/types"
@@ -38,6 +39,30 @@ const (
 	customSeriesInstanceUIDHashFormat string = "%s:%s:%s" // <tenant_id>:<series_instance_uids_asc_order>:<model_name>_<model_version>
 	customSOPInstanceUIDHashFormat    string = "%s:%s"    // <tenant_id>:<derived_series_instance_uid>
 )
+
+// modalityWrites serializes writes to Orthanc's modality table so that
+// RestrictDICOMModalityRights never rewrites a modality from a stale listing.
+var modalityWrites sync.Mutex
+
+// inboundDICOMModality is what a remote PACS may do on Orthanc's DICOM port:
+// C-STORE studies into it and C-ECHO it. C-FIND and C-MOVE that Orthanc
+// issues to the PACS do not depend on these flags.
+func inboundDICOMModality(aet, host string, port uint, useDicomTLS bool) orthancAPITypes.UpdateDICOMModalityRequest {
+	return orthancAPITypes.UpdateDICOMModalityRequest{
+		AET:                    aet,
+		AllowEcho:              true,
+		AllowFind:              false,
+		AllowFindWorklist:      false,
+		AllowGet:               false,
+		AllowMove:              false,
+		AllowStorageCommitment: false,
+		AllowStore:             true,
+		AllowTranscoding:       true,
+		Host:                   host,
+		Port:                   port,
+		UseDicomTLS:            useDicomTLS,
+	}
+}
 
 // ClearLocalStudiesCache clear local studies cache
 func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context) error {
@@ -92,6 +117,34 @@ func (service *OrthancCommandService) ClearLocalStudiesCache(ctx context.Context
 	return nil
 }
 
+// RestrictDICOMModalityRights rewrites every modality registered in Orthanc
+// that still allows more than inbound C-STORE and C-ECHO, such as those saved
+// before UpdateDICOMModality narrowed its rights.
+func (service *OrthancCommandService) RestrictDICOMModalityRights(ctx context.Context) error {
+	modalityWrites.Lock()
+	defer modalityWrites.Unlock()
+
+	modalities, err := service.OrthancAPIInterface.ListDICOMModalities(ctx)
+	if err != nil {
+		return err
+	}
+
+	for modalityID, modality := range modalities {
+		if !modality.AllowFind && !modality.AllowFindWorklist && !modality.AllowGet && !modality.AllowMove &&
+			!modality.AllowNAction && !modality.AllowEventReport {
+			continue
+		}
+
+		err := service.OrthancAPIInterface.UpdateDICOMModality(ctx, modalityID, inboundDICOMModality(modality.AET, modality.Host, modality.Port, modality.UseDicomTLS))
+		if err != nil {
+			return err
+		}
+		log.Println("[Modalities] restricted to inbound C-STORE and C-ECHO:", modalityID)
+	}
+
+	return nil
+}
+
 // RemoveDICOMModality remove dicom modality
 func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, tenantID string, modalityID string) error {
 	dicomModality, err := authorizeDICOMModality(ctx, service.OrthancCommandRepositoryInterface, tenantID, modalityID)
@@ -99,7 +152,9 @@ func (service *OrthancCommandService) RemoveDICOMModality(ctx context.Context, t
 		return err
 	}
 
+	modalityWrites.Lock()
 	err = service.OrthancAPIInterface.DeleteDICOMModality(ctx, dicomModality.ModalityID)
+	modalityWrites.Unlock()
 	if err != nil {
 		log.Println(err)
 		return err
@@ -207,20 +262,9 @@ func (service *OrthancCommandService) UpdateDICOMModality(ctx context.Context, d
 	data.TenantID = dicomModality.TenantID
 	data.ModalityID = dicomModality.ModalityID
 
-	err = service.OrthancAPIInterface.UpdateDICOMModality(ctx, data.ModalityID, orthancAPITypes.UpdateDICOMModalityRequest{
-		AET:                    data.AET,
-		AllowEcho:              true,
-		AllowFind:              true,
-		AllowFindWorklist:      true,
-		AllowGet:               true,
-		AllowMove:              true,
-		AllowStorageCommitment: true,
-		AllowStore:             true,
-		AllowTranscoding:       true,
-		Host:                   data.Host,
-		Port:                   data.Port,
-		UseDicomTLS:            data.UseDicomTLS,
-	})
+	modalityWrites.Lock()
+	err = service.OrthancAPIInterface.UpdateDICOMModality(ctx, data.ModalityID, inboundDICOMModality(data.AET, data.Host, data.Port, data.UseDicomTLS))
+	modalityWrites.Unlock()
 	if err != nil {
 		log.Println(err)
 		return err

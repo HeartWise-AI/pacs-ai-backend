@@ -105,6 +105,8 @@ type ListDICOMModalitiesResponse struct {
 	AllowFindWorklist bool   `json:"AllowFindWorklist"`
 	AllowGet          bool   `json:"AllowGet"`
 	AllowMove         bool   `json:"AllowMove"`
+	AllowNAction      bool   `json:"AllowNAction"`
+	AllowEventReport  bool   `json:"AllowEventReport"`
 	AllowStore        bool   `json:"AllowStore"`
 	AllowTranscoding  bool   `json:"AllowTranscoding"`
 	Host              string `json:"Host"`
