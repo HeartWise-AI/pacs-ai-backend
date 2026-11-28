@@ -34,6 +34,7 @@ from models.echoalign import EchoAlign, load_echo
 from models.echoalign.pooling import pool_studies
 from utils.fast_request import decode_base64
 from utils.genericLogic import BasePredictionService
+from utils.html_parser import HTMLParser
 from utils.http_utils import Config, PredictRequest
 
 MODEL_KEY = "echoalign"
@@ -61,6 +62,54 @@ GRADE_KEY = {
     "lvh_grade": "lvh", "mitral_calcification_grade": "mitral_calcification",
     "pulmonary_hypertension_grade": "pulmonary_hypertension",
 }
+# Report findings in PanEcho's order. Shared findings use PanEcho's diagnosis keys (so the report
+# groups them like PanEcho's); EchoAlign-only outputs get descriptive keys.
+REPORT_FINDINGS = [
+    ("ejection_fraction", "Left ventricular (LV) ejection fraction"),
+    ("lv_enlargement_grade", "LV size"),
+    ("lvh_grade", "Any level of LV hypertrophy (increased wall thickness)"),
+    ("lv_systolic_dysfunction_grade", "LV systolic function"),
+    ("rwma", "LV wall motion abnormalities"),
+    ("septal_motion_abnormality", "LV septal motion abnormality"),
+    ("lv_diastolic_dysfunction_grade", "LV diastolic function"),
+    ("rvsp", "Right ventricular (RV) systolic pressure"),
+    ("rv_enlargement", "RV size"),
+    ("rv_systolic_dysfunction", "RV systolic function"),
+    ("pa_pressure", "Pulmonary artery pressure (RV afterload)"),
+    ("pulmonary_hypertension_grade", "Pulmonary hypertension (RV)"),
+    ("la_enlargement_grade", "Left atrial (LA) size"),
+    ("lavi", "LA volume index"),
+    ("ra_enlargement", "Right atrial (RA) size"),
+    ("elevated_ra_pressure", "Elevated RA pressure"),
+    ("ivc_dilation", "IVC dilation (RA pressure)"),
+    ("bicuspid_av", "Bicuspid aortic valve"),
+    ("transaortic_mean_gradient", "Aortic valve mean gradient (AI estimate)"),
+    ("transaortic_peak_gradient", "Aortic valve peak gradient (AI estimate)"),
+    ("aortic_sclerosis", "Aortic valve sclerosis"),
+    ("aortic_valve_replacement", "Aortic valve replacement"),
+    ("aortic_regurgitation_grade", "Aortic valve regurgitation"),
+    ("mitral_stenosis", "Mitral valve stenosis"),
+    ("mitral_regurgitation_grade", "Mitral valve regurgitation"),
+    ("mitral_calcification_grade", "Mitral annular calcification (MV)"),
+    ("mitral_valve_prolapse", "Mitral valve prolapse"),
+    ("tricuspid_regurgitation_grade", "Tricuspid valve regurgitation"),
+    ("pulmonic_regurgitation", "Pulmonic valve regurgitation"),
+    ("aortic_root_dimension", "Aortic root diameter (Ao)"),
+    ("ascending_aorta_dilation", "Ascending aorta dilation (Ao)"),
+    ("atrial_fibrillation", "Atrial fibrillation"),
+    ("pacemaker", "Pacemaker"),
+]
+AS_SCREENING_NOTE_EN = (
+    "AI screening scores from the 2D and colour clips (no Doppler spectra): not a diagnosis. EchoAlign compresses "
+    "the AV peak velocity and gradients towards the middle of the range and did not call severe AS on MHI; use the "
+    "measured Doppler values (Vmax, mean gradient, valve area)."
+)
+AS_SCREENING_NOTE_FR = (
+    "Scores de d\u00e9pistage IA \u00e0 partir des clips 2D et couleur (sans spectres Doppler) : pas un diagnostic. "
+    "EchoAlign resserre la vitesse de pointe aortique et les gradients vers le milieu de l'\u00e9chelle et n'a pas "
+    "attribu\u00e9 de SA s\u00e9v\u00e8re \u00e0 l'ICM ; utiliser les valeurs Doppler mesur\u00e9es (Vmax, gradient "
+    "moyen, surface valvulaire)."
+)
 ZERO_SHOT = ["aortic_stenosis", "aortic_regurgitation", "mitral_regurgitation", "tricuspid_regurgitation",
              "lv_systolic_dysfunction"]
 
@@ -282,31 +331,47 @@ class CustomPredictionService(BasePredictionService):
                 f"LVEF {result['summary']['ejectionFraction']:.0f}%")
 
     @staticmethod
-    def render_html(result: Dict[str, Any]) -> str:
-        rows = []
-        for name, head in result["keyHeads"].items():
-            if head["type"] == "classification":
-                value = (f"P = {head['probability']:.3f} (threshold {head['threshold']:.3f}): "
-                         f"{'called' if head['called'] else 'not called'}")
-            elif head["type"] == "ordinal":
-                value = f"{head['grade']} | " + ", ".join(f"{n} {p:.2f}" for n, p in head["probabilities"].items())
+    def report_inputs(result: Dict[str, Any]) -> Dict[str, Any]:
+        """PanEcho 1.1.2 report inputs: diagnosis per finding (PanEcho's keys for shared findings),
+        the AS screening block and the recommendation texts."""
+        heads = result.get("allHeads") or result.get("keyHeads") or {}
+        diagnosis: Dict[str, str] = {}
+        for head_name, key in REPORT_FINDINGS:
+            head = heads.get(head_name)
+            if not head:
+                continue
+            if head["type"] == "regression":
+                diagnosis[key] = f"{head['value']:.1f} {UNITS.get(head_name, head.get('unit', ''))}".strip()
+            elif head["type"] == "classification":
+                diagnosis[key] = f"{'Present' if head['called'] else 'Absent'} (P {head['probability']:.2f})"
             else:
-                value = f"{head['value']:.2f} {head.get('unit', '')}"
-            rows.append(f"<tr><td>{html.escape(name)}</td><td>{html.escape(value)}</td></tr>")
-        return (
-            "<!doctype html><html><head><meta charset='utf-8'><title>EchoAlign (research use only)</title>"
-            "<style>body{font-family:system-ui,sans-serif;margin:16px;color:#111;background:#fff}"
-            ".banner{background:#b00020;color:#fff;font-weight:700;padding:10px 12px;border-radius:4px}"
-            "table{border-collapse:collapse;margin-top:12px}td{border-bottom:1px solid #ddd;padding:4px 10px}"
-            ".small{color:#555;font-size:12px}</style></head><body>"
-            f"<div class='banner'>{html.escape(RESEARCH_BANNER)}</div>"
-            f"<h2>EchoAlign</h2><p>{html.escape(CustomPredictionService.diagnosis(result))}</p>"
-            "<p class='small'>Not calibrated on MHI. On 54 MHI TTE studies the severe grade was never called "
-            "(0/5 severe) and the AV Vmax estimate is compressed (slope 0.12); use the measured Doppler values.</p>"
-            f"<p>Clips used: {result['clipsUsed']} ({html.escape(result['instanceSelection'])})</p>"
-            "<table>" + "".join(rows) + "</table>"
-            f"<p class='small'>{html.escape(ATTRIBUTION)}</p></body></html>"
-        )
+                grade = str(head["grade"]).replace("_", " ")
+                p = head["probabilities"].get(head["grade"])
+                diagnosis[key] = f"{grade.capitalize()}" + (f" (P {p:.2f})" if p is not None else "")
+        asg = heads.get("aortic_stenosis_grade") or {}
+        probs = asg.get("probabilities") or {}
+        screening = None
+        if probs:
+            vmax = heads.get("transaortic_peak_velocity") or {}
+            screening = {
+                "pSevere": float(probs.get("severe", 0.0)),
+                "pAny": max(0.0, 1.0 - float(probs.get("normal", 1.0))),
+                "avVmaxEstimate": ({"label": "AI estimate, compressed towards the middle of the range",
+                                    "value": float(vmax["value"])} if vmax.get("type") == "regression" else None),
+                "note": {"en": AS_SCREENING_NOTE_EN, "fr": AS_SCREENING_NOTE_FR},
+            }
+        return {
+            "banner": RESEARCH_BANNER,
+            "diagnosis": diagnosis,
+            "asScreening": screening,
+            "probability": {},
+            "recommendations": {"en": RESEARCH_BANNER + ". " + ATTRIBUTION,
+                                "fr": "Recherche seulement \u2014 EchoAlign (CC BY-NC 4.0), pas pour des d\u00e9cisions cliniques. " + ATTRIBUTION},
+        }
+
+    @staticmethod
+    def render_html(result: Dict[str, Any]) -> str:
+        return HTMLParser.generate_detection_results(CustomPredictionService.report_inputs(result))
 
     async def _handle_json_output(self, request: PredictRequest):
         result = self._run_inference(request)
