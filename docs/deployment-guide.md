@@ -103,6 +103,14 @@ Customer must whitelist the api-pacs host in their source PACS.
 | api-pacs → remote PACS | DICOM (DIMSE) | _customer-defined_ | C-FIND, C-MOVE — port is set on the customer's source PACS; ask their PACS admin during the §7.1 kickoff call. Common values seen in the field: 104, 11112, or a hospital-assigned high port. |
 | remote PACS → Orthanc | DICOM (DIMSE) | 4242 | C-STORE (study transfer) |
 
+Orthanc accepts a DICOM association only when the calling AE title is a registered modality and the connection comes from that modality's registered host (`DicomCheckModalityHost`). A registered PACS may only C-STORE and C-ECHO; Orthanc answers no C-FIND, C-GET, C-MOVE, worklist or storage-commitment request from any peer. Restrict the Orthanc DIMSE port with a host firewall to the source PACS addresses, for example:
+
+```bash
+# Docker-published ports bypass INPUT; filter them in DOCKER-USER.
+iptables -I DOCKER-USER -p tcp --dport ${ORTHANC_DICOM_PORT} -j DROP
+iptables -I DOCKER-USER -p tcp --dport ${ORTHANC_DICOM_PORT} -s <REMOTE_PACS_IP> -j RETURN
+```
+
 ---
 
 ## 3. Network & ports
@@ -113,7 +121,7 @@ Customer must whitelist the api-pacs host in their source PACS.
 | nginx | 443 | 443 | Public | Browsers, API clients |
 | api-pacs | 8000 | `127.0.0.1:8000` | Loopback + internal | nginx, local diagnostics |
 | Orthanc REST | 8042 | `127.0.0.1:8042` | Loopback + internal | api-pacs, study-service, local diagnostics |
-| Orthanc DIMSE | 4242 | 4242 | Customer LAN | Remote PACS (C-STORE) |
+| Orthanc DIMSE | 4242 | 4242 | Remote PACS addresses only (host firewall, §2.5) | Remote PACS (C-STORE) |
 | study-service | 8600 | — | Internal | api-pacs |
 | PostgreSQL (control) | 5432 | 5433 | Loopback only | api-pacs |
 | PostgreSQL (cardio) | 5432 | 5434 | Loopback only | study-service, Celery |
@@ -388,6 +396,9 @@ Configure each remote PACS as a modality in Orthanc:
 - File: [orthanc/](../orthanc/) configuration.
 - Required fields: AE title, host, port.
 - Restart Orthanc to pick up changes.
+- The host must be the IP address the PACS connects to Orthanc from, as Orthanc sees it, not a DNS name: Orthanc refuses a calling AE title from any other address. If the PACS sends C-STORE from a different node than the one that answers C-FIND/C-MOVE, ask the PACS admin to send from the registered address.
+- Give every modality its own AE title. Orthanc refuses an AE title from every host but the first registered modality's when two modalities share it.
+- api-pacs registers each modality for inbound C-STORE and C-ECHO only, and on start and every hour rewrites any modality in Orthanc that allows more.
 
 Every tenant shares the one Orthanc, so api-pacs only lets a tenant list, query, retrieve from, store to, echo, update or remove a modality for which that tenant has a record in the Firestore `dicom_modalities` collection. Any other modality ID answers 404, and ingestion jobs on it fail. Create one document per tenant and modality in the Firebase Console:
 
@@ -463,7 +474,8 @@ Once filled in, copy the assigned values into:
 ### 7.2 DIMSE services used
 - **C-FIND** — study discovery (api-pacs ingestion runner).
 - **C-MOVE** — study retrieval (api-pacs retrieval worker → Orthanc as destination).
-- **C-STORE** — Orthanc receives DICOM instances.
+- **C-STORE** — Orthanc receives DICOM instances, only from a registered modality's AE title and host.
+- Orthanc does not serve C-FIND, C-GET, C-MOVE or storage commitment to any peer.
 - Modality Worklist (MWL): **No** — PACS-AI does not provide or consume MWL. We only do C-FIND/C-MOVE for retrieval and C-STORE for receipt. The hospital's own RIS/PACS owns worklist for the imaging modalities.
 
 ### 7.3 Polling load and intervals
