@@ -32,7 +32,10 @@ pinned revision and checks every file's sha256 during the Docker build.
 
 - Registered as a research model. Only OWNER/ADMIN and custom roles that list `EchoAlign` explicitly can see or run it.
   Base USERs and "all models" custom roles do not see it (api-pacs research-model exclusion).
-- On demand only: no automatic ingestion (`automaticRunLabels: []`, no ingestion_jobs rows).
+- Runs on demand, and automatically when its gateway ingestion job is RUNNING (research-gated as above).
+  Guards for automatic runs: a request above 16 GiB (`ECHOALIGN_MAX_REQUEST_BYTES`) or a study with more than
+  200 usable clips (`ECHOALIGN_MAX_CLIPS`) is skipped with `STUDY_TOO_LARGE`; one inference at a time.
+- The viewer shows EchoAlign with the PanEcho template (PACS-AI #591); the HTML report uses PanEcho's layout.
 
 ## MHI evaluation (2026-11-27, nothing fitted on MHI data)
 

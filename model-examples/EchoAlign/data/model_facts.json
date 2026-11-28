@@ -10,13 +10,13 @@
       "License_date": "",
       "Approval_date": "",
       "Last_update": "2026-11-27",
-      "Version": "0.1.3"
+      "Version": "0.1.4"
     },
     "Mechanism": {
       "Outcome": "53 echo findings and measurements (released probes) plus zero-shot prompt scores",
       "Output": "Per-study probabilities, grades and measurements; per-clip AS, AV Vmax and EF",
       "Target_population": "Adult transthoracic echocardiography",
-      "Time_of_prediction": "On demand only (not run by automatic ingestion)",
+      "Time_of_prediction": "Automatic on new echocardiograms (research-gated: OWNER/ADMIN and the Research role) and on demand",
       "Input_data_source": "Transthoracic echo DICOM clips: every multi-frame US instance by default (the same clips PanEcho receives); TEE and non-image instances are skipped. No view classifier.",
       "Input_data_type": "Video data",
       "Training_data_location_and_time-period": "2.87 million echo videos and images from 159 centres (telecardiology; test data from iCardio.ai). Probes fitted on the developers' private cohort.",
@@ -58,7 +58,8 @@
       "0.1.0": "2026-11-27: Research container: EchoAlign weights and probes from Hugging Face EchoAlign/EchoAlign@7ceeb3e (sha256-verified), code from GitHub BioMedIA-MBZUAI/EchoAlign@7f0d78a.",
       "0.1.1": "2026-11-27: Security update: transformers 5.10.1 and pytest 9.0.3 (Dependabot #615). Outputs identical to 0.1.0 (max |diff| 0.0 on 1,215 clips of 14 MHI studies and on all prompt embeddings); TEE markers as PanEcho; 8-bit display conversion for high-bit-depth and MONOCHROME1 clips.",
       "0.1.2": "2026-11-27: /inference/render-report, so the viewer shows the HTML report (research-use banner first) for stored results. Predictions unchanged.",
-      "0.1.3": "2026-11-27: HTML report in the PanEcho 1.1.2 layout (same CSS, sections and AS screening block: P(severe AS), P(any AS), AV Vmax as an AI estimate), with the research-use banner at the top. Predictions unchanged."
+      "0.1.3": "2026-11-27: HTML report in the PanEcho 1.1.2 layout (same CSS, sections and AS screening block: P(severe AS), P(any AS), AV Vmax as an AI estimate), with the research-use banner at the top. Predictions unchanged.",
+      "0.1.4": "2026-11-27: Automatic-run guards: a study whose request exceeds 16 GiB (ECHOALIGN_MAX_REQUEST_BYTES) or that has more than 200 usable clips (ECHOALIGN_MAX_CLIPS) is skipped with STUDY_TOO_LARGE; binary findings in the report state the finding (e.g. RV systolic function: Reduced/Normal). Predictions unchanged."
     }
   },
   "fr": {
@@ -71,13 +72,13 @@
       "License_date": "",
       "Approval_date": "",
       "Last_update": "2026-11-27",
-      "Version": "0.1.3"
+      "Version": "0.1.4"
     },
     "Mechanism": {
       "Outcome": "53 echo findings and measurements (released probes) plus zero-shot prompt scores",
       "Output": "Per-study probabilities, grades and measurements; per-clip AS, AV Vmax and EF",
       "Target_population": "Adult transthoracic echocardiography",
-      "Time_of_prediction": "On demand only (not run by automatic ingestion)",
+      "Time_of_prediction": "Automatic on new echocardiograms (research-gated: OWNER/ADMIN and the Research role) and on demand",
       "Input_data_source": "Transthoracic echo DICOM clips: every multi-frame US instance by default (the same clips PanEcho receives); TEE and non-image instances are skipped. No view classifier.",
       "Input_data_type": "Video data",
       "Training_data_location_and_time-period": "2.87 million echo videos and images from 159 centres (telecardiology; test data from iCardio.ai). Probes fitted on the developers' private cohort.",
@@ -119,7 +120,8 @@
       "0.1.0": "2026-11-27: Research container: EchoAlign weights and probes from Hugging Face EchoAlign/EchoAlign@7ceeb3e (sha256-verified), code from GitHub BioMedIA-MBZUAI/EchoAlign@7f0d78a.",
       "0.1.1": "2026-11-27: Security update: transformers 5.10.1 and pytest 9.0.3 (Dependabot #615). Outputs identical to 0.1.0 (max |diff| 0.0 on 1,215 clips of 14 MHI studies and on all prompt embeddings); TEE markers as PanEcho; 8-bit display conversion for high-bit-depth and MONOCHROME1 clips.",
       "0.1.2": "2026-11-27: /inference/render-report, so the viewer shows the HTML report (research-use banner first) for stored results. Predictions unchanged.",
-      "0.1.3": "2026-11-27: HTML report in the PanEcho 1.1.2 layout (same CSS, sections and AS screening block: P(severe AS), P(any AS), AV Vmax as an AI estimate), with the research-use banner at the top. Predictions unchanged."
+      "0.1.3": "2026-11-27: HTML report in the PanEcho 1.1.2 layout (same CSS, sections and AS screening block: P(severe AS), P(any AS), AV Vmax as an AI estimate), with the research-use banner at the top. Predictions unchanged.",
+      "0.1.4": "2026-11-27: Automatic-run guards: a study whose request exceeds 16 GiB (ECHOALIGN_MAX_REQUEST_BYTES) or that has more than 200 usable clips (ECHOALIGN_MAX_CLIPS) is skipped with STUDY_TOO_LARGE; binary findings in the report state the finding (e.g. RV systolic function: Reduced/Normal). Predictions unchanged."
     }
   }
 }
