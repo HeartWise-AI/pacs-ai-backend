@@ -121,15 +121,21 @@ func seeded() (*AccessService, *fakeRoleRepository, *time.Time) {
 	return service, repository, &now
 }
 
-func TestResolveOwnerAndAdminNeedNoLookup(t *testing.T) {
+func TestResolveUsesStoredRoleAndNeverCachesAdmin(t *testing.T) {
 	service, repository, _ := seeded()
-	for _, role := range []string{iamEntity.OwnerRole, iamEntity.AdminRole} {
-		access, err := service.Resolve(context.Background(), "t1", "a1", role)
+	for range 2 {
+		access, err := service.Resolve(context.Background(), "t1", "a1", iamEntity.AdminRole)
 		require.NoError(t, err)
 		require.True(t, access.Has(entity.PermWorkspaceManage))
 		require.True(t, access.AllModels)
 	}
-	require.Zero(t, repository.userReads)
+	require.Equal(t, 2, repository.userReads)
+
+	repository.users["a1"] = domainRepository.UserRoleAssignment{UserID: "a1", TenantID: "t1", Role: iamEntity.UserRole}
+	access, err := service.Resolve(context.Background(), "t1", "a1", iamEntity.AdminRole)
+	require.NoError(t, err)
+	require.Equal(t, iamEntity.UserRole, access.Role)
+	require.Equal(t, entity.BaselinePermissions, access.PermissionList())
 }
 
 func TestResolveUserWithCustomRole(t *testing.T) {

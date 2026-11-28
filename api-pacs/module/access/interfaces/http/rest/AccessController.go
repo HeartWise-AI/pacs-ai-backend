@@ -205,9 +205,11 @@ func (controller *AccessController) DeleteRole(w http.ResponseWriter, r *http.Re
 	writeAccessSuccess(w, http.StatusOK, "Successfully deleted role.", nil)
 }
 
-// AssignCustomRole sets or clears the custom role of a USER account.
+// AssignCustomRole sets or clears the custom role of a USER account. Nobody
+// assigns their own role: the caller was authorized as OWNER or ADMIN, and a
+// target that is USER by the time of the write would be the caller demoted.
 func (controller *AccessController) AssignCustomRole(w http.ResponseWriter, r *http.Request) {
-	tenantID, _, ok := identity(r)
+	tenantID, actorID, ok := identity(r)
 	if !ok {
 		writeAccessError(w, apiError.UnauthorizedAccess)
 		return
@@ -220,6 +222,10 @@ func (controller *AccessController) AssignCustomRole(w http.ResponseWriter, r *h
 	targetID := strings.TrimSpace(chi.URLParam(r, "ID"))
 	if targetID == "" {
 		writeAccessError(w, apiError.InvalidPayload)
+		return
+	}
+	if targetID == actorID {
+		writeAccessError(w, apiError.ForbiddenAccess)
 		return
 	}
 	if err := controller.Roles.AssignCustomRole(r.Context(), tenantID, targetID, *request.CustomRoleID); err != nil {

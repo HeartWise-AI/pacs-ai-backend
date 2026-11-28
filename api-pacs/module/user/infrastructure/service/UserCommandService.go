@@ -803,6 +803,13 @@ func (service *UserCommandService) UpdateTenantUser(ctx context.Context, data ty
 		log.Println(err)
 		return err
 	}
+	// Sessions are revoked after the write so that a sign-in that read the
+	// previous role cannot leave a session behind.
+	if target.Role != data.Role {
+		if err := service.IAMCommandServiceInterface.RevokeUserSessions(transitionContext, data.TenantID, target.ID); err != nil {
+			return err
+		}
+	}
 
 	user, err := service.UserQueryRepositoryInterface.SelectTenantUserByID(transitionContext, data.TenantID, target.ID)
 	if err != nil {

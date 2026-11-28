@@ -322,7 +322,7 @@ func (controller *InferenceQueryController) ListModelFeedback(w http.ResponseWri
 		writeModelFeedbackListError(w, apiError.UnauthorizedAccess)
 		return
 	}
-	role, _ := r.Context().Value(iamTypes.RoleCtx).(string)
+	role := accessctx.Role(r.Context())
 
 	values := r.URL.Query()
 	from, err := parsePredictionsTime(values.Get("from"))

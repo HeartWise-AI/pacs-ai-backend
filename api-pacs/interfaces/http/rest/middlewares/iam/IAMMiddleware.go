@@ -133,12 +133,17 @@ func (middleware *IAMMiddleware) FirebaseSuperUserGuard(next http.Handler) http.
 	})
 }
 
-// RBACOwnerGuard rbac for owner
+// RBACOwnerGuard rbac for owner. The role is the resolved one, never the
+// role stored on the session.
 func (middleware *IAMMiddleware) RBACOwnerGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userRole := r.Context().Value(types.RoleCtx)
+		access, err := accessctx.Get(r.Context())
+		if err != nil {
+			writeAccessUnavailable(w)
+			return
+		}
 
-		if userRole != entity.OwnerRole {
+		if access.Role != entity.OwnerRole {
 			response := viewmodels.HTTPResponseVM{
 				Status:    http.StatusForbidden,
 				Success:   false,
@@ -153,12 +158,17 @@ func (middleware *IAMMiddleware) RBACOwnerGuard(next http.Handler) http.Handler 
 	})
 }
 
-// RBACOwnerOrAdminGuard rbac for owner and admin
+// RBACOwnerOrAdminGuard rbac for owner and admin. The role is the resolved
+// one, never the role stored on the session.
 func (middleware *IAMMiddleware) RBACOwnerOrAdminGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userRole := r.Context().Value(types.RoleCtx)
+		access, err := accessctx.Get(r.Context())
+		if err != nil {
+			writeAccessUnavailable(w)
+			return
+		}
 
-		if userRole != entity.OwnerRole && userRole != entity.AdminRole {
+		if access.Role != entity.OwnerRole && access.Role != entity.AdminRole {
 			response := viewmodels.HTTPResponseVM{
 				Status:    http.StatusForbidden,
 				Success:   false,
@@ -290,6 +300,14 @@ func (middleware *IAMMiddleware) TokenSessionOrthancProxyAuthGuard(next http.Han
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func writeAccessUnavailable(w http.ResponseWriter) {
+	response := viewmodels.HTTPResponseVM{
+		Status: http.StatusServiceUnavailable, Success: false,
+		Message: "Access verification is temporarily unavailable.", ErrorCode: apiError.AccessUnavailable,
+	}
+	response.JSON(w)
 }
 
 func writeUnauthorized(w http.ResponseWriter) {
