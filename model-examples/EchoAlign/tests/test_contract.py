@@ -161,7 +161,8 @@ def test_guards_and_binary_wording():
 
     response = asyncio.run(main.predict(FakeRequest()))
     body = response.body.decode()
-    assert response.status_code == 413 and "STUDY_TOO_LARGE" in body and "Study skipped" in body
+    assert response.status_code == 200 and '"skipReason": "STUDY_TOO_LARGE"'.replace(" ", "") in body.replace(" ", "")
+    assert "Not run: request of 17.0 GiB" in body and "htmlBase64" in body
 
     heads = {"rv_systolic_dysfunction": {"type": "classification", "probability": 0.9, "threshold": 0.1, "called": True},
              "rv_enlargement": {"type": "classification", "probability": 0.01, "threshold": 0.1, "called": False}}
@@ -170,7 +171,7 @@ def test_guards_and_binary_wording():
     assert diagnosis["RV size"] == "Normal (P 0.01)"
 
 
-def test_too_many_clips_is_a_structured_skip(monkeypatch):
+def test_skips_are_successful_results_with_a_reason(monkeypatch):
     import asyncio
     import logic
     from types import SimpleNamespace
@@ -182,6 +183,12 @@ def test_too_many_clips_is_a_structured_skip(monkeypatch):
         raise logic.StudyTooLarge("Study skipped: more than 200 usable clips (limit of this research model)")
 
     monkeypatch.setattr(logic.CustomPredictionService, "_run_inference", too_large)
-    success, response = asyncio.run(service.predict(SimpleNamespace(outputMode="JSON")))
-    assert success is False and response.status_code == 413
-    assert b"STUDY_TOO_LARGE" in response.body and b"Study skipped" in response.body
+    success, data = asyncio.run(service.predict(SimpleNamespace(outputMode="JSON")))
+    assert success is True and data["predictions"]["skipReason"] == "STUDY_TOO_LARGE"
+    assert data["diagnosis"].startswith("[Research use only] Not run: more than 200 usable clips")
+    success, data = asyncio.run(service.predict(SimpleNamespace(outputMode="HTML")))
+    assert success is True and data["htmlBase64"]
+
+    tee = logic.skip_result("TEE_NOT_SUPPORTED", "transesophageal echo (TEE) is not supported", {"tee": 15})
+    page = logic.CustomPredictionService.render_html(tee)
+    assert "Research use only" in page and "Not run: transesophageal echo (TEE) is not supported" in page

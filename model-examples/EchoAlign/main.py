@@ -98,11 +98,15 @@ async def predict(http_request: Request):
     declared = http_request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_REQUEST_BYTES:
         print(f"EchoAlign request refused: {int(declared) / 2**30:.1f} GiB > {MAX_REQUEST_BYTES / 2**30:.1f} GiB")
-        return HTTPResponse(
-            status=413, success=False, error_code="STUDY_TOO_LARGE",
-            message=(f"Study skipped: request of {int(declared) / 2**30:.1f} GiB exceeds the "
-                     f"{MAX_REQUEST_BYTES / 2**30:.0f} GiB limit of this research model"),
-        ).to_response()
+        from logic import skip_result
+        result = skip_result("STUDY_TOO_LARGE", f"request of {int(declared) / 2**30:.1f} GiB exceeds the "
+                             f"{MAX_REQUEST_BYTES / 2**30:.0f} GiB limit of this research model")
+        # Skipped before the body is read, so the output mode is unknown: both JSON and HTML fields are returned.
+        return HTTPResponse(status=200, success=True, message="Prediction skipped", data={
+            "predictions": result, "diagnosis": PredictionService.diagnosis(result),
+            "modelRecommendations": {"en": result["banner"], "fr": result["banner"], "presentable": False},
+            "htmlBase64": base64.b64encode(PredictionService.render_html(result).encode("utf-8")).decode("ascii"),
+        }).to_response()
     body = await read_body(http_request)
     received = time.perf_counter()
     body_bytes = len(body)
