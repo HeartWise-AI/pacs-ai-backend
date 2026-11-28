@@ -164,6 +164,24 @@ func RunOrthancLocalStudiesCacheHandler() {
 	}
 }
 
+// RunOrthancModalityRightsHandler restricts the Orthanc modalities to inbound
+// C-STORE and C-ECHO at start, then every hour.
+func RunOrthancModalityRightsHandler() {
+	orthancCommandService := OrthancCommandServiceDI()
+
+	restrict := func() {
+		if err := orthancCommandService.RestrictDICOMModalityRights(context.TODO()); err != nil {
+			log.Println("[Modalities] error while restricting modality rights:", err)
+		}
+	}
+
+	restrict()
+	tick := time.Tick(1 * time.Hour)
+	for range tick {
+		restrict()
+	}
+}
+
 // RunOrthancTenantStudySyncHandler assigns the studies of the shared Orthanc
 // to tenants: every cached study once at start (backfill), then each study
 // that arrives (C-STORE push, retrieve, direct upload). ORTHANC_TENANT_STUDY_SYNC=false
