@@ -258,7 +258,7 @@ func (controller *UserCommandController) CreateTenantUser(w http.ResponseWriter,
 	}
 
 	// check user role and role they want to add
-	userRole := r.Context().Value(iamTypes.RoleCtx)
+	userRole := accessctx.Role(r.Context())
 	if userRole == entity.AdminRole && request.Role == entity.AdminRole {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusUnauthorized,
@@ -926,7 +926,7 @@ func (controller *UserCommandController) UpdateTenantUser(w http.ResponseWriter,
 	}
 
 	// check user role and role they want to add
-	userRole := r.Context().Value(iamTypes.RoleCtx)
+	userRole := accessctx.Role(r.Context())
 	if userRole == entity.AdminRole && request.Role == entity.AdminRole {
 		response := viewmodels.HTTPResponseVM{
 			Status:    http.StatusUnauthorized,
@@ -940,7 +940,7 @@ func (controller *UserCommandController) UpdateTenantUser(w http.ResponseWriter,
 	}
 
 	actorUserID, _ := r.Context().Value(iamTypes.UserIDCtx).(string)
-	actorRole, _ := r.Context().Value(iamTypes.RoleCtx).(string)
+	actorRole := accessctx.Role(r.Context())
 	err = controller.UserCommandServiceInterface.UpdateTenantUser(context.TODO(), serviceTypes.UpdateTenantUser{
 		ID:                    request.ID,
 		TenantID:              tenantID,

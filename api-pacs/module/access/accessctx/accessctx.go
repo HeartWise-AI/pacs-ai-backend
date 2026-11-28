@@ -54,6 +54,16 @@ func Get(ctx context.Context) (entity.Access, error) {
 	return entity.ForRole(role, nil), nil
 }
 
+// Role returns the resolved role of the authenticated user, or "" when access
+// cannot be determined. Authorization must use it instead of the session role.
+func Role(ctx context.Context) string {
+	access, err := Get(ctx)
+	if err != nil {
+		return ""
+	}
+	return access.Role
+}
+
 // Has reports whether the authenticated user holds permission. Errors deny.
 func Has(ctx context.Context, permission string) bool {
 	access, err := Get(ctx)

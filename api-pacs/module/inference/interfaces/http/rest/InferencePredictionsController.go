@@ -38,7 +38,7 @@ type predictionsIdentity struct {
 func predictionsRequestIdentity(r *http.Request) (predictionsIdentity, bool) {
 	tenantID, ok := worklistTenantID(r)
 	userID, userOK := r.Context().Value(iamTypes.UserIDCtx).(string)
-	role, _ := r.Context().Value(iamTypes.RoleCtx).(string)
+	role := accessctx.Role(r.Context())
 	userID = strings.TrimSpace(userID)
 	if !ok || !userOK || userID == "" {
 		return predictionsIdentity{}, false

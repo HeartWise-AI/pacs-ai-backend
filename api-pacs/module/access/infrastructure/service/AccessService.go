@@ -71,14 +71,14 @@ func cacheKey(tenantID, userID, role string) string {
 	return tenantID + "\x00" + userID + "\x00" + role
 }
 
-// Resolve returns the access of a signed-in user. OWNER and ADMIN need no
-// lookup. USER reads its custom role; a role that no longer exists (or
-// belongs to another tenant) leaves the baseline. Lookup errors are returned
-// so callers fail closed.
+// Resolve returns the access of a signed-in user from the role and custom
+// role stored on the user record. The role the session was issued with only
+// keys the cache: a member whose role changed since sign-in gets the access
+// of the stored role. Only USER access is cached, so a cached entry never
+// grants OWNER or ADMIN. A custom role that no longer exists (or belongs to
+// another tenant) leaves the baseline. Lookup errors are returned so callers
+// fail closed.
 func (service *AccessService) Resolve(ctx context.Context, tenantID, userID, role string) (entity.Access, error) {
-	if role != iamEntity.UserRole {
-		return entity.ForRole(role, nil), nil
-	}
 	key := cacheKey(tenantID, userID, role)
 	service.mu.Lock()
 	if cached, ok := service.cache[key]; ok && service.now().Before(cached.expires) {
@@ -93,6 +93,9 @@ func (service *AccessService) Resolve(ctx context.Context, tenantID, userID, rol
 	assignment, err := service.Repository.GetUserAssignment(ctx, tenantID, userID)
 	if err != nil {
 		return entity.Access{}, errors.New(apiError.AccessUnavailable)
+	}
+	if assignment.Role != iamEntity.UserRole {
+		return entity.ForRole(assignment.Role, nil), nil
 	}
 	var custom *entity.CustomRole
 	if roleID := strings.TrimSpace(assignment.CustomRoleID); roleID != "" {
@@ -109,7 +112,7 @@ func (service *AccessService) Resolve(ctx context.Context, tenantID, userID, rol
 			return entity.Access{}, errors.New(apiError.AccessUnavailable)
 		}
 	}
-	access := entity.ForRole(role, custom)
+	access := entity.ForRole(iamEntity.UserRole, custom)
 	if custom != nil && custom.Name == "" && custom.TenantID == "" {
 		access.CustomRole = nil
 	}

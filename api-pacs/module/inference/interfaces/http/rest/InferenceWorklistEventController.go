@@ -136,7 +136,7 @@ type WorklistUserMetadataReader interface {
 // reconnect (the viewer also applies it immediately on its side).
 func (controller *InferenceQueryController) worklistNotificationViewer(r *http.Request) serviceTypes.WorklistNotificationViewer {
 	userID, _ := r.Context().Value(iamTypes.UserIDCtx).(string)
-	role, _ := r.Context().Value(iamTypes.RoleCtx).(string)
+	role := accessctx.Role(r.Context())
 	viewer := serviceTypes.WorklistNotificationViewer{
 		UserID:  strings.TrimSpace(userID),
 		IsAdmin: role == iamEntity.AdminRole || role == iamEntity.OwnerRole || accessctx.Has(r.Context(), accessEntity.PermProcessingManage),
